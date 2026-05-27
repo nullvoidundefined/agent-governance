@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Ephemeral / machine-specific state
+.last-cleanup
+backups/
+cache/
+debug/
+file-history/
+history.jsonl
+ide/
+image-cache/
+mcp-needs-auth-cache.json
+paste-cache/
+session-env/
+sessions/
+shell-snapshots/
+stats-cache.json
+tasks/
+telemetry/
+todos/
+
+# Local settings (may contain secrets / machine-specific permissions)
+settings.local.json
+.env
+.env.*
+
+# Plugins are managed by Claude Code and reinstallable from settings.json
+plugins/
+
+# Per-project session data and memory (contains user-specific paths and project details)
+projects/
+
+# Private operational logs (contain infrastructure-specific deployment details)
+KNOWN-ISSUES.md
+
+# Plans are ephemeral session artifacts
+plans/
