@@ -1,6 +1,6 @@
 # Global Memory Index
 
-Cross-project memories consolidated from 14 per-project memory directories on 2026-04-06. These apply to every project unless a project-level memory explicitly overrides.
+Cross-project memories consolidated from 14 per-project memory directories on 2026-04-06 (spanning production, development, and template projects). These apply to every project unless a project-level memory explicitly overrides.
 
 ## User profile
 - [`user_profile.md`](./user_profile.md): Ian's developer profile, stack, working style, failure modes
@@ -36,7 +36,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 
 ## Source coverage
 
-Consolidated from 29 feedback memories across 10 production, development, and template projects (2026-04-06).
+Consolidated from 29 feedback memories across 14 per-project memory directories (production, development, and template projects), 2026-04-06.
 
 ## How to use
 

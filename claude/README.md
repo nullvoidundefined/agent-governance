@@ -1,8 +1,10 @@
 # claude-global-rules
 
-A reusable operating system for Claude Code. Rules, hooks, audit roles, convention files, prompt templates, and cross-session memory, organized as an interlocking ten-layer safety framework that any Claude Code session can load at startup.
+A personal operating system for Claude Code. Rules, hooks, audit roles, convention files, prompt templates, and cross-session memory, organized as a ten-layer model: five mechanically enforced layers (memory loading, plugin-shipped skills, hook scripts, session-lifecycle hooks, secret-scan and redaction hooks) and five prose layers (rules, audit role definitions, tests, process sequencing, git hygiene). Any Claude Code session loads it at startup.
 
-This repo is the canonical, version-controlled home for everything that governs how Claude behaves across every project the user touches. It is loaded at the start of every session via `~/.claude/`. Individual projects extend and override specific sections through their own `CLAUDE.md` files, but the baseline lives here.
+This repo is the canonical, version-controlled home for everything that governs how Claude behaves across every project the maintainer touches. It is loaded at the start of every session via `~/.claude/`. Individual projects extend and override specific sections through their own `CLAUDE.md` files, but the baseline lives here.
+
+> **Read the criticism audit alongside the manifesto.** `PROTOCOL.md` presents the current ten-layer framework. `docs/audits/2026-04-08-criticism.md` is the harshest pre-rewrite critique of the prior CLAUDE.md, which drove the 866→459-line / 11K→6K-token rewrite later that same day. Both are load-bearing; reconciling them is the work.
 
 ## What this is for
 
@@ -10,32 +12,47 @@ Claude Code is a capable agent. By default, it has no cross-session memory, no c
 
 This repo is the scaffolding that turns Claude Code from "a fresh LLM every session" into "a colleague who remembers the rules, has been burned by specific incidents, and has guardrails that catch the classes of failure the rules alone cannot prevent."
 
-It is built around a single principle: **every layer exists because a specific failure taught us where a layer was missing.** No rule is aspirational. Every hook is wired to a real incident. The framework is not "best practices"; it is "the scar tissue of a team that has been burned and decided to catalog every burn."
+It is built around a single principle: **most layers exist because a specific failure taught the maintainer where one was missing.** No rule is aspirational. Most hooks are wired to a real incident. The framework is not "best practices"; it is the scar tissue of one developer who got burned and decided to catalog every burn.
 
 ## Who it is for
 
-Primarily one person: the maintainer of this repo, who uses it across an 8-app fullstack AI portfolio, research projects, client work, and demo apps. It is shaped by that user's specific preferences (no em dashes, no streaming, afternoon-scale ship pace, anti-slop brand) and incident history (plaintext API key on argv, runbook-vs-code drift, optimism-driven bug fixes, parallel agent fan-out without a canary).
+Primarily one person: the maintainer of this repo, who uses it across 14+ projects (production apps, research projects, demo apps, and templates) spanning production, development, and template categories. It is shaped by that maintainer's specific preferences (no em dashes, no streaming, afternoon-scale ship pace, anti-slop brand) and incident history (plaintext API key on argv, runbook-vs-code drift, optimism-driven bug fixes, parallel agent fan-out without a canary).
 
-It is readable and adoptable by other Claude Code users with similar requirements. The hooks, role files, and convention pointers are generic enough to port; the user-specific preferences are isolated to a small number of rules that can be stripped or replaced without touching the framework.
+It is readable and adoptable by other Claude Code users with similar requirements. The hooks, role files, and convention pointers are generic enough to port; the maintainer-specific preferences are isolated to a small number of rules that can be stripped or replaced without touching the framework.
+
+## What's mine vs. what's Anthropic's
+
+The **runtime** is Anthropic's: Claude Code itself, the hook protocol, the plugin marketplace and loader, the skill tool, the MCP integration, the session lifecycle primitives, the slash-command system. This repo configures and extends that runtime; it does not implement it.
+
+The **plugins enabled in `settings.json`** are Anthropic-shipped through the official `@claude-plugins-official` marketplace:
+
+- `superpowers`: Layer 2 (Skills) is almost entirely this plugin. It provides `brainstorming` (HARD-GATE before code), `writing-plans`, `executing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`. The framing of "skills as capabilities not prose" comes from Superpowers.
+- `frontend-design`, `context7`, `code-review`, `code-simplifier`, `typescript-lsp`, `posthog`: other Anthropic-shipped plugins enabled in this configuration. Each contributes its own skills, agents, and behaviors.
+
+Everything **inside this tracked repo** is the maintainer's: the 8 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 27 global-memory files, the R-001..R-600 rule formalization in `CLAUDE.md`, the ten-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+
+**Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `audits/<role>.md`. The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
 ## The ten-layer model
 
-The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance:
+The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance, with each layer marked as mechanical (enforced by code, hooks, or auto-loading) or prose (rules and definitions; honor-system at runtime):
 
-| Layer | What it catches | Lives at |
-|---|---|---|
-| 1. Memory | Context decay across sessions, re-learning the same lessons | `global-memory/`, `projects/<cwd>/memory/` |
-| 2. Skills | High-risk or high-leverage tasks done ad hoc instead of using the tested pattern | `plugins/superpowers` (brainstorming, TDD, dispatching, debugging) |
-| 3. Rules | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files |
-| 4. Tests | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke) |
-| 5. Hooks | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` |
-| 6. Process | Each unit of work passes through every layer at least once | Plans, complexity tagging, dispatch protocols |
-| 7. Audits | Antagonistic review from role personas (Engineering, Security, Criticism standing) | `audits/` + `audits/on-request/` |
-| 8. Verification | Claims without evidence | `superpowers:verification-before-completion` skill |
-| 9. Monitoring | Deploys that claim success without checking | Per-project post-deploy polling |
-| 10. Lifecycle | Cross-session drift, dirty state, lost context | `SessionStart` + `SessionEnd` hooks, handoff docs |
+| Layer | Type | What it catches | Lives at |
+|---|---|---|---|
+| 1. Memory | mechanical | Context decay across sessions, re-learning the same lessons | `global-memory/INDEX.md` (read by `SessionStart` hook), `projects/<cwd>/memory/` |
+| 2. Skills | mechanical | High-risk or high-leverage tasks done ad hoc instead of using a tested pattern | Anthropic-shipped `superpowers` plugin (brainstorming, plans, TDD, dispatching, debugging, verification) plus this repo's `skills/` |
+| 3. Rules | prose | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files |
+| 4. Audits | prose | Confidence theater, gaps invisible to the original author | `audits/` standing (Engineering, Security, Criticism) + `audits/on-request/` |
+| 5. Tests | prose | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke); this repo defines the discipline, not the runs |
+| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (8 scripts) |
+| 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
+| 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
+| 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-101..R-109 |
+| 10. Git hygiene | prose | History rewritten in ways that lose evidence; force-pushes to main; missing test pairs | `CLAUDE.md` R-200 family; commit conventions |
 
 Each layer assumes the next will catch what it misses. The discipline is not "follow every rule"; the discipline is "add the next layer the next time a failure teaches you where one is missing."
+
+**On the mechanical/prose split.** Five layers (Memory, Skills, Hooks, Lifecycle, Secret handling) are enforced by code that runs whether the session remembers to invoke it or not. Five layers (Rules, Audits, Tests, Process, Git hygiene) are prose: definitions, conventions, and cadences that depend on the session honoring them. The framework's design goal is to migrate prose layers down to mechanical ones as enforcement paths get wired (the em-dash ban migrated from prose to mechanical when `no-em-dash.sh` shipped). The criticism audit referenced above tracks which prose rules are still honor-system.
 
 ## Repository layout
 
@@ -133,7 +150,7 @@ The full "Keeping this file alive" section lives in [`CLAUDE.md`](./CLAUDE.md).
 
 These are the principles the framework defends, not a checklist. Each earned its place through an incident that would have been prevented if the principle had been load-bearing sooner.
 
-- **Every layer exists because a specific failure taught us where one was missing.** No aspirational rules. No copy-paste from "best practices" blogs. If a rule cannot cite a failure it would have prevented or a rule it replaces, it does not belong in `CLAUDE.md`.
+- **Most layers exist because a specific failure taught the maintainer where one was missing.** No aspirational rules. No copy-paste from "best practices" blogs. If a rule cannot cite a failure it would have prevented or a rule it replaces, it does not belong in `CLAUDE.md`. Framework primitives (Memory, Skills, Process, Tests, Git hygiene) predate the incident catalog; the rest were earned the hard way.
 - **Rules with no enforcement are a draft state, not a destination.** Honor-system rules decay under pressure. Every rule ships with a path to mechanical enforcement; until that path lands, the rule carries an "honor-system" marker so future sessions know the real state.
 - **Golden path first, prohibitions second.** Rules describe the desired behavior, not the forbidden one. Prohibitions remain where they ARE the rule content (the em dash, the secret echo, the bypassed safety check), but the dominant voice is "do X," not "never Y."
 - **Cost discipline is gated, not aspirational.** Audits run on schedule or on signal, never reactively. Retrospectives fire after incidents, not after every long session. Handoff docs stay under 8KB. Parallel agent fan-out waits for a canary. The goal is to ship; the framework is scaffolding to make shipping safer, not an end in itself.

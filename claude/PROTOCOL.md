@@ -10,6 +10,8 @@ The protocol is a chain of interlocking safety layers, not a rulebook. Each laye
 
 **Why interlocking.** Behavioral rules fail silently under pressure. Audits catch what rules miss but fire only on cadence. Tests catch what audits miss but only for code under test. Hooks catch what tests cannot reach, mechanically, at the tool-call layer. Process sequences them so every unit of work passes through all layers at least once. Lifecycle handles the edges. Memory carries lessons so the chain does not rebuild itself every session.
 
+**Mechanical vs prose.** Five of the ten layers (Memory loading, Skills, Hooks, Session lifecycle, Secret handling) are mechanically enforced: scripts and auto-loaders run whether the session remembers to invoke them or not. Five (Rules, Audits, Tests, Process, Git hygiene) are prose: definitions, conventions, and cadences that depend on the session honoring them. The interlocking-chain framing describes the design goal, not a uniform property. The framework's intent is to migrate prose layers down to mechanical ones as enforcement paths get wired; the criticism audit at `docs/audits/2026-04-08-criticism.md` tracks which prose rules are still honor-system.
+
 **How it functions.** Before action: memory loads prior lessons, skills provide structured capabilities, rules constrain output, the brainstorming hard-gate prevents code without a design. During action: tests prove behavior before commit, hooks block banned patterns at the tool layer, process routes each step through review. After action: audits critique antagonistically from eight autonomous advisor roles, verification demands evidence before claims, monitoring polls every deploy surface. Across sessions: handoff docs capture state, git status checks catch cross-session drift, memory carries the protocol forward.
 
 **Why it grows.** No layer is pre-emptive. Every layer earned its place: a specific failure happened, the class was named, the missing layer was identified and added. The discipline is not "follow the rules"; it is "add the next layer the next time a failure teaches you where one is missing."
@@ -28,7 +30,7 @@ The protocol is a layered safety system, not a list of rules. Each layer catches
 
 ### Layer 1: Memory (persistent state across sessions)
 
-Four memory types stored in per-project directories with a `MEMORY.md` index that auto-loads at session start:
+Four memory types stored in per-project directories with a `MEMORY.md` index. `global-memory/INDEX.md` is auto-loaded by the `SessionStart` hook. Per-project `MEMORY.md` files are read on demand by Claude when the task references prior work, when the user explicitly asks to recall, or when relevance becomes obvious; they are not auto-injected by the runtime.
 
 - **user**: role, goals, preferences, knowledge. How to collaborate with this specific person.
 - **feedback**: guidance the user has given about how to approach work, in both corrective and confirmatory form. Captures why, not just what.

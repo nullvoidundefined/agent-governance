@@ -1,3 +1,7 @@
+# Global Rules
+
+The canonical rule file, loaded into every Claude Code session at startup. Rule IDs are stable; new rules append, retired rules are removed and noted in the change log. See `PROTOCOL.md` for the ten-layer framework these rules implement.
+
 Project-level `CLAUDE.md` adds guidance but does not override these unless it explicitly says so.
 
 ## Session init
