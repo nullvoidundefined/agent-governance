@@ -27,6 +27,12 @@
 # on the honor system. This is an acknowledged gap; most Claude-driven
 # commits use -m.
 #
+# Heredoc commits are supported: `git commit -m "$(cat <<'EOF' ... EOF)"`.
+# The subject is extracted as the first non-empty line of the heredoc
+# body. Without this support, the hook saw the subject as `$(cat` and
+# silently passed every heredoc fix: commit through (the canonical
+# commit pattern in this repo and many others).
+#
 # The hook also skips any `git commit` whose subject is docs:, chore:,
 # refactor:, style:, test:, feat:, ci:, perf:, or build:. These are
 # the expected non-fix categories and the relabel-to-escape path from
@@ -52,9 +58,25 @@ if ! printf '%s' "$CMD" | grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[
   exit 0
 fi
 
-# Extract the subject from `-m "..."` or `-m '...'`. If no -m present,
-# the commit is editor-driven and this hook does not inspect it.
-SUBJECT=$(printf '%s' "$CMD" | grep -oE -- '-m[[:space:]]+"[^"]*"|-m[[:space:]]+'\''[^'\'']*'\''' | head -1 | sed -E 's/^-m[[:space:]]+["'\'']//; s/["'\'']$//')
+# Extract the subject from `-m "..."` or `-m '...'`. If the body is a
+# heredoc invocation like `$(cat <<'EOF' ... EOF)`, the first non-empty
+# line of the heredoc body is treated as the subject. Perl is used
+# because grep is line-oriented and cannot see through multi-line
+# heredocs. If no -m is present, the commit is editor-driven and this
+# hook does not inspect it.
+SUBJECT=$(printf '%s' "$CMD" | perl -0777 -ne '
+  if (/-m\s+(["'\''])((?:(?!\1).)*)\1/s) {
+    my $body = $2;
+    if ($body =~ /\$\(\s*cat\s+<<-?\s*['\''"]?(\w+)['\''"]?\s*\n(.*?)\n\s*\1\s*\)/s) {
+      my $heredoc = $2;
+      for my $line (split /\n/, $heredoc) {
+        if ($line !~ /^\s*$/) { print $line; last; }
+      }
+    } else {
+      print $body;
+    }
+  }
+')
 if [ -z "$SUBJECT" ]; then
   exit 0
 fi

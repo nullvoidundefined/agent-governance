@@ -6,13 +6,7 @@ Project-level `CLAUDE.md` adds guidance but does not override these unless it ex
 
 ## Session init
 
-Before first response:
-1. Read `~/.claude/rules/session-types.md`.
-2. Classify session type from user's first message.
-3. Read Tier 2 files for that session type.
-4. First line of response: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`
-
-On reclassification: re-read files and update declaration.
+Run R-300 (below) at session start. First line of response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. On reclassification: re-read files and update declaration.
 
 ## Core rules
 
@@ -29,7 +23,7 @@ R-009: No filler. Delete before sending: action announcements, question echoes, 
 ## Secrets and trust
 
 R-101: Off-path by default: `.env`, `.env.*`, `~/.aws/credentials`, `~/.ssh/`, `~/.gnupg/`, `~/.config/gh/hosts.yml`, browser stores, keychains. When user names one, use value in memory; never echo. Enforced by `secret-scan.sh` (PreToolUse) and `redact-output.sh` (PostToolUse). `git commit --no-verify` requires R-005 approval.
-R-103: `~/.claude/global-memory/` holds technology-only patterns. Client-specific lessons go in project repo.
+R-103: `~/.claude/global-memory/` holds cross-project content: user profile, collaboration preferences, technology patterns, and incident-driven efficiency lessons. Client-identifying or project-specific content stays in the project repo.
 R-104: Sanitize artifacts: tokens/keys/cookies -> `[REDACTED]`, PII -> `[PII]`, internal URLs -> `[INTERNAL_URL]`.
 R-105: 50-tool-call ceiling per agent task. Stop and report when reached.
 R-106: Destructive MCP actions (delete, drop, rotate, send, post, create) require explicit confirmation unless pre-authorized this turn.
@@ -61,17 +55,20 @@ R-207: Repeated formatting cleanups signal a failed pre-commit hook. Diagnose be
 R-208: Every user-input handler has one negative-input test: oversized payload, injection attempt, or malformed encoding.
 R-209: Commit after every discrete task. `TaskUpdate` to `completed` triggers immediate commit. Exception: conflicting same-file edits may combine with both task IDs.
 R-210: Update `README.md` in same commit when adding user-facing feature, changing structure, or changing setup steps.
+R-211: Never commit with unresolved conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`). Enforced by `conflict-markers.sh` hook.
 R-212: Squash merge feature branches: `git merge --squash`. One commit per feature on `main`.
 R-213: Cross-cutting refactors (5+ files, 3+ dirs) on dedicated branch. No concurrent feature work. No overlapping refactors. Land one, start next.
 R-214: Migration defaults: bare strings for constants (`default: 'active'`), `pgm.func()` for SQL expressions. Never nest quotes. Enforced by hook.
 
 ## Session lifecycle
 
-R-300: Session start (parallel):
-1. Read `~/.claude/global-memory/INDEX.md`
-2. `git status -s ~/.claude`; triage non-empty
-3. Read `docs/session-handoff/session-handoff.md`; verify last-commit SHA against `git log`
-4. Read project `CLAUDE.md`
+R-300: Session start (parallel where possible):
+1. Read `~/.claude/global-memory/INDEX.md`.
+2. Read `~/.claude/rules/session-types.md`; classify session type from the user's first message.
+3. Read Tier 2 files for that session type per the session-types load map.
+4. `git status -s ~/.claude`; triage non-empty.
+5. Read `docs/session-handoff/session-handoff.md` if present; verify last-commit SHA against `git log`.
+6. Read project `CLAUDE.md`.
 
 R-301: Session end: offer handoff doc. Commit/push dirty `~/.claude`. Update `TODO.md`/`ISSUES.md` with deferred work.
 R-302: Handoff: `docs/session-handoff/session-handoff.md` (overwrite). Order: (1) last commit SHA+subject; (2) production state; (3) what shipped (grouped, traceable); (4) pending (by urgency, effort estimate); (5) next session tasks with files to read. Under 4KB, bullets. Bundle into final commit.

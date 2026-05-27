@@ -103,24 +103,10 @@ Write `docs/session-handoff/session-handoff.md` per R-302:
 5. Pending work (by urgency, with rationale and effort estimate)
 6. Recommended next session (ordered task list with files to read first)
 
-### If files changed in a documented surface:
+### If files changed in a project-specific documented surface:
 
 **Surface doc refresh:**
-Check if any committed files fall within one of the 9 surface anchor directories that have co-located CLAUDE.md + CLAUDE_README.md docs:
-
-| Surface | Anchor Directory |
-|---------|-----------------|
-| Voice Prompts | `apps/server/src/prompts/` |
-| Workdesk | `apps/client/web/src/features/workdesk/` |
-| Doppel Puck + Chat Engine | `packages/client-shared/src/chat-engine/` |
-| Note Generation | `apps/client/web/src/features/notepad/` |
-| Browser Extension | `apps/client/extension/src/` |
-| Voice Creation + Coach | `apps/client/web/src/features/voices/` |
-| Auth + Sessions | `apps/server/src/middleware/` |
-| Billing + Subscription | `apps/server/src/handlers/billing/` |
-| Onboarding | `apps/client/web/src/features/onboarding/` |
-
-If 3+ files changed in a surface, invoke `/update-the-big-brain-on-brad` for that surface only. If fewer than 3 files changed, skip (the docs are still accurate enough).
+Some projects define surface-anchor directories with co-located `CLAUDE.md` documentation and a slash-command (e.g., `/update-the-big-brain-on-brad` or similar) that regenerates those per-surface docs. If the current project defines surfaces and a refresh skill in its own `CLAUDE.md`, invoke the refresh for any surface where 3+ files changed in this task. If fewer than 3 files changed, or the project does not define surface docs and a refresh skill, skip.
 
 ## Step 3: Final Commit
 

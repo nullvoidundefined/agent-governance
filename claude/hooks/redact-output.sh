@@ -50,7 +50,7 @@ PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
 PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 PATTERN+='|AIza[0-9A-Za-z_-]{35}'
 PATTERN+='|postgres(ql)?://[^:]+:[^@]{8,}@[^\s]+'
-PATTERN+='|(SECRET|TOKEN|KEY|PASSWORD|PRIVATE|CREDENTIAL)[=:][[:space:]]*[A-Za-z0-9_/+=~.-]{20,}'
+PATTERN+='|(SECRET|TOKEN|PASSWORD|CREDENTIAL|API[_-]?KEY|SECRET[_-]?KEY|ACCESS[_-]?KEY|AUTH[_-]?KEY|PRIVATE[_-]?KEY)[=:][[:space:]]*[A-Za-z0-9_/+=~.-]{20,}'
 
 if printf '%s' "$RESPONSE" | grep -qE "$PATTERN"; then
   # Perl handles the redaction with the pattern defined as a heredoc to
@@ -79,7 +79,7 @@ if printf '%s' "$RESPONSE" | grep -qE "$PATTERN"; then
     s/-----BEGIN [A-Z ]*PRIVATE KEY-----/[REDACTED]/g;
     s/AIza[0-9A-Za-z_-]{35}/[REDACTED]/g;
     s{postgres(?:ql)?://[^:]+:[^@]{8,}@\S+}{[REDACTED]}g;
-    s/(SECRET|TOKEN|KEY|PASSWORD|PRIVATE|CREDENTIAL)[=:]\s*[A-Za-z0-9_\/+=~.-]{20,}/$1=[REDACTED]/g;
+    s/(SECRET|TOKEN|PASSWORD|CREDENTIAL|API[_-]?KEY|SECRET[_-]?KEY|ACCESS[_-]?KEY|AUTH[_-]?KEY|PRIVATE[_-]?KEY)[=:]\s*[A-Za-z0-9_\/+=~.-]{20,}/$1=[REDACTED]/g;
   ')
 
   jq -n --arg redacted "$REDACTED" '{

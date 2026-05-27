@@ -165,7 +165,7 @@ In order:
 1. **[`CLAUDE.md`](./CLAUDE.md)**: the canonical rules file. Start here. Read the Non-negotiable rules block, then skim the TOC to locate the section matching your current task.
 2. **[`PROTOCOL.md`](./PROTOCOL.md)**: the ten-layer framework. Read this when you want to understand why a layer exists or propose a new one.
 3. **[`global-memory/INDEX.md`](./global-memory/INDEX.md)**: cross-project lessons. The `SessionStart` hook reads this automatically; you can also read it directly.
-4. **[`audits/engineering.md`](./audits/engineering.md), [`audits/security.md`](./audits/security.md), [`audits/criticism.md`](./audits/criticism.md)**: the three standing audit role definitions. Read the relevant file when asked to run that audit.
+4. **[`agents/audit-engineering.md`](./agents/audit-engineering.md), [`agents/audit-security.md`](./agents/audit-security.md), [`agents/audit-criticism.md`](./agents/audit-criticism.md)**: the three standing audit role definitions, co-located with the agent frontmatter that Claude Code's Agent runtime loads at dispatch. The mirror files under `audits/` are pointers; the agent files are canonical. On-request roles (Customer, Design, UX, Financial, Legal, Marketing) live alongside as `agents/audit-<role>.md`.
 5. **[`hooks/`](./hooks/)**: the actual enforcement layer. Each file is self-documenting in its header comment.
 6. **[`docs/audits/`](./docs/audits/)**: dated audit reports and session handoff docs. The most recent handoff is the cheapest way to understand current state.
 
