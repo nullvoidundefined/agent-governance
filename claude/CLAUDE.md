@@ -59,6 +59,8 @@ R-211: Never commit with unresolved conflict markers (`<<<<<<<`, `=======`, `>>>
 R-212: Squash merge feature branches: `git merge --squash`. One commit per feature on `main`.
 R-213: Cross-cutting refactors (5+ files, 3+ dirs) on dedicated branch. No concurrent feature work. No overlapping refactors. Land one, start next.
 R-214: Migration defaults: bare strings for constants (`default: 'active'`), `pgm.func()` for SQL expressions. Never nest quotes. Enforced by hook.
+R-215: No IIFEs. When async work is needed inside a `useEffect` or similar synchronous context, declare a named `async function` and call it: `async function doWork() { ... } void doWork();`. Never write `void (async () => { ... })()` or `(async () => { ... })()`. Applied: `initMap` in TripMap, `buildPins` in trip detail page.
+R-216: Never use `test.fixme`, `test.skip`, `it.skip`, `xit`, or `xtest` to suppress a failing test. A test that cannot pass must be deleted, not deferred. Re-add it when the underlying capability exists. This overrides the `test.fixme` option in R-200 item 9.
 
 ## Session lifecycle
 

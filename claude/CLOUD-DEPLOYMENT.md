@@ -30,11 +30,13 @@ These are hard rules. No exceptions, no shortcuts to facilitate a deploy.
     : { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true" },
   ```
 
+  Railway's private networking (`*.railway.internal`) carries Postgres traffic inside the project network, so `ssl: false` is correct there. This is disabling SSL for an internal hop, not bypassing certificate verification on a public connection; never use `rejectUnauthorized: false` on a public DB URL.
+
 ### Secrets
 
 - **Never commit `.env` files** containing real credentials. `.env` is for local dev only and must be in `.gitignore`.
-- **Never hardcode API keys, passwords, or tokens** in source code. Use GCP Secret Manager in production, `.env` files locally.
-- **Never set sensitive API keys as Railway env vars directly**; use GCP Secret Manager. Only `GCP_SA_JSON` and `GCP_PROJECT_ID` go in Railway.
+- **Never hardcode API keys, passwords, or tokens** in source code. In production, set them as **secret/sealed** env vars on the hosting platform (Railway for the backend, Vercel for the frontend); use `.env` files locally.
+- **Set secrets on every service that needs them.** Railway variables are per-service; a value set on one service is not shared with another.
 
 ### CORS
 
@@ -71,14 +73,12 @@ Railway Project (per app)
 |----------|-------|-------|
 | `NODE_ENV` | `production` or `staging` | **Always set. Never omit.** |
 | `PORT` | Railway injects this | Do not hardcode |
-| `DATABASE_URL` | Neon connection string | Use pooled URL for the API, direct URL for migrations |
+| `DATABASE_URL` | Postgres connection string | Use pooled URL for the API, direct URL for migrations |
 | `REDIS_URL` | Railway Redis URL | Required for apps 3+ |
-| `GCP_PROJECT_ID` | `<GCP_PROJECT_ID>` | Required for GCP Secret Manager integration |
-| `GCP_SA_JSON` | Service account JSON | **Secret**; paste full JSON from GCP console |
 
-Sensitive API keys (`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `SESSION_SECRET`, etc.) are **not** set as Railway env vars; they are fetched at startup from GCP Secret Manager. See [GCP Secret Manager](#gcp-secret-manager) below.
+Sensitive API keys (`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `SESSION_SECRET`, etc.) are set directly as **secret** Railway env vars on each service that needs them. There is no external secret manager; the app reads everything from `process.env` (validated through a Zod env schema where present).
 
-Add app-specific non-secret vars (e.g., `CLOUDFLARE_ACCOUNT_ID`, `CORS_ORIGIN`) directly as Railway env vars.
+Add app-specific non-secret vars (e.g., `CLOUDFLARE_ACCOUNT_ID`, `CORS_ORIGIN`) as plain Railway env vars.
 
 ### Railway MCP Workflow
 
@@ -102,6 +102,7 @@ railway list-variables --serviceId <id>
 - Configure Railway's healthcheck path to `/health`.
 - Railway will wait for the healthcheck to pass before routing traffic to the new deploy.
 - **Workers also need a health server**; BullMQ worker processes must expose a minimal HTTP server on `process.env.PORT` or `3001`, or Railway's healthcheck will mark the service as failed. See `CLAUDE-BACKEND.md` → Worker Pattern for the implementation.
+- **Cron services do not healthcheck.** A Railway cron runs its start command to completion and exits; there is no long-lived port to probe, so leave the healthcheck unset on cron-only services.
 
 ### Per-Service Dockerfiles
 
@@ -122,90 +123,53 @@ dockerfilePath = "Dockerfile.worker"
 
 After the worker is deployed, restore `railway.toml` to the default (`Dockerfile`) for future API deploys.
 
+### Cron Services
+
+A Railway cron is an ordinary service that shares the app image but overrides the start command and sets a cron schedule (Settings → Cron Schedule, standard 5-field cron in UTC). It runs the command, then exits. Use one cron service per job.
+
+- Set the same env vars the job needs (e.g., `DATABASE_URL`, plus any secrets) on each cron service; variables are per-service.
+- Build the same Docker image; only the start command differs (e.g., `node dist/jobs/edgar-ingest.js`).
+- Cron services do not need a healthcheck (see above).
+- Make jobs idempotent and self-alerting: a job that throws should set a non-zero exit code and notify (e.g., a heartbeat wrapper that posts to Telegram), so a missed run is visible.
+
 ### Database Migrations
 
 - Run migrations **before** the new API code goes live.
-- Use a Railway one-off job or a `prestart` script: `npm run migrate && node dist/index.js`.
+- Use a Railway one-off job or a `prestart` script: `npm run migrate && node dist/index.js`. From a workstation, `railway run npm run migrate:up` injects the linked service's `DATABASE_URL`.
 - Never run migrations from the worker service; API service owns schema changes.
 - Keep `DATABASE_URL` (pooled) and `DATABASE_MIGRATION_URL` (direct) as separate vars.
 
 ---
 
-## GCP Secret Manager
+## Secrets Management
 
-All sensitive API keys are stored in GCP Secret Manager (project `<GCP_PROJECT_ID>`) and fetched at process startup.
+Secrets live in the hosting platform's env var store. There is no external secret manager (no GCP Secret Manager, no Doppler). The app reads everything from `process.env` directly, validated through a Zod env schema where one exists.
 
-### Secrets Stored in GCP
+- **Production:** set each secret as a **secret/sealed** env var on the Railway service that needs it (and on Vercel for any frontend secret). Set on every service separately; Railway variables are per-service.
+- **Local development:** set values in the package's `.env` file (gitignored). Never commit real credentials.
+- **Never print a secret.** Do not `console.log` secret values; check Railway log output after a deploy to confirm none leaked.
 
-| Secret Name | Used By |
-|-------------|---------|
-| `ANTHROPIC_API_KEY` | All apps |
-| `SESSION_SECRET` | Apps 1, 2, 4, 6, 7 |
-| `VOYAGE_API_KEY` | App 7 |
-| `OPEN_AI_API_KEY` | Apps 4, 5 |
-| `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | Apps 4, 7 |
-| `SERPAPI_API_KEY` | App 8 |
-| `GOOGLE_PLACES_API_KEY` | App 8 |
-
-### Startup behavior
-
-`src/config/secrets.ts` behavior:
-- Development (`NODE_ENV !== "production"`): skipped; uses `.env` file values
-- Production without `GCP_SA_JSON`: logs warning, falls back to Railway env vars
-- Production with `GCP_SA_JSON`: fetches all secrets from GCP before any app code initializes
-
-`index.ts` must use dynamic `import()` for all app code.
-
-### GCP Setup (One-Time Per Developer)
+### Setting a secret
 
 ```bash
-# 1. Create service account
-gcloud iam service-accounts create railway-apps \
-  --display-name="Railway Apps" --project=<GCP_PROJECT_ID>
+# Link the target service first; variables are per-service.
+railway service <service-name>
+railway variables --set "ANTHROPIC_API_KEY=sk-ant-..." --set "APP_SECRET=$(openssl rand -hex 32)"
 
-# 2. Grant read access to secrets
-gcloud projects add-iam-policy-binding <GCP_PROJECT_ID> \
-  --member="serviceAccount:railway-apps@<GCP_PROJECT_ID>.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-
-# 3. Download JSON key
-gcloud iam service-accounts keys create ~/railway-sa.json \
-  --iam-account=railway-apps@<GCP_PROJECT_ID>.iam.gserviceaccount.com
+# Verify
+railway variables
 ```
 
-Then set on each Railway service:
-- `GCP_SA_JSON` = contents of `~/railway-sa.json`
-- `GCP_PROJECT_ID` = `<GCP_PROJECT_ID>`
-
-**Delete the local `~/railway-sa.json` after setting it in Railway.**
-
-### Rotating a Key
+### Rotating a key
 
 ```bash
-# Add new secret version in GCP
-echo -n "new-key-value" | gcloud secrets versions add SECRET_NAME \
-  --data-file=- --project=<GCP_PROJECT_ID>
-
-# Restart Railway service to pick up new version
-railway redeploy --service <service-name>
+# Rotate at the provider (Anthropic, Resend, etc.), then set the new value and redeploy.
+railway service <service-name>
+railway variables --set "ANTHROPIC_API_KEY=<new-value>"
+railway redeploy
 ```
 
-Disable the old version once the new version is confirmed working:
-
-```bash
-gcloud secrets versions disable VERSION_NUMBER \
-  --secret=SECRET_NAME --project=<GCP_PROJECT_ID>
-```
-
-### Local Development
-
-Set values directly in the package's `.env` file. Fill in placeholders locally as needed:
-
-```bash
-# Quick way to populate a key locally from GCP
-export ANTHROPIC_API_KEY=$(gcloud secrets versions access latest \
-  --secret=ANTHROPIC_API_KEY --project=<GCP_PROJECT_ID>)
-```
+Revoke the old credential at the provider once the new value is confirmed working.
 
 ---
 
@@ -247,12 +211,12 @@ Before promoting a staging deploy to production:
 
 - [ ] `NODE_ENV` is set to `production` on all services
 - [ ] All env vars are set (no placeholders like `TODO` or empty strings)
+- [ ] Every required secret is set on every service that needs it (variables are per-service)
 - [ ] Migrations have run successfully against the production DB
 - [ ] `GET /health` returns 200 on the API service
 - [ ] A smoke test of the core AI loop (submit → process → response) passes
 - [ ] R2 bucket is the production bucket, not staging
 - [ ] Redis is the production Redis instance
-- [ ] `GCP_SA_JSON` and `GCP_PROJECT_ID` are set on all Railway services
 - [ ] No `console.log` of secrets in logs (check Railway log output after deploy)
 
 ---
@@ -267,8 +231,8 @@ Before promoting a staging deploy to production:
 | Hardcoding `PORT` | Use `process.env.PORT`; Railway injects it |
 | Deploying without a healthcheck | Add `/health` and configure it in Railway before first production deploy |
 | Using the pooled DB URL for migrations | Use the direct (non-pooled) URL for migrations only |
-| Setting API keys as Railway env vars | Put them in GCP Secret Manager; only `GCP_SA_JSON` and `GCP_PROJECT_ID` go in Railway |
-| Forgetting `GCP_SA_JSON` after SA key rotation | Download new key, update Railway var, restart service, delete old local key file |
+| Setting a secret on one service and assuming all get it | Railway variables are per-service; set each secret on every service that reads it |
+| Leaving a secret value in logs | Never `console.log` secrets; review Railway log output after the first deploy |
 | `rejectUnauthorized: false` in db pool | Always use the env-var-controlled pattern; see Security Rules above. Never hardcode `false`. |
 | `CORS_ORIGIN` pointing to `localhost` in production | Set `CORS_ORIGIN` to the production frontend URL in Railway before first deploy |
 | `CORS_ORIGIN` containing a preview/hash URL | Use the stable production domain, not a per-deployment hash URL |
