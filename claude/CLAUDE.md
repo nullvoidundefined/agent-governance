@@ -30,6 +30,7 @@ R-106: Destructive MCP actions (delete, drop, rotate, send, post, create) requir
 R-107: Audit roles read project source/docs/tests. Security additionally reads `.env.example`. No role reads `.env`, `~/.aws`, `~/.ssh`, keychains without per-turn authorization.
 R-108: Before pushing `~/.claude`: confirm remote is private, `git diff origin/main`, verify no client-identifying content.
 R-109: `core.hooksPath` differing from expected lefthook path is a supply-chain signal. Investigate before any commit.
+R-110: Destructive data-loss actions (`DROP DATABASE`/`DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `pg_restore`, `migrate:down`) against PRODUCTION are prohibited and hard-blocked: Claude cannot run them, no confirmation is offered, a human must do it manually. The same actions against staging or other remote DBs, and any write (`UPDATE`/`INSERT`/`ALTER`/`CREATE`) against a managed/remote DB, require explicit user confirmation this turn. Local databases exempt. Enforced by `destructive-db-guard.sh` (PreToolUse `deny`/`ask`). Never run a test/build/script that internally wipes data against a non-local `DATABASE_URL`.
 
 ## Code quality and testing
 

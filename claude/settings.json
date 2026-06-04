@@ -4,7 +4,7 @@
       "Bash(*)"
     ]
   },
-  "model": "claude-sonnet-4-6",
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -25,6 +25,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/conflict-markers.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/destructive-db-guard.sh"
           }
         ]
       },
@@ -78,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"$HOME/.claude/.env\" ] && . \"$HOME/.claude/.env\"; [ -n \"$NTFY_TOPIC\" ] && curl -fsS -d \"Claude Code needs you\" \"ntfy.sh/$NTFY_TOPIC\" >/dev/null 2>&1 || true"
+            "command": "~/.claude/hooks/ntfy-notify.sh"
           }
         ]
       }
@@ -102,7 +106,8 @@
     "code-review@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "posthog@claude-plugins-official": true
+    "posthog@claude-plugins-official": true,
+    "stripe@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
@@ -118,5 +123,6 @@
       }
     }
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true
 }
