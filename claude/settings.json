@@ -78,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$NTFY_TOPIC\" ] && curl -fsS -d \"Claude Code needs you\" \"ntfy.sh/$NTFY_TOPIC\" >/dev/null || true"
+            "command": "[ -f \"$HOME/.claude/.env\" ] && . \"$HOME/.claude/.env\"; [ -n \"$NTFY_TOPIC\" ] && curl -fsS -d \"Claude Code needs you\" \"ntfy.sh/$NTFY_TOPIC\" >/dev/null 2>&1 || true"
           }
         ]
       }
