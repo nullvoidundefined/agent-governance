@@ -2,9 +2,6 @@
 
 Cross-project memories consolidated from 14 per-project memory directories on 2026-04-06 (spanning production, development, and template projects). These apply to every project unless a project-level memory explicitly overrides.
 
-## User profile
-- [`user_profile.md`](./user_profile.md): Ian's developer profile, stack, working style, failure modes
-
 ## Feedback (collaboration rules)
 - [`feedback_be_proactive.md`](./feedback_be_proactive.md): Act, don't delegate back to the user
 - [`feedback_deploy_at_end.md`](./feedback_deploy_at_end.md): Batch deploys; hold push until explicitly asked

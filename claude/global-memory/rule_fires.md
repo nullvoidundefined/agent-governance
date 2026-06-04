@@ -7,3 +7,11 @@ Append-only. Two entry sources:
 2026-04-08..2026-05-27 R-001 (36 occurrences, retrospective consolidation) no-em-dash.sh blocked Edit calls containing U+2014; replaced with colons or other punctuation on retry
 2026-05-27 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
 2026-05-27 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-05-28 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-05-29 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-05-30 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-05-31 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-06-01 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-06-02 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-06-03 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-06-04 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
