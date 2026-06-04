@@ -76,6 +76,17 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/ntfy-notify.sh"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "",
