@@ -117,8 +117,8 @@
     "code-review@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "posthog@claude-plugins-official": true,
-    "stripe@claude-plugins-official": true
+    "posthog@claude-plugins-official": false,
+    "stripe@claude-plugins-official": false
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
