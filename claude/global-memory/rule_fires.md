@@ -15,5 +15,4 @@ Append-only. Two entry sources:
 2026-06-02 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
 2026-06-03 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
 2026-06-04 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
-2026-06-04 R-001 -Users-[REDACTED]-Desktop-code-personal-production no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
-2026-06-05 R-001 -Users-[REDACTED]-Desktop-code-personal-production no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-06-05 R-001 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
