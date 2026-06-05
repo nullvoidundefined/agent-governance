@@ -1,6 +1,6 @@
 # The Operating Protocol
 
-**Version:** 2026-04-08
+**Version:** 2026-06-05
 **Scope:** Global (applies across every project under Claude Code)
 **Status:** Derived from lessons shipped across multiple production projects. Each layer below was added in response to a specific failure.
 
@@ -10,13 +10,13 @@ The protocol is a chain of interlocking safety layers, not a rulebook. Each laye
 
 **Why interlocking.** Behavioral rules fail silently under pressure. Audits catch what rules miss but fire only on cadence. Tests catch what audits miss but only for code under test. Hooks catch what tests cannot reach, mechanically, at the tool-call layer. Process sequences them so every unit of work passes through all layers at least once. Lifecycle handles the edges. Memory carries lessons so the chain does not rebuild itself every session.
 
-**Mechanical vs prose.** Five of the ten layers (Memory loading, Skills, Hooks, Session lifecycle, Secret handling) are mechanically enforced: scripts and auto-loaders run whether the session remembers to invoke them or not. Five (Rules, Audits, Tests, Process, Git hygiene) are prose: definitions, conventions, and cadences that depend on the session honoring them. The interlocking-chain framing describes the design goal, not a uniform property. The framework's intent is to migrate prose layers down to mechanical ones as enforcement paths get wired; the criticism audit at `docs/audits/2026-04-08-criticism.md` tracks which prose rules are still honor-system.
+**Mechanical vs prose.** Six of the eleven layers (Memory loading, Skills, Hooks, Session lifecycle, Secret handling, Destructive-action guards) are mechanically enforced: scripts and auto-loaders run whether the session remembers to invoke them or not. Five (Rules, Audits, Tests, Process, Git hygiene) are prose: definitions, conventions, and cadences that depend on the session honoring them. The interlocking-chain framing describes the design goal, not a uniform property. The framework's intent is to migrate prose layers down to mechanical ones as enforcement paths get wired; the criticism audit at `docs/audits/2026-04-08-criticism.md` tracks which prose rules are still honor-system.
 
-**How it functions.** Before action: memory loads prior lessons, skills provide structured capabilities, rules constrain output, the brainstorming hard-gate prevents code without a design. During action: tests prove behavior before commit, hooks block banned patterns at the tool layer, process routes each step through review. After action: audits critique antagonistically from eight autonomous advisor roles, verification demands evidence before claims, monitoring polls every deploy surface. Across sessions: handoff docs capture state, git status checks catch cross-session drift, memory carries the protocol forward.
+**How it functions.** Before action: memory loads prior lessons, skills provide structured capabilities, rules constrain output, the brainstorming hard-gate prevents code without a design. During action: tests prove behavior before commit, hooks block banned patterns at the tool layer, process routes each step through review. After action: audits critique antagonistically from autonomous advisor roles (three standing, the rest fired on signal), verification demands evidence before claims, monitoring polls every deploy surface. Across sessions: handoff docs capture state, git status checks catch cross-session drift, memory carries the protocol forward.
 
 **Why it grows.** No layer is pre-emptive. Every layer earned its place: a specific failure happened, the class was named, the missing layer was identified and added. The discipline is not "follow the rules"; it is "add the next layer the next time a failure teaches you where one is missing."
 
-**What makes it work.** The chain. A "never put secrets on argv" behavioral rule failed silently; a mechanical hook catching argv secret patterns cannot fail the same way. A runbook-vs-code drift shipped to staging; an audit section now scans for it pre-merge. Ten classes of failure have happened; ten layers exist. The eleventh class will produce the eleventh layer.
+**What makes it work.** The chain. A "never put secrets on argv" behavioral rule failed silently; a mechanical hook catching argv secret patterns cannot fail the same way. A runbook-vs-code drift shipped to staging; an audit section now scans for it pre-merge. Eleven classes of failure have happened; eleven layers exist. The twelfth class will produce the twelfth layer.
 
 ## Framing
 
@@ -24,7 +24,7 @@ This document is not a rulebook you follow to avoid mistakes. It is a **failure-
 
 The original development strategy was "give Claude a task, tell it to do the task, let it run unsupervised with no guardrails." That strategy failed across approximately two weeks of real use. The protocol below is the scaffolding of guardrails, recursive processes, antagonistic checks, and self-evaluations that replaced it. The goal is not to constrain Claude. The goal is to make Claude a reliable application-building machine by catching every class of failure the unrestricted version demonstrated.
 
-## The Ten Layers
+## The Eleven Layers
 
 The protocol is a layered safety system, not a list of rules. Each layer catches a different failure mode the prior layer misses. When a new failure class is discovered, a new layer (or a new check within an existing layer) is added; old layers are never weakened.
 
@@ -88,22 +88,28 @@ Commit-subject conventions:
 
 ### Layer 4: Audits (antagonistic self-evaluation)
 
-Eight autonomous advisor roles, each with its own canonical file at `~/.claude/audits/<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. The roles:
+Autonomous advisor roles, each with its own canonical file at `~/.claude/audits/<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-402).
 
-- **Engineering (CTO)**: tech debt, operational gaps, broken tests, unshipped E2E, missing CI, unmaintainable architecture. Now includes a **Credential Exposure Scan** (git history, working tree, Claude Code JSONL transcripts across ALL projects, shell history, vendor CLI config files, with ERE patterns for every common credential format and a P0 rotation-then-purge remediation) and a **Runbook-vs-Code Drift Scan** (compares `docs/runbooks/**` against code comments and config conventions; any contradiction is a latent incident).
+**Standing roles:**
+
+- **Engineering (CTO)**: tech debt, operational gaps, broken tests, unshipped E2E, missing CI, unmaintainable architecture. Includes a **Credential Exposure Scan** (git history, working tree, Claude Code JSONL transcripts across ALL projects, shell history, vendor CLI config files, with ERE patterns for every common credential format and a P0 rotation-then-purge remediation) and a **Runbook-vs-Code Drift Scan** (compares `docs/runbooks/**` against code comments and config conventions; any contradiction is a latent incident).
+- **Security (CISO)**: breach, data loss, auth bypasses, prompt injection, dependency CVEs, credential leakage.
+- **Criticism (Devil's Advocate)**: fatal strategic flaws, unsustainable unit economics, organizational self-deception, moat delusion.
+
+**On-request roles** (fire only on their matching signal, R-402):
+
 - **UX (CXO)**: broken flows, accessibility violations, unconfirmed destructive actions, untested user stories, cognitive load.
 - **Design (CDO)**: style drift, brand erosion, design-system violations, visual inconsistency.
 - **Marketing (CMO)**: positioning confusion, weak conversion copy, banned-word violations, missing trust signals.
 - **Financial (CFO)**: unsustainable cost structure, missing spending caps, margin violations, unaudited paid services. Cost-discipline lens includes a Kill / Keep / Defer matrix and a marginal-cost test for every new paid line item.
-- **Security (CISO)**: breach, data loss, auth bypasses, prompt injection, dependency CVEs, credential leakage.
 - **Legal / Compliance**: missing legal documents, unsubstantiated marketing claims, regulatory action risk.
-- **Criticism (Devil's Advocate)**: fatal strategic flaws, unsustainable unit economics, organizational self-deception, moat delusion.
+- **Customer**: a plain-language walkthrough as an actual customer (not a UX expert): marketing site, signup, first session, first paid action, reporting friction, confusion, trust breaks, and delight. Counterpart to the UX audit, not a replacement.
 
 Each role is an intelligent autonomous agent with documented advisory autonomy (what it can declare independently) and escalation boundaries (when it surfaces rather than decides). Dispositions default to protective and critical; never suppress a category of findings because it "feels out of scope."
 
 Audit history is dated: `docs/audits/YYYY-MM-DD-<role>.md`, never overwritten. Every audit run produces new dated files alongside the old ones so history is preserved. Findings are triaged by severity (P0 / P1 / P2 / P3) and effort (S / M / L). P0 and P1 findings are fixed in the current effort (test-first). P2 and P3 findings are logged to `ISSUES.md` or `TODO_BEFORE_LAUNCH.md` as rolling logs.
 
-Audit cadence is enforced, not aspirational: biweekly during beta for Financial / Engineering / UX, monthly in production for Financial / Security, before any major feature on the affected surface only, full 8-role sweep only before launch. Reactive full sweeps are the single most expensive action the harness can take.
+Audits run on signal, not on a fixed cadence (R-400, R-402). Pre-launch runs the three standing roles. A specific risk signal runs the matching role only. 5-plus commits on a single surface runs Engineering only, scoped to that surface. On-request roles fire only when their specific signal is present. There are no reactive multi-role sweeps; a reactive full sweep is the single most expensive action the harness can take. Verify the signal condition before running any audit (R-502).
 
 ### Layer 5: Tests (earned confidence, not claimed)
 
@@ -112,7 +118,8 @@ Test discipline is exhaustive because test theater is the class of failure most 
 - **Test-first for every bug.** Write a test that reproduces the failure. Run it. Confirm it FAILS. Fix the code. Run the test. Confirm it PASSES. Run the full verification chain. Only then commit and deploy. Never claim a fix without a failing-then-passing test.
 - **Concrete-value tests for business logic.** Any function computing a price, credit cost, token estimate, margin, or business-visible number must have at least one unit test with a mechanical `expect(fn(concreteInput)).toBe(concreteExpectedValue)` assertion plus a comment explaining the rationale.
 - **30-minute rule.** If two `fix:` commits touch the same file within 30 minutes, stop. The original fix did not understand the full scope. Write a reproducing test before the third attempt.
-- **No confidence theater.** Nine anti-patterns are banned: self-mock (mocking the module under test), mocking the dependency that IS the thing being tested, mock-call assertions without behavior assertions, snapshot-only tests with no behavioral assertion, mocking the integration boundary the test claims to cross, tautological assertions, loose-shape assertions as the sole assertion, skipped tests without context comments, always-failing tests that persist across sessions.
+- **No confidence theater.** Nine anti-patterns are banned: self-mock (mocking the module under test), mocking the dependency that IS the thing being tested, mock-call assertions without behavior assertions, snapshot-only tests with no behavioral assertion, mocking the integration boundary the test claims to cross, tautological assertions, loose-shape assertions as the sole assertion, suppressed or skipped tests (now banned outright, see next item), always-failing tests that persist across sessions.
+- **No suppressed tests.** `test.fixme`, `test.skip`, `it.skip`, `xit`, and `xtest` are banned outright (R-216). A test that cannot pass is deleted, not deferred, and re-added when the underlying capability exists. This supersedes the earlier allowance for skipped tests carrying a context comment and triage ID.
 - **LLM output tests cannot mock the SDK as their sole coverage.** Every LLM consumer (parser, validator, formatter) must have at least one test using a real captured model response committed as a fixture, not a hand-written mock shaped like the expected output.
 - **User story ↔ E2E coverage.** Every documented user story must have at least one E2E test. Target 100% coverage.
 - **Mocked vs real API split.** E2E tests mock outbound third-party APIs deterministically. A separate small "real-API smoke" suite hits the real endpoints nightly, gated behind an env flag, to prove live wiring still works without burning quota in the fast local loop.
@@ -127,6 +134,11 @@ Hooks are mechanical enforcement that runs before Claude's behavioral rules have
 - **Pre-commit hook (lefthook)**: runs format-check and lint on staged files only.
 - **Pre-push hook**: runs format + lint + build + test on the full repo. This is the last local gate before code leaves the machine.
 - **Commit-msg hook (fix-commit-gate)**: enforces the rule that `fix:` commits include at least one test file. Commits that violate this rule are blocked with an explanation.
+- **PreToolUse em-dash block** (`no-em-dash.sh`): blocks any tool call that would write a U+2014 em dash (R-001), the single most recognizable AI writing tell.
+- **PostToolUse output redaction** (`redact-output.sh`): redacts tokens, keys, cookies to `[REDACTED]` and PII to `[PII]` in tool output before it reaches the transcript (R-101, R-104).
+- **Conflict-marker block** (`conflict-markers.sh`): blocks commits containing unresolved merge-conflict markers (R-211).
+- **Migration-defaults guard**: enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-214).
+- **Destructive-DB guard** (`destructive-db-guard.sh`): PreToolUse deny/ask on destructive and remote-write database operations. See Layer 11.
 
 Hooks are non-negotiable without explicit user override. The Bash secret-scan hook specifically exists because a behavioral rule ("never put secrets on command lines") was insufficient to prevent a plaintext Anthropic production API key from landing in shell history, tool-call transcripts, and argv space. A behavioral rule that fails silently is worse than a mechanical gate that fails loudly.
 
@@ -167,7 +179,7 @@ Sessions have durable edges. Drift at the edges compounds across sessions.
 - Commit and push any edits to `~/.claude` before wrapping up. The rules repo is not a diary; it is a cross-session source of truth.
 - Dual-commit discipline: sessions that edited both a project repo AND `~/.claude` must commit to BOTH before the project push. The common failure mode is "commit project, forget `~/.claude`, leave drift."
 
-Handoff docs follow a fixed format: last commit SHA, production state verified, what shipped grouped by topic, what is pending grouped by urgency, recommended next session with ordered task list, workflow reminders, companion docs. Aim for under 8KB unless the session genuinely shipped something that needs detailed context.
+Handoff docs follow a fixed format: last commit SHA, production state verified, what shipped grouped by topic, what is pending grouped by urgency, recommended next session with ordered task list, workflow reminders, companion docs. Aim for under 4KB of bullets unless the session genuinely shipped something that needs detailed context.
 
 ### Layer 9: Secret handling (universal rule)
 
@@ -193,7 +205,11 @@ The history must stay honest so forensic reports are possible:
 - **`style: format all files` commits are smoke.** Repeated format drift in a short window means a hook is failing silently. Investigate root cause before landing the drift fix. Never land a style-drift commit without a paired "hook verification" commit in the same session.
 - **Production-asset build contracts require a dist-content smoke test.** Runtime-loaded assets that live outside the compiled TypeScript graph (JSON, YAML, SQL, markdown prompts) will not be copied to `dist/` by `tsc`. A build-smoke script must assert the file exists under `dist/` at the expected resolved path, and must run in CI and inside the Dockerfile build stage.
 
-### Layer 11 (and beyond)
+### Layer 11: Destructive-action guards (data-loss prevention)
+
+The newest failure class: irreversible production data loss, distinct from secret leakage (Layer 9). Destructive database operations against production (`DROP DATABASE` / `DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `pg_restore`, `migrate:down`) are hard-blocked at the tool-call layer by `destructive-db-guard.sh` (PreToolUse): Claude cannot run them, no confirmation is offered, a human must perform them manually. The same operations against staging or other remote databases, and any write (`UPDATE` / `INSERT` / `ALTER` / `CREATE`) against a managed or remote database, require explicit per-turn user confirmation. Local databases are exempt. Tests, builds, and scripts that internally wipe data are never run against a non-local `DATABASE_URL`. Codified as R-110. Like the secret-scan hook (Layer 6 / Layer 9), this layer exists because a behavioral rule against destructive operations fails silently under pressure; a mechanical PreToolUse deny cannot fail the same way.
+
+### Layer 12 (and beyond)
 
 New layers get added every time a new failure mode is discovered. The pattern:
 
@@ -205,7 +221,7 @@ New layers get added every time a new failure mode is discovered. The pattern:
 6. Document the failure-to-layer link in the commit message and in the relevant audit role file.
 7. Future sessions are blocked from repeating that specific failure.
 
-The current protocol has ten layers because ten classes of failure have been experienced. The next layer will be added when the eleventh class is experienced. The goal is not to pre-emptively anticipate every possible failure; the goal is to guarantee that every failure that DOES happen becomes a layer so it cannot happen twice.
+The current protocol has eleven layers because eleven classes of failure have been experienced. The next layer will be added when the twelfth class is experienced. The goal is not to pre-emptively anticipate every possible failure; the goal is to guarantee that every failure that DOES happen becomes a layer so it cannot happen twice.
 
 ## How the layers interact
 
@@ -219,6 +235,7 @@ The current protocol has ten layers because ten classes of failure have been exp
 - **Layer 8 (lifecycle)** handles the edges of units of work (start, wrap, handoff).
 - **Layer 9 (secrets)** is the universal backstop for the highest-cost class of failure.
 - **Layer 10 (git)** keeps the history honest so forensic reports are possible.
+- **Layer 11 (destructive-action guards)** is the universal backstop for irreversible data loss, the way Layer 9 backstops secret leakage.
 
 Each layer is individually insufficient. The rules (Layer 3) assume the audits (Layer 4) will catch what the rules miss. The audits assume the tests (Layer 5) will catch what the audits miss. The tests assume the hooks (Layer 6) will catch what the tests cannot reach. The hooks assume the process (Layer 7) routes work through them. The process assumes the lifecycle (Layer 8) handles the edges. The lifecycle assumes the memory (Layer 1) carries the prior lessons forward. The chain is load-bearing end-to-end.
 
@@ -233,6 +250,16 @@ Six of the ten layers were in place at the start of this week. The week's incide
 - **Layer 3** gained the "default to the truth" rule (2026-04-07 FAQ consolidation brainstorm, after discovering a gap between marketing copy and backend behavior).
 
 Every single addition was traceable to a specific failure. None of the layers were pre-emptive. All of them are responsive.
+
+## What changed between 2026-04-08 and 2026-06-05
+
+This revision reconciled the protocol with rule changes that had landed in `~/.claude/CLAUDE.md` and its Tier-2 files since the 2026-04-08 stamp:
+
+- **Layer 11 added: destructive-action guards** (data-loss prevention), codified as R-110 and enforced by `destructive-db-guard.sh`. Irreversible production data loss is the eleventh failure class; production destructive DB operations are now hard-blocked at the tool layer.
+- **Layer 4 audit model rewritten.** The eight-role, cadence-driven model (biweekly / monthly sweeps, full eight-role pre-launch sweep) was replaced by signal-driven audits with three standing roles (Engineering, Security, Criticism) and on-request roles (UX, Design, Marketing, Financial, Legal, Customer) per R-400 and R-402. A ninth role, Customer, was added.
+- **Layer 5 gained the suppressed-test ban** (R-216): `test.fixme` / `skip` / `it.skip` / `xit` / `xtest` are banned outright, superseding the earlier skip-with-comment allowance.
+- **Layer 6 hook inventory refreshed** to include the em-dash block, PostToolUse output redaction, conflict-marker block, migration-defaults guard, and the destructive-DB guard.
+- **Layer 8 handoff cap corrected** from 8KB to 4KB to match R-302.
 
 ## The principle
 
