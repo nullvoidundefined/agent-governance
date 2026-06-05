@@ -15,15 +15,16 @@
 # How it works: on SessionEnd, scan every *.md file under
 # ~/.claude/projects/*/memory/ for lines starting with `fired:` or
 # `miss:`. For each match, construct a dated log entry in the format
-# `YYYY-MM-DD R-NNN <project> <context>` and append to the appropriate
-# global-memory log file ONLY if that exact line is not already present.
-# Deduplication is by full-line content; the same entry can be emitted
-# repeatedly by the session writer without creating duplicate log rows.
+# `YYYY-MM-DD R-NNN <context>` and append to the appropriate
+# global-memory log file ONLY if the same content (ignoring the date)
+# is not already present. Deduplication strips the leading date before
+# comparing, so a fired:/miss: line that persists in project memory is
+# not re-appended with a fresh date every session.
 #
-# Project identification: the memory directory path under
-# ~/.claude/projects/<sanitized-cwd>/memory/ encodes the project. The
-# hook extracts the sanitized-cwd segment and uses it as the project
-# field in the log entry.
+# Entries are intentionally project-agnostic. An earlier format embedded
+# the sanitized cwd path (e.g. -Users-name-Desktop-...), which leaked a
+# local filesystem path into the public ~/.claude repo and defeated
+# date-insensitive dedupe. That field has been removed.
 #
 # The hook never reads or writes secret material. It reads only the
 # memory files and writes only to rule_fires.md and rule_misses.md.
@@ -47,10 +48,10 @@ touch "$FIRES_LOG" "$MISSES_LOG"
 
 # Initialize header if the file is empty (first run).
 if [ ! -s "$FIRES_LOG" ]; then
-  printf '# Rule fires log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-305.\nFormat: YYYY-MM-DD R-NNN <project> <context>\n\n' > "$FIRES_LOG"
+  printf '# Rule fires log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-305.\nFormat: YYYY-MM-DD R-NNN <context>\n\n' > "$FIRES_LOG"
 fi
 if [ ! -s "$MISSES_LOG" ]; then
-  printf '# Rule misses log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-305.\nFormat: YYYY-MM-DD R-NNN <project> MISS <context>; gap: <what the rule would need to catch this>\n\n' > "$MISSES_LOG"
+  printf '# Rule misses log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-305.\nFormat: YYYY-MM-DD R-NNN MISS <context>; gap: <what the rule would need to catch this>\n\n' > "$MISSES_LOG"
 fi
 
 # Nothing to scan if there are no project memory directories yet.
@@ -60,9 +61,6 @@ fi
 
 # Iterate every memory file under every project.
 find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_DIR; do
-  # Extract the sanitized-cwd segment: .../projects/<cwd>/memory.
-  PROJECT=$(basename "$(dirname "$MEM_DIR")")
-
   # Find memory files and scan them. Use || true after greps so that
   # no-match (exit 1) does not fail under set -euo pipefail.
   find "$MEM_DIR" -maxdepth 2 -type f -name '*.md' 2>/dev/null | while IFS= read -r MEM_FILE; do
@@ -72,9 +70,11 @@ find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_D
       CONTENT="${LINE#fired: }"
       RULE="${CONTENT%% *}"
       CTX="${CONTENT#* }"
-      ENTRY="$TODAY $RULE $PROJECT $CTX"
-      if ! grep -qFx "$ENTRY" "$FIRES_LOG" 2>/dev/null; then
-        printf '%s\n' "$ENTRY" >> "$FIRES_LOG"
+      SIG="$RULE $CTX"
+      # Dedupe by content, ignoring the leading date, so the same
+      # fired: line is not re-appended with a fresh date each session.
+      if ! sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} //' "$FIRES_LOG" | grep -qFx "$SIG"; then
+        printf '%s %s\n' "$TODAY" "$SIG" >> "$FIRES_LOG"
       fi
     done
 
@@ -84,9 +84,10 @@ find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_D
       CONTENT="${LINE#miss: }"
       RULE="${CONTENT%% *}"
       CTX="${CONTENT#* }"
-      ENTRY="$TODAY $RULE $PROJECT MISS $CTX"
-      if ! grep -qFx "$ENTRY" "$MISSES_LOG" 2>/dev/null; then
-        printf '%s\n' "$ENTRY" >> "$MISSES_LOG"
+      SIG="$RULE MISS $CTX"
+      # Dedupe by content, ignoring the leading date (see fires block).
+      if ! sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} //' "$MISSES_LOG" | grep -qFx "$SIG"; then
+        printf '%s %s\n' "$TODAY" "$SIG" >> "$MISSES_LOG"
       fi
     done
   done
