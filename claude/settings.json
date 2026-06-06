@@ -52,6 +52,15 @@
             "statusMessage": "Scanning output for secrets..."
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/new-file-header-reminder.sh"
+          }
+        ]
       }
     ],
     "SessionStart": [
