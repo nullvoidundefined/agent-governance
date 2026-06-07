@@ -20,66 +20,55 @@ These rules apply to all `server/` and API packages across every app in this por
 ```
 src/
 ├── index.ts                      # Express app entry point
+├── clients/                      # Third-party SDK / external-service singletons (R-220), one per provider
+│   ├── anthropic.ts              # Anthropic SDK client
+│   ├── logger.ts                 # Pino logger instance (infra singleton)
+│   ├── redis.ts                  # Redis client
+│   └── stripe.ts                 # Stripe SDK client
 ├── config/                       # Configuration modules
-│   ├── env.ts                    # Environment helpers (isProduction, etc.)
 │   ├── corsConfig.ts             # CORS middleware config
-│   └── redis.ts                  # Redis client setup (apps that use it)
+│   └── env.ts                    # Environment helpers (isProduction, etc.)
 ├── constants/                    # Hard-coded constants
 │   └── session.ts
-├── db/
-│   └── pool/
-│       └── pool.ts               # PostgreSQL pool + query wrapper + transaction helper
+├── database/                     # Connection pool: sits below repositories, so neither service nor client (R-220)
+│   └── pool.ts                   # PostgreSQL pool + query wrapper + transaction helper
 ├── handlers/                     # HTTP request handlers (thin; validate, delegate, respond)
-│   ├── auth/
-│   │   └── auth.ts
-│   ├── jobs/
-│   │   ├── jobs.ts
-│   │   └── analyze.ts
-│   └── links/
-│       └── summary.ts
-├── middleware/                    # Express middleware
-│   ├── csrfGuard/
-│   │   └── csrfGuard.ts
-│   ├── errorHandler/
-│   │   └── errorHandler.ts
-│   ├── notFoundHandler/
-│   │   └── notFoundHandler.ts
-│   ├── rateLimiter/
-│   │   └── rateLimiter.ts
-│   ├── requestLogger/
-│   │   └── requestLogger.ts
-│   └── requireAuth/
-│       └── requireAuth.ts
+│   ├── auth.ts                   # one source file -> flat (R-223)
+│   ├── jobs/                     # two+ source files -> folder
+│   │   ├── analyze.ts
+│   │   └── jobs.ts
+│   └── links.ts
+├── middleware/                   # Express middleware (each single-file -> flat, R-223)
+│   ├── csrfGuard.ts
+│   ├── errorHandler.ts
+│   ├── notFoundHandler.ts
+│   ├── rateLimiter.ts
+│   ├── requestLogger.ts
+│   └── requireAuth.ts
 ├── prompts/                      # LLM system/user prompt templates
 │   └── summarize.ts
 ├── repositories/                 # Data access layer (all SQL lives here)
-│   ├── auth/
-│   │   └── auth.ts
-│   └── jobs/
-│       └── jobs.ts
+│   ├── auth.ts
+│   └── jobs.ts
 ├── routes/                       # Express router definitions
 │   ├── auth.ts
 │   └── jobs.ts
 ├── schemas/                      # Zod schemas + derived TypeScript types
 │   ├── auth.ts
-│   ├── job.ts
-│   └── job-extraction.ts
-├── services/                     # Business logic layer
-│   ├── analyzer.service.ts
-│   ├── anthropic.service.ts
-│   └── cache.service.ts
+│   ├── jobExtraction.ts
+│   └── job.ts
+├── services/                     # Business logic: operates on inputs, calls clients/repos (R-220)
+│   ├── analyzer.ts
+│   ├── cache.ts
+│   └── parsers/                  # two+ source files -> folder
+│       ├── parseIdParam.ts
+│       └── parsePagination.ts
 ├── tools/                        # Agent tool definitions + executor (agentic apps)
 │   ├── definitions.ts
 │   ├── executor.ts
 │   └── flights.tool.ts
-├── types/                        # TypeScript ambient declarations
-│   └── express.d.ts
-└── utils/
-    ├── logs/
-    │   └── logger.ts             # Pino logger instance
-    └── parsers/
-        ├── parsePagination.ts
-        └── parseIdParam.ts
+└── types/                        # TypeScript ambient declarations
+    └── express.d.ts
 ```
 
 ### Layer Responsibilities
@@ -87,7 +76,8 @@ src/
 | Layer | Does | Does NOT |
 |-------|------|----------|
 | **Handlers** | Validate input (Zod), call services/repos, return HTTP responses | Contain business logic, run SQL |
-| **Services** | Orchestrate business logic, call repos, call external APIs | Parse HTTP requests, return HTTP responses |
+| **Services** | Orchestrate business logic on inputs, call repos, call clients | Parse HTTP requests, return HTTP responses, hold SDK/connection singletons |
+| **Clients** | Wrap a third-party SDK or external service as a singleton | Contain business logic or input-shaped rules |
 | **Repositories** | Run parameterized SQL queries, return typed results | Know about HTTP, validate input |
 | **Middleware** | Cross-cutting concerns (auth, logging, CORS, rate limiting) | Contain business logic |
 
