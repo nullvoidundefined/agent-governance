@@ -62,6 +62,7 @@ R-213: Cross-cutting refactors (5+ files, 3+ dirs) on dedicated branch. No concu
 R-214: Migration defaults: bare strings for constants (`default: 'active'`), `pgm.func()` for SQL expressions. Never nest quotes. Enforced by hook.
 R-215: No IIFEs. When async work is needed inside a `useEffect` or similar synchronous context, declare a named `async function` and call it: `async function doWork() { ... } void doWork();`. Never write `void (async () => { ... })()` or `(async () => { ... })()`. Applied: `initMap` in TripMap, `buildPins` in trip detail page.
 R-216: Never use `test.fixme`, `test.skip`, `it.skip`, `xit`, or `xtest` to suppress a failing test. A test that cannot pass must be deleted, not deferred. Re-add it when the underlying capability exists. This overrides the `test.fixme` option in R-200 item 9.
+R-217: Name files for their specific responsibility, not the shortest available label. When brevity and specificity conflict, choose specificity: a filename should let a reader predict its contents without opening it. Prefer `generatePublicNote.ts` to `generate.ts`, `voiceFingerprintSchema.ts` to `schema.ts`, `parseIdParam.ts` to `parse.ts`. Applies to new files and to renaming vague existing ones on sight. Extends the verb-noun, no-single-word symbol-naming rule to filenames.
 
 ## Session lifecycle
 
