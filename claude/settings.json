@@ -69,6 +69,15 @@
             "command": "~/.claude/hooks/new-file-header-reminder.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/clean-code-reminder.sh"
+          }
+        ]
       }
     ],
     "SessionStart": [
