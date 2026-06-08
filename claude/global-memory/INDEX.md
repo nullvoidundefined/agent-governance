@@ -23,6 +23,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`lesson_hold_large_file_in_context.md`](./lesson_hold_large_file_in_context.md): Plan edits to large files to avoid a second full read in the same session. External tools (prettier, linters) modify files and force a re-read
 - [`lesson_hook_runtime_budget.md`](./lesson_hook_runtime_budget.md): Pre-commit hooks cost ~7-10s per run. Plan commits to land in one pass; batch coordinated files into one commit
 - [`lesson_batch_file_creation_then_commit.md`](./lesson_batch_file_creation_then_commit.md): When a task requires multiple coordinated files (hook + registration + test), do all the file work first and commit once. Never commit incrementally within one logical unit
+- [`lesson_zsh_no_word_splitting.md`](./lesson_zsh_no_word_splitting.md): zsh does not word-split unquoted `$var`; `cmd $list` passes one giant arg. Iterate with while-read, an explicit array, or verified NUL xargs
 
 ## Cost discipline (2026-04-08 quota-burn retrospective)
 
