@@ -11,6 +11,17 @@ Classify session from user's first message. Ambiguous or mixed: load superset.
 | `audit` | Running engineering, security, criticism, or other audit | core + audits |
 | `deploy` | Railway/Vercel deploys, env config, infrastructure | core only |
 
+## Stack detection
+
+Session type is orthogonal to stack. When work touches code, detect the project stack from its root marker files and read the matching convention file(s) on demand (these load when you enter stack work, not globally):
+
+| Marker in project root | Stack | Read |
+|---|---|---|
+| `package.json` | TypeScript/Node | `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md` (whichever the work touches) |
+| `pyproject.toml`, `requirements.txt`, or `setup.py` | Python | `CLAUDE-PYTHON.md` |
+
+A repo carrying both marker sets is polyglot: read both tracks for the surface you are touching. The `[ts]`-tagged rules in `CLAUDE.md` apply only to the TypeScript stack; their Python analogs live in `CLAUDE-PYTHON.md`.
+
 ## Tier 2 paths
 
 | File | Path |
