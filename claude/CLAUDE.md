@@ -114,6 +114,7 @@ Read on demand, not globally.
 | File | When to read |
 |---|---|
 | `~/.claude/CLAUDE-BACKEND.md` | Express/TypeScript API, BullMQ, handlers, services, repositories, middleware |
+| `~/.claude/CLAUDE-PYTHON.md` | Python/FastAPI API, SQLAlchemy, Alembic, pytest, ruff/black/mypy |
 | `~/.claude/CLAUDE-FRONTEND.md` | Next.js/React components, hooks, client state, routing |
 | `~/.claude/CLAUDE-DATABASE.md` | Postgres migrations, SQL queries, schema |
 | `~/.claude/CLAUDE-STYLING.md` | SCSS modules, CSS custom properties |
