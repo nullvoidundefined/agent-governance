@@ -29,6 +29,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/destructive-db-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/global-repo-push-guard.sh"
           }
         ]
       },
