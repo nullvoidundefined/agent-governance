@@ -38,6 +38,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/no-em-dash.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/migration-defaults-guard.sh"
           }
         ]
       }

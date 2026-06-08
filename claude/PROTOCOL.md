@@ -137,7 +137,7 @@ Hooks are mechanical enforcement that runs before Claude's behavioral rules have
 - **PreToolUse em-dash block** (`no-em-dash.sh`): blocks any tool call that would write a U+2014 em dash (R-001), the single most recognizable AI writing tell.
 - **PostToolUse output redaction** (`redact-output.sh`): redacts tokens, keys, cookies to `[REDACTED]` and PII to `[PII]` in tool output before it reaches the transcript (R-101, R-104).
 - **Conflict-marker block** (`conflict-markers.sh`): blocks commits containing unresolved merge-conflict markers (R-211).
-- **Migration-defaults guard**: enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-214).
+- **Migration-defaults guard** (`migration-defaults-guard.sh`): enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-214).
 - **Destructive-DB guard** (`destructive-db-guard.sh`): PreToolUse deny/ask on destructive and remote-write database operations. See Layer 11.
 
 Hooks are non-negotiable without explicit user override. The Bash secret-scan hook specifically exists because a behavioral rule ("never put secrets on command lines") was insufficient to prevent a plaintext Anthropic production API key from landing in shell history, tool-call transcripts, and argv space. A behavioral rule that fails silently is worse than a mechanical gate that fails loudly.
