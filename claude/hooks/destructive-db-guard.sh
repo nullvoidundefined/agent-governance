@@ -6,9 +6,9 @@
 #     actions (staging / remote / ambiguous) and writes against remote DBs.
 # Low-noise: read-only operations and local databases pass through untouched.
 #
-# Added after the 2026-05-29 staging wipe (integration-test cleanup ran against
-# a Neon DB and deleted real documents/subscriptions). See the doppelscript
-# project memory project_test_cleanup_wiped_staging.
+# Added after a staging wipe (integration-test cleanup ran against a remote
+# DB and deleted real records). A behavioral rule against destructive ops
+# fails silently under pressure; this hook makes it mechanical.
 set -uo pipefail
 
 input="$(cat)"

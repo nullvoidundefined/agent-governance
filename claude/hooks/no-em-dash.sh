@@ -6,8 +6,8 @@
 # R-001 in ~/.claude/CLAUDE.md.
 #
 # Why this exists: the em dash is the single most recognizable AI writing
-# tell. The user builds anti-slop products and considers any em dash a
-# violation of trust. R-001 is honor-system without a hook; this hook
+# tell. The user requires clean, AI-tell-free output and considers any em
+# dash a violation of trust. R-001 is honor-system without a hook; this hook
 # converts it into mechanical enforcement at the tool-call layer.
 #
 # How it works: Claude Code feeds hook stdin as JSON with shape

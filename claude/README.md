@@ -16,7 +16,7 @@ It is built around a single principle: **most layers exist because a specific fa
 
 ## Who it is for
 
-Primarily one person: the maintainer of this repo, who uses it across 14+ projects (production apps, research projects, demo apps, and templates) spanning production, development, and template categories. It is shaped by that maintainer's specific preferences (no em dashes, no streaming, afternoon-scale ship pace, anti-slop brand) and incident history (plaintext API key on argv, runbook-vs-code drift, optimism-driven bug fixes, parallel agent fan-out without a canary).
+Primarily the maintainer of this repo, who uses it across many projects spanning production, development, and template categories. It is shaped by that maintainer's specific preferences (no em dashes, no streaming, clean AI-tell-free output) and incident history (plaintext API key on argv, runbook-vs-code drift, optimism-driven bug fixes, parallel agent fan-out without a canary). Fork it and recalibrate to your own.
 
 It is readable and adoptable by other Claude Code users with similar requirements. The hooks, role files, and convention pointers are generic enough to port; the maintainer-specific preferences are isolated to a small number of rules that can be stripped or replaced without touching the framework.
 
@@ -206,7 +206,7 @@ Notable milestones:
 
 ## License and scope
 
-This repo is the operating system of one developer's Claude Code installation, published for other Claude Code users to read, fork, and adapt. The patterns (hooks, audit roles, memory, lifecycle) are generic; the specific calibrations (em dash prohibition, anti-slop voice, afternoon-scale pace) reflect the maintainer's preferences and can be stripped or replaced without touching the framework.
+This repo is the operating system of one developer's Claude Code installation, published for other Claude Code users to read, fork, and adapt. The patterns (hooks, audit roles, memory, lifecycle) are generic; the specific calibrations (em dash prohibition, voice and cadence preferences) reflect the maintainer's preferences and can be stripped or replaced without touching the framework.
 
 It is not a library, not an npm package, and not a managed framework. There is no versioning contract. Fork it and make it yours.
 

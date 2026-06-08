@@ -71,8 +71,8 @@ Convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-D
 
 Output hygiene rules (universal):
 
-- **No em dashes (U+2014) anywhere.** Not in responses, code, comments, commit messages, markdown, docs, subagent prompts, test fixtures, audit reports. The em dash is the single most recognizable AI writing tell; the user builds anti-slop products and considers any em dash a violation of trust. Substitute: period, comma, semicolon, colon, parentheses, or line break.
-- **No token streaming in any AI output.** No SSE, no chunked text, no typewriter animations, no fake streaming. AI output is an artifact, not a conversation. The streaming transport is the most recognizable AI tell in the product UX; the anti-slop brand requires its absence.
+- **No em dashes (U+2014) anywhere.** Not in responses, code, comments, commit messages, markdown, docs, subagent prompts, test fixtures, audit reports. The em dash is the single most recognizable AI writing tell; the user requires clean, AI-tell-free output and considers any em dash a violation of trust. Substitute: period, comma, semicolon, colon, parentheses, or line break.
+- **No token streaming in any AI output.** No SSE, no chunked text, no typewriter animations, no fake streaming. AI output is an artifact, not a conversation. The streaming transport is the most recognizable AI tell in the product UX; clean, AI-tell-free output requires its absence.
 - **Default to the truth.** When marketing copy and backend behavior disagree, the default fix is to change reality to match the claim, not the claim to match reality. Trust is the primary go-to-market asset; shipping a claim the product does not honor erodes it irreversibly.
 
 Commit-subject conventions:
