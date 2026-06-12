@@ -13,6 +13,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`feedback_process_learnings_20_rules.md`](./feedback_process_learnings_20_rules.md): PL1 through PL20 incident-backed rules from 2026-04-05 and 2026-04-06
 - [`feedback_no_empty_praise.md`](./feedback_no_empty_praise.md): Never compliment Ian's work without specific, falsifiable reasoning. Default to critical analysis.
 - [`feedback_no_fluff.md`](./feedback_no_fluff.md): Ban all LLM filler patterns per R-009.
+- [`feedback_pr_constant_value_check.md`](./feedback_pr_constant_value_check.md): When a constant value changes, grep tests for the old value before pushing and update all stale assertions in the same commit.
 
 ## Efficiency lessons (incident-backed)
 - [`lesson_no_reread_auto_injected_context.md`](./lesson_no_reread_auto_injected_context.md): Do not Read files already present in the session's auto-injected context (claudeMd, system-reminder blocks)
