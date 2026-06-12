@@ -107,6 +107,7 @@ R-512: Write model-facing instructions as direct imperatives. Omit rationale and
 R-513: When user asserts something exists, next action must be investigative (`git branch`, `git log --all`, `grep`, read handoff). No disagreement before searching. Absence from session context is not evidence of absence.
 R-514: 50-tool-call ceiling per dispatched subagent task (not the main session). Stop and report when reached.
 R-515: Before pushing a branch that changes a named constant's value (palette colors, status strings, limits, URLs, error messages), grep the test suite for the old value and update every stale assertion in the same commit as the source change. `git diff HEAD~1 -- <constants-file>` surfaces removed values; `grep -r '<old-value>' <test-dirs>` finds stale assertions. Applies to any push, not just pre-PR.
+R-516: PR merge discipline. Claude may create PRs, push branches, and request Copilot review (`gh pr create --reviewer copilot`). Claude must never merge a PR or push directly to `main`/`master`. After opening a PR, the sequence is: (1) CI must pass; (2) Copilot review must pass or have no blocking comments; (3) the user must explicitly ask Claude to merge. "Merge when ready" is not authorization -- the user must ask in the turn where CI and Copilot are both green.
 
 ## Estimation
 
