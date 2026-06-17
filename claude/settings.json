@@ -91,6 +91,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/hookspath-drift-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/redaction-guard-check.sh"
           }
         ]
       }
