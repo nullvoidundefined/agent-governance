@@ -14,6 +14,8 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`feedback_no_empty_praise.md`](./feedback_no_empty_praise.md): Never compliment Ian's work without specific, falsifiable reasoning. Default to critical analysis.
 - [`feedback_no_fluff.md`](./feedback_no_fluff.md): Ban all LLM filler patterns per R-009.
 - [`feedback_pr_constant_value_check.md`](./feedback_pr_constant_value_check.md): When a constant value changes, grep tests for the old value before pushing and update all stale assertions in the same commit.
+- [`feedback_validate_tech_task_fit.md`](./feedback_validate_tech_task_fit.md): When a learning goal is paired with a product idea, validate the technology fits the task/data on day one before building.
+- [`feedback_gh_cli_bot_review_false_negative.md`](./feedback_gh_cli_bot_review_false_negative.md): `gh pr view --json reviews` can omit bot reviews; confirm via the REST API before asserting none exist.
 
 ## Efficiency lessons (incident-backed)
 - [`lesson_no_reread_auto_injected_context.md`](./lesson_no_reread_auto_injected_context.md): Do not Read files already present in the session's auto-injected context (claudeMd, system-reminder blocks)
