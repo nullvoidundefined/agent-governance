@@ -1,4 +1,4 @@
-R-102: Dispatch prompts contain: task, file paths, branch instructions, role file path. Pass paths not values.
+R-102: Dispatch prompts contain: task, file paths, branch instructions, role file path. Pass paths not values. Audit dispatch prompts additionally restate the R-403 output discipline: every finding pastes the offending code with file:line, precedence is resolved before flagging, and fixes are given as a direction plus `to confirm: <what to check>`, never a finished patch.
 R-303: Dispatch prompts doing git work include in order: (1) absolute worktree path as first shell command; (2) `git branch --show-current` verification before `git add`/`git commit`; (3) verification and commit chained with `&&`. Paste the reusable block from `~/.claude/prompts/subagent-branch-setup.md` into the dispatch prompt rather than rewriting the verification chain from scratch.
 R-304: N>=3 agents: send one canary first, fan out after clean return. Default serial; parallel only when wall-clock dominates cost.
 R-501: Plans with <5 independent tasks execute inline.
