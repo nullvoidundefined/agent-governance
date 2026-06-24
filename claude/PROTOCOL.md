@@ -244,7 +244,7 @@ Each layer is individually insufficient. The rules (Layer 3) assume the audits (
 Six of the ten layers were in place at the start of this week. The week's incidents hardened the remaining four and added new sections to several existing ones:
 
 - **Layer 6** gained the PreToolUse Bash secret-scan hook (2026-04-08, after a plaintext Anthropic production API key landed on a Railway CLI command line).
-- **Layer 4** engineering audit gained the Credential Exposure Scan section (2026-04-08, same incident) and the Runbook-vs-Code Drift Scan section (2026-04-08, after `docs/runbooks/staging-provisioning.md` shipped a `NEXT_PUBLIC_API_URL` instruction that contradicted `next.config.ts` and caused a staging 401 incident).
+- **Layer 4** engineering audit gained the Credential Exposure Scan section (2026-04-08, same incident) and the Runbook-vs-Code Drift Scan section (2026-04-08, after a staging-provisioning runbook shipped a `NEXT_PUBLIC_API_URL` instruction that contradicted `next.config.ts` and caused a staging 401 incident).
 - **Layer 8** gained three new session-lifecycle rules (2026-04-08, after an 11-file coordinated `~/.claude` batch from 2026-04-07 sat uncommitted for a day across multiple sessions before being noticed).
 - **Layer 9** got the canonical memory file (`feedback_secret_handling.md`) codifying the secret-handling rule for future sessions.
 - **Layer 3** gained the "default to the truth" rule (2026-04-07 FAQ consolidation brainstorm, after discovering a gap between marketing copy and backend behavior).

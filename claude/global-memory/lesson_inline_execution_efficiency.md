@@ -4,7 +4,7 @@ description: When executing a plan inline (not via subagents), cut plan-writing 
 type: feedback
 ---
 
-These lessons came from an inline execution of a 13-task UI cleanup pass on a `ui-cleanup-pass` branch on 2026-04-08. Everything worked; the work shipped; but roughly 30% of the session's tokens were spent on ceremony that bought nothing. Apply these whenever executing a plan inline in the same session that wrote the plan.
+These lessons came from an inline execution of a 13-task UI cleanup pass on a dedicated branch on 2026-04-08. Everything worked; the work shipped; but roughly 30% of the session's tokens were spent on ceremony that bought nothing. Apply these whenever executing a plan inline in the same session that wrote the plan.
 
 **When this does NOT apply:** when dispatching to a fresh subagent, OR when the task is a production incident where slow-and-careful beats fast.
 
@@ -67,7 +67,7 @@ These lessons came from an inline execution of a 13-task UI cleanup pass on a `u
 
 **How to apply.**
 - **Good use of TaskCreate:** "Brainstorm nav redesign", "Write spec", "Execute UI cleanup pass" (three top-level workstreams).
-- **Bad use:** "Task 1: VoiceExample alignment fix", "Task 2: Add radix dep", etc. (13 entries mirroring the plan).
+- **Bad use:** "Task 1: component alignment fix", "Task 2: add a dependency", etc. (13 entries mirroring the plan).
 - When in doubt, ask: does the user gain new information from seeing this task separately, beyond what the plan already shows? If no, skip it.
 
 ### L6. Keep commit bodies to one sentence unless the change deserves more
@@ -87,7 +87,7 @@ These all earned their keep in the 2026-04-08 session and every session before i
 - **No em dash scan.** PreToolUse hook enforces. Zero marginal cost.
 - **TDD for business logic (R-201).** Fix-commit gate enforces. Prevented real bugs in this session.
 - **Pre-commit format/lint/test chain.** The safety harness. Caught a format drift in Task 10 that would have failed in CI otherwise.
-- **Brainstorm before touching code.** Caught real design issues (inferMode threshold, tab bar vs single-page) that would have been expensive to find during execution.
+- **Brainstorm before touching code.** Caught real design issues (a mode-inference threshold, tab bar vs single-page) that would have been expensive to find during execution.
 
 ## Meta
 

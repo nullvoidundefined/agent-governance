@@ -128,7 +128,7 @@ After the worker is deployed, restore `railway.toml` to the default (`Dockerfile
 A Railway cron is an ordinary service that shares the app image but overrides the start command and sets a cron schedule (Settings → Cron Schedule, standard 5-field cron in UTC). It runs the command, then exits. Use one cron service per job.
 
 - Set the same env vars the job needs (e.g., `DATABASE_URL`, plus any secrets) on each cron service; variables are per-service.
-- Build the same Docker image; only the start command differs (e.g., `node dist/jobs/edgar-ingest.js`).
+- Build the same Docker image; only the start command differs (e.g., `node dist/jobs/scheduled-ingest.js`).
 - Cron services do not need a healthcheck (see above).
 - Make jobs idempotent and self-alerting: a job that throws should set a non-zero exit code and notify (e.g., a heartbeat wrapper that posts to Telegram), so a missed run is visible.
 
@@ -182,7 +182,7 @@ Store all user-uploaded files and generated documents in Cloudflare R2. Never us
 | Variable | Notes |
 |----------|-------|
 | `CLOUDFLARE_ACCOUNT_ID` | From Cloudflare dashboard |
-| `CLOUDFLARE_R2_BUCKET` | Bucket name (e.g., `doc-qa-rag-prod`) |
+| `CLOUDFLARE_R2_BUCKET` | Bucket name (e.g., `my-app-prod`) |
 | `CLOUDFLARE_R2_ACCESS_KEY_ID` | R2 API token; use separate tokens per environment |
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | R2 API token secret |
 | `CLOUDFLARE_R2_PUBLIC_URL` | Public bucket URL or custom domain (if bucket is public) |
@@ -191,7 +191,7 @@ Store all user-uploaded files and generated documents in Cloudflare R2. Never us
 
 ```
 {app-slug}-{environment}
-# e.g., doc-qa-rag-prod, doc-qa-rag-staging
+# e.g., my-app-prod, my-app-staging
 ```
 
 Use separate buckets for production and staging; never share a bucket across environments.

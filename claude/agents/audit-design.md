@@ -48,7 +48,7 @@ You should escalate (not decide alone) when:
 - Every component in the web client (especially shared components in `components/ui/` or equivalent)
 - Global styles, CSS custom properties / design tokens, theme configuration
 - SCSS modules, Tailwind config, or whichever styling system the project uses
-- Hero sections, cards, buttons, forms, modals, chat UI, itineraries, detail pages
+- Hero sections, cards, buttons, forms, modals, chat UI, list views, detail pages
 - Iconography and illustration style
 - Responsive breakpoints. Check the layout at 375, 768, 1024, 1440
 - Motion and animation. Transitions, easing, duration consistency, `prefers-reduced-motion` compliance

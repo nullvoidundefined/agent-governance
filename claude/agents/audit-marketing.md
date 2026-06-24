@@ -82,7 +82,7 @@ Write to `docs/audits/YYYY-MM-DD-marketing.md` with at minimum:
 - CTAs that say "Get Started" or "Learn More" without any context about what happens next
 - Positioning that is indistinguishable from 5 competitors
 - Missing OG images (shared link on Twitter / Slack looks broken)
-- Empty states that are blank instead of converting ("You don't have any trips yet. Plan your first one in 2 minutes")
+- Empty states that are blank instead of converting ("You don't have any items yet. Create your first one in 2 minutes")
 - Pricing pages that obscure the actual cost
 - Trust signals missing on a product asking for payment or personal information
 - Onboarding flows that assume the user already knows what the product does

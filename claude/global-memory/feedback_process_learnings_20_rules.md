@@ -9,7 +9,7 @@ These rules came from a multi-hour production session where the app broke multip
 **Why:** Every rule has a real incident behind it. Treat as defaults for any new project. Flag to the user when any are being violated.
 
 ## Testing
-- **PL1.** Unit tests that mock a broken repo call don't catch the bug. Every DB-touching handler needs an integration test against real Postgres. (Incident: `getUserSubscription` queried a removed column; unit tests mocked it and passed; production 500 on first request.)
+- **PL1.** Unit tests that mock a broken repo call don't catch the bug. Every DB-touching handler needs an integration test against real Postgres. (Incident: a subscription-lookup query referenced a removed column; unit tests mocked it and passed; production 500 on first request.)
 - **PL3.** Every user flow needs at least one E2E test before shipping. No E2E test = feature doesn't exist yet.
 - **PL12.** Playwright `projects` config must include chromium + webkit + mobile-safari (real iPhone profile). Chromium-only = Safari ITP bugs in production forever.
 - **PL20.** "Test passes" ≠ "feature works". For each feature, ask: "which E2E/integration test would fail if this broke?" If the answer is "none," the feature is untested.

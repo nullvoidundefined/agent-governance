@@ -33,4 +33,4 @@ type: feedback
 - Audits with a narrow brief ("focus on X")
 - Audits where the user already knows the main concerns and just wants validation
 
-**Evidence:** the 2026-04-08 backend audit ran at full frontend-audit depth when it could have been ~40% of the size for the same actionable output. The backend was graded B+ and the three real findings (BE-1 session invalidation, BE-2 judge calibration, BE-3 worker timeout) would have surfaced in a targeted investigation focused on auth, AI output parsing, and worker reliability. The full architecture sweep added context but not new findings.
+**Evidence:** the 2026-04-08 backend audit ran at full frontend-audit depth when it could have been ~40% of the size for the same actionable output. The backend was graded B+ and the three real findings (session invalidation, AI output-scoring calibration, worker timeout) would have surfaced in a targeted investigation focused on auth, AI output parsing, and worker reliability. The full architecture sweep added context but not new findings.

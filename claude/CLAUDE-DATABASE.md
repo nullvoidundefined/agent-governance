@@ -142,7 +142,7 @@ user_id: {
 }
 ```
 
-- `onDelete: "CASCADE"` for user-owned data (jobs, links, trips)
+- `onDelete: "CASCADE"` for user-owned data (jobs, links, posts)
 - `onDelete: "SET NULL"` for optional/loose references (tool call logs)
 - Foreign key column is always `notNull: true` unless the relationship is optional
 
