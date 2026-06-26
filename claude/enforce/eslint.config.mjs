@@ -30,4 +30,14 @@ export default tseslint.config({
     ],
     "local/one-export-per-file": "error",
   },
+}, {
+  // R-221/R-235/R-239: tests and fixtures are exempt from the source-tree-only
+  // rules (one-export scoped to services/api/clients; key/import ordering target
+  // source). member-ordering and no-IIFE still apply.
+  files: ["**/__tests__/**", "**/__fixtures__/**", "**/__mocks__/**"],
+  rules: {
+    "import/order": "off",
+    "local/one-export-per-file": "off",
+    "sort-keys": "off",
+  },
 });

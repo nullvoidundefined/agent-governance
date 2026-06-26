@@ -21,6 +21,7 @@ for seg in "${PARTS[@]}"; do
   [ "$seg" = "src" ] && in_src=1 && continue
   [ "$in_src" -eq 0 ] && continue
   [[ "$seg" == *.* ]] && continue
+  [[ "$seg" =~ ^__.*__$ ]] && continue
   [[ "$seg" =~ ^\(.*\)$ ]] && continue
   [ "$seg" = "app" ] && in_app=1 && continue
   if [[ "$seg" =~ $BANNED ]]; then
