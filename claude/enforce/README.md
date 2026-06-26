@@ -19,11 +19,27 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 | Tier | Enforced by | When | Examples |
 |------|-------------|------|----------|
 | `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) | R-237, R-220 |
-| `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-231, R-218, R-235, R-215 |
+| `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-231, R-218, R-235, R-215, R-224 |
 | `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-217, R-232, R-233, R-227, R-226, R-228, R-230 |
-| `advisory` | a PostToolUse reminder (non-blocking) | per edit | (existing reminders) |
+| `advisory` | a non-blocking warning (reminder or push-time stderr) | per edit or per push | R-241, R-223 |
 
 Per-edit checks must stay cheap (no Node, no network). All heavy work (ESLint, the model call) runs once per push.
+
+## Per-repo config: `.enforce.json`
+
+Some rules are repo-specific. A repo may place an optional `.enforce.json` at its root; the global engine reads it (the push gate `cd`s to the repo root first). It is data, not a hook, so "global hooks only" still holds.
+
+```json
+{
+  "importZones": [
+    { "target": "src/services", "from": "src/handlers", "message": "services must not import handlers (R-224)" }
+  ],
+  "singleFileFolderExemptions": ["src/services/auth", "src/services/email"]
+}
+```
+
+- `importZones` (R-224): drives ESLint `import/no-restricted-paths`. Files under `target` may not import from `from`. Paths are relative to the repo root. With no zones, import-direction is not enforced.
+- `singleFileFolderExemptions` (R-223): folders that are allowed to hold a single source module (e.g. the portfolio project's intentional single-file service folders, which override R-223 by project convention).
 
 ## Push gate scope
 

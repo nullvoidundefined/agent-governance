@@ -41,6 +41,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/llm-rule-judge.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/single-file-folder-gate.sh"
           }
         ]
       },
