@@ -15,6 +15,7 @@
     { "id": "R-227", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-226", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-228", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
-    { "id": "R-230", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false }
+    { "id": "R-230", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
+    { "id": "R-519", "tier": "advisory", "enforcer": "model:progress-reporting", "severity": "warn", "autofix": false }
   ]
 }
