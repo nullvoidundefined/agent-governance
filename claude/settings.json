@@ -33,6 +33,14 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/global-repo-push-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-eslint-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/llm-rule-judge.sh"
           }
         ]
       },
@@ -46,6 +54,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/migration-defaults-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/structure-gate.sh"
           }
         ]
       }
@@ -99,6 +111,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/redaction-guard-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/enforcement-guard-check.sh"
           }
         ]
       }

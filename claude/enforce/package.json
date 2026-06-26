@@ -1,0 +1,10 @@
+{
+  "name": "claude-enforce",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "eslint": "^9.13.0",
+    "typescript-eslint": "^8.10.0",
+    "eslint-plugin-import": "^2.31.0"
+  }
+}
