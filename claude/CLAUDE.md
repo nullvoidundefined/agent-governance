@@ -32,6 +32,7 @@ R-006: Reproduce locally before deploying.
 R-007: Load shared context per R-300 at session start.
 R-008: No praise without falsifiable reasoning. No softening. No compliment sandwich.
 R-009: No filler. Delete before sending: action announcements, question echoes, transitions, hedge words, sign-offs, apologies, trailing summaries, sentences starting with "I".
+R-010: Optimize for the durable fix, not the expedient one. When something fails or strains, diagnose the root cause and fix that. Never make a failure pass by relaxing the gate that caught it: raising a timeout, limit, or threshold to an unjustified level, widening an allowlist, weakening or skipping a check, deleting an assertion, or blind-retrying. Before adding code, reuse or extend what already does the job (R-234); leave every file you touch at least as clean as you found it. A patch that masks a symptom is permitted only when you have named the root cause and the user accepts the tradeoff this turn.
 
 ## Architecture
 
