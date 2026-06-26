@@ -16,4 +16,7 @@ run "$TMP/ok.ts"    || { echo "FAIL: expected clean file to pass"; exit 1; }
 # R-218 member-ordering: a method before a property should be flagged in a class.
 printf 'interface Foo { greet(): void; name: string; }\n' > "$TMP/ordering.ts"
 run "$TMP/ordering.ts" && { echo "FAIL: expected member-ordering violation"; exit 1; } || true
+# R-215 no-IIFE: an immediately-invoked arrow function should be flagged.
+printf 'const x = (() => "y")();\n' > "$TMP/iife.ts"
+run "$TMP/iife.ts" && { echo "FAIL: expected no-IIFE violation"; exit 1; } || true
 echo "eslint.test.sh PASS"

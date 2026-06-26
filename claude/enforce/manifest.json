@@ -3,11 +3,15 @@
     { "id": "R-231", "tier": "ast", "enforcer": "eslint:sort-keys", "severity": "error", "autofix": true },
     { "id": "R-218", "tier": "ast", "enforcer": "eslint:member-ordering", "severity": "error", "autofix": true },
     { "id": "R-235", "tier": "ast", "enforcer": "eslint:one-export-per-file", "severity": "error", "autofix": false },
+    { "id": "R-215", "tier": "ast", "enforcer": "eslint:no-restricted-syntax", "severity": "error", "autofix": false },
     { "id": "R-237", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-220", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-217", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
     { "id": "R-232", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
     { "id": "R-233", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
-    { "id": "R-227", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false }
+    { "id": "R-227", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
+    { "id": "R-226", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
+    { "id": "R-228", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
+    { "id": "R-230", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false }
   ]
 }

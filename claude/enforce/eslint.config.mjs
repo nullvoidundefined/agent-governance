@@ -23,6 +23,11 @@ export default tseslint.config({
     "@typescript-eslint/member-ordering": "error",
     "import/order": ["error", { "newlines-between": "always", alphabetize: { order: "asc" } }],
     "max-lines-per-function": ["warn", { max: 60, skipBlankLines: true, skipComments: true }],
+    "no-restricted-syntax": [
+      "error",
+      { selector: "CallExpression[callee.type='FunctionExpression']", message: "No IIFE (R-215): use a named function and call it." },
+      { selector: "CallExpression[callee.type='ArrowFunctionExpression']", message: "No IIFE (R-215): use a named async function and call it." },
+    ],
     "local/one-export-per-file": "error",
   },
 });
