@@ -23,4 +23,9 @@ run "$TMP/ordering.ts" && { echo "FAIL: expected member-ordering violation"; exi
 # R-215 no-IIFE: an immediately-invoked arrow function should be flagged.
 printf 'const x = (() => "y")();\n' > "$TMP/iife.ts"
 run "$TMP/iife.ts" && { echo "FAIL: expected no-IIFE violation"; exit 1; } || true
+# R-242 no-nested-ternary: a chained ternary should be flagged; a plain ternary should pass.
+printf 'const x = a ? 1 : b ? 2 : 3;\n' > "$TMP/nested-ternary.ts"
+run "$TMP/nested-ternary.ts" && { echo "FAIL: expected no-nested-ternary violation"; exit 1; } || true
+printf 'const y = a ? 1 : 2;\n' > "$TMP/plain-ternary.ts"
+run "$TMP/plain-ternary.ts" || { echo "FAIL: expected plain ternary to pass"; exit 1; }
 echo "eslint.test.sh PASS"

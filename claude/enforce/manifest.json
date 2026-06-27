@@ -4,6 +4,7 @@
     { "id": "R-218", "tier": "ast", "enforcer": "eslint:member-ordering", "severity": "error", "autofix": true },
     { "id": "R-235", "tier": "ast", "enforcer": "eslint:one-export-per-file", "severity": "error", "autofix": false },
     { "id": "R-215", "tier": "ast", "enforcer": "eslint:no-restricted-syntax", "severity": "error", "autofix": false },
+    { "id": "R-242", "tier": "ast", "enforcer": "eslint:no-nested-ternary", "severity": "error", "autofix": false },
     { "id": "R-224", "tier": "ast", "enforcer": "eslint:no-restricted-paths", "severity": "error", "autofix": false },
     { "id": "R-237", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-220", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },

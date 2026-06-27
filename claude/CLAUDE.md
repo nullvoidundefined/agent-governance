@@ -93,6 +93,7 @@ R-212: Squash merge feature branches: `git merge --squash`. One commit per featu
 R-213: Cross-cutting refactors (5+ files, 3+ dirs) on dedicated branch. No concurrent feature work. No overlapping refactors. Land one, start next.
 R-214 [ts]: Migration defaults: bare strings for constants (`default: 'active'`), `pgm.func()` for SQL expressions. Never nest quotes. Enforced by `migration-defaults-guard.sh` hook.
 R-215 [ts]: No IIFEs. When async work is needed inside a `useEffect` or similar synchronous context, declare a named `async function` and call it: `async function doWork() { ... } void doWork();`. Never write `void (async () => { ... })()` or `(async () => { ... })()`.
+R-242 [ts]: Nested ternaries are forbidden, especially inside a React component's render/return block. A conditional expression whose consequent or alternate is itself a ternary is banned. Replace with an early-return helper function or extracted component, a lookup map, or named boolean variables. Enforced by ESLint `no-nested-ternary`.
 R-216: Retired 2026-06-07; folded into R-200 item 9.
 
 ## Session lifecycle

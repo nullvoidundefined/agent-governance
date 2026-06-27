@@ -22,6 +22,7 @@ export default tseslint.config({
     "@typescript-eslint/member-ordering": "error",
     "import/order": ["error", { "newlines-between": "always", alphabetize: { order: "asc" } }],
     "max-lines-per-function": ["warn", { max: 60, skipBlankLines: true, skipComments: true }],
+    "no-nested-ternary": "error",
     "no-restricted-syntax": [
       "error",
       { selector: "CallExpression[callee.type='FunctionExpression']", message: "No IIFE (R-215): use a named function and call it." },
