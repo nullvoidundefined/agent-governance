@@ -12,7 +12,6 @@ export default tseslint.config({
   plugins: {
     "@typescript-eslint": tseslint.plugin,
     import: importPlugin,
-    local: { rules: { "one-export-per-file": oneExportPerFile } },
   },
   languageOptions: {
     parser: tseslint.parser,
@@ -28,12 +27,24 @@ export default tseslint.config({
       { selector: "CallExpression[callee.type='FunctionExpression']", message: "No IIFE (R-215): use a named function and call it." },
       { selector: "CallExpression[callee.type='ArrowFunctionExpression']", message: "No IIFE (R-215): use a named async function and call it." },
     ],
-    "local/one-export-per-file": "error",
   },
 }, {
+  // R-235: one exported symbol per file, scoped to the function-module trees only
+  // (services, api, clients). Constants and types modules group multiple exports
+  // per R-222 and are intentionally NOT subject to this rule.
+  files: [
+    "**/services/**/*.ts",
+    "**/services/**/*.tsx",
+    "**/api/**/*.ts",
+    "**/api/**/*.tsx",
+    "**/clients/**/*.ts",
+    "**/clients/**/*.tsx",
+  ],
+  plugins: { local: { rules: { "one-export-per-file": oneExportPerFile } } },
+  rules: { "local/one-export-per-file": "error" },
+}, {
   // R-221/R-235/R-239: tests and fixtures are exempt from the source-tree-only
-  // rules (one-export scoped to services/api/clients; key/import ordering target
-  // source). member-ordering and no-IIFE still apply.
+  // rules (key/import ordering target source). member-ordering and no-IIFE still apply.
   files: ["**/__tests__/**", "**/__fixtures__/**", "**/__mocks__/**"],
   rules: {
     "import/order": "off",
