@@ -32,7 +32,9 @@ export default tseslint.config({
 }, {
   // R-235: one exported symbol per file, scoped to the function-module trees only
   // (services, api, clients). Constants and types modules group multiple exports
-  // per R-222 and are intentionally NOT subject to this rule.
+  // per R-222/R-223 and are intentionally NOT subject to this rule, so types.ts /
+  // constants.ts files (and promoted types/ constants/ folders) are ignored here
+  // even when they live inside a services/api/clients tree.
   files: [
     "**/services/**/*.ts",
     "**/services/**/*.tsx",
@@ -40,6 +42,12 @@ export default tseslint.config({
     "**/api/**/*.tsx",
     "**/clients/**/*.ts",
     "**/clients/**/*.tsx",
+  ],
+  ignores: [
+    "**/types.ts",
+    "**/constants.ts",
+    "**/types/**/*.ts",
+    "**/constants/**/*.ts",
   ],
   plugins: { local: { rules: { "one-export-per-file": oneExportPerFile } } },
   rules: { "local/one-export-per-file": "error" },
