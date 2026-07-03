@@ -1,10 +1,10 @@
 # claude-global-rules
 
-A personal operating system for Claude Code. Rules, hooks, audit roles, convention files, prompt templates, and cross-session memory, organized as a ten-layer model: five mechanically enforced layers (memory loading, plugin-shipped skills, hook scripts, session-lifecycle hooks, secret-scan and redaction hooks) and five prose layers (rules, audit role definitions, tests, process sequencing, git hygiene). Any Claude Code session loads it at startup.
+A personal operating system for Claude Code. Rules, hooks, audit roles, convention files, prompt templates, and cross-session memory, organized as an eleven-layer model: six mechanically enforced layers (memory loading, plugin-shipped skills, hook scripts, session-lifecycle hooks, secret-scan and redaction hooks, destructive-action guards) and five prose layers (rules, audit role definitions, tests, process sequencing, git hygiene). Any Claude Code session loads it at startup.
 
 This repo is the canonical, version-controlled home for everything that governs how Claude behaves across every project the maintainer touches. It is loaded at the start of every session via `~/.claude/`. Individual projects extend and override specific sections through their own `CLAUDE.md` files, but the baseline lives here.
 
-> **Read the criticism audit alongside the manifesto.** `PROTOCOL.md` presents the current ten-layer framework. `docs/audits/2026-04-08-criticism.md` is the harshest pre-rewrite critique of the prior CLAUDE.md, which drove the 866→459-line / 11K→6K-token rewrite later that same day. Both are load-bearing; reconciling them is the work.
+> **Read the criticism audit alongside the manifesto.** `PROTOCOL.md` presents the current eleven-layer framework. `docs/audits/2026-04-08-criticism.md` is the harshest pre-rewrite critique of the prior CLAUDE.md, which drove the 866→459-line / 11K→6K-token rewrite later that same day. Both are load-bearing; reconciling them is the work.
 
 ## What this is for
 
@@ -29,11 +29,11 @@ The **plugins enabled in `settings.json`** are Anthropic-shipped through the off
 - `superpowers`: Layer 2 (Skills) is almost entirely this plugin. It provides `brainstorming` (HARD-GATE before code), `writing-plans`, `executing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`. The framing of "skills as capabilities not prose" comes from Superpowers.
 - `frontend-design`, `context7`, `code-review`, `code-simplifier`, `typescript-lsp`, `posthog`: other Anthropic-shipped plugins enabled in this configuration. Each contributes its own skills, agents, and behaviors.
 
-Everything **inside this tracked repo** is the maintainer's: the 8 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 27 global-memory files, the R-207..R-906 rule formalization in `CLAUDE.md`, the ten-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 24 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 29 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `audits/<role>.md`. The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
-## The ten-layer model
+## The eleven-layer model
 
 The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance, with each layer marked as mechanical (enforced by code, hooks, or auto-loading) or prose (rules and definitions; honor-system at runtime):
 
@@ -44,15 +44,16 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 3. Rules | prose | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files |
 | 4. Audits | prose | Confidence theater, gaps invisible to the original author | `audits/` standing (Engineering, Security, Criticism) + `audits/on-request/` |
 | 5. Tests | prose | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke); this repo defines the discipline, not the runs |
-| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (8 scripts) |
+| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (24 scripts) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
 | 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
 | 10. Git hygiene | prose | History rewritten in ways that lose evidence; force-pushes to main; missing test pairs | `CLAUDE.md` R-401 family; commit conventions |
+| 11. Destructive-action guards | mechanical | Irreversible data loss against production or remote databases | `hooks/destructive-db-guard.sh`, R-101 |
 
 Each layer assumes the next will catch what it misses. The discipline is not "follow every rule"; the discipline is "add the next layer the next time a failure teaches you where one is missing."
 
-**On the mechanical/prose split.** Five layers (Memory, Skills, Hooks, Lifecycle, Secret handling) are enforced by code that runs whether the session remembers to invoke it or not. Five layers (Rules, Audits, Tests, Process, Git hygiene) are prose: definitions, conventions, and cadences that depend on the session honoring them. The framework's design goal is to migrate prose layers down to mechanical ones as enforcement paths get wired (the em-dash ban migrated from prose to mechanical when `no-em-dash.sh` shipped). The criticism audit referenced above tracks which prose rules are still honor-system.
+**On the mechanical/prose split.** Six layers (Memory, Skills, Hooks, Lifecycle, Secret handling, Destructive-action guards) are enforced by code that runs whether the session remembers to invoke it or not. Five layers (Rules, Audits, Tests, Process, Git hygiene) are prose: definitions, conventions, and cadences that depend on the session honoring them. The framework's design goal is to migrate prose layers down to mechanical ones as enforcement paths get wired (the em-dash ban migrated from prose to mechanical when `no-em-dash.sh` shipped). The criticism audit referenced above tracks which prose rules are still honor-system.
 
 ## Repository layout
 
@@ -60,7 +61,7 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 ~/.claude/
 ├── README.md                        # This file.
 ├── LICENSE                          # MIT license.
-├── PROTOCOL.md                      # The ten-layer failure-mode catalog.
+├── PROTOCOL.md                      # The eleven-layer failure-mode catalog.
 ├── CLAUDE.md                        # Global rules loaded at every session start.
 ├── CLAUDE-BACKEND.md                # Read on demand: Express / TS API conventions.
 ├── CLAUDE-FRONTEND.md               # Read on demand: Next.js / React conventions.
@@ -163,7 +164,7 @@ These are the principles the framework defends, not a checklist. Each earned its
 In order:
 
 1. **[`CLAUDE.md`](./CLAUDE.md)**: the canonical rules file. Start here. Read the Non-negotiable rules block, then skim the TOC to locate the section matching your current task.
-2. **[`PROTOCOL.md`](./PROTOCOL.md)**: the ten-layer framework. Read this when you want to understand why a layer exists or propose a new one.
+2. **[`PROTOCOL.md`](./PROTOCOL.md)**: the eleven-layer framework. Read this when you want to understand why a layer exists or propose a new one.
 3. **[`global-memory/INDEX.md`](./global-memory/INDEX.md)**: cross-project lessons. The `SessionStart` hook reads this automatically; you can also read it directly.
 4. **[`agents/audit-engineering.md`](./agents/audit-engineering.md), [`agents/audit-security.md`](./agents/audit-security.md), [`agents/audit-criticism.md`](./agents/audit-criticism.md)**: the three standing audit role definitions, co-located with the agent frontmatter that Claude Code's Agent runtime loads at dispatch. The mirror files under `audits/` are pointers; the agent files are canonical. On-request roles (Customer, Design, UX, Financial, Legal, Marketing) live alongside as `agents/audit-<role>.md`.
 5. **[`hooks/`](./hooks/)**: the actual enforcement layer. Each file is self-documenting in its header comment.

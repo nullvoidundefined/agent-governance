@@ -1,7 +1,8 @@
 /**
  * Bundled enforcement ESLint flat config for the global rule system.
  * Loaded by lint.mjs and invoked by push-eslint-gate.sh to check outgoing diffs
- * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319).
+ * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319,
+ * R-326, R-327, R-324, and R-303 when a repo opts in via .enforce.json).
  */
 import tseslint from "typescript-eslint";
 import importPlugin from "eslint-plugin-import";

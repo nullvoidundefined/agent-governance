@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # push-eslint-gate.sh: on `git push`, run the bundled enforcement ESLint over the
 # TypeScript files added/changed in the outgoing diff. Deny the push on any
-# error-level violation (R-323/R-321/R-319). Heavy work runs once per push, not
-# per edit.
+# error-level violation of the AST-tier rules (R-323/R-321/R-319/R-326/R-327/
+# R-324, plus R-303 in repos with .enforce.json import zones). Heavy work runs
+# once per push, not per edit.
 set -euo pipefail
 
 # shellcheck source=../enforce/resolveOutgoingBase.sh
