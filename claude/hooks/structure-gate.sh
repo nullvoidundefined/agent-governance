@@ -13,7 +13,8 @@ deny() {
   exit 0
 }
 
-BANNED='^(lib|utils|helpers|common|core|misc|shared|db)$'
+BANNED='^(lib|utils|helpers|common|core|misc|shared)$'
+ABBREV='^(db|di|svc|ctrl|mw|cfg)$'
 IFS='/' read -ra PARTS <<< "$FILE"
 in_src=0
 in_app=0
@@ -26,6 +27,9 @@ for seg in "${PARTS[@]}"; do
   [ "$seg" = "app" ] && in_app=1 && continue
   if [[ "$seg" =~ $BANNED ]]; then
     deny "Directory '$seg' is a banned catch-all (R-306/R-304). Use services/, clients/, or a domain folder."
+  fi
+  if [[ "$seg" =~ $ABBREV ]]; then
+    deny "Directory '$seg' is an abbreviation (R-311). Use the full word: database/, dependencyInjection/, services/, controllers or handlers/, middleware/, config/."
   fi
   if [[ "$seg" == *-* || "$seg" == *_* ]]; then
     [ "$in_app" -eq 1 ] && continue

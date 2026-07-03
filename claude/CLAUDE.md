@@ -44,7 +44,7 @@ R-103: Treat every real credential file as read-only; never use one as a scratch
   Spec:
   - Never create, overwrite, append to, move, or delete one; a user `.env` holding real keys is off-limits for `>`, `rm`, `mv`, or any other mutation.
   - When a check needs an env-file fixture, write it to a uniquely named throwaway path under `/tmp` and clean up that path, never the user's.
-  Enforcement: manual
+  Enforcement: hook:secret-scan
 
 R-104: Sanitize artifacts before writing them.
   Spec: tokens/keys/cookies -> `[REDACTED]`; PII -> `[PII]`; internal URLs -> `[INTERNAL_URL]`.
@@ -176,7 +176,7 @@ R-310: Regroup any source directory holding more than 20 sibling source modules 
 
 R-311: Use full-word directory names, never abbreviations: `database/` not `db/`.
   Scope: new directories, and renaming existing ones on sight.
-  Enforcement: manual
+  Enforcement: hook:structure-gate
 
 R-312: Name multi-word directories camelCase in every source tree (`userPreferences`, `toolCallLog`), never kebab-case or snake_case.
   Scope: extends R-311 and R-315 to directories. Exception: Next.js App Router URL route segments keep kebab-case (`app/coming-soon`) because the folder name is the public URL; route groups `(name)` and non-URL `features/<name>` folders stay camelCase.
@@ -266,7 +266,7 @@ R-324: Extract every literal that carries meaning to a named constant; no magic 
   - Module `ALL_CAPS` for shared or configurable values (timeouts, limits, URLs, status strings); a named local `const` for single-use.
   - Any string literal appearing 2+ times becomes a named constant or a union type.
   - Exempt: `0`, `1`, `-1`, `''`, booleans, and literals in tests and fixtures.
-  Enforcement: manual
+  Enforcement: eslint:no-magic-numbers (numbers); manual (strings)
 
 R-325: Destructure when reading two or more properties from the same object; never destructure a method off its object.
   Spec: single-property access may use dot notation; invoke methods via dot notation (`obj.doThing()`, not `const { doThing } = obj`) to preserve `this`.
@@ -357,11 +357,11 @@ R-504: Commit after every discrete task; a `TaskUpdate` to `completed` triggers 
 
 R-505: Make one commit per triage ID.
   Spec: two IDs max when inseparable: `fix(B5, B12): ...` with a body line-item per ID.
-  Enforcement: manual
+  Enforcement: hook:commit-message-guard
 
 R-506: Write one-sentence commit bodies.
   Scope: multi-line only for business-logic bugs, architectural refactors, security changes.
-  Enforcement: manual
+  Enforcement: hook:commit-message-guard (advisory)
 
 R-507: Never commit unresolved conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
   Enforcement: hook:conflict-markers
@@ -386,7 +386,7 @@ R-512: Squash-merge feature branches: `git merge --squash`; one commit per featu
 R-513: Grep the test suite for a changed constant's old value before pushing; update every stale assertion in the same commit as the source change.
   Scope: any push (not just pre-PR) that changes a named constant's value: palette colors, status strings, limits, URLs, error messages.
   Spec: `git diff HEAD~1 -- <constants-file>` surfaces removed values; `grep -r '<old-value>' <test-dirs>` finds stale assertions.
-  Enforcement: manual
+  Enforcement: hook:constant-change-guard (advisory)
 
 R-514: Never merge a PR without explicit user authorization in the current turn.
   Spec:

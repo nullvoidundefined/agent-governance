@@ -18,10 +18,10 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 
 | Tier | Enforced by | When | Examples |
 |------|-------------|------|----------|
-| `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) | R-312, R-306 |
-| `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-323, R-321, R-319, R-326, R-303 |
+| `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) or per Bash call | R-312, R-306, R-311, R-103 |
+| `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-323, R-321, R-319, R-326, R-324, R-303 |
 | `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-315, R-316, R-317, R-322, R-318, R-325, R-320 |
-| `advisory` | a non-blocking warning (reminder or push-time stderr) | per edit or per push | R-310, R-309 |
+| `advisory` | a non-blocking warning or confirm prompt (reminder, push-time stderr, or `ask`) | per edit or per push | R-310, R-309, R-506, R-513 |
 
 Per-edit checks must stay cheap (no Node, no network). All heavy work (ESLint, the model call) runs once per push.
 

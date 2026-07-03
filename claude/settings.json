@@ -4,7 +4,7 @@
       "Bash(*)"
     ]
   },
-  "model": "opus",
+  "model": "fable",
   "hooks": {
     "PreToolUse": [
       {
@@ -28,6 +28,10 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/commit-message-guard.sh"
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/destructive-db-guard.sh"
           },
           {
@@ -37,6 +41,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/push-eslint-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/constant-change-guard.sh"
           },
           {
             "type": "command",
@@ -192,7 +200,7 @@
       }
     }
   },
+  "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "skipWorkflowUsageWarning": true,
-  "tui": "fullscreen"
+  "skipWorkflowUsageWarning": true
 }

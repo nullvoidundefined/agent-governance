@@ -6,8 +6,11 @@
     { "id": "R-326", "tier": "ast", "enforcer": "eslint:no-restricted-syntax", "severity": "error", "autofix": false },
     { "id": "R-327", "tier": "ast", "enforcer": "eslint:no-nested-ternary", "severity": "error", "autofix": false },
     { "id": "R-303", "tier": "ast", "enforcer": "eslint:no-restricted-paths", "severity": "error", "autofix": false },
+    { "id": "R-324", "tier": "ast", "enforcer": "eslint:no-magic-numbers", "severity": "error", "autofix": false },
+    { "id": "R-103", "tier": "regex", "enforcer": "hook:secret-scan", "severity": "error", "autofix": false },
     { "id": "R-312", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-306", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
+    { "id": "R-311", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-309", "tier": "advisory", "enforcer": "hook:single-file-folder-gate", "severity": "warn", "autofix": false },
     { "id": "R-310", "tier": "advisory", "enforcer": "hook:flat-directory-reminder", "severity": "warn", "autofix": false },
     { "id": "R-315", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
@@ -17,6 +20,9 @@
     { "id": "R-318", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-325", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-320", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
+    { "id": "R-505", "tier": "regex", "enforcer": "hook:commit-message-guard", "severity": "error", "autofix": false },
+    { "id": "R-513", "tier": "advisory", "enforcer": "hook:constant-change-guard", "severity": "warn", "autofix": false },
+    { "id": "R-506", "tier": "advisory", "enforcer": "hook:commit-message-guard", "severity": "warn", "autofix": false },
     { "id": "R-503", "tier": "advisory", "enforcer": "model:progress-reporting", "severity": "warn", "autofix": false }
   ]
 }

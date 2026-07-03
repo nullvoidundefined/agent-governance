@@ -22,6 +22,10 @@ export default tseslint.config({
     "@typescript-eslint/member-ordering": "error",
     "import/order": ["error", { "newlines-between": "always", alphabetize: { order: "asc" } }],
     "max-lines-per-function": ["warn", { max: 60, skipBlankLines: true, skipComments: true }],
+    "no-magic-numbers": [
+      "error",
+      { detectObjects: false, enforceConst: true, ignore: [0, 1, -1], ignoreArrayIndexes: true, ignoreDefaultValues: true },
+    ],
     "no-nested-ternary": "error",
     "no-restricted-syntax": [
       "error",
@@ -58,6 +62,7 @@ export default tseslint.config({
   rules: {
     "import/order": "off",
     "local/one-export-per-file": "off",
+    "no-magic-numbers": "off",
     "sort-keys": "off",
   },
 });

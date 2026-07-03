@@ -30,6 +30,17 @@ run "$TMP/iife.ts" && { echo "FAIL: expected no-IIFE violation"; exit 1; } || tr
 # R-327 no-nested-ternary: a chained ternary should be flagged; a plain ternary should pass.
 printf 'const x = a ? 1 : b ? 2 : 3;\n' > "$TMP/nested-ternary.ts"
 run "$TMP/nested-ternary.ts" && { echo "FAIL: expected no-nested-ternary violation"; exit 1; } || true
-printf 'const y = a ? 1 : 2;\n' > "$TMP/plain-ternary.ts"
+printf 'const y = a ? 1 : 0;\n' > "$TMP/plain-ternary.ts"
 run "$TMP/plain-ternary.ts" || { echo "FAIL: expected plain ternary to pass"; exit 1; }
+# R-324 no-magic-numbers: a bare numeric literal in an expression should be flagged;
+# named consts, 0/1/-1, array indexes, and test files stay exempt.
+printf 'declare function setTimeout(f: () => void, ms: number): void;\nsetTimeout(() => {}, 5000);\n' > "$TMP/magic.ts"
+run "$TMP/magic.ts" && { echo "FAIL: expected no-magic-numbers violation"; exit 1; } || true
+printf 'const TIMEOUT_MS = 5000;\ndeclare function setTimeout(f: () => void, ms: number): void;\nsetTimeout(() => {}, TIMEOUT_MS);\n' > "$TMP/named.ts"
+run "$TMP/named.ts" || { echo "FAIL: expected named-constant file to pass"; exit 1; }
+printf 'const LIMIT = 9;\ndeclare const xs: number[];\nconst first = xs[0];\nconst count = xs.length - 1;\n' > "$TMP/small.ts"
+run "$TMP/small.ts" || { echo "FAIL: expected 0/1/-1 and const-assigned literals to pass"; exit 1; }
+mkdir -p "$TMP/__tests__"
+printf 'declare function expectValue(n: number): void;\nexpectValue(4242);\n' > "$TMP/__tests__/magic.test.ts"
+run "$TMP/__tests__/magic.test.ts" || { echo "FAIL: expected test file to be exempt from no-magic-numbers (R-324)"; exit 1; }
 echo "eslint.test.sh PASS"

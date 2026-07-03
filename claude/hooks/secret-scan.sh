@@ -69,6 +69,33 @@ if printf '%s' "$CMD" | grep -qE "$PATTERN"; then
       permissionDecisionReason: "secret-scan hook BLOCKED this command: it contains a string matching a known secret pattern (API key, webhook secret, AWS access key, SendGrid key, GitHub token, SSH private key, or similar). Never pass secrets as command-line arguments. The argv is persisted to shell history, Claude Code transcripts, the permission-prompt UI, and process argument space. Correct patterns: (1) set the value via the vendor dashboard yourself, no CLI involvement; (2) load the value from a file outside the repo via an env var that is resolved at execution time so the plaintext never appears in the command string; (3) use a stdin-fed CLI mode if the vendor supports it."
     }
   }'
+  exit 0
+fi
+
+# R-103: credential files are read-only. Block any command that creates,
+# overwrites, appends to, moves, deletes, or edits a protected path
+# (.env, .env.*, ~/.aws, ~/.ssh, ~/.gnupg, ~/.config/gh/hosts.yml).
+# Throwaway fixtures under /tmp are exempt per the rule's Spec, so /tmp
+# paths are stripped before scanning.
+SAFE_CMD=$(printf '%s' "$CMD" | sed -E 's#(/private)?/tmp/[^[:space:]"'"'"']*##g')
+
+HOMEDIRS='(~|\$HOME|/Users/[A-Za-z0-9._-]+)'
+PROT="$HOMEDIRS/\.(aws|ssh|gnupg)(/[^[:space:]\"';|&]*)?"
+PROT+="|$HOMEDIRS/\.config/gh/hosts\.yml"
+PROT+="|(^|[[:space:]\"'=/])\.env(\.[A-Za-z0-9_-]+)?([[:space:]\"';|&]|$)"
+
+MUTATE_VERBS='(rm|mv|cp|tee|shred|truncate|unlink|sed[[:space:]]+-[a-zA-Z]*i[a-zA-Z]*)'
+MUTATION="(^|[;&|][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?$MUTATE_VERBS([[:space:]]+-[^[:space:]]+)*([[:space:]][^;|&]*)?($PROT)"
+REDIRECT=">>?[[:space:]]*($PROT)"
+
+if printf '%s' "$SAFE_CMD" | grep -qE "$MUTATION" || printf '%s' "$SAFE_CMD" | grep -qE "$REDIRECT"; then
+  jq -n '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: "secret-scan hook BLOCKED this command: it mutates a protected credential file (R-103). .env files, ~/.aws, ~/.ssh, ~/.gnupg, and gh hosts.yml are read-only; never create, overwrite, append to, move, or delete them. If a check needs an env-file fixture, write it to a uniquely named throwaway path under /tmp and clean that up instead. If the user explicitly directed this specific change, ask them to run the command themselves."
+    }
+  }'
 fi
 
 exit 0
