@@ -27,6 +27,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`lesson_hook_runtime_budget.md`](./lesson_hook_runtime_budget.md): Pre-commit hooks cost ~7-10s per run. Plan commits to land in one pass; batch coordinated files into one commit
 - [`lesson_batch_file_creation_then_commit.md`](./lesson_batch_file_creation_then_commit.md): When a task requires multiple coordinated files (hook + registration + test), do all the file work first and commit once. Never commit incrementally within one logical unit
 - [`lesson_zsh_no_word_splitting.md`](./lesson_zsh_no_word_splitting.md): zsh does not word-split unquoted `$var`; `cmd $list` passes one giant arg. Iterate with while-read, an explicit array, or verified NUL xargs
+- [`lesson_zsh_readonly_special_vars.md`](./lesson_zsh_readonly_special_vars.md): `status`, `path`, `options` are read-only zsh specials; assigning them kills the script. Use `run_status`, `file_path`, etc.
 
 ## Cost discipline (2026-04-08 quota-burn retrospective)
 
