@@ -349,14 +349,16 @@ R-503: Announce each task's percentage share of total work and capture a start t
   - At task start: announce the task's share and capture `date +%s`; store both in the task tracker or progress ledger so they survive compaction.
   - At task completion: report the cumulative percentage done.
   - At project completion: report 100% and total elapsed wall-clock time from first task start to final task end.
-  Enforcement: manual (manifest: advisory)
+  Enforcement: manual
 
 R-504: Commit after every discrete task; a `TaskUpdate` to `completed` triggers an immediate commit.
   Scope: exception: conflicting same-file edits may combine with both task IDs.
   Enforcement: manual
 
-R-505: Make one commit per triage ID.
-  Spec: two IDs max when inseparable: `fix(B5, B12): ...` with a body line-item per ID.
+R-505: Write conventional commit subjects, one commit per triage ID.
+  Spec:
+  - Subject form: `type(scope): summary`; types: `feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert`; scope optional.
+  - Two triage IDs max in a scope, only when inseparable: `fix(B5, B12): ...` with a body line-item per ID.
   Enforcement: hook:commit-message-guard
 
 R-506: Write one-sentence commit bodies.
