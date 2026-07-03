@@ -43,4 +43,17 @@ run "$TMP/small.ts" || { echo "FAIL: expected 0/1/-1 and const-assigned literals
 mkdir -p "$TMP/__tests__"
 printf 'declare function expectValue(n: number): void;\nexpectValue(4242);\n' > "$TMP/__tests__/magic.test.ts"
 run "$TMP/__tests__/magic.test.ts" || { echo "FAIL: expected test file to be exempt from no-magic-numbers (R-324)"; exit 1; }
+# Projects overriding R-314 with a top-level tests/ or e2e/ tree get the same exemption.
+mkdir -p "$TMP/tests" "$TMP/e2e"
+printf 'declare function expectValue(n: number): void;\nexpectValue(4242);\n' > "$TMP/tests/magic.test.ts"
+run "$TMP/tests/magic.test.ts" || { echo "FAIL: expected tests/ file to be exempt from no-magic-numbers (R-324)"; exit 1; }
+printf 'declare function expectValue(n: number): void;\nexpectValue(4242);\n' > "$TMP/e2e/magic.spec.ts"
+run "$TMP/e2e/magic.spec.ts" || { echo "FAIL: expected e2e/ file to be exempt from no-magic-numbers (R-324)"; exit 1; }
+# import/order: "@/..." aliases are internal (import/internal-regex), so the
+# prettier importOrder sequence external -> @/ alias -> relative must pass and
+# the reverse (relative before alias) must fail.
+printf 'import { E } from "docx";\n\nimport { A } from "@/data/thing";\n\nimport { S } from "./sibling";\n' > "$TMP/import-order-ok.ts"
+run "$TMP/import-order-ok.ts" || { echo "FAIL: expected external -> alias -> relative import order to pass"; exit 1; }
+printf 'import { E } from "docx";\n\nimport { S } from "./sibling";\n\nimport { A } from "@/data/thing";\n' > "$TMP/import-order-bad.ts"
+run "$TMP/import-order-bad.ts" && { echo "FAIL: expected relative-before-alias import order to be flagged"; exit 1; } || true
 echo "eslint.test.sh PASS"

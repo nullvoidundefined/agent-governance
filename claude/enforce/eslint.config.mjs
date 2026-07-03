@@ -18,10 +18,22 @@ export default tseslint.config({
     parser: tseslint.parser,
     parserOptions: { ecmaFeatures: { jsx: true } },
   },
+  // "@/..." path aliases are internal modules, not scoped packages. Without this
+  // they classify as "unknown" and import/order demands they trail relative
+  // imports, the exact opposite of the projects' prettier importOrder
+  // ["^@/(.*)$", "^[./]"], making both tools unsatisfiable at once.
+  settings: { "import/internal-regex": "^@/" },
   rules: {
     "sort-keys": ["error", "asc", { natural: true, minKeys: 2 }],
     "@typescript-eslint/member-ordering": "error",
-    "import/order": ["error", { "newlines-between": "always", alphabetize: { order: "asc" } }],
+    "import/order": [
+      "error",
+      {
+        alphabetize: { order: "asc" },
+        groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
+        "newlines-between": "always",
+      },
+    ],
     "max-lines-per-function": ["warn", { max: 60, skipBlankLines: true, skipComments: true }],
     "no-magic-numbers": [
       "error",
@@ -59,7 +71,15 @@ export default tseslint.config({
 }, {
   // R-313/R-319/R-314: tests and fixtures are exempt from the source-tree-only
   // rules (key/import ordering target source). member-ordering and no-IIFE still apply.
-  files: ["**/__tests__/**", "**/__fixtures__/**", "**/__mocks__/**"],
+  // tests/ and e2e/ cover projects whose CLAUDE.md overrides R-314 with a
+  // top-level mirror tree (R-313 also names tests/ as the Python layout).
+  files: [
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+    "**/tests/**",
+    "**/e2e/**",
+  ],
   rules: {
     "import/order": "off",
     "local/one-export-per-file": "off",
