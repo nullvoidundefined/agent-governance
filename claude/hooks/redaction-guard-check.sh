@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # redaction-guard-check.sh
 #
-# SessionStart hook. Enforces R-101: the secret-handling hooks must be active.
+# SessionStart hook. Enforces R-102: the secret-handling hooks must be active.
 # A session that runs WITHOUT redact-output.sh (PostToolUse) leaks raw tool
 # output into the persisted transcript, and without secret-scan.sh (PreToolUse)
 # loses the pre-execution block. The failure is silent by nature, so this hook
@@ -41,13 +41,13 @@ done
 
 [ -n "$missing" ] || exit 0
 
-CTX="## Secret-redaction guard (R-101)"$'\n\n'
+CTX="## Secret-redaction guard (R-102)"$'\n\n'
 CTX+="The secret-handling hooks are not all active this session, so tool output may NOT be redacted and secrets could persist in the transcript:"$'\n\n'
 CTX+="$missing"$'\n'
 CTX+="Do not run commands that could print secrets until this is fixed. Restore the missing hook(s) in ~/.claude/settings.json, confirm the script exists in ~/.claude/hooks/, then reload via /hooks or restart."
 
 jq -n --arg ctx "$CTX" '{
-  systemMessage: "Secret-redaction hook(s) not active this session (R-101); output may not be redacted.",
+  systemMessage: "Secret-redaction hook(s) not active this session (R-102); output may not be redacted.",
   hookSpecificOutput: {
     hookEventName: "SessionStart",
     additionalContext: $ctx

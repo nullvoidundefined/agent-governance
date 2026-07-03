@@ -37,7 +37,7 @@ Each tier has a fixed process. No negotiation.
 ```
 Spec:           No
 Plan:           No
-TDD:            No (but fix bugs test-first per R-201)
+TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
 Branch:         Optional (commit directly to current branch if clean)
 Worktree:       No

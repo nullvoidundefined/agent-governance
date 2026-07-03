@@ -24,8 +24,8 @@ CTX=$(cat <<'RULES'
 8. Shared types in packages/types/, shared constants in packages/constants/.
 9. No praise without falsifiable reasoning. No softening. No compliment sandwich.
 10. No filler. Delete before sending: action announcements, question echoes, transitions, hedges, sign-offs, apologies, trailing summaries, "I" sentences.
-11. Write rules for the model. Omit rationale and motivation. State imperatives. (R-512)
-12. When user asserts something exists, investigate before disputing. Never treat context absence as evidence of absence. (R-513)
+11. Write rules for the model. Omit rationale and motivation. State imperatives. (R-206)
+12. When user asserts something exists, investigate before disputing. Never treat context absence as evidence of absence. (R-205)
 RULES
 )
 

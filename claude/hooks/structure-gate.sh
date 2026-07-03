@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# structure-gate.sh: deterministic path checks for directory case (R-237) and
-# banned catch-all directory names (R-220/R-238). Per-edit, no Node spawn.
+# structure-gate.sh: deterministic path checks for directory case (R-312) and
+# banned catch-all directory names (R-306/R-304). Per-edit, no Node spawn.
 set -euo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
@@ -25,11 +25,11 @@ for seg in "${PARTS[@]}"; do
   [[ "$seg" =~ ^\(.*\)$ ]] && continue
   [ "$seg" = "app" ] && in_app=1 && continue
   if [[ "$seg" =~ $BANNED ]]; then
-    deny "Directory '$seg' is a banned catch-all (R-220/R-238). Use services/, clients/, or a domain folder."
+    deny "Directory '$seg' is a banned catch-all (R-306/R-304). Use services/, clients/, or a domain folder."
   fi
   if [[ "$seg" == *-* || "$seg" == *_* ]]; then
     [ "$in_app" -eq 1 ] && continue
-    deny "Directory '$seg' must be camelCase, not kebab/snake (R-237)."
+    deny "Directory '$seg' must be camelCase, not kebab/snake (R-312)."
   fi
 done
 exit 0

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash) hook. Two tiers:
 #   - DENY  (Claude cannot run it, no confirmation offered): destructive
-#     data-loss actions targeting PRODUCTION. Hard prohibition per R-110.
+#     data-loss actions targeting PRODUCTION. Hard prohibition per R-101.
 #   - ASK   (explicit user confirmation): other large-scale destructive DB
 #     actions (staging / remote / ambiguous) and writes against remote DBs.
 # Low-noise: read-only operations and local databases pass through untouched.
@@ -68,10 +68,10 @@ if [ "$remote" -eq 0 ] && [ "$prod" -eq 0 ] \
     exit 0
 fi
 
-# HARD PROHIBITION (R-110): destructive data-loss against production cannot be
+# HARD PROHIBITION (R-101): destructive data-loss against production cannot be
 # performed by Claude. Deny outright -- no confirmation option is offered.
 if [ "$destructive" -eq 1 ] && [ "$prod" -eq 1 ]; then
-    emit deny "Destructive action against PRODUCTION is prohibited (R-110) and cannot be run by Claude. If genuinely required, a human must do it manually."
+    emit deny "Destructive action against PRODUCTION is prohibited (R-101) and cannot be run by Claude. If genuinely required, a human must do it manually."
 fi
 
 # ASK: destructive verbs against any other target (staging / remote / unknown).

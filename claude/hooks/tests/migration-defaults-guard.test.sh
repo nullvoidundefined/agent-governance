@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Test harness for migration-defaults-guard.sh (backs R-214).
+# Test harness for migration-defaults-guard.sh (backs R-328).
 #
-# R-214: migration defaults use bare strings for constants
+# R-328: migration defaults use bare strings for constants
 # (default: 'active') and pgm.func() for SQL expressions; never nest
 # quotes. This hook denies the two unambiguous anti-patterns in any
 # file under a /migrations/ path:

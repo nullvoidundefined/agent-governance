@@ -2,7 +2,7 @@
 # conflict-markers.sh
 #
 # PreToolUse hook. Blocks `git commit` when staged files contain
-# conflict markers. Enforces R-211.
+# conflict markers. Enforces R-507.
 
 set -euo pipefail
 

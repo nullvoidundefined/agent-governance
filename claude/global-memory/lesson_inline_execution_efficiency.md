@@ -85,7 +85,7 @@ These lessons came from an inline execution of a 13-task UI cleanup pass on a de
 
 These all earned their keep in the 2026-04-08 session and every session before it. Do not touch them:
 - **No em dash scan.** PreToolUse hook enforces. Zero marginal cost.
-- **TDD for business logic (R-201).** Fix-commit gate enforces. Prevented real bugs in this session.
+- **TDD for business logic (R-403).** Fix-commit gate enforces. Prevented real bugs in this session.
 - **Pre-commit format/lint/test chain.** The safety harness. Caught a format drift in Task 10 that would have failed in CI otherwise.
 - **Brainstorm before touching code.** Caught real design issues (a mode-inference threshold, tab bar vs single-page) that would have been expensive to find during execution.
 

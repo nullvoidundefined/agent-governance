@@ -80,7 +80,7 @@ Work through the spec in order:
 3. Verify all tests pass before moving to the next entry
 
 Follow project conventions:
-- Test-first for bugs (R-201)
+- Test-first for bugs (R-403)
 - Alphabetical ordering for props, types, keys
 - Named exports only
 - SCSS modules for styling (no Tailwind)

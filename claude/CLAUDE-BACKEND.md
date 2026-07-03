@@ -20,7 +20,7 @@ These rules apply to all `server/` and API packages across every app in this por
 ```
 src/
 ├── index.ts                      # Express app entry point
-├── clients/                      # Third-party SDK / external-service singletons (R-220), one per provider
+├── clients/                      # Third-party SDK / external-service singletons (R-306), one per provider
 │   ├── anthropic.ts              # Anthropic SDK client
 │   ├── logger.ts                 # Pino logger instance (infra singleton)
 │   ├── redis.ts                  # Redis client
@@ -30,15 +30,15 @@ src/
 │   └── env.ts                    # Environment helpers (isProduction, etc.)
 ├── constants/                    # Hard-coded constants
 │   └── session.ts
-├── database/                     # Connection pool: sits below repositories, so neither service nor client (R-220)
+├── database/                     # Connection pool: sits below repositories, so neither service nor client (R-306)
 │   └── pool.ts                   # PostgreSQL pool + query wrapper + transaction helper
 ├── handlers/                     # HTTP request handlers (thin; validate, delegate, respond)
-│   ├── auth.ts                   # one source file -> flat (R-223)
+│   ├── auth.ts                   # one source file -> flat (R-309)
 │   ├── jobs/                     # two+ source files -> folder
 │   │   ├── analyze.ts
 │   │   └── jobs.ts
 │   └── links.ts
-├── middleware/                   # Express middleware (each single-file -> flat, R-223)
+├── middleware/                   # Express middleware (each single-file -> flat, R-309)
 │   ├── csrfGuard.ts
 │   ├── errorHandler.ts
 │   ├── notFoundHandler.ts
@@ -57,7 +57,7 @@ src/
 │   ├── auth.ts
 │   ├── jobExtraction.ts
 │   └── job.ts
-├── services/                     # Business logic: operates on inputs, calls clients/repos (R-220)
+├── services/                     # Business logic: operates on inputs, calls clients/repos (R-306)
 │   ├── analyzer.ts
 │   ├── cache.ts
 │   └── parsers/                  # two+ source files -> folder

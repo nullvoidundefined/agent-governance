@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # global-repo-push-guard.sh
 #
-# PreToolUse(Bash) hook. Enforces R-108 for the PUBLIC ~/.claude repo.
+# PreToolUse(Bash) hook. Enforces R-106 for the PUBLIC ~/.claude repo.
 # When a `git push` is about to run from the ~/.claude working tree, it
 # scans `git diff origin/main` and denies the push if the outgoing diff
 # adds either:
@@ -14,12 +14,12 @@
 #   - The secret patterns MIRROR secret-scan.sh; keep the two in sync.
 #     (tech-debt: extract to a shared pattern file once a second consumer
 #     makes the duplication costly.)
-#   - "no local filesystem paths" (R-108) is enforced as "no occurrence of
+#   - "no local filesystem paths" (R-106) is enforced as "no occurrence of
 #     the real $HOME / real username home path." Generic example paths such
 #     as /Users/someuser in docs are intentionally allowed, since flagging
 #     every /Users/ string would block legitimate documentation and the
 #     guard's own introduction.
-#   - "no client-identifying content" (R-108) is semantic and stays a
+#   - "no client-identifying content" (R-106) is semantic and stays a
 #     context-only rule; this hook does not attempt it.
 #
 # Stdin JSON: { tool_name, tool_input: { command }, cwd }. Match emits a
@@ -83,7 +83,7 @@ PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 PATTERN+='|AIza[0-9A-Za-z_-]{35}'
 
 if printf '%s' "$ADDED" | grep -qE "$PATTERN"; then
-  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds a string matching a known secret pattern. The ~/.claude remote is public (R-108); a pushed secret is published irreversibly. Remove the secret from the committed history before pushing."
+  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds a string matching a known secret pattern. The ~/.claude remote is public (R-106); a pushed secret is published irreversibly. Remove the secret from the committed history before pushing."
   exit 0
 fi
 
@@ -91,7 +91,7 @@ USER_NAME=$(id -un 2>/dev/null || echo "")
 HOME_RE="/(Users|home)/${USER_NAME}(/|$)"
 if printf '%s' "$ADDED" | grep -Fq "$HOME" \
    || { [ -n "$USER_NAME" ] && printf '%s' "$ADDED" | grep -qE "$HOME_RE"; }; then
-  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds this machine's real home path. The ~/.claude remote is public (R-108); local filesystem paths must not be published. Replace the absolute path with a placeholder (\$HOME or ~) before pushing."
+  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds this machine's real home path. The ~/.claude remote is public (R-106); local filesystem paths must not be published. Replace the absolute path with a placeholder (\$HOME or ~) before pushing."
   exit 0
 fi
 

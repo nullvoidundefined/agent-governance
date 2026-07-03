@@ -6,7 +6,7 @@ type: feedback
 
 **Default every session to Sonnet. Treat Opus as the exception the user explicitly asks for.**
 
-**Why:** On 2026-04-08 the user burned through a Max 20x quota in 5 days, losing 2 days of access. The single biggest avoidable driver was that the session ran on Opus the entire time while doing mechanical work (bash file splits, prettier runs, git plumbing, file moves, memory writes, slash command rewrites, hook edits). R-503 in `~/.claude/CLAUDE.md` was clear about using Sonnet for medium and mechanical tasks, but the rule was honor-system on both sides: the Max 20x launch default is Opus (so the session came up on Opus), and Claude did not proactively surface the mismatch when the work drifted into Sonnet-level territory. Both sides failed.
+**Why:** On 2026-04-08 the user burned through a Max 20x quota in 5 days, losing 2 days of access. The single biggest avoidable driver was that the session ran on Opus the entire time while doing mechanical work (bash file splits, prettier runs, git plumbing, file moves, memory writes, slash command rewrites, hook edits). R-903 in `~/.claude/CLAUDE.md` was clear about using Sonnet for medium and mechanical tasks, but the rule was honor-system on both sides: the Max 20x launch default is Opus (so the session came up on Opus), and Claude did not proactively surface the mismatch when the work drifted into Sonnet-level territory. Both sides failed.
 
 **How to apply (user side):**
 

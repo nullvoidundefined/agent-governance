@@ -13,13 +13,13 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 
 1. Clone this repo to `~/.claude` (the hooks and `settings.json` reference `~/.claude/...` paths, so the location matters).
 2. Reinstall plugins: they are managed by Claude Code and reinstalled from `settings.json` (`enabledPlugins`); the `plugins/` directory is gitignored.
-3. Start a Claude Code session. The SessionStart hooks load the global memory index and warn on a `core.hooksPath` that points outside the repo (R-109).
+3. Start a Claude Code session. The SessionStart hooks load the global memory index and warn on a `core.hooksPath` that points outside the repo (R-107).
 
 ## What does not ship (gitignored) and must be recreated
 
 | Path | What it is | On a fresh install |
 |---|---|---|
-| `.env`, `.env.*` | Secrets (API keys, notify config) | Recreate by hand; never commit (R-101) |
+| `.env`, `.env.*` | Secrets (API keys, notify config) | Recreate by hand; never commit (R-102) |
 | `settings.local.json` | Machine-specific permissions/overrides | Recreate as needed |
 | `KNOWN-ISSUES.md` | Production incident log | Copy from `KNOWN-ISSUES.template.md`, then populate |
 | `projects/` | Per-project session memory | Auto-created per project; starts empty |

@@ -22,21 +22,21 @@ app/
 ├── core/                      # config, logging, security primitives
 │   ├── config.py              # pydantic-settings Settings
 │   └── logging.py
-├── db/                        # engine + session (below repositories; neither service nor client, per R-220)
+├── db/                        # engine + session (below repositories; neither service nor client, per R-306)
 │   ├── engine.py
 │   └── session.py
 ├── routers/                   # HTTP routers (thin; validate, delegate, respond)
 │   └── jobs.py
-├── services/                  # business logic operating on inputs (R-220)
+├── services/                  # business logic operating on inputs (R-306)
 │   └── jobs/
-├── clients/                   # stateful wrappers around external SDKs/services (R-220)
+├── clients/                   # stateful wrappers around external SDKs/services (R-306)
 │   └── stripe.py
 ├── repositories/              # data access; all SQL lives here
 │   └── jobs.py
 ├── schemas/                   # Pydantic request/response models (the validation edge)
 │   └── jobs.py
 └── migrations/                # Alembic env + versions/
-tests/                         # pytest, mirrors app/ layout (R-221: tests/ not co-located)
+tests/                         # pytest, mirrors app/ layout (R-313: tests/ not co-located)
 ```
 
 ## Layer Responsibilities
@@ -48,17 +48,17 @@ tests/                         # pytest, mirrors app/ layout (R-221: tests/ not 
 | **Repositories** | Run parameterized SQL / SQLAlchemy queries, return typed results | Know about HTTP, validate input |
 | **Clients** | Wrap one external provider's SDK or connection | Hold domain/business logic |
 
-Dependencies flow one direction (R-224): `routers -> services -> repositories -> db`, and `services -> clients`. Lower layers never import higher. No circular imports. Never skip layers in a way that inverts the flow.
+Dependencies flow one direction (R-303): `routers -> services -> repositories -> db`, and `services -> clients`. Lower layers never import higher. No circular imports. Never skip layers in a way that inverts the flow.
 
 ## Module and Symbol Naming
 
-- Files and modules: `snake_case.py`, named for their single responsibility (R-217, R-226). Predict contents from the name.
+- Files and modules: `snake_case.py`, named for their single responsibility (R-315, R-318). Predict contents from the name.
 - Functions: verb-noun, `snake_case`: `fetch_user`, `build_resume`, `score_match`. No single-word names.
 - Booleans: `is_`/`has_`/`should_` prefix: `is_enabled`, `has_access`, `should_retry`.
-- Constants: module-level `UPPER_SNAKE` (the analog of TS `ALL_CAPS`); a single-use literal stays beside its consumer (R-219).
+- Constants: module-level `UPPER_SNAKE` (the analog of TS `ALL_CAPS`); a single-use literal stays beside its consumer (R-324).
 - Classes: `PascalCase`.
 
-## File Layout (analog of R-218 [ts])
+## File Layout (analog of R-321 [ts])
 
 Order top to bottom, separated by one blank line:
 
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 ```
 
-Never read `os.environ` directly in business code; inject `Settings`. Secrets stay off-path (R-101); never log a settings value.
+Never read `os.environ` directly in business code; inject `Settings`. Secrets stay off-path (R-102); never log a settings value.
 
 ## Router Pattern
 
@@ -116,7 +116,7 @@ Routers are thin: validate via the typed signature and Pydantic, delegate to a s
 
 ## Validation (Pydantic) (analog of Zod-at-handler)
 
-Validate at the router edge, never in the repository. Request bodies are Pydantic models; responses declare `response_model`. One negative-input test per input handler (R-208): oversized payload, injection attempt, malformed encoding.
+Validate at the router edge, never in the repository. Request bodies are Pydantic models; responses declare `response_model`. One negative-input test per input handler (R-406): oversized payload, injection attempt, malformed encoding.
 
 ## Repository Pattern
 
@@ -132,15 +132,15 @@ All SQL/SQLAlchemy lives in repositories. Parameterized only (never f-string SQL
 
 ## Database Session
 
-One `async_sessionmaker`. Provide the session and repositories via FastAPI `Depends`. The engine/session module sits below repositories in its own `db/` tree (R-220): it is neither a service nor a client.
+One `async_sessionmaker`. Provide the session and repositories via FastAPI `Depends`. The engine/session module sits below repositories in its own `db/` tree (R-306): it is neither a service nor a client.
 
-## Migrations (Alembic) (analog of R-214 [ts])
+## Migrations (Alembic) (analog of R-328 [ts])
 
 - Constant default: a plain string, SQLAlchemy quotes it. `Column(..., server_default="active")`.
 - SQL expression default: wrap in `sa.text(...)`. `server_default=sa.text("now()")`, `server_default=sa.text("gen_random_uuid()")`.
 - Never nest quotes (`server_default="'active'"` is wrong unless you genuinely need the quotes in the stored value).
 - One logical change per migration; comment cross-table dependencies.
-- Risky/large changes (column drops, type changes, backfills) follow the same staged approach as the TS track: additive migration, backfill, switch, cleanup; never a destructive one-shot against production (R-110).
+- Risky/large changes (column drops, type changes, backfills) follow the same staged approach as the TS track: additive migration, backfill, switch, cleanup; never a destructive one-shot against production (R-101).
 
 ## Error Handling
 
@@ -148,21 +148,21 @@ Register exception handlers on the app. Map domain errors to status codes centra
 
 ## Logging
 
-Structured logging (structlog or stdlib `logging` with a JSON formatter). No secrets or PII in logs (R-101, R-104). One logger per module via `logging.getLogger(__name__)`.
+Structured logging (structlog or stdlib `logging` with a JSON formatter). No secrets or PII in logs (R-102, R-104). One logger per module via `logging.getLogger(__name__)`.
 
-## Testing (pytest) (R-200 in Python form)
+## Testing (pytest) (R-401 in Python form)
 
 - Tests must fail when the implementation is wrong. Assert behavior and returned values, not mock-call counts.
 - Integration tests hit a real database (a disposable test DB), not a mocked session. Never mock the thing under test (a repository test that mocks the session is invalid, the analog of mocking the pool).
 - LLM consumers include one fixture test against a real captured response.
-- `pytest-asyncio` for async paths. Fixtures in `conftest.py`; test files in `tests/` mirroring `app/` (R-221), never co-located.
-- No `@pytest.mark.skip` to suppress a failing test; a test that cannot pass is deleted and re-added when the capability exists (R-200 item 9).
+- `pytest-asyncio` for async paths. Fixtures in `conftest.py`; test files in `tests/` mirroring `app/` (R-313), never co-located.
+- No `@pytest.mark.skip` to suppress a failing test; a test that cannot pass is deleted and re-added when the capability exists (R-401 item 9).
 
 ## Tooling (analog of Prettier/ESLint)
 
-- `ruff` for lint and import sorting, `black` for formatting, `mypy --strict` for types. Pre-commit runs these on staged files only (R-206); full sweep in pre-push/CI (R-507).
-- Trust the pre-commit hooks; do not manually re-run what they already run (R-508).
+- `ruff` for lint and import sorting, `black` for formatting, `mypy --strict` for types. Pre-commit runs these on staged files only (R-408); full sweep in pre-push/CI (R-509).
+- Trust the pre-commit hooks; do not manually re-run what they already run (R-510).
 
-## Build/Run Assets (analog of R-205 [ts])
+## Build/Run Assets (analog of R-407 [ts])
 
 Python ships source, not a `dist/` bundle. Runtime-loaded non-code assets (SQL, prompt markdown, JSON) ship as package data (declared in `pyproject.toml`); add a smoke test asserting each required asset resolves at runtime via `importlib.resources`. Assert the package contains no `.env*` or secret files.

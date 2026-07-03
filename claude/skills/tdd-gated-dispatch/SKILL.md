@@ -83,7 +83,7 @@ The dispatch prompt includes five elements:
 2. **Test file paths** (what must pass)
 3. **Baseline numbers** (what must not regress)
 4. **Definition of done** (mechanical, not subjective)
-5. **Worktree and branch setup** (per R-303)
+5. **Worktree and branch setup** (per R-702)
 
 ### Phase 3: Validate on Return
 

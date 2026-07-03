@@ -2,13 +2,13 @@
 /**
  * clean-code-scan.mjs -- best-effort detector for over-long function bodies.
  *
- * Backs R-227 (functions read as composition, not procedure). Given a source
+ * Backs R-322 (functions read as composition, not procedure). Given a source
  * file path, prints a one-line summary of functions whose body exceeds the
  * line ceiling so the PostToolUse hook can surface a non-blocking reminder.
  * The analysis is heuristic by design: brace-depth for the C family,
  * indentation for Python, with strings and comments blanked first so their
  * contents never skew brace counting. It deliberately errs toward silence
- * (prints nothing on any parse trouble) because R-227 is a smell, not a hard
+ * (prints nothing on any parse trouble) because R-322 is a smell, not a hard
  * fail -- a false positive that blocked work would contradict the rule.
  */
 import { readFileSync } from 'node:fs';

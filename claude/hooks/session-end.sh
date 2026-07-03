@@ -2,11 +2,11 @@
 # session-end.sh
 #
 # SessionEnd hook for Claude Code. Scans per-project feedback memory
-# files for lines starting with `fired:` or `miss:` (the R-305 prefix
+# files for lines starting with `fired:` or `miss:` (the R-603 prefix
 # convention) and routes new entries into ~/.claude/global-memory/
 # rule_fires.md or rule_misses.md respectively.
 #
-# Why this exists: R-305 in ~/.claude/CLAUDE.md says every session ends
+# Why this exists: R-603 in ~/.claude/CLAUDE.md says every session ends
 # by routing what it learned to the surface that will use it next. The
 # fire and miss logs are what closes the loop between work performed,
 # mistakes made, and successes logged. Without this hook, the routing
@@ -48,10 +48,10 @@ touch "$FIRES_LOG" "$MISSES_LOG"
 
 # Initialize header if the file is empty (first run).
 if [ ! -s "$FIRES_LOG" ]; then
-  printf '# Rule fires log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-305.\nFormat: YYYY-MM-DD R-NNN <context>\n\n' > "$FIRES_LOG"
+  printf '# Rule fires log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-603.\nFormat: YYYY-MM-DD R-NNN <context>\n\n' > "$FIRES_LOG"
 fi
 if [ ! -s "$MISSES_LOG" ]; then
-  printf '# Rule misses log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-305.\nFormat: YYYY-MM-DD R-NNN MISS <context>; gap: <what the rule would need to catch this>\n\n' > "$MISSES_LOG"
+  printf '# Rule misses log\n\nAppend-only. Written by ~/.claude/hooks/session-end.sh per R-603.\nFormat: YYYY-MM-DD R-NNN MISS <context>; gap: <what the rule would need to catch this>\n\n' > "$MISSES_LOG"
 fi
 
 # Nothing to scan if there are no project memory directories yet.
@@ -93,7 +93,7 @@ find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_D
   done
 done
 
-# Velocity metrics (R-302)
+# Velocity metrics (R-602)
 # Compute session commit stats and write to a temp file.
 # The handoff doc author reads this file for the "Session metrics" section.
 

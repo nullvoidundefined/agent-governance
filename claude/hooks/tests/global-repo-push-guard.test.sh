@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Test harness for global-repo-push-guard.sh (backs R-108).
+# Test harness for global-repo-push-guard.sh (backs R-106).
 #
-# R-108: before pushing the public ~/.claude repo, verify the outgoing
+# R-106: before pushing the public ~/.claude repo, verify the outgoing
 # diff carries no secrets and no local filesystem paths. This hook gates
 # `git push` when (and only when) the repo root is ~/.claude, scanning
 # `git diff origin/main` for known secret patterns and for THIS machine's

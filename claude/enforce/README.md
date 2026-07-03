@@ -11,17 +11,17 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 `manifest.json` is the single source of enforcement *mapping*. Rule *text* stays in `CLAUDE.md` and is never duplicated here. Each entry:
 
 ```json
-{ "id": "R-231", "tier": "ast", "enforcer": "eslint:sort-keys", "severity": "error", "autofix": true }
+{ "id": "R-323", "tier": "ast", "enforcer": "eslint:sort-keys", "severity": "error", "autofix": true }
 ```
 
 ## Tiers
 
 | Tier | Enforced by | When | Examples |
 |------|-------------|------|----------|
-| `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) | R-237, R-220 |
-| `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-231, R-218, R-235, R-215, R-224 |
-| `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-217, R-232, R-233, R-227, R-226, R-228, R-230 |
-| `advisory` | a non-blocking warning (reminder or push-time stderr) | per edit or per push | R-241, R-223 |
+| `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) | R-312, R-306 |
+| `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-323, R-321, R-319, R-326, R-303 |
+| `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-315, R-316, R-317, R-322, R-318, R-325, R-320 |
+| `advisory` | a non-blocking warning (reminder or push-time stderr) | per edit or per push | R-310, R-309 |
 
 Per-edit checks must stay cheap (no Node, no network). All heavy work (ESLint, the model call) runs once per push.
 
@@ -32,14 +32,14 @@ Some rules are repo-specific. A repo may place an optional `.enforce.json` at it
 ```json
 {
   "importZones": [
-    { "target": "src/services", "from": "src/handlers", "message": "services must not import handlers (R-224)" }
+    { "target": "src/services", "from": "src/handlers", "message": "services must not import handlers (R-303)" }
   ],
   "singleFileFolderExemptions": ["src/services/auth", "src/services/email"]
 }
 ```
 
-- `importZones` (R-224): drives ESLint `import/no-restricted-paths`. Files under `target` may not import from `from`. Paths are relative to the repo root. With no zones, import-direction is not enforced.
-- `singleFileFolderExemptions` (R-223): folders that are allowed to hold a single source module (e.g. the portfolio project's intentional single-file service folders, which override R-223 by project convention).
+- `importZones` (R-303): drives ESLint `import/no-restricted-paths`. Files under `target` may not import from `from`. Paths are relative to the repo root. With no zones, import-direction is not enforced.
+- `singleFileFolderExemptions` (R-309): folders that are allowed to hold a single source module (e.g. the portfolio project's intentional single-file service folders, which override R-309 by project convention).
 
 ## Push gate scope
 

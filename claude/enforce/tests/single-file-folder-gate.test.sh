@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies single-file-folder-gate warns (advisory, stderr) when a changed source folder holds
-# exactly one source module (R-223), and that .enforce.json exemptions suppress the warning.
+# exactly one source module (R-309), and that .enforce.json exemptions suppress the warning.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/single-file-folder-gate.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'

@@ -88,7 +88,7 @@ Commit-subject conventions:
 
 ### Layer 4: Audits (antagonistic self-evaluation)
 
-Autonomous advisor roles, each with its own canonical file at `~/.claude/audits/<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-402).
+Autonomous advisor roles, each with its own canonical file at `~/.claude/audits/<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-803).
 
 **Standing roles:**
 
@@ -96,7 +96,7 @@ Autonomous advisor roles, each with its own canonical file at `~/.claude/audits/
 - **Security (CISO)**: breach, data loss, auth bypasses, prompt injection, dependency CVEs, credential leakage.
 - **Criticism (Devil's Advocate)**: fatal strategic flaws, unsustainable unit economics, organizational self-deception, moat delusion.
 
-**On-request roles** (fire only on their matching signal, R-402):
+**On-request roles** (fire only on their matching signal, R-803):
 
 - **UX (CXO)**: broken flows, accessibility violations, unconfirmed destructive actions, untested user stories, cognitive load.
 - **Design (CDO)**: style drift, brand erosion, design-system violations, visual inconsistency.
@@ -109,7 +109,7 @@ Each role is an intelligent autonomous agent with documented advisory autonomy (
 
 Audit history is dated: `docs/audits/YYYY-MM-DD-<role>.md`, never overwritten. Every audit run produces new dated files alongside the old ones so history is preserved. Findings are triaged by severity (P0 / P1 / P2 / P3) and effort (S / M / L). P0 and P1 findings are fixed in the current effort (test-first). P2 and P3 findings are logged to `ISSUES.md` or `TODO_BEFORE_LAUNCH.md` as rolling logs.
 
-Audits run on signal, not on a fixed cadence (R-400, R-402). Pre-launch runs the three standing roles. A specific risk signal runs the matching role only. 5-plus commits on a single surface runs Engineering only, scoped to that surface. On-request roles fire only when their specific signal is present. There are no reactive multi-role sweeps; a reactive full sweep is the single most expensive action the harness can take. Verify the signal condition before running any audit (R-502).
+Audits run on signal, not on a fixed cadence (R-801, R-803). Pre-launch runs the three standing roles. A specific risk signal runs the matching role only. 5-plus commits on a single surface runs Engineering only, scoped to that surface. On-request roles fire only when their specific signal is present. There are no reactive multi-role sweeps; a reactive full sweep is the single most expensive action the harness can take. Verify the signal condition before running any audit (R-904).
 
 ### Layer 5: Tests (earned confidence, not claimed)
 
@@ -119,7 +119,7 @@ Test discipline is exhaustive because test theater is the class of failure most 
 - **Concrete-value tests for business logic.** Any function computing a price, credit cost, token estimate, margin, or business-visible number must have at least one unit test with a mechanical `expect(fn(concreteInput)).toBe(concreteExpectedValue)` assertion plus a comment explaining the rationale.
 - **30-minute rule.** If two `fix:` commits touch the same file within 30 minutes, stop. The original fix did not understand the full scope. Write a reproducing test before the third attempt.
 - **No confidence theater.** Nine anti-patterns are banned: self-mock (mocking the module under test), mocking the dependency that IS the thing being tested, mock-call assertions without behavior assertions, snapshot-only tests with no behavioral assertion, mocking the integration boundary the test claims to cross, tautological assertions, loose-shape assertions as the sole assertion, suppressed or skipped tests (now banned outright, see next item), always-failing tests that persist across sessions.
-- **No suppressed tests.** `test.fixme`, `test.skip`, `it.skip`, `xit`, and `xtest` are banned outright (R-216). A test that cannot pass is deleted, not deferred, and re-added when the underlying capability exists. This supersedes the earlier allowance for skipped tests carrying a context comment and triage ID.
+- **No suppressed tests.** `test.fixme`, `test.skip`, `it.skip`, `xit`, and `xtest` are banned outright (R-401 Spec item 9; introduced as legacy R-216). A test that cannot pass is deleted, not deferred, and re-added when the underlying capability exists. This supersedes the earlier allowance for skipped tests carrying a context comment and triage ID.
 - **LLM output tests cannot mock the SDK as their sole coverage.** Every LLM consumer (parser, validator, formatter) must have at least one test using a real captured model response committed as a fixture, not a hand-written mock shaped like the expected output.
 - **User story ↔ E2E coverage.** Every documented user story must have at least one E2E test. Target 100% coverage.
 - **Mocked vs real API split.** E2E tests mock outbound third-party APIs deterministically. A separate small "real-API smoke" suite hits the real endpoints nightly, gated behind an env flag, to prove live wiring still works without burning quota in the fast local loop.
@@ -134,10 +134,10 @@ Hooks are mechanical enforcement that runs before Claude's behavioral rules have
 - **Pre-commit hook (lefthook)**: runs format-check and lint on staged files only.
 - **Pre-push hook**: runs format + lint + build + test on the full repo. This is the last local gate before code leaves the machine.
 - **Commit-msg hook (fix-commit-gate)**: enforces the rule that `fix:` commits include at least one test file. Commits that violate this rule are blocked with an explanation.
-- **PreToolUse em-dash block** (`no-em-dash.sh`): blocks any tool call that would write a U+2014 em dash (R-001), the single most recognizable AI writing tell.
-- **PostToolUse output redaction** (`redact-output.sh`): redacts tokens, keys, cookies to `[REDACTED]` and PII to `[PII]` in tool output before it reaches the transcript (R-101, R-104).
-- **Conflict-marker block** (`conflict-markers.sh`): blocks commits containing unresolved merge-conflict markers (R-211).
-- **Migration-defaults guard** (`migration-defaults-guard.sh`): enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-214).
+- **PreToolUse em-dash block** (`no-em-dash.sh`): blocks any tool call that would write a U+2014 em dash (R-207), the single most recognizable AI writing tell.
+- **PostToolUse output redaction** (`redact-output.sh`): redacts tokens, keys, cookies to `[REDACTED]` and PII to `[PII]` in tool output before it reaches the transcript (R-102, R-104).
+- **Conflict-marker block** (`conflict-markers.sh`): blocks commits containing unresolved merge-conflict markers (R-507).
+- **Migration-defaults guard** (`migration-defaults-guard.sh`): enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-328).
 - **Destructive-DB guard** (`destructive-db-guard.sh`): PreToolUse deny/ask on destructive and remote-write database operations. See Layer 11.
 
 Hooks are non-negotiable without explicit user override. The Bash secret-scan hook specifically exists because a behavioral rule ("never put secrets on command lines") was insufficient to prevent a plaintext Anthropic production API key from landing in shell history, tool-call transcripts, and argv space. A behavioral rule that fails silently is worse than a mechanical gate that fails loudly.
@@ -207,7 +207,7 @@ The history must stay honest so forensic reports are possible:
 
 ### Layer 11: Destructive-action guards (data-loss prevention)
 
-The newest failure class: irreversible production data loss, distinct from secret leakage (Layer 9). Destructive database operations against production (`DROP DATABASE` / `DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `pg_restore`, `migrate:down`) are hard-blocked at the tool-call layer by `destructive-db-guard.sh` (PreToolUse): Claude cannot run them, no confirmation is offered, a human must perform them manually. The same operations against staging or other remote databases, and any write (`UPDATE` / `INSERT` / `ALTER` / `CREATE`) against a managed or remote database, require explicit per-turn user confirmation. Local databases are exempt. Tests, builds, and scripts that internally wipe data are never run against a non-local `DATABASE_URL`. Codified as R-110. Like the secret-scan hook (Layer 6 / Layer 9), this layer exists because a behavioral rule against destructive operations fails silently under pressure; a mechanical PreToolUse deny cannot fail the same way.
+The newest failure class: irreversible production data loss, distinct from secret leakage (Layer 9). Destructive database operations against production (`DROP DATABASE` / `DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `pg_restore`, `migrate:down`) are hard-blocked at the tool-call layer by `destructive-db-guard.sh` (PreToolUse): Claude cannot run them, no confirmation is offered, a human must perform them manually. The same operations against staging or other remote databases, and any write (`UPDATE` / `INSERT` / `ALTER` / `CREATE`) against a managed or remote database, require explicit per-turn user confirmation. Local databases are exempt. Tests, builds, and scripts that internally wipe data are never run against a non-local `DATABASE_URL`. Codified as R-101. Like the secret-scan hook (Layer 6 / Layer 9), this layer exists because a behavioral rule against destructive operations fails silently under pressure; a mechanical PreToolUse deny cannot fail the same way.
 
 ### Layer 12 (and beyond)
 
@@ -255,11 +255,11 @@ Every single addition was traceable to a specific failure. None of the layers we
 
 This revision reconciled the protocol with rule changes that had landed in `~/.claude/CLAUDE.md` and its Tier-2 files since the 2026-04-08 stamp:
 
-- **Layer 11 added: destructive-action guards** (data-loss prevention), codified as R-110 and enforced by `destructive-db-guard.sh`. Irreversible production data loss is the eleventh failure class; production destructive DB operations are now hard-blocked at the tool layer.
-- **Layer 4 audit model rewritten.** The eight-role, cadence-driven model (biweekly / monthly sweeps, full eight-role pre-launch sweep) was replaced by signal-driven audits with three standing roles (Engineering, Security, Criticism) and on-request roles (UX, Design, Marketing, Financial, Legal, Customer) per R-400 and R-402. A ninth role, Customer, was added.
-- **Layer 5 gained the suppressed-test ban** (R-216): `test.fixme` / `skip` / `it.skip` / `xit` / `xtest` are banned outright, superseding the earlier skip-with-comment allowance.
+- **Layer 11 added: destructive-action guards** (data-loss prevention), codified as R-101 and enforced by `destructive-db-guard.sh`. Irreversible production data loss is the eleventh failure class; production destructive DB operations are now hard-blocked at the tool layer.
+- **Layer 4 audit model rewritten.** The eight-role, cadence-driven model (biweekly / monthly sweeps, full eight-role pre-launch sweep) was replaced by signal-driven audits with three standing roles (Engineering, Security, Criticism) and on-request roles (UX, Design, Marketing, Financial, Legal, Customer) per R-801 and R-803. A ninth role, Customer, was added.
+- **Layer 5 gained the suppressed-test ban** (now R-401 Spec item 9; introduced as legacy R-216): `test.fixme` / `skip` / `it.skip` / `xit` / `xtest` are banned outright, superseding the earlier skip-with-comment allowance.
 - **Layer 6 hook inventory refreshed** to include the em-dash block, PostToolUse output redaction, conflict-marker block, migration-defaults guard, and the destructive-DB guard.
-- **Layer 8 handoff cap corrected** from 8KB to 4KB to match R-302.
+- **Layer 8 handoff cap corrected** from 8KB to 4KB to match R-602.
 
 ## The principle
 
@@ -268,3 +268,60 @@ The operating protocol is not a rulebook. It is a failure-mode catalog. The goal
 The original development strategy, "give Claude a task, let it run unsupervised," was not wrong because Claude is untrustworthy. It was wrong because no system of any kind, human or machine, can produce consistent results without a layered safety structure around it. Every profession with high stakes (aviation, medicine, nuclear operations) has exactly this shape: a set of interlocking checks where each layer assumes the others will catch what it cannot. The protocol above is that structure, adapted to the specific failure modes Claude Code has demonstrated.
 
 The protocol will keep growing. Every new layer earned its place the hard way.
+
+## Appendix A: Rule origins
+
+Rationale and incident history removed from rule text during the 2026-07-03 restructure. Rules state norms; this appendix states why they exist. New IDs, old IDs in parentheses.
+
+- **R-102 (old R-101):** The redaction hook must fail loud because a session that runs without it leaks raw secrets into the transcript.
+- **R-106 (old R-108):** The `~/.claude` remote is public, so every push is publishing.
+- **R-204 (old R-010):** Added after repeated expedient patches masked root causes; a patch that masks a symptom reads as a fix but re-fails later.
+- **R-207 (old R-001):** The em dash is the single most recognizable AI writing tell; the user treats any em dash as a violation of trust.
+- **R-310 (old R-241):** The 20-module threshold came from over-flat directories becoming unnavigable; the hook fires non-blocking when a new module pushes its directory past 20.
+- **R-322 (old R-227):** The clean-code reminder surfaces long functions as candidates only: a long orchestrator is fine, a long atomic function is not.
+- **R-401 (old R-200):** Each listed anti-pattern was observed in real committed tests before being banned.
+- **R-516 (old R-518):** Rule enforcement is mechanical and manifest-driven, not recall-based; behavioral rules fail silently under pressure, so mechanizable rules migrate down to hooks.
+- **Ordering convention:** "Document order is by importance, not by ID" was the pre-2026-07-03 convention, abolished by the century-block renumber. Inline tombstones were the retirement record before Appendix B took that over.
+
+## Appendix B: Legacy ID alias table
+
+Historical documents, memory tags, and audit reports written before 2026-07-03 cite the old scheme. Translate via this table.
+
+| Old | New | | Old | New | | Old | New |
+|---|---|---|---|---|---|---|---|
+| R-001 | R-207 | | R-211 | R-507 | | R-303 | R-702 |
+| R-002 | R-201 | | R-212 | R-512 | | R-304 | R-703 |
+| R-003 | R-202 | | R-213 | R-511 | | R-305 | R-603 |
+| R-004 | R-402 | | R-214 | R-328 | | R-400 | R-801 |
+| R-005 | R-203 | | R-215 | R-326 | | R-401 | R-802 |
+| R-006 | R-404 | | R-216 | retired | | R-402 | R-803 |
+| R-007 | R-002 | | R-217 | R-315 | | R-403 | R-804 |
+| R-008 | R-208 | | R-218 | R-321 | | R-500 | R-901 |
+| R-009 | R-209 | | R-219 | R-324 | | R-501 | R-704 |
+| R-010 | R-204 | | R-220 | R-306 | | R-502 | R-904 |
+| R-101 | R-102 | | R-221 | R-313 | | R-503 | R-903 |
+| R-102 | R-701 | | R-222 | R-307 | | R-504 | R-905 |
+| R-103 | R-604 | | R-223 | R-309 | | R-505 | R-501 |
+| R-104 | R-104 | | R-224 | R-303 | | R-506 | R-902 |
+| R-105 | retired | | R-225 | R-302 | | R-507 | R-509 |
+| R-106 | R-105 | | R-226 | R-318 | | R-508 | R-510 |
+| R-107 | R-805 | | R-227 | R-322 | | R-509 | R-502 |
+| R-108 | R-106 | | R-228 | R-325 | | R-510 | R-506 |
+| R-109 | R-107 | | R-229 | R-311 | | R-511 | R-705 |
+| R-110 | R-101 | | R-230 | R-320 | | R-512 | R-206 |
+| R-111 | R-103 | | R-231 | R-323 | | R-513 | R-205 |
+| R-200 | R-401 | | R-232 | R-316 | | R-514 | R-706 |
+| R-201 | R-403 | | R-233 | R-317 | | R-515 | R-513 |
+| R-202 | R-405 | | R-234 | R-308 | | R-516 | R-514 |
+| R-204 | R-505 | | R-235 | R-319 | | R-517 | R-515 |
+| R-205 | R-407 | | R-236 | R-301 | | R-518 | R-516 |
+| R-206 | R-408 | | R-237 | R-312 | | R-519 | R-503 |
+| R-207 | R-409 | | R-238 | R-304 | | R-600 | R-906 |
+| R-208 | R-406 | | R-239 | R-314 | | | |
+| R-209 | R-504 | | R-240 | R-305 | | | |
+| R-210 | R-508 | | R-241 | R-310 | | | |
+| | | | R-242 | R-327 | | R-300 | R-001 |
+| | | | | | | R-301 | R-601 |
+| | | | | | | R-302 | R-602 |
+
+Retired: R-105 (retired 2026-06-07; successor content old R-514 = new R-706), R-216 (retired 2026-06-07; folded into old R-200 item 9 = new R-401 Spec item 9).

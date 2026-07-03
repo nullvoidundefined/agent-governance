@@ -3,11 +3,11 @@
 #
 # PreToolUse hook for Claude Code. Blocks any Write, Edit, or Bash tool
 # call whose content contains the em dash character (U+2014). Enforces
-# R-001 in ~/.claude/CLAUDE.md.
+# R-207 in ~/.claude/CLAUDE.md.
 #
 # Why this exists: the em dash is the single most recognizable AI writing
 # tell. The user requires clean, AI-tell-free output and considers any em
-# dash a violation of trust. R-001 is honor-system without a hook; this hook
+# dash a violation of trust. R-207 is honor-system without a hook; this hook
 # converts it into mechanical enforcement at the tool-call layer.
 #
 # How it works: Claude Code feeds hook stdin as JSON with shape
@@ -24,7 +24,7 @@
 #
 # No match: script emits nothing and exits 0 (tool proceeds as normal).
 # Match: script emits hookSpecificOutput with permissionDecision=deny
-# and a permissionDecisionReason explaining R-001, then exits 0.
+# and a permissionDecisionReason explaining R-207, then exits 0.
 #
 # To test manually (printf generates the U+2014 byte sequence so this
 # file stays em-dash-free and can itself be checked by the hook):
@@ -75,7 +75,7 @@ if printf '%s' "$CONTENT" | grep -q $'\xe2\x80\x94'; then
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: ("no-em-dash hook BLOCKED this " + $tool + " call: the content contains the em dash character (U+2014). Rule R-001 in ~/.claude/CLAUDE.md forbids the em dash in any output: responses, code, comments, commit messages, markdown, prompts to subagents, test fixtures, audit reports. The em dash is the single most recognizable AI writing tell and the user considers any em dash a violation of trust. Substitute one of: period (new sentence), comma (joined clauses), semicolon (related independent clauses), colon (intro plus list), parentheses (asides), or line break. En dashes (U+2013) and hyphens (U+002D) are fine and welcome. Before retrying the tool call, scan your content once for U+2014 and apply the substitution.")
+      permissionDecisionReason: ("no-em-dash hook BLOCKED this " + $tool + " call: the content contains the em dash character (U+2014). Rule R-207 in ~/.claude/CLAUDE.md forbids the em dash in any output: responses, code, comments, commit messages, markdown, prompts to subagents, test fixtures, audit reports. The em dash is the single most recognizable AI writing tell and the user considers any em dash a violation of trust. Substitute one of: period (new sentence), comma (joined clauses), semicolon (related independent clauses), colon (intro plus list), parentheses (asides), or line break. En dashes (U+2013) and hyphens (U+002D) are fine and welcome. Before retrying the tool call, scan your content once for U+2014 and apply the substitution.")
     }
   }'
 fi

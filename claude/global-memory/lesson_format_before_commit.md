@@ -14,4 +14,4 @@ type: feedback
 - Specifically for generated files: bash heredocs and `printf` output often have subtle formatting prettier disagrees with (list separators, blank lines, trailing whitespace). Assume prettier will touch it and pre-run.
 - This pairs with the em-dash pre-scan (see lesson_prescan_writes_for_em_dashes.md): scan for em dashes, then format, then commit. Two checks upfront beat two hook failure cycles.
 
-**Related:** R-005 (stay inside the safety harness). Running the harness tools yourself first means the harness never has to fire.
+**Related:** R-203 (stay inside the safety harness). Running the harness tools yourself first means the harness never has to fire.

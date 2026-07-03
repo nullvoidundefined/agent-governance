@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Test harness for hookspath-drift-check.sh (backs R-109).
+# Test harness for hookspath-drift-check.sh (backs R-107).
 #
-# R-109: a git core.hooksPath that points outside the repo tree is a
+# R-107: a git core.hooksPath that points outside the repo tree is a
 # supply-chain signal. This SessionStart hook emits an additionalContext
 # warning (never blocks) when the current repo's core.hooksPath resolves
 # outside the repo, and stays silent when hooksPath is unset, points

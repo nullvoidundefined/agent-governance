@@ -1,5 +1,5 @@
 /**
- * Custom ESLint rule enforcing R-235: at most one exported symbol per module.
+ * Custom ESLint rule enforcing R-319: at most one exported symbol per module.
  * Counts individual exported symbols (including multi-declarator const statements
  * and multi-specifier re-exports) so that `export const a = 1, b = 2` is treated
  * as two exports rather than one export node.
@@ -20,14 +20,14 @@ function countNamedExportSymbols(node) {
 }
 
 export default {
-  meta: { type: "problem", docs: { description: "one exported function/const per file (R-235)" }, schema: [] },
+  meta: { type: "problem", docs: { description: "one exported function/const per file (R-319)" }, schema: [] },
   create(context) {
     let symbolCount = 0;
 
     function trackAndReport(node, delta) {
       symbolCount += delta;
       if (symbolCount > 1) {
-        context.report({ node, message: "More than one export (R-235): split into one file per exported symbol." });
+        context.report({ node, message: "More than one export (R-319): split into one file per exported symbol." });
       }
     }
 

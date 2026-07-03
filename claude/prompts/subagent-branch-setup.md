@@ -1,6 +1,6 @@
 # Subagent branch setup snippet
 
-**Purpose:** Reusable block to paste into any subagent dispatch prompt whose work involves git. Enforces R-303 in `~/.claude/CLAUDE.md` (lock the worktree before any `git add` or `git commit`).
+**Purpose:** Reusable block to paste into any subagent dispatch prompt whose work involves git. Enforces R-702 in `~/.claude/CLAUDE.md` (lock the worktree before any `git add` or `git commit`).
 
 **How to use:** When writing a dispatch prompt for a subagent that will run git commands, paste the block below near the top of the prompt, substituting `<ABSOLUTE_WORKTREE_PATH>` with the actual path and `<EXPECTED_BRANCH>` with the branch name the work should land on. Do not change the structure of the block; the branch-verification chain is what prevents cwd drift between sequential Bash calls.
 
@@ -42,7 +42,7 @@ cd <ABSOLUTE_WORKTREE_PATH> && \
 - Run `cd <path>` in one Bash call and `git commit` in a later one.
 - Skip the branch verification because "you already cd'd earlier."
 - Use relative paths inside the chain (they resolve against whatever cwd the shell started in).
-- Attempt to fix a wrong-branch commit by amending; use the cherry-pick-and-revert path instead (see R-303 for context).
+- Attempt to fix a wrong-branch commit by amending; use the cherry-pick-and-revert path instead (see R-702 for context).
 
 **Do:**
 

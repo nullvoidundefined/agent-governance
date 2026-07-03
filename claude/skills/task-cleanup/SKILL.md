@@ -95,7 +95,7 @@ All three must pass before any merge decision.
 ### If session is ending:
 
 **Session handoff:**
-Write `docs/session-handoff/session-handoff.md` per R-302:
+Write `docs/session-handoff/session-handoff.md` per R-602:
 1. Last commit SHA + subject
 2. Production state verified
 3. Session metrics (commits, files changed, rework count, velocity flag)

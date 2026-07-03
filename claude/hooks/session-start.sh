@@ -4,9 +4,9 @@
 # SessionStart hook for Claude Code. Emits the global memory INDEX and
 # any recent project handoff doc as additionalContext, so every session
 # begins with the cross-session and cross-project context already in
-# view. Enforces R-007 and R-300 in ~/.claude/CLAUDE.md.
+# view. Enforces R-002 and R-001 in ~/.claude/CLAUDE.md.
 #
-# Why this exists: R-007 and R-300 say every session starts by reading
+# Why this exists: R-002 and R-001 say every session starts by reading
 # global memory and the most recent handoff doc. Without a hook, the
 # rule is honor-system; sessions skip the read under pressure and
 # re-derive context from git log instead. This hook forces the read
@@ -38,7 +38,7 @@ RETIREMENT_CANDIDATES="$HOME/.claude/global-memory/retirement_candidates.md"
 CTX=""
 
 if [ -f "$GLOBAL_MEMORY_INDEX" ]; then
-  CTX+=$'## Global memory index (auto-loaded per R-007 / R-300)\n\n'
+  CTX+=$'## Global memory index (auto-loaded per R-002 / R-001)\n\n'
   CTX+="$(cat "$GLOBAL_MEMORY_INDEX")"
   CTX+=$'\n\n'
 fi
@@ -54,7 +54,7 @@ if [ -d "docs/audits" ]; then
 fi
 
 if [ -n "$HANDOFF" ] && [ -f "$HANDOFF" ]; then
-  CTX+=$'## Most recent handoff doc (auto-loaded per R-300)\n\nPath: '
+  CTX+=$'## Most recent handoff doc (auto-loaded per R-001)\n\nPath: '
   CTX+="$HANDOFF"
   CTX+=$'\n\n'
   # Cap at first 400 lines to avoid flooding the session start context.
@@ -68,7 +68,7 @@ if [ -f "$RETIREMENT_CANDIDATES" ] && [ -s "$RETIREMENT_CANDIDATES" ]; then
   CTX+=$'\n\n'
 fi
 
-# Capture HEAD SHA for velocity metrics (R-302).
+# Capture HEAD SHA for velocity metrics (R-602).
 # The session-end hook reads this to compute commit counts.
 if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
   git rev-parse HEAD 2>/dev/null > "${TMPDIR:-/tmp}/claude-session-start-sha" || true

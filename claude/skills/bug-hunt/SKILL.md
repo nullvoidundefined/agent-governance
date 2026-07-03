@@ -52,7 +52,7 @@ git diff HEAD~5 --stat  # what changed
 Files reviewed with no issues.
 ```
 
-6. **Fix or file.** For each finding, either fix it inline (with a test per R-201) or add it to `ISSUES.md` with the priority tag.
+6. **Fix or file.** For each finding, either fix it inline (with a test per R-403) or add it to `ISSUES.md` with the priority tag.
 
 ## Dispatch Pattern
 

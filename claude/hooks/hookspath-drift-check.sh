@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # hookspath-drift-check.sh
 #
-# SessionStart hook. Enforces R-109: a git core.hooksPath that points
+# SessionStart hook. Enforces R-107: a git core.hooksPath that points
 # outside the repo tree is a supply-chain signal (hooks could be sourced
 # from an attacker-controlled location). This hook WARNS via
 # additionalContext; it never blocks. The session continues either way,
@@ -44,7 +44,7 @@ done
 
 [ "$inside" = "no" ] || exit 0
 
-CTX="## Supply-chain warning (R-109)"$'\n\n'
+CTX="## Supply-chain warning (R-107)"$'\n\n'
 CTX+="git core.hooksPath in this repo is set to \`$HOOKS_PATH\`, which resolves OUTSIDE the repo tree (\`$ROOT_GIT\`). "
 CTX+="Git hooks would run from a location not tracked by this repository. Investigate before any commit: confirm the path is the expected lefthook location and was set intentionally, not injected."
 

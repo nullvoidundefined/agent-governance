@@ -29,7 +29,7 @@ The **plugins enabled in `settings.json`** are Anthropic-shipped through the off
 - `superpowers`: Layer 2 (Skills) is almost entirely this plugin. It provides `brainstorming` (HARD-GATE before code), `writing-plans`, `executing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`. The framing of "skills as capabilities not prose" comes from Superpowers.
 - `frontend-design`, `context7`, `code-review`, `code-simplifier`, `typescript-lsp`, `posthog`: other Anthropic-shipped plugins enabled in this configuration. Each contributes its own skills, agents, and behaviors.
 
-Everything **inside this tracked repo** is the maintainer's: the 8 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 27 global-memory files, the R-001..R-600 rule formalization in `CLAUDE.md`, the ten-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 8 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 27 global-memory files, the R-207..R-906 rule formalization in `CLAUDE.md`, the ten-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `audits/<role>.md`. The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
@@ -47,8 +47,8 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (8 scripts) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
-| 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-101..R-109 |
-| 10. Git hygiene | prose | History rewritten in ways that lose evidence; force-pushes to main; missing test pairs | `CLAUDE.md` R-200 family; commit conventions |
+| 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
+| 10. Git hygiene | prose | History rewritten in ways that lose evidence; force-pushes to main; missing test pairs | `CLAUDE.md` R-401 family; commit conventions |
 
 Each layer assumes the next will catch what it misses. The discipline is not "follow every rule"; the discipline is "add the next layer the next time a failure teaches you where one is missing."
 
@@ -115,11 +115,11 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 ## How a session uses this repo
 
 1. **Session start.** Claude Code loads `~/.claude/settings.json`, which wires the `SessionStart` hook. The hook reads `global-memory/INDEX.md`, finds the most recent `docs/audits/*session-handoff*.md` or dated audit under the current project, and emits both as additional context. The session begins with cross-project lessons and the previous session's handoff already in view.
-2. **Rules load.** `CLAUDE.md` is loaded into the session. Its non-negotiable rules (R-001 through R-007) are the happy path; the session stays on it unless a specific task calls for a rule from a deeper section.
+2. **Rules load.** `CLAUDE.md` is loaded into the session. Its non-negotiable rules (R-207 through R-002) are the happy path; the session stays on it unless a specific task calls for a rule from a deeper section.
 3. **Work happens.** Every tool call passes through the relevant `PreToolUse` hooks. Bash commands are scanned for secrets and em dashes before execution. Write and Edit calls are scanned for em dashes. `git commit -m "fix: ..."` calls are inspected to confirm a test file is staged.
 4. **Convention files read on demand.** When the task touches the backend, frontend, database, styling, or deployment layer, the corresponding `CLAUDE-*.md` file is read. These are not preloaded; they enter context only when needed.
 5. **Audits run on schedule or on signal.** The standing three roles (Engineering, Security, Criticism) run pre-launch or when a specific risk signal surfaces. The five on-request roles run only when a specific situation calls for that lens.
-6. **Session end.** The `SessionEnd` hook scans per-project feedback memory files for the `fired: R-NNN` and `miss: R-NNN` prefix convention from R-305 and appends dated entries to `global-memory/rule_fires.md` / `rule_misses.md`. The session writes a handoff doc to `docs/audits/YYYY-MM-DD-session-handoff.md` if outstanding work remains.
+6. **Session end.** The `SessionEnd` hook scans per-project feedback memory files for the `fired: R-NNN` and `miss: R-NNN` prefix convention from R-603 and appends dated entries to `global-memory/rule_fires.md` / `rule_misses.md`. The session writes a handoff doc to `docs/audits/YYYY-MM-DD-session-handoff.md` if outstanding work remains.
 
 ## The self-reinforcement loop
 
@@ -178,7 +178,7 @@ This repo is installed at `~/.claude/` and tracked by git. To bootstrap:
 3. Verify `jq` is available (`brew install jq` on macOS); the hooks depend on it.
 4. Verify `settings.json` hook paths resolve on your system. The hooks use `~/.claude/hooks/...` which assumes the repo is at `~/.claude/`.
 5. Run a dry test: start a Claude Code session in any directory and confirm the `SessionStart` hook emits the global memory INDEX as additional context. Try a Write call containing U+2014 and confirm it blocks. Try `git commit -m "fix: test"` with no staged test file and confirm it blocks.
-6. Customize `CLAUDE.md` R-600 (estimation calibration) and `global-memory/user_profile.md` to reflect your own pace and preferences.
+6. Customize `CLAUDE.md` R-906 (estimation calibration) and `global-memory/user_profile.md` to reflect your own pace and preferences.
 
 The runtime directories (`sessions/`, `cache/`, `history.jsonl`, `paste-cache/`, `shell-snapshots/`) are gitignored and populated by Claude Code as you work.
 

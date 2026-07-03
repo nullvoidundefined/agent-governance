@@ -6,7 +6,7 @@
  * error-level rule is violated; exits 0 when clean.
  *
  * When the repo root contains a .enforce.json with an importZones array, the
- * import/no-restricted-paths rule is activated for those zones (R-224). The
+ * import/no-restricted-paths rule is activated for those zones (R-303). The
  * node resolver with .ts/.tsx extensions resolves TypeScript imports that
  * omit the file extension (e.g. "../handlers/authHandler" -> authHandler.ts).
  */
@@ -21,7 +21,7 @@ const files = process.argv.slice(2).map((arg) => resolve(arg));
 
 if (files.length === 0) process.exit(0);
 
-// Read per-repo import zones from .enforce.json (R-224); absent or malformed -> no zones.
+// Read per-repo import zones from .enforce.json (R-303); absent or malformed -> no zones.
 const repoRoot = process.cwd();
 let importZones = [];
 try {

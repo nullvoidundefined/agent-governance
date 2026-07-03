@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # migration-defaults-guard.sh
 #
-# PreToolUse hook. Enforces R-214 for files under a /migrations/ path.
+# PreToolUse hook. Enforces R-328 for files under a /migrations/ path.
 # Denies the two unambiguous migration-default anti-patterns:
 #   1. Nested quotes:        default: "'active'"   (double-wrapped literal)
 #   2. Bare-string SQL call: default: 'now()'      (must be pgm.func(...))
@@ -45,7 +45,7 @@ if printf '%s' "$CONTENT" | grep -qE "$NESTED_RE" \
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: "migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-214. Use a bare string for a constant (default: '\''active'\'') and pgm.func() for a SQL expression (default: pgm.func('\''now()'\'')). Never nest quotes (default: \"'\''active'\''\" is wrong) and never pass a SQL call as a bare string (default: '\''now()'\'' is wrong). Fix the default and retry."
+      permissionDecisionReason: "migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328. Use a bare string for a constant (default: '\''active'\'') and pgm.func() for a SQL expression (default: pgm.func('\''now()'\'')). Never nest quotes (default: \"'\''active'\''\" is wrong) and never pass a SQL call as a bare string (default: '\''now()'\'' is wrong). Fix the default and retry."
     }
   }'
 fi
