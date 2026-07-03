@@ -11,7 +11,7 @@ model: sonnet
 
 **Canonical role definition.** Referenced by `~/.claude/CLAUDE.md` and by project-level audit slash-commands (`.claude/commands/audit-ux.md`). Applies to all projects unless a project-level override explicitly supersedes a section.
 
-## Finding and fix discipline (R-403)
+## Finding and fix discipline (R-804)
 
 Findings are the deliverable; proposed fixes are unverified hypotheses the user verifies before applying.
 

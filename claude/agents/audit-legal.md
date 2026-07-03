@@ -11,7 +11,7 @@ model: sonnet
 
 **Preferred model: Sonnet.** Compliance document checks (TOS, Privacy, DPAs), unsubstantiated claim scans, and regulatory-action risk are rubric-driven. Sonnet handles them well. Step up to Opus only if a novel regulatory question is in play (a new jurisdiction, a new law, a genuinely ambiguous compliance interpretation).
 
-## Finding and fix discipline (R-403)
+## Finding and fix discipline (R-804)
 
 Findings are the deliverable; proposed fixes are unverified hypotheses the user verifies before applying.
 

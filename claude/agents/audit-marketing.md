@@ -11,7 +11,7 @@ model: sonnet
 
 **Preferred model: Sonnet.** Positioning, conversion copy review, banned-word scans, and trust-signal checks are well-scoped rubric work. Sonnet handles them well. Do not default to Opus.
 
-## Finding and fix discipline (R-403)
+## Finding and fix discipline (R-804)
 
 Findings are the deliverable; proposed fixes are unverified hypotheses the user verifies before applying.
 
