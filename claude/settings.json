@@ -114,6 +114,15 @@
             "command": "~/.claude/hooks/clean-code-reminder.sh"
           }
         ]
+      },
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/task-commit-reminder.sh"
+          }
+        ]
       }
     ],
     "SessionStart": [

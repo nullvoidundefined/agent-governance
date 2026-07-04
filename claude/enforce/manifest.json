@@ -36,6 +36,7 @@
     { "id": "R-325", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-320", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-505", "tier": "regex", "enforcer": "hook:commit-message-guard", "severity": "error", "autofix": false },
+    { "id": "R-504", "tier": "advisory", "enforcer": "hook:task-commit-reminder", "severity": "warn", "autofix": false },
     { "id": "R-513", "tier": "advisory", "enforcer": "hook:constant-change-guard", "severity": "warn", "autofix": false },
     { "id": "R-801", "tier": "advisory", "enforcer": "hook:audit-signal-check", "severity": "warn", "autofix": false },
     { "id": "R-904", "tier": "advisory", "enforcer": "hook:audit-signal-check", "severity": "warn", "autofix": false },

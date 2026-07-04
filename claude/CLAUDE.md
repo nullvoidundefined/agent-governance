@@ -356,7 +356,7 @@ R-503: Announce each task's percentage share of total work and capture a start t
 
 R-504: Commit after every discrete task; a `TaskUpdate` to `completed` triggers an immediate commit.
   Scope: exception: conflicting same-file edits may combine with both task IDs.
-  Enforcement: manual
+  Enforcement: hook:task-commit-reminder (advisory)
 
 R-505: Write conventional commit subjects, one commit per triage ID.
   Spec:
