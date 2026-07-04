@@ -37,7 +37,7 @@ The framework files (`CLAUDE.md`, `PROTOCOL.md`, rules, hooks, agents, skills, c
 
 Two convention tracks load on demand by detected stack (see `rules/session-types.md`):
 
-- **TypeScript/Node** (`package.json`): `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`. The `[ts]`-tagged rules in `CLAUDE.md` apply here.
+- **TypeScript/Node** (`package.json`): `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md` per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`. The `[ts]`-tagged rules in `CLAUDE.md` apply here.
 - **Python** (`pyproject.toml` / `requirements.txt` / `setup.py`): `CLAUDE-PYTHON.md`.
 
 Universal rules in `CLAUDE.md` (untagged) apply to every stack.

@@ -57,7 +57,7 @@ Read every engineering surface:
 - CI / CD configuration, GitHub Actions workflows, deployment configuration (`Dockerfile`, `railway.toml`, `vercel.json`, etc.)
 - Dependency manifests, lockfiles, outdated packages, known CVEs
 - Observability setup (Sentry, logs, metrics, health endpoints)
-- Convention files at `~/.claude/CLAUDE-BACKEND.md`, `~/.claude/CLAUDE-DATABASE.md`, `~/.claude/CLAUDE-FRONTEND.md`, `~/.claude/CLOUD-DEPLOYMENT.md`, `~/.claude/KNOWN-ISSUES.md`
+- Convention files at `~/.claude/CLAUDE-BACKEND.md`, `~/.claude/CLAUDE-DATABASE.md`, `~/.claude/CLAUDE-FRONTEND.md`, `~/.claude/CLAUDE-FRONTEND-NEXT.md`, `~/.claude/CLAUDE-FRONTEND-VITE.md`, `~/.claude/CLOUD-DEPLOYMENT.md`, `~/.claude/KNOWN-ISSUES.md`
 - The project's own `CLAUDE.md`, `docs/FULL_APPLICATION_SPEC.md`, and `docs/USER_STORIES.md` if they exist
 
 ## Required sections in the audit report

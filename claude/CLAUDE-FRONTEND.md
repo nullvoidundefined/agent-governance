@@ -1,12 +1,22 @@
 # Frontend Conventions
 
-These rules apply to all `web-client/` and frontend packages across every app in this portfolio.
+These rules apply to all web-client and frontend packages across every app in this portfolio. This file holds everything framework-agnostic; structure, routing, entry files, and env vars live in the framework files below.
+
+---
+
+## Framework Files
+
+Detect the framework from the project root and read the matching file alongside this one:
+
+| Marker | Framework | Read |
+|--------|-----------|------|
+| `next` in `package.json` dependencies | Next.js (App Router) | `~/.claude/CLAUDE-FRONTEND-NEXT.md` |
+| `vite.config.ts` in project root | Vite (React SPA + TanStack Router) | `~/.claude/CLAUDE-FRONTEND-VITE.md` |
 
 ---
 
 ## Framework & Stack
 
-- **Next.js 15** with App Router (`src/app/`)
 - **React 19** with functional components only; no class components
 - **TypeScript**; strict mode, no `any`
 - **SCSS Modules** for all component styling (see `CLAUDE-STYLING.md`)
@@ -15,63 +25,49 @@ These rules apply to all `web-client/` and frontend packages across every app in
 
 ---
 
-## Directory Structure
+## Directory Vocabulary
+
+Shared across frameworks (R-305). The routing directory and entry files are framework-specific; see the framework file.
 
 ```
 src/
-├── app/                          # Next.js App Router pages
-│   ├── layout.tsx                # Root layout (metadata, fonts, providers)
-│   ├── page.tsx                  # Landing / index page
-│   ├── globals.scss              # CSS custom properties, resets, base styles
-│   ├── (auth)/                   # Route group for auth pages
-│   │   ├── login/page.tsx
-│   │   ├── register/page.tsx
-│   │   └── auth.module.scss      # Shared auth styles
-│   └── (protected)/              # Route group for authed pages
-│       ├── layout.tsx            # Auth-guarded layout
-│       └── dashboard/page.tsx
-├── components/                   # Shared UI components
-│   ├── Header/
-│   │   ├── Header.tsx
-│   │   └── Header.module.scss
-│   ├── Footer/
-│   │   ├── Footer.tsx
-│   │   └── Footer.module.scss
-│   └── Toast/
-│       ├── Toast.tsx
-│       └── Toast.module.scss
-├── hooks/                        # Custom React hooks
-│   └── useAuth.ts
-├── lib/                          # Utilities and API client
-│   ├── api.ts                    # Fetch wrapper (typed, credentials, error handling)
-│   └── queryClient.ts            # TanStack Query client config
-└── types/                        # Shared TypeScript types (frontend-only)
-    └── index.ts
+├── components/               # Shared UI components, one folder per component
+│   └── Header/
+│       ├── Header.tsx
+│       └── Header.module.scss
+├── features/                 # Feature slices, one folder per feature
+├── api/                      # Own-backend fetch wrappers and transport
+├── clients/                  # Third-party SDK wrappers, one module per provider
+├── services/                 # Domain logic operating on inputs
+├── state/                    # Stores, hooks, context providers
+├── config/                   # queryClient.ts, env parsing, framework config
+├── constants/
+├── data/                     # Static reference data
+├── styles/                   # Design tokens, shared SCSS partials
+└── types/                    # Shared TypeScript types (frontend-only)
 ```
 
 ### Rules
 
 - Each component gets its own folder: `ComponentName/ComponentName.tsx` + `ComponentName.module.scss`
-- Pages live in `src/app/` following Next.js App Router conventions
-- Route groups use parentheses: `(auth)`, `(protected)`
-- Hooks go in `src/hooks/`, utilities in `src/lib/`
+- Hooks live in `state/`; never a separate `hooks/` directory
+- Never `lib/`, `utils/`, `helpers/`, or other catch-alls (R-306); classify into `api/`, `clients/`, `services/`, or `state/`
+- Directories appear only when occupied (R-309); the vocabulary is fixed, not mandatory on day one
 - No `index.ts` barrel files; import directly from the file
 
 ---
 
 ## File Naming
 
+Framework-specific rows (pages, layouts, routes, global styles) live in the framework file.
+
 | What | Convention | Example |
 |------|-----------|---------|
 | Components | `PascalCase.tsx` | `ChatBox.tsx`, `Header.tsx` |
 | SCSS modules | `PascalCase.module.scss` | `ChatBox.module.scss` |
-| Pages | `page.tsx` (Next.js convention) | `app/dashboard/page.tsx` |
-| Layouts | `layout.tsx` | `app/(protected)/layout.tsx` |
-| Hooks | `camelCase.ts` | `useAuth.ts`, `useToast.ts` |
-| Utilities | `camelCase.ts` | `api.ts`, `queryClient.ts` |
-| Types | `camelCase.ts` | `index.ts` |
-| Global styles | `globals.scss` | `app/globals.scss` |
-| Route-level styles | `camelCase.module.scss` | `tripDetail.module.scss` |
+| Hooks | `camelCase.ts`, `use` prefix | `useAuth.ts`, `useToast.ts` |
+| Services / api / config modules | `camelCase.ts`, named per R-315 | `fetchTrips.ts`, `queryClient.ts` |
+| Types | `camelCase.ts` | `trip.ts` |
 
 ---
 
@@ -80,21 +76,18 @@ src/
 ### File Structure (top to bottom)
 
 ```typescript
-'use client';                                      // 1. Directive (if needed)
+import { useState, useCallback } from 'react';      // 1. React imports
+import type { FormEvent } from 'react';             //    Type-only imports use `type`
+import { useQuery } from '@tanstack/react-query';   //    Third-party imports
+import { fetchMessages } from '@/api/fetchMessages'; //   Local imports (@ alias)
+import styles from './ChatBox.module.scss';          //   SCSS module import (always last)
 
-import { useState, useCallback } from 'react';     // 2. React imports
-import type { FormEvent } from 'react';            //    Type-only imports use `type`
-import Link from 'next/link';                      //    Next.js imports
-import { useQuery } from '@tanstack/react-query';  //    Third-party imports
-import { api } from '@/lib/api';                   //    Local imports (@ alias)
-import styles from './ChatBox.module.scss';         //    SCSS module import (always last)
-
-interface ChatBoxProps {                             // 3. Props interface
+interface ChatBoxProps {                             // 2. Props interface
     tripId: string;
     onSend: (message: string) => void;
 }
 
-export default function ChatBox({ tripId, onSend }: ChatBoxProps) {  // 4. Component
+export default function ChatBox({ tripId, onSend }: ChatBoxProps) {  // 3. Component
     const [input, setInput] = useState('');
 
     const handleSubmit = useCallback(async (e: FormEvent) => {
@@ -102,7 +95,7 @@ export default function ChatBox({ tripId, onSend }: ChatBoxProps) {  // 4. Compo
         // ...
     }, []);
 
-    return (                                        // 5. JSX
+    return (                                         // 4. JSX
         <div className={styles.chatBox}>
             {/* ... */}
         </div>
@@ -113,13 +106,13 @@ export default function ChatBox({ tripId, onSend }: ChatBoxProps) {  // 4. Compo
 ### Rules
 
 - **Default exports** for all components and pages
-- **Named exports** for hooks and utilities
+- **Named exports** for hooks and services
 - **Props interfaces** named `{ComponentName}Props`, defined above the component
-- **`'use client'`** directive on every interactive component (has state, handlers, effects)
 - **`useCallback`** for event handlers and async functions passed as props
 - **Destructure props** in the function signature
 - **No inline styles**; use SCSS modules for all styling (see `CLAUDE-STYLING.md`)
 - **No React.FC**; use plain function declarations with typed props
+- Framework directives (`'use client'`) per the framework file
 
 ---
 
@@ -128,20 +121,18 @@ export default function ChatBox({ tripId, onSend }: ChatBoxProps) {  // 4. Compo
 Imports are grouped with blank lines between groups, in this order:
 
 ```typescript
-// 1. React / Next.js
+// 1. React / framework imports (framework file names the framework's packages)
 import { useState, useEffect } from 'react';
-import type { Metadata } from 'next';
-import Link from 'next/link';
 
 // 2. Third-party packages
 import { useQuery, useMutation } from '@tanstack/react-query';
 
 // 3. Local imports (@ alias paths)
-import { api } from '@/lib/api';
-import type { Trip } from '@/types';
+import { fetchTrips } from '@/api/fetchTrips';
+import type { Trip } from '@/types/trip';
 
-// 4. Relative imports (sibling components, utils)
-import { formatDate } from './utils';
+// 4. Relative imports (sibling components, helpers)
+import { formatDate } from './formatDate';
 
 // 5. Style imports (always last)
 import styles from './Component.module.scss';
@@ -167,7 +158,7 @@ import styles from './Component.module.scss';
 ## State Management
 
 - **TanStack Query** for all server state (fetching, caching, mutations)
-- **React Context** for auth state and app-wide concerns
+- **React Context** for auth state and app-wide concerns; providers live in `state/`
 - **`useState`** for local UI state (form inputs, modals, toggles)
 - **`useCallback`** for memoizing handlers
 - **`useRef`** for DOM refs and stable references (EventSource, timers)
@@ -177,22 +168,26 @@ import styles from './Component.module.scss';
 
 ## API Calls
 
-All API calls go through a typed fetch wrapper in `src/lib/api.ts`:
+The `api/` tree holds one transport module plus one module per backend route (R-306/R-319):
 
 ```typescript
-export const api = {
-    get: <T>(path: string) => apiFetch<T>(path),
-    post: <T>(path: string, json: unknown) => apiFetch<T>(path, { method: 'POST', json }),
-    patch: <T>(path: string, json: unknown) => apiFetch<T>(path, { method: 'PATCH', json }),
-    del: (path: string) => apiFetch(path, { method: 'DELETE' }),
-};
+// api/apiFetch.ts: the single typed transport wrapper
+export async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> {
+    // base URL, credentials, CSRF header, error handling
+}
+
+// api/fetchTrips.ts: one exported fetch function per backend route
+export function fetchTrips(): Promise<Trip[]> {
+    return apiFetch<Trip[]>('/api/trips');
+}
 ```
 
-- Base URL from `NEXT_PUBLIC_API_URL` env var
+- Base URL from the framework's env var (see framework file); components never read env directly
 - `credentials: 'include'` on every request
 - `X-Requested-With: XMLHttpRequest` header for CSRF
 - Errors throw with the server's error message
 - Components use TanStack Query hooks, not direct api calls in effects
+- TanStack Query client config lives in `config/queryClient.ts`
 
 ---
 
@@ -202,23 +197,6 @@ export const api = {
 - **Inline errors** only for form validation (field-level messages)
 - TanStack Query `onError` callbacks route to toast
 - Never show stack traces to the user
-
----
-
-## Next.js Patterns
-
-- App Router only; no Pages Router
-- `layout.tsx` for root layout (metadata, fonts, global providers)
-- Route groups `(auth)`, `(protected)` for shared layouts
-- `loading.tsx` and `error.tsx` boundary files where appropriate
-- Metadata exported from server components:
-  ```typescript
-  export const metadata: Metadata = {
-      title: 'App Name',
-      description: 'Description here',
-  };
-  ```
-- Font system via `next/font/google` with CSS variable injection
 
 ---
 

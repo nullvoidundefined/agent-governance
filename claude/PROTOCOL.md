@@ -67,7 +67,7 @@ Rules are layered at three scopes:
 - **Project category**: `~/Desktop/code/personal/.claude/CLAUDE.md` and similar. Applies to a group of related projects.
 - **Project-specific**: `<project>/CLAUDE.md`. Applies to one repo.
 
-Convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`, `CLOUD-DEPLOYMENT.md`, `KNOWN-ISSUES.md`) are read on demand when the task touches that layer, never preloaded. This keeps context lean and forces Claude to consult conventions deliberately rather than passively.
+Convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-FRONTEND-NEXT.md`, `CLAUDE-FRONTEND-VITE.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`, `CLOUD-DEPLOYMENT.md`, `KNOWN-ISSUES.md`) are read on demand when the task touches that layer, never preloaded. This keeps context lean and forces Claude to consult conventions deliberately rather than passively.
 
 Output hygiene rules (universal):
 
