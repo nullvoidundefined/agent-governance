@@ -184,14 +184,14 @@ R-312: Name multi-word directories camelCase in every source tree (`userPreferen
 
 R-313: Place test files in a conventional sibling test directory, never co-located beside their source file.
   Spec: `__tests__/` per source directory in TypeScript, `tests/` in Python.
-  Enforcement: manual
+  Enforcement: hook:structure-gate
 
 R-314 [ts]: Keep one top-level `__tests__/` tree per package's `src/`, mirroring the source layout.
   Scope: extends R-313.
   Spec:
   - `src/handlers/auth.ts` -> `src/__tests__/handlers/auth.test.ts`; integration tests in `src/__tests__/integration/`; shared helpers in `src/__tests__/helpers/`; captured fixtures in a sibling `src/__fixtures__/`.
   - Banned: per-directory `__tests__/`, `test/`, `tests/`, `test-fixtures/`, `__integration__/`, `utils/tests/`.
-  Enforcement: manual
+  Enforcement: hook:structure-gate (placement); manual (tree mirroring)
 
 R-315: Name files for their specific responsibility, not the shortest available label; a reader must be able to predict the contents without opening the file.
   Scope: new files, and renaming vague existing ones on sight; extends R-316's verb-noun naming to filenames.

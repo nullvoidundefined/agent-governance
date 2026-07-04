@@ -20,4 +20,11 @@ deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/mw/auth.ts"}}'     
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/cfg/index.ts"}}'                 # abbreviated (R-311)
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/database/pool.ts"}}'            # full word ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/dependencyInjection/container.ts"}}'  # full word ok
+# R-313/R-314 test placement
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/auth.test.ts"}}'            # co-located (R-313)
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/services/test_match.py"}}'           # co-located python (R-313)
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/__tests__/auth.test.ts"}}'  # per-dir nest (R-314)
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/__tests__/handlers/auth.test.ts"}}' # top-level tree ok
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/e2e/login.spec.ts"}}'                   # e2e specs ok
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/tests/test_auth.py"}}'                  # python tests/ ok
 echo "structure-gate.test.sh PASS"
