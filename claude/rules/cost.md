@@ -22,7 +22,7 @@ R-903: Route work to the cheapest capable model.
   Enforcement: manual
 
 R-904: Verify the signal condition (R-801) before running any audit.
-  Enforcement: manual
+  Enforcement: hook:audit-signal-check (advisory; surfaces the commit-count signal at push time); manual for verification before dispatch
 
 R-905: Hold retrospectives only after real incidents (recovery > 30 min or a pattern repeated across commits); normal sessions get handoff docs.
   Enforcement: manual

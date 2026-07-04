@@ -6,7 +6,7 @@ R-801: Run audits on signal only.
   - Specific risk signal: the matching role only.
   - 5+ commits on a surface: Engineering only, on that surface.
   - No full three-role sweeps reactively.
-  Enforcement: manual
+  Enforcement: hook:audit-signal-check (advisory; detects the 5+ commits signal at push time); manual for pre-launch and risk-signal triggers
 
 R-802: Have audit roles declare P0-P3 findings independently and never act on them directly.
   Spec:

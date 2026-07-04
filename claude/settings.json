@@ -48,6 +48,10 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/audit-signal-check.sh"
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/llm-rule-judge.sh"
           },
           {
