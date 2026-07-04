@@ -2,7 +2,7 @@
  * Bundled enforcement ESLint flat config for the global rule system.
  * Loaded by lint.mjs and invoked by push-eslint-gate.sh to check outgoing diffs
  * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319,
- * R-326, R-327, R-324, and R-303 when a repo opts in via .enforce.json).
+ * R-326, R-327, R-324, R-329, and R-303 when a repo opts in via .enforce.json).
  */
 import tseslint from "typescript-eslint";
 import importPlugin from "eslint-plugin-import";
@@ -25,7 +25,14 @@ export default tseslint.config({
   settings: { "import/internal-regex": "^@/" },
   rules: {
     "sort-keys": ["error", "asc", { natural: true, minKeys: 2 }],
+    // R-329: @ts-expect-error self-invalidates when the underlying error is
+    // fixed, so it stays legal with a description; blind suppressions do not.
+    "@typescript-eslint/ban-ts-comment": [
+      "error",
+      { "ts-check": false, "ts-expect-error": "allow-with-description", "ts-ignore": true, "ts-nocheck": true },
+    ],
     "@typescript-eslint/member-ordering": "error",
+    "@typescript-eslint/no-explicit-any": "error",
     "import/order": [
       "error",
       {

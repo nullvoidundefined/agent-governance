@@ -56,4 +56,20 @@ printf 'import { E } from "docx";\n\nimport { A } from "@/data/thing";\n\nimport
 run "$TMP/import-order-ok.ts" || { echo "FAIL: expected external -> alias -> relative import order to pass"; exit 1; }
 printf 'import { E } from "docx";\n\nimport { S } from "./sibling";\n\nimport { A } from "@/data/thing";\n' > "$TMP/import-order-bad.ts"
 run "$TMP/import-order-bad.ts" && { echo "FAIL: expected relative-before-alias import order to be flagged"; exit 1; } || true
+# R-329 no-explicit-any: any annotations and as-any assertions are flagged;
+# unknown with narrowing passes.
+printf 'export const x: any = JSON.parse("1");\n' > "$TMP/any-annotation.ts"
+run "$TMP/any-annotation.ts" && { echo "FAIL: expected no-explicit-any violation for annotation"; exit 1; } || true
+printf 'declare const raw: unknown;\nexport const y = raw as any;\n' > "$TMP/any-assertion.ts"
+run "$TMP/any-assertion.ts" && { echo "FAIL: expected no-explicit-any violation for as-any"; exit 1; } || true
+printf 'declare const raw: unknown;\nexport const z = typeof raw === "string" ? raw : "";\n' > "$TMP/unknown-narrowed.ts"
+run "$TMP/unknown-narrowed.ts" || { echo "FAIL: expected unknown-with-narrowing to pass"; exit 1; }
+# R-329 ban-ts-comment: @ts-ignore and @ts-nocheck are flagged; @ts-expect-error
+# with a description passes.
+printf '// @ts-ignore\nexport const a = 1;\n' > "$TMP/ts-ignore.ts"
+run "$TMP/ts-ignore.ts" && { echo "FAIL: expected ban-ts-comment violation for @ts-ignore"; exit 1; } || true
+printf '// @ts-nocheck\nexport const b = 1;\n' > "$TMP/ts-nocheck.ts"
+run "$TMP/ts-nocheck.ts" && { echo "FAIL: expected ban-ts-comment violation for @ts-nocheck"; exit 1; } || true
+printf '// @ts-expect-error vendor types lag the runtime shape\nexport const c = 1;\n' > "$TMP/ts-expect-error.ts"
+run "$TMP/ts-expect-error.ts" || { echo "FAIL: expected described @ts-expect-error to pass"; exit 1; }
 echo "eslint.test.sh PASS"

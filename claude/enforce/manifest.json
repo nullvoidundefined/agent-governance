@@ -7,6 +7,8 @@
     { "id": "R-327", "tier": "ast", "enforcer": "eslint:no-nested-ternary", "severity": "error", "autofix": false },
     { "id": "R-303", "tier": "ast", "enforcer": "eslint:no-restricted-paths", "severity": "error", "autofix": false, "note": "active only in repos declaring importZones in .enforce.json" },
     { "id": "R-324", "tier": "ast", "enforcer": "eslint:no-magic-numbers", "severity": "error", "autofix": false },
+    { "id": "R-329", "tier": "ast", "enforcer": "eslint:no-explicit-any", "severity": "error", "autofix": false },
+    { "id": "R-329", "tier": "ast", "enforcer": "eslint:ban-ts-comment", "severity": "error", "autofix": false },
     { "id": "R-101", "tier": "regex", "enforcer": "hook:destructive-db-guard", "severity": "error", "autofix": false },
     { "id": "R-102", "tier": "regex", "enforcer": "hook:secret-scan", "severity": "error", "autofix": false },
     { "id": "R-102", "tier": "regex", "enforcer": "hook:redact-output", "severity": "error", "autofix": false },

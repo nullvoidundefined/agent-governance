@@ -284,6 +284,12 @@ R-327 [ts]: Never nest ternaries; a conditional expression whose consequent or a
 R-328 [ts]: Write migration defaults as bare strings for constants (`default: 'active'`) and `pgm.func()` for SQL expressions; never nest quotes.
   Enforcement: hook:migration-defaults-guard
 
+R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-nocheck`; type the value, or use `unknown` and narrow explicitly.
+  Spec:
+  - Covers annotations, assertions (`as any`), and generic arguments.
+  - `@ts-expect-error` with a description is the only permitted suppression; it fails when the underlying error disappears.
+  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment
+
 ## Testing and quality (R-4xx)
 
 R-401: Write tests that fail when the implementation is wrong; prefer behavior assertions over mock-call counts.
