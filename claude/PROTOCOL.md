@@ -292,7 +292,7 @@ Historical documents, memory tags, and audit reports written before 2026-07-03 c
 | R-001 | R-207 | | R-211 | R-507 | | R-303 | R-702 |
 | R-002 | R-201 | | R-212 | R-512 | | R-304 | R-703 |
 | R-003 | R-202 | | R-213 | R-511 | | R-305 | R-603 |
-| R-004 | R-402 | | R-214 | R-328 | | R-400 | R-801 |
+| R-004 | R-403 | | R-214 | R-328 | | R-400 | R-801 |
 | R-005 | R-203 | | R-215 | R-326 | | R-401 | R-802 |
 | R-006 | R-404 | | R-216 | retired | | R-402 | R-803 |
 | R-007 | R-002 | | R-217 | R-315 | | R-403 | R-804 |
@@ -323,5 +323,7 @@ Historical documents, memory tags, and audit reports written before 2026-07-03 c
 | | | | R-242 | R-327 | | R-300 | R-001 |
 | | | | | | | R-301 | R-601 |
 | | | | | | | R-302 | R-602 |
+
+Retired current-scheme IDs: R-402 (2026-07-04) merged into R-403, which now carries the test-first requirement as step 1; old R-004 therefore maps to R-403.
 
 Retired: R-105 (retired 2026-06-07; successor content old R-514 = new R-706), R-216 (retired 2026-06-07; folded into old R-200 item 9 = new R-401 Spec item 9).

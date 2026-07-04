@@ -127,7 +127,7 @@ R-304: Use the fixed top-level vocabulary in the Express server's `src/`, one re
   Spec:
   - `config/`, `constants/`, `types/`, `schemas/`, `middleware/`, `routes/`, `handlers/`, `services/`, `repositories/`, `clients/`, `database/` (the pool and migration access, never `db/`), `dependencyInjection/` (the composition root, never `di/`), `prompts/`, `workers/`.
   - Additional top-level dirs only when named for a real domain responsibility (an agent system's `tools/`, static reference data in `data/`, custom error classes in `errors/`, cross-cutting reliability primitives in `resilience/`).
-  - Banned catch-alls: `lib/`, `utils/`, `helpers/`, `common/`, `core/`, `misc/`, `shared/` (contents move to `services/` or the correct tree per R-306).
+  - Banned catch-alls: the R-306 list; contents move to `services/` or the correct tree per R-306.
   Enforcement: manual
 
 R-305: Use the fixed vocabulary in the web client's `src/`.
@@ -137,7 +137,7 @@ R-305: Use the fixed vocabulary in the web client's `src/`.
   - No split `context/` plus `providers/`; context providers live in `state/`.
   Enforcement: manual
 
-R-306: Never create `lib/` or `utils/` directories; place function-only modules in `services/`, `clients/`, or `api/`.
+R-306: Never create catch-all directories (`lib/`, `utils/`, `helpers/`, `common/`, `core/`, `misc/`, `shared/`); place function-only modules in `services/`, `clients/`, or `api/`.
   Spec:
   - `services/` holds business logic that operates on inputs (`service` is the project term for helpers, utils, or lib), grouped by responsibility (`services/format/`, `services/jobs/`).
   - `clients/` holds stateful singletons wrapping a third-party SDK or external service (payment, email, analytics, error reporting, object storage, cache, queue, LLM provider), one module per provider; reserved for third-party providers only.
@@ -231,7 +231,7 @@ R-319: Export exactly one public function per module across the `services/`, `ap
   Enforcement: eslint:one-export-per-file
 
 R-320: Write a file-level header comment on every new source file stating what the module provides and why it exists.
-  Scope: TypeScript/JavaScript `/** */` block; Python module docstring. Skip for test files, `.d.ts` declarations, barrel files, single-constant files, and pure type re-exports. Overrides the default no-comments behavior for file-level headers.
+  Scope: TypeScript/JavaScript `/** */` block; Python module docstring. Skip for test files, `.d.ts` declarations, barrel files, single-constant files, and pure type re-exports. File-level headers are required even where comments are otherwise minimal.
   Enforcement: judge; hook:new-file-header-reminder (advisory)
 
 R-321 [ts]: Order TypeScript/JavaScript files top to bottom: imports, types, constants, primary export, helpers.
@@ -307,15 +307,12 @@ R-401: Write tests that fail when the implementation is wrong; prefer behavior a
     9. Persistently red tests: fix or delete. Never `test.fixme`/`test.skip`/`it.skip`/`xit`/`xtest` to suppress a failing test; a test that cannot pass is deleted, not deferred, and re-added when the capability exists.
   Enforcement: manual
 
-R-402: Fix bugs test-first.
-  Enforcement: hook:fix-commit-requires-test
-
-R-403: Follow the bug-fix path in order.
+R-403: Follow the bug-fix path in order; fix bugs test-first.
   Scope: exception for test-resistant failures (races, hardware, prod-only env): document, fix, manually verify, log a `tech-debt:` note.
   Spec:
   1. Write the failing test; confirm it FAILS.
   2. Apply the smallest root-cause fix; confirm the test PASSES.
-  3. Run full verification.
+  3. Run verification per R-509 scope: changed files at commit, full suite at pre-push.
   4. Commit test and fix together.
   5. Deploy.
   Enforcement: hook:fix-commit-requires-test
