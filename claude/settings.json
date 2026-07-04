@@ -65,6 +65,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "~/.claude/hooks/secret-scan.sh"
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/no-em-dash.sh"
           },
           {

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # secret-scan.sh
 #
-# PreToolUse hook for Claude Code Bash tool. Scans the command about to be
-# executed for plaintext secret patterns and blocks the call if any match.
+# PreToolUse hook for the Bash, Write, and Edit tools. Scans the command about
+# to be executed AND any file payload about to be written (.tool_input.content
+# for Write, .tool_input.new_string for Edit) for plaintext secret patterns,
+# and blocks the call if any match. Also blocks Write/Edit calls that target a
+# protected credential path directly (R-103), mirroring the Bash mutation guard.
 #
 # Why this exists: On 2026-04-08, a plaintext Anthropic production key was
 # passed on the command line via `railway variables --set ...`. The value
@@ -33,7 +36,11 @@
 set -euo pipefail
 
 INPUT=$(cat)
+TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+# Write/Edit payloads are a persistence-to-disk vector for the same secret
+# classes as argv, so the pattern scan covers all three fields (P1-1).
+SCAN_TEXT=$(printf '%s' "$INPUT" | jq -r '(.tool_input.command // "") + "\n" + (.tool_input.content // "") + "\n" + (.tool_input.new_string // "")')
 
 # Patterns use basic POSIX ERE (grep -E), no PCRE features.
 # Each subpattern requires enough trailing characters to exclude placeholders
@@ -61,12 +68,12 @@ PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
 PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 PATTERN+='|AIza[0-9A-Za-z_-]{35}'
 
-if printf '%s' "$CMD" | grep -qE "$PATTERN"; then
+if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: "secret-scan hook BLOCKED this command: it contains a string matching a known secret pattern (API key, webhook secret, AWS access key, SendGrid key, GitHub token, SSH private key, or similar). Never pass secrets as command-line arguments. The argv is persisted to shell history, Claude Code transcripts, the permission-prompt UI, and process argument space. Correct patterns: (1) set the value via the vendor dashboard yourself, no CLI involvement; (2) load the value from a file outside the repo via an env var that is resolved at execution time so the plaintext never appears in the command string; (3) use a stdin-fed CLI mode if the vendor supports it."
+      permissionDecisionReason: "secret-scan hook BLOCKED this tool call: the command or file payload contains a string matching a known secret pattern (API key, webhook secret, AWS access key, SendGrid key, GitHub token, SSH private key, or similar). Never pass secrets as command-line arguments. The argv is persisted to shell history, Claude Code transcripts, the permission-prompt UI, and process argument space. Correct patterns: (1) set the value via the vendor dashboard yourself, no CLI involvement; (2) load the value from a file outside the repo via an env var that is resolved at execution time so the plaintext never appears in the command string; (3) use a stdin-fed CLI mode if the vendor supports it."
     }
   }'
   exit 0
@@ -96,6 +103,29 @@ if printf '%s' "$SAFE_CMD" | grep -qE "$MUTATION" || printf '%s' "$SAFE_CMD" | g
       permissionDecisionReason: "secret-scan hook BLOCKED this command: it mutates a protected credential file (R-103). .env files, ~/.aws, ~/.ssh, ~/.gnupg, and gh hosts.yml are read-only; never create, overwrite, append to, move, or delete them. If a check needs an env-file fixture, write it to a uniquely named throwaway path under /tmp and clean that up instead. If the user explicitly directed this specific change, ask them to run the command themselves."
     }
   }'
+  exit 0
+fi
+
+# R-103 (Write/Edit surface): a Write or Edit targeting a protected credential
+# path is a mutation too; the Bash guard above only sees argv. /tmp fixture
+# paths stay exempt per the rule's Spec.
+if [ "$TOOL" = "Write" ] || [ "$TOOL" = "Edit" ]; then
+  FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
+  case "$FILE" in
+    /tmp/* | /private/tmp/*) ;;
+    *)
+      PROT_BASENAME='(^|/)\.env(\.[A-Za-z0-9_-]+)?$'
+      PROT_DIR='/\.(aws|ssh|gnupg)(/|$)|/\.config/gh/hosts\.yml$'
+      if printf '%s' "$FILE" | grep -qE "$PROT_BASENAME" || printf '%s' "$FILE" | grep -qE "$PROT_DIR"; then
+        jq -n '{
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: "secret-scan hook BLOCKED this file operation: it writes to a protected credential path (R-103). .env files, ~/.aws, ~/.ssh, ~/.gnupg, and gh hosts.yml are read-only; never create, overwrite, or edit them directly. If a check needs an env-file fixture, write it to a uniquely named throwaway path under /tmp and clean that up instead. If the user explicitly directed this specific change, ask them to apply it themselves."
+          }
+        }'
+      fi ;;
+  esac
 fi
 
 exit 0
