@@ -29,7 +29,7 @@ The **plugins enabled in `settings.json`** are Anthropic-shipped through the off
 - `superpowers`: Layer 2 (Skills) is almost entirely this plugin. It provides `brainstorming` (HARD-GATE before code), `writing-plans`, `executing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`. The framing of "skills as capabilities not prose" comes from Superpowers.
 - `frontend-design`, `context7`, `code-review`, `code-simplifier`, `typescript-lsp`, `posthog`: other Anthropic-shipped plugins enabled in this configuration. Each contributes its own skills, agents, and behaviors.
 
-Everything **inside this tracked repo** is the maintainer's: the 24 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 29 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 26 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 29 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `audits/<role>.md`. The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
@@ -44,7 +44,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 3. Rules | prose | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files |
 | 4. Audits | prose | Confidence theater, gaps invisible to the original author | `audits/` standing (Engineering, Security, Criticism) + `audits/on-request/` |
 | 5. Tests | prose | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke); this repo defines the discipline, not the runs |
-| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (24 scripts) |
+| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (26 scripts) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
 | 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
@@ -89,7 +89,8 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 │   ├── redact-output.sh             # PostToolUse Bash. Redacts secrets from output.
 │   ├── pre-compact.sh               # PreCompact. Injects critical rules into compaction.
 │   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc.
-│   └── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
+│   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
+│   └── ...                          # 18 more gates; each self-documenting in its header.
 ├── rules/                           # Tier-2 rule files loaded by session type.
 │   ├── session-types.md             # Session classification and tier-2 load map.
 │   ├── agents.md                    # Multi-agent dispatch rules.
@@ -217,4 +218,4 @@ MIT License. See [LICENSE](./LICENSE).
 
 ---
 
-*Last updated: 2026-05-27. Maintained by the `SessionStart` / `SessionEnd` hooks and by dated commits to `main`.*
+*Last updated: 2026-07-05. Maintained by the `SessionStart` / `SessionEnd` hooks and by dated commits to `main`.*
