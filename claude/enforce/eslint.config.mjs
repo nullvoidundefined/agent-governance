@@ -39,6 +39,18 @@ export default tseslint.config({
         alphabetize: { order: "asc" },
         groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
         "newlines-between": "always",
+        // R-804(b): projects using @trivago/prettier-plugin-sort-imports document
+        // react/next-first and app//@/ as separated internal groups; the gate
+        // accepts that documented layout instead of fighting pre-commit Prettier
+        // (reconciled 2026-07-06 when the voyager push deadlocked between hooks).
+        pathGroups: [
+          { pattern: "react", group: "external", position: "before" },
+          { pattern: "react-dom/**", group: "external", position: "before" },
+          { pattern: "next/**", group: "external", position: "before" },
+          { pattern: "app/**", group: "internal" },
+          { pattern: "@/**", group: "internal" },
+        ],
+        pathGroupsExcludedImportTypes: ["react", "react-dom", "next"],
       },
     ],
     "max-lines-per-function": ["warn", { max: 60, skipBlankLines: true, skipComments: true }],
@@ -83,6 +95,9 @@ export default tseslint.config({
   files: [
     "**/__tests__/**",
     "**/__fixtures__/**",
+    // Co-located test files (legacy layout in some packages) are tests too.
+    "**/*.test.ts",
+    "**/*.test.tsx",
     "**/__mocks__/**",
     "**/tests/**",
     "**/e2e/**",
