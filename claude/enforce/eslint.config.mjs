@@ -124,4 +124,23 @@ export default tseslint.config({
     "no-magic-numbers": "off",
     "sort-keys": "off",
   },
+}, {
+  // R-324/R-307: declarative modules legitimately hold literal numbers that
+  // are domain vocabulary, not runtime magic numbers, and cannot be replaced
+  // by named constants in place:
+  //   - type modules: numeric literal TYPE unions (price_level: 1 | 2 | 3 | 4,
+  //     an HTTP-status literal type); ESLint's ignoreNumericLiteralTypes only
+  //     covers standalone literal types, not union members.
+  //   - schema modules (R-304/R-305 name schemas/): Zod validators whose
+  //     bounds and literal unions (z.literal(4), .max(10)) ARE the declared
+  //     contract, self-documented by the schema.
+  // Runtime logic in services/handlers/etc. stays fully covered.
+  files: [
+    "**/types.ts",
+    "**/types/**/*.ts",
+    "**/schemas.ts",
+    "**/schemas/**/*.ts",
+    "**/*.d.ts",
+  ],
+  rules: { "no-magic-numbers": "off" },
 });

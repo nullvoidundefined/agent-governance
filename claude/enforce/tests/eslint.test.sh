@@ -49,6 +49,14 @@ printf 'declare function expectValue(n: number): void;\nexpectValue(4242);\n' > 
 run "$TMP/tests/magic.test.ts" || { echo "FAIL: expected tests/ file to be exempt from no-magic-numbers (R-324)"; exit 1; }
 printf 'declare function expectValue(n: number): void;\nexpectValue(4242);\n' > "$TMP/e2e/magic.spec.ts"
 run "$TMP/e2e/magic.spec.ts" || { echo "FAIL: expected e2e/ file to be exempt from no-magic-numbers (R-324)"; exit 1; }
+# Declarative modules (types/, schemas/) legitimately hold literal-type unions
+# and Zod validation literals; they are exempt from no-magic-numbers, while a
+# runtime literal in the same file's non-declarative sibling stays flagged.
+mkdir -p "$TMP/types" "$TMP/schemas"
+printf 'export type PriceLevel = 1 | 2 | 3 | 4;\n' > "$TMP/types/priceLevel.ts"
+run "$TMP/types/priceLevel.ts" || { echo "FAIL: expected types/ literal-type union to be exempt from no-magic-numbers (R-324/R-307)"; exit 1; }
+printf 'declare const z: { literal: (n: number) => unknown; union: (a: unknown[]) => unknown };\nexport const priceLevelSchema = z.union([z.literal(2), z.literal(3), z.literal(4)]);\n' > "$TMP/schemas/priceLevel.ts"
+run "$TMP/schemas/priceLevel.ts" || { echo "FAIL: expected schemas/ validation literals to be exempt from no-magic-numbers (R-324/R-304)"; exit 1; }
 # import/order: "@/..." aliases are internal (import/internal-regex), so the
 # prettier importOrder sequence external -> @/ alias -> relative must pass and
 # the reverse (relative before alias) must fail.
