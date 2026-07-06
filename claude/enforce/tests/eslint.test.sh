@@ -56,6 +56,11 @@ printf 'import { E } from "docx";\n\nimport { A } from "@/data/thing";\n\nimport
 run "$TMP/import-order-ok.ts" || { echo "FAIL: expected external -> alias -> relative import order to pass"; exit 1; }
 printf 'import { E } from "docx";\n\nimport { S } from "./sibling";\n\nimport { A } from "@/data/thing";\n' > "$TMP/import-order-bad.ts"
 run "$TMP/import-order-bad.ts" && { echo "FAIL: expected relative-before-alias import order to be flagged"; exit 1; } || true
+# Prettier's @trivago layout keeps a "next" type import adjacent to and before
+# its "next/link" subpath with no blank line; the gate must accept that instead
+# of demanding "next/link" first (the deadlock the pathGroups reconcile).
+printf 'import type { Metadata } from "next";\nimport Link from "next/link";\n\nimport { A } from "@/data/thing";\n\nimport S from "./sibling";\n' > "$TMP/import-order-next-type.ts"
+run "$TMP/import-order-next-type.ts" || { echo "FAIL: expected next type import before next/link (Prettier layout) to pass"; exit 1; }
 # R-329 no-explicit-any: any annotations and as-any assertions are flagged;
 # unknown with narrowing passes.
 printf 'export const x: any = JSON.parse("1");\n' > "$TMP/any-annotation.ts"

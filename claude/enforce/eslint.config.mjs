@@ -37,15 +37,23 @@ export default tseslint.config({
       "error",
       {
         alphabetize: { order: "asc" },
+        // distinctGroup:false so pathGroups within one top-level group are not
+        // blank-line separated; Prettier keeps the react/next family adjacent.
+        distinctGroup: false,
         groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
         "newlines-between": "always",
         // R-804(b): projects using @trivago/prettier-plugin-sort-imports document
         // react/next-first and app//@/ as separated internal groups; the gate
         // accepts that documented layout instead of fighting pre-commit Prettier
         // (reconciled 2026-07-06 when the voyager push deadlocked between hooks).
+        // The bare "react"/"next" patterns keep root-package imports in the same
+        // before-positioned family as their subpaths, so Prettier's alphabetical
+        // "next" then "next/link" (type import first) passes instead of the gate
+        // demanding "next/link" ahead of the bare "next" type import.
         pathGroups: [
           { pattern: "react", group: "external", position: "before" },
           { pattern: "react-dom/**", group: "external", position: "before" },
+          { pattern: "next", group: "external", position: "before" },
           { pattern: "next/**", group: "external", position: "before" },
           { pattern: "app/**", group: "internal" },
           { pattern: "@/**", group: "internal" },
