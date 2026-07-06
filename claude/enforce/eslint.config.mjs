@@ -37,9 +37,13 @@ export default tseslint.config({
       "error",
       {
         alphabetize: { order: "asc" },
-        // distinctGroup:false so pathGroups within one top-level group are not
-        // blank-line separated; Prettier keeps the react/next family adjacent.
-        distinctGroup: false,
+        // distinctGroup:true so a before-positioned pathGroup (react, next) is
+        // its own group for newlines-between: trivago Prettier configs with
+        // importOrderSeparation:true put a blank line after the react/next
+        // family, and with false the gate flagged that required blank line as
+        // "empty line within import group" on every file whose react import
+        // precedes other externals (voyager push deadlock, 2026-07-07).
+        distinctGroup: true,
         groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
         "newlines-between": "always",
         // R-804(b): projects using @trivago/prettier-plugin-sort-imports document
@@ -50,11 +54,15 @@ export default tseslint.config({
         // before-positioned family as their subpaths, so Prettier's alphabetical
         // "next" then "next/link" (type import first) passes instead of the gate
         // demanding "next/link" ahead of the bare "next" type import.
+        // One pathGroup per trivago Prettier group ('^react$', '^react-dom',
+        // '^next'), so distinctGroup:true puts blank lines exactly at
+        // Prettier's group boundaries: next and next/** share one pathGroup
+        // (adjacent, no blank line), while react/react-dom/next families are
+        // blank-line separated from each other and from other externals.
         pathGroups: [
           { pattern: "react", group: "external", position: "before" },
-          { pattern: "react-dom/**", group: "external", position: "before" },
-          { pattern: "next", group: "external", position: "before" },
-          { pattern: "next/**", group: "external", position: "before" },
+          { pattern: "react-dom{,/**}", group: "external", position: "before" },
+          { pattern: "next{,/**}", group: "external", position: "before" },
           { pattern: "app/**", group: "internal" },
           { pattern: "@/**", group: "internal" },
         ],
