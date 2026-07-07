@@ -290,6 +290,15 @@ R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-noche
   - `@ts-expect-error` with a description is the only permitted suppression; it fails when the underlying error disappears.
   Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment
 
+R-330: Settle the domain vocabulary during spec writing, before naming propagates.
+  Scope: extends R-315/R-316/R-317; establishes the domain-noun lexicon they draw from.
+  Spec:
+  - When running superpowers spec writing (brainstorming), hold an intense domain-vocabulary round before presenting the design.
+  - The spec is incomplete until it carries a `## Domain vocabulary` section, each domain noun written as `term - meaning - chosen over: <alternatives> because <reason>`.
+  - All file, function, and type naming conforms to that glossary.
+  - Prefer domain-precise terms over evocative metaphors unless a framework makes the metaphor standard (ECS `World`, Cucumber `World`).
+  Enforcement: hook:spec-glossary-check (advisory)
+
 ## Testing and quality (R-4xx)
 
 R-401: Write tests that fail when the implementation is wrong; prefer behavior assertions over mock-call counts.

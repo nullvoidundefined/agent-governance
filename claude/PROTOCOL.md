@@ -139,6 +139,7 @@ Hooks are mechanical enforcement that runs before Claude's behavioral rules have
 - **Conflict-marker block** (`conflict-markers.sh`): blocks commits containing unresolved merge-conflict markers (R-507).
 - **Migration-defaults guard** (`migration-defaults-guard.sh`): enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-328).
 - **Destructive-DB guard** (`destructive-db-guard.sh`): PreToolUse deny/ask on destructive and remote-write database operations. See Layer 11.
+- **Spec-glossary backstop** (`spec-glossary-check.sh`): PostToolUse Write reminder when a superpowers spec design doc under `docs/superpowers/specs/` is written without a committed `## Domain vocabulary` section (R-330). Skills are not tools and do not fire PreToolUse, so this backstop at spec-write time, plus the R-330 rule text, is the enforcement; there is no proactive skill-invocation hook.
 
 Hooks are non-negotiable without explicit user override. The Bash secret-scan hook specifically exists because a behavioral rule ("never put secrets on command lines") was insufficient to prevent a plaintext Anthropic production API key from landing in shell history, tool-call transcripts, and argv space. A behavioral rule that fails silently is worse than a mechanical gate that fails loudly.
 
@@ -146,7 +147,7 @@ Hooks are non-negotiable without explicit user override. The Bash secret-scan ho
 
 The canonical work sequence:
 
-1. **Brainstorm** (required for any creative work): understand the idea, ask clarifying questions, propose approaches, present design, write a spec to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, get user approval before moving on.
+1. **Brainstorm** (required for any creative work): understand the idea, ask clarifying questions, propose approaches, present design, settle the domain vocabulary as a committed `## Domain vocabulary` glossary (R-330), write a spec to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, get user approval before moving on.
 2. **Plan**: turn the spec into a bite-sized implementation plan at `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` with test-first tasks, exact file paths, complete code in every step.
 3. **Execute**: follow the plan task-by-task. Scale to task size: inline under 5 tasks, subagent-driven for 5+, complexity tags determine the review loop depth.
 4. **Verify**: run tests, lint, format, build. Confirm every success claim with evidence.
@@ -279,6 +280,7 @@ Rationale and incident history removed from rule text during the 2026-07-03 rest
 - **R-207 (old R-001):** The em dash is the single most recognizable AI writing tell; the user treats any em dash as a violation of trust.
 - **R-310 (old R-241):** The 20-module threshold came from over-flat directories becoming unnavigable; the hook fires non-blocking when a new module pushes its directory past 20.
 - **R-322 (old R-227):** The clean-code reminder surfaces long functions as candidates only: a long orchestrator is fine, a long atomic function is not.
+- **R-330 (new 2026-07-07):** The distributed-system-demo coined `world` for the simulated system state, and it spread across 20 files in 5 directories before anyone asked whether `system` was clearer. `world` is a defensible metaphor but not a framework standard, so a domain-precise term would read better; settling the domain vocabulary at spec time makes that one decision cheap instead of a cross-cutting rename.
 - **R-401 (old R-200):** Each listed anti-pattern was observed in real committed tests before being banned.
 - **R-516 (old R-518):** Rule enforcement is mechanical and manifest-driven, not recall-based; behavioral rules fail silently under pressure, so mechanizable rules migrate down to hooks.
 - **Ordering convention:** "Document order is by importance, not by ID" was the pre-2026-07-03 convention, abolished by the century-block renumber. Inline tombstones were the retirement record before Appendix B took that over.

@@ -27,29 +27,21 @@ lexicon exists; R-330 establishes the domain-noun lexicon itself. Proposed text:
 > function, and type naming conforms to. Prefer domain-precise terms over
 > evocative metaphors unless the metaphor is a framework standard (ECS `World`,
 > Cucumber `World`).
-> Enforcement: hook:domain-vocabulary-gate (advisory), hook:spec-glossary-check
-> (advisory).
+> Enforcement: hook:spec-glossary-check (advisory).
 
 Recorded in PROTOCOL.md Appendix A with the world/distributed-system-demo origin.
 
 ## Components
 
-### Hook A: domain-vocabulary-gate (the trigger)
+### Trigger (dropped during implementation)
 
-- Event: `PreToolUse`, new `Skill` matcher in `settings.json`.
-- Logic: read stdin JSON; if `.tool_input.skill == "superpowers:brainstorming"`,
-  emit `hookSpecificOutput.additionalContext` mandating the domain-vocabulary
-  round plus the glossary artifact. Same additionalContext contract as
-  `audit-signal-check.sh`.
-- Behavior: advisory, never blocks, never sets a permission decision; silent for
-  every other skill and every non-Skill tool. `set -euo pipefail`; if `jq` is
-  missing or input is malformed, exit 0 silently so a hook fault never breaks a
-  tool call.
-- Injected text (draft): "domain-vocabulary-gate (R-330): before presenting the
-  design, run an intense domain-vocabulary round. The spec is incomplete until it
-  carries a '## Domain vocabulary' section: each domain noun as `term - meaning -
-  chosen over: <alternatives> because <reason>`. Prefer domain-precise terms over
-  metaphors unless a framework makes the metaphor standard."
+The approved design proposed a proactive `PreToolUse` hook on a `Skill` matcher to
+fire when `superpowers:brainstorming` was invoked. Verification found that skills
+are not tools and do not fire `PreToolUse` in Claude Code, so that hook would be
+inert. The only skill-invocation event, `UserPromptSubmit`, catches user-typed
+`/brainstorming` but not Claude-initiated invocation, which is the common case.
+Both paths write the spec doc, so the backstop below plus the R-330 rule text
+(loaded every session) are the enforcement. No proactive hook ships.
 
 ### Hook B: spec-glossary-check (the backstop)
 
@@ -60,8 +52,8 @@ Recorded in PROTOCOL.md Appendix A with the world/distributed-system-demo origin
   `## Domain vocabulary` heading followed by at least one entry line containing
   `chosen over:`. If absent, emit an additionalContext reminder that the spec is
   incomplete without the glossary.
-- Behavior: advisory, never blocks; silent for any other path. Same fault
-  tolerance as Hook A.
+- Behavior: advisory, never blocks; silent for any other path. `2>/dev/null ||
+  true` so a jq fault or malformed input can never break a Write.
 
 ### Glossary artifact
 
@@ -76,36 +68,33 @@ discussion never happened.
 
 ## Wiring and registration (R-516)
 
-- `settings.json`: add `{ "matcher": "Skill", "hooks": [domain-vocabulary-gate] }`
-  under `PreToolUse`; append `spec-glossary-check` to the `PostToolUse` `Write`
+- `settings.json`: append `spec-glossary-check` to the `PostToolUse` `Write`
   matcher's hooks array.
-- `manifest.json`: two advisory entries, both id `R-330`, tier `advisory`,
-  severity `warn`, autofix false, enforcers `hook:domain-vocabulary-gate` and
-  `hook:spec-glossary-check`.
-- `PROTOCOL.md`: Appendix A origin note; hook descriptions in the hook catalog.
-- SessionStart `enforcement-guard-check` then verifies both hooks stay registered
+- `manifest.json`: one advisory entry, id `R-330`, tier `advisory`, severity
+  `warn`, autofix false, enforcer `hook:spec-glossary-check`.
+- `CLAUDE.md`: R-330 appended to the R-3xx naming block.
+- `PROTOCOL.md`: Appendix A origin note; hook-catalog entry; the Layer 7
+  brainstorm step names the glossary.
+- SessionStart `enforcement-guard-check` then verifies the hook stays registered
   every session automatically.
 
 ## Testing
 
-Two fixture tests in `~/.claude/hooks/tests/`, run by `run-tests.sh`:
+One fixture test in `~/.claude/hooks/tests/`, run by `run-tests.sh`:
 
-- `domain-vocabulary-gate.test.sh`: feeds a `PreToolUse` payload with
-  `tool_input.skill = "superpowers:brainstorming"` and asserts additionalContext
-  is emitted (positive); feeds another skill name and a non-Skill tool and
-  asserts silence (negatives).
 - `spec-glossary-check.test.sh`: feeds a `PostToolUse` Write payload for a
   spec-doc path whose content lacks a glossary and asserts a reminder
   (positive); feeds one whose content has a `## Domain vocabulary` section with a
-  `chosen over:` entry and asserts silence; feeds a non-spec path and asserts
-  silence (negatives).
+  `chosen over:` entry and asserts silence; feeds a heading without an entry, a
+  non-design doc under specs/, a design doc outside specs/, and an ordinary
+  source file, all asserting silence (negatives).
 
-## Verify first during implementation
+## Resolved during implementation
 
-Confirm the `Skill` tool actually fires `PreToolUse` and that the invoked skill
-name arrives at `.tool_input.skill`. If the harness exposes it under a different
-key or does not fire PreToolUse for `Skill`, Hook A's matcher/extraction changes;
-nothing else in the design does. This is the one unverified assumption.
+The one flagged assumption, that the `Skill` tool fires `PreToolUse`, was checked
+and is false: skills are not tools and do not fire `PreToolUse` in Claude Code.
+The proactive trigger was therefore dropped (see Trigger above); the backstop and
+the R-330 rule text carry the enforcement.
 
 ## Domain vocabulary
 

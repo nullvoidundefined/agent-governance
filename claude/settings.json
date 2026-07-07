@@ -103,6 +103,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/flat-directory-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/spec-glossary-check.sh"
           }
         ]
       },
