@@ -20,7 +20,9 @@ FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep
 [ -z "$FILES" ] && exit 0
 
 TOP="$(git rev-parse --show-toplevel)"
-REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$HOME/.claude/enforce/lint.mjs" 2>&1 || true)
+# --added-only: deny only on violations in lines the outgoing diff adds (2026-07-10,
+# Ian-approved). Pre-existing debt elsewhere in a touched file no longer blocks.
+REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$HOME/.claude/enforce/lint.mjs" --added-only "$BASE" 2>&1 || true)
 
 if [ -n "$REPORT" ]; then
   jq -n --arg r "ESLint enforcement failed on the outgoing diff (R-323/R-321/R-319). Fix the violations or run eslint --fix:
