@@ -8,11 +8,25 @@ import tseslint from "typescript-eslint";
 import importPlugin from "eslint-plugin-import";
 import oneExportPerFile from "./rules/one-export-per-file.mjs";
 
+// Repos run plugins the gate does not carry (eslint-plugin-security, react,
+// react-hooks); their source keeps live eslint-disable comments for those
+// rules. ESLint errors with "Definition for rule ... was not found" on a
+// disable comment whose rule is undefined here, failing the gate on comments
+// the repo's own lint requires. No-op stubs keep those comments inert; the
+// gate never enforced these rules, so nothing it checks is weakened.
+const NOOP_RULE = { create: () => ({}) };
+const foreignRulePlugins = {
+  react: { rules: { "forbid-dom-props": NOOP_RULE } },
+  "react-hooks": { rules: { "exhaustive-deps": NOOP_RULE } },
+  security: { rules: { "detect-non-literal-fs-filename": NOOP_RULE } },
+};
+
 export default tseslint.config({
   files: ["**/*.ts", "**/*.tsx"],
   plugins: {
     "@typescript-eslint": tseslint.plugin,
     import: importPlugin,
+    ...foreignRulePlugins,
   },
   languageOptions: {
     parser: tseslint.parser,
