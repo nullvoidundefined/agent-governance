@@ -428,7 +428,7 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 R-601: Offer a handoff doc at session end; commit/push dirty `~/.claude`; update `TODO.md`/`ISSUES.md` with deferred work.
   Enforcement: manual
 
-R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 4KB, bullets.
+R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets.
   Spec, in order: (1) last commit SHA + subject; (2) production state; (3) what shipped (grouped, traceable); (4) pending (by urgency, with effort estimate); (5) next-session tasks with files to read. Bundle into the final commit.
   Enforcement: manual
 

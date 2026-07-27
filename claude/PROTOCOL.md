@@ -180,7 +180,7 @@ Sessions have durable edges. Drift at the edges compounds across sessions.
 - Commit and push any edits to `~/.claude` before wrapping up. The rules repo is not a diary; it is a cross-session source of truth.
 - Dual-commit discipline: sessions that edited both a project repo AND `~/.claude` must commit to BOTH before the project push. The common failure mode is "commit project, forget `~/.claude`, leave drift."
 
-Handoff docs follow a fixed format: last commit SHA, production state verified, what shipped grouped by topic, what is pending grouped by urgency, recommended next session with ordered task list, workflow reminders, companion docs. Aim for under 4KB of bullets unless the session genuinely shipped something that needs detailed context.
+Handoff docs follow a fixed format: last commit SHA, production state verified, what shipped grouped by topic, what is pending grouped by urgency, recommended next session with ordered task list, workflow reminders, companion docs. Aim for under 8KB of bullets unless the session genuinely shipped something that needs detailed context.
 
 ### Layer 9: Secret handling (universal rule)
 
@@ -261,6 +261,10 @@ This revision reconciled the protocol with rule changes that had landed in `~/.c
 - **Layer 5 gained the suppressed-test ban** (now R-401 Spec item 9; introduced as legacy R-216): `test.fixme` / `skip` / `it.skip` / `xit` / `xtest` are banned outright, superseding the earlier skip-with-comment allowance.
 - **Layer 6 hook inventory refreshed** to include the em-dash block, PostToolUse output redaction, conflict-marker block, migration-defaults guard, and the destructive-DB guard.
 - **Layer 8 handoff cap corrected** from 8KB to 4KB to match R-602.
+
+## What changed on 2026-07-27
+
+- **Layer 8 handoff cap raised** from 4KB to 8KB, reverting the 2026-06-05 reduction. The 4KB cap was forcing real content out of handoffs: a session would trim traceable findings to fit, and the next session would re-derive them. R-602 and the Layer 8 guidance above both now read 8KB.
 
 ## The principle
 
