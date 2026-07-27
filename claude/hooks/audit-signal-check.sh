@@ -19,6 +19,19 @@ printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel)
 
+# Repo exemption (2026-07-27, Ian-approved): repos listed by origin URL in
+# enforce/exempt-repos.txt skip this advisory entirely. Repo-wide audit signals
+# are noise in a team codebase, where surface commit counts reflect the whole
+# team's work rather than one operator's. Matching by remote URL covers all
+# worktrees.
+EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"
+if [ -f "$EXEMPT_FILE" ]; then
+  ORIGIN_URL=$(git -C "$TOP" remote get-url origin 2>/dev/null || true)
+  if [ -n "$ORIGIN_URL" ] && grep -qxF "$ORIGIN_URL" "$EXEMPT_FILE"; then
+    exit 0
+  fi
+fi
+
 LAST_AUDIT=$(ls "$TOP/docs/audits" 2>/dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}-engineering\.md$' | sort | tail -1 || true)
 if [ -n "$LAST_AUDIT" ]; then
   AUDIT_DATE=${LAST_AUDIT%-engineering.md}

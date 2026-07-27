@@ -68,3 +68,14 @@ The push gates are an **anti-accident layer**, not a hard security boundary. The
 ```
 bash ~/.claude/enforce/tests/run-tests.sh
 ```
+
+## Repo exemptions
+
+Repos listed by origin remote URL (one per line, exact match) in `exempt-repos.txt` are treated as team codebases where this operator's personal gates do not govern. Matching is by remote URL, so every worktree of a listed repo is covered.
+
+Two hooks honour the list:
+
+- `push-eslint-gate.sh` (added 2026-07-22): the repo's own lint conventions govern instead.
+- `audit-signal-check.sh` (added 2026-07-27): repo-wide audit signals are noise in a team codebase, where per-surface commit counts reflect the whole team's work rather than one operator's. Branch-scoped audits stay available on request; only the automatic push-time nudge is suppressed.
+
+`exempt-repos.txt` is deliberately untracked: it holds client-identifying remote URLs and this repo is public (R-106). The hooks that read it are tracked; the list itself is not.
