@@ -27,4 +27,23 @@ deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/__tests__/
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/__tests__/handlers/auth.test.ts"}}' # top-level tree ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/e2e/login.spec.ts"}}'                   # e2e specs ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/tests/test_auth.py"}}'                  # python tests/ ok
+
+# R-306 applies to *creating* a catch-all, not writing into one that already exists.
+BANNED_FIXTURE=$(mktemp -d)
+mkdir -p "$BANNED_FIXTURE/src/shared/components"
+allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$BANNED_FIXTURE/src/shared/components/Widget.tsx\"}}"   # pre-existing shared/ ok
+deny  "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$BANNED_FIXTURE/src/brandNew/shared/Widget.tsx\"}}"     # would create shared/
+rm -rf "$BANNED_FIXTURE"
+
+# R-313 co-location exemption is scoped to repos named in colocated-test-repos.txt.
+COLOCATED_FIXTURE=$(mktemp -d)
+ALLOWLIST="$HOME/.claude/enforce/colocated-test-repos.txt"
+ALLOWLIST_BACKUP=$(mktemp)
+cp "$ALLOWLIST" "$ALLOWLIST_BACKUP" 2>/dev/null || : >"$ALLOWLIST_BACKUP"
+printf '%s\n' "$COLOCATED_FIXTURE" >>"$ALLOWLIST"
+allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$COLOCATED_FIXTURE/src/handlers/auth.test.ts\"}}"       # exempt repo
+deny  '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/other.test.ts"}}'                                # non-exempt repo still denied
+cp "$ALLOWLIST_BACKUP" "$ALLOWLIST"
+rm -rf "$COLOCATED_FIXTURE" "$ALLOWLIST_BACKUP"
+
 echo "structure-gate.test.sh PASS"

@@ -13,7 +13,7 @@
 import { ESLint } from "eslint";
 import importPlugin from "eslint-plugin-import";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -102,6 +102,34 @@ if (addedOnlyBase !== null) {
     result.warningCount = result.messages.filter((message) => message.severity === 1).length;
     result.fixableErrorCount = 0;
     result.fixableWarningCount = 0;
+  }
+}
+
+// Local ESLint wins on import ordering. When the repo ships its own ESLint
+// config, its opinion is authoritative and is applied automatically by that
+// project's own tooling (lint-staged, CI). Enforcing R-321's ordering on top of
+// it is unwinnable: the project's `eslint --fix` rewrites the order on every
+// commit and this gate rejects the result on every push. Every other enforcement
+// rule still applies, including sort-keys and no-magic-numbers, which catch real
+// defects that project configs typically ignore.
+// Added 2026-07-21 (Ian-approved): "deberiamos siempre optar por el local ESLint".
+const LOCAL_ESLINT_CONFIG_NAMES = [
+  "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts",
+  ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml",
+];
+const DEFERRED_TO_LOCAL_ESLINT = new Set(["import/order", "sort-imports", "simple-import-sort/imports"]);
+
+function hasLocalEslintConfig(root) {
+  return LOCAL_ESLINT_CONFIG_NAMES.some((name) => existsSync(`${root}/${name}`));
+}
+
+if (hasLocalEslintConfig(repoRoot)) {
+  for (const result of results) {
+    result.messages = result.messages.filter(
+      (message) => !DEFERRED_TO_LOCAL_ESLINT.has(message.ruleId),
+    );
+    result.errorCount = result.messages.filter((message) => message.severity === 2).length;
+    result.warningCount = result.messages.filter((message) => message.severity === 1).length;
   }
 }
 

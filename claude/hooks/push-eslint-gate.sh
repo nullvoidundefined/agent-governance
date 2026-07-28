@@ -13,6 +13,17 @@ INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
+# Repo exemption (2026-07-22, Ian-approved): repos listed by origin URL in
+# enforce/exempt-repos.txt skip this gate entirely. Team repos with their own
+# lint conventions opt out here; matching by remote URL covers all worktrees.
+EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"
+if [ -f "$EXEMPT_FILE" ]; then
+  ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+  if [ -n "$ORIGIN_URL" ] && grep -qxF "$ORIGIN_URL" "$EXEMPT_FILE"; then
+    exit 0
+  fi
+fi
+
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
