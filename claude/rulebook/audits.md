@@ -1,5 +1,7 @@
 # Audits (R-8xx)
 
+Diff-level review routes through the native commands first: `/code-review` for correctness and quality on the working diff or a PR, `/security-review` for diff-level security. Dispatch the audit roles below for what native review does not cover: architecture drift, strategy, unit economics, compliance, and the other whole-project dimensions.
+
 R-801: Run audits on signal only.
   Spec:
   - Pre-launch: all three standing roles.

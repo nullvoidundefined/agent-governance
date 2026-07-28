@@ -119,9 +119,9 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 ## How a session uses this repo
 
 1. **Session start.** Claude Code loads `~/.claude/settings.json`, which wires the `SessionStart` hook. The hook reads `global-memory/INDEX.md`, finds the most recent `docs/audits/*session-handoff*.md` or dated audit under the current project, and emits both as additional context. The session begins with cross-project lessons and the previous session's handoff already in view.
-2. **Rules load.** `CLAUDE.md` is loaded into the session. Its non-negotiable rules (R-207 through R-002) are the happy path; the session stays on it unless a specific task calls for a rule from a deeper section.
+2. **Rules load.** `CLAUDE.md` is loaded into the session: one norm line per rule with its enforcer named inline, kept under 200 lines for instruction adherence. The full Spec for every rule lives in `rulebook/reference.md`, read on demand and consumed mechanically by the enforcement guard and the push-time LLM judge.
 3. **Work happens.** Every tool call passes through the relevant `PreToolUse` hooks. Bash commands are scanned for secrets and em dashes before execution. Write and Edit calls are scanned for em dashes. `git commit -m "fix: ..."` calls are inspected to confirm a test file is staged.
-4. **Convention files read on demand.** When the task touches the backend, frontend, database, styling, or deployment layer, the corresponding `CLAUDE-*.md` file is read. These are not preloaded; they enter context only when needed.
+4. **Convention files load by path.** The stack `CLAUDE-*.md` files carry `paths:` frontmatter and are symlinked into `~/.claude/rules/`, so Claude Code loads each one mechanically when work touches matching files (a `.py` file pulls in the Python conventions, a `migrations/` file pulls in the database conventions). Only `CLOUD-DEPLOYMENT.md` remains a purely manual read.
 5. **Audits run on schedule or on signal.** The standing three roles (Engineering, Security, Criticism) run pre-launch or when a specific risk signal surfaces. The five on-request roles run only when a specific situation calls for that lens.
 6. **Session end.** The `SessionEnd` hook scans per-project feedback memory files for the `fired: R-NNN` and `miss: R-NNN` prefix convention from R-603 and appends dated entries to `global-memory/rule_fires.md` / `rule_misses.md`. The session writes a handoff doc to `docs/audits/YYYY-MM-DD-session-handoff.md` if outstanding work remains.
 
@@ -185,6 +185,8 @@ This repo is installed at `~/.claude/` and tracked by git. To bootstrap:
 6. Customize `CLAUDE.md` R-906 (estimation calibration) and `global-memory/user_profile.md` to reflect your own pace and preferences.
 
 The runtime directories (`sessions/`, `cache/`, `history.jsonl`, `paste-cache/`, `shell-snapshots/`) are gitignored and populated by Claude Code as you work.
+
+Cost tracking: `/usage` and `/cost` in-session for the current plan window; `npx ccusage@latest` reads the local transcript logs for per-day and per-model spend history without installing anything.
 
 ## Contributing to this framework
 
