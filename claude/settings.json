@@ -57,6 +57,12 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/single-file-folder-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | grep -q 'git push' && { cd \"${CLAUDE_PROJECT_DIR:-.}\" && [ -x docs/features/build-all-cheatsheets.sh ] && ./docs/features/build-all-cheatsheets.sh >/dev/null 2>&1; }; true",
+            "timeout": 60,
+            "statusMessage": "Rebuilding feature cheat sheets"
           }
         ]
       },
@@ -223,5 +229,7 @@
   },
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "skipWorkflowUsageWarning": true
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark",
+  "agentPushNotifEnabled": true
 }

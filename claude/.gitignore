@@ -36,3 +36,16 @@ KNOWN-ISSUES.md
 
 # Plans are ephemeral session artifacts
 plans/
+
+# Daemon/background runtime artifacts (contain machine and client paths)
+daemon.lock
+daemon.log
+daemon.status.json
+daemon.json
+daemon/
+jobs/
+chrome/
+
+# Client-identifying enforce lists (R-106: remote is public)
+enforce/exempt-repos.txt
+enforce/colocated-test-repos.txt
