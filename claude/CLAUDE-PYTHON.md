@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.py"
+---
+
 # Python Backend Conventions
 
 The Python track. Read on demand for Python API/service work. Mirrors `CLAUDE-BACKEND.md` (the TypeScript/Node track); the universal rules in `CLAUDE.md` still apply, this file carries the Python-specific specifics and the analogs of the `[ts]`-tagged rules.

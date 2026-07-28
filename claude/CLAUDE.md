@@ -1,10 +1,10 @@
 # Global Rules
 
-The canonical rule file, loaded into every session. One norm line per rule; the complete Spec, Scope, and Enforcement detail for every rule lives in `~/.claude/rules/reference.md`, read on demand: before structural or naming decisions (R-3xx), before test design (R-4xx), or whenever a norm line is not enough to act on. The trailing bracket names the enforcer: `[manual]` depends on recall; `[judge]` is the push-time LLM judge; hooks and ESLint fire mechanically. `[ts]`/`[py]` after a rule ID scope it to a stack. Rationale and history: `PROTOCOL.md`.
+The canonical rule file, loaded into every session. One norm line per rule; the complete Spec, Scope, and Enforcement detail for every rule lives in `~/.claude/rulebook/reference.md`, read on demand: before structural or naming decisions (R-3xx), before test design (R-4xx), or whenever a norm line is not enough to act on. The trailing bracket names the enforcer: `[manual]` depends on recall; `[judge]` is the push-time LLM judge; hooks and ESLint fire mechanically. `[ts]`/`[py]` after a rule ID scope it to a stack. Rationale and history: `PROTOCOL.md`.
 
 Project-level `CLAUDE.md` adds guidance but does not override these unless it explicitly says so.
 
-Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-3xx architecture & naming | R-4xx testing & quality | R-5xx git & process | R-6xx lifecycle & memory | R-7xx agents (`rules/agents.md`) | R-8xx audits (`rules/audits.md`) | R-9xx cost & routing (`rules/cost.md`).
+Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-3xx architecture & naming | R-4xx testing & quality | R-5xx git & process | R-6xx lifecycle & memory | R-7xx agents (`rulebook/agents.md`) | R-8xx audits (`rulebook/audits.md`) | R-9xx cost & routing (`rulebook/cost.md`).
 
 ## Session init (R-0xx)
 
@@ -105,18 +105,14 @@ R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-id
 
 ## Convention files
 
-Read on demand, not globally.
+The stack convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-FRONTEND-NEXT.md`, `CLAUDE-FRONTEND-VITE.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`, `CLAUDE-PYTHON.md`) auto-load through path-scoped symlinks in `~/.claude/rules/` when work touches matching files. Read one directly only when planning that layer before any file is open.
+
+Read on demand:
 
 | File | When to read |
 |---|---|
-| `~/.claude/rules/reference.md` | Full rule Specs: before structural/naming decisions, test design, or when a hook cites a rule |
-| `~/.claude/CLAUDE-BACKEND.md` | Express/TypeScript API, BullMQ, handlers, services, repositories, middleware |
-| `~/.claude/CLAUDE-PYTHON.md` | Python/FastAPI API, SQLAlchemy, Alembic, pytest, ruff/black/mypy |
-| `~/.claude/CLAUDE-FRONTEND.md` | Any web-client work: React components, client state, shared frontend structure |
-| `~/.claude/CLAUDE-FRONTEND-NEXT.md` | Next.js App Router structure, routing, metadata, `NEXT_PUBLIC_*` env vars |
-| `~/.claude/CLAUDE-FRONTEND-VITE.md` | Vite + TanStack Router SPA structure, entry files, `VITE_*` env vars |
-| `~/.claude/CLAUDE-DATABASE.md` | Postgres migrations, SQL queries, schema |
-| `~/.claude/CLAUDE-STYLING.md` | SCSS modules, CSS custom properties |
+| `~/.claude/rulebook/reference.md` | Full rule Specs: before structural/naming decisions, test design, or when a hook cites a rule |
+| `~/.claude/rulebook/agents.md`, `audits.md`, `cost.md` | Tier 2 per session type (R-001) |
 | `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Vercel, Cloudflare, environment variables |
 | `/known-issues` (skill) | Before production deploy or debugging prior-incident-like failure |
 | `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |

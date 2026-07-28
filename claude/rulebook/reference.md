@@ -6,7 +6,7 @@ Rules are numbered in century blocks; document order equals numeric order; new r
 
 Project-level `CLAUDE.md` adds guidance but does not override these unless it explicitly says so.
 
-Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-3xx architecture & naming | R-4xx testing & quality | R-5xx git & process | R-6xx lifecycle & memory | R-7xx agents (`rules/agents.md`) | R-8xx audits (`rules/audits.md`) | R-9xx cost & routing (`rules/cost.md`).
+Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-3xx architecture & naming | R-4xx testing & quality | R-5xx git & process | R-6xx lifecycle & memory | R-7xx agents (`rulebook/agents.md`) | R-8xx audits (`rulebook/audits.md`) | R-9xx cost & routing (`rulebook/cost.md`).
 
 ## Session init (R-0xx)
 

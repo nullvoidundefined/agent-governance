@@ -13,7 +13,7 @@ python3 - "$HOME_CLAUDE" <<'EOF'
 import json, os, re, sys
 home = sys.argv[1]
 rule_text = ''
-for f in ['CLAUDE.md', 'rules/agents.md', 'rules/audits.md', 'rules/cost.md']:
+for f in ['rulebook/reference.md', 'rulebook/agents.md', 'rulebook/audits.md', 'rulebook/cost.md']:
     rule_text += open(os.path.join(home, f)).read()
 manifest = json.load(open(os.path.join(home, 'enforce/manifest.json')))
 manifest_ids = {r['id'] for r in manifest['rules']}

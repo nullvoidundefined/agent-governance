@@ -26,7 +26,7 @@ while IFS= read -r h; do
   printf '%s\n' "$REGISTERED" | grep -qx "$h" || MISSING="$MISSING $h"
 done <<< "$REQUIRED"
 
-RULE_FILES="${CLAUDE_RULES_FILES:-$HOME/.claude/rules/reference.md $HOME/.claude/rules/agents.md $HOME/.claude/rules/audits.md $HOME/.claude/rules/cost.md}"
+RULE_FILES="${CLAUDE_RULES_FILES:-$HOME/.claude/rulebook/reference.md $HOME/.claude/rulebook/agents.md $HOME/.claude/rulebook/audits.md $HOME/.claude/rulebook/cost.md}"
 CITED=$(cat $RULE_FILES 2>/dev/null | grep -E '^  Enforcement:' | grep -oE '(hook|eslint):[A-Za-z0-9_-]+' | sort -u || true)
 ENFORCERS=$(jq -r '.rules[].enforcer' "$MANIFEST" | sort -u)
 

@@ -1,3 +1,10 @@
+---
+paths:
+  - "**/vite.config.*"
+  - "**/src/main.tsx"
+  - "**/src/routes/**/*.tsx"
+---
+
 # Vite Frontend Conventions
 
 Framework-specific rules for Vite React single-page apps. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core); everything not covered here follows the core.

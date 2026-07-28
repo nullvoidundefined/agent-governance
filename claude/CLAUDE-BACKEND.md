@@ -1,3 +1,15 @@
+---
+paths:
+  - "**/src/handlers/**"
+  - "**/src/repositories/**"
+  - "**/src/middleware/**"
+  - "**/src/routes/**"
+  - "**/src/workers/**"
+  - "**/src/dependencyInjection/**"
+  - "**/src/schemas/**"
+  - "**/src/prompts/**"
+---
+
 # Backend Conventions
 
 These rules apply to all `server/` and API packages across every app in this portfolio.

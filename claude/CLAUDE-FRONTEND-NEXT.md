@@ -1,3 +1,10 @@
+---
+paths:
+  - "**/app/**/*.ts"
+  - "**/app/**/*.tsx"
+  - "**/next.config.*"
+---
+
 # Next.js Frontend Conventions
 
 Framework-specific rules for Next.js App Router clients. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core); everything not covered here follows the core.

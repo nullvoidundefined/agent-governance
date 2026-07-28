@@ -1,3 +1,11 @@
+---
+paths:
+  - "**/migrations/**"
+  - "**/*.sql"
+  - "**/src/database/**"
+  - "**/src/repositories/**"
+---
+
 # Database Conventions
 
 These rules apply to all PostgreSQL schemas, migrations, and database access code across every app in this portfolio.

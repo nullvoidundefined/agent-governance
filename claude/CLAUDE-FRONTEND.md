@@ -1,3 +1,13 @@
+---
+paths:
+  - "**/*.tsx"
+  - "**/src/components/**"
+  - "**/src/features/**"
+  - "**/src/state/**"
+  - "**/src/hooks/**"
+  - "**/src/api/**"
+---
+
 # Frontend Conventions
 
 These rules apply to all web-client and frontend packages across every app in this portfolio. This file holds everything framework-agnostic; structure, routing, entry files, and env vars live in the framework files below.

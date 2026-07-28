@@ -1,3 +1,9 @@
+---
+paths:
+  - "**/*.scss"
+  - "**/*.module.css"
+---
+
 # Styling Conventions
 
 These rules apply to all frontend styling across every app in this portfolio.

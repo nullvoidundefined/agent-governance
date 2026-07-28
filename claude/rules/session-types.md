@@ -15,7 +15,7 @@ Classify the session from the user's first message. Ambiguous or mixed: load the
 
 ## Stack detection
 
-Session type is orthogonal to stack. When work touches code, detect the project stack from its root marker files and read the matching convention file(s) on demand (these load when you enter stack work, not globally):
+Session type is orthogonal to stack. Stack convention files auto-load through path-scoped symlinks in `~/.claude/rules/` when work touches matching files. When planning stack work before any file is open, detect the stack from root marker files and read the matching convention file(s) directly:
 
 | Marker in project root | Stack | Read |
 |---|---|---|
@@ -28,6 +28,6 @@ A repo carrying both marker sets is polyglot: read both tracks for the surface b
 
 | File | Path |
 |---|---|
-| agents | `~/.claude/rules/agents.md` |
-| audits | `~/.claude/rules/audits.md` |
-| cost | `~/.claude/rules/cost.md` |
+| agents | `~/.claude/rulebook/agents.md` |
+| audits | `~/.claude/rulebook/audits.md` |
+| cost | `~/.claude/rulebook/cost.md` |

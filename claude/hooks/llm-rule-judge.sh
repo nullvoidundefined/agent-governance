@@ -39,7 +39,7 @@ else
       index($0, id ": ") == 1 || index($0, id " [") == 1 { p = 1; print; next }
       p && (/^R-[0-9]/ || /^## /) { exit }
       p { print }
-    ' "$HOME/.claude/rules/reference.md" || true
+    ' "$HOME/.claude/rulebook/reference.md" || true
   done)
   SYS=$(cat "$HOME/.claude/enforce/judge-prompt.md")
   USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" '{rules:$rt, diff:$d} | tostring')
