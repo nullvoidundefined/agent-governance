@@ -32,7 +32,15 @@ else
     exit 0
   fi
   RULE_IDS=$(jq -r '.rules[] | select(.tier=="llm-judge") | .id' "$MANIFEST")
-  RULETEXT=$(for r in $RULE_IDS; do grep -m1 -E "^$r([: ])" "$HOME/.claude/CLAUDE.md" || true; done)
+  # Full rule blocks (norm + Spec) from the reference file; CLAUDE.md carries
+  # only one-line norms since the 2026-07-29 restructure.
+  RULETEXT=$(for r in $RULE_IDS; do
+    awk -v id="$r" '
+      index($0, id ": ") == 1 || index($0, id " [") == 1 { p = 1; print; next }
+      p && (/^R-[0-9]/ || /^## /) { exit }
+      p { print }
+    ' "$HOME/.claude/rules/reference.md" || true
+  done)
   SYS=$(cat "$HOME/.claude/enforce/judge-prompt.md")
   USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" '{rules:$rt, diff:$d} | tostring')
   BODY=$(jq -n --arg s "$SYS" --arg u "$USERMSG" '{model:"claude-haiku-4-5-20251001",max_tokens:1024,temperature:0,system:$s,messages:[{role:"user",content:$u}]}')

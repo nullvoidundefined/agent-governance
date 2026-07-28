@@ -8,7 +8,7 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 
 ## Manifest
 
-`manifest.json` is the single source of enforcement *mapping*. Rule *text* stays in `CLAUDE.md` and is never duplicated here. Each entry:
+`manifest.json` is the single source of enforcement *mapping*. Rule *text* stays in the rule files (one-line norms in `CLAUDE.md`, full Specs in `rules/reference.md`) and is never duplicated here. The enforcement guard and the LLM judge read rule text from `rules/reference.md`. Each entry:
 
 ```json
 { "id": "R-323", "tier": "ast", "enforcer": "eslint:sort-keys", "severity": "error", "autofix": true }
@@ -59,7 +59,7 @@ The push gates are an **anti-accident layer**, not a hard security boundary. The
 
 ## Adding a rule
 
-1. Add the rule text to `~/.claude/CLAUDE.md` as usual.
+1. Add the one-line norm to `~/.claude/CLAUDE.md` and the full Spec block to `~/.claude/rules/reference.md`.
 2. Add a `manifest.json` entry: pick a tier and name its enforcer.
 3. Ship the enforcer (extend an existing hook, add an ESLint rule, or add the rule id to the judge tier) AND a fixture test under `tests/`. A rule with no manifest entry is unenforced and depends on recall.
 

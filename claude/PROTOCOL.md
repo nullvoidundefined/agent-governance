@@ -262,6 +262,10 @@ This revision reconciled the protocol with rule changes that had landed in `~/.c
 - **Layer 6 hook inventory refreshed** to include the em-dash block, PostToolUse output redaction, conflict-marker block, migration-defaults guard, and the destructive-DB guard.
 - **Layer 8 handoff cap corrected** from 8KB to 4KB to match R-602.
 
+## What changed on 2026-07-29
+
+- **Layer 3 restructured for context adherence.** `CLAUDE.md` shrank from ~460 lines to one norm line per rule (under 200 lines total), after an industry audit found the always-loaded prompt 3-5x past published instruction-adherence thresholds (compliance decays roughly linearly with instruction count). Full Spec text moved verbatim to `rules/reference.md`, read on demand. The enforcement guard (`enforcement-guard-check.sh`) and the push-time judge (`llm-rule-judge.sh`) now read rule text from `rules/reference.md`; the judge gained full Spec blocks where it previously saw only norm lines. The principle applied: a rule with a deterministic enforcer no longer needs its prose in the prompt (R-516 in reverse).
+
 ## What changed on 2026-07-27
 
 - **Layer 8 handoff cap raised** from 4KB to 8KB, reverting the 2026-06-05 reduction. The 4KB cap was forcing real content out of handoffs: a session would trim traceable findings to fit, and the next session would re-derive them. R-602 and the Layer 8 guidance above both now read 8KB.
