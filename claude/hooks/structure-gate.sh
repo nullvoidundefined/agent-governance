@@ -33,6 +33,10 @@ prefix=""
 for seg in "${PARTS[@]}"; do
   [ -n "$seg" ] && prefix="${prefix%/}/$seg"
   [ "$seg" = "src" ] && in_src=1 && continue
+  # Python packages root at app/ (CLAUDE-PYTHON.md layout), not src/: a
+  # top-level app/ segment starts the scan for .py writes, else the whole
+  # Python stack silently bypasses the gate (2026-07-31 audit P1).
+  [ "$is_python" -eq 1 ] && [ "$seg" = "app" ] && [ "$in_src" -eq 0 ] && { in_src=1; continue; }
   [ "$in_src" -eq 0 ] && continue
   [[ "$seg" == *.* ]] && continue
   [[ "$seg" =~ ^__.*__$ ]] && continue

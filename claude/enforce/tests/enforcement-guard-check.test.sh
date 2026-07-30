@@ -22,4 +22,12 @@ jq '.rules |= map(select(.enforcer != "hook:no-em-dash"))' "$HOME/.claude/enforc
 OUT3=$(CLAUDE_MANIFEST_FILE="$FIX2" "$HOOK" < /dev/null)
 printf '%s' "$OUT3" | grep -q "hook:no-em-dash" || { echo "FAIL: expected warning naming hook:no-em-dash as cited-but-unmapped"; exit 1; }
 
+# Case 4 (2026-07-31 audit P1): ruff:* manifest entries require push-ruff-gate
+# registration; a settings file without it must warn and name the gate.
+FIX3=$(mktemp)
+jq '(.hooks.PreToolUse[].hooks) |= map(select(.command | test("push-ruff-gate") | not))' \
+  "$HOME/.claude/settings.json" > "$FIX3"
+OUT4=$(CLAUDE_SETTINGS_FILE="$FIX3" "$HOOK" < /dev/null)
+printf '%s' "$OUT4" | grep -q "push-ruff-gate" || { echo "FAIL: expected warning naming push-ruff-gate"; exit 1; }
+
 echo "enforcement-guard-check.test.sh PASS"

@@ -5,7 +5,8 @@
 # rule-file Enforcement line has a manifest entry, so coverage drift is
 # self-detecting rather than audit-detected. Warns (never blocks). Mirrors
 # redaction-guard-check.sh. Required hooks are derived from the manifest: each
-# "hook:<name>" enforcer, plus push-eslint-gate whenever any "eslint:*" rule exists.
+# "hook:<name>" enforcer, push-eslint-gate whenever any "eslint:*" rule exists,
+# and push-ruff-gate whenever any "ruff:*" rule exists.
 set -euo pipefail
 cat >/dev/null 2>&1 || true   # drain stdin
 
@@ -16,6 +17,7 @@ SETTINGS="${CLAUDE_SETTINGS_FILE:-$HOME/.claude/settings.json}"
 REQUIRED=$(jq -r '.rules[].enforcer' "$MANIFEST" | awk '
   /^hook:/   { sub(/^hook:/,""); print $0 ".sh" }
   /^eslint:/ { print "push-eslint-gate.sh" }
+  /^ruff:/   { print "push-ruff-gate.sh" }
 ' | sort -u)
 
 REGISTERED=$(jq -r '[.. | .command? // empty] | .[]' "$SETTINGS" | sed 's#.*/##' | sort -u)
@@ -27,7 +29,7 @@ while IFS= read -r h; do
 done <<< "$REQUIRED"
 
 RULE_FILES="${CLAUDE_RULES_FILES:-$HOME/.claude/rulebook/reference.md $HOME/.claude/rulebook/agents.md $HOME/.claude/rulebook/audits.md $HOME/.claude/rulebook/cost.md}"
-CITED=$(cat $RULE_FILES 2>/dev/null | grep -E '^  Enforcement:' | grep -oE '(hook|eslint):[A-Za-z0-9_-]+' | sort -u || true)
+CITED=$(cat $RULE_FILES 2>/dev/null | grep -E '^  Enforcement:' | grep -oE '(hook|eslint|ruff):[A-Za-z0-9_-]+' | sort -u || true)
 ENFORCERS=$(jq -r '.rules[].enforcer' "$MANIFEST" | sort -u)
 
 UNMAPPED=""

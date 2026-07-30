@@ -34,6 +34,15 @@ allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/db/engine.py"}}'  
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/core/config.py"}}'                  # core/ blessed for python
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/svc/user.py"}}'                      # other abbrevs still denied for python
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/utils/format.py"}}'                  # catch-alls still denied for python
+# Python app/ root (CLAUDE-PYTHON.md layout): the gate must fire without a src/ segment
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/format.py"}}'                  # catch-all under app/ root
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/svc/user.py"}}'                      # abbrev under app/ root
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user-preferences/api.py"}}'          # kebab under app/ root
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user_preferences/api.py"}}'         # snake ok under app/ root
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/db/engine.py"}}'                    # db/ blessed under app/ root
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/core/config.py"}}'                  # core/ blessed under app/ root
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/services/jobs/score_match.py"}}'    # canonical layout ok
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/Format.tsx"}}'                # TS under app/ without src/ stays unscanned
 
 # R-306 applies to *creating* a catch-all, not writing into one that already exists.
 BANNED_FIXTURE=$(mktemp -d)
