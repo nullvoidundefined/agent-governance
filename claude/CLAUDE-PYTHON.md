@@ -168,6 +168,15 @@ Structured logging (structlog or stdlib `logging` with a JSON formatter). No sec
 - `ruff` for lint and import sorting, `black` for formatting, `mypy --strict` for types. Pre-commit runs these on staged files only (R-408); full sweep in pre-push/CI (R-509).
 - Trust the pre-commit hooks; do not manually re-run what they already run (R-510).
 
+## Enforcement (analog of push-eslint-gate)
+
+Mechanical enforcers cover the Python analogs of the AST-tier rules; `~/.claude/enforce/manifest.json` carries the entries.
+
+- `hook:push-ruff-gate` runs the bundled `~/.claude/enforce/ruff-enforce.toml` over the outgoing Python diff on `git push`, added lines only: `PLR2004` (R-324 magic values), `ANN401` + `PGH003`/`PGH004` (R-329 analog: no `typing.Any`, no blanket suppressions), `E731` (R-326 analog: no lambda assigned to a name). Repos in `enforce/exempt-repos.txt` skip it; fails open without ruff/uv.
+- `hook:llm-rule-judge` judges `*.py` in the outgoing diff against the naming/responsibility rules (R-315/R-316/R-317/R-318/R-322/R-325).
+- `hook:structure-gate` allows snake_case package dirs, `db/`, and `core/` in Python trees; catch-alls, other abbreviations, kebab-case, and co-located tests still deny.
+- `hook:migration-defaults-guard` covers the Alembic forms above.
+
 ## Build/Run Assets (analog of R-407 [ts])
 
 Python ships source, not a `dist/` bundle. Runtime-loaded non-code assets (SQL, prompt markdown, JSON) ship as package data (declared in `pyproject.toml`); add a smoke test asserting each required asset resolves at runtime via `importlib.resources`. Assert the package contains no `.env*` or secret files.

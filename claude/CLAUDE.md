@@ -46,7 +46,7 @@ R-308: Search the existing `services/`, `clients/`, and hook trees before adding
 R-309: Collapse any domain folder holding exactly one source module into a flat file; a folder needs 2+ sibling source files. [hook:single-file-folder-gate]
 R-310: Regroup any source directory past 20 sibling source modules into domain subfolders (count excludes `__tests__/`, barrels, sibling `constants.ts`/`types.ts`). [hook:flat-directory-reminder]
 R-311: Full-word directory names, never abbreviations: `database/` not `db/`. [hook:structure-gate]
-R-312: Multi-word directories are camelCase in every source tree; exception: Next.js URL route segments keep kebab-case. [hook:structure-gate]
+R-312: Multi-word directories are camelCase in every source tree; exceptions: Next.js URL route segments keep kebab-case, Python trees use snake_case. [hook:structure-gate]
 R-313: Test files live in a conventional sibling test directory (`__tests__/` TS, `tests/` py), never co-located beside source. [hook:structure-gate]
 R-314 [ts]: One top-level `__tests__/` tree per package's `src/`, mirroring the source layout; fixtures in a sibling `src/__fixtures__/`. [hook:structure-gate]
 R-315: Name files for their specific responsibility, predictable without opening them: `generatePublicNote.ts`, not `generate.ts`. [judge]

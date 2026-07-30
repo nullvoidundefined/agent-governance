@@ -146,6 +146,7 @@ R-306: Never create catch-all directories (`lib/`, `utils/`, `helpers/`, `common
   - `api/` holds browser-side wrappers around the application's own backend HTTP routes, one exported fetch function per route.
   - Classification: code that calls out to a third-party system is a client; code that calls our own backend is an `api/` module; otherwise a service. A connection pool below repositories is none of these; it keeps its own top-level tree.
   - Name each subfolder for what lives in it.
+  - Exception: the Python track blesses `core/` for config, logging, and security primitives (CLAUDE-PYTHON.md Directory Structure); the other catch-all names stay banned in Python too.
   Enforcement: hook:structure-gate
 
 R-307: Organize `services/`, `api/`, and `clients/` by the fixed directory contract.
@@ -177,11 +178,11 @@ R-310: Regroup any source directory holding more than 20 sibling source modules 
   Enforcement: hook:flat-directory-reminder (advisory)
 
 R-311: Use full-word directory names, never abbreviations: `database/` not `db/`.
-  Scope: new directories, and renaming existing ones on sight.
+  Scope: new directories, and renaming existing ones on sight. Exception: the Python track blesses `db/` as the engine/session home (CLAUDE-PYTHON.md Directory Structure).
   Enforcement: hook:structure-gate
 
 R-312: Name multi-word directories camelCase in every source tree (`userPreferences`, `toolCallLog`), never kebab-case or snake_case.
-  Scope: extends R-311 and R-315 to directories. Exception: Next.js App Router URL route segments keep kebab-case (`app/coming-soon`) because the folder name is the public URL; route groups `(name)` and non-URL `features/<name>` folders stay camelCase.
+  Scope: extends R-311 and R-315 to directories. Exception: Next.js App Router URL route segments keep kebab-case (`app/coming-soon`) because the folder name is the public URL; route groups `(name)` and non-URL `features/<name>` folders stay camelCase. Exception: Python package directories are importable names, so Python trees use snake_case (`user_preferences/`); kebab-case stays banned there too.
   Enforcement: hook:structure-gate
 
 R-313: Place test files in a conventional sibling test directory, never co-located beside their source file.
@@ -268,7 +269,7 @@ R-324: Extract every literal that carries meaning to a named constant; no magic 
   - Module `ALL_CAPS` for shared or configurable values (timeouts, limits, URLs, status strings); a named local `const` for single-use.
   - Any string literal appearing 2+ times becomes a named constant or a union type.
   - Exempt: `0`, `1`, `-1`, `''`, booleans, and literals in tests and fixtures.
-  Enforcement: eslint:no-magic-numbers (numbers); manual (strings)
+  Enforcement: eslint:no-magic-numbers (numbers); ruff:PLR2004 via push-ruff-gate (Python comparisons); manual (strings)
 
 R-325: Destructure when reading two or more properties from the same object; never destructure a method off its object.
   Spec: single-property access may use dot notation; invoke methods via dot notation (`obj.doThing()`, not `const { doThing } = obj`) to preserve `this`.
@@ -276,7 +277,8 @@ R-325: Destructure when reading two or more properties from the same object; nev
 
 R-326 [ts]: Never write IIFEs; declare a named `async function` and call it.
   Spec: inside a `useEffect` or similar synchronous context: `async function doWork() { ... } void doWork();`; never `void (async () => { ... })()` or `(async () => { ... })()`.
-  Enforcement: eslint:no-restricted-syntax
+  Python analog: never assign a `lambda` to a name; write a `def` (CLAUDE-PYTHON.md File Layout).
+  Enforcement: eslint:no-restricted-syntax; ruff:E731 via push-ruff-gate (Python)
 
 R-327 [ts]: Never nest ternaries; a conditional expression whose consequent or alternate is itself a ternary is banned.
   Scope: especially inside a React component's render/return block.
@@ -284,13 +286,15 @@ R-327 [ts]: Never nest ternaries; a conditional expression whose consequent or a
   Enforcement: eslint:no-nested-ternary
 
 R-328 [ts]: Write migration defaults as bare strings for constants (`default: 'active'`) and `pgm.func()` for SQL expressions; never nest quotes.
+  Python analog (Alembic): bare strings for constants (`server_default="active"`) and `sa.text()` for SQL expressions (`server_default=sa.text("now()")`); the guard covers both forms.
   Enforcement: hook:migration-defaults-guard
 
 R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-nocheck`; type the value, or use `unknown` and narrow explicitly.
   Spec:
   - Covers annotations, assertions (`as any`), and generic arguments.
   - `@ts-expect-error` with a description is the only permitted suppression; it fails when the underlying error disappears.
-  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment
+  Python analog: never `typing.Any` in signatures; suppressions carry specific codes (`# type: ignore[code]`, `# noqa: CODE`), never blanket.
+  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment; ruff:ANN401 + PGH003/PGH004 via push-ruff-gate (Python)
 
 R-330: Settle the domain vocabulary during spec writing, before naming propagates.
   Scope: extends R-315/R-316/R-317; establishes the domain-noun lexicon they draw from.
