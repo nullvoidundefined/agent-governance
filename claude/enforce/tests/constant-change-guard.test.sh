@@ -31,6 +31,21 @@ git commit -aqm "test: update"
 GOT=$(CLAUDE_ENFORCE_BASE=$BASE decision 'git push origin main')
 [ "$GOT" = "none" ] || { echo "FAIL: expected none after test update, got $GOT"; exit 1; }
 
+# Python: constants.py change with a stale pytest assertion -> ask
+mkdir -p app tests
+printf "STATUS_ACTIVE = 'enabled'\n" > app/constants.py
+printf "def test_status():\n    assert STATUS == 'enabled'\n" > tests/test_status.py
+git add -A && git commit -qm "chore: py init"
+PYBASE=$(git rev-parse HEAD)
+printf "STATUS_ACTIVE = 'running'\n" > app/constants.py
+git commit -aqm "chore: py rename"
+GOT=$(CLAUDE_ENFORCE_BASE=$PYBASE decision 'git push origin main')
+[ "$GOT" = "ask" ] || { echo "FAIL: expected ask for stale python assertion, got $GOT"; exit 1; }
+printf "def test_status():\n    assert STATUS == 'running'\n" > tests/test_status.py
+git commit -aqm "test: py update"
+GOT=$(CLAUDE_ENFORCE_BASE=$PYBASE decision 'git push origin main')
+[ "$GOT" = "none" ] || { echo "FAIL: expected none after python test update, got $GOT"; exit 1; }
+
 # Non-push commands untouched
 GOT=$(decision 'git status')
 [ "$GOT" = "none" ] || { echo "FAIL: expected none for non-push, got $GOT"; exit 1; }

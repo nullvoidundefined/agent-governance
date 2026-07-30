@@ -64,4 +64,18 @@ check "allow non-string default" \
 check "passthrough anti-pattern in non-migration file" \
     emits_nothing Write content "$SRC" "const x = { default: 'now()' };"
 
+# --- Python/Alembic (R-328 analog, CLAUDE-PYTHON.md Migrations section) ---
+PYMIG="app/migrations/versions/a1b2c3_add_status.py"
+PYSRC="app/services/jobs/build_resume.py"
+check "deny alembic nested quotes (Write)" \
+    emits_deny  Write content "$PYMIG" "    sa.Column(\"status\", sa.Text(), server_default=\"'active'\"),"
+check "deny alembic bare-string SQL call (Write)" \
+    emits_deny  Write content "$PYMIG" "    sa.Column(\"created\", sa.DateTime(), server_default=\"now()\"),"
+check "allow alembic bare constant string" \
+    emits_nothing Write content "$PYMIG" "    sa.Column(\"status\", sa.Text(), server_default=\"active\"),"
+check "allow alembic sa.text() SQL expression" \
+    emits_nothing Write content "$PYMIG" "    sa.Column(\"created\", sa.DateTime(), server_default=sa.text(\"now()\")),"
+check "passthrough alembic anti-pattern outside migrations" \
+    emits_nothing Write content "$PYSRC" "value = dict(server_default=\"now()\")"
+
 exit "$fail"

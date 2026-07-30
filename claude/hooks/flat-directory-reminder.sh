@@ -18,18 +18,19 @@ file_path=$(jq -rc '.tool_input.file_path // ""' 2>/dev/null)
 [ -f "$file_path" ] || exit 0
 
 case "$file_path" in
-    *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs) : ;;
+    *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs | *.py) : ;;
     *) exit 0 ;;
 esac
 case "$file_path" in
-    *.d.ts | *.test.* | *.spec.* | *__tests__* | *__fixtures__* | *.stories.* | *.config.* | */migrations/* | */node_modules/* | */dist/* | */.next/*) exit 0 ;;
+    *.d.ts | *.test.* | *.spec.* | *__tests__* | *__fixtures__* | *.stories.* | *.config.* | */migrations/* | */node_modules/* | */dist/* | */.next/* | */tests/* | */test_* | *_test.py | *conftest.py | */.venv/* | */venv/* | *__pycache__*) exit 0 ;;
 esac
 
 directory=$(dirname "$file_path")
 
 count=$(find "$directory" -maxdepth 1 -type f \
-    \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.mjs' -o -name '*.cjs' \) \
+    \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.py' \) \
     ! -name 'index.ts' ! -name 'index.tsx' ! -name 'constants.ts' ! -name 'types.ts' \
+    ! -name '__init__.py' ! -name 'constants.py' ! -name 'types.py' ! -name 'conftest.py' ! -name 'test_*' ! -name '*_test.py' \
     ! -name '*.d.ts' ! -name '*.test.*' ! -name '*.spec.*' ! -name '*.stories.*' ! -name '*.config.*' \
     2>/dev/null | wc -l | tr -d ' ')
 

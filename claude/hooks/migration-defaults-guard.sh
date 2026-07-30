@@ -9,6 +9,8 @@
 # Correct forms pass untouched: bare constant (default: 'active'),
 # pgm.func() expressions (default: pgm.func('now()')), and non-string
 # defaults (default: 0). Files outside /migrations/ are ignored.
+# Python migration files (.py, Alembic) get the server_default analogs:
+# nested quotes and bare-string SQL calls deny; sa.text(...) passes.
 #
 # Claude Code feeds stdin JSON: { tool_name, tool_input: { ... } }.
 # Matched content per tool: Write -> .tool_input.content,
@@ -31,21 +33,32 @@ if ! printf '%s' "$FILE_PATH" | grep -q '/migrations/'; then
   exit 0
 fi
 
-# Nested quotes inside a default value: a quoted string that itself
-# contains the other quote character right after `default:`.
-NESTED_RE='default:[[:space:]]*("[^"]*'\''|'\''[^'\'']*")'
-# Bare single-quoted default whose value is a SQL function call (has
-# parentheses). pgm.func(...) is exempt because its value starts with
-# `pgm`, not a quote, so this anchored pattern never matches it.
-SQL_CALL_RE='default:[[:space:]]*'\''[^'\'']*\([^'\'']*\)[^'\'']*'\'''
+if printf '%s' "$FILE_PATH" | grep -q '\.py$'; then
+  # Alembic (Python analog of R-328, CLAUDE-PYTHON.md Migrations section).
+  # Nested quotes: server_default="'active'". Bare-string SQL call:
+  # server_default="now()" (must be sa.text(...)). sa.text("now()") is exempt
+  # because after `=` comes `sa.text(`, not a quote.
+  NESTED_RE='server_default[[:space:]]*=[[:space:]]*("[^"]*'\''|'\''[^'\'']*")'
+  SQL_CALL_RE='server_default[[:space:]]*=[[:space:]]*("[^"]*\([^"]*\)[^"]*"|'\''[^'\'']*\([^'\'']*\)[^'\'']*'\'')'
+  REASON="migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328 (Alembic form). Use a bare string for a constant (server_default=\"active\") and sa.text() for a SQL expression (server_default=sa.text(\"now()\")). Never nest quotes (server_default=\"'active'\" is wrong) and never pass a SQL call as a bare string (server_default=\"now()\" is wrong). Fix the default and retry."
+else
+  # Nested quotes inside a default value: a quoted string that itself
+  # contains the other quote character right after `default:`.
+  NESTED_RE='default:[[:space:]]*("[^"]*'\''|'\''[^'\'']*")'
+  # Bare single-quoted default whose value is a SQL function call (has
+  # parentheses). pgm.func(...) is exempt because its value starts with
+  # `pgm`, not a quote, so this anchored pattern never matches it.
+  SQL_CALL_RE='default:[[:space:]]*'\''[^'\'']*\([^'\'']*\)[^'\'']*'\'''
+  REASON="migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328. Use a bare string for a constant (default: 'active') and pgm.func() for a SQL expression (default: pgm.func('now()')). Never nest quotes (default: \"'active'\" is wrong) and never pass a SQL call as a bare string (default: 'now()' is wrong). Fix the default and retry."
+fi
 
 if printf '%s' "$CONTENT" | grep -qE "$NESTED_RE" \
    || printf '%s' "$CONTENT" | grep -qE "$SQL_CALL_RE"; then
-  jq -n '{
+  jq -n --arg r "$REASON" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: "migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328. Use a bare string for a constant (default: '\''active'\'') and pgm.func() for a SQL expression (default: pgm.func('\''now()'\'')). Never nest quotes (default: \"'\''active'\''\" is wrong) and never pass a SQL call as a bare string (default: '\''now()'\'' is wrong). Fix the default and retry."
+      permissionDecisionReason: $r
     }
   }'
 fi

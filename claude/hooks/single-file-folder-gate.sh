@@ -15,7 +15,7 @@ BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
 TOP="$(git rev-parse --show-toplevel)"
-FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.tsx?$' || true)
+FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|py)$' || true)
 [ -z "$FILES" ] && exit 0
 
 EXEMPT=""
@@ -25,7 +25,8 @@ is_source() {
   case "$1" in
     *.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx) return 1 ;;
     index.ts|index.tsx|constants.ts|types.ts) return 1 ;;
-    *.ts|*.tsx) return 0 ;;
+    __init__.py|constants.py|types.py|conftest.py|test_*.py|*_test.py) return 1 ;;
+    *.ts|*.tsx|*.py) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -33,6 +34,8 @@ is_source() {
 DIRS=$(printf '%s\n' "$FILES" | xargs -n1 dirname | sort -u)
 while IFS= read -r dir; do
   [ -z "$dir" ] && continue
+  # Migration trees (Alembic versions/, node-pg-migrate) legitimately start at one file.
+  case "$dir" in migrations|migrations/*|*/migrations|*/migrations/*) continue ;; esac
   printf '%s\n' "$EXEMPT" | grep -qx "$dir" && continue
   count=0
   for path in "$TOP/$dir"/*; do

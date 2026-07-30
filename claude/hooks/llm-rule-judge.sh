@@ -18,7 +18,7 @@ printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-DIFF=$(git diff --diff-filter=ACMR "$BASE"..HEAD -- '*.ts' '*.tsx' 2>/dev/null || true)
+DIFF=$(git diff --diff-filter=ACMR "$BASE"..HEAD -- '*.ts' '*.tsx' '*.py' 2>/dev/null || true)
 [ -z "$DIFF" ] && exit 0
 
 THRESH=0.8

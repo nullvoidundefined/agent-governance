@@ -33,4 +33,10 @@ S4=$(mkstub '{"violations":[{"rule":"R-322","confidence":0.95,"file":"x.ts","why
 OUT4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S4" "$HOOK")
 [ -z "$OUT4" ] || { echo "FAIL: R-322 warn rule should not produce deny output; got: $OUT4"; exit 1; }
 
+# Python-only diff still reaches the judge (the diff scope includes *.py).
+printf 'def generate():\n    pass\n' > generate.py; git add .; git commit -q -m y
+S5=$(mkstub '{"violations":[{"rule":"R-315","confidence":0.9,"file":"generate.py","why":"vague filename"}]}')
+OUT5=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S5" "$HOOK")
+printf '%s' "$OUT5" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: py-only diff should reach the judge and deny"; exit 1; }
+
 echo "llm-rule-judge.test.sh PASS"

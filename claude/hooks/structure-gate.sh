@@ -17,6 +17,11 @@ deny() {
 
 BANNED='^(lib|utils|helpers|common|core|misc|shared)$'
 ABBREV='^(db|di|svc|ctrl|mw|cfg)$'
+# Python tree: importable package directories must be snake_case, so the R-312
+# camelCase check does not apply; `db/` is the blessed engine/session home in
+# the Python track (CLAUDE-PYTHON.md), so the R-311 abbreviation ban skips it.
+is_python=0
+[[ "$FILE" == *.py ]] && is_python=1
 IFS='/' read -ra PARTS <<< "$FILE"
 in_src=0
 in_app=0
@@ -34,15 +39,22 @@ for seg in "${PARTS[@]}"; do
   [[ "$seg" =~ ^\(.*\)$ ]] && continue
   [ "$seg" = "app" ] && in_app=1 && continue
   if [[ "$seg" =~ $BANNED ]]; then
+    # CLAUDE-PYTHON.md blesses core/ (config, logging, security primitives).
+    [ "$is_python" -eq 1 ] && [ "$seg" = "core" ] && continue
     # Pre-existing directory: writing into it creates nothing. Allow.
     [ -d "$prefix" ] && continue
     deny "Directory '$seg' is a banned catch-all (R-306/R-304) and does not exist yet, so this Write would create it. Use services/, clients/, or a domain folder."
   fi
   if [[ "$seg" =~ $ABBREV ]]; then
+    # CLAUDE-PYTHON.md blesses db/ as the engine/session home.
+    [ "$is_python" -eq 1 ] && [ "$seg" = "db" ] && continue
     deny "Directory '$seg' is an abbreviation (R-311). Use the full word: database/, dependencyInjection/, services/, controllers or handlers/, middleware/, config/."
   fi
   if [[ "$seg" == *-* || "$seg" == *_* ]]; then
     [ "$in_app" -eq 1 ] && continue
+    # Python package directories are importable names: snake_case is the idiom
+    # (R-312 Python exception); kebab-case stays denied (not importable).
+    [ "$is_python" -eq 1 ] && [[ "$seg" != *-* ]] && continue
     deny "Directory '$seg' must be camelCase, not kebab/snake (R-312)."
   fi
 done

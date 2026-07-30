@@ -27,6 +27,13 @@ deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/__tests__/
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/__tests__/handlers/auth.test.ts"}}' # top-level tree ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/e2e/login.spec.ts"}}'                   # e2e specs ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/tests/test_auth.py"}}'                  # python tests/ ok
+# Python tree exceptions: snake_case package dirs, blessed db/ and core/ (CLAUDE-PYTHON.md)
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user_preferences/api.py"}}'         # snake ok for python (R-312 exception)
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user-preferences/api.py"}}'          # kebab still denied for python
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/db/engine.py"}}'                    # db/ blessed for python
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/core/config.py"}}'                  # core/ blessed for python
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/svc/user.py"}}'                      # other abbrevs still denied for python
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/utils/format.py"}}'                  # catch-alls still denied for python
 
 # R-306 applies to *creating* a catch-all, not writing into one that already exists.
 BANNED_FIXTURE=$(mktemp -d)

@@ -25,4 +25,19 @@ git add .; git commit -q -m exempt
 ERR2=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
 printf '%s' "$ERR2" | grep -q "src/voices" && { echo "FAIL: exemption should suppress the advisory"; exit 1; } || true
 
+# Python: a package dir holding one real module warns; __init__.py does not count.
+mkdir -p app/scoring
+printf '"""Scoring."""\n' > app/scoring/__init__.py
+printf 'def score_match():\n    return 1\n' > app/scoring/score_match.py
+git add .; git commit -q -m py
+ERR3=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
+printf '%s' "$ERR3" | grep -q "app/scoring" || { echo "FAIL: expected advisory for single-module python package"; exit 1; }
+
+# Python: Alembic versions/ dir with one migration is exempt.
+mkdir -p migrations/versions
+printf 'def upgrade():\n    pass\n' > migrations/versions/a1_init.py
+git add .; git commit -q -m mig
+ERR4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
+printf '%s' "$ERR4" | grep -q "migrations/versions" && { echo "FAIL: migrations dirs should be exempt"; exit 1; } || true
+
 echo "single-file-folder-gate.test.sh PASS"
