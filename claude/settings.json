@@ -46,6 +46,15 @@
       "Bash(xargs *)",
       "Bash(yarn *)"
     ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf ~/)",
+      "Bash(rm -rf $HOME)",
+      "Bash(git push --mirror*)",
+      "Bash(gh repo delete*)",
+      "Bash(gh release delete*)"
+    ],
     "ask": [
       "Bash(git commit --no-verify*)",
       "Bash(git commit -n *)",
@@ -56,15 +65,6 @@
       "Bash(gh pr merge*)",
       "Bash(sudo *)",
       "Bash(rm -rf *)"
-    ],
-    "deny": [
-      "Bash(rm -rf /)",
-      "Bash(rm -rf ~)",
-      "Bash(rm -rf ~/)",
-      "Bash(rm -rf $HOME)",
-      "Bash(git push --mirror*)",
-      "Bash(gh repo delete*)",
-      "Bash(gh release delete*)"
     ]
   },
   "model": "fable",
@@ -104,6 +104,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/push-eslint-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-ruff-gate.sh"
           },
           {
             "type": "command",
