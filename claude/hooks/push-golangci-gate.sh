@@ -32,8 +32,20 @@ FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep
 [ -z "$FILES" ] && exit 0
 
 if [ -n "${CLAUDE_GOLANGCI_CMD:-}" ]; then
+  # Explicit operator override: trusted by definition (test/dev configuration).
   GOLANGCI="$CLAUDE_GOLANGCI_CMD"
 elif command -v golangci-lint >/dev/null 2>&1; then
+  # SECURITY (2026-07-31 security audit P0): golangci-lint compiles the target
+  # tree, and compilation of untrusted Go (cgo directives, toolchain edge
+  # cases) is a code-execution surface. Unlike lint-only parsing, this cannot
+  # be made safe by config, so the real binary runs ONLY in repos the operator
+  # has explicitly trusted (origin URL per line, mirror of exempt-repos.txt).
+  TRUSTED_FILE="$HOME/.claude/enforce/gate-trusted-repos.txt"
+  ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+  if [ -z "$ORIGIN_URL" ] || [ ! -f "$TRUSTED_FILE" ] || ! grep -qxF "$ORIGIN_URL" "$TRUSTED_FILE"; then
+    echo "push-golangci-gate: repo not in enforce/gate-trusted-repos.txt, skipping the Go AST gate (linting Go requires compiling the tree; add the origin URL to opt in)" >&2
+    exit 0
+  fi
   GOLANGCI="golangci-lint"
 else
   echo "push-golangci-gate: no golangci-lint on PATH, skipping the Go AST gate" >&2

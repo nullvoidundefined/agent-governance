@@ -31,14 +31,18 @@ FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep
 [ -z "$FILES" ] && exit 0
 
 TOP="$(git rev-parse --show-toplevel)"
+# SECURITY (2026-07-31 security audit P0): never resolve RuboCop through the
+# target repo's bundle. `bundle exec` evaluates that repo's Gemfile (arbitrary
+# Ruby) at push time, handing a cloned repo code execution. PATH-resolved
+# RuboCop with our explicit --config only parses source; it executes nothing
+# from the repo. Repos wanting their own RuboCop version run it in their own
+# pre-commit, not here.
 if [ -n "${CLAUDE_RUBOCOP_CMD:-}" ]; then
   RUBOCOP="$CLAUDE_RUBOCOP_CMD"
-elif [ -f "$TOP/Gemfile.lock" ] && grep -q '^    rubocop ' "$TOP/Gemfile.lock" 2>/dev/null; then
-  RUBOCOP="bundle exec rubocop"
 elif command -v rubocop >/dev/null 2>&1; then
   RUBOCOP="rubocop"
 else
-  echo "push-rubocop-gate: no rubocop on PATH or in the bundle, skipping the Ruby AST gate" >&2
+  echo "push-rubocop-gate: no rubocop on PATH, skipping the Ruby AST gate" >&2
   exit 0
 fi
 
@@ -55,7 +59,7 @@ ADDED=$(git diff -U0 --diff-filter=ACMR "$BASE"..HEAD -- '*.rb' 2>/dev/null | aw
   }')
 [ -z "$ADDED" ] && exit 0
 
-RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs $RUBOCOP --format json --config "$CONFIG" 2>/dev/null || true)
+RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs $RUBOCOP --format json --config "$CONFIG" -- 2>/dev/null || true)
 printf '%s' "$RESULTS" | jq -e '.files | type == "array"' >/dev/null 2>&1 || {
   echo "push-rubocop-gate: rubocop produced no parseable output, skipping (fails open)" >&2
   exit 0

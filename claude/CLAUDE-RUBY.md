@@ -147,7 +147,7 @@ Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag reques
 
 ## Enforcement (analog of push-eslint-gate)
 
-- `hook:push-rubocop-gate` runs the bundled `~/.claude/enforce/rubocop-enforce.yml` over the outgoing Ruby diff on `git push`, added lines only: `Style/NestedTernaryOperator` (R-327), `Naming/MethodName`/`Naming/VariableName`/`Naming/ConstantName` (R-316/R-317 support). Prefers `bundle exec rubocop` when the lockfile carries it; fails open without RuboCop.
+- `hook:push-rubocop-gate` runs the bundled `~/.claude/enforce/rubocop-enforce.yml` over the outgoing Ruby diff on `git push`, added lines only: `Style/NestedTernaryOperator` (R-327), `Naming/MethodName`/`Naming/VariableName`/`Naming/ConstantName` (R-316/R-317 support). PATH-resolved RuboCop only, never `bundle exec` (the target repo's Gemfile is untrusted code; 2026-07-31 security audit); fails open without RuboCop.
 - `hook:llm-rule-judge` judges `*.rb` in the outgoing diff (R-315/R-316/R-317/R-318/R-322/R-325).
 - `hook:structure-gate` scans `app/`- and `lib/`-rooted Ruby trees: snake_case allowed, `lib/` and `db/` blessed; catch-alls, other abbreviations, and co-located specs deny.
 - `hook:migration-defaults-guard` covers the Rails migration forms above.

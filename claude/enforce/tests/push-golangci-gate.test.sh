@@ -38,4 +38,15 @@ S4=$(mkstub 'golangci exploded')
 OUT4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_GOLANGCI_CMD="$S4" "$HOOK" 2>/dev/null)
 [ -z "$OUT4" ]
 
+# Trust gate (2026-07-31 security audit P0): with a real-looking golangci-lint
+# on PATH and NO explicit override, an untrusted repo (origin not in
+# gate-trusted-repos.txt) must skip without running the binary.
+FAKEBIN=$(mktemp -d)
+printf '#!/usr/bin/env bash\ntouch "%s/RAN"\necho "{}"\n' "$FAKEBIN" > "$FAKEBIN/golangci-lint"
+chmod +x "$FAKEBIN/golangci-lint"
+git remote add origin https://example.com/untrusted/repo.git 2>/dev/null || true
+ERR5=$(printf '%s' "$PAYLOAD" | PATH="$FAKEBIN:$PATH" CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
+printf '%s' "$ERR5" | grep -q "gate-trusted-repos" || { echo "FAIL: expected trust-skip note for untrusted repo"; exit 1; }
+[ ! -f "$FAKEBIN/RAN" ] || { echo "FAIL: golangci binary ran against an untrusted repo"; exit 1; }
+
 echo "push-golangci-gate.test.sh PASS"

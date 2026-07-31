@@ -121,7 +121,7 @@ Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'acti
 
 ## Enforcement (analog of push-eslint-gate)
 
-- `hook:push-golangci-gate` runs the bundled `~/.claude/enforce/golangci-enforce.yml` over the outgoing Go diff on `git push`, added lines only: `mnd` (R-324 magic numbers) and `nolintlint` (R-329 analog: every `//nolint` carries a specific linter and reason). Fails open without golangci-lint.
+- `hook:push-golangci-gate` runs the bundled `~/.claude/enforce/golangci-enforce.yml` over the outgoing Go diff on `git push`, added lines only: `mnd` (R-324 magic numbers) and `nolintlint` (R-329 analog: every `//nolint` carries a specific linter and reason). Opt-in per repo via `enforce/gate-trusted-repos.txt`, because linting Go compiles the tree and compiling untrusted code is a code-execution surface (2026-07-31 security audit); fails open without golangci-lint or off the trust list.
 - `hook:llm-rule-judge` judges `*.go` in the outgoing diff (R-315/R-316/R-317/R-318/R-322/R-325).
 - `hook:structure-gate` scans `internal/`-, `cmd/`-, and `pkg/`-rooted Go trees: catch-alls deny; dir-case checks are waived for Go (lowercase packages, kebab binary names); `db/` blessed.
 - Ternaries do not exist in Go, so R-327 is structurally satisfied.

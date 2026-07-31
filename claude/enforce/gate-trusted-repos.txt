@@ -1,0 +1,8 @@
+# gate-trusted-repos.txt: origin URLs (one per line, exact match) of repos the
+# operator trusts enough to COMPILE at push time. push-golangci-gate.sh runs
+# the real golangci-lint only for repos listed here, because linting Go means
+# building the tree and building untrusted code is a code-execution surface
+# (2026-07-31 security audit P0). Cloned third-party repos stay unlisted.
+#
+# Example:
+# https://github.com/nullvoidundefined/my-go-service.git
