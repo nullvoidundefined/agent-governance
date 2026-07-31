@@ -4,6 +4,7 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 
 ## Open
 
+- P3 (2026-07-31 Ruby/Go parity): `enforce/golangci-enforce.yml` is written against the golangci-lint v1 schema and could not be validated locally (no Go toolchain); validate and migrate to the v2 schema if needed on the first real Go project. The gate fails open on unparseable output either way.
 - P2 (2026-07-31 engineering audit): commit 266d05e is an unpaired `fix:` touching only `enforce/eslint.config.mjs` with no test; single instance, R-403 pattern note.
 - P3 (2026-07-31 engineering audit): `structure-gate.sh` applies the TS-only R-314 nested-`__tests__` deny message to Python test filenames; untested edge, low likelihood.
 - P3 (2026-07-31 engineering audit): `push-ruff-gate.sh` and `push-eslint-gate.sh` split the changed-file list with `xargs`, mishandling a space-containing path; pre-existing pattern shared by both gates.

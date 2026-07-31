@@ -146,7 +146,7 @@ R-306: Never create catch-all directories (`lib/`, `utils/`, `helpers/`, `common
   - `api/` holds browser-side wrappers around the application's own backend HTTP routes, one exported fetch function per route.
   - Classification: code that calls out to a third-party system is a client; code that calls our own backend is an `api/` module; otherwise a service. A connection pool below repositories is none of these; it keeps its own top-level tree.
   - Name each subfolder for what lives in it.
-  - Exception: the Python track blesses `core/` for config, logging, and security primitives (CLAUDE-PYTHON.md Directory Structure); the other catch-all names stay banned in Python too.
+  - Exception: the Python track blesses `core/` for config, logging, and security primitives (CLAUDE-PYTHON.md Directory Structure); the Ruby track blesses root-level `lib/` as the Rails/Ruby term of art (CLAUDE-RUBY.md). The other catch-all names stay banned in every stack, including Go, where `util`/`common` packages are anti-idiomatic.
   Enforcement: hook:structure-gate
 
 R-307: Organize `services/`, `api/`, and `clients/` by the fixed directory contract.
@@ -178,15 +178,16 @@ R-310: Regroup any source directory holding more than 20 sibling source modules 
   Enforcement: hook:flat-directory-reminder (advisory)
 
 R-311: Use full-word directory names, never abbreviations: `database/` not `db/`.
-  Scope: new directories, and renaming existing ones on sight. Exception: the Python track blesses `db/` as the engine/session home (CLAUDE-PYTHON.md Directory Structure).
+  Scope: new directories, and renaming existing ones on sight. Exception: `db/` is blessed as the same term of art in the Python (engine/session home), Ruby (Rails `db/`), and Go (connection package) tracks.
   Enforcement: hook:structure-gate
 
 R-312: Name multi-word directories camelCase in every source tree (`userPreferences`, `toolCallLog`), never kebab-case or snake_case.
-  Scope: extends R-311 and R-315 to directories. Exception: Next.js App Router URL route segments keep kebab-case (`app/coming-soon`) because the folder name is the public URL; route groups `(name)` and non-URL `features/<name>` folders stay camelCase. Exception: Python package directories are importable names, so Python trees use snake_case (`user_preferences/`); kebab-case stays banned there too.
+  Scope: extends R-311 and R-315 to directories. Exception: Next.js App Router URL route segments keep kebab-case (`app/coming-soon`) because the folder name is the public URL; route groups `(name)` and non-URL `features/<name>` folders stay camelCase. Exception: Python and Ruby package directories are importable/require-able names, so those trees use snake_case (`user_preferences/`); kebab-case stays banned there too. Exception: Go waives the dir-case check entirely: packages are short lowercase words and `cmd/<binary-name>/` is idiomatically kebab-case.
   Enforcement: hook:structure-gate
 
 R-313: Place test files in a conventional sibling test directory, never co-located beside their source file.
-  Spec: `__tests__/` per source directory in TypeScript, `tests/` in Python.
+  Spec: `__tests__/` per source directory in TypeScript, `tests/` in Python, `spec/` in Ruby (RSpec).
+  Exception (Go, toolchain requirement): `*_test.go` files are co-located in the same package directory; a separate test tree breaks package-internal access and `go test ./...`. This is the documented override, not drift.
   Enforcement: hook:structure-gate
 
 R-314 [ts]: Keep one top-level `__tests__/` tree per package's `src/`, mirroring the source layout.
@@ -207,6 +208,7 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
   - One verb lexicon across the codebase: reads `get`/`list`/`fetch`/`load`; writes `create`/`insert`/`update`/`record`/`save`; removal `drop`/`remove`/`exclude`; construction `build`/`generate`/`map`.
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
+  - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
   Enforcement: judge
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.
@@ -216,6 +218,7 @@ R-317: Name variables descriptively; never abbreviate where the full word reads 
   - Never a bare adjective or participle; pair every adjective with its noun: `const scoredJob = await getScoredJob(id)`, not `const scored`; `tailoredResume`, not `tailored`; `matchedJobs`, not `matched`.
   - Booleans follow R-316's `is`/`has`/`can`/`should` prefixes, never a bare adjective.
   - A name must read as natural English when the code is read aloud; rename any name that does not communicate intent.
+  - Exception (Go): the idiomatic short names (`err`, `ok`, `ctx`, `i`, one-letter receivers) are correct in small scopes; descriptive names still required for anything living beyond a screen.
   Enforcement: judge
 
 R-318: Give each file one responsibility; split when it serves more than one concern.
@@ -269,7 +272,7 @@ R-324: Extract every literal that carries meaning to a named constant; no magic 
   - Module `ALL_CAPS` for shared or configurable values (timeouts, limits, URLs, status strings); a named local `const` for single-use.
   - Any string literal appearing 2+ times becomes a named constant or a union type.
   - Exempt: `0`, `1`, `-1`, `''`, booleans, and literals in tests and fixtures.
-  Enforcement: eslint:no-magic-numbers (numbers); ruff:PLR2004 via push-ruff-gate (Python comparisons); manual (strings)
+  Enforcement: eslint:no-magic-numbers (numbers); ruff:PLR2004 via push-ruff-gate (Python comparisons); golangci:mnd via push-golangci-gate (Go); manual (strings)
 
 R-325: Destructure when reading two or more properties from the same object; never destructure a method off its object.
   Spec: single-property access may use dot notation; invoke methods via dot notation (`obj.doThing()`, not `const { doThing } = obj`) to preserve `this`.
@@ -281,12 +284,13 @@ R-326 [ts]: Never write IIFEs; declare a named `async function` and call it.
   Enforcement: eslint:no-restricted-syntax; ruff:E731 via push-ruff-gate (Python)
 
 R-327 [ts]: Never nest ternaries; a conditional expression whose consequent or alternate is itself a ternary is banned.
-  Scope: especially inside a React component's render/return block.
+  Scope: especially inside a React component's render/return block. The Ruby analog is identical; Go has no ternary, so the rule is structurally satisfied there.
   Spec: replace with an early-return helper function or extracted component, a lookup map, or named boolean variables.
-  Enforcement: eslint:no-nested-ternary
+  Enforcement: eslint:no-nested-ternary; rubocop:Style/NestedTernaryOperator via push-rubocop-gate (Ruby)
 
 R-328 [ts]: Write migration defaults as bare strings for constants (`default: 'active'`) and `pgm.func()` for SQL expressions; never nest quotes.
-  Python analog (Alembic): bare strings for constants (`server_default="active"`) and `sa.text()` for SQL expressions (`server_default=sa.text("now()")`); the guard covers both forms.
+  Python analog (Alembic): bare strings for constants (`server_default="active"`) and `sa.text()` for SQL expressions (`server_default=sa.text("now()")`).
+  Ruby analog (Rails): bare strings for constants (`default: "active"`) and a lambda for SQL expressions (`default: -> { "now()" }`). Go migrations are raw SQL, where the trap does not arise. The guard covers all three forms.
   Enforcement: hook:migration-defaults-guard
 
 R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-nocheck`; type the value, or use `unknown` and narrow explicitly.
@@ -294,7 +298,8 @@ R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-noche
   - Covers annotations, assertions (`as any`), and generic arguments.
   - `@ts-expect-error` with a description is the only permitted suppression; it fails when the underlying error disappears.
   Python analog: never `typing.Any` in signatures; suppressions carry specific codes (`# type: ignore[code]`, `# noqa: CODE`), never blanket.
-  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment; ruff:ANN401 + PGH003/PGH004 via push-ruff-gate (Python)
+  Go analog: every `//nolint` names a specific linter and a reason, never blanket.
+  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment; ruff:ANN401 + PGH003/PGH004 via push-ruff-gate (Python); golangci:nolintlint via push-golangci-gate (Go)
 
 R-330: Settle the domain vocabulary during spec writing, before naming propagates.
   Scope: extends R-315/R-316/R-317; establishes the domain-noun lexicon they draw from.
