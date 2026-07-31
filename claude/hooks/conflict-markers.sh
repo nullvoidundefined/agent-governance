@@ -14,6 +14,20 @@ if ! printf '%s' "$CMD" | grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[
 fi
 
 MARKERS=$(git diff --cached 2>/dev/null | grep -E '^[+](<{7}|={7}|>{7})' || true)
+
+# Chained `git add X && git commit` reaches this hook before staging, so the
+# cached diff is empty (2026-07-31 engineering audit P1). Also scan the
+# working-tree content of files named in git add segments of this command.
+ADD_SEGMENTS=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+add[[:space:]]+[^;&|]+' || true)
+if [ -n "$ADD_SEGMENTS" ]; then
+  while IFS= read -r add_path; do
+    [ -f "$add_path" ] || continue
+    FILE_MARKERS=$(grep -E '^(<{7}( |$)|={7}$|>{7}( |$))' "$add_path" 2>/dev/null || true)
+    [ -n "$FILE_MARKERS" ] && MARKERS="$MARKERS
+$FILE_MARKERS"
+  done < <(printf '%s\n' "$ADD_SEGMENTS" | sed -E 's/^git[[:space:]]+add[[:space:]]+//' | tr ' ' '\n' | grep -vE '^$|^-')
+fi
+
 if [ -z "$MARKERS" ]; then
   exit 0
 fi

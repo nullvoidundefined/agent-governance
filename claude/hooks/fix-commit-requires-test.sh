@@ -87,11 +87,23 @@ if ! printf '%s' "$SUBJECT" | grep -qE '^(fix:|fix\(|bug:|bugfix:|hotfix:)'; the
   exit 0
 fi
 
-# Check staged files. If git is not available or there is no staged
-# diff, skip silently (the commit will fail for unrelated reasons and
-# this hook should not add confusing noise).
+# Check staged files, UNIONED with paths named in `git add` segments of the
+# same command: a chained `git add X && git commit -m "fix: ..."` runs this
+# hook before anything is staged, so the index snapshot alone is bypassable
+# (2026-07-31 engineering audit P1). -A/--all/. arguments fall back to the
+# working-tree change list.
 STAGED=$(git diff --cached --name-only 2>/dev/null || true)
-if [ -z "$STAGED" ]; then
+ADD_SEGMENTS=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+add[[:space:]]+[^;&|]+' || true)
+if [ -n "$ADD_SEGMENTS" ]; then
+  ADD_PATHS=$(printf '%s\n' "$ADD_SEGMENTS" | sed -E 's/^git[[:space:]]+add[[:space:]]+//' | tr ' ' '\n' | grep -v '^$' || true)
+  if printf '%s\n' "$ADD_PATHS" | grep -qE '^(-A|--all|\.)$'; then
+    ADD_PATHS="$ADD_PATHS
+$(git status --porcelain 2>/dev/null | awk '{print $NF}')"
+  fi
+  STAGED="$STAGED
+$ADD_PATHS"
+fi
+if [ -z "$(printf '%s' "$STAGED" | tr -d '[:space:]')" ]; then
   exit 0
 fi
 

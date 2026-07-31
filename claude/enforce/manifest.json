@@ -23,6 +23,7 @@
     { "id": "R-103", "tier": "regex", "enforcer": "hook:secret-scan", "severity": "error", "autofix": false },
     { "id": "R-106", "tier": "regex", "enforcer": "hook:global-repo-push-guard", "severity": "error", "autofix": false },
     { "id": "R-107", "tier": "advisory", "enforcer": "hook:hookspath-drift-check", "severity": "warn", "autofix": false },
+    { "id": "R-203", "tier": "advisory", "enforcer": "hook:hook-integrity-check", "severity": "warn", "autofix": false, "note": "hash manifest over hooks/ and enforce configs; regenerate with --update" },
     { "id": "R-207", "tier": "regex", "enforcer": "hook:no-em-dash", "severity": "error", "autofix": false },
     { "id": "R-328", "tier": "regex", "enforcer": "hook:migration-defaults-guard", "severity": "error", "autofix": false },
     { "id": "R-403", "tier": "regex", "enforcer": "hook:fix-commit-requires-test", "severity": "error", "autofix": false },

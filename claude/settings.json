@@ -222,6 +222,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/enforcement-guard-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/hook-integrity-check.sh"
           }
         ]
       }

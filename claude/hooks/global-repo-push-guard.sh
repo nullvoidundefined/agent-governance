@@ -45,7 +45,25 @@ ROOT_REAL=$(cd "$ROOT" 2>/dev/null && pwd -P) || exit 0
 EXPECTED=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || exit 0
 [ "$ROOT_REAL" = "$EXPECTED" ] || exit 0
 
-ADDED=$(git -C "$ROOT" diff origin/main 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+# Fail CLOSED when no base resolves: this is the publish guard for a public
+# remote, and "cannot compute the outgoing diff" must not mean "publish
+# unreviewed" (2026-07-31 security audit P2; siblings use the same resolver).
+# Anchored to this script's real location, not $HOME: the fixture test runs
+# the guard under a sandboxed HOME where no enforce/ tree exists.
+# shellcheck source=../enforce/resolveOutgoingBase.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)/resolveOutgoingBase.sh"
+BASE=$(cd "$ROOT" && resolve_outgoing_base)
+if [ -z "$BASE" ]; then
+  jq -n '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "ask",
+      permissionDecisionReason: "global-repo-push-guard: cannot resolve an outgoing base (origin/main missing?), so the R-106 publish review cannot run. Verify the outgoing content manually before approving this push of the public ~/.claude repo."
+    }
+  }'
+  exit 0
+fi
+ADDED=$(git -C "$ROOT" diff "$BASE"..HEAD 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' || true)
 [ -n "$ADDED" ] || exit 0
 
 deny() {

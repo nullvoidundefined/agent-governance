@@ -25,5 +25,16 @@ OUT=$(printf '{"tool_input":{"command":"git commit -m \\"chore: x\\""}}' | "$HOO
 OUT=$(printf '{"tool_input":{"command":"git status"}}' | "$HOOK")
 [ -z "$OUT" ] || { echo "FAIL: expected allow on non-commit"; exit 1; }
 
+# Chained add+commit bypass (2026-07-31 engineering audit P1): the marker file
+# is not yet staged, the add happens inside the same command -> still deny.
+printf 'clean line\n%s ours\ntheirs\n%s branch\n' "$LEFT" "$RIGHT" > unstaged.txt
+OUT=$(printf '{"tool_input":{"command":"git add unstaged.txt && git commit -m \\"chore: x\\""}}' | "$HOOK")
+printf '%s' "$OUT" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: expected deny on chained add of marker file"; exit 1; }
+
+# Chained add of a clean file -> allow.
+printf 'all clean\n' > unstaged.txt
+OUT=$(printf '{"tool_input":{"command":"git add unstaged.txt && git commit -m \\"chore: x\\""}}' | "$HOOK")
+[ -z "$OUT" ] || { echo "FAIL: expected allow on chained add of clean file"; exit 1; }
+
 cd / && rm -rf "$TMP"
 echo "conflict-markers.test.sh PASS"

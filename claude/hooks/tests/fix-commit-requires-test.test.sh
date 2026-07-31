@@ -53,6 +53,18 @@ git commit -qm "chore: clear5" >/dev/null
 printf 'x = 2\n' > module.py; git add module.py
 GOT=$(decision 'git commit -m "feat: no test needed"')
 [ "$GOT" = "none" ] || { echo "FAIL: expected allow for non-fix subject, got $GOT"; exit 1; }
+git commit -qm "chore: clear6" >/dev/null
+
+# Chained add+commit bypass (2026-07-31 engineering audit P1): nothing staged
+# yet, the add happens inside the same command. Fix without a test -> deny.
+printf 'y = 3\n' > chained.py
+GOT=$(decision 'git add chained.py && git commit -m "fix: chained no test"')
+[ "$GOT" = "deny" ] || { echo "FAIL: expected deny for chained add+commit without test, got $GOT"; exit 1; }
+
+# Chained add+commit including a test file -> allow.
+printf 'def test_chained():\n    assert True\n' > tests/test_chained.py
+GOT=$(decision 'git add chained.py tests/test_chained.py && git commit -m "fix: chained with test"')
+[ "$GOT" = "none" ] || { echo "FAIL: expected allow for chained add+commit with test, got $GOT"; exit 1; }
 
 cd / && rm -rf "$REPO"
 echo "fix-commit-requires-test.test.sh PASS"
