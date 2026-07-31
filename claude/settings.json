@@ -2,18 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(awk *)",
-      "Bash(bash *)",
       "Bash(cat *)",
       "Bash(cd *)",
       "Bash(chmod +x *)",
       "Bash(cp *)",
-      "Bash(curl *)",
       "Bash(date*)",
       "Bash(df *)",
       "Bash(diff *)",
       "Bash(du *)",
       "Bash(echo *)",
-      "Bash(env *)",
       "Bash(export *)",
       "Bash(file *)",
       "Bash(find *)",
@@ -27,23 +24,17 @@
       "Bash(lsof *)",
       "Bash(mkdir *)",
       "Bash(mv *)",
-      "Bash(node *)",
       "Bash(npm *)",
-      "Bash(npx *)",
-      "Bash(perl *)",
       "Bash(pnpm *)",
       "Bash(printf *)",
       "Bash(ps *)",
-      "Bash(python3 *)",
       "Bash(rg *)",
       "Bash(sed *)",
-      "Bash(sh *)",
       "Bash(tail *)",
       "Bash(time *)",
       "Bash(touch *)",
       "Bash(wc *)",
       "Bash(which *)",
-      "Bash(xargs *)",
       "Bash(yarn *)"
     ],
     "deny": [
@@ -56,6 +47,8 @@
       "Bash(gh release delete*)"
     ],
     "ask": [
+      "Bash(bash *)",
+      "Bash(sh *)",
       "Bash(git commit --no-verify*)",
       "Bash(git commit -n *)",
       "Bash(git push --force*)",
@@ -135,7 +128,7 @@
           },
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command // \"\"' | grep -q 'git push' && { cd \"${CLAUDE_PROJECT_DIR:-.}\" && [ -x docs/features/build-all-cheatsheets.sh ] && ./docs/features/build-all-cheatsheets.sh >/dev/null 2>&1; }; true",
+            "command": "~/.claude/hooks/build-cheatsheets.sh",
             "timeout": 60,
             "statusMessage": "Rebuilding feature cheat sheets"
           }
