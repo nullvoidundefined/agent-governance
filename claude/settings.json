@@ -111,6 +111,14 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/push-rubocop-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-golangci-gate.sh"
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/constant-change-guard.sh"
           },
           {

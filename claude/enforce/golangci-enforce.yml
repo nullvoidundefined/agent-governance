@@ -1,0 +1,28 @@
+# golangci-enforce.yml: bundled enforcement config for push-golangci-gate.sh,
+# the Go analog of the AST-tier ESLint bundle. Only the linters that back
+# manifest rules run; project golangci configs stay untouched because the gate
+# passes this file via --config.
+#
+# Linter -> rule mapping:
+#   mnd        -> R-324 (magic numbers; tests exempt below per the R-324 spec)
+#   nolintlint -> R-329 analog (every //nolint names a linter and a reason)
+#
+# Schema note: written for golangci-lint v1. v2 renamed top-level keys
+# (version: "2", linters.default: none); validate against the installed
+# version on the first real Go project and migrate if needed (ISSUES.md).
+linters:
+  disable-all: true
+  enable:
+    - mnd
+    - nolintlint
+
+linters-settings:
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - mnd

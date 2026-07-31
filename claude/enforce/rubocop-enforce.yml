@@ -1,0 +1,24 @@
+# rubocop-enforce.yml: bundled enforcement config for push-rubocop-gate.sh, the
+# Ruby analog of the AST-tier ESLint bundle. DisabledByDefault keeps project
+# RuboCop configs untouched; only the codes that back manifest rules run here.
+#
+# Cop -> rule mapping:
+#   Style/NestedTernaryOperator -> R-327 (never nest ternaries)
+#   Naming/MethodName           -> R-316 support (snake_case methods)
+#   Naming/VariableName         -> R-317 support (snake_case variables)
+#   Naming/ConstantName         -> R-324 support (UPPER_SNAKE constants)
+AllCops:
+  DisabledByDefault: true
+  SuggestExtensions: false
+
+Style/NestedTernaryOperator:
+  Enabled: true
+
+Naming/MethodName:
+  Enabled: true
+
+Naming/VariableName:
+  Enabled: true
+
+Naming/ConstantName:
+  Enabled: true

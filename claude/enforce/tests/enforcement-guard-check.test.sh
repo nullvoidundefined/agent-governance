@@ -30,4 +30,12 @@ jq '(.hooks.PreToolUse[].hooks) |= map(select(.command | test("push-ruff-gate") 
 OUT4=$(CLAUDE_SETTINGS_FILE="$FIX3" "$HOOK" < /dev/null)
 printf '%s' "$OUT4" | grep -q "push-ruff-gate" || { echo "FAIL: expected warning naming push-ruff-gate"; exit 1; }
 
+# Case 5: same guarantee for the Ruby and Go tiers.
+FIX4=$(mktemp)
+jq '(.hooks.PreToolUse[].hooks) |= map(select(.command | test("push-rubocop-gate|push-golangci-gate") | not))' \
+  "$HOME/.claude/settings.json" > "$FIX4"
+OUT5=$(CLAUDE_SETTINGS_FILE="$FIX4" "$HOOK" < /dev/null)
+printf '%s' "$OUT5" | grep -q "push-rubocop-gate" || { echo "FAIL: expected warning naming push-rubocop-gate"; exit 1; }
+printf '%s' "$OUT5" | grep -q "push-golangci-gate" || { echo "FAIL: expected warning naming push-golangci-gate"; exit 1; }
+
 echo "enforcement-guard-check.test.sh PASS"
