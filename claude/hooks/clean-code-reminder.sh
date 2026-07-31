@@ -13,11 +13,11 @@ file_path=$(jq -rc '.tool_input.file_path // ""' 2>/dev/null)
 [ -f "$file_path" ] || exit 0
 
 case "$file_path" in
-    *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs | *.py) : ;;
+    *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs | *.py | *.rb | *.go) : ;;
     *) exit 0 ;;
 esac
 case "$file_path" in
-    *.d.ts | *.test.* | *.spec.* | *__tests__* | *.stories.* | *.config.* | */migrations/* | */tests/* | */test_* | *_test.py | *conftest.py) exit 0 ;;
+    *.d.ts | *.test.* | *.spec.* | *__tests__* | *.stories.* | *.config.* | */migrations/* | */tests/* | */test_* | *_test.py | *conftest.py | */spec/* | *_spec.rb | */db/migrate/* | *_test.go | */vendor/* | */testdata/*) exit 0 ;;
 esac
 
 summary=$(node "$(dirname "$0")/clean-code-scan.mjs" "$file_path" 2>/dev/null) || exit 0

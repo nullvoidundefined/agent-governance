@@ -46,6 +46,17 @@ git commit -aqm "test: py update"
 GOT=$(CLAUDE_ENFORCE_BASE=$PYBASE decision 'git push origin main')
 [ "$GOT" = "none" ] || { echo "FAIL: expected none after python test update, got $GOT"; exit 1; }
 
+# Go: constants.go change with a stale co-located test assertion -> ask
+mkdir -p internal/config
+printf 'package config\n\nconst StatusActive = "live"\n' > internal/config/constants.go
+printf 'package config\n\nfunc TestStatus(t *testing.T) {\n\tif StatusActive != "live" {\n\t\tt.Fail()\n\t}\n}\n' > internal/config/constants_test.go
+git add -A && git commit -qm "chore: go init"
+GOBASE=$(git rev-parse HEAD)
+printf 'package config\n\nconst StatusActive = "online"\n' > internal/config/constants.go
+git commit -aqm "chore: go rename"
+GOT=$(CLAUDE_ENFORCE_BASE=$GOBASE decision 'git push origin main')
+[ "$GOT" = "ask" ] || { echo "FAIL: expected ask for stale go assertion, got $GOT"; exit 1; }
+
 # Non-push commands untouched
 GOT=$(decision 'git status')
 [ "$GOT" = "none" ] || { echo "FAIL: expected none for non-push, got $GOT"; exit 1; }

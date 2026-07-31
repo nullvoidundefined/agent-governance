@@ -20,8 +20,15 @@ ABBREV='^(db|di|svc|ctrl|mw|cfg)$'
 # Python tree: importable package directories must be snake_case, so the R-312
 # camelCase check does not apply; `db/` is the blessed engine/session home in
 # the Python track (CLAUDE-PYTHON.md), so the R-311 abbreviation ban skips it.
+# Ruby tree: snake_case dirs, `lib/` root blessed as the Ruby term of art
+# (CLAUDE-RUBY.md). Go tree: dir-case checks waived (lowercase packages,
+# kebab-case cmd/ binary names, CLAUDE-GO.md); `db` blessed for both.
 is_python=0
+is_ruby=0
+is_go=0
 [[ "$FILE" == *.py ]] && is_python=1
+[[ "$FILE" == *.rb ]] && is_ruby=1
+[[ "$FILE" == *.go ]] && is_go=1
 IFS='/' read -ra PARTS <<< "$FILE"
 in_src=0
 in_app=0
@@ -37,6 +44,14 @@ for seg in "${PARTS[@]}"; do
   # top-level app/ segment starts the scan for .py writes, else the whole
   # Python stack silently bypasses the gate (2026-07-31 audit P1).
   [ "$is_python" -eq 1 ] && [ "$seg" = "app" ] && [ "$in_src" -eq 0 ] && { in_src=1; continue; }
+  # Ruby roots at app/ and lib/ (Rails layout); Go roots at internal/, cmd/,
+  # pkg/ (standard layout). Same audit lesson: scan from the documented roots.
+  if [ "$is_ruby" -eq 1 ] && [ "$in_src" -eq 0 ]; then
+    case "$seg" in app|lib) in_src=1; continue ;; esac
+  fi
+  if [ "$is_go" -eq 1 ] && [ "$in_src" -eq 0 ]; then
+    case "$seg" in internal|cmd|pkg) in_src=1; continue ;; esac
+  fi
   [ "$in_src" -eq 0 ] && continue
   [[ "$seg" == *.* ]] && continue
   [[ "$seg" =~ ^__.*__$ ]] && continue
@@ -50,15 +65,18 @@ for seg in "${PARTS[@]}"; do
     deny "Directory '$seg' is a banned catch-all (R-306/R-304) and does not exist yet, so this Write would create it. Use services/, clients/, or a domain folder."
   fi
   if [[ "$seg" =~ $ABBREV ]]; then
-    # CLAUDE-PYTHON.md blesses db/ as the engine/session home.
-    [ "$is_python" -eq 1 ] && [ "$seg" = "db" ] && continue
+    # CLAUDE-PYTHON.md blesses db/ as the engine/session home; Rails db/ and
+    # Go db packages are the same term of art.
+    { [ "$is_python" -eq 1 ] || [ "$is_ruby" -eq 1 ] || [ "$is_go" -eq 1 ]; } && [ "$seg" = "db" ] && continue
     deny "Directory '$seg' is an abbreviation (R-311). Use the full word: database/, dependencyInjection/, services/, controllers or handlers/, middleware/, config/."
   fi
   if [[ "$seg" == *-* || "$seg" == *_* ]]; then
     [ "$in_app" -eq 1 ] && continue
-    # Python package directories are importable names: snake_case is the idiom
-    # (R-312 Python exception); kebab-case stays denied (not importable).
-    [ "$is_python" -eq 1 ] && [[ "$seg" != *-* ]] && continue
+    # Python and Ruby package directories are importable/require-able names:
+    # snake_case is the idiom (R-312 exception); kebab-case stays denied.
+    { [ "$is_python" -eq 1 ] || [ "$is_ruby" -eq 1 ]; } && [[ "$seg" != *-* ]] && continue
+    # Go waives dir-case entirely: lowercase packages, kebab cmd/ binary names.
+    [ "$is_go" -eq 1 ] && continue
     deny "Directory '$seg' must be camelCase, not kebab/snake (R-312)."
   fi
 done
@@ -81,15 +99,17 @@ if [ -f "$COLOCATED_ALLOWLIST" ]; then
   done < "$COLOCATED_ALLOWLIST"
 fi
 
+# Go is exempt by omission: *_test.go never matches below because co-located
+# same-package tests are a toolchain requirement (R-313 Go exception).
 BASE=$(basename "$FILE")
-if [ "$skip_colocation_check" -eq 0 ] && { [[ "$BASE" =~ \.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$ ]] || [[ "$BASE" =~ ^test_.*\.py$ ]] || [[ "$BASE" =~ _test\.py$ ]]; }; then
+if [ "$skip_colocation_check" -eq 0 ] && { [[ "$BASE" =~ \.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$ ]] || [[ "$BASE" =~ ^test_.*\.py$ ]] || [[ "$BASE" =~ _test\.py$ ]] || [[ "$BASE" =~ _spec\.rb$ ]]; }; then
   case "$FILE" in
-    */__tests__/* | */tests/* | */e2e/*)
+    */__tests__/* | */tests/* | */e2e/* | */spec/*)
       if [[ "$FILE" == */src/*/__tests__/* ]]; then
         deny "Test file sits in a per-directory __tests__ nested below src/ (R-314). Keep one top-level tree: src/__tests__/<mirrored source path>."
       fi ;;
     *)
-      deny "Test file co-located beside source (R-313). Move it to the package's src/__tests__/ tree (TypeScript) or tests/ (Python)." ;;
+      deny "Test file co-located beside source (R-313). Move it to the conventional test tree: src/__tests__/ (TypeScript), tests/ (Python), or spec/ (Ruby)." ;;
   esac
 fi
 exit 0

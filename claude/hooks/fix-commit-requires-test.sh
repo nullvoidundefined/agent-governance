@@ -21,7 +21,7 @@
 #
 # Matched prefixes: fix:, fix(, bug:, bugfix:, hotfix:
 # Matched test globs: *.test.*, *.spec.*, e2e/**, __tests__/**, test/**,
-# tests/**, test_*.py, *_test.py, conftest.py
+# tests/**, test_*.py, *_test.py, conftest.py, spec/**, *_spec.rb, *_test.go
 #
 # Editor-based commits (no -m) are NOT blocked because the subject is
 # not available at PreToolUse time. R-403 enforcement for those relies
@@ -96,8 +96,9 @@ if [ -z "$STAGED" ]; then
 fi
 
 # Match against the R-403 test globs. Python: tests/ trees (R-313) plus the
-# pytest filename conventions test_*.py and *_test.py.
-if printf '%s\n' "$STAGED" | grep -qE '(\.test\.|\.spec\.|^e2e/|/e2e/|^__tests__/|/__tests__/|^tests?/|/tests?/|(^|/)test_[^/]*\.py$|_test\.py$|(^|/)conftest\.py$)'; then
+# pytest filename conventions test_*.py and *_test.py. Ruby: spec/ trees and
+# *_spec.rb (RSpec). Go: co-located *_test.go (R-313 Go exception).
+if printf '%s\n' "$STAGED" | grep -qE '(\.test\.|\.spec\.|^e2e/|/e2e/|^__tests__/|/__tests__/|^tests?/|/tests?/|(^|/)test_[^/]*\.py$|_test\.py$|(^|/)conftest\.py$|^spec/|/spec/|_spec\.rb$|_test\.go$)'; then
   # A test file is present; commit may proceed.
   exit 0
 fi

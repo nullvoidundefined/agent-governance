@@ -70,6 +70,8 @@ function main(path) {
 function scanOffenders(source, ext) {
     if (C_FAMILY.has(ext)) return scanBraceLanguage(source);
     if (ext === 'py') return scanPython(source);
+    if (ext === 'go') return scanGo(source);
+    if (ext === 'rb') return scanRuby(source);
     return [];
 }
 
@@ -150,6 +152,51 @@ function measurePythonBody(lines, startIndex, defIndent) {
         const trimmed = lines[index].trim();
         if (trimmed === '' || trimmed.startsWith('#')) continue;
         if (indentWidth(lines[index]) <= defIndent) break;
+        bodyLines++;
+    }
+    return bodyLines;
+}
+
+/**
+ * Go: brace-bounded like the C family, but declarations use `func`, optionally
+ * with a receiver. Reuses the brace-depth measurement after its own matcher.
+ */
+function scanGo(source) {
+    const lines = stripNonCode(source).split('\n');
+    const offenders = [];
+    for (let index = 0; index < lines.length; index++) {
+        const match = lines[index].match(/^\s*func\s+(?:\([^)]*\)\s*)?(\w+)\s*\(/);
+        if (!match) continue;
+        const bodyLines = measureBraceBody(lines, index);
+        if (bodyLines > BODY_LINE_CEILING) offenders.push({ lines: bodyLines, name: match[1] });
+    }
+    return offenders;
+}
+
+/**
+ * Ruby: def..end measured by the matching `end` at the def's indent level.
+ * Heuristic like the Python scanner: blank lines and comment lines do not
+ * count; a shallower-or-equal `end` closes the method. One-line defs
+ * (def x = y, or def x; y; end) never hit the ceiling and fall out naturally.
+ */
+function scanRuby(source) {
+    const lines = source.split('\n');
+    const offenders = [];
+    for (let index = 0; index < lines.length; index++) {
+        const match = lines[index].match(/^(\s*)def\s+(?:self\.)?([\w?!=]+)/);
+        if (!match) continue;
+        const bodyLines = measureRubyBody(lines, index, match[1].length);
+        if (bodyLines > BODY_LINE_CEILING) offenders.push({ lines: bodyLines, name: match[2] });
+    }
+    return offenders;
+}
+
+function measureRubyBody(lines, startIndex, defIndent) {
+    let bodyLines = 0;
+    for (let index = startIndex + 1; index < lines.length; index++) {
+        const trimmed = lines[index].trim();
+        if (trimmed === '' || trimmed.startsWith('#')) continue;
+        if (indentWidth(lines[index]) <= defIndent && /^end\b/.test(trimmed)) break;
         bodyLines++;
     }
     return bodyLines;

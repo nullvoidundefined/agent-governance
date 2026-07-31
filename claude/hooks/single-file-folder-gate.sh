@@ -15,7 +15,9 @@ BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
 TOP="$(git rev-parse --show-toplevel)"
-FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|py)$' || true)
+# Go is deliberately absent: single-file packages are idiomatic Go, so the
+# R-309 advisory does not apply to .go trees.
+FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|py|rb)$' || true)
 [ -z "$FILES" ] && exit 0
 
 EXEMPT=""
@@ -26,7 +28,8 @@ is_source() {
     *.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx) return 1 ;;
     index.ts|index.tsx|constants.ts|types.ts) return 1 ;;
     __init__.py|constants.py|types.py|conftest.py|test_*.py|*_test.py) return 1 ;;
-    *.ts|*.tsx|*.py) return 0 ;;
+    *_spec.rb|constants.rb) return 1 ;;
+    *.ts|*.tsx|*.py|*.rb) return 0 ;;
     *) return 1 ;;
   esac
 }

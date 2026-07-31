@@ -29,11 +29,20 @@ case "$TOOL" in
 esac
 
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
-if ! printf '%s' "$FILE_PATH" | grep -q '/migrations/'; then
+if ! printf '%s' "$FILE_PATH" | grep -qE '/migrations/|(^|/)db/migrate/'; then
   exit 0
 fi
 
-if printf '%s' "$FILE_PATH" | grep -q '\.py$'; then
+if printf '%s' "$FILE_PATH" | grep -qE '(^|/)db/migrate/.*\.rb$'; then
+  # Rails (Ruby analog of R-328, CLAUDE-RUBY.md Migrations section).
+  # Nested quotes: default: "'active'". Bare-string SQL call in either quote
+  # style: default: "now()" / default: 'now()' (must be a lambda:
+  # default: -> { "now()" }). The lambda form starts with ->, not a quote,
+  # so neither pattern matches it.
+  NESTED_RE='default:[[:space:]]*("[^"]*'\''|'\''[^'\'']*")'
+  SQL_CALL_RE='default:[[:space:]]*("[^"]*\([^"]*\)[^"]*"|'\''[^'\'']*\([^'\'']*\)[^'\'']*'\'')'
+  REASON="migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328 (Rails form). Use a bare string for a constant (default: \"active\") and a lambda for a SQL expression (default: -> { \"now()\" }). Never nest quotes (default: \"'active'\" is wrong) and never pass a SQL call as a bare string (default: \"now()\" is wrong). Fix the default and retry."
+elif printf '%s' "$FILE_PATH" | grep -q '\.py$'; then
   # Alembic (Python analog of R-328, CLAUDE-PYTHON.md Migrations section).
   # Nested quotes: server_default="'active'". Bare-string SQL call:
   # server_default="now()" (must be sa.text(...)). sa.text("now()") is exempt

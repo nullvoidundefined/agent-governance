@@ -43,6 +43,23 @@ allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/db/engine.py"}}'  
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/core/config.py"}}'                  # core/ blessed under app/ root
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/services/jobs/score_match.py"}}'    # canonical layout ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/Format.tsx"}}'                # TS under app/ without src/ stays unscanned
+# Ruby app/ and lib/ roots (CLAUDE-RUBY.md layout)
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/format.rb"}}'                  # catch-all under ruby app/
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/lib/helpers/format.rb"}}'                # catch-all under ruby lib/
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/svc/user.rb"}}'                      # abbrev under ruby app/
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user-preferences/api.rb"}}'          # kebab denied for ruby
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/services/jobs/score_match.rb"}}'    # snake ok for ruby
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/lib/tasks/backfill_scores.rb"}}'        # lib/ blessed root for ruby
+# Go internal/, cmd/, pkg/ roots (CLAUDE-GO.md layout)
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/internal/utils/format.go"}}'             # catch-all under go internal/
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/internal/helpers/format.go"}}'           # catch-all, 2nd name
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/internal/db/pool.go"}}'                 # db blessed for go
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/cmd/job-scorer/main.go"}}'              # kebab binary name ok for go
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/internal/services/score_match.go"}}'    # snake filename ok for go
+# Ruby spec placement (R-313) and Go co-location exception
+deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/models/job_spec.rb"}}'               # co-located spec denied
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/spec/models/job_spec.rb"}}'             # spec/ tree ok
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/internal/services/score_match_test.go"}}'  # co-located _test.go REQUIRED for go
 
 # R-306 applies to *creating* a catch-all, not writing into one that already exists.
 BANNED_FIXTURE=$(mktemp -d)

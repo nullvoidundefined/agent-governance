@@ -78,4 +78,20 @@ check "allow alembic sa.text() SQL expression" \
 check "passthrough alembic anti-pattern outside migrations" \
     emits_nothing Write content "$PYSRC" "value = dict(server_default=\"now()\")"
 
+# --- Rails (R-328 analog, CLAUDE-RUBY.md Migrations section) ---
+RBMIG="db/migrate/20260731120000_add_status_to_jobs.rb"
+RBSRC="app/services/jobs/build_resume.rb"
+check "deny rails nested quotes (Write)" \
+    emits_deny  Write content "$RBMIG" "      t.string :status, default: \"'active'\""
+check "deny rails bare-string SQL call double-quoted (Write)" \
+    emits_deny  Write content "$RBMIG" "      t.datetime :created_at, default: \"now()\""
+check "deny rails bare-string SQL call single-quoted (Write)" \
+    emits_deny  Write content "$RBMIG" "      t.uuid :id, default: 'gen_random_uuid()'"
+check "allow rails bare constant string" \
+    emits_nothing Write content "$RBMIG" "      t.string :status, default: \"active\""
+check "allow rails lambda SQL expression" \
+    emits_nothing Write content "$RBMIG" "      t.datetime :created_at, default: -> { \"now()\" }"
+check "passthrough rails anti-pattern outside db/migrate" \
+    emits_nothing Write content "$RBSRC" "options = { default: \"now()\" }"
+
 exit "$fail"

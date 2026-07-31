@@ -39,4 +39,14 @@ S5=$(mkstub '{"violations":[{"rule":"R-315","confidence":0.9,"file":"generate.py
 OUT5=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S5" "$HOOK")
 printf '%s' "$OUT5" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: py-only diff should reach the judge and deny"; exit 1; }
 
+# Ruby-only and Go-only diffs reach the judge too (*.rb and *.go in scope).
+printf 'def generate\nend\n' > generate.rb; git add .; git commit -q -m z
+S6=$(mkstub '{"violations":[{"rule":"R-315","confidence":0.9,"file":"generate.rb","why":"vague filename"}]}')
+OUT6=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S6" "$HOOK")
+printf '%s' "$OUT6" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: rb-only diff should reach the judge and deny"; exit 1; }
+printf 'package x\n\nfunc Generate() {}\n' > generate.go; git add .; git commit -q -m w
+S7=$(mkstub '{"violations":[{"rule":"R-315","confidence":0.9,"file":"generate.go","why":"vague filename"}]}')
+OUT7=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S7" "$HOOK")
+printf '%s' "$OUT7" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: go-only diff should reach the judge and deny"; exit 1; }
+
 echo "llm-rule-judge.test.sh PASS"

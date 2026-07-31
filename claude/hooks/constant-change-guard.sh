@@ -16,7 +16,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-CONST_FILES=$(git diff --name-only "$BASE"..HEAD 2>/dev/null | grep -E '(^|/)constants(\.([jt]sx?|py)$|/)' || true)
+CONST_FILES=$(git diff --name-only "$BASE"..HEAD 2>/dev/null | grep -E '(^|/)constants(\.([jt]sx?|py|rb|go)$|/)' || true)
 [ -z "$CONST_FILES" ] && exit 0
 
 TOP=$(git rev-parse --show-toplevel)
@@ -29,7 +29,7 @@ while IFS= read -r constants_file; do
   while IFS= read -r removed_value; do
     [ -z "$removed_value" ] && continue
     printf '%s\n' "$KEPT" | grep -qxF "$removed_value" && continue
-    HITS=$(cd "$TOP" && git grep -lF "$removed_value" -- '*__tests__*' '*.test.*' '*.spec.*' 'tests/*' '*/tests/*' '*test_*.py' '*_test.py' 2>/dev/null || true)
+    HITS=$(cd "$TOP" && git grep -lF "$removed_value" -- '*__tests__*' '*.test.*' '*.spec.*' 'tests/*' '*/tests/*' '*test_*.py' '*_test.py' 'spec/*' '*/spec/*' '*_spec.rb' '*_test.go' 2>/dev/null || true)
     if [ -n "$HITS" ]; then
       STALE="$STALE
   '$removed_value' (removed from $constants_file) still asserted in: $(printf '%s' "$HITS" | tr '\n' ' ')"
