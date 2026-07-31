@@ -15,6 +15,18 @@ INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
+# EGRESS NOTE (2026-07-31 security audit P1): when live, this hook sends the
+# outgoing diff to api.anthropic.com under ANTHROPIC_API_KEY. Repos listed in
+# exempt-repos.txt are excluded, same as the linter gates; the judge previously
+# carried no exemption at all. Disclosure lives in README.md (Enforcement).
+EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"
+if [ -f "$EXEMPT_FILE" ]; then
+  ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+  if [ -n "$ORIGIN_URL" ] && grep -qxF "$ORIGIN_URL" "$EXEMPT_FILE"; then
+    exit 0
+  fi
+fi
+
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
@@ -75,7 +87,16 @@ ALL_HITS=$(printf '%s' "$RESP" | jq -c --argjson t "$THRESH" '[.violations[]? | 
 DENY_HITS='[]'
 while IFS= read -r violation; do
   rule_id=$(printf '%s' "$violation" | jq -r '.rule // ""')
-  severity=$(jq -r --arg id "$rule_id" '.rules[] | select(.id==$id) | .severity // "error"' "$MANIFEST" 2>/dev/null || echo "error")
+  # A rule id can carry several manifest rows across tiers (R-324/R-329 have
+  # eslint+ruff+golangci entries); take the llm-judge row's severity, falling
+  # back to the strictest row for the id (2026-07-31 criticism audit P1: the
+  # unfiltered multi-line result never equaled "error", silently downgrading
+  # every judged rule to warn).
+  severity=$(jq -r --arg id "$rule_id" '
+    [.rules[] | select(.id==$id)] as $rows
+    | ([$rows[] | select(.tier=="llm-judge")] | first // ($rows | first))
+    | .severity // "error"' "$MANIFEST" 2>/dev/null || echo "error")
+  [ -z "$severity" ] && severity="error"
   if [ "$severity" = "error" ]; then
     DENY_HITS=$(printf '%s\n%s' "$DENY_HITS" "$violation" | jq -cs '.[0] + [.[1:][]]' 2>/dev/null || echo "$DENY_HITS")
   else

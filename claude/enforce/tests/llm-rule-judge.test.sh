@@ -49,4 +49,11 @@ S7=$(mkstub '{"violations":[{"rule":"R-315","confidence":0.9,"file":"generate.go
 OUT7=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S7" "$HOOK")
 printf '%s' "$OUT7" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: go-only diff should reach the judge and deny"; exit 1; }
 
+# Multi-row manifest id (R-324 has eslint+ruff+golangci rows, all error): the
+# severity lookup must not collapse to warn on the multiline jq result
+# (2026-07-31 criticism audit P1).
+S8=$(mkstub '{"violations":[{"rule":"R-324","confidence":0.9,"file":"generate.go","why":"magic number"}]}')
+OUT8=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S8" "$HOOK")
+printf '%s' "$OUT8" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: multi-row error rule should deny, not downgrade to warn"; exit 1; }
+
 echo "llm-rule-judge.test.sh PASS"

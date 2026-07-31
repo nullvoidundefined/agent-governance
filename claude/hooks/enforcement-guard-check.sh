@@ -44,6 +44,16 @@ WARNING=""
 [ -n "$MISSING" ] && WARNING="These manifest-required hooks are NOT registered in settings.json:$MISSING."
 [ -n "$UNMAPPED" ] && WARNING="$WARNING These rule-cited enforcers have NO manifest entry (R-516):$UNMAPPED."
 
+# Judge-tier liveness (2026-07-31 criticism audit P0: the judge exited
+# silently for want of a key for its entire life, leaving its error-severity
+# rules honor-system with green stub tests concealing it). Warn whenever
+# llm-judge rules exist but the hook environment carries no way to run them.
+JUDGE_RULES=$(jq -r '[.rules[] | select(.tier=="llm-judge")] | length' "$MANIFEST" 2>/dev/null || echo 0)
+JUDGE_ACCEPT_FILE="${CLAUDE_JUDGE_ACCEPT_FILE:-$HOME/.claude/enforce/judge-accepted-honor-system}"
+if [ "${JUDGE_RULES:-0}" -gt 0 ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_JUDGE_CMD:-}" ] && [ ! -f "$JUDGE_ACCEPT_FILE" ]; then
+  WARNING="$WARNING The llm-judge tier ($JUDGE_RULES manifest rules, including error-severity naming rules) CANNOT run: ANTHROPIC_API_KEY is not in the hook environment, so llm-rule-judge.sh fail-opens on every push. Provision the key (see README Enforcement, egress disclosure), or touch enforce/judge-accepted-honor-system to record the deliberate choice and silence this warning."
+fi
+
 if [ -n "$WARNING" ]; then
   jq -n --arg m "Rule-enforcement guard: $WARNING Enforcement is degraded until the mapping is repaired." \
     '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
