@@ -42,5 +42,5 @@
 
 - If Python enforcement misbehaves in a real project: read `hooks/push-ruff-gate.sh`, `enforce/ruff-enforce.toml`, `hooks/structure-gate.sh`, and `docs/audits/2026-07-31-engineering.md` first.
 - Optional follow-ups: pick up the two small P3s from ISSUES.md in one commit; consider a `hooks/tests` case for the R-314 message wording.
-- New project memory: `projects/-Users-[REDACTED]/memory/fixture-paths-mirror-documented-layouts.md` (fixture paths must mirror documented layouts, from the P1 miss).
+- New project-scoped memory: `fixture-paths-mirror-documented-layouts` (fixture paths must mirror documented layouts, from the P1 miss); indexed in this machine's project memory MEMORY.md.
 - jq gotcha worth remembering when editing the gates: `index()` evaluates its argument against the piped-in input, so bind `.location`-derived keys with `as` before `select($arr | index($key))`.
