@@ -105,7 +105,7 @@ R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-id
 
 ## Convention files
 
-The stack convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-FRONTEND-NEXT.md`, `CLAUDE-FRONTEND-VITE.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`, `CLAUDE-PYTHON.md`) auto-load through path-scoped symlinks in `~/.claude/rules/` when work touches matching files. Read one directly only when planning that layer before any file is open.
+The stack convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-FRONTEND-NEXT.md`, `CLAUDE-FRONTEND-VITE.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`, `CLAUDE-PYTHON.md`, `CLAUDE-RUBY.md`, `CLAUDE-GO.md`) auto-load through path-scoped symlinks in `~/.claude/rules/` when work touches matching files. Read one directly only when planning that layer before any file is open.
 
 Read on demand:
 

@@ -21,8 +21,10 @@ Session type is orthogonal to stack. Stack convention files auto-load through pa
 |---|---|---|
 | `package.json` | TypeScript/Node | `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md` per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md` (whichever the work touches) |
 | `pyproject.toml`, `requirements.txt`, or `setup.py` | Python | `CLAUDE-PYTHON.md` |
+| `Gemfile` | Ruby on Rails | `CLAUDE-RUBY.md` |
+| `go.mod` | Go | `CLAUDE-GO.md` |
 
-A repo carrying both marker sets is polyglot: read both tracks for the surface being touched. The `[ts]`-tagged rules in `CLAUDE.md` apply only to the TypeScript stack; their Python analogs live in `CLAUDE-PYTHON.md`.
+A repo carrying multiple marker sets is polyglot: read each track for the surface being touched. The `[ts]`-tagged rules in `CLAUDE.md` apply only to the TypeScript stack; their analogs live in `CLAUDE-PYTHON.md`, `CLAUDE-RUBY.md`, and `CLAUDE-GO.md`.
 
 ## Tier 2 paths
 
