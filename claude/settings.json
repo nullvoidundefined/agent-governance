@@ -65,8 +65,6 @@
       "Bash(gh api --method DELETE*)",
       "Bash(gh auth token*)",
       "Bash(gh alias set*)",
-      "Bash(curl * | sh*)",
-      "Bash(curl * | bash*)",
       "Bash(security find-generic-password*)"
     ],
     "ask": [
@@ -132,6 +130,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/destructive-db-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/destructive-command-guard.sh"
           },
           {
             "type": "command",
