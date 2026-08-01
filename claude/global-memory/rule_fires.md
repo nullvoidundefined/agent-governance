@@ -16,3 +16,9 @@ Append-only. Two entry sources:
 2026-06-03 R-207 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
 2026-06-04 R-207 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
 2026-06-05 R-207 no-em-dash.sh blocked an Edit during CLAUDE.md trim; bullet list separators contained U+2014, replaced with colons on retry
+2026-08-01 eslint-ast (auto-rollup: 1 deny fire(s) this session)
+2026-08-01 R-315 (auto-rollup: 5 deny fire(s) this session)
+2026-08-01 R-316 (auto-rollup: 1 deny fire(s) this session)
+2026-08-01 R-403 (auto-rollup: 2 deny fire(s) this session)
+2026-08-01 R-324 (auto-rollup: 1 deny fire(s) this session)
+2026-08-01 R-207 (auto-rollup: 3 deny fire(s) this session)
