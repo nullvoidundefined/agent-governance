@@ -56,7 +56,7 @@ PATTERN+='|gho_[A-Za-z0-9]{30,}'
 PATTERN+='|ghs_[A-Za-z0-9]{30,}'
 PATTERN+='|ghu_[A-Za-z0-9]{30,}'
 PATTERN+='|vcp_[A-Za-z0-9]{20,}'
-PATTERN+='|re_[A-Za-z0-9_-]{30,}'
+PATTERN+='|\bre_[A-Za-z0-9_-]{30,}'
 PATTERN+='|rnd_[A-Za-z0-9]{20,}'
 PATTERN+='|xoxb-[A-Za-z0-9-]{40,}'
 PATTERN+='|xoxp-[A-Za-z0-9-]{40,}'
@@ -66,7 +66,7 @@ PATTERN+='|AKIA[0-9A-Z]{16}'
 PATTERN+='|ASIA[0-9A-Z]{16}'
 PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
 PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
-PATTERN+='|AIza[0-9A-Za-z_-]{35}'
+PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
 
 if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
   jq -n '{

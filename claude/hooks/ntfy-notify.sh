@@ -26,5 +26,5 @@ print(f"{msg} ({proj})" if proj else msg)
 ' 2>/dev/null)"
 [ -z "$message" ] && message="Claude Code needs you"
 
-curl -fsS -H "Title: Claude Code" -d "$message" "ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
+curl -fsS -H "Title: Claude Code" -d "$message" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
 exit 0

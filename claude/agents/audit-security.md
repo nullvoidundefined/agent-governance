@@ -2,7 +2,7 @@
 name: audit-security
 description: Use this agent to conduct a security audit (CISO perspective) of a codebase: auth bypasses, CSRF, prompt injection, dependency CVEs, secrets management, credential exposure across git history and Claude Code session transcripts. Use when the user asks for a security audit, before any launch, or after touching auth, sessions, or secret handling. Produces `docs/audits/YYYY-MM-DD-security.md` and commits it. Has explicit authorization to read `.env.example` but never `.env` or any live credential file.
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
+model: opus
 ---
 
 # Security Audit

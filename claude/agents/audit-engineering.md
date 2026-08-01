@@ -2,7 +2,7 @@
 name: audit-engineering
 description: Use this agent to conduct a comprehensive engineering audit (CTO perspective) of a codebase: architecture, code quality, security, database, API design, performance, testing, dependencies, deployment, bug-fix discipline, runbook-vs-code drift, and workspace hygiene. Use when the user asks for an engineering audit, before a major launch, or after shipping 5 or more commits on a single surface. Produces `docs/audits/YYYY-MM-DD-engineering.md` and commits it. Scope can be narrowed in the dispatch prompt (e.g., "focus on server/" or "only the generation pipeline").
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
+model: opus
 ---
 
 # Engineering Audit (CTO)

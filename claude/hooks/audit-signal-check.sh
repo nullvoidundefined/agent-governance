@@ -32,9 +32,10 @@ if [ -f "$EXEMPT_FILE" ]; then
   fi
 fi
 
-LAST_AUDIT=$(ls "$TOP/docs/audits" 2>/dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}-engineering\.md$' | sort | tail -1 || true)
+# Suffixed reports count too (e.g. -engineering-harness.md, 2026-07-31).
+LAST_AUDIT=$(ls "$TOP/docs/audits" 2>/dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}-engineering(-[a-z-]+)?\.md$' | sort | tail -1 || true)
 if [ -n "$LAST_AUDIT" ]; then
-  AUDIT_DATE=${LAST_AUDIT%-engineering.md}
+  AUDIT_DATE=${LAST_AUDIT:0:10}
   SINCE="$AUDIT_DATE 23:59:59"
   BASELINE="the $AUDIT_DATE engineering audit"
 else

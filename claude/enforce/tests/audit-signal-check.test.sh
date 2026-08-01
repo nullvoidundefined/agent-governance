@@ -49,8 +49,17 @@ git add -A && git commit -qm "docs(audit): engineering report"
 GOT=$(advisory 'git push origin main')
 [ "$GOT" = "none" ] || { echo "FAIL: expected silence after fresh audit, got: $GOT"; exit 1; }
 
-# No audit on record -> 30-day fallback window catches the commits and says so.
+# Suffixed report filename counts as an audit on record (2026-07-31 audit P3:
+# the glob missed 2026-07-31-engineering-harness.md and would have re-signaled
+# immediately after a full-harness audit).
 rm docs/audits/*-engineering.md
+echo stub > "docs/audits/$(date +%F)-engineering-harness.md"
+git add -A && git commit -qm "docs(audit): full-harness engineering report"
+GOT=$(advisory 'git push origin main')
+[ "$GOT" = "none" ] || { echo "FAIL: expected silence with fresh suffixed audit, got: $GOT"; exit 1; }
+
+# No audit on record -> 30-day fallback window catches the commits and says so.
+rm docs/audits/*-engineering*.md
 GOT=$(advisory 'git push origin main')
 printf '%s' "$GOT" | grep -qi 'no engineering audit' || { echo "FAIL: expected no-audit-on-record advisory, got: $GOT"; exit 1; }
 

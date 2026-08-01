@@ -2,7 +2,7 @@
 name: audit-criticism
 description: Use this agent to conduct a devil's-advocate critique of a project: strategic flaws, unsustainable unit economics, organizational self-deception, moat delusion, and process-vs-outcome imbalance. Use when the user asks for a criticism audit, when a strategic decision feels too comfortable, or before committing to a direction that is hard to reverse. Produces `docs/audits/YYYY-MM-DD-criticism.md` and commits it.
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
+model: opus
 ---
 
 # Criticism Audit (Devil's Advocate)

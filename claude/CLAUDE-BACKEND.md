@@ -8,6 +8,8 @@ paths:
   - "**/src/dependencyInjection/**"
   - "**/src/schemas/**"
   - "**/src/prompts/**"
+  - "**/src/services/**"
+  - "**/src/clients/**"
 ---
 
 # Backend Conventions
