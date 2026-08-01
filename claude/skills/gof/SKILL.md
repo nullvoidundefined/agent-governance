@@ -1,11 +1,21 @@
 ---
 name: gof
-description: Run a Gang of Four (PE, Security, Critic, Designer) review against whatever the user is working on or points at. Infers the target from conversation context if not explicit.
+description: Use when a spec, plan, or feature needs review from several angles at once - feasibility, security, unstated assumptions, and design - rather than one reviewer's read. Also known as Gang of Four, GoF, or four-perspective review.
 ---
 
 # Gang of Four (GoF) Audit
 
 Four-perspective review by Product Engineer (PE), Security Engineer, Critic, and Designer.
+
+## Precedence
+
+`/code-review` and `/security-review` review code that already exists, and `rulebook/audits.md` puts them first for anything diff-shaped. The Gang of Four earns its cost on what they cannot read:
+
+- a pre-code artifact: a spec, a plan, a design doc
+- a feature area rather than a diff
+- a decision where the disagreement between perspectives is the point, not a single verdict
+
+If the user points at a working diff or an open PR, run `/code-review` first and use this skill only for what it leaves uncovered.
 
 ## Target Resolution
 

@@ -7,6 +7,18 @@ description: Use when the user asks to find bugs, audit code quality, or hunt fo
 
 Autonomous audit of recent changes for bugs, race conditions, security issues, and code quality problems.
 
+## Precedence
+
+`rulebook/audits.md` routes diff-level review through the native commands first: `/code-review` for correctness and quality on a working diff or a PR, `/security-review` for diff-level security. Those run first.
+
+Use this skill when the target is not a single diff:
+
+- a commit range spanning several merges, where no one PR contains the change
+- cross-file integrity after deletes or renames (imports still pointing at files that no longer exist)
+- a branch with no PR open yet
+
+If the target is the working diff or an open PR, run `/code-review` instead of this skill.
+
 ## Process
 
 1. **Scope the hunt.** Default: changes in the last 5 commits (`git diff HEAD~5`). The user can override with a file path, directory, or commit range.

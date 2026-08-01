@@ -1,11 +1,13 @@
 ---
 name: resolve-user-feedback
-description: Use when the user wants to process outstanding feature requests and bug reports from the app_feedback table. Retrieves open entries, generates a fix spec, executes the fixes, marks entries as closed, and commits.
+description: Use when the user wants to triage or address accumulated user-submitted feature requests and bug reports held in an application feedback table.
 ---
 
 # Resolve User Submitted Feedback
 
-End-to-end workflow for triaging, fixing, and closing user-submitted feedback (bugs and feature requests) from the `app_feedback` database table.
+End-to-end workflow for triaging, fixing, and closing user-submitted feedback (bugs and feature requests) held in an application feedback table.
+
+**Project assumption:** the queries below use a Postgres table named `app_feedback` with `status`, `type`, `description`, and `page_url` columns. Read the project's own schema first and substitute the real table and column names. If the project stores feedback somewhere else entirely, the process still applies; only the retrieval and close steps change.
 
 ## When to Use
 
@@ -81,9 +83,8 @@ Work through the spec in order:
 
 Follow project conventions:
 - Test-first for bugs (R-403)
-- Alphabetical ordering for props, types, keys
-- Named exports only
-- SCSS modules for styling (no Tailwind)
+- Deterministic ordering where order is semantically free (R-323)
+- The project's own export and styling conventions, per its `CLAUDE.md`
 
 ### Step 6: Mark entries as closed
 

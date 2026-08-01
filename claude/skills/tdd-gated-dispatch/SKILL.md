@@ -9,25 +9,9 @@ description: Use when dispatching sub-agents for implementation work - requires 
 
 Write failing tests. Dispatch the sub-agent. Validate mechanically.
 
+**Stack assumption:** examples use pnpm and Vitest. Substitute the project's own test and build commands throughout; the pattern is stack-independent, only the commands change.
+
 ## When to Use
-
-```dot
-digraph when_to_use {
-    "Dispatching sub-agent?" [shape=diamond];
-    "Task has testable output?" [shape=diamond];
-    "Use standard dispatch" [shape=box];
-    "Write tests first" [shape=box];
-    "Record baseline" [shape=box];
-    "Dispatch with test harness" [shape=box];
-
-    "Dispatching sub-agent?" -> "Task has testable output?" [label="yes"];
-    "Dispatching sub-agent?" -> "Use standard dispatch" [label="no"];
-    "Task has testable output?" -> "Write tests first" [label="yes"];
-    "Task has testable output?" -> "Use standard dispatch" [label="no - visual/research"];
-    "Write tests first" -> "Record baseline";
-    "Record baseline" -> "Dispatch with test harness";
-}
-```
 
 **Use when:**
 - Dispatching a sub-agent to implement a handler, service, component, or API endpoint
@@ -138,9 +122,9 @@ Your work must not reduce these numbers.
 - Do not change function signatures that existing code depends on
 ```
 
-## What the Primary Agent Writes (by task type)
+## What the Primary Agent Writes
 
-### Handler/Service task
+One worked example. The task-type table above maps the other layers; port this shape to whichever layer the task needs.
 
 ```typescript
 // src/__tests__/handlers/createWidget.test.ts
@@ -167,45 +151,6 @@ describe('createWidgetHandler', () => {
         await createWidgetHandler(req as any, res as any);
 
         expect(res.status).toHaveBeenCalledWith(400);
-    });
-});
-```
-
-### API endpoint task
-
-```typescript
-// src/__tests__/integration/widgets-api.test.ts
-import { describe, expect, it } from 'vitest';
-import supertest from 'supertest';
-import { app } from '../../app';
-
-describe('POST /api/widgets', () => {
-    it('creates a widget and returns 201', async () => {
-        const res = await supertest(app)
-            .post('/api/widgets')
-            .set('X-Requested-With', 'XMLHttpRequest')
-            .send({ name: 'Test', type: 'standard' });
-
-        expect(res.status).toBe(201);
-        expect(res.body).toHaveProperty('id');
-    });
-});
-```
-
-### Component task
-
-```typescript
-// src/__tests__/components/WidgetCard.test.tsx
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { WidgetCard } from '../../components/WidgetCard/WidgetCard';
-
-describe('WidgetCard', () => {
-    it('renders widget name and type', () => {
-        render(<WidgetCard name="Test Widget" type="standard" />);
-
-        expect(screen.getByText('Test Widget')).toBeInTheDocument();
-        expect(screen.getByText('standard')).toBeInTheDocument();
     });
 });
 ```

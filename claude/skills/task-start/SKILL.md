@@ -1,6 +1,6 @@
 ---
 name: task-start
-description: Use at the beginning of any work to classify scope, determine process requirements (TDD, spec, plan, model), and dispatch the correct workflow. Replaces ad-hoc decisions about when to brainstorm, plan, or execute inline.
+description: Use at the beginning of any work, before deciding whether it needs a spec, a plan, TDD, a branch, a worktree, or subagents.
 ---
 
 # Task Start
@@ -95,40 +95,22 @@ Skills invoked: superpowers:brainstorming, superpowers:writing-plans,
                 tdd-gated-dispatch, superpowers:subagent-driven-development
 ```
 
-**The one-spec-one-plan rule is absolute.** A saga that touches extension + web + server gets ONE spec and ONE plan with sections for each surface. The plan may have stages ("Stage 1: shared foundation, Stage 2: extension, Stage 3: web"), but it is one document. Multiple plan files for the same feature invite contradictions, type drift, and the failure mode that sank the V2 extension work.
+**The one-spec-one-plan rule is absolute.** A saga that touches extension + web + server gets ONE spec and ONE plan with sections for each surface. The plan may have stages ("Stage 1: shared foundation, Stage 2: extension, Stage 3: web"), but it is one document. Multiple plan files for the same feature invite contradictions and type drift.
 
 If the scope is genuinely too large for one plan (50+ tasks), decompose the feature into independent sub-features that each get their own spec-plan cycle. Each sub-feature must be independently shippable and testable.
 
 ## Step 3: Set Up and Dispatch
 
-Based on the tier, execute the setup:
-
-### Trivial
-Just do the work. Skip to implementation.
-
-### Standard
-```bash
-git checkout -b feat/<slug> main
-```
-Invoke superpowers:test-driven-development. Start coding.
-
-### Complex
-Check if a spec already exists. If not, invoke superpowers:brainstorming.
-After spec approval, invoke superpowers:writing-plans.
-After plan approval, invoke feature-create for worktree setup, then the chosen execution skill.
-
-### Saga
-Same as complex, but enforce:
-- Opus model for all planning and review
-- tdd-gated-dispatch for all subagent work
-- Review checkpoint after each plan stage completes
-- No stage proceeds until the prior stage's tests are green
+| Tier | Setup sequence |
+|---|---|
+| **Trivial** | Do the work. Skip to implementation. |
+| **Standard** | `git checkout -b feat/<slug> main`, then superpowers:test-driven-development |
+| **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, then feature-create for the worktree, then the chosen execution skill |
+| **Saga** | As Complex, plus: Opus for all planning and review, tdd-gated-dispatch for every subagent, and a review checkpoint after each stage. No stage starts until the prior stage's tests are green. |
 
 ## The One-Spec-One-Plan Rule
 
-This is the most important rule in this skill. It exists because of a specific failure:
-
-The V2 extension shipped Plans 1-3 plus Plan D as separate documents. Types defined in Plan 1 were referenced differently in Plan 3. Component names drifted. The squash merge was 73 files and 6,691 lines. Six P0 bugs were filed within hours.
+This is the most important rule in this skill. Splitting one feature across several plan documents fails the same way every time: types defined in the first plan get referenced differently in the third, component names drift between documents, and none of the contradictions surface until merge, by which point the diff is too large to review properly and the bugs ship.
 
 **One spec. One plan. Always.** If you catch yourself about to create a second plan file for the same feature, stop. Either:
 1. The first plan is too narrow (expand it), or

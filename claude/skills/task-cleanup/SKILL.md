@@ -1,6 +1,6 @@
 ---
 name: task-cleanup
-description: Use at the end of every task to verify completeness, update docs, and close out the work. Examines what shipped and runs only the relevant cleanup steps. Pair with task-start.
+description: Use at the end of every task, before calling the work done or merging a feature branch. Pairs with task-start.
 ---
 
 # Task Cleanup
@@ -61,7 +61,7 @@ Check if a Playwright spec covers the new flow.
 ### If new components were created:
 
 **Storybook story:**
-Verify every new component has a co-located `.stories.tsx` file. If any are missing, create them now. This is non-negotiable per project rule 13.
+Where the project's own `CLAUDE.md` defines a Storybook convention, verify every new component has a co-located `.stories.tsx` file and create any that are missing. If the project defines no such convention, skip.
 
 ### If query parameters changed:
 
@@ -78,13 +78,8 @@ Check if the spec and plan are fully shipped (all tasks done, all acceptance cri
 ### If on a feature branch:
 
 **Verification gate:**
-```bash
-pnpm test          # unit tests
-pnpm build         # build check
-pnpm lint          # lint check
-```
 
-All three must pass before any merge decision.
+Run the project's test, build, and lint commands (whatever `package.json`, `Makefile`, or the project `CLAUDE.md` defines). All three must pass before any merge decision.
 
 **Merge decision:**
 - Squash merge onto main: `git checkout main && git merge --squash feat/<slug>`
@@ -106,7 +101,7 @@ Write `docs/session-handoff/session-handoff.md` per R-602:
 ### If files changed in a project-specific documented surface:
 
 **Surface doc refresh:**
-Some projects define surface-anchor directories with co-located `CLAUDE.md` documentation and a slash-command (e.g., `/update-the-big-brain-on-brad` or similar) that regenerates those per-surface docs. If the current project defines surfaces and a refresh skill in its own `CLAUDE.md`, invoke the refresh for any surface where 3+ files changed in this task. If fewer than 3 files changed, or the project does not define surface docs and a refresh skill, skip.
+Some projects define surface-anchor directories with co-located `CLAUDE.md` documentation plus a command that regenerates those per-surface docs. If the current project defines both in its own `CLAUDE.md`, invoke that refresh for any surface where 3+ files changed in this task. Otherwise skip.
 
 ## Step 3: Final Commit
 
@@ -138,31 +133,14 @@ Output a summary table:
 
 ## Scope-Dependent Behavior
 
-The cleanup intensity scales with the task tier (from task-start):
+Cleanup intensity scales with the task tier (from task-start). Each tier adds to the one above it.
 
-### Trivial cleanup
-- Commit the change (if not already committed)
-- No feature list, no user story, no E2E, no handoff
-- Just verify tests still pass
-
-### Standard cleanup
-- Commit per task
-- Feature list update if user-facing
-- User story if new flow
-- Squash merge if on feature branch
-
-### Complex cleanup
-- Everything in standard, plus:
-- E2E test verification (must exist, not just placeholder)
-- Storybook stories verification
-- Spec/plan deletion if shipped
-- Session handoff if ending
-
-### Saga cleanup
-- Everything in complex, plus:
-- Cross-surface verification (all surfaces tested)
-- Full audit consideration (has enough shipped to warrant an engineering audit?)
-- Session handoff is mandatory (sagas always span intent boundaries)
+| Tier | Adds |
+|---|---|
+| **Trivial** | Commit the change; verify tests still pass. Nothing else. |
+| **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch |
+| **Complex** | E2E test must exist (not a placeholder); Storybook stories verified; shipped spec/plan deleted; handoff if the session is ending |
+| **Saga** | Every surface tested; handoff is mandatory; consider whether enough shipped to warrant an engineering audit |
 
 ## Common Mistakes
 
@@ -176,5 +154,5 @@ The cleanup intensity scales with the task tier (from task-start):
 ## Integration
 
 - **Paired with:** task-start (run at the beginning of every task)
-- **Composes with:** cleanup-specs-plans (for bulk cleanup), finishing-a-development-branch (for merge decisions), update-the-big-brain-on-brad (surface doc refresh)
-- **Replaces:** manual feature completion checklist (CLAUDE.md rule 10)
+- **Composes with:** cleanup-specs-plans (bulk cleanup), superpowers:finishing-a-development-branch (merge decisions), and the project's own surface-doc refresh command where one is defined
+- **Replaces:** the manual feature-completion checklist

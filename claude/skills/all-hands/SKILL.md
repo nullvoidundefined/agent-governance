@@ -1,6 +1,6 @@
 ---
 name: all-hands
-description: Run a lightweight weekly priorities scan across all 9 audit roles. Each role scans the current codebase and returns their top 3-5 action items for the week. Results are consolidated into a single prioritized list. Use at the start of a work week or when you want a cross-functional view of what needs attention. Produces `docs/audits/YYYY-MM-DD-all-hands.md` and commits it.
+description: Use at the start of a work week, or when deciding what to prioritize and a single reviewer's view is not enough - engineering, security, criticism, design, UX, customer, financial, legal, and marketing all weigh in.
 ---
 
 # All Hands
@@ -88,7 +88,7 @@ Commit the file to the current branch. Do not create a separate branch.
 
 ## What This Is NOT
 
-This is a 15-minute pulse check, not a deep dive. Each role is scanning quickly and returning their most visible concerns. If a role flags something that needs a full investigation, the appropriate follow-up is to run that role's dedicated audit skill (e.g., `/audit-security` for a full security report).
+This is a 15-minute pulse check, not a deep dive. Each role is scanning quickly and returning their most visible concerns. If a role flags something that needs a full investigation, the follow-up is to dispatch that role's dedicated audit **agent** (e.g. the `audit-security` agent for a full security report). These roles are agents, not skills; there is no `/audit-security` slash command.
 
 ## Model
 

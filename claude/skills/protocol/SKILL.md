@@ -1,6 +1,6 @@
 ---
 name: protocol
-description: Load the operating protocol failure-mode catalog. Use when debugging a process failure, reviewing why a rule exists, or onboarding.
+description: Use when debugging a process failure, reviewing why a rule exists, or onboarding to the operating protocol.
 ---
 
 ```! cat ~/.claude/PROTOCOL.md ```

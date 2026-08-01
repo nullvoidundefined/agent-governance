@@ -1,11 +1,13 @@
 ---
 name: feature-create
-description: Use when starting implementation of a planned feature to create an isolated git worktree, scaffold docs (feature-list row, user story, E2E spec), and transition into an execution skill. Trigger on "start feature", "create feature", "kick off", or after /write-plan completes.
+description: Use when starting implementation of a feature that already has an approved plan, before any code is written. Triggers on "start feature", "create feature", "kick off", or immediately after a plan is finished.
 ---
 
 # Feature Create
 
 Sets up an isolated workspace for a new feature and scaffolds the required documentation before implementation begins. Bridges the gap between planning and execution.
+
+**Stack assumption:** the scaffolding steps assume pnpm, Playwright, and the `docs/feature-list/`, `docs/user-stories/`, `e2e/` layout. Substitute the project's own install and test commands, and skip any scaffold step whose target directory the project does not use.
 
 **Announce at start:** "I'm using the feature-create skill to set up an isolated workspace for this feature."
 
@@ -169,4 +171,4 @@ Otherwise, invoke the chosen skill with:
 
 - **Called after:** brainstorming, writing-plans
 - **Calls:** executing-plans OR subagent-driven-development
-- **Paired with:** feature-cleanup (teardown)
+- **Paired with:** task-cleanup (teardown, merge decision, worktree removal)
