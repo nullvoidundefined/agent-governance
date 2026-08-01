@@ -1,0 +1,20 @@
+{
+  "_comment": "The strict Bash permission variant from the 2026-07-31 security audit remediation (P0: interpreter allow entries let `bash -c ...` bypass every deny and ask pattern). Applied briefly on 2026-08-01 and rolled back the same day by Ian: the approval friction outweighed the risk for daily solo work. Kept here as the documented swap-in. To adopt: replace the allow/ask arrays in settings.json with these (deny stays identical either way). The residual risk of the lenient list is recorded in ISSUES.md.",
+  "permissions": {
+    "allow_removals": [
+      "Bash(bash *)",
+      "Bash(curl *)",
+      "Bash(env *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(perl *)",
+      "Bash(python3 *)",
+      "Bash(sh *)",
+      "Bash(xargs *)"
+    ],
+    "ask_additions": [
+      "Bash(bash *)",
+      "Bash(sh *)"
+    ]
+  }
+}
