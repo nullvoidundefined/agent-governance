@@ -93,6 +93,28 @@ find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_D
   done
 done
 
+# Mechanical fire rollup (2026-07-31 criticism audit P0: the fire log only
+# ever received hand-typed entries, so it recorded nothing while enforcement
+# grew). Hooks append raw fires to telemetry/rule-fires.log via
+# log-rule-fire.sh; this block rolls new lines up into rule_fires.md as one
+# counted entry per rule+decision and advances a line-count high-water mark.
+FIRE_LOG="$HOME/.claude/telemetry/rule-fires.log"
+FIRE_OFFSET_FILE="$HOME/.claude/telemetry/rule-fires.rollup-offset"
+if [ -f "$FIRE_LOG" ]; then
+  TOTAL_LINES=$(wc -l < "$FIRE_LOG" | tr -d ' ')
+  LAST_OFFSET=$(cat "$FIRE_OFFSET_FILE" 2>/dev/null || echo 0)
+  case "$LAST_OFFSET" in ''|*[!0-9]*) LAST_OFFSET=0 ;; esac
+  if [ "$TOTAL_LINES" -gt "$LAST_OFFSET" ]; then
+    tail -n "+$((LAST_OFFSET + 1))" "$FIRE_LOG" \
+      | awk -F'|' '{ key = $2 " " $4; count[key]++ } END { for (k in count) print k, count[k] }' \
+      | while IFS=' ' read -r fired_rule decision fire_count; do
+          [ -z "$fired_rule" ] && continue
+          printf '%s %s (auto-rollup: %s %s fire(s) this session)\n' "$TODAY" "$fired_rule" "$fire_count" "$decision" >> "$FIRES_LOG"
+        done
+    printf '%s\n' "$TOTAL_LINES" > "$FIRE_OFFSET_FILE"
+  fi
+fi
+
 # Velocity metrics (R-602)
 # Compute session commit stats and write to a temp file.
 # The handoff doc author reads this file for the "Session metrics" section.

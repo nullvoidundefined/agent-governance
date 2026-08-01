@@ -11,11 +11,16 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' || exit 0
 printf '%s' "$CMD" | grep -qE '(^|[[:space:]])-m([[:space:]]|$)' || exit 0
 
+source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+
 deny() {
+  log_rule_fire "R-505" "commit-message-guard" "deny"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 }
 ask() {
+  log_rule_fire "R-506" "commit-message-guard" "ask"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
   exit 0
 }

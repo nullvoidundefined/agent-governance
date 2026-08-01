@@ -76,6 +76,9 @@ REPORT=$(printf '%s' "$RESULTS" | jq -r --arg added "$ADDED" '
   | .[]' 2>/dev/null || true)
 
 if [ -n "$REPORT" ]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+  log_rule_fire "rubocop-ast" "push-rubocop-gate" "deny"
   jq -n --arg r "RuboCop enforcement failed on the outgoing diff (R-327 plus naming support; mapping in enforce/rubocop-enforce.yml). Fix the violations:
 $REPORT" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 fi

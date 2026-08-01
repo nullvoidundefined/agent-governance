@@ -36,6 +36,9 @@ TOP="$(git rev-parse --show-toplevel)"
 REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$HOME/.claude/enforce/lint.mjs" --added-only "$BASE" 2>&1 || true)
 
 if [ -n "$REPORT" ]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+  log_rule_fire "eslint-ast" "push-eslint-gate" "deny"
   jq -n --arg r "ESLint enforcement failed on the outgoing diff (R-323/R-321/R-319). Fix the violations or run eslint --fix:
 $REPORT" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 fi

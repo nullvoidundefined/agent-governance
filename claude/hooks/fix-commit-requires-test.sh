@@ -116,6 +116,9 @@ if printf '%s\n' "$STAGED" | grep -qE '(\.test\.|\.spec\.|^e2e/|/e2e/|^__tests__
 fi
 
 # No test file staged. Block with a reason citing R-403.
+source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+log_rule_fire "R-403" "fix-commit-requires-test" "deny"
 jq -n --arg subject "$SUBJECT" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",

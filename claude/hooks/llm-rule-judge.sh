@@ -107,6 +107,11 @@ done < <(printf '%s' "$ALL_HITS" | jq -c '.[]?' 2>/dev/null || true)
 
 COUNT=$(printf '%s' "$DENY_HITS" | jq 'length' 2>/dev/null || echo 0)
 if [ "${COUNT:-0}" -gt 0 ]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+  while IFS= read -r fired_rule; do
+    [ -n "$fired_rule" ] && log_rule_fire "$fired_rule" "llm-rule-judge" "deny"
+  done < <(printf '%s' "$DENY_HITS" | jq -r '.[].rule' 2>/dev/null || true)
   REASON=$(printf '%s' "$DENY_HITS" | jq -r '.[] | "\(.rule) [\(.file)]: \(.why)"')
   jq -n --arg r "Rule-judge blocked the push (confidence >= $THRESH):
 $REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'

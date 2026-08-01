@@ -72,6 +72,9 @@ REPORT=$(printf '%s' "$RESULTS" | jq -r --arg added "$ADDED" --arg top "$TOP/" '
   | .[]' 2>/dev/null || true)
 
 if [ -n "$REPORT" ]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+  log_rule_fire "ruff-ast" "push-ruff-gate" "deny"
   jq -n --arg r "ruff enforcement failed on the outgoing diff (R-324/R-326/R-329 Python analogs; mapping in enforce/ruff-enforce.toml). Fix the violations:
 $REPORT" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 fi

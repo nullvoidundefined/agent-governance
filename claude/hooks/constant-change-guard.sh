@@ -38,6 +38,9 @@ while IFS= read -r constants_file; do
 done <<< "$CONST_FILES"
 
 if [ -n "$STALE" ]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+  log_rule_fire "R-513" "constant-change-guard" "ask"
   jq -n --arg r "constant-change-guard (R-513): the outgoing diff removes constant values that still appear in test assertions. Update every stale assertion in the same commit as the source change, or confirm to push anyway if the matches are coincidental:$STALE" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
 fi
