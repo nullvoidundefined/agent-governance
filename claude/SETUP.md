@@ -6,14 +6,20 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 
 - **git** and **bash** (macOS or Linux; on Windows use WSL, the hooks are bash).
 - **jq** is required. Every PreToolUse and SessionStart hook parses its input with `jq`; without it the hooks fail. Install with `brew install jq` or your package manager.
-- **python3** is needed only by `ntfy-notify.sh` (notifications). Everything else runs without it.
+- **node** is required by the clean-code scanner (`hooks/clean-code-scan.mjs`) and the ESLint push gate (`enforce/lint.mjs`).
+- **python3** is needed by `ntfy-notify.sh`, the manifest closure test, and the latency test's clock.
+- Optional per stack, all fail open when absent: **ruff** (or uv), **rubocop**, **golangci-lint** for the Python/Ruby/Go push gates.
 - **Claude Code** itself.
 
 ## Install
 
 1. Clone this repo to `~/.claude` (the hooks and `settings.json` reference `~/.claude/...` paths, so the location matters).
 2. Reinstall plugins: they are managed by Claude Code and reinstalled from `settings.json` (`enabledPlugins`); the `plugins/` directory is gitignored.
-3. Start a Claude Code session. The SessionStart hooks load the global memory index and warn on a `core.hooksPath` that points outside the repo (R-107).
+3. Recreate the two unversioned git-side files:
+   - `.git/hooks/pre-push`: a bash script running `enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh` (`chmod +x`), so a red suite aborts any push.
+   - `.git/info/exclude`: local-only exclusions for anything client-identifying that must never be tracked (versioned `.gitignore` covers the standard runtime dirs).
+4. Regenerate the hook-integrity manifest so it matches your checkout: `hooks/hook-integrity-check.sh --update`, then commit `enforce/hook-hashes.txt` if it changed.
+5. Start a Claude Code session. The SessionStart hooks load the global memory index, verify hook integrity, report enforcement closure (including whether the llm-judge tier can run; see the egress disclosure in README.md), and warn on a `core.hooksPath` that points outside the repo (R-107).
 
 ## What does not ship (gitignored) and must be recreated
 
@@ -35,17 +41,20 @@ The framework files (`CLAUDE.md`, `PROTOCOL.md`, rules, hooks, agents, skills, c
 
 ## Stacks
 
-Two convention tracks load on demand by detected stack (see `rules/session-types.md`):
+Four convention tracks load on demand by detected stack (see `rules/session-types.md`):
 
 - **TypeScript/Node** (`package.json`): `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md` per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`. The `[ts]`-tagged rules in `CLAUDE.md` apply here.
 - **Python** (`pyproject.toml` / `requirements.txt` / `setup.py`): `CLAUDE-PYTHON.md`.
+- **Ruby on Rails** (`Gemfile`): `CLAUDE-RUBY.md`.
+- **Go** (`go.mod`): `CLAUDE-GO.md`.
 
-Universal rules in `CLAUDE.md` (untagged) apply to every stack.
+Universal rules in `CLAUDE.md` (untagged) apply to every stack; each track documents its analogs of the `[ts]`-tagged rules and its blessed exceptions.
 
 ## Verify the install
 
-Run the hook test suites; all should pass:
+Run BOTH fixture suites; all tests should pass:
 
 ```
-for t in ~/.claude/hooks/tests/*.test.sh; do bash "$t"; done
+bash ~/.claude/enforce/tests/run-tests.sh
+bash ~/.claude/hooks/tests/run-tests.sh
 ```

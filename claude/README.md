@@ -4,7 +4,7 @@ A personal operating system for Claude Code. Rules, hooks, audit roles, conventi
 
 This repo is the canonical, version-controlled home for everything that governs how Claude behaves across every project the maintainer touches. It is loaded at the start of every session via `~/.claude/`. Individual projects extend and override specific sections through their own `CLAUDE.md` files, but the baseline lives here.
 
-> **Read the criticism audit alongside the manifesto.** `PROTOCOL.md` presents the current eleven-layer framework. `docs/audits/2026-04-08-criticism.md` is the harshest pre-rewrite critique of the prior CLAUDE.md, which drove the 866→459-line / 11K→6K-token rewrite later that same day. Both are load-bearing; reconciling them is the work.
+> **Read the criticism audit alongside the manifesto.** `PROTOCOL.md` presents the current eleven-layer framework. `docs/audits/2026-07-31-criticism.md` is the harshest critique of the harness to date (the inert judge tier, the dead effectiveness loop, speculative stack enforcement). Both are load-bearing; reconciling them is the work.
 
 ## What this is for
 
@@ -29,7 +29,7 @@ The **plugins enabled in `settings.json`** are Anthropic-shipped through the off
 - `superpowers`: Layer 2 (Skills) is almost entirely this plugin. It provides `brainstorming` (HARD-GATE before code), `writing-plans`, `executing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`. The framing of "skills as capabilities not prose" comes from Superpowers.
 - `frontend-design`, `context7`, `code-review`, `code-simplifier`, `typescript-lsp`, `posthog`: other Anthropic-shipped plugins enabled in this configuration. Each contributes its own skills, agents, and behaviors.
 
-Everything **inside this tracked repo** is the maintainer's: the 26 hook scripts under `hooks/`, the 6 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 29 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 33 hook scripts under `hooks/`, the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 11 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 29 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `audits/<role>.md`. The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
@@ -44,7 +44,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 3. Rules | prose | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files |
 | 4. Audits | prose | Confidence theater, gaps invisible to the original author | `audits/` standing (Engineering, Security, Criticism) + `audits/on-request/` |
 | 5. Tests | prose | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke); this repo defines the discipline, not the runs |
-| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (26 scripts) |
+| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (33 scripts) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
 | 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
@@ -69,6 +69,9 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 ├── CLAUDE-FRONTEND-VITE.md          # Read on demand: Vite + TanStack Router conventions.
 ├── CLAUDE-DATABASE.md               # Read on demand: Postgres / SQL conventions.
 ├── CLAUDE-STYLING.md                # Read on demand: SCSS module conventions.
+├── CLAUDE-PYTHON.md                 # Auto-loads on .py: FastAPI / pytest conventions.
+├── CLAUDE-RUBY.md                   # Auto-loads on .rb: Rails API / RSpec conventions.
+├── CLAUDE-GO.md                     # Auto-loads on .go: net/http + chi conventions.
 ├── CLOUD-DEPLOYMENT.md              # Read on demand: Railway / Cloudflare deploy guide.
 ├── settings.json                    # Claude Code settings including hook wiring.
 ├── agents/                          # Agent definitions for audit roles.
@@ -90,9 +93,11 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 │   ├── pre-compact.sh               # PreCompact. Injects critical rules into compaction.
 │   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc.
 │   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
-│   └── ...                          # 18 more gates; each self-documenting in its header.
-├── rules/                           # Tier-2 rule files loaded by session type.
-│   ├── session-types.md             # Session classification and tier-2 load map.
+│   └── ...                          # 25 more gates; each self-documenting in its header.
+├── rules/                           # Auto-load zone: session-types.md + path-scoped
+│   │                                # symlinks to the stack CLAUDE-*.md files.
+├── rulebook/                        # Tier-2 rule files loaded by session type.
+│   ├── reference.md                 # Full Specs for every CLAUDE.md norm line.
 │   ├── agents.md                    # Multi-agent dispatch rules.
 │   ├── audits.md                    # Audit scheduling and role rules.
 │   └── cost.md                      # Cost discipline and model routing.
@@ -118,12 +123,16 @@ Each layer assumes the next will catch what it misses. The discipline is not "fo
 
 ## How a session uses this repo
 
-1. **Session start.** Claude Code loads `~/.claude/settings.json`, which wires the `SessionStart` hook. The hook reads `global-memory/INDEX.md`, finds the most recent `docs/audits/*session-handoff*.md` or dated audit under the current project, and emits both as additional context. The session begins with cross-project lessons and the previous session's handoff already in view.
+1. **Session start.** Claude Code loads `~/.claude/settings.json`, which wires the `SessionStart` hooks. `session-start.sh` reads `global-memory/INDEX.md` and the project's `docs/session-handoff/session-handoff.md` (SHA-verified against git log before it is trusted) and emits both as additional context. `hook-integrity-check.sh` verifies the enforcement scripts against the committed hash manifest; `enforcement-guard-check.sh` verifies the manifest/settings/rulebook closure and warns if the llm-judge tier cannot run.
 2. **Rules load.** `CLAUDE.md` is loaded into the session: one norm line per rule with its enforcer named inline, kept under 200 lines for instruction adherence. The full Spec for every rule lives in `rulebook/reference.md`, read on demand and consumed mechanically by the enforcement guard and the push-time LLM judge.
 3. **Work happens.** Every tool call passes through the relevant `PreToolUse` hooks. Bash commands are scanned for secrets and em dashes before execution. Write and Edit calls are scanned for em dashes. `git commit -m "fix: ..."` calls are inspected to confirm a test file is staged.
 4. **Convention files load by path.** The stack `CLAUDE-*.md` files carry `paths:` frontmatter and are symlinked into `~/.claude/rules/`, so Claude Code loads each one mechanically when work touches matching files (a `.py` file pulls in the Python conventions, a `migrations/` file pulls in the database conventions). Only `CLOUD-DEPLOYMENT.md` remains a purely manual read.
 5. **Audits run on schedule or on signal.** The standing three roles (Engineering, Security, Criticism) run pre-launch or when a specific risk signal surfaces. The five on-request roles run only when a specific situation calls for that lens.
-6. **Session end.** The `SessionEnd` hook scans per-project feedback memory files for the `fired: R-NNN` and `miss: R-NNN` prefix convention from R-603 and appends dated entries to `global-memory/rule_fires.md` / `rule_misses.md`. The session writes a handoff doc to `docs/audits/YYYY-MM-DD-session-handoff.md` if outstanding work remains.
+6. **Session end.** The `SessionEnd` hook rolls the session's mechanical fire log (`telemetry/rule-fires.log`, appended by every deny/ask hook via `log-rule-fire.sh`) into `global-memory/rule_fires.md` as counted entries, and still scans per-project feedback memory for the `fired:`/`miss:` prefix convention from R-603. The session writes a handoff doc to `docs/session-handoff/session-handoff.md` (R-602) if outstanding work remains.
+
+### Enforcement gates and egress disclosure
+
+Five push-time gates guard `git push`: ESLint (TS), ruff (Python), RuboCop (Ruby), golangci-lint (Go), and an LLM rule judge. All fail open when their tool is unavailable and honor `enforce/exempt-repos.txt` (origin URL per line). Two trust boundaries are explicit: linters resolve from PATH or the harness bundle, never from the target repo (`bundle exec` is banned; the Go gate additionally requires the repo in `enforce/gate-trusted-repos.txt` because linting Go compiles the tree). **Egress:** when `ANTHROPIC_API_KEY` is present in the hook environment, `llm-rule-judge.sh` sends the outgoing diff of every non-exempt repo to `api.anthropic.com` at push time; without the key it skips and the session-start guard says so. A git `pre-push` hook (unversioned, see SETUP.md) runs both fixture suites before any push of this repo.
 
 ## The self-reinforcement loop
 
@@ -179,10 +188,11 @@ This repo is installed at `~/.claude/` and tracked by git. To bootstrap:
 
 1. Clone the repo to `~/.claude/` (or a separate path and symlink).
 2. Ensure Claude Code is installed.
-3. Verify `jq` is available (`brew install jq` on macOS); the hooks depend on it.
+3. Verify `jq` and `node` are available (`brew install jq node` on macOS); the hooks depend on both.
 4. Verify `settings.json` hook paths resolve on your system. The hooks use `~/.claude/hooks/...` which assumes the repo is at `~/.claude/`.
-5. Run a dry test: start a Claude Code session in any directory and confirm the `SessionStart` hook emits the global memory INDEX as additional context. Try a Write call containing U+2014 and confirm it blocks. Try `git commit -m "fix: test"` with no staged test file and confirm it blocks.
-6. Customize `CLAUDE.md` R-906 (estimation calibration) and `global-memory/user_profile.md` to reflect your own pace and preferences.
+5. Install the unversioned git hook: create `.git/hooks/pre-push` running both `enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh` (see SETUP.md), and regenerate the integrity manifest after any intentional hook change: `hooks/hook-integrity-check.sh --update`.
+6. Run a dry test: `bash enforce/tests/run-tests.sh && bash hooks/tests/run-tests.sh` (all fixture tests), then start a session and confirm the `SessionStart` hook emits the global memory INDEX. Try a Write call containing U+2014 and confirm it blocks.
+7. Customize `CLAUDE.md` R-906 (estimation calibration) and `global-memory/user_profile.md` to reflect your own pace and preferences.
 
 The runtime directories (`sessions/`, `cache/`, `history.jsonl`, `paste-cache/`, `shell-snapshots/`) are gitignored and populated by Claude Code as you work.
 
@@ -220,4 +230,4 @@ MIT License. See [LICENSE](./LICENSE).
 
 ---
 
-*Last updated: 2026-07-05. Maintained by the `SessionStart` / `SessionEnd` hooks and by dated commits to `main`.*
+*Last updated: 2026-08-01. Maintained by the `SessionStart` / `SessionEnd` hooks and by dated commits to `main`.*

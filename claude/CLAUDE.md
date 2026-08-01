@@ -58,12 +58,12 @@ R-320: Write a file-level header comment on every new source file (skip tests, `
 R-321 [ts]: File order: imports, types, `ALL_CAPS` constants, primary export, helpers (caller above callee); in bodies: guards, hooks in fixed order, `const` then `let`, main logic; helpers are `function` declarations. [eslint:member-ordering]
 R-322: Every function is exactly one of: an orchestrator that only sequences calls, or an atomic function doing one indivisible piece (~10 lines, ~25 ceiling). [judge, hook:clean-code-reminder]
 R-323: Sort sibling keys deterministically where order is semantically free (default alphabetical); never reorder where position carries meaning. [eslint:sort-keys]
-R-324: Extract every meaningful literal to a named constant; exempt `0`, `1`, `-1`, `''`, booleans, and test/fixture literals. [eslint:no-magic-numbers]
+R-324: Extract every meaningful literal to a named constant; exempt `0`, `1`, `-1`, `''`, booleans, and test/fixture literals. [eslint:no-magic-numbers, ruff:PLR2004, golangci:mnd]
 R-325: Destructure when reading 2+ properties of an object; never destructure a method off its object. [judge]
-R-326 [ts]: Never write IIFEs; declare a named `async function` and call it. [eslint:no-restricted-syntax]
-R-327 [ts]: Never nest ternaries. [eslint:no-nested-ternary]
+R-326 [ts]: Never write IIFEs; declare a named `async function` and call it. [eslint:no-restricted-syntax, ruff:E731]
+R-327 [ts]: Never nest ternaries. [eslint:no-nested-ternary, rubocop:Style/NestedTernaryOperator]
 R-328 [ts]: Migration defaults: bare strings for constants, `pgm.func()` for SQL expressions, never nested quotes. [hook:migration-defaults-guard]
-R-329 [ts]: Never `any` or `@ts-ignore`/`@ts-nocheck`; type the value or narrow `unknown`; `@ts-expect-error` with a description is the only permitted suppression. [eslint:no-explicit-any, eslint:ban-ts-comment]
+R-329 [ts]: Never `any` or `@ts-ignore`/`@ts-nocheck`; type the value or narrow `unknown`; `@ts-expect-error` with a description is the only permitted suppression. [eslint:no-explicit-any, eslint:ban-ts-comment, ruff:ANN401, golangci:nolintlint]
 R-330: Settle the domain vocabulary during spec writing; the spec carries a `## Domain vocabulary` glossary that all file, function, and type naming draws from. [hook:spec-glossary-check]
 
 ## Testing and quality (R-4xx)
