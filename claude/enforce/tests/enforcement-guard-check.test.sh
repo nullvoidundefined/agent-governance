@@ -43,11 +43,12 @@ printf '%s' "$OUT5" | grep -q "push-golangci-gate" || { echo "FAIL: expected war
 # Case 6 (2026-07-31 criticism audit P0): llm-judge rules with no key and no
 # stub in the environment -> warn about the inert judge tier; the acceptance
 # marker silences it as a recorded deliberate choice.
+# A bogus keychain service isolates the test from any real keychain entry.
 NOACCEPT=$(mktemp -d)/absent
-OUT6=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD CLAUDE_JUDGE_ACCEPT_FILE="$NOACCEPT" "$HOOK" < /dev/null)
+OUT6=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD CLAUDE_JUDGE_KEYCHAIN_SERVICE="claude-test-no-such-service" CLAUDE_JUDGE_ACCEPT_FILE="$NOACCEPT" "$HOOK" < /dev/null)
 printf '%s' "$OUT6" | grep -q "llm-judge tier" || { echo "FAIL: expected inert-judge warning"; exit 1; }
 ACCEPT=$(mktemp)
-OUT7=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD CLAUDE_JUDGE_ACCEPT_FILE="$ACCEPT" "$HOOK" < /dev/null)
+OUT7=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD CLAUDE_JUDGE_KEYCHAIN_SERVICE="claude-test-no-such-service" CLAUDE_JUDGE_ACCEPT_FILE="$ACCEPT" "$HOOK" < /dev/null)
 printf '%s' "$OUT7" | grep -q "llm-judge tier" && { echo "FAIL: acceptance marker should silence the warning"; exit 1; } || true
 
 echo "enforcement-guard-check.test.sh PASS"
