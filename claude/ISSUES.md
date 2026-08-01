@@ -6,8 +6,8 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 
 ### Accepted risks (deliberate, revisit on incident)
 - ACCEPTED (2026-08-01, Ian): the lenient Bash allow list is restored; `bash -c`/interpreter entries bypass the deny and ask patterns (2026-07-31 security audit P0-2). Strict variant preserved in `enforce/strict-permissions.json`; revisit if an incident or shared-machine use changes the calculus.
-- DECISION PENDING (2026-07-31 security audit P1): two R-106 breaches live in published git history (home path in `ef74f8d`, client name in `adfb177`; both sanitized at HEAD). Rewriting public history is disruptive; decide deliberately or accept.
-- DECISION PENDING (2026-07-31): judge tier remains inert until `ANTHROPIC_API_KEY` reaches the hook environment; session start now warns. Provision the key (activates diff egress, disclosed in README) or `touch enforce/judge-accepted-honor-system`.
+- NOTE (2026-08-01): pre-rewrite commit SHAs cited in older audit reports and log entries no longer resolve; git history was rewritten on 2026-08-01 (see Resolved). GitHub may serve old objects from caches or forks for a while; request GC via support if that matters.
+- PENDING USER ACTION (2026-08-01): judge tier is fully wired to the keychain (`claude-judge-api-key`); it activates the moment the rotated key is stored via `security add-generic-password -a "$USER" -s claude-judge-api-key -w` in a terminal outside any session.
 
 ### From the 2026-07-31 full-harness audits (P2/P3)
 - P2 (security): `destructive-db-guard.sh` blanket `localhost` early-return misses SSH-tunneled remote DBs; argv-only scope. Known limitation; needs a design, not a patch.
@@ -28,6 +28,7 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 
 ## Resolved
 
+- 2026-08-01: published git history rewritten with git-filter-repo to purge the two R-106 breaches (a local home path and a client-identifying name); verified zero occurrences in a fresh clone of origin. Pre-rewrite SHAs no longer resolve.
 - 2026-08-01: full-harness audit remediation. Security P0s: push gates no longer execute target-repo code (f47ca92); interpreter allow-list escape closed (acef36d), then deliberately reverted to lenient by Ian (f6c8d88, see Accepted risks). Engineering P0: plaintext API keys purged from all transcripts and history.jsonl (rotation Ian-side). Criticism P0s: inert judge tier now warns at session start with severity lookup fixed (e91142f); mechanical fire telemetry replaces the dead hand-typed log (7bdaec2). P1s: handoff loading fixed with SHA verification, chained add+commit guard bypass closed, redact-output semantics honest, hook hash integrity guard, publish guard fails closed, pre-compact contradictions removed, pre-push now runs both suites (252910e).
 - 2026-07-31: structure-gate never fired for Python's app/-rooted layout (P1); R-516 guard and manifest test blind to ruff:* enforcers (P1); hook-latency chain missing push-ruff-gate (P2) -> fixed with fixture tests in the post-audit commit.
 - 2026-07-03: agents/ audit-role files cited pre-renumber rule IDs (P1) -> migrated in 9c01327.
