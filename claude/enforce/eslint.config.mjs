@@ -114,6 +114,13 @@ export default tseslint.config({
     "**/constants.ts",
     "**/types/**/*.ts",
     "**/constants/**/*.ts",
+    // Next.js App Router route handlers live under app/api/ and MUST export one
+    // function per HTTP method from a single route.ts; the framework resolves
+    // them by name from that file, so they cannot be split. The "**/api/**"
+    // glob above targets the R-307 fetch-wrapper tree (services/api), not this
+    // one, and swept these in only because both path segments are named "api".
+    "**/app/api/**/route.ts",
+    "**/app/api/**/route.tsx",
   ],
   plugins: { local: { rules: { "one-export-per-file": oneExportPerFile } } },
   rules: { "local/one-export-per-file": "error" },
