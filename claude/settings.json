@@ -318,6 +318,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/post-compact-rules.sh"
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {

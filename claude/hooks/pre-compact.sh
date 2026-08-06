@@ -1,39 +1,33 @@
 #!/usr/bin/env bash
 # pre-compact.sh
 #
-# PreCompact hook for Claude Code. Injects the most critical rules into
-# the compaction context so they survive context window compression.
-# Without this, compaction can lose rules that were loaded early in the
-# session, causing drift in later turns.
+# PreCompact hook for Claude Code. Records that a compaction happened so the
+# post-compact-rules.sh UserPromptSubmit hook can re-inject the critical rules
+# on the next user turn.
+#
+# PreCompact cannot inject context. Its hookSpecificOutput has no schema
+# variant, so any object carrying additionalContext is rejected whole with
+# "(root): Invalid input" and the payload is silently dropped. This hook did
+# exactly that from its creation until 2026-08-06, modeled on session-start.sh,
+# whose identical shape is valid because SessionStart does have a variant.
+# PreCompact's only supported outcome is blocking the compaction.
+#
+# The rules themselves live in post-compact-rules.sh, which is the hook that
+# can actually emit them. This script only sets the flag.
+#
+# Manual test:
+#   echo '{}' | ~/.claude/hooks/pre-compact.sh; echo "exit=$?"
+#   test -f ~/.claude/.post-compact-pending && echo "sentinel set"
+# Should print nothing, exit 0, and leave the sentinel in place.
 
 set -euo pipefail
 
-# The rules that must survive compaction, in priority order.
-# These are the rules most likely to be violated after compaction
-# because they constrain output style and process, not just code.
-CTX=$(cat <<'RULES'
-## Critical rules (injected by PreCompact hook, do not discard)
+SENTINEL="$HOME/.claude/.post-compact-pending"
 
-1. Named exports only. Never export default (except Next.js App Router convention files and Storybook).
-2. Sort sibling keys deterministically where order is semantically free (default alphabetical); never reorder where position carries meaning (R-323).
-3. One commit per task. Never accumulate across tasks (R-504).
-4. Check for a parallel session before the first edit; active parallel session means move to a worktree (R-501). Never push main without express request (R-514).
-5. Model routing: Sonnet default, Opus for complex/security/ambiguous, Haiku for trivial.
-6. Never deploy without explicit user sign-off. Staging first, then ask before production.
-7. CSRF: X-Requested-With header pattern. No token endpoint.
-8. Shared code publishes under the project-agnostic @repo/* scope (R-301): @repo/types, @repo/constants.
-9. No praise without falsifiable reasoning. No softening. No compliment sandwich.
-10. No filler. Delete before sending: action announcements, question echoes, transitions, hedges, sign-offs, apologies, trailing summaries, "I" sentences.
-11. Write rules for the model. Omit rationale and motivation. State imperatives. (R-206)
-12. When user asserts something exists, investigate before disputing. Never treat context absence as evidence of absence. (R-205)
-RULES
-)
+# Never fail a compaction over the sentinel: a non-writable HOME would
+# otherwise turn a missing rule reminder into a blocked compaction.
+: > "$SENTINEL" 2>/dev/null || true
 
-jq -n --arg ctx "$CTX" '{
-  hookSpecificOutput: {
-    hookEventName: "PreCompact",
-    additionalContext: $ctx
-  }
-}'
-
+# Emit nothing. PreCompact accepts no context payload, and any non-empty
+# object risks tripping validation again.
 exit 0

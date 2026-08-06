@@ -3,6 +3,7 @@
 
 # Ephemeral / machine-specific state
 .last-cleanup
+.post-compact-pending
 backups/
 cache/
 debug/
