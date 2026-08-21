@@ -97,6 +97,9 @@ allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/services/email/sendWel
 allow "$(write_json Edit  "$VOCAB_FIXTURE/apps/server/src/legacyMailer.ts")"                    # pre-existing loose file
 allow "$(write_json Write "$VOCAB_FIXTURE/apps/client/web/src/queryClient.ts")"                 # client src/ root out of scope
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/somewhere.ts"}}'                   # no package.json, no deny
+mkdir -p "$VOCAB_FIXTURE/apps/client/admin/src"
+printf '%s\n' '{"dependencies":{"react":"^19.0.0"},"devDependencies":{"express":"^4.19.2"}}' >"$VOCAB_FIXTURE/apps/client/admin/package.json"
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/client/admin/src/setupTests.ts")"                # react wins: an express devDependency does not make a client an Express server
 
 # R-305: a component written straight into components/ is denied; the paired
 # ComponentName/ComponentName.tsx layout is not.

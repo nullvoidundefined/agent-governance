@@ -36,6 +36,10 @@ git -C "$REPO" commit -qm "chore: seed"
 [ "$(decision 'git push' "$REPO")" = "ask" ]                    # implicit target is main (R-514)
 [ "$(decision 'git push origin main' "$REPO")" = "ask" ]        # explicit target
 [ "$(decision 'git push origin HEAD:main' "$REPO")" = "ask" ]   # refspec form
+[ "$(decision 'git push origin HEAD' "$REPO")" = "ask" ]         # HEAD resolves to the checked-out branch
+[ "$(decision 'git push origin refs/heads/main' "$REPO")" = "ask" ]     # fully qualified ref
+[ "$(decision 'git push origin +main' "$REPO")" = "ask" ]               # force marker on the refspec
+[ "$(decision "git -C $REPO push origin main" /tmp)" = "ask" ]          # -C form names the repo, not the cwd
 [ "$(decision 'git push origin feature/scoring' "$REPO")" = "ask" ] && exit 1  # a feature branch is not gated
 [ "$(decision 'git push' "$HOME/.claude")" = "none" ]           # global repo exempt: R-106 owns its pushes
 
@@ -52,6 +56,13 @@ printf 'docs\n' >"$REPO/README.md"
 git -C "$REPO" add README.md
 silent_on R-508 'git commit -m "feat: scoring"' "$REPO"
 warns R-511 'git commit -m "feat: scoring"' "$REPO"
+
+# A path holding an apostrophe must not crash the advisory pass.
+: >"$REPO/src/services/o'brien.ts"
+git -C "$REPO" add "src/services/o'brien.ts"
+warns R-511 'git commit -m "refactor: regroup"' "$REPO"
+git -C "$REPO" rm -q --cached "src/services/o'brien.ts"
+rm -f "$REPO/src/services/o'brien.ts"
 
 # A narrow commit on a feature branch warns about neither.
 git -C "$REPO" commit -qm "feat: scoring"

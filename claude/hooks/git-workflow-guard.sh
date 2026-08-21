@@ -18,10 +18,21 @@ INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 [ "$TOOL" = "Bash" ] || exit 0
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
-printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || exit 0
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
+
+# `git -C <path> push` and `git -c k=v commit` are the same actions with a
+# global option in front, and matching on adjacency alone lets both through.
+# Lift the options out before matching, and let -C redirect the repository the
+# rest of this hook inspects.
+GIT_DIRECTORY=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}' || true)
+if [ -n "$GIT_DIRECTORY" ]; then
+  case "$GIT_DIRECTORY" in /*) CWD="$GIT_DIRECTORY" ;; *) CWD="$CWD/$GIT_DIRECTORY" ;; esac
+fi
+CMD=$(printf '%s' "$CMD" | sed -E 's/git([[:space:]]+(-C|-c)[[:space:]]+[^[:space:];&|]+)+/git/g')
+
+printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || exit 0
 
 ask() {
   source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
@@ -63,8 +74,16 @@ if [ "$is_global_repo" -eq 0 ] && printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:spa
   PUSH_ARGS=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -1 |
     sed -E 's/^git[[:space:]]+push[[:space:]]*//' | tr ' ' '\n' | grep -vE '^(-.*)?$' || true)
   REFSPEC=$(printf '%s\n' "$PUSH_ARGS" | sed -n '2p')
+  # Resolve the refspec to a branch name rather than pattern-matching its text:
+  # `HEAD`, `refs/heads/main`, `+main`, and `HEAD:refs/heads/main` all name the
+  # same destination as a bare `main`, and matching literally missed all four.
   TARGET="$BRANCH"
-  [ -n "$REFSPEC" ] && TARGET="${REFSPEC##*:}"
+  if [ -n "$REFSPEC" ]; then
+    TARGET="${REFSPEC##*:}"
+    TARGET="${TARGET#+}"
+    TARGET="${TARGET#refs/heads/}"
+    [ "$TARGET" = "HEAD" ] && TARGET="$BRANCH"
+  fi
   case "$TARGET" in
     main | master)
       ask "R-514: this pushes straight to $TARGET, which is only for an express request after the risks are named. The default path is a branch and a PR. Confirm the direct push, or redirect it to a feature branch." ;;
@@ -91,7 +110,11 @@ CHANGED=$(printf '%s\n' "$CHANGED" | grep -v '^$' | sort -u || true)
 # many directories is the cross-cutting refactor that wants its own branch.
 if [ "$is_global_repo" -eq 0 ] && [ "$on_trunk" -eq 1 ]; then
   FILE_COUNT=$(printf '%s\n' "$CHANGED" | wc -l | tr -d ' ')
-  DIR_COUNT=$(printf '%s\n' "$CHANGED" | xargs -n1 dirname 2>/dev/null | sort -u | wc -l | tr -d ' ')
+  # dirname per line, not via xargs: a path holding a quote or a space makes
+  # xargs exit non-zero, and under pipefail that took the whole advisory with it.
+  DIR_COUNT=$(while IFS= read -r changed_path; do
+    [ -n "$changed_path" ] && dirname "$changed_path"
+  done <<<"$CHANGED" | sort -u | wc -l | tr -d ' ')
   if [ "$FILE_COUNT" -ge 5 ] && [ "$DIR_COUNT" -ge 3 ]; then
     echo "git-workflow-guard: this commit spans $FILE_COUNT files across $DIR_COUNT directories on $BRANCH. R-511 runs a cross-cutting change on its own branch, one at a time, so it can be reviewed and reverted as a unit." >&2
   fi

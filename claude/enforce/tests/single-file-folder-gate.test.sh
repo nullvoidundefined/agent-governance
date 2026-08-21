@@ -40,4 +40,13 @@ git add .; git commit -q -m mig
 ERR4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
 printf '%s' "$ERR4" | grep -q "migrations/versions" && { echo "FAIL: migrations dirs should be exempt"; exit 1; } || true
 
+# R-305 orders components/Header/Header.tsx; R-309 must not then call that folder
+# a single-file folder. Two hooks pointing opposite directions is not enforcement.
+mkdir -p src/components/Header
+printf 'export function Header() {\n  return null;\n}\n' > src/components/Header/Header.tsx
+printf '.header { color: red; }\n' > src/components/Header/Header.module.scss
+git add .; git commit -q -m component
+ERR5=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
+printf '%s' "$ERR5" | grep -q "src/components/Header" && { echo "FAIL: a paired component folder is the R-305 layout, not an R-309 violation"; exit 1; } || true
+
 echo "single-file-folder-gate.test.sh PASS"

@@ -41,10 +41,20 @@ while IFS= read -r dir; do
   case "$dir" in migrations|migrations/*|*/migrations|*/migrations/*) continue ;; esac
   printf '%s\n' "$EXEMPT" | grep -qx "$dir" && continue
   count=0
+  lone_module=""
   for path in "$TOP/$dir"/*; do
     [ -f "$path" ] || continue
-    is_source "$(basename "$path")" && count=$((count + 1))
+    if is_source "$(basename "$path")"; then
+      count=$((count + 1))
+      lone_module=$(basename "$path")
+    fi
   done
+  # R-305 orders exactly this shape: components/Header/Header.tsx paired with
+  # Header.module.scss. Warning that the ordered layout breaks R-309 would point
+  # two hooks in opposite directions on the same folder.
+  case "$dir" in
+    */components/*) [ "$lone_module" = "$(basename "$dir").tsx" ] && continue ;;
+  esac
   if [ "$count" -eq 1 ]; then
     echo "single-file-folder-gate: '$dir' holds one source module; R-309 prefers a flat file. Add a second module or exempt the folder in .enforce.json." >&2
   fi

@@ -36,20 +36,31 @@ session_pid() {
   printf '%s' "$PPID"
 }
 
+started_at() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ *//;s/ *$//'; }
+
+# Each entry carries its start time, because liveness alone is not identity: a
+# registry outlives reboots, and the OS reissues PIDs. A live PID whose start
+# time no longer matches is a different process wearing the same number, and
+# reporting it would make the warning permanent and false.
 MY_PID=$(session_pid)
+MY_START=$(started_at "$MY_PID")
 LIVE=""
 OTHERS=0
 if [ -f "$REGISTRY" ]; then
-  while IFS= read -r recorded_pid || [ -n "$recorded_pid" ]; do
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    recorded_pid="${entry%% *}"
+    recorded_start="${entry#* }"
     [ -z "$recorded_pid" ] && continue
     [ "$recorded_pid" = "$MY_PID" ] && continue
+    [ "$recorded_pid" = "$entry" ] && continue
     kill -0 "$recorded_pid" 2>/dev/null || continue
-    LIVE="$LIVE$recorded_pid
+    [ "$(started_at "$recorded_pid")" = "$recorded_start" ] || continue
+    LIVE="$LIVE$recorded_pid $recorded_start
 "
     OTHERS=$((OTHERS + 1))
   done < "$REGISTRY"
 fi
-printf '%s%s\n' "$LIVE" "$MY_PID" >"$REGISTRY"
+printf '%s%s %s\n' "$LIVE" "$MY_PID" "$MY_START" >"$REGISTRY"
 [ "$OTHERS" -eq 0 ] && exit 0
 
 source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true

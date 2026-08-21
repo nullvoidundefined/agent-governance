@@ -19,16 +19,22 @@ key_for() { printf '%s' "$1" | shasum | awk '{print $1}'; }
 # A live foreign PID on the same tree is a parallel session.
 sleep 30 &
 LIVE_PID=$!
-printf '%s\n' "$LIVE_PID" >"$LOCK_DIR/$(key_for "$TREE_A")"
+started_at() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ *//;s/ *$//'; }
+printf '%s %s\n' "$LIVE_PID" "$(started_at "$LIVE_PID")" >"$LOCK_DIR/$(key_for "$TREE_A")"
 case "$(run "$TREE_A")" in *R-501*) ;; *) echo "expected an R-501 warning" >&2; exit 1 ;; esac
 
 # The same live PID registered against a different tree is not a collision.
 [ -z "$(run "$TREE_B")" ]
 
+# A live PID whose start time does not match the registry is a recycled number,
+# not a parallel session: liveness alone would make the warning permanent.
+printf '%s %s\n' "$LIVE_PID" "Thu Jan 1 00:00:00 2020" >"$LOCK_DIR/$(key_for "$TREE_A")"
+[ -z "$(run "$TREE_A")" ]
+
 # A dead PID is pruned rather than reported.
 kill "$LIVE_PID" 2>/dev/null || true
 wait "$LIVE_PID" 2>/dev/null || true
-printf '%s\n' "$LIVE_PID" >"$LOCK_DIR/$(key_for "$TREE_A")"
+printf '%s %s\n' "$LIVE_PID" "$(started_at "$LIVE_PID")" >"$LOCK_DIR/$(key_for "$TREE_A")"
 [ -z "$(run "$TREE_A")" ]
 grep -qx "$LIVE_PID" "$LOCK_DIR/$(key_for "$TREE_A")" && { echo "dead PID survived the prune" >&2; exit 1; }
 

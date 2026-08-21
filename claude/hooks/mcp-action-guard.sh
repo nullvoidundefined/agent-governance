@@ -21,15 +21,25 @@ case "$TOOL" in mcp__*) ;; *) exit 0 ;; esac
 SERVER=$(printf '%s' "$TOOL" | awk -F'__' '{print $2}')
 case "$SERVER" in claude-in-chrome) exit 0 ;; esac
 
+# camelCase is as common as snake_case in MCP tool names (createIssue,
+# chat_postMessage), so split on the case boundary before lowercasing. Folding
+# case first would weld the verb to its object and match nothing.
+ACTION=$(printf '%s' "${TOOL##*__}" | sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr 'A-Z-' 'a-z_')
+
 REASON=""
-for token in $(printf '%s' "${TOOL##*__}" | tr 'A-Z-' 'a-z_' | tr '_' ' '); do
+for token in $(printf '%s' "$ACTION" | tr '_' ' '); do
   case "$token" in
     send | post | reply | forward | publish | share | invite | notify | respond)
       REASON="transmits content outside this machine"; break ;;
-    create | save | update | edit | write | add | apply | upload | move | duplicate | rename | submit | merge | generate | mark)
+    create | save | update | edit | write | add | apply | upload | move | duplicate | rename | submit | merge | generate | mark | use)
       REASON="writes to an external system of record"; break ;;
     delete | remove | trash | drop | archive | revoke | rotate | cancel | unmark | unlabel)
       REASON="destroys or retracts external state"; break ;;
+    # Database MCP servers (neon, supabase) reach a managed Postgres that
+    # R-101's Bash-only guard never sees. 'run' and 'query' stay out: too
+    # generic to carry the meaning on their own.
+    sql | migration | migrate | execute | ddl)
+      REASON="runs statements against a database (R-101 applies to the data they touch)"; break ;;
   esac
 done
 [ -z "$REASON" ] && exit 0

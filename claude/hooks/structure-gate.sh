@@ -155,7 +155,10 @@ if [ -n "$PACKAGE_FILE" ] && [[ "$FILE" == *.ts ]] && [[ "$FILE" != *.d.ts ]] &&
   case "$BASE" in
     index.ts | server.ts | app.ts | main.ts) ;;
     *)
-      if package_depends_on "$PACKAGE_FILE" express; then
+      # react wins the tie: a client package that carries express as a test or
+      # tooling devDependency is still a client, and handing it the server
+      # vocabulary would block legitimate work with the wrong rule.
+      if package_depends_on "$PACKAGE_FILE" express && ! package_depends_on "$PACKAGE_FILE" react; then
         deny "'$BASE' would sit loose at the Express server's src/ root (R-304). That root is a fixed layer vocabulary: config/, constants/, types/, schemas/, middleware/, routes/, handlers/, services/, repositories/, clients/, database/, dependencyInjection/, prompts/, workers/, plus domain folders named for a real responsibility. Move the file into the layer that owns it. Only index.ts, server.ts, app.ts, and main.ts stay at the root."
       fi ;;
   esac

@@ -15,6 +15,13 @@ ask  mcp__claude_ai_Notion__notion-create-pages   # verb behind a server prefix
 ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix
 ask  mcp__claude_ai_Google_Calendar__delete_event # destroys
 ask  mcp__claude_ai_Figma__create_new_file        # writes
+ask  mcp__github__createIssue                     # camelCase name
+ask  mcp__github__createPullRequest               # camelCase, multi-word
+ask  mcp__slack__chat_postMessage                 # camelCase behind a prefix
+ask  mcp__neon__run_sql                           # statements against a database
+ask  mcp__supabase__execute_sql                   # statements against a database
+ask  mcp__supabase__apply_migration               # schema change
+ask  mcp__claude_ai_Figma__use_figma              # the Figma server's own write path
 
 pass mcp__claude_ai_Gmail__search_threads         # read-only
 pass mcp__claude_ai_Gmail__list_labels            # read-only
@@ -24,6 +31,7 @@ pass mcp__claude_ai_Google_Drive__download_file_content   # read-only
 pass mcp__claude_ai_Linear__list_issue_labels     # 'labels' is not the verb 'label'
 pass mcp__claude_ai_Gmail__untrash_message        # restorative, not destructive
 pass mcp__claude-in-chrome__tabs_create_mcp       # browser server exempt
+pass mcp__plugin_context7_context7__query-docs    # a docs lookup is not a database write
 pass Write                                        # non-MCP tool
 
 echo "mcp-action-guard.test.sh PASS"

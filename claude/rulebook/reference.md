@@ -55,7 +55,8 @@ R-104: Sanitize artifacts before writing them.
 R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn.
   Scope: production-DB data-loss actions follow R-101 (hard block), not this rule.
   Spec:
-  - The gate matches the action verb in the tool name (send, post, reply, forward, share, create, save, update, upload, merge, delete, trash, revoke, rotate, and their kin) and asks; read-only verbs pass silently.
+  - The gate matches the action verb in the tool name (send, post, reply, forward, share, create, save, update, upload, merge, delete, trash, revoke, rotate, and their kin) and asks; read-only verbs pass silently. Names are split on both `_` and the camelCase boundary, so `createIssue` and `create_issue` match alike.
+  - Database servers (neon, supabase) are matched on `sql`, `migration`, `execute`, and `ddl`: their write primitives reach a managed Postgres that R-101's Bash-only guard never sees. That ask is a stopgap, not R-101 enforcement; the production hard block for MCP-issued SQL is still open (`ISSUES.md`).
   - The browser server is exempt: tab and click actions carry their own site permission model and are not external systems of record.
   Enforcement: hook:mcp-action-guard (asks; "don't ask again" on a specific tool is the user's own pre-authorization)
 
