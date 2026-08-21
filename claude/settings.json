@@ -197,6 +197,19 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/structure-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/content-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/mcp-action-guard.sh"
           }
         ]
       }

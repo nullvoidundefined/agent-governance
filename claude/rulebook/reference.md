@@ -54,7 +54,10 @@ R-104: Sanitize artifacts before writing them.
 
 R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn.
   Scope: production-DB data-loss actions follow R-101 (hard block), not this rule.
-  Enforcement: manual
+  Spec:
+  - The gate matches the action verb in the tool name (send, post, reply, forward, share, create, save, update, upload, merge, delete, trash, revoke, rotate, and their kin) and asks; read-only verbs pass silently.
+  - The browser server is exempt: tab and click actions carry their own site permission model and are not external systems of record.
+  Enforcement: hook:mcp-action-guard (asks; "don't ask again" on a specific tool is the user's own pre-authorization)
 
 R-106: Treat every push of `~/.claude` as publishing; its remote is public.
   Spec: before pushing, run `git diff origin/main`, then verify no secrets, no local filesystem paths, and no client-identifying content. Secrets and the real home path are hook-enforced; client-identifying content stays a manual check.
@@ -115,7 +118,7 @@ R-302: Keep each project an independent git repo; publish shared code as version
   Spec:
   - No cross-project or cross-category source imports via relative paths; sibling projects never reach into each other's source.
   - Shared code publishes from its own workspace and is consumed as a dependency; shared lint and format config ship as published config packages, not copied files.
-  Enforcement: manual
+  Enforcement: hook:content-gate (denies a relative import whose `../` chain resolves above the git toplevel; relative imports that stay inside the repo are R-303's business)
 
 R-303: Make dependencies flow one direction: higher layers import lower, never the reverse.
   Spec:
@@ -327,7 +330,7 @@ R-401: Write tests that fail when the implementation is wrong; prefer behavior a
     7. Loose-shape-only assertion on a value-computing function.
     8. `it.skip(...)` without reason and triage ID.
     9. Persistently red tests: fix or delete. Never `test.fixme`/`test.skip`/`it.skip`/`xit`/`xtest` to suppress a failing test; a test that cannot pass is deleted, not deferred, and re-added when the capability exists.
-  Enforcement: manual
+  Enforcement: hook:content-gate (anti-patterns 8 and 9 only: `.only` is denied outright, a skip is denied unless its line names a triage ID; the other seven stay judge-tier and manual)
 
 R-403: Follow the bug-fix path in order; fix bugs test-first.
   Scope: exception for test-resistant failures (races, hardware, prod-only env): document, fix, manually verify, log a `tech-debt:` note.
@@ -344,7 +347,7 @@ R-404: Reproduce failures locally before deploying.
 
 R-405: Fix root causes, never weaken the protection that surfaced the failure.
   Spec: forbidden: weakening CORS, removing CSP, disabling rate limits, lowering bcrypt rounds, `SameSite=None` without `Secure`.
-  Enforcement: manual
+  Enforcement: hook:content-gate (denies `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`, `verify=False`, `InsecureSkipVerify`, wildcard CORS origins, `contentSecurityPolicy: false`, CSRF disabling, and single-digit bcrypt cost factors, outside test trees; rate-limit ceilings and cookie flags stay manual)
 
 R-406: Give every user-input handler one negative-input test.
   Spec: oversized payload, injection attempt, or malformed encoding.

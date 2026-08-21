@@ -17,7 +17,7 @@ R-101: Never run destructive data-loss actions (`DROP`, `TRUNCATE`, `DELETE FROM
 R-102: Keep secret files off-path by default (`.env*`, `~/.aws`, `~/.ssh`, `~/.gnupg`, gh hosts.yml, keychains, browser stores); when the user names one, use the value from memory and never echo it. [hook:secret-scan, hook:redact-output]
 R-103: Treat every real credential file as read-only; never a scratch, test, or verification target; env-file fixtures go to a throwaway `/tmp` path. [hook:secret-scan]
 R-104: Sanitize artifacts before writing them: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. [manual]
-R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn. [manual]
+R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn. [hook:mcp-action-guard]
 R-106: Every push of `~/.claude` is publishing (public remote): `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
 R-107: Investigate any `core.hooksPath` resolving outside the expected lefthook path before committing; treat the drift as a supply-chain signal. [hook:hookspath-drift-check]
 
@@ -36,7 +36,7 @@ R-209: Delete filler before sending: action announcements, question echoes, tran
 ## Architecture and naming (R-3xx), ordered macro to micro
 
 R-301 [ts]: Lay out pnpm monorepos in the canonical shape: `apps/server`, `apps/client/<surface>`, `packages/*` under the project-agnostic `@repo/*` scope; never rename or rescope an included surface. [manual]
-R-302: Keep each project an independent git repo; shared code publishes as versioned packages, never cross-project relative imports. [manual]
+R-302: Keep each project an independent git repo; shared code publishes as versioned packages, never cross-project relative imports. [hook:content-gate]
 R-303: Dependencies flow one direction (backend `handlers -> services -> repositories -> clients/db`; frontend `components -> hooks -> services/clients`); no upward, layer-skipping, or circular imports. [eslint:no-restricted-paths]
 R-304: Use the fixed top-level vocabulary in the Express server's `src/` (`config`, `constants`, `types`, `schemas`, `middleware`, `routes`, `handlers`, `services`, `repositories`, `clients`, `database`, `dependencyInjection`, `prompts`, `workers`); extra dirs only for a real domain responsibility; the root holds directories, not loose modules (entry point and `.d.ts` excepted). [hook:structure-gate]
 R-305: Use the fixed vocabulary in the web client's `src/` (`app`, `components`, `features`, `services`, `api`, `clients`, `state`, `config`, `constants`, `data`, `styles`); context providers live in `state/`; one component per folder (`components/Header/Header.tsx`). [hook:structure-gate]
@@ -68,10 +68,10 @@ R-330: Settle the domain vocabulary during spec writing; the spec carries a `## 
 
 ## Testing and quality (R-4xx)
 
-R-401: Write tests that fail when the implementation is wrong: behavior assertions over mock-call counts; rewrite the nine anti-patterns (reference.md) on sight; never skip or suppress a failing test: fix it or delete it. [manual]
+R-401: Write tests that fail when the implementation is wrong: behavior assertions over mock-call counts; rewrite the nine anti-patterns (reference.md) on sight; never skip or suppress a failing test: fix it or delete it. [hook:content-gate]
 R-403: Fix bugs test-first: write the failing test, confirm it FAILS, apply the smallest root-cause fix, confirm it PASSES, verify per R-509, commit test and fix together. [hook:fix-commit-requires-test]
 R-404: Reproduce failures locally before deploying. [manual]
-R-405: Fix root causes; never weaken the protection that surfaced the failure (CORS, CSP, rate limits, bcrypt rounds). [manual]
+R-405: Fix root causes; never weaken the protection that surfaced the failure (CORS, CSP, rate limits, bcrypt rounds). [hook:content-gate]
 R-406: Give every user-input handler one negative-input test (oversized payload, injection, malformed encoding). [manual]
 R-407 [ts]: Add a build-smoke test asserting every runtime-loaded non-code asset exists under `dist/` and `dist/` holds no `.env*` or secret matches. [manual]
 R-408: Lint/format staged files only in pre-commit; full sweeps in pre-push and CI. [manual]
