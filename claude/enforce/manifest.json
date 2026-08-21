@@ -16,7 +16,7 @@
     { "id": "R-329", "tier": "ast", "enforcer": "ruff:ANN401", "severity": "error", "autofix": false, "note": "Python analog (no typing.Any) via push-ruff-gate" },
     { "id": "R-329", "tier": "ast", "enforcer": "ruff:PGH003", "severity": "error", "autofix": false, "note": "Python analog (no blanket type: ignore / noqa; PGH004 rides the same entry) via push-ruff-gate" },
     { "id": "R-329", "tier": "ast", "enforcer": "golangci:nolintlint", "severity": "error", "autofix": false, "note": "Go analog (every nolint names a linter and reason) via push-golangci-gate" },
-    { "id": "R-101", "tier": "regex", "enforcer": "hook:destructive-db-guard", "severity": "error", "autofix": false },
+    { "id": "R-101", "tier": "regex", "enforcer": "hook:destructive-db-guard", "severity": "error", "autofix": false, "note": "Bash commands and MCP database tools alike; MCP targets are classified from enforce/mcp-database-targets.txt, unlisted targets ask" },
     { "id": "R-101", "tier": "regex", "enforcer": "hook:destructive-command-guard", "severity": "error", "autofix": false, "note": "gh api DELETE and curl-to-interpreter forms that prefix globs cannot express" },
     { "id": "R-102", "tier": "regex", "enforcer": "hook:secret-scan", "severity": "error", "autofix": false },
     { "id": "R-102", "tier": "regex", "enforcer": "hook:redact-output", "severity": "error", "autofix": false },

@@ -52,4 +52,5 @@ chrome/
 
 # Client-identifying enforce lists (R-106: remote is public)
 enforce/exempt-repos.txt
+enforce/mcp-database-targets.txt
 enforce/colocated-test-repos.txt

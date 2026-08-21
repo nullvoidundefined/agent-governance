@@ -32,7 +32,8 @@ R-101: Never run destructive data-loss actions against production; a human must 
   Spec:
   - The same actions against staging or other remote DBs, and any write (`UPDATE`/`INSERT`/`ALTER`/`CREATE`) against a managed/remote DB, require explicit user confirmation this turn.
   - Never run a test/build/script that internally wipes data against a non-local `DATABASE_URL`.
-  Enforcement: hook:destructive-db-guard
+  - MCP database tools (neon, supabase `run_sql`, `execute_sql`, `apply_migration`) carry the same weight as a shell command and route through the same guard. They name their target by project or branch identifier rather than connection string, so the environment comes from `enforce/mcp-database-targets.txt`: one `<environment> <identifier>` pair per line, environment being `production`, `staging`, or `local`. An unlisted target is unknown and asks; only a listed production target can hard-block. Keep the file current or the tier degrades to a prompt.
+  Enforcement: hook:destructive-db-guard (Bash commands and MCP tool calls; the R-105 verb ask in `mcp-action-guard` stays the gate for non-destructive MCP writes, and this hook stays silent on those so one call draws one prompt)
 
 R-102: Keep secret files off-path by default; when the user names one, use the value in memory and never echo it.
   Scope: `.env`, `.env.*`, `~/.aws/credentials`, `~/.ssh/`, `~/.gnupg/`, `~/.config/gh/hosts.yml`, browser stores, keychains.

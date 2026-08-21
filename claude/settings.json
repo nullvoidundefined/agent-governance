@@ -214,6 +214,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/mcp-action-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/destructive-db-guard.sh"
           }
         ]
       }
