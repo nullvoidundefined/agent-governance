@@ -620,7 +620,7 @@ Everything else checked clean and is worth saying so explicitly, because the acc
 One duplicate of this repository exists:
 
 ```
-/Users/iangreenough/Desktop/code/personal/production/claude-config-snapshot
+~/Desktop/code/personal/production/claude-config-snapshot
   origin: https://github.com/nullvoidundefined/claude-global-rules.git   (same remote as ~/.claude)
   HEAD:   b16bcee  (four commits behind; missing all three audited feature commits)
   carries: full enforce/ and hooks/ trees, agents/, backups/, cache/
