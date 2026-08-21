@@ -4,6 +4,7 @@
 # Ephemeral / machine-specific state
 .last-cleanup
 .post-compact-pending
+.session-locks/
 backups/
 cache/
 debug/

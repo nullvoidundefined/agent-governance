@@ -141,6 +141,10 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/git-workflow-guard.sh"
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/push-eslint-gate.sh"
           },
           {
@@ -280,6 +284,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/enforcement-guard-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/parallel-session-check.sh"
           },
           {
             "type": "command",

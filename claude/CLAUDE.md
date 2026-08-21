@@ -79,20 +79,20 @@ R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before 
 
 ## Git and process (R-5xx)
 
-R-501: Check for a parallel session on the same working tree before the first edit; if one is active, move to a worktree. [manual]
+R-501: Check for a parallel session on the same working tree before the first edit; if one is active, move to a worktree. [hook:parallel-session-check]
 R-502: Create tasks (`TaskCreate`) for user-visible workstreams, not inline sub-steps. [manual]
 R-503: For 3+ tasks or any plan/skill execution: announce each task's % share of total work, capture a start timestamp, report cumulative % at each completion and total elapsed time at the end. [manual]
 R-504: Commit after every discrete task; a `TaskUpdate` to `completed` triggers an immediate commit. [hook:task-commit-reminder]
 R-505: Conventional commit subjects (`type(scope): summary`); one commit per triage ID, two max when inseparable. [hook:commit-message-guard]
 R-506: One-sentence commit bodies; multi-line only for business-logic bugs, architectural refactors, security changes. [hook:commit-message-guard]
 R-507: Never commit unresolved conflict markers. [hook:conflict-markers]
-R-508: Update `README.md` in the same commit when adding a user-facing feature or changing structure or setup. [manual]
+R-508: Update `README.md` in the same commit when adding a user-facing feature or changing structure or setup. [hook:git-workflow-guard]
 R-509: Target changed files in per-commit test runs; run the full suite at pre-push. [manual]
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run their format/lint/build steps. [manual]
-R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch, one at a time. [manual]
-R-512: Squash-merge feature branches; one commit per feature on `main`. [manual]
+R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch, one at a time. [hook:git-workflow-guard]
+R-512: Squash-merge feature branches; one commit per feature on `main`. [hook:git-workflow-guard]
 R-513: Before pushing a changed constant, grep the test suite for the old value and update every stale assertion in the same commit. [hook:constant-change-guard]
-R-514: Never merge a PR without explicit user authorization in the current turn ("merge when ready" is not authorization); direct pushes to `main` only on express request after naming the risks. [manual]
+R-514: Never merge a PR without explicit user authorization in the current turn ("merge when ready" is not authorization); direct pushes to `main` only on express request after naming the risks. [hook:git-workflow-guard]
 R-515: Resolve every addressed reviewer thread on GitHub (GraphQL API) in the same turn as the fix commit, replying with the SHA. [manual]
 R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` with tier and enforcer, and ship a fixture test; a rule with no manifest entry depends on recall. [hook:enforcement-guard-check]
 

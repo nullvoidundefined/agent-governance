@@ -14,7 +14,7 @@ BUDGET_MULTIPLIER=6
 BUDGET_FLOOR_MS=250
 ROUNDS=3
 
-BASH_HOOKS="secret-scan.sh no-em-dash.sh fix-commit-requires-test.sh conflict-markers.sh commit-message-guard.sh destructive-db-guard.sh global-repo-push-guard.sh push-eslint-gate.sh push-ruff-gate.sh push-rubocop-gate.sh push-golangci-gate.sh constant-change-guard.sh audit-signal-check.sh llm-rule-judge.sh single-file-folder-gate.sh"
+BASH_HOOKS="secret-scan.sh no-em-dash.sh fix-commit-requires-test.sh conflict-markers.sh commit-message-guard.sh destructive-db-guard.sh global-repo-push-guard.sh git-workflow-guard.sh push-eslint-gate.sh push-ruff-gate.sh push-rubocop-gate.sh push-golangci-gate.sh constant-change-guard.sh audit-signal-check.sh llm-rule-judge.sh single-file-folder-gate.sh"
 WRITE_HOOKS="secret-scan.sh no-em-dash.sh migration-defaults-guard.sh structure-gate.sh content-gate.sh"
 
 PAYLOAD_PLAIN='{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'

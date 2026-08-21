@@ -366,7 +366,8 @@ R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before 
 ## Git and process (R-5xx)
 
 R-501: Check for a parallel session on the same working tree before the first edit; if one is active, move to a worktree.
-  Enforcement: manual
+  Spec: each session registers its own process under the working tree it started in; a registration lives only as long as its process, so a crashed session prunes itself.
+  Enforcement: hook:parallel-session-check (SessionStart advisory; warns, never blocks, since a scoped parallel session is sometimes deliberate)
 
 R-502: Create tasks (`TaskCreate`) for user-visible workstreams, not inline sub-steps.
   Enforcement: manual
@@ -397,7 +398,7 @@ R-507: Never commit unresolved conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`
   Enforcement: hook:conflict-markers
 
 R-508: Update `README.md` in the same commit when adding a user-facing feature, changing structure, or changing setup steps.
-  Enforcement: manual
+  Enforcement: hook:git-workflow-guard (commit-time advisory: fires when the commit ADDS a route, handler, page, feature slice, Dockerfile, compose file, or `.env.example` and stages no README; feature work that touches no new surface stays manual)
 
 R-509: Target changed files only in per-commit test runs; run the full suite at pre-push.
   Enforcement: manual
@@ -408,10 +409,10 @@ R-510: Trust pre-commit hooks for what they cover; do not manually re-run the fo
 
 R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch.
   Spec: no concurrent feature work; no overlapping refactors; land one, start the next.
-  Enforcement: manual
+  Enforcement: hook:git-workflow-guard (commit-time advisory when the staged change spans 5+ files across 3+ directories on `main`; the ~/.claude repo is exempt because `main` is its working branch)
 
 R-512: Squash-merge feature branches: `git merge --squash`; one commit per feature on `main`.
-  Enforcement: manual
+  Enforcement: hook:git-workflow-guard (denies `gh pr merge --merge` and `--rebase`)
 
 R-513: Grep the test suite for a changed constant's old value before pushing; update every stale assertion in the same commit as the source change.
   Scope: any push (not just pre-PR) that changes a named constant's value: palette colors, status strings, limits, URLs, error messages.
@@ -423,7 +424,7 @@ R-514: Never merge a PR without explicit user authorization in the current turn.
   - Claude may create PRs, push branches, and request Copilot review (`gh pr create --reviewer copilot`).
   - Default path: (1) CI passes; (2) Copilot review passes; (3) the user explicitly asks to merge after both are confirmed green. "Merge when ready" is not authorization.
   - Direct pushes to `main`/`master`: warn the user and name the risks (no CI gate, no Copilot review, no rollback point); execute only on express user request in the current turn.
-  Enforcement: manual
+  Enforcement: hook:git-workflow-guard (asks before `gh pr merge` and before any push whose target branch resolves to `main`/`master`; the ~/.claude repo is exempt, its pushes being R-106's business)
 
 R-515: Resolve every addressed reviewer thread on GitHub in the same turn as the fix commit.
   Spec:
