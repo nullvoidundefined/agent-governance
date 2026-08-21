@@ -130,14 +130,16 @@ R-304: Use the fixed top-level vocabulary in the Express server's `src/`, one re
   - `config/`, `constants/`, `types/`, `schemas/`, `middleware/`, `routes/`, `handlers/`, `services/`, `repositories/`, `clients/`, `database/` (the pool and migration access, never `db/`), `dependencyInjection/` (the composition root, never `di/`), `prompts/`, `workers/`.
   - Additional top-level dirs only when named for a real domain responsibility (an agent system's `tools/`, static reference data in `data/`, custom error classes in `errors/`, cross-cutting reliability primitives in `resilience/`).
   - Banned catch-alls: the R-306 list; contents move to `services/` or the correct tree per R-306.
-  Enforcement: manual
+  - The `src/` root itself holds directories, not modules: only the process entry point (`index.ts`, `server.ts`, `app.ts`, or `main.ts`) and ambient `.d.ts` declarations sit loose there. Every other module goes inside the layer that owns it, from the first file onward.
+  Enforcement: hook:structure-gate (loose-module check, scoped to trees whose nearest `package.json` depends on express; the layer directory names themselves ride the R-306/R-311/R-312 checks in the same hook)
 
 R-305: Use the fixed vocabulary in the web client's `src/`.
   Scope: extends R-306; same catch-all ban as R-304.
   Spec:
   - `app/` (Next.js routes), `components/<PascalCase>/` (one component per folder), `features/<name>/` (feature slices), `services/`, `api/` (own-backend fetch wrappers and transport), `clients/` (third-party SDK wrappers), `state/` (stores, hooks, and context providers), `config/`, `constants/`, `data/` (static reference data), `styles/`.
   - No split `context/` plus `providers/`; context providers live in `state/`.
-  Enforcement: manual
+  - One component per folder, from the first component onward: `components/Header/Header.tsx` plus `Header.module.scss`; never a `.tsx` loose in `components/`.
+  Enforcement: hook:structure-gate (component-folder pairing, scoped to trees whose nearest `package.json` depends on react; the rest of the vocabulary is manual)
 
 R-306: Never create catch-all directories (`lib/`, `utils/`, `helpers/`, `common/`, `core/`, `misc/`, `shared/`); place function-only modules in `services/`, `clients/`, or `api/`.
   Spec:

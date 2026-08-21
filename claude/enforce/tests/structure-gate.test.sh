@@ -79,4 +79,35 @@ deny  '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/other.tes
 cp "$ALLOWLIST_BACKUP" "$ALLOWLIST"
 rm -rf "$COLOCATED_FIXTURE" "$ALLOWLIST_BACKUP"
 
+# R-304: a new module loose at the Express server's src/ root is denied. Scoped by
+# the nearest package.json's express dependency, so the client tree is untouched.
+# Fixture mirrors the R-301 monorepo layout, not a synthetic /x/src path.
+VOCAB_FIXTURE=$(mktemp -d)
+mkdir -p "$VOCAB_FIXTURE/apps/server/src/services/email" "$VOCAB_FIXTURE/apps/client/web/src"
+printf '%s\n' '{"dependencies":{"express":"^4.19.2"}}' >"$VOCAB_FIXTURE/apps/server/package.json"
+printf '%s\n' '{"dependencies":{"react":"^18.3.1"}}' >"$VOCAB_FIXTURE/apps/client/web/package.json"
+: >"$VOCAB_FIXTURE/apps/server/src/legacyMailer.ts"
+write_json() { printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2"; }
+deny  "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/emailSender.ts")"                     # loose module (R-304)
+deny  "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/logger.ts")"                          # loose module, 2nd name
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/server.ts")"                          # entry point
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/index.ts")"                           # entry point
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/express.d.ts")"                       # ambient declaration
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/services/email/sendWelcome.ts")"      # inside a layer
+allow "$(write_json Edit  "$VOCAB_FIXTURE/apps/server/src/legacyMailer.ts")"                    # pre-existing loose file
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/client/web/src/queryClient.ts")"                 # client src/ root out of scope
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/somewhere.ts"}}'                   # no package.json, no deny
+
+# R-305: a component written straight into components/ is denied; the paired
+# ComponentName/ComponentName.tsx layout is not.
+mkdir -p "$VOCAB_FIXTURE/apps/client/web/src/components/Header"
+: >"$VOCAB_FIXTURE/apps/client/web/src/components/LegacyBanner.tsx"
+deny  "$(write_json Write "$VOCAB_FIXTURE/apps/client/web/src/components/Card.tsx")"            # loose component (R-305)
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/client/web/src/components/Header/Header.tsx")"   # paired folder ok
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/client/web/src/components/types.ts")"            # .ts is not a component
+allow "$(write_json Edit  "$VOCAB_FIXTURE/apps/client/web/src/components/LegacyBanner.tsx")"    # pre-existing loose file
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/components/Report.tsx")"              # non-react package untouched
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/components/Card.tsx"}}'            # no package.json, no deny
+rm -rf "$VOCAB_FIXTURE"
+
 echo "structure-gate.test.sh PASS"

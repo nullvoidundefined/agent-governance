@@ -35,6 +35,8 @@
     { "id": "R-516", "tier": "advisory", "enforcer": "hook:enforcement-guard-check", "severity": "warn", "autofix": false },
     { "id": "R-312", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-306", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
+    { "id": "R-304", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false, "note": "denies a new loose non-entry .ts module at an Express src/ root; scoped by the nearest package.json express dependency" },
+    { "id": "R-305", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false, "note": "denies a new .tsx written straight into components/ instead of components/<Name>/<Name>.tsx; scoped by the nearest package.json react dependency" },
     { "id": "R-311", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-313", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-314", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },

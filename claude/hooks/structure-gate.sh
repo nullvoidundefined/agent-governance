@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # structure-gate.sh: deterministic path checks for directory case (R-312),
-# banned catch-all directory names (R-306/R-304), and test-file placement
-# (R-313 no co-location; R-314 one top-level __tests__ tree per package src/).
+# banned catch-all directory names (R-306/R-304), test-file placement
+# (R-313 no co-location; R-314 one top-level __tests__ tree per package src/),
+# and loose modules at an Express server's src/ root (R-304 layer vocabulary).
 # Per-edit, no Node spawn.
 set -euo pipefail
 INPUT=$(cat)
@@ -114,5 +115,59 @@ if [ "$skip_colocation_check" -eq 0 ] && { [[ "$BASE" =~ \.(test|spec)\.(ts|tsx|
     *)
       deny "Test file co-located beside source (R-313). Move it to the conventional test tree: src/__tests__/ (TypeScript), tests/ (Python), or spec/ (Ruby)." ;;
   esac
+fi
+
+# The two vocabulary checks below both ask "what kind of package is this file in".
+# Walk up to the nearest package.json (six levels covers a pnpm monorepo surface
+# plus slack) and read one dependency name out of it.
+find_package_file() {
+  local candidate="$1" parent
+  for _ in 1 2 3 4 5 6; do
+    [ -f "$candidate/package.json" ] && { printf '%s' "$candidate/package.json"; return 0; }
+    parent=$(dirname "$candidate")
+    [ "$parent" = "$candidate" ] && return 1
+    candidate="$parent"
+  done
+  return 1
+}
+
+package_depends_on() {
+  jq -e --arg dep "$2" \
+    '(.dependencies[$dep] // .devDependencies[$dep] // .peerDependencies[$dep]) != null' \
+    "$1" >/dev/null 2>&1
+}
+
+# Both checks fire on creation only: an already-loose module is a fact to work
+# within, matching the pre-existing-directory carve-out above. Scoping by the
+# nearest package.json keeps each deny inside the stack whose convention it
+# encodes, so a server rule never lands on a client tree or a foreign repo.
+PARENT_DIR=$(dirname "$FILE")
+PACKAGE_FILE=""
+if [ ! -e "$FILE" ]; then
+  PACKAGE_FILE=$(find_package_file "$PARENT_DIR" || true)
+fi
+
+# R-304: the Express server's src/ root is a vocabulary of layer directories,
+# not a landing spot for modules. A new .ts file written directly at that root
+# belongs in one of the layers unless it is the process entry point. Ambient
+# .d.ts files stay exempt; they declare, they do not implement.
+if [ -n "$PACKAGE_FILE" ] && [[ "$FILE" == *.ts ]] && [[ "$FILE" != *.d.ts ]] && [ "$(basename "$PARENT_DIR")" = "src" ]; then
+  case "$BASE" in
+    index.ts | server.ts | app.ts | main.ts) ;;
+    *)
+      if package_depends_on "$PACKAGE_FILE" express; then
+        deny "'$BASE' would sit loose at the Express server's src/ root (R-304). That root is a fixed layer vocabulary: config/, constants/, types/, schemas/, middleware/, routes/, handlers/, services/, repositories/, clients/, database/, dependencyInjection/, prompts/, workers/, plus domain folders named for a real responsibility. Move the file into the layer that owns it. Only index.ts, server.ts, app.ts, and main.ts stay at the root."
+      fi ;;
+  esac
+fi
+
+# R-305: every component owns a folder (components/Header/Header.tsx plus
+# Header.module.scss, CLAUDE-FRONTEND.md). A .tsx written directly into
+# components/ is the flat precedent that folder pairing exists to stop.
+if [ -n "$PACKAGE_FILE" ] && [[ "$FILE" == *.tsx ]] && [ "$(basename "$PARENT_DIR")" = "components" ]; then
+  if package_depends_on "$PACKAGE_FILE" react; then
+    COMPONENT_NAME="${BASE%.tsx}"
+    deny "'$BASE' would sit loose in components/ (R-305). Each component owns a folder: components/$COMPONENT_NAME/$BASE alongside $COMPONENT_NAME.module.scss. Write it at that path instead."
+  fi
 fi
 exit 0

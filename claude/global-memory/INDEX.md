@@ -16,6 +16,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`feedback_pr_constant_value_check.md`](./feedback_pr_constant_value_check.md): When a constant value changes, grep tests for the old value before pushing and update all stale assertions in the same commit.
 - [`feedback_validate_tech_task_fit.md`](./feedback_validate_tech_task_fit.md): When a learning goal is paired with a product idea, validate the technology fits the task/data on day one before building.
 - [`feedback_gh_cli_bot_review_false_negative.md`](./feedback_gh_cli_bot_review_false_negative.md): `gh pr view --json reviews` can omit bot reviews; confirm via the REST API before asserting none exist.
+- [`feedback_mechanize_structure_rules.md`](./feedback_mechanize_structure_rules.md): A `[manual]` structure rule loses to the layout already on disk; mechanize it per R-516 the first time it is missed.
 
 ## Efficiency lessons (incident-backed)
 - [`lesson_no_reread_auto_injected_context.md`](./lesson_no_reread_auto_injected_context.md): Do not Read files already present in the session's auto-injected context (claudeMd, system-reminder blocks)
