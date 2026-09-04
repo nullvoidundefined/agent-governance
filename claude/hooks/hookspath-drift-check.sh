@@ -46,7 +46,7 @@ done
 
 CTX="## Supply-chain warning (R-107)"$'\n\n'
 CTX+="git core.hooksPath in this repo is set to \`$HOOKS_PATH\`, which resolves OUTSIDE the repo tree (\`$ROOT_GIT\`). "
-CTX+="Git hooks would run from a location not tracked by this repository. Investigate before any commit: confirm the path is the expected lefthook location and was set intentionally, not injected."
+CTX+="Git hooks would run from a location not tracked by this repository. Investigate before any commit: confirm the path is the expected git hooks location and was set intentionally, not injected."
 
 jq -n --arg ctx "$CTX" '{
   hookSpecificOutput: {

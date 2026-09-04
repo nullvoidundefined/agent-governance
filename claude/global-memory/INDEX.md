@@ -43,17 +43,4 @@ Consolidated from 29 feedback memories across 14 per-project memory directories 
 
 ## How to use
 
-These files are NOT auto-loaded by Claude Code. The memory system is project-scoped. To surface them in a project session, add a reference in that project's `memory/MEMORY.md`:
-
-```
-## Global memory
-See ~/.claude/global-memory/INDEX.md for cross-project memories.
-```
-
-Or, for active projects where global context matters, copy-reference specific files:
-
-```
-## Inherited global rules
-- feedback_be_proactive -> ~/.claude/global-memory/feedback_be_proactive.md
-- feedback_model_routing -> ~/.claude/global-memory/feedback_model_routing.md
-```
+`hooks/session-start.sh` injects this index into every session as SessionStart context (R-001, R-002), and again after every compaction. The files it lists are not loaded; Read one when its one-line summary is the reason you need it. Per-project auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`) loads on its own; `hooks/session-end.sh` scans that directory for `fired:` and `miss:` lines and rolls them into `rule_fires.md` and `rule_misses.md` (R-603).

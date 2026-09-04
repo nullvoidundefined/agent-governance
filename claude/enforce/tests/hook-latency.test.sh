@@ -14,8 +14,18 @@ BUDGET_MULTIPLIER=6
 BUDGET_FLOOR_MS=250
 ROUNDS=3
 
-BASH_HOOKS="secret-scan.sh no-em-dash.sh fix-commit-requires-test.sh conflict-markers.sh commit-message-guard.sh destructive-db-guard.sh global-repo-push-guard.sh git-workflow-guard.sh push-eslint-gate.sh push-ruff-gate.sh push-rubocop-gate.sh push-golangci-gate.sh constant-change-guard.sh audit-signal-check.sh llm-rule-judge.sh single-file-folder-gate.sh"
-WRITE_HOOKS="secret-scan.sh no-em-dash.sh migration-defaults-guard.sh structure-gate.sh content-gate.sh"
+# The chains are read from settings.json, not listed here: a hand-kept list
+# drifted from the registered chain three audits running (2026-07-31, 2026-08-21
+# P3-7, 2026-09-04 P2-7), each time leaving newly registered hooks unmeasured.
+# The chain runs sequentially here while Claude Code runs matching hooks in
+# parallel, so the budget bounds total spawn cost, not wall-clock.
+SETTINGS="${CLAUDE_SETTINGS_FILE:-$HOME/.claude/settings.json}"
+registered_chain() {
+  jq -r --arg m "$1" '.hooks.PreToolUse[] | select(.matcher==$m) | .hooks[].command' "$SETTINGS" | sed 's#.*/##' | tr '\n' ' '
+}
+BASH_HOOKS=$(registered_chain Bash)
+WRITE_HOOKS=$(registered_chain "Write|Edit")
+[ -n "$BASH_HOOKS" ] && [ -n "$WRITE_HOOKS" ] || { echo "FAIL: could not read the PreToolUse chains from $SETTINGS" >&2; exit 1; }
 
 PAYLOAD_PLAIN='{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'
 PAYLOAD_WRITE='{"tool_name":"Write","tool_input":{"file_path":"/x/src/services/format/formatDate.ts","content":"export function formatDate() {}"}}'

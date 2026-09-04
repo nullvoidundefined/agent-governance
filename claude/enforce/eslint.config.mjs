@@ -5,7 +5,7 @@
  * R-326, R-327, R-324, R-329, and R-303 when a repo opts in via .enforce.json).
  */
 import tseslint from "typescript-eslint";
-import importPlugin from "eslint-plugin-import";
+import { importX } from "eslint-plugin-import-x";
 import oneExportPerFile from "./rules/one-export-per-file.mjs";
 
 // Repos run plugins the gate does not carry (eslint-plugin-security, react,
@@ -25,7 +25,7 @@ export default tseslint.config({
   files: ["**/*.ts", "**/*.tsx"],
   plugins: {
     "@typescript-eslint": tseslint.plugin,
-    import: importPlugin,
+    "import-x": importX,
     ...foreignRulePlugins,
   },
   languageOptions: {
@@ -33,10 +33,10 @@ export default tseslint.config({
     parserOptions: { ecmaFeatures: { jsx: true } },
   },
   // "@/..." path aliases are internal modules, not scoped packages. Without this
-  // they classify as "unknown" and import/order demands they trail relative
+  // they classify as "unknown" and import-x/order demands they trail relative
   // imports, the exact opposite of the projects' prettier importOrder
   // ["^@/(.*)$", "^[./]"], making both tools unsatisfiable at once.
-  settings: { "import/internal-regex": "^@/" },
+  settings: { "import-x/internal-regex": "^@/" },
   rules: {
     "sort-keys": ["error", "asc", { natural: true, minKeys: 2 }],
     // R-329: @ts-expect-error self-invalidates when the underlying error is
@@ -47,7 +47,7 @@ export default tseslint.config({
     ],
     "@typescript-eslint/member-ordering": "error",
     "@typescript-eslint/no-explicit-any": "error",
-    "import/order": [
+    "import-x/order": [
       "error",
       {
         alphabetize: { order: "asc" },
@@ -140,7 +140,7 @@ export default tseslint.config({
     "**/e2e/**",
   ],
   rules: {
-    "import/order": "off",
+    "import-x/order": "off",
     "local/one-export-per-file": "off",
     "no-magic-numbers": "off",
     "sort-keys": "off",

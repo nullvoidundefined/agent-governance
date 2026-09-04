@@ -12,7 +12,7 @@
 import { ESLint } from "eslint";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { buildEslintOptions } from "./eslintOptions.mjs";
 
 // --added-only <base>: report only violations on lines the diff base..HEAD ADDS.
@@ -49,7 +49,45 @@ function isLineAdded(ranges, line) {
   return ranges.some(([start, end]) => line >= start && line <= end);
 }
 
-const repoRoot = process.cwd();
+// Local ESLint wins on import ordering (see the deferred-rule filter below);
+// these are the config files that signal a repo carries its own ESLint.
+const LOCAL_ESLINT_CONFIG_NAMES = [
+  "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts",
+  ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml",
+];
+
+// A directory is a repo root for this script's purposes when it carries the
+// gate's own opt-in file, a package manifest, or a local ESLint config.
+const REPO_MARKERS = [".enforce.json", "package.json", ...LOCAL_ESLINT_CONFIG_NAMES];
+
+/**
+ * The repo that owns the first file, not the caller's cwd. The gate and the
+ * fixtures both hand this script absolute paths, and the deferred-rule filter
+ * below asks "does THAT repo ship its own ESLint config"; cwd answered for the
+ * wrong repo whenever the caller sat elsewhere (the 2026-09-04 "flake": run
+ * from enforce/, whose eslint.config.mjs made the fixture's import-order case
+ * read as deferred and pass silently). Git's toplevel wins; outside a repo the
+ * nearest ancestor carrying a marker stands in, and failing that the file's
+ * own directory, so the answer always follows the file.
+ */
+function resolveRepoRoot(firstFile) {
+  try {
+    return execFileSync("git", ["-C", dirname(firstFile), "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    let dir = dirname(firstFile);
+    while (true) {
+      if (REPO_MARKERS.some((marker) => existsSync(`${dir}/${marker}`))) return dir;
+      const parent = dirname(dir);
+      if (parent === dir) return dirname(firstFile);
+      dir = parent;
+    }
+  }
+}
+
+const repoRoot = resolveRepoRoot(files[0]);
 const eslint = new ESLint(buildEslintOptions(repoRoot));
 const results = await eslint.lintFiles(files);
 
@@ -72,11 +110,7 @@ if (addedOnlyBase !== null) {
 // rule still applies, including sort-keys and no-magic-numbers, which catch real
 // defects that project configs typically ignore.
 // Added 2026-07-21 (Ian-approved): "deberiamos siempre optar por el local ESLint".
-const LOCAL_ESLINT_CONFIG_NAMES = [
-  "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts",
-  ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml",
-];
-const DEFERRED_TO_LOCAL_ESLINT = new Set(["import/order", "sort-imports", "simple-import-sort/imports"]);
+const DEFERRED_TO_LOCAL_ESLINT = new Set(["import-x/order", "import/order", "sort-imports", "simple-import-sort/imports"]);
 
 function hasLocalEslintConfig(root) {
   return LOCAL_ESLINT_CONFIG_NAMES.some((name) => existsSync(`${root}/${name}`));

@@ -48,7 +48,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 3. Rules | mixed | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files. The decidable half is data: the R-316/R-317 verb lexicon lives in `enforce/lexicon.json`, and R-319/R-320/R-325 are custom ESLint rules under `enforce/rules/`. The undecidable half (R-318, R-322) is labelled `[manual]` rather than pretending otherwise |
 | 4. Audits | prose | Confidence theater, gaps invisible to the original author | `audits/` standing (Engineering, Security, Criticism) + `audits/on-request/` |
 | 5. Tests | mechanical | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke), run at turn end by `hooks/verification-gate.sh` (R-509) |
-| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (40 scripts across 8 events) |
+| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (41 scripts across 7 events) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
 | 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
@@ -99,7 +99,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── fix-commit-requires-test.sh  # PreToolUse Bash. Blocks fix: commits with no test.
 │   ├── conflict-markers.sh          # PreToolUse Bash. Blocks commits with conflict markers.
 │   ├── redact-output.sh             # PostToolUse Bash. Redacts secrets from output.
-│   ├── pre-compact.sh               # PreCompact. Injects critical rules into compaction.
+│   ├── post-compact-rules.sh        # SessionStart(compact). Re-injects the critical rules after compaction.
 │   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc.
 │   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
 │   ├── verification-gate.sh         # Stop. Blocks the turn on a red test/typecheck run.

@@ -1,44 +1,40 @@
 #!/usr/bin/env bash
-# Verifies the compaction rule-injection pair (2026-08-06). PreCompact cannot
-# inject context: its hookSpecificOutput has no schema variant, so an object
-# carrying additionalContext is rejected whole and the rules are silently lost.
-# pre-compact.sh therefore emits nothing and only sets a sentinel;
-# post-compact-rules.sh emits the rules once, on the next UserPromptSubmit.
+# Verifies post-compact-rules.sh, the SessionStart(compact) re-injection
+# (2026-09-04). Four invariants:
+#   1. A compact-sourced SessionStart emits the rules as valid SessionStart JSON.
+#   2. Any other source stays silent, so the hook cannot flood a startup.
+#   3. settings.json registers it under a "compact" matcher and nothing remains
+#      on PreCompact or UserPromptSubmit (the retired sentinel pair).
+#   4. The sentinel pair is gone: no pre-compact.sh, no sentinel file written.
 set -euo pipefail
-PRE="$HOME/.claude/hooks/pre-compact.sh"
-POST="$HOME/.claude/hooks/post-compact-rules.sh"
+HOOK="$HOME/.claude/hooks/post-compact-rules.sh"
+SETTINGS="${CLAUDE_SETTINGS_FILE:-$HOME/.claude/settings.json}"
 SENTINEL="$HOME/.claude/.post-compact-pending"
 
-SAVED=""
-if [ -f "$SENTINEL" ]; then SAVED=$(mktemp); cp "$SENTINEL" "$SAVED"; fi
-restore() {
-  rm -f "$SENTINEL"
-  if [ -n "$SAVED" ]; then cp "$SAVED" "$SENTINEL"; rm -f "$SAVED"; fi
-}
-trap restore EXIT
-
-# pre-compact.sh must emit NOTHING. Any payload is rejected by the validator,
-# which is the defect this pair replaced.
-rm -f "$SENTINEL"
-OUT=$(echo '{}' | "$PRE")
-[ -z "$OUT" ] || { echo "FAIL: pre-compact.sh emitted output; PreCompact accepts none"; exit 1; }
-[ -f "$SENTINEL" ] || { echo "FAIL: pre-compact.sh did not set the sentinel"; exit 1; }
-
-# With the sentinel set, the rules are emitted as valid UserPromptSubmit JSON.
-OUT=$(echo '{}' | "$POST")
-printf '%s' "$OUT" | jq -e . >/dev/null || { echo "FAIL: post-compact-rules.sh emitted invalid JSON"; exit 1; }
+# 1. Compact source emits the rules.
+OUT=$(echo '{"hook_event_name":"SessionStart","source":"compact"}' | "$HOOK")
+printf '%s' "$OUT" | jq -e . >/dev/null || { echo "FAIL: emitted invalid JSON"; exit 1; }
 EVENT=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName')
-[ "$EVENT" = "UserPromptSubmit" ] || { echo "FAIL: hookEventName is '$EVENT', not UserPromptSubmit"; exit 1; }
+[ "$EVENT" = "SessionStart" ] || { echo "FAIL: hookEventName is '$EVENT', not SessionStart"; exit 1; }
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext')
 printf '%s' "$CTX" | grep -q 'R-504' || { echo "FAIL: rules missing from additionalContext"; exit 1; }
+printf '%s' "$OUT" | grep -q 'PreCompact\|UserPromptSubmit' && { echo "FAIL: emits a retired event name"; exit 1; } || true
 
-# The event name must never regress to PreCompact, the rejected form.
-printf '%s' "$OUT" | grep -q 'PreCompact' && { echo "FAIL: emits the rejected PreCompact event name"; exit 1; } || true
+# 2. Other sources stay silent.
+for source in startup resume clear fork; do
+  OUT=$(printf '{"hook_event_name":"SessionStart","source":"%s"}' "$source" | "$HOOK")
+  [ -z "$OUT" ] || { echo "FAIL: emitted rules on source '$source'"; exit 1; }
+done
 
-# The sentinel is consumed: a second prompt must stay silent, or the rules
-# would be re-injected on every turn for the rest of the session.
-[ -f "$SENTINEL" ] && { echo "FAIL: sentinel not cleared after injection"; exit 1; } || true
-OUT2=$(echo '{}' | "$POST")
-[ -z "$OUT2" ] || { echo "FAIL: emitted rules with no compaction pending"; exit 1; }
+# 3. Registration shape.
+MATCHER=$(jq -r '.hooks.SessionStart[] | select(.hooks[].command | test("post-compact-rules")) | .matcher' "$SETTINGS")
+[ "$MATCHER" = "compact" ] || { echo "FAIL: post-compact-rules.sh is registered under matcher '$MATCHER', not 'compact'"; exit 1; }
+for retired in PreCompact UserPromptSubmit; do
+  jq -e --arg e "$retired" '.hooks[$e] // empty' "$SETTINGS" >/dev/null && { echo "FAIL: settings.json still carries a $retired hook group"; exit 1; } || true
+done
+
+# 4. The sentinel pair is gone.
+[ ! -e "$HOME/.claude/hooks/pre-compact.sh" ] || { echo "FAIL: pre-compact.sh still exists"; exit 1; }
+[ ! -e "$SENTINEL" ] || { echo "FAIL: a sentinel file is present; nothing should write it now"; exit 1; }
 
 echo "post-compact-rules.test.sh PASS"

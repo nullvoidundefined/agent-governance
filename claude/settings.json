@@ -1,52 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash",
-      "Bash(*)",
-      "Bash(awk *)",
-      "Bash(bash *)",
-      "Bash(cat *)",
-      "Bash(cd *)",
-      "Bash(chmod +x *)",
-      "Bash(cp *)",
-      "Bash(curl *)",
-      "Bash(date*)",
-      "Bash(df *)",
-      "Bash(diff *)",
-      "Bash(du *)",
-      "Bash(echo *)",
-      "Bash(env *)",
-      "Bash(export *)",
-      "Bash(file *)",
-      "Bash(find *)",
-      "Bash(gh *)",
-      "Bash(git *)",
-      "Bash(grep *)",
-      "Bash(head *)",
-      "Bash(jq *)",
-      "Bash(ln *)",
-      "Bash(ls*)",
-      "Bash(lsof *)",
-      "Bash(mkdir *)",
-      "Bash(mv *)",
-      "Bash(node *)",
-      "Bash(npm *)",
-      "Bash(npx *)",
-      "Bash(perl *)",
-      "Bash(pnpm *)",
-      "Bash(printf *)",
-      "Bash(ps *)",
-      "Bash(python3 *)",
-      "Bash(rg *)",
-      "Bash(sed *)",
-      "Bash(sh *)",
-      "Bash(tail *)",
-      "Bash(time *)",
-      "Bash(touch *)",
-      "Bash(wc *)",
-      "Bash(which *)",
-      "Bash(xargs *)",
-      "Bash(yarn *)"
+      "Bash"
     ],
     "deny": [
       "Bash(rm -rf /)",
@@ -65,7 +20,19 @@
       "Bash(gh api --method DELETE*)",
       "Bash(gh auth token*)",
       "Bash(gh alias set*)",
-      "Bash(security find-generic-password*)"
+      "Bash(security find-generic-password*)",
+      "Read(//**/.env)",
+      "Read(//**/.env.local)",
+      "Read(//**/.env.*.local)",
+      "Read(//**/.env.development)",
+      "Read(//**/.env.staging)",
+      "Read(//**/.env.production)",
+      "Read(//**/.env.test)",
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Read(~/.netrc)"
     ],
     "ask": [
       "Bash(git commit --no-verify*)",
@@ -145,31 +112,38 @@
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/push-eslint-gate.sh"
+            "command": "~/.claude/hooks/push-eslint-gate.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/push-ruff-gate.sh"
+            "command": "~/.claude/hooks/push-ruff-gate.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/push-rubocop-gate.sh"
+            "command": "~/.claude/hooks/push-rubocop-gate.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/push-golangci-gate.sh"
+            "command": "~/.claude/hooks/push-golangci-gate.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/constant-change-guard.sh"
+            "command": "~/.claude/hooks/constant-change-guard.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/audit-signal-check.sh"
+            "command": "~/.claude/hooks/audit-signal-check.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
-            "command": "~/.claude/hooks/llm-rule-judge.sh"
+            "command": "~/.claude/hooks/llm-rule-judge.sh",
+            "if": "Bash(git *)"
           },
           {
             "type": "command",
@@ -179,7 +153,8 @@
             "type": "command",
             "command": "~/.claude/hooks/build-cheatsheets.sh",
             "timeout": 60,
-            "statusMessage": "Rebuilding feature cheat sheets"
+            "statusMessage": "Rebuilding feature cheat sheets",
+            "if": "Bash(git *)"
           }
         ]
       },
@@ -298,6 +273,15 @@
             "command": "~/.claude/hooks/hook-integrity-check.sh"
           }
         ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/post-compact-rules.sh"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -306,7 +290,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/session-end.sh"
+            "command": "~/.claude/hooks/session-end.sh",
+            "timeout": 60
           }
         ]
       }
@@ -339,24 +324,13 @@
         ]
       }
     ],
-    "PreCompact": [
+    "ConfigChange": [
       {
-        "matcher": "",
+        "matcher": "user_settings",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/pre-compact.sh"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/post-compact-rules.sh"
+            "command": "~/.claude/hooks/settings-change-guard.sh"
           }
         ]
       }
@@ -378,12 +352,6 @@
       "source": {
         "source": "github",
         "repo": "anthropics/claude-plugins-official"
-      }
-    },
-    "claude-code-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "anthropics/claude-code"
       }
     },
     "i-have-adhd": {

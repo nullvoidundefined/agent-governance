@@ -7,8 +7,11 @@
 #   5. CLAUDE_SKIP_VERIFY bypasses.
 #   6. A repo with no discoverable check command fails open.
 #   7. .claude/verify.sh wins over package.json discovery.
+#   8. A tree the checks already passed on is not re-run until it changes.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/verification-gate.sh"
+export CLAUDE_VERIFY_MEMO_DIR
+CLAUDE_VERIFY_MEMO_DIR=$(mktemp -d)
 
 # Runs the hook against a repo and echoes the block reason, or "none".
 gate() {
@@ -79,5 +82,23 @@ mkdir -p "$REPO/.claude"
 printf 'echo VERIFY_SH_MARKER\nexit 1\n' > "$REPO/.claude/verify.sh"
 GOT=$(gate "$REPO")
 printf '%s' "$GOT" | grep -q 'VERIFY_SH_MARKER' || { echo "FAIL: .claude/verify.sh must win over package.json, got: $GOT"; exit 1; }
+
+# 8. Memo: a passing check runs once per tree state. The script logs each run.
+REPO=$(new_repo)
+RUN_LOG=$(mktemp)
+cat > "$REPO/package.json" <<EOF
+{ "name": "fixture", "version": "1.0.0", "scripts": { "test": "echo run >> $RUN_LOG; exit 0" } }
+EOF
+gate "$REPO" >/dev/null; gate "$REPO" >/dev/null
+RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
+[ "$RUNS" = "1" ] || { echo "FAIL: expected one run on an unchanged green tree, got $RUNS"; exit 1; }
+echo drift >> "$REPO/tracked.txt"
+gate "$REPO" >/dev/null
+RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
+[ "$RUNS" = "2" ] || { echo "FAIL: expected a re-run after the tree changed, got $RUNS runs"; exit 1; }
+# A red run must not be memoized: flip the check to failing, then back.
+write_package_json "$REPO" 1
+GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected a block after the check turned red"; exit 1; }
+GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: a red tree was memoized as green"; exit 1; }
 
 echo "verification-gate.test.sh PASS"

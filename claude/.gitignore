@@ -3,8 +3,8 @@
 
 # Ephemeral / machine-specific state
 .last-cleanup
-.post-compact-pending
 .session-locks/
+.verify-memo/
 backups/
 cache/
 debug/

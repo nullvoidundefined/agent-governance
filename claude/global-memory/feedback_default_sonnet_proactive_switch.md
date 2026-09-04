@@ -10,7 +10,7 @@ type: feedback
 
 **How to apply (user side):**
 
-- Set `"model": "claude-sonnet-4-6"` in `~/.claude/settings.json` so every new session starts on Sonnet unless overridden.
+- Set `"model": "sonnet"` in `~/.claude/settings.json` so every new session starts on Sonnet unless overridden (the alias tracks the current Sonnet; `opusplan` is the documented alternative that plans on Opus and executes on Sonnet). As of 2026-09-04 `settings.json` says `opus[1m]`; that contradiction is the maintainer's call and is filed in the 2026-09-04 config audit as P1-3.
 - When a session genuinely needs Opus (audits, complex refactors, security reviews, ambiguous architecture, multi-step debugging), type `/model opus` consciously to step up. The friction is the feature: Opus becomes a deliberate choice, not a default.
 
 **How to apply (Claude side):**

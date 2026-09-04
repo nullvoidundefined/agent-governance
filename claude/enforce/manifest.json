@@ -42,6 +42,7 @@
     { "id": "R-508", "tier": "advisory", "enforcer": "hook:git-workflow-guard", "severity": "warn", "autofix": false, "note": "commit-time warning when a commit adds a route, handler, page, feature slice, or setup file and stages no README" },
     { "id": "R-501", "tier": "advisory", "enforcer": "hook:parallel-session-check", "severity": "warn", "autofix": false, "note": "SessionStart warning when another live session holds the same working tree" },
     { "id": "R-516", "tier": "advisory", "enforcer": "hook:enforcement-guard-check", "severity": "warn", "autofix": false },
+    { "id": "R-516", "tier": "regex", "enforcer": "hook:settings-change-guard", "severity": "error", "autofix": false, "note": "ConfigChange: refuses a user settings.json that drops a manifest-required hook or does not parse" },
     { "id": "R-312", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-306", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false },
     { "id": "R-304", "tier": "regex", "enforcer": "hook:structure-gate", "severity": "error", "autofix": false, "note": "denies a new loose non-entry .ts module at an Express src/ root; scoped by the nearest package.json express dependency" },

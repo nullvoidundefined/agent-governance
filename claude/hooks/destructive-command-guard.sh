@@ -72,7 +72,7 @@ fi
 # Reads are fine; hookspath-drift-check.sh depends on them.
 if printf '%s' "$norm" | grep -Eqi "${AT}git config[^|;&]*core\.hooksPath" \
     && ! printf '%s' "$norm" | grep -Eqi 'git config (--get|--get-all|--list|-l)([[:space:]]|$)'; then
-    emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every lefthook guard in one command (R-107, R-203). Change it manually if the move is deliberate."
+    emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
 fi
 
 # --- credential readout ---------------------------------------------------

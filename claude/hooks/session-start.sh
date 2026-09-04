@@ -15,9 +15,13 @@
 # How it works: Claude Code SessionStart hook can emit JSON with
 # `hookSpecificOutput.additionalContext` as a string. Claude receives
 # that string as part of its starting context for the session. This
-# script reads ~/.claude/global-memory/INDEX.md and the most recent
-# handoff doc under $PWD/docs/audits/ (if present), concatenates them
-# with headers, and emits the result as additionalContext.
+# script reads ~/.claude/global-memory/INDEX.md and the project's
+# docs/session-handoff/session-handoff.md (if present, SHA-verified
+# against git log), concatenates them with headers, and emits the
+# result as additionalContext. Registered under an empty matcher, so it
+# runs on every source, compaction included: the injected context is
+# summarized away with the rest of the conversation, and this is what
+# puts it back.
 #
 # The hook also surfaces any retirement candidates written into
 # ~/.claude/global-memory/retirement_candidates.md by a prior session.

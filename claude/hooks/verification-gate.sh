@@ -46,6 +46,27 @@ has_changes() {
 }
 has_changes || exit 0
 
+# Memo of the last tree the checks passed on (2026-09-04 config audit P3-2). A
+# long editing session ends many turns on the same dirty tree; without this
+# every one of them paid the full suite. The key covers HEAD, the diff against
+# it, and the content of every untracked file, so any edit invalidates it and a
+# red run never writes it.
+MEMO_DIR="${CLAUDE_VERIFY_MEMO_DIR:-$HOME/.claude/.verify-memo}"
+tree_key() {
+  {
+    git rev-parse HEAD 2>/dev/null
+    git diff HEAD 2>/dev/null
+    git ls-files -o --exclude-standard -z 2>/dev/null | while IFS= read -r -d '' untracked; do
+      shasum -a 256 "$untracked" 2>/dev/null
+    done
+  } | shasum -a 256 | awk '{print $1}'
+}
+MEMO_FILE="$MEMO_DIR/$(printf '%s' "$ROOT" | shasum | awk '{print $1}')"
+TREE_KEY=$(tree_key)
+if [ -n "$TREE_KEY" ] && [ -f "$MEMO_FILE" ] && [ "$(cat "$MEMO_FILE" 2>/dev/null)" = "$TREE_KEY" ]; then
+  exit 0
+fi
+
 TIMEOUT_SECONDS="${CLAUDE_VERIFY_TIMEOUT:-600}"
 MAX_OUTPUT_LINES=200
 MAX_OUTPUT_CHARS=8000
@@ -121,5 +142,10 @@ ${TAIL}
 
 Fix the root cause (R-204: never make this pass by relaxing the gate that caught it). To end the turn without fixing, re-run with CLAUDE_SKIP_VERIFY=1 set."
 done <<< "$CHECKS"
+
+# Every check passed: remember this tree so the next turn on it is free.
+if [ -n "$TREE_KEY" ]; then
+  mkdir -p "$MEMO_DIR" 2>/dev/null && printf '%s\n' "$TREE_KEY" > "$MEMO_FILE" 2>/dev/null || true
+fi
 
 exit 0

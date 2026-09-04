@@ -1,0 +1,20 @@
+# Keeps the two pinned surfaces current: the Actions majors (a stale one ends
+# up on a runtime GitHub retires) and the enforcement toolchain under enforce/
+# (ESLint 9 sat at end of life for a month before the 2026-09-04 audit caught
+# it). Weekly, grouped, so the churn is one PR per surface.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /enforce
+    schedule:
+      interval: weekly
+    groups:
+      eslint:
+        patterns: ["eslint*", "typescript-eslint", "@typescript-eslint/*"]

@@ -22,7 +22,7 @@
  * defect, and its exemption list varies by codebase. Editing thirty fixtures to
  * satisfy a rule those tests are not about would have hidden that.
  */
-import importPlugin from "eslint-plugin-import";
+import { createNodeResolver, importX } from "eslint-plugin-import-x";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,9 +92,9 @@ export function buildEslintOptions(repoRoot) {
   if (importZones.length > 0) {
     overrideConfig.push({
       files: ["**/*.ts", "**/*.tsx"],
-      plugins: { import: importPlugin },
-      rules: { "import/no-restricted-paths": ["error", { zones: importZones }] },
-      settings: { "import/resolver": { node: { extensions: [".js", ".ts", ".tsx"] } } },
+      plugins: { "import-x": importX },
+      rules: { "import-x/no-restricted-paths": ["error", { zones: importZones }] },
+      settings: { "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx"] })] },
     });
   }
 

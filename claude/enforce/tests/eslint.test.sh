@@ -17,7 +17,7 @@ diagnose() {
   echo "--- lint report was ---" >&2
   printf '%s\n' "${LAST_REPORT:-(no output)}" >&2
   echo "--- resolved versions ---" >&2
-  for package in eslint eslint-plugin-import typescript-eslint; do
+  for package in eslint eslint-plugin-import-x typescript-eslint; do
     version=$(node -e "try { console.log(require('$E/node_modules/$package/package.json').version); } catch { console.log('unresolved'); }" 2>/dev/null || echo unresolved)
     echo "  $package $version" >&2
   done
@@ -74,13 +74,25 @@ printf 'export type PriceLevel = 1 | 2 | 3 | 4;\n' > "$TMP/types/priceLevel.ts"
 run "$TMP/types/priceLevel.ts" || { echo "FAIL: expected types/ literal-type union to be exempt from no-magic-numbers (R-324/R-307)"; diagnose; exit 1; }
 printf 'declare const z: { literal: (n: number) => unknown; union: (a: unknown[]) => unknown };\nexport const priceLevelSchema = z.union([z.literal(2), z.literal(3), z.literal(4)]);\n' > "$TMP/schemas/priceLevel.ts"
 run "$TMP/schemas/priceLevel.ts" || { echo "FAIL: expected schemas/ validation literals to be exempt from no-magic-numbers (R-324/R-304)"; diagnose; exit 1; }
-# import/order: "@/..." aliases are internal (import/internal-regex), so the
+# import-x/order: "@/..." aliases are internal (import-x/internal-regex), so the
 # prettier importOrder sequence external -> @/ alias -> relative must pass and
 # the reverse (relative before alias) must fail.
 printf 'import { E } from "docx";\n\nimport { A } from "@/data/thing";\n\nimport { S } from "./sibling";\n' > "$TMP/import-order-ok.ts"
 run "$TMP/import-order-ok.ts" || { echo "FAIL: expected external -> alias -> relative import order to pass"; diagnose; exit 1; }
 printf 'import { E } from "docx";\n\nimport { S } from "./sibling";\n\nimport { A } from "@/data/thing";\n' > "$TMP/import-order-bad.ts"
 run "$TMP/import-order-bad.ts" && { echo "FAIL: expected relative-before-alias import order to be flagged"; diagnose; exit 1; } || true
+# The verdict must not depend on the caller's cwd. Run from enforce/, which
+# ships its own eslint.config.mjs: lint.mjs once took the repo root from cwd,
+# so this exact case read as "deferred to local ESLint" and passed silently
+# (the 2026-09-04 flake, reproduced only when the suite ran from enforce/).
+LAST_REPORT=$(cd "$E" && node "$E/lint.mjs" "$TMP/import-order-bad.ts" 2>&1) && { echo "FAIL: import order verdict changed with the caller's cwd (repo root must come from the file, not cwd)"; diagnose; exit 1; } || true
+# Outside any git repo the root is the nearest ancestor carrying .enforce.json
+# (or a package manifest or local ESLint config), not the file's own directory:
+# the opt-in rules a fixture declares one level up must still be wired.
+OPTIN=$(mktemp -d); mkdir -p "$OPTIN/src/services"
+printf '{ "fileHeaders": true }\n' > "$OPTIN/.enforce.json"
+printf 'export function getNote() {}\n' > "$OPTIN/src/services/getNote.ts"
+run "$OPTIN/src/services/getNote.ts" && { echo "FAIL: expected the R-320 header rule from an .enforce.json two directories above the file"; diagnose; exit 1; } || true
 # Prettier's @trivago layout keeps a "next" type import adjacent to and before
 # its "next/link" subpath with no blank line; the gate must accept that instead
 # of demanding "next/link" first (the deadlock the pathGroups reconcile).

@@ -12,7 +12,7 @@ Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-
 
 R-001: Run the session-start procedure before any other work.
   Spec:
-  1. Read `~/.claude/global-memory/INDEX.md`.
+  1. Confirm the SessionStart hook (`hooks/session-start.sh`) injected `~/.claude/global-memory/INDEX.md` and the SHA-verified project handoff; Read either only when its block is absent from the injected context (`lesson_no_reread_auto_injected_context.md`). Auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`, first 200 lines) loads on its own and is re-injected after compaction.
   2. Read `~/.claude/rules/session-types.md`; classify the session type from the user's first message.
   3. Read Tier 2 files for that session type per the session-types load map.
   4. Run `git status -s ~/.claude`; triage non-empty.
@@ -65,7 +65,7 @@ R-106: Treat every push of `~/.claude` as publishing; its remote is public.
   Spec: before pushing, run `git diff origin/main`, then verify no secrets, no local filesystem paths, and no client-identifying content. Secrets and the real home path are hook-enforced; client-identifying content stays a manual check.
   Enforcement: hook:global-repo-push-guard
 
-R-107: Investigate any `core.hooksPath` value resolving outside the expected lefthook path before committing; treat the drift as a supply-chain signal.
+R-107: Investigate any `core.hooksPath` value resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal.
   Enforcement: hook:hookspath-drift-check (SessionStart warning)
 
 ## Conduct and output (R-2xx)
