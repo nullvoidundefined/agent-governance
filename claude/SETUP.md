@@ -8,15 +8,16 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 - **jq** is required. Every PreToolUse and SessionStart hook parses its input with `jq`; without it the hooks fail. Install with `brew install jq` or your package manager.
 - **node** is required by the clean-code scanner (`hooks/clean-code-scan.mjs`) and the ESLint push gate (`enforce/lint.mjs`).
 - **python3** is needed by `ntfy-notify.sh`, the manifest closure test, and the latency test's clock.
-- Optional per stack, all fail open when absent: **ruff** (or uv), **rubocop**, **golangci-lint** for the Python/Ruby/Go push gates.
+- Optional per stack, all fail open when absent at runtime: **ruff** (or uv), **rubocop**, **golangci-lint** for the Python/Ruby/Go push gates.
+- **ruff is not optional to run the fixture suite**, however. `push-ruff-gate.test.sh` drives the real binary, while the RuboCop and golangci fixtures stub their linters through `CLAUDE_RUBOCOP_CMD` / `CLAUDE_GOLANGCI_CMD`. Without ruff on PATH that one test fails on a missing tool rather than on a defect, which is what the first CI runs did. Install it (`pipx install ruff`) or expect that single failure.
 - **Claude Code** itself.
 
 ## Install
 
 1. Clone this repo to `~/.claude` (the hooks and `settings.json` reference `~/.claude/...` paths, so the location matters).
 2. Reinstall plugins: they are managed by Claude Code and reinstalled from `settings.json` (`enabledPlugins`); the `plugins/` directory is gitignored.
-3. Recreate the two unversioned git-side files:
-   - `.git/hooks/pre-push`: a bash script running `enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh` (`chmod +x`), so a red suite aborts any push.
+3. Install the git-side files that `.git/` cannot carry itself:
+   - `bash ~/.claude/hooks/install-git-hooks.sh` writes `.git/hooks/pre-push` from the tracked `hooks/pre-push.sample`, so a red suite aborts any push. It refuses to clobber a pre-push it did not write. This step used to be "write a bash script that does X", and the script it described was simply absent from the checkout; the sample is tracked now so the description cannot drift from it.
    - `.git/info/exclude`: local-only exclusions for anything client-identifying that must never be tracked (versioned `.gitignore` covers the standard runtime dirs).
 4. Regenerate the hook-integrity manifest so it matches your checkout: `hooks/hook-integrity-check.sh --update`, then commit `enforce/hook-hashes.txt` if it changed.
 5. Start a Claude Code session. The SessionStart hooks load the global memory index, verify hook integrity, report enforcement closure (including whether the llm-judge tier can run; see the egress disclosure in README.md), and warn on a `core.hooksPath` that points outside the repo (R-107).
@@ -58,3 +59,25 @@ Run BOTH fixture suites; all tests should pass:
 bash ~/.claude/enforce/tests/run-tests.sh
 bash ~/.claude/hooks/tests/run-tests.sh
 ```
+
+The same two suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
+
+The ESLint-backed tests in the first suite need `enforce/node_modules`, which is
+gitignored and therefore absent from a fresh clone. Run `npm install` in
+`~/.claude/enforce` first, or six tests fail on a missing ESLint.
+
+## The turn-level verification gate (R-509)
+
+`hooks/verification-gate.sh` runs on `Stop` and blocks the turn from ending on a
+red suite. It discovers this project's own checks rather than hardcoding any,
+first match wins: `.claude/verify.sh`, then the `~/.claude` repo's two fixture
+suites, then `package.json` `test` plus `typecheck`/`type-check`, then
+`pytest`/`mypy`, then `go test`/`go vet`, then `bundle exec rspec`.
+
+- It runs only when the working tree is dirty or the branch carries unpushed
+  commits, so read-only turns cost nothing.
+- A repo with no discoverable check command is never blocked.
+- To give a project its own command, write `.claude/verify.sh` in its root. That
+  wins over all discovery, so per-project commands never belong in the hook.
+- `CLAUDE_SKIP_VERIFY=1` bypasses for one turn. `CLAUDE_VERIFY_TIMEOUT` (default
+  600s) caps each command.

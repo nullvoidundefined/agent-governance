@@ -37,6 +37,12 @@ R-706: Cap each dispatched subagent task at 50 tool calls; stop and report when 
   Scope: dispatched subagent tasks, not the main session.
   Enforcement: manual
 
+## Review agents
+
+`agents/spec-conformance-review.md` reviews a diff against a named spec or plan file and reports only gaps that affect correctness or violate a stated requirement. Dispatch it after implementing against an approved spec and before merge. It needs the spec path in the dispatch prompt (R-701); with no spec it has nothing to review against and stops. It inherits the R-804 output discipline and returns the literal `No gaps found.` rather than manufacturing findings.
+
+Precedence: `/code-review` reviews a diff against itself, the `gof` skill reviews a spec with no diff, and this agent covers the case neither does, a diff checked against the spec it was written from. Run `/code-review` for general correctness and quality; run this when a spec exists and conformance to it is the question.
+
 ## Multi-repo dispatch
 
 Before launching agents across repos:

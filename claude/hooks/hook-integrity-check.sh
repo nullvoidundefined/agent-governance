@@ -7,14 +7,18 @@
 # regenerate and commit the manifest:
 #   ~/.claude/hooks/hook-integrity-check.sh --update
 # Covered: hooks/*.sh, hooks/*.mjs, enforce/*.yml, enforce/*.toml,
-# enforce/eslint.config.mjs, enforce/lint.mjs, enforce/manifest.json.
+# enforce/*.mjs (lint, ratchet, eslint config, shared options), enforce/rules/*.mjs
+# (custom ESLint rules), enforce/manifest.json, enforce/lexicon.json.
+# enforce/rules/ and lexicon.json joined 2026-09-04: a custom rule body and the
+# naming registry decide what the gate enforces, so an unnoticed edit to either
+# silently weakens it exactly the way an edited hook would.
 set -euo pipefail
 
 CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$HOME/.claude}"
 HASH_FILE="$CLAUDE_DIR/enforce/hook-hashes.txt"
 
 compute_hashes() {
-  (cd "$CLAUDE_DIR" && { ls hooks/*.sh hooks/*.mjs enforce/*.yml enforce/*.toml enforce/eslint.config.mjs enforce/lint.mjs enforce/manifest.json 2>/dev/null || true; } \
+  (cd "$CLAUDE_DIR" && { ls hooks/*.sh hooks/*.mjs enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/manifest.json enforce/lexicon.json 2>/dev/null || true; } \
     | sort | { xargs shasum -a 256 2>/dev/null || true; })
 }
 

@@ -1,10 +1,8 @@
 # Global Rules
 
-The canonical rule file, loaded into every session. One norm line per rule; the complete Spec, Scope, and Enforcement detail for every rule lives in `~/.claude/rulebook/reference.md`, read on demand: before structural or naming decisions (R-3xx), before test design (R-4xx), or whenever a norm line is not enough to act on. The trailing bracket names the enforcer: `[manual]` depends on recall; `[judge]` is the push-time LLM judge; hooks and ESLint fire mechanically. `[ts]`/`[py]` after a rule ID scope it to a stack. Rationale and history: `PROTOCOL.md`.
+The canonical rule file, loaded into every session. One norm line per rule; the complete Spec, Scope, and Enforcement detail for every rule lives in `~/.claude/rulebook/reference.md`, read on demand: before structural or naming decisions (R-3xx), before test design (R-4xx), or whenever a norm line is not enough to act on. The conditional, mechanically enforced structure rules live in the `/structure-conventions` skill rather than here. The trailing bracket names the enforcer: `[manual]` depends on recall; `[judge]` is the push-time LLM judge; hooks and ESLint fire mechanically. `[ts]`/`[py]` after a rule ID scope it to a stack. Rationale and history: `PROTOCOL.md`.
 
 Project-level `CLAUDE.md` adds guidance but does not override these unless it explicitly says so.
-
-Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-3xx architecture & naming | R-4xx testing & quality | R-5xx git & process | R-6xx lifecycle & memory | R-7xx agents (`rulebook/agents.md`) | R-8xx audits (`rulebook/audits.md`) | R-9xx cost & routing (`rulebook/cost.md`).
 
 ## Session init (R-0xx)
 
@@ -38,32 +36,16 @@ R-209: Delete filler before sending: action announcements, question echoes, tran
 R-301 [ts]: Lay out pnpm monorepos in the canonical shape: `apps/server`, `apps/client/<surface>`, `packages/*` under the project-agnostic `@repo/*` scope; never rename or rescope an included surface. [manual]
 R-302: Keep each project an independent git repo; shared code publishes as versioned packages, never cross-project relative imports. [hook:content-gate]
 R-303: Dependencies flow one direction (backend `handlers -> services -> repositories -> clients/db`; frontend `components -> hooks -> services/clients`); no upward, layer-skipping, or circular imports. [eslint:no-restricted-paths]
-R-304: Use the fixed top-level vocabulary in the Express server's `src/` (`config`, `constants`, `types`, `schemas`, `middleware`, `routes`, `handlers`, `services`, `repositories`, `clients`, `database`, `dependencyInjection`, `prompts`, `workers`); extra dirs only for a real domain responsibility; the root holds directories, not loose modules (entry point and `.d.ts` excepted). [hook:structure-gate]
-R-305: Use the fixed vocabulary in the web client's `src/` (`app`, `components`, `features`, `services`, `api`, `clients`, `state`, `config`, `constants`, `data`, `styles`); context providers live in `state/`; one component per folder (`components/Header/Header.tsx`). [hook:structure-gate]
 R-306: Never create catch-all dirs (`lib`, `utils`, `helpers`, `common`, `core`, `misc`, `shared`); function-only modules go to `services/` (business logic), `clients/` (third-party wrappers), or `api/` (own-backend fetch wrappers). [hook:structure-gate]
 R-307: `services/` by domain then operation; `clients/` one thin module per provider, no domain logic; `api/` one fetch wrapper per route; co-locate non-code assets; export only what is imported elsewhere. [manual]
 R-308: Search the existing `services/`, `clients/`, and hook trees before adding any new unit of business logic; reuse or extend first; ask before modifying shared code. [manual]
-R-309: Collapse any domain folder holding exactly one source module into a flat file; a folder needs 2+ sibling source files. [hook:single-file-folder-gate]
-R-310: Regroup any source directory past 20 sibling source modules into domain subfolders (count excludes `__tests__/`, barrels, sibling `constants.ts`/`types.ts`). [hook:flat-directory-reminder]
-R-311: Full-word directory names, never abbreviations: `database/` not `db/`. [hook:structure-gate]
-R-312: Multi-word directories are camelCase in every source tree; exceptions: Next.js URL route segments keep kebab-case, Python and Ruby trees use snake_case, Go is waived (lowercase packages, kebab cmd/ binaries). [hook:structure-gate]
-R-313: Test files live in a conventional sibling test directory (`__tests__/` TS, `tests/` py, `spec/` rb), never co-located beside source; exception: Go co-locates `*_test.go` (toolchain requirement). [hook:structure-gate]
-R-314 [ts]: One top-level `__tests__/` tree per package's `src/`, mirroring the source layout; fixtures in a sibling `src/__fixtures__/`. [hook:structure-gate]
 R-315: Name files for their specific responsibility, predictable without opening them: `generatePublicNote.ts`, not `generate.ts`. [judge]
-R-316: Name functions verb + noun (the noun is mandatory); one verb lexicon across the codebase; booleans take `is`/`has`/`can`/`should`. [judge]
-R-317: Name variables descriptively: no generic names, no bare adjectives (`scoredJob`, not `scored`), plural nouns for collections; every name reads as natural English. [judge]
-R-318: One responsibility per file; size is a smell, not a hard cap. [judge]
-R-319: Export exactly one public function per module across `services/`, `api/`, and `clients/`; shared helpers and shared state move to their own modules. [eslint:one-export-per-file]
-R-320: Write a file-level header comment on every new source file (skip tests, `.d.ts`, barrels, single-constant files, pure re-exports). [judge, hook:new-file-header-reminder]
-R-321 [ts]: File order: imports, types, `ALL_CAPS` constants, primary export, helpers (caller above callee); in bodies: guards, hooks in fixed order, `const` then `let`, main logic; helpers are `function` declarations. [eslint:member-ordering]
-R-322: Every function is exactly one of: an orchestrator that only sequences calls, or an atomic function doing one indivisible piece (~10 lines, ~25 ceiling). [judge, hook:clean-code-reminder]
-R-323: Sort sibling keys deterministically where order is semantically free (default alphabetical); never reorder where position carries meaning. [eslint:sort-keys]
-R-324: Extract every meaningful literal to a named constant; exempt `0`, `1`, `-1`, `''`, booleans, and test/fixture literals. [eslint:no-magic-numbers, ruff:PLR2004, golangci:mnd]
-R-325: Destructure when reading 2+ properties of an object; never destructure a method off its object. [judge]
-R-326 [ts]: Never write IIFEs; declare a named `async function` and call it. [eslint:no-restricted-syntax, ruff:E731]
-R-327 [ts]: Never nest ternaries. [eslint:no-nested-ternary, rubocop:Style/NestedTernaryOperator]
-R-328 [ts]: Migration defaults: bare strings for constants, `pgm.func()` for SQL expressions, never nested quotes. [hook:migration-defaults-guard]
-R-329 [ts]: Never `any` or `@ts-ignore`/`@ts-nocheck`; type the value or narrow `unknown`; `@ts-expect-error` with a description is the only permitted suppression. [eslint:no-explicit-any, eslint:ban-ts-comment, ruff:ANN401, golangci:nolintlint]
+R-316: Name functions verb + noun (the noun is mandatory); one verb lexicon across the codebase; booleans take `is`/`has`/`can`/`should`. [eslint:lexicon-naming, judge]
+R-317: Name variables descriptively: no generic names, no bare adjectives (`scoredJob`, not `scored`), plural nouns for collections; every name reads as natural English. [eslint:lexicon-naming, judge]
+R-318: One responsibility per file; size is a smell, not a hard cap. [manual]
+R-320: Write a file-level header comment on every new source file (skip tests, `.d.ts`, barrels, single-constant files, pure re-exports). [eslint:file-header-comment, hook:new-file-header-reminder]
+R-322: Every function is exactly one of: an orchestrator that only sequences calls, or an atomic function doing one indivisible piece (~10 lines, ~25 ceiling). [hook:clean-code-reminder]
+R-325: Destructure when reading 2+ properties of an object; never destructure a method off its object. [eslint:destructure-object-reads, judge]
 R-330: Settle the domain vocabulary during spec writing; the spec carries a `## Domain vocabulary` glossary that all file, function, and type naming draws from. [hook:spec-glossary-check]
 
 ## Testing and quality (R-4xx)
@@ -73,7 +55,6 @@ R-403: Fix bugs test-first: write the failing test, confirm it FAILS, apply the 
 R-404: Reproduce failures locally before deploying. [manual]
 R-405: Fix root causes; never weaken the protection that surfaced the failure (CORS, CSP, rate limits, bcrypt rounds). [hook:content-gate]
 R-406: Give every user-input handler one negative-input test (oversized payload, injection, malformed encoding). [manual]
-R-407 [ts]: Add a build-smoke test asserting every runtime-loaded non-code asset exists under `dist/` and `dist/` holds no `.env*` or secret matches. [manual]
 R-408: Lint/format staged files only in pre-commit; full sweeps in pre-push and CI. [manual]
 R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before committing again. [manual]
 
@@ -87,7 +68,7 @@ R-505: Conventional commit subjects (`type(scope): summary`); one commit per tri
 R-506: One-sentence commit bodies; multi-line only for business-logic bugs, architectural refactors, security changes. [hook:commit-message-guard]
 R-507: Never commit unresolved conflict markers. [hook:conflict-markers]
 R-508: Update `README.md` in the same commit when adding a user-facing feature or changing structure or setup. [hook:git-workflow-guard]
-R-509: Target changed files in per-commit test runs; run the full suite at pre-push. [manual]
+R-509: Target changed files in per-commit test runs; run the full suite at pre-push; a turn never ends on a red suite. [hook:verification-gate]
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run their format/lint/build steps. [manual]
 R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch, one at a time. [hook:git-workflow-guard]
 R-512: Squash-merge feature branches; one commit per feature on `main`. [hook:git-workflow-guard]
@@ -105,7 +86,7 @@ R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-id
 
 ## Convention files
 
-The stack convention files (`~/.claude/CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md`, `CLAUDE-FRONTEND-NEXT.md`, `CLAUDE-FRONTEND-VITE.md`, `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`, `CLAUDE-PYTHON.md`, `CLAUDE-RUBY.md`, `CLAUDE-GO.md`) auto-load through path-scoped symlinks in `~/.claude/rules/` when work touches matching files. Read one directly only when planning that layer before any file is open.
+The `CLAUDE-*.md` stack convention files auto-load by path when work touches matching files. Read one directly only when planning that layer before any file is open.
 
 Read on demand:
 
@@ -113,6 +94,7 @@ Read on demand:
 |---|---|
 | `~/.claude/rulebook/reference.md` | Full rule Specs: before structural/naming decisions, test design, or when a hook cites a rule |
 | `~/.claude/rulebook/agents.md`, `audits.md`, `cost.md` | Tier 2 per session type (R-001) |
+| `/structure-conventions` (skill) | Before creating, moving, or renaming a directory, module, migration, or test tree (R-304, R-305, R-309..R-314, R-319, R-321, R-323, R-324, R-326..R-329, R-407) |
 | `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Vercel, Cloudflare, environment variables |
 | `/known-issues` (skill) | Before production deploy or debugging prior-incident-like failure |
 | `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |

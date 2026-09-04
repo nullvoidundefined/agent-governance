@@ -52,20 +52,21 @@
     { "id": "R-309", "tier": "advisory", "enforcer": "hook:single-file-folder-gate", "severity": "warn", "autofix": false },
     { "id": "R-310", "tier": "advisory", "enforcer": "hook:flat-directory-reminder", "severity": "warn", "autofix": false },
     { "id": "R-320", "tier": "advisory", "enforcer": "hook:new-file-header-reminder", "severity": "warn", "autofix": false },
+    { "id": "R-320", "tier": "ast", "enforcer": "eslint:file-header-comment", "severity": "error", "autofix": false, "note": "active only in repos setting fileHeaders:true in .enforce.json; adoption cost is repo-wide" },
+    { "id": "R-325", "tier": "ast", "enforcer": "eslint:destructure-object-reads", "severity": "error", "autofix": false, "note": "the 2+ property read; \"never destructure a method\" is a type question and stays with the judge" },
     { "id": "R-322", "tier": "advisory", "enforcer": "hook:clean-code-reminder", "severity": "warn", "autofix": false },
     { "id": "R-315", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
+    { "id": "R-316", "tier": "ast", "enforcer": "eslint:lexicon-naming", "severity": "error", "autofix": false, "note": "verb+noun against enforce/lexicon.json; active only in repos declaring a naming key in .enforce.json" },
+    { "id": "R-317", "tier": "ast", "enforcer": "eslint:lexicon-naming", "severity": "error", "autofix": false, "note": "the decidable half only (plural collections, bare adjectives); same opt-in as R-316" },
     { "id": "R-316", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
     { "id": "R-317", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
-    { "id": "R-322", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
-    { "id": "R-318", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
-    { "id": "R-325", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
-    { "id": "R-320", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "warn", "autofix": false },
     { "id": "R-505", "tier": "regex", "enforcer": "hook:commit-message-guard", "severity": "error", "autofix": false },
     { "id": "R-504", "tier": "advisory", "enforcer": "hook:task-commit-reminder", "severity": "warn", "autofix": false },
     { "id": "R-513", "tier": "advisory", "enforcer": "hook:constant-change-guard", "severity": "warn", "autofix": false },
     { "id": "R-801", "tier": "advisory", "enforcer": "hook:audit-signal-check", "severity": "warn", "autofix": false },
     { "id": "R-904", "tier": "advisory", "enforcer": "hook:audit-signal-check", "severity": "warn", "autofix": false },
     { "id": "R-506", "tier": "advisory", "enforcer": "hook:commit-message-guard", "severity": "warn", "autofix": false },
-    { "id": "R-330", "tier": "advisory", "enforcer": "hook:spec-glossary-check", "severity": "warn", "autofix": false }
+    { "id": "R-330", "tier": "advisory", "enforcer": "hook:spec-glossary-check", "severity": "warn", "autofix": false },
+    { "id": "R-509", "tier": "regex", "enforcer": "hook:verification-gate", "severity": "error", "autofix": false, "note": "Stop-event gate; runs the project's discovered test/typecheck commands when the tree is dirty, fails open when none is discoverable" }
   ]
 }

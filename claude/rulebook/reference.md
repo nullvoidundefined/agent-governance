@@ -213,10 +213,16 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   Scope: extends R-315.
   Spec:
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
-  - One verb lexicon across the codebase: reads `get`/`list`/`fetch`/`load`; writes `create`/`insert`/`update`/`record`/`save`; removal `drop`/`remove`/`exclude`; construction `build`/`generate`/`map`.
+  - One verb lexicon across the codebase, with the synonyms bound to a layer rather than left to taste (tightened 2026-09-04: four interchangeable read verbs is a four-way drift surface, and the R-304/R-305 directory is what makes "remote" versus "in memory" decidable from the path instead of from intent).
+    - Reads: `get` by default; `fetch` under `clients/` and `api/` (remote I/O); `load` under `repositories/`, `database/`, `config/`, and `prompts/` (data at rest). Using the wrong one for the layer is a violation, not a preference. `list` stays unrestricted: it encodes cardinality, not transport.
+    - Writes: `create` constructs a new entity anywhere, `save` and `update` are general; `insert` and `upsert` are reserved to `repositories/` and `database/`.
+    - Removal: `delete` by default; `drop` reserved to `repositories/` and `database/`; `exclude` is filtering, not deletion.
+    - Construction: `build`/`generate`/`map`.
+    - Banned as bare synonyms with no distinct meaning: `record` and `persist` (use `save`), `remove` (use `delete`), `retrieve`/`obtain`/`grab` (use `get`).
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
-  Enforcement: judge
+  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. Edit the registry and this bullet together; they are one rule in two forms.
+  Enforcement: eslint:lexicon-naming (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.
   Spec:
@@ -226,11 +232,14 @@ R-317: Name variables descriptively; never abbreviate where the full word reads 
   - Booleans follow R-316's `is`/`has`/`can`/`should` prefixes, never a bare adjective.
   - A name must read as natural English when the code is read aloud; rename any name that does not communicate intent.
   - Exception (Go): the idiomatic short names (`err`, `ok`, `ctx`, `i`, one-letter receivers) are correct in small scopes; descriptive names still required for anything living beyond a screen.
-  Enforcement: judge
+  - Two of these are decidable and are enforced as data: a variable bound to an array literal or a `.map()`/`.filter()` result carries a plural noun, and a single-word variable is not one of the participles listed in `enforce/lexicon.json` under `bareAdjectives`. The rest stays judgment.
+  Enforcement: eslint:lexicon-naming (plural collections, bare adjectives); judge for the rest
 
 R-318: Give each file one responsibility; split when it serves more than one concern.
-  Spec: size is a smell, not a hard cap; the filename (R-315) names the single responsibility.
-  Enforcement: judge
+  Spec:
+  - Size is a smell, not a hard cap; the filename (R-315) names the single responsibility.
+  - Not mechanized, deliberately (2026-09-04 reclassification). "One responsibility" is undecidable. The only deterministic checks available are proxies (line count, cyclomatic complexity, fan-out), and a proxy enforces a different rule than the one written here while reporting under this rule's id. Taken off the llm-judge tier for the same reason: a non-deterministic verdict on an undecidable property is confidence theater, not enforcement. This rule depends on recall, and `[manual]` is the honest label for that. Do not add a proxy and call it enforcement.
+  Enforcement: manual (undecidable; see the Spec)
 
 R-319: Export exactly one public function per module across the `services/`, `api/`, and `clients/` trees.
   Scope: strengthens R-318 for the function-module trees; does not change orchestrator-plus-private-helper colocation (R-322), where the helpers serve that one exported orchestrator.
@@ -245,7 +254,7 @@ R-319: Export exactly one public function per module across the `services/`, `ap
 
 R-320: Write a file-level header comment on every new source file stating what the module provides and why it exists.
   Scope: TypeScript/JavaScript `/** */` block; Python module docstring. Skip for test files, `.d.ts` declarations, barrel files, single-constant files, and pure type re-exports. File-level headers are required even where comments are otherwise minimal.
-  Enforcement: judge; hook:new-file-header-reminder (advisory)
+  Enforcement: eslint:file-header-comment, opt-in per repo via `fileHeaders: true` in `.enforce.json` (decides that a leading comment exists; accepts a line or block comment, matching hooks/new-file-header-reminder.sh so the two enforcers of this rule agree on scope). Opt-in rather than default because turning it on is a repo-wide adoption with a large baseline, and the exemption list varies by codebase; pair it with ratchet.mjs to grandfather existing files. hook:new-file-header-reminder stays as the always-on advisory nudge at write time; judge for whether the header says anything useful; hook:new-file-header-reminder (advisory)
 
 R-321 [ts]: Order TypeScript/JavaScript files top to bottom: imports, types, constants, primary export, helpers.
   Spec:
@@ -264,7 +273,8 @@ R-322: Write every function as exactly one of two kinds: an orchestrator that on
   - Atomic: decomposes no further; targets ~10 lines and treats ~25 as a ceiling that demands justification (a flat switch or config map is fine; tangled logic is not).
   - Both defects refactor by extracting named functions: raw logic mixed into orchestration, or an atomic function grown into several steps.
   - Name every function verb-noun (R-315/R-316), order caller above callee (R-321), export only the composed entry point (R-307); helpers stay unexported.
-  Enforcement: judge; hook:clean-code-reminder (advisory)
+  - Not mechanized beyond the advisory nudge, deliberately (2026-09-04 reclassification). The orchestrator/atomic distinction is undecidable, and the ~10/~25 line targets are a proxy for it. `hook:clean-code-reminder` reports that proxy honestly, as a non-blocking nudge naming the line ceiling rather than claiming to have judged composition. Promoting it to a blocking gate would enforce "short functions" under this rule's id, which is not what this rule says: an orchestrator may be as long as the flow requires. Taken off the llm-judge tier because a non-deterministic verdict on an undecidable property is confidence theater, not enforcement.
+  Enforcement: hook:clean-code-reminder (advisory nudge on the line-count proxy only); the orchestrator/atomic distinction itself is undecidable and depends on recall
 
 R-323: Sort sibling keys deterministically wherever order is semantically free; default alphabetical.
   Spec:
@@ -283,7 +293,7 @@ R-324: Extract every literal that carries meaning to a named constant; no magic 
 
 R-325: Destructure when reading two or more properties from the same object; never destructure a method off its object.
   Spec: single-property access may use dot notation; invoke methods via dot notation (`obj.doThing()`, not `const { doThing } = obj`) to preserve `this`.
-  Enforcement: judge
+  Enforcement: eslint:destructure-object-reads (decides the 2+ distinct property reads per scope; method calls are excluded because destructuring a method off its object is what this rule forbids); judge for "never destructure a method", which is a type question rather than a syntax one
 
 R-326 [ts]: Never write IIFEs; declare a named `async function` and call it.
   Spec: inside a `useEffect` or similar synchronous context: `async function doWork() { ... } void doWork();`; never `void (async () => { ... })()` or `(async () => { ... })()`.
@@ -403,7 +413,8 @@ R-508: Update `README.md` in the same commit when adding a user-facing feature, 
   Enforcement: hook:git-workflow-guard (commit-time advisory: fires when the commit ADDS a route, handler, page, feature slice, Dockerfile, compose file, or `.env.example` and stages no README; feature work that touches no new surface stays manual)
 
 R-509: Target changed files only in per-commit test runs; run the full suite at pre-push.
-  Enforcement: manual
+  Spec: the turn-level gate is `hooks/verification-gate.sh`, a Stop hook. It runs only when the working tree is dirty or the branch carries unpushed commits, so a read-only turn costs nothing. Command discovery, first match wins: `.claude/verify.sh`, then the `~/.claude` repo's own two fixture suites, then `package.json` `test` plus `typecheck`/`type-check`, then `pytest`/`mypy`, then `go test`/`go vet`, then `bundle exec rspec`. A repo with no discoverable command is not blocked. Bypass for one turn with `CLAUDE_SKIP_VERIFY=1`; per-project commands belong in `.claude/verify.sh`, never hardcoded in the hook.
+  Enforcement: hook:verification-gate (blocks the Stop with the failing command's real output); manual for the changed-file scoping at commit time
 
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run the format/lint/build steps they already run.
   Scope: build/lint/test gates a project defines (project `CLAUDE.md`) still apply, as does the pre-push/CI full sweep (R-408, R-509).

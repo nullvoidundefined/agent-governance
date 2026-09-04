@@ -5,19 +5,15 @@
  * patching the eslint binary. Exits 1 (printing the report) when any
  * error-level rule is violated; exits 0 when clean.
  *
- * When the repo root contains a .enforce.json with an importZones array, the
- * import/no-restricted-paths rule is activated for those zones (R-303). The
- * node resolver with .ts/.tsx extensions resolves TypeScript imports that
- * omit the file extension (e.g. "../handlers/authHandler" -> authHandler.ts).
+ * The opt-in rules a repo declares in .enforce.json (R-303 import zones,
+ * R-316 naming lexicon) are wired by eslintOptions.mjs, shared with ratchet.mjs
+ * so the single-file gate and the full-tree baseline enforce the same set.
  */
 import { ESLint } from "eslint";
-import importPlugin from "eslint-plugin-import";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const configPath = fileURLToPath(new URL("./eslint.config.mjs", import.meta.url));
+import { buildEslintOptions } from "./eslintOptions.mjs";
 
 // --added-only <base>: report only violations on lines the diff base..HEAD ADDS.
 // Added 2026-07-10 (Ian-approved reconciliation): the push gate previously linted
@@ -53,45 +49,8 @@ function isLineAdded(ranges, line) {
   return ranges.some(([start, end]) => line >= start && line <= end);
 }
 
-// Read per-repo import zones from .enforce.json (R-303); absent or malformed -> no zones.
 const repoRoot = process.cwd();
-let importZones = [];
-try {
-  const enforceConfig = JSON.parse(readFileSync(`${repoRoot}/.enforce.json`, "utf8"));
-  if (Array.isArray(enforceConfig.importZones) && enforceConfig.importZones.length > 0) {
-    importZones = enforceConfig.importZones.map((zone) => ({
-      from: resolve(repoRoot, zone.from),
-      message: zone.message,
-      target: resolve(repoRoot, zone.target),
-    }));
-  }
-} catch {
-  // No .enforce.json present or JSON is malformed; skip import-direction enforcement.
-}
-
-const eslintOptions = {
-  cwd: "/",
-  overrideConfigFile: configPath,
-};
-
-if (importZones.length > 0) {
-  eslintOptions.overrideConfig = [
-    {
-      files: ["**/*.ts", "**/*.tsx"],
-      plugins: { import: importPlugin },
-      rules: {
-        "import/no-restricted-paths": ["error", { zones: importZones }],
-      },
-      settings: {
-        "import/resolver": {
-          node: { extensions: [".js", ".ts", ".tsx"] },
-        },
-      },
-    },
-  ];
-}
-
-const eslint = new ESLint(eslintOptions);
+const eslint = new ESLint(buildEslintOptions(repoRoot));
 const results = await eslint.lintFiles(files);
 
 if (addedOnlyBase !== null) {

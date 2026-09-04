@@ -28,10 +28,20 @@ S3=$(mkstub '{"violations":[]}')
 OUT3=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S3" "$HOOK")
 [ -z "$OUT3" ]
 
-# High confidence violation of a warn-severity rule (R-322) -> allow (no deny output).
+# High confidence violation whose manifest severity is warn -> allow (no deny
+# output). R-322 left the llm-judge tier in the 2026-09-04 reclassification, so
+# this now covers the severity-lookup FALLBACK: an id the judge returns that has
+# no llm-judge row still resolves through its remaining row (advisory, warn) and
+# must not deny. A judge that hallucinates a rule id must never block a push.
 S4=$(mkstub '{"violations":[{"rule":"R-322","confidence":0.95,"file":"x.ts","why":"long fn"}]}')
 OUT4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S4" "$HOOK")
-[ -z "$OUT4" ] || { echo "FAIL: R-322 warn rule should not produce deny output; got: $OUT4"; exit 1; }
+[ -z "$OUT4" ] || { echo "FAIL: a warn-severity id should not produce deny output; got: $OUT4"; exit 1; }
+
+# An id with no manifest row at all defaults to error severity and DOES deny,
+# so an unknown id is not a silent bypass of the gate.
+S4b=$(mkstub '{"violations":[{"rule":"R-999","confidence":0.95,"file":"x.ts","why":"unknown id"}]}')
+OUT4b=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S4b" "$HOOK")
+[ -n "$OUT4b" ] || { echo "FAIL: an unknown rule id should default to error severity and deny"; exit 1; }
 
 # Python-only diff still reaches the judge (the diff scope includes *.py).
 printf 'def generate():\n    pass\n' > generate.py; git add .; git commit -q -m y

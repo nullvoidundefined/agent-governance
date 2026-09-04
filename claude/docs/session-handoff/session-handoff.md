@@ -1,49 +1,59 @@
-# Session Handoff: 2026-08-21 Manual Rule Mechanization
+# Session Handoff: 2026-09-04 Configuration Audit and Determinism Pass
 
 ## 1. Last commit
 
-- `a6c25a3` feat(enforce): mechanize R-514, R-512, R-511, R-508, and R-501
-- Pushed to `origin/main` (`b16bcee..a6c25a3`, four commits); working tree clean at handoff (this doc's commit follows).
-- An engineering audit was dispatched at the end of the session; its report commit may land after this doc.
+- `7b4cc42` docs(readme): reconcile the README with the repo it describes
+- Branch `claude/config-audit-plan-b7lfb5`, 6 commits ahead of `main`, pushed. No PR opened.
 
 ## 2. Production state
 
-- Both suites green: `enforce/tests/run-tests.sh` (31 cases) and `hooks/tests/run-tests.sh` (11 cases), run at pre-push.
-- `enforce/hook-hashes.txt` regenerated (46 entries); `enforcement-guard-check.sh` reports no drift in either direction.
-- Rulebook enforcement tally moved from 30 mechanized to **41 of 76 rules**; 28 remain `[manual]`, 7 on the judge tier.
-- **The six new checks activate in NEW sessions only.** `settings.json` hooks snapshot at session start, the same activation lag `push-ruff-gate.sh` had on 2026-07-31.
-- R-106 review ran before the push: no secrets, no local filesystem paths, no client-identifying content in the outgoing diff.
+- Both fixture suites green: 37 enforcement, 11 hook (48 total).
+- Nothing in this branch is live until it is merged and pulled to `~/.claude`. The work was done in a remote container where the repo sits at `/home/user/claude-global-rules`, not `~/.claude`, so `settings.json` was never loaded by the session that wrote it.
+- Every new enforcer was proven by direct invocation with a real payload, not by observing it fire naturally. See section 5.
 
 ## 3. What shipped
 
-- `8244974` feat(enforce): mechanize the R-304 and R-305 structure vocabularies
-  - `structure-gate.sh` denies a new non-entry `.ts` at an Express `src/` root (R-304) and a new `.tsx` written directly into `components/` (R-305).
-  - Both scoped by the nearest `package.json` dependency (express / react) so a server rule never lands on a client tree or a foreign repo; both creation-only, so existing loose files stay editable; `index/server/app/main.ts` and `.d.ts` exempt.
-  - Origin: two flat-layout regroups in one build session. Both rules existed and were correct; neither was reachable at file-creation time. Lesson in `global-memory/feedback_mechanize_structure_rules.md`.
-- `b0b26e2` feat(enforce): mechanize R-105, R-401, R-405, and R-302
-  - `hooks/mcp-action-guard.sh` (new, matcher `mcp__.*`): asks when any token of the action name is a mutating or transmitting verb. Before this, **no hook matched any MCP tool at all**; every matcher was Bash or Write|Edit, so mail, issue writes, page deletions, and design-file creation were ungated. Browser server exempt.
-  - `hooks/content-gate.sh` (new, Write|Edit): R-401 (`.only` denied outright; a skip denied unless its line names a triage ID, which is R-401 anti-pattern 8's own carve-out), R-405 (TLS, CORS, CSP, CSRF, bcrypt cost, outside test trees), R-302 (relative import whose `../` chain resolves above the git toplevel).
-- `a6c25a3` feat(enforce): mechanize R-514, R-512, R-511, R-508, and R-501
-  - `hooks/git-workflow-guard.sh` (new, Bash): R-514 asks before `gh pr merge` and before a push whose target branch resolves to main/master (explicit refspec wins, else the checked-out branch); R-512 denies `--merge`/`--rebase`; R-511 and R-508 warn at commit time.
-  - `hooks/parallel-session-check.sh` (new, SessionStart): registers the session PID under a hash of its working tree; registrations live only as long as their process, so no cleanup hook is needed.
-  - `~/.claude` is exempt from the main-branch rules (main is its working branch; R-106 already gates its pushes). Staged paths union `git add` arguments in the same command, reusing the 2026-07-31 P1 fix.
-- `1e15939` chore(memory): log the rule fires through 2026-08-20 (pre-existing dirty file, triaged at session start).
+**Turn-level test gate (R-509).** `hooks/verification-gate.sh`, a `Stop` hook. Discovers the project's own checks (`.claude/verify.sh`, then this repo's two suites, then `package.json` test/typecheck, pytest/mypy, go test/vet, rspec). Runs only when the tree is dirty or the branch carries unpushed commits. Silent on success; blocks with the failing command's real output. Fails open when nothing is discoverable. `CLAUDE_SKIP_VERIFY=1` bypasses. Closes the hole where four push gates linted and nothing ran tests.
 
-## 4. Pending (by urgency)
+**Naming as data (R-316, R-317).** `enforce/lexicon.json` plus `enforce/rules/naming-lexicon.mjs`. Decides verb membership, the mandatory noun, banned synonyms with their canonical replacement, boolean prefixes, and the glossary head noun. Read and persistence verbs are bound to the R-304 layer that gives them meaning (`fetch` under clients/api, `load` under repositories/database/config/prompts, `get` elsewhere; `insert`/`upsert`/`drop` reserved to the persistence trees), so synonyms cannot be freely substituted. Opt-in per repo via the `naming` key in `.enforce.json`.
 
-- **Engineering audit landed** (`docs/audits/2026-08-21-engineering.md`, commit `8d88048`): no P0, three P1, eight P2. Its verdict was construction sound, coverage overstated: three hooks matched a narrower input set than their `Enforcement:` lines claimed, every gap reachable through an ordinary idiom. All three P1s were reproduced here before acting (R-804(d)).
-- **Fixed same day, test-first** (see `ISSUES.md` Resolved for the full list): refspec resolution for R-514 (`HEAD`, `refs/heads/main`, `+main` all bypassed the ask), camelCase MCP tool names (`createIssue` was silent), `git -C <path>` bypassing the whole workflow guard, an express devDependency giving a React package the server vocabulary, `single-file-folder-gate` warning R-309 on the exact folder R-305 orders, PID recycling in the session registry, and `xargs` on a quote-bearing path.
-- **P1-2 closed** (decision taken this session): `destructive-db-guard.sh` gained an MCP input path rather than the SQL check being duplicated into `mcp-action-guard.sh`, keeping one authority for what "destructive" means. It is now registered for the `mcp__.*` matcher and classifies targets from `enforce/mcp-database-targets.txt` (gitignored: project identifiers are client-identifying). Production hard-blocks, staging and unknown ask, local passes; non-destructive MCP writes stay silent here so R-105's ask is the only prompt.
-- **Action required before that tier means anything**: `enforce/mcp-database-targets.txt` does not exist yet. Until each project's neon/supabase production identifier is listed in it, every MCP database target is unknown and the guard can only ask. Write the file on the first project that uses those servers.
-- P2 (known limitation, documented in the reference Specs): R-405's gate covers seven of the nine protections the rule names; rate-limit ceilings and `SameSite`/`Secure` cookie flags are value changes rather than patterns and stay manual.
-- P2 (known limitation): Figma's `use_figma` and `weave_run_tool` write to Figma but carry no verb `mcp-action-guard` recognizes; they pass silently.
-- P3 (known limitation): R-508's surface heuristic (added routes, handlers, `page.tsx`, `route.ts`, feature slices, Dockerfile, compose, `.env.example`) both misses and over-fires by construction; it warns rather than blocks for that reason.
-- Carried from prior audits, untouched today: the four P2/P3 entries in `ISSUES.md` from 2026-07-31 and 2026-07-03 (R-314 message wording for Python, `xargs` space-in-path in the push gates, unpaired `fix:` commit `266d05e`, untested session-lifecycle hooks).
+**Long-term drift (the ratchet).** `enforce/ratchet.mjs`. Full-tree counts per rule against a committed `.enforce-baseline.json`; fails when a count rises. Sorted keys, no timestamp, so repeated runs are byte-identical. `--update` locks in; `--strict` also fails on unlocked improvements.
 
-## 5. Next session
+**Two rules off the judge.** `enforce/rules/destructure-object-reads.mjs` (R-325, default-on) and `enforce/rules/file-header-comment.mjs` (R-320, opt-in via `fileHeaders`). Both were previously decided by nothing.
 
-- If a new deny misfires in a real project, read the hook first, then its fixture test: `hooks/content-gate.sh`, `hooks/structure-gate.sh` (R-304/R-305 blocks at the end), `hooks/git-workflow-guard.sh`, `hooks/mcp-action-guard.sh`.
-- Every new deny is creation-only or scoped by a `package.json` dependency; the fastest correct fix for a false positive is usually to tighten that scope, not to widen an allowlist.
-- The audit's most transferable finding is about fixtures, not hooks: three of this cycle's tests were built in a way that avoids the failure mode they should probe, so a green suite overstated coverage. Read that section before writing the next hook test.
-- Tier B of the mechanization investigation is now shipped in full. What remains `[manual]` was assessed as genuinely unmechanizable: the conduct block (R-104, R-201 through R-209), the judgment rules (R-301, R-307, R-308), and the process rules (R-404, R-408/409, R-502/503, R-509/510, R-515, R-601 through R-604).
-- The 2026-07-31 handoff's Python-parity context is superseded but still accurate; `git show 410508c` if Python enforcement misbehaves.
+**Two rules honestly reclassified.** R-318 and R-322 left the llm-judge tier. Both are undecidable; the only deterministic checks available are proxies that enforce a different rule under the original rule's id. R-318 is now `[manual]`, R-322 keeps its advisory nudge. The judge tier is now exactly R-315, R-316, R-317.
+
+**CLAUDE.md pruned.** 118 lines / 15,129 chars to 100 lines / 11,738 chars. 17 conditional rules moved to the new `structure-conventions` skill, every one still caught mechanically at the tool call. `claude-md-lint.test.sh` extended: a norm line may live in `CLAUDE.md` or a skill, and a rule carried in both now fails.
+
+**New agent and skills.** `agents/spec-conformance-review.md` (diff against a named spec, R-804 output discipline, literal "No gaps found."). `skills/spec-grounding` (grounds an externally written spec via read-only subagents). `skills/structure-conventions`.
+
+**CI and the pre-push installer.** `.github/workflows/enforce.yml` (the repo had no CI at all). `hooks/pre-push.sample` plus `hooks/install-git-hooks.sh`, replacing SETUP.md step 3's prose description of a script that did not exist in the checkout.
+
+**README reconciled.** Nine pre-existing errors fixed, including `enforce/` missing from the layout entirely and a `global-memory/user_profile.md` that has never existed in git history.
+
+## 4. Pending
+
+**Blocking merge (user-side, minutes):**
+- Merge the branch. Pull to `~/.claude`. `npm install --prefix enforce` (node_modules is gitignored; six fixtures fail without it).
+- `bash hooks/install-git-hooks.sh`.
+- Name the `fixtures` job as a required status check under branch protection. Without this the ratchet is advisory, since a local hook is `--no-verify`-able.
+
+**Verification not performed (user-side, minutes):**
+- `/context` and `/hooks` were never run. They are TUI commands, not callable from a remote session. They are the two steps of the original task that remain unverified.
+
+**Adoption, per project (user-side, ~15 min each):**
+- Add the `.enforce.json` keys wanted (`naming` with a `glossary`, `fileHeaders`, `importZones`). Omitting `glossary` skips head-noun checking rather than passing it.
+- `node ~/.claude/enforce/ratchet.mjs --update`, commit `.enforce-baseline.json`.
+
+**Open decision (one line):**
+- `global-memory/user_profile.md` was referenced by the README but has never been tracked. References removed. If a local untracked copy exists deliberately, it belongs in the SETUP.md "what does not ship" table instead.
+
+**Unchased (low):**
+- `enforce/tests/eslint.test.sh` failed once on the first run immediately after `npm install` ("expected relative-before-alias import order to be flagged") and passed on every run since, in isolation and in six full-suite runs. The case reproduces correctly when run directly. Cause not found.
+
+## 5. Next-session tasks, with files to read
+
+- **Confirm the harness actually loads.** Read `settings.json` (Stop chain), run `/hooks` and `/context`. The verification gate was proven by feeding `hooks/verification-gate.sh` a real Stop payload against a deliberately broken fixture; it returned `{"decision":"block"}` with the suite output and was silent on green. It has never been observed firing from a live turn.
+- **First real adoption of the lexicon.** Read `enforce/README.md` ("The naming lexicon"), then pick one project, write its `glossary`, and run the ratchet. Expect a large first baseline; that is the design.
+- **Watch for the reverse drift.** `enforce/lexicon.json` and the R-316 Spec bullet in `rulebook/reference.md` are one rule in two forms. They were already out of sync once this session: the first draft of the registry banned `fetch`, `drop`, and `remove`, which R-316 explicitly approves. Nothing mechanically enforces their agreement.
+- **Do not mechanize R-318 or R-322.** The reasoning is recorded in each rule's Spec in `rulebook/reference.md`. A line-count proxy enforces a different rule than the one written.

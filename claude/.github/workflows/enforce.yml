@@ -1,0 +1,86 @@
+# Runs the enforcement suites where they cannot be skipped.
+#
+# A local git hook is --no-verify-able, which makes it advisory however it is
+# written. Determinism needs the check to run somewhere the author does not
+# control, so this exists to be named as a required status check under branch
+# protection (Settings > Branches > require status checks > "fixtures").
+#
+# The fixture suites resolve paths through $HOME/.claude, because that is where
+# this repo installs. The checkout is symlinked there rather than copied, so the
+# tests exercise the real tree.
+name: enforce
+
+# push on every branch PLUS pull_request double-billed every PR branch: runs 5
+# and 6 both ran the full suite on 49c06b1. Pushes to the default branch, PRs,
+# and manual dispatch cover everything without the overlap.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first; without this the older run bills to
+# completion for a state nobody will merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fixtures:
+    name: fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: enforce/package-lock.json
+
+      # node_modules is gitignored, so a fresh clone has none and the six
+      # ESLint-backed fixtures fail on a missing ESLint rather than on a defect.
+      - name: Install enforcement dependencies
+        run: npm ci --prefix enforce || npm install --prefix enforce
+
+      # push-ruff-gate.test.sh drives the REAL ruff binary. The rubocop and
+      # golangci fixtures stub their linters through CLAUDE_*_CMD, so they pass
+      # on a bare runner; the ruff one does not, and the first CI runs failed on
+      # "no ruff or uvx on PATH" rather than on any defect. Stubbing ruff to
+      # match the other two would make the suite hermetic at the cost of no
+      # longer checking that enforce/ruff-enforce.toml actually selects
+      # PLR2004/E731/ANN401, so CI provides the binary instead.
+      #
+      # Pinned: an unpinned ruff would let an upstream release change rule
+      # behavior and turn CI red with no commit to blame. Bump deliberately, and
+      # keep it in step with the maintainer's local ruff.
+      - name: Install ruff (required by push-ruff-gate.test.sh)
+        run: |
+          pipx install ruff==0.15.8
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm ruff resolves
+        run: ruff --version
+
+      - name: Install the checkout at ~/.claude
+        run: |
+          rm -rf "$HOME/.claude"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/.claude"
+
+      # Several fixtures shell out to `git commit` in throwaway repos.
+      - name: Configure a git identity for the fixtures
+        run: |
+          git config --global user.email "enforce-ci@example.invalid"
+          git config --global user.name "enforce CI"
+
+      - name: Enforcement fixtures
+        run: bash "$HOME/.claude/enforce/tests/run-tests.sh"
+
+      - name: Hook fixtures
+        run: bash "$HOME/.claude/hooks/tests/run-tests.sh"
+
+      # This repo carries no TypeScript, so the ratchet reports "nothing to
+      # baseline" and exits 0. The step is here so a regression in the ratchet
+      # itself surfaces as a red check rather than at first use in a real repo.
+      - name: Ratchet
+        run: node "$HOME/.claude/enforce/ratchet.mjs" "$GITHUB_WORKSPACE"

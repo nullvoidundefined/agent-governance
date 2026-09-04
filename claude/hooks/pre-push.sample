@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Git pre-push hook for the ~/.claude repo: a red fixture suite aborts the push.
+#
+# Tracked as a sample because .git/hooks is not version-controlled, so it cannot
+# ship installed. SETUP.md previously described this script in prose and left
+# the author to write it; the description and the script drifted, and the file
+# was simply absent from the checkout it documented. Install it with:
+#
+#   bash ~/.claude/hooks/install-git-hooks.sh
+#
+# This is the local half of the gate. The authoritative half is the `fixtures`
+# job in .github/workflows/enforce.yml, because this hook is --no-verify-able
+# and therefore advisory however it is written.
+set -uo pipefail
+
+CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
+
+fail=0
+for suite in enforce/tests/run-tests.sh hooks/tests/run-tests.sh; do
+  [ -f "$CLAUDE_DIR/$suite" ] || continue
+  if ! bash "$CLAUDE_DIR/$suite"; then
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo "" >&2
+  echo "pre-push: fixture suite is red; push aborted (R-509)." >&2
+  echo "Fix the failure. Do not weaken the gate that caught it (R-204)." >&2
+  exit 1
+fi
+exit 0
