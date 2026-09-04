@@ -62,3 +62,6 @@ Append-only. Two entry sources:
 2026-08-20 R-207 (auto-rollup: 12 deny fire(s) this session)
 2026-09-04 R-207 (auto-rollup: 3 deny fire(s) this session)
 2026-09-04 R-501 (auto-rollup: 1 warn fire(s) this session)
+2026-09-04 R-501 (auto-rollup: 3 warn fire(s) this session)
+2026-09-04 R-501 (auto-rollup: 2 warn fire(s) this session)
+2026-09-04 R-501 (auto-rollup: 4 warn fire(s) this session)

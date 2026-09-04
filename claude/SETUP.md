@@ -30,7 +30,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 | `settings.local.json` | Machine-specific permissions/overrides | Recreate as needed |
 | `KNOWN-ISSUES.md` | Production incident log | Copy from `KNOWN-ISSUES.template.md`, then populate |
 | `projects/` | Per-project session memory | Auto-created per project; starts empty |
-| `plugins/`, caches, `sessions/`, `history.jsonl` | Ephemeral Claude Code state | Auto-managed |
+| `plugins/`, caches, `sessions/`, `uploads/`, `history.jsonl` | Ephemeral Claude Code state | Auto-managed |
 
 ## Reset for a clean handoff
 

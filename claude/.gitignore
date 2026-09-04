@@ -22,6 +22,9 @@ stats-cache.json
 tasks/
 telemetry/
 todos/
+# Per-session user uploads: arbitrary user-supplied files (photos, documents,
+# screenshots) keyed by session id. Never publishable (R-106).
+uploads/
 
 # Local settings (may contain secrets / machine-specific permissions)
 settings.local.json
