@@ -9,12 +9,18 @@
 #   bash ~/.claude/hooks/install-git-hooks.sh /path/repo # or another checkout
 #
 # Refuses to clobber an existing pre-push that this script did not write, so a
-# repo with its own hook chain is never silently replaced.
+# repo with its own hook chain is never silently replaced. The single exception
+# is this repo's own superseded hook, which is identifiable by its own header:
+# an identified predecessor is an upgrade, not a clobber, so it is replaced in
+# place and backed up. Anything unrecognised still stops the script.
 set -euo pipefail
 
 REPO="${1:-$HOME/.claude}"
-SAMPLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pre-push.sample"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SAMPLE="$SCRIPT_DIR/pre-push.sample"
 MARKER="Git pre-push hook for the ~/.claude repo"
+# The unversioned hook this script replaced (SETUP.md, 2026-07-31 audit P1).
+LEGACY_MARKER="Unversioned git pre-push hook for the ~/.claude repo"
 
 [ -f "$SAMPLE" ] || { echo "install-git-hooks: $SAMPLE is missing." >&2; exit 1; }
 git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
@@ -29,15 +35,28 @@ esac
 mkdir -p "$HOOK_DIR"
 TARGET="$HOOK_DIR/pre-push"
 
+ACTION="installed"
+BACKUP=""
+
 if [ -f "$TARGET" ] && ! grep -q "$MARKER" "$TARGET"; then
-  echo "install-git-hooks: $TARGET exists and was not written by this script." >&2
-  echo "Merge it by hand, or move it aside and re-run." >&2
-  exit 1
+  if grep -q "$LEGACY_MARKER" "$TARGET"; then
+    BACKUP="$TARGET.legacy.bak"
+    cp "$TARGET" "$BACKUP"
+    ACTION="upgraded"
+  else
+    echo "install-git-hooks: $TARGET exists and was not written by this script." >&2
+    echo "Merge it by hand, or move it aside and re-run:" >&2
+    echo "  mv \"$TARGET\" \"$TARGET.bak\" && bash \"$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")\" \"$REPO\"" >&2
+    exit 1
+  fi
 fi
 
 cp "$SAMPLE" "$TARGET"
 chmod +x "$TARGET"
-echo "install-git-hooks: installed $TARGET"
+echo "install-git-hooks: $ACTION $TARGET"
+if [ -n "$BACKUP" ]; then
+  echo "install-git-hooks: previous hook saved to $BACKUP"
+fi
 
 HOOKS_PATH=$(git -C "$REPO" config --get core.hooksPath || true)
 if [ -n "$HOOKS_PATH" ]; then
