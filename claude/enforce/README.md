@@ -91,7 +91,7 @@ It decides: the leading word of a named function is an approved verb or a boolea
 
 It does not decide whether the lexicon carves the domain well, nor R-318/R-322 (one responsibility), which are undecidable and stay with the judge rather than being faked with a line-count proxy.
 
-`lexicon.json` and the R-316 Spec bullet in `rulebook/reference.md` are one rule in two forms. Edit them together.
+`lexicon.json` is the single source. The R-316 verb lists in `rulebook/reference.md` are generated from it by `renderLexiconSpec.mjs` between `<!-- lexicon:begin -->` markers: change the registry, run `node enforce/renderLexiconSpec.mjs --write`, commit both. `lexicon-spec-sync.test.sh` fails the suite if they diverge, and `--check`/`--write` also reject a registry that contradicts itself (a banned verb still bound to a layer by `verbGroups` or `scopeVerbs`).
 
 Opt in per repo, because the vocabulary is the repo's:
 

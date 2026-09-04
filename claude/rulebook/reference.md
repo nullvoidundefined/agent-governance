@@ -214,14 +214,16 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   Spec:
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
   - One verb lexicon across the codebase, with the synonyms bound to a layer rather than left to taste (tightened 2026-09-04: four interchangeable read verbs is a four-way drift surface, and the R-304/R-305 directory is what makes "remote" versus "in memory" decidable from the path instead of from intent).
-    - Reads: `get` by default; `fetch` under `clients/` and `api/` (remote I/O); `load` under `repositories/`, `database/`, `config/`, and `prompts/` (data at rest). Using the wrong one for the layer is a violation, not a preference. `list` stays unrestricted: it encodes cardinality, not transport.
-    - Writes: `create` constructs a new entity anywhere, `save` and `update` are general; `insert` and `upsert` are reserved to `repositories/` and `database/`.
-    - Removal: `delete` by default; `drop` reserved to `repositories/` and `database/`; `exclude` is filtering, not deletion.
-    - Construction: `build`/`generate`/`map`.
-    - Banned as bare synonyms with no distinct meaning: `record` and `persist` (use `save`), `remove` (use `delete`), `retrieve`/`obtain`/`grab` (use `get`).
+    <!-- lexicon:begin -->
+    <!-- Generated from enforce/lexicon.json by renderLexiconSpec.mjs. Do not hand-edit: change the registry and run --write. -->
+    - Reads: `get` by default; `fetch` under `api/` and `clients/`; `load` under `config/`, `database/`, `prompts/` and `repositories/`. Using another layer's read verb is a violation, not a preference. `list` stays unrestricted: it encodes cardinality, not transport.
+    - Reserved to a tree: `drop` only under `database/` and `repositories/` (use `delete` elsewhere); `insert` only under `database/` and `repositories/` (use `create` elsewhere); `upsert` only under `database/` and `repositories/` (use `save` elsewhere).
+    - Banned as bare synonyms: `calc` (use `calculate`); `add`, `init` and `make` (use `create`); `destroy` and `remove` (use `delete`); `gen` (use `generate`); `grab`, `obtain` and `retrieve` (use `get`); `do`, `execute`, `manage`, `perform`, `proc`, `process`, `run` and `util` (name the actual operation); `setup` (use `prepare`); `persist` and `record` (use `save`); `check` (use `validate`).
+    - Approved verbs (54 in total) and boolean prefixes `can`, `has`, `is` and `should` live in the registry; this list is its rendering, not a second copy.
+    <!-- lexicon:end -->
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
-  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. Edit the registry and this bullet together; they are one rule in two forms.
+  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/renderLexiconSpec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
   Enforcement: eslint:lexicon-naming (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.

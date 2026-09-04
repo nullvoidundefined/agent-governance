@@ -45,8 +45,9 @@
 - Add the `.enforce.json` keys wanted (`naming` with a `glossary`, `fileHeaders`, `importZones`). Omitting `glossary` skips head-noun checking rather than passing it.
 - `node ~/.claude/enforce/ratchet.mjs --update`, commit `.enforce-baseline.json`.
 
-**Open decision (one line):**
-- `global-memory/user_profile.md` was referenced by the README but has never been tracked. References removed. If a local untracked copy exists deliberately, it belongs in the SETUP.md "what does not ship" table instead.
+**Closed since this handoff was written:**
+- The registry/prose drift on R-316 is closed: `rulebook/reference.md`'s verb lists are now generated from `enforce/lexicon.json` by `enforce/renderLexiconSpec.mjs`, with `lexicon-spec-sync.test.sh` failing the suite on divergence and `validateLexicon()` rejecting a self-contradictory registry.
+- `global-memory/user_profile.md` is settled: it does not exist and is not meant to. References removed, nothing created.
 
 **Unchased (low):**
 - `enforce/tests/eslint.test.sh` failed once on the first run immediately after `npm install` ("expected relative-before-alias import order to be flagged") and passed on every run since, in isolation and in six full-suite runs. The case reproduces correctly when run directly. Cause not found.
