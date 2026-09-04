@@ -24,10 +24,14 @@ It is readable and adoptable by other Claude Code users with similar requirement
 
 The **runtime** is Anthropic's: Claude Code itself, the hook protocol, the plugin marketplace and loader, the skill tool, the MCP integration, the session lifecycle primitives, the slash-command system. This repo configures and extends that runtime; it does not implement it.
 
-The **plugins enabled in `settings.json`** are Anthropic-shipped through the official `@claude-plugins-official` marketplace:
+Most **plugins enabled in `settings.json`** are Anthropic-shipped through the official `@claude-plugins-official` marketplace:
 
 - `superpowers`: Layer 2 (Skills) is almost entirely this plugin. It provides `brainstorming` (HARD-GATE before code), `writing-plans`, `executing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`. The framing of "skills as capabilities not prose" comes from Superpowers.
 - `frontend-design`, `context7`, `code-review`, `code-simplifier`, `typescript-lsp`: the other Anthropic-shipped plugins enabled in this configuration. Each contributes its own skills, agents, and behaviors. `posthog` and `stripe` are declared in `settings.json` but set to `false`; they ship disabled.
+
+One enabled plugin is **third-party**, from a separate marketplace declared in `extraKnownMarketplaces`:
+
+- `i-have-adhd@i-have-adhd` ([ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd), MIT): an output-style skill that shapes responses for an ADHD reader (action first, numbered steps, state restated each turn, no preamble or recap). It sets `disable-model-invocation: true`, so nothing applies until `/i-have-adhd` is invoked. Its one `SessionStart` hook reads a flag file and `SKILL.md`, writes to stdout, and exits 0 on any failure; it stays inert unless `~/.claude/.i-have-adhd-always` exists, which is not created by installing. Being third-party, it sits outside `enforce/hook-hashes.txt`, which covers this repo's own `hooks/` and `enforce/` only, not `plugins/`.
 
 Everything **inside this tracked repo** is the maintainer's: the 40 hook scripts under `hooks/` (plus `install-git-hooks.sh` and the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, four custom ESLint rules, the full-tree ratchet, and 38 fixture tests), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 13 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 31 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
