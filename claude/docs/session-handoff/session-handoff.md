@@ -2,20 +2,22 @@
 
 ## 1. Last commit
 
-- `7b4cc42` docs(readme): reconcile the README with the repo it describes
-- Branch `claude/config-audit-plan-b7lfb5`, 6 commits ahead of `main`, pushed. No PR opened.
+- `04dd4f5` feat(plugins): enable i-have-adhd always-on across every session (#5)
+- Merged from this session's work: #2 (`b1a1241`) and #3 (`7b55cdf`). Landed separately afterwards, not from this session: #4 (`bd604c7`, install-git-hooks now upgrades a superseded pre-push in place instead of refusing, with a fixture) and #5 (`04dd4f5`).
 
 ## 2. Production state
 
-- Both fixture suites green: 37 enforcement, 11 hook (48 total).
-- Nothing in this branch is live until it is merged and pulled to `~/.claude`. The work was done in a remote container where the repo sits at `/home/user/claude-global-rules`, not `~/.claude`, so `settings.json` was never loaded by the session that wrote it.
-- Every new enforcer was proven by direct invocation with a real payload, not by observing it fire naturally. See section 5.
+- **Live.** Merged, pulled to `~/.claude`, dependencies installed, git hooks installed, and `/context` and `/hooks` run and confirmed by Ian. This is the one thing the session could not verify itself: the work was done in a remote container where the repo sits outside `~/.claude`, so `settings.json` was never loaded by the session that wrote it.
+- Both fixture suites green: 38 enforcement, 12 hook. Green in CI on `main` (`.github/workflows/enforce.yml`, job `fixtures`). The twelfth hook fixture arrived with #4.
+- Also shipped, in `nullvoidundefined/doppelscript`: `88cee3c` cuts GitHub Actions spend (see section 4).
 
 ## 3. What shipped
 
 **Turn-level test gate (R-509).** `hooks/verification-gate.sh`, a `Stop` hook. Discovers the project's own checks (`.claude/verify.sh`, then this repo's two suites, then `package.json` test/typecheck, pytest/mypy, go test/vet, rspec). Runs only when the tree is dirty or the branch carries unpushed commits. Silent on success; blocks with the failing command's real output. Fails open when nothing is discoverable. `CLAUDE_SKIP_VERIFY=1` bypasses. Closes the hole where four push gates linted and nothing ran tests.
 
 **Naming as data (R-316, R-317).** `enforce/lexicon.json` plus `enforce/rules/naming-lexicon.mjs`. Decides verb membership, the mandatory noun, banned synonyms with their canonical replacement, boolean prefixes, and the glossary head noun. Read and persistence verbs are bound to the R-304 layer that gives them meaning (`fetch` under clients/api, `load` under repositories/database/config/prompts, `get` elsewhere; `insert`/`upsert`/`drop` reserved to the persistence trees), so synonyms cannot be freely substituted. Opt-in per repo via the `naming` key in `.enforce.json`.
+
+**The registry is the single source.** `enforce/renderLexiconSpec.mjs` generates the R-316 verb lists in `rulebook/reference.md` between `<!-- lexicon:begin -->` markers. `--check` fails on divergence, `--write` reconciles and is idempotent. `validateLexicon()` additionally rejects a registry that contradicts itself (a banned verb still bound to a layer by `verbGroups` or `scopeVerbs`). Covered by `lexicon-spec-sync.test.sh`.
 
 **Long-term drift (the ratchet).** `enforce/ratchet.mjs`. Full-tree counts per rule against a committed `.enforce-baseline.json`; fails when a count rises. Sorted keys, no timestamp, so repeated runs are byte-identical. `--update` locks in; `--strict` also fails on unlocked improvements.
 
@@ -33,28 +35,23 @@
 
 ## 4. Pending
 
-**Blocking merge (user-side, minutes):**
-- Merge the branch. Pull to `~/.claude`. `npm install --prefix enforce` (node_modules is gitignored; six fixtures fail without it).
-- `bash hooks/install-git-hooks.sh`.
-- Name the `fixtures` job as a required status check under branch protection. Without this the ratchet is advisory, since a local hook is `--no-verify`-able.
+**Outstanding, user-side:**
+- Name the `fixtures` job as a required status check under branch protection (Settings > Branches). Without it the ratchet is advisory, since a local hook is `--no-verify`-able. Green on six commits, so it will not block.
+- doppelscript: `/feature-cleanup` was run for `88cee3c`; the handoff addendum is PR #361. It found that step 6 of that skill is inert in a squash-merge repo (it gates branch removal on `git branch --merged`, which never reports a squash-merged branch), and that `claude/actions-cost-reduction` could not be deleted because this session's git proxy returns 403 on delete-ref. The branch is still on the remote and is safe to delete from the UI.
 
-**Verification not performed (user-side, minutes):**
-- `/context` and `/hooks` were never run. They are TUI commands, not callable from a remote session. They are the two steps of the original task that remain unverified.
-
-**Adoption, per project (user-side, ~15 min each):**
+**Adoption, per project (~15 min each):**
 - Add the `.enforce.json` keys wanted (`naming` with a `glossary`, `fileHeaders`, `importZones`). Omitting `glossary` skips head-noun checking rather than passing it.
-- `node ~/.claude/enforce/ratchet.mjs --update`, commit `.enforce-baseline.json`.
+- `node ~/.claude/enforce/ratchet.mjs --update`, commit `.enforce-baseline.json`. Expect a large first baseline; that is the design.
 
-**Closed since this handoff was written:**
-- The registry/prose drift on R-316 is closed: `rulebook/reference.md`'s verb lists are now generated from `enforce/lexicon.json` by `enforce/renderLexiconSpec.mjs`, with `lexicon-spec-sync.test.sh` failing the suite on divergence and `validateLexicon()` rejecting a self-contradictory registry.
-- `global-memory/user_profile.md` is settled: it does not exist and is not meant to. References removed, nothing created.
+**Untested, and only a real event will settle it:**
+- doppelscript's Dependabot e2e skip. Every check on PR #359 ran as the maintainer, not as `dependabot[bot]`, so only the normal path is proven. The first real Dependabot PR tests whether a skipped job satisfies the required checks. If it blocks, delete the one `if:` in `ci.yml`.
 
-**Unchased (low):**
-- `enforce/tests/eslint.test.sh` failed once on the first run immediately after `npm install` ("expected relative-before-alias import order to be flagged") and passed on every run since, in isolation and in six full-suite runs. The case reproduces correctly when run directly. Cause not found.
+**Open, unreproduced:**
+- `enforce/tests/eslint.test.sh` failed once on the first run after a cold install and has passed every run since. The cold-`node_modules` hypothesis was tested directly (delete, reinstall, run immediately, twice) and eliminated. The one condition not reproduced is that the original install was network-bound at 5 minutes against 4 seconds warm, which points at contention during that install. Not worth more time without a second sighting.
 
 ## 5. Next-session tasks, with files to read
 
-- **Confirm the harness actually loads.** Read `settings.json` (Stop chain), run `/hooks` and `/context`. The verification gate was proven by feeding `hooks/verification-gate.sh` a real Stop payload against a deliberately broken fixture; it returned `{"decision":"block"}` with the suite output and was silent on green. It has never been observed firing from a live turn.
-- **First real adoption of the lexicon.** Read `enforce/README.md` ("The naming lexicon"), then pick one project, write its `glossary`, and run the ratchet. Expect a large first baseline; that is the design.
-- **Watch for the reverse drift.** `enforce/lexicon.json` and the R-316 Spec bullet in `rulebook/reference.md` are one rule in two forms. They were already out of sync once this session: the first draft of the registry banned `fetch`, `drop`, and `remove`, which R-316 explicitly approves. Nothing mechanically enforces their agreement.
-- **Do not mechanize R-318 or R-322.** The reasoning is recorded in each rule's Spec in `rulebook/reference.md`. A line-count proxy enforces a different rule than the one written.
+- **First real adoption of the lexicon.** Read `enforce/README.md` ("The naming lexicon"), pick one project, write its `glossary`, run the ratchet.
+- **Do not mechanize R-318 or R-322.** The reasoning is recorded in each rule's Spec in `rulebook/reference.md`. A line-count proxy enforces a different rule than the one written, under that rule's id.
+- **Do not hand-edit the R-316 verb bullets** in `rulebook/reference.md`. They are generated; change `enforce/lexicon.json` and run `node enforce/renderLexiconSpec.mjs --write`. The suite fails if they diverge.
+- **When adding an enforcer,** R-516 still binds: a `manifest.json` entry naming tier and enforcer, plus a fixture under `enforce/tests/`. The manifest closure test will say so if you forget.
