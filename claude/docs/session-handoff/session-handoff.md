@@ -2,8 +2,9 @@
 
 ## 1. Last commit
 
-- `04dd4f5` feat(plugins): enable i-have-adhd always-on across every session (#5)
-- Merged from this session's work: #2 (`b1a1241`) and #3 (`7b55cdf`). Landed separately afterwards, not from this session: #4 (`bd604c7`, install-git-hooks now upgrades a superseded pre-push in place instead of refusing, with a fixture) and #5 (`04dd4f5`).
+- `0b25e96` chore(repo): ignore per-session uploads (#7)
+- Merged from this session's work: #2 (`b1a1241`), #3 (`7b55cdf`) and #6 (`e5b9da3`). Landed separately: #4 (`bd604c7`, install-git-hooks upgrades a superseded pre-push in place instead of refusing, with a fixture), #5 (`04dd4f5`) and #7 (`0b25e96`).
+- In `nullvoidundefined/doppelscript`: #359 (`88cee3c`), #361 and #363 (`f95414f`).
 
 ## 2. Production state
 
@@ -12,6 +13,8 @@
 - Also shipped, in `nullvoidundefined/doppelscript`: `88cee3c` cuts GitHub Actions spend (see section 4).
 
 ## 3. What shipped
+
+**doppelscript `/feature-cleanup` step 6, fixed (#363, merged).** The step could never remove a branch, for four independent reasons rather than the one first recorded: it gated on `git branch --merged`, which a squash merge never satisfies; it then deleted with `git branch -d`, which refuses for the same ancestry reason; the whole step sat inside "if a worktree is found", so branches without a worktree were never considered at all; and it deleted only the local branch. It now confirms merge state from the PR, refuses to delete what it cannot confirm, and removes the remote branch too. It keys on `mergedAt` rather than `merged`, because the PR list endpoint populates the timestamp and leaves the boolean false, so a check written against `.merged` reads correctly in review and then silently never fires.
 
 **Turn-level test gate (R-509).** `hooks/verification-gate.sh`, a `Stop` hook. Discovers the project's own checks (`.claude/verify.sh`, then this repo's two suites, then `package.json` test/typecheck, pytest/mypy, go test/vet, rspec). Runs only when the tree is dirty or the branch carries unpushed commits. Silent on success; blocks with the failing command's real output. Fails open when nothing is discoverable. `CLAUDE_SKIP_VERIFY=1` bypasses. Closes the hole where four push gates linted and nothing ran tests.
 
@@ -37,7 +40,8 @@
 
 **Outstanding, user-side:**
 - Name the `fixtures` job as a required status check under branch protection (Settings > Branches). Without it the ratchet is advisory, since a local hook is `--no-verify`-able. Green on six commits, so it will not block.
-- doppelscript: `/feature-cleanup` was run for `88cee3c`; the handoff addendum is PR #361. It found that step 6 of that skill is inert in a squash-merge repo (it gates branch removal on `git branch --merged`, which never reports a squash-merged branch), and that `claude/actions-cost-reduction` could not be deleted because this session's git proxy returns 403 on delete-ref. The branch is still on the remote and is safe to delete from the UI.
+- Delete the merged branches still on both remotes, and turn on Settings > General > Automatically delete head branches so it stops recurring. This session's git proxy returns 403 on delete-ref and rejects force-push, so it cannot do either.
+- doppelscript issue #364: `e2e/navigation.spec.ts` flakes on `main` through `waitUntil: 'networkidle'`. The fix is one line and is written out in the issue; it is application test code, so it was not folded into #363.
 
 **Adoption, per project (~15 min each):**
 - Add the `.enforce.json` keys wanted (`naming` with a `glossary`, `fileHeaders`, `importZones`). Omitting `glossary` skips head-noun checking rather than passing it.
