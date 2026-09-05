@@ -10,7 +10,7 @@ type: feedback
 
 **How to apply (user side):**
 
-- Set `"model": "sonnet"` in `~/.claude/settings.json` so every new session starts on Sonnet unless overridden (the alias tracks the current Sonnet; `opusplan` is the documented alternative that plans on Opus and executes on Sonnet). As of 2026-09-04 `settings.json` says `opus[1m]`; that contradiction is the maintainer's call and is filed in the 2026-09-04 config audit as P1-3.
+- `~/.claude/settings.json` sets `"model": "opusplan"` (decided 2026-09-05 after the config audit): Opus while in plan mode, Sonnet for execution, so the expensive model runs only where design happens. `hooks/model-switch-guard.sh` asks before any manual switch up the price ladder. The contradiction the audit filed as P1-3 is closed.
 - When a session genuinely needs Opus (audits, complex refactors, security reviews, ambiguous architecture, multi-step debugging), type `/model opus` consciously to step up. The friction is the feature: Opus becomes a deliberate choice, not a default.
 
 **How to apply (Claude side):**

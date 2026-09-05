@@ -74,9 +74,10 @@
       "Bash(fly deploy*)",
       "Bash(flyctl deploy*)",
       "Bash(gh pr create*)"
-    ]
+    ],
+    "defaultMode": "auto"
   },
-  "model": "opus[1m]",
+  "model": "opusplan",
   "hooks": {
     "PreToolUse": [
       {
@@ -362,8 +363,8 @@
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true,
+    "code-review@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
     "posthog@claude-plugins-official": false,
     "stripe@claude-plugins-official": false,

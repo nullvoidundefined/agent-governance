@@ -1,35 +1,32 @@
-# Session Handoff: 2026-09-04 Configuration Audit and Remediation
+# Session Handoff: 2026-09-05 Audit Remediation, Observability Rules, Decisions
 
 ## 1. Last commit
 
-- `c2dd7c5` on `main` (#8). This session's work is on `claude/config-audit-8m7s5k`, pushed, no PR opened (none asked for): the audit report, then one commit per finding.
+- `2aaccbd` feat(hooks): observability reminder, model-switch guard, judge asks, deploy ask rules (#12), on `main`. Before it: #11 (`a8b503c`, observability rules R-341 to R-346) and #10 (`e744391`, the configuration audit and its remediation).
+- This branch carries the four decisions Ian made on 2026-09-05 (settings.json, the Sonnet-default memory, ISSUES.md) and this handoff.
 
 ## 2. Production state
 
-- Not yet live: nothing on this branch has been merged or pulled to the maintainer's `~/.claude`. Both suites green on the branch tip in the remote container (39 enforcement fixtures, 12 hook fixtures) with the checkout symlinked as `~/.claude`; `hook-integrity-check.sh` silent; `npm audit` clean after the ESLint 10 move.
-- The container cannot see the real runtime (plugins, `projects/`, plan, CLI version). The `if` hook field needs CLI 2.1.163 or later; on an older CLI the field is ignored and the hooks simply run as before.
+- `main` is green in CI (`fixtures` required) through #12. Nothing on `main` is live in Ian's `~/.claude` until pulled; after the pull: `npm ci --prefix enforce` (lockfile changed twice), delete `~/.claude/.post-compact-pending` if present, and check `claude --version` (the `if`-gated hooks need 2.1.163 or later, the model-switch guard 2.1.251 or later; older builds ignore both).
+- Both suites: 42 enforcement fixtures, 12 hook fixtures. `hook-integrity-check.sh` silent. `npm audit` clean.
 
 ## 3. What shipped
 
-**`docs/audits/2026-09-04-config.md`**, the audit against the docs, the changelog 2.1.160 to 2.1.261, the registries, the Actions runtimes, the plugin manifest, and community reports; one consequence of P1-2 was withdrawn the same day (an empty SessionStart matcher already fires on `compact`) and the report says so inline.
-
-**Fixed, one commit each:** SessionEnd `timeout: 60` (P1-1); compaction re-injection moved to `SessionStart` matcher `compact` with a global-only rule list, sentinel pair deleted (P1-2); `Read` deny rules for the R-102 paths (P1-4); allow list collapsed to `Bash`, strict variant restated (P2-2); CI on `checkout@v7`, `setup-node@v7`, ruff 0.16.6, read-only token, Dependabot (P2-3); ESLint 10 plus `eslint-plugin-import-x` (P2-4); `if: "Bash(git *)"` on the eight push-time and advisory hooks (P2-5); latency fixture reads `settings.json` (P2-7); R-001 and INDEX.md describe the injected reads (P2-8); verification gate memoizes the last green tree (P3-2); new `settings-change-guard.sh` on `ConfigChange` with manifest row and fixture (P3-3); three wording fixes (P3-4, P3-5, P3-6); demo marketplace removed (half of P2-9).
-
-**Root-caused on the way:** the eslint fixture "flake" was `lint.mjs` reading the repo root from cwd; fixed with a cwd-independent resolver and two fixture cases.
+- **Audit and remediation (#10):** `docs/audits/2026-09-04-config.md`; SessionEnd timeout; compaction re-injection via `SessionStart` matcher `compact`; `Read` deny rules for R-102 paths; one-entry allow list; `if`-gated git hooks; CI on the node24 action majors with Dependabot; ESLint 10 with `eslint-plugin-import-x`; `lint.mjs` resolves the repo root from the file (the fixture "flake" root cause); latency fixture reads `settings.json`; memoized verification gate; `settings-change-guard.sh` on `ConfigChange`; R-001 and INDEX rewrite.
+- **Observability (#11):** R-341 to R-346 with Spec blocks, backend and stack conventions, three custom ESLint rules plus `no-console` and `no-empty` scoped to server trees, ruff `T201`/`E722`/`S110`/`BLE001`, golangci `errcheck`/`errorlint` on a v2-schema config (the v1 file was silently rejected by v2 binaries, so the Go gate had enforced nothing), RuboCop `Lint/SuppressedException`, lexicon verbs `log`, `report`, `track`.
+- **Hooks and human-in-the-loop (#12):** `observability-reminder.sh` (advisory, R-341/R-345/R-346), `model-switch-guard.sh` (PreModelSwitch, asks on a switch up the price ladder), the judge returns `ask`, deploy and `gh pr create` ask rules.
+- **Decisions (this branch):** `model: opusplan`, `permissions.defaultMode: auto`, `code-review` and `code-simplifier` plugins off.
 
 ## 4. Pending
 
-**Maintainer decisions (each is one line in a file):** P1-3 model default (`sonnet`, `opusplan`, or Opus, recorded in whichever artifact loses); P2-1 `permissions.defaultMode`; P2-9 keep or drop `code-review` and `code-simplifier` after `/skill-doctor`; P2-6 store the judge key or prototype the `agent` hook.
-
-**Local checks the container could not run:** `/context` after a `/compact` in a throwaway session (confirms the compact re-injection and whether `~/.claude/CLAUDE.md` itself is re-read); `/doctor` for `skipWorkflowUsageWarning`; `/status` for the start mode and `typescript-lsp`; `claude --version` for the `if` field.
-
-**After merge:** pull to `~/.claude`, `npm ci` in `enforce/` (the lockfile changed), `hooks/install-git-hooks.sh` is unchanged. Delete `~/.claude/.post-compact-pending` if present; nothing writes it now. Watch the first CI run on `main` for the v7 actions and ruff 0.16.6.
-
-**Still open from earlier sessions:** branch protection naming `fixtures`; deleting merged remote branches.
+- **Ian, outside any session:** `security add-generic-password -a "$USER" -s claude-judge-api-key -w` to activate the judge; the session-start warning stops once the key resolves.
+- **Ian, first real session after the pull:** `/context` after a `/compact` in a throwaway session (confirms the compact re-injection); `/status` to confirm auto mode and that `typescript-lsp` registers; `/doctor` for `skipWorkflowUsageWarning` (not in the settings reference).
+- **Still open from earlier:** deleting stale merged remote branches (auto-delete is now on); the deny-tier git guards still spawn on every Bash call (ISSUES.md, P2-5 residue).
+- **Not implemented by choice:** a `PermissionRequest` auto-decider and the sandbox; both encode policy only Ian can set.
 
 ## 5. Next-session tasks, with files to read
 
-- **Confirm the compaction path live** (`hooks/post-compact-rules.sh`, `settings.json` SessionStart groups): `/compact`, then `/context`; if `~/.claude/CLAUDE.md` is re-read on its own, the re-injected list can shrink further.
-- **Decide the deny-tier `if` question** (ISSUES.md, P2-5 residue) before touching `git-workflow-guard.sh` and its four siblings.
-- **Do not hand-edit the R-316 verb bullets** in `rulebook/reference.md`; they are generated from `enforce/lexicon.json`.
-- **When adding an enforcer,** R-516 still binds: manifest entry plus fixture. `settings-change-guard.sh` will now refuse a settings save that drops one.
+- **First backend repo after the pull:** run `node ~/.claude/enforce/ratchet.mjs --update` and commit `.enforce-baseline.json`; expect the count to grow (existing `console.log` and empty-catch debt is grandfathered). Read `enforce/README.md` ("The observability rules").
+- **Watch the first `/model opus` switch** in a session for the R-903 prompt; if it fires on a switch that should be silent, `hooks/model-switch-guard.sh` ranks by substring and the fix is one line.
+- **Do not hand-edit the R-316 verb bullets** in `rulebook/reference.md`; regenerate from `enforce/lexicon.json`.
+- **When adding an enforcer,** R-516 binds: manifest row plus fixture; `settings-change-guard.sh` refuses a settings save that drops one.
