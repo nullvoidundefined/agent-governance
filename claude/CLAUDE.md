@@ -50,12 +50,12 @@ R-330: Settle the domain vocabulary during spec writing; the spec carries a `## 
 
 ### Observability (R-34x)
 
-R-341: Give every inbound request one request ID: honor an inbound `X-Request-Id`, generate one otherwise, echo it on the response, bind it to the request context so every log line, error report, and outbound call for that request carries it. [manual]
+R-341: Give every inbound request one request ID: honor an inbound `X-Request-Id`, generate one otherwise, echo it on the response, bind it to the request context so every log line, error report, and outbound call for that request carries it. [hook:observability-reminder]
 R-342: Log through the one structured logger in server code, never `console`; context object first, message second, values in the object and never interpolated into the message; errors as `{ err }`; no secrets or PII (R-104). [eslint:no-console, eslint:structured-log-call]
 R-343: Emit analytics events only through the single `clients/analytics` module, named from the checked-in event registry (`analytics/events.ts`) as `object_action`, never a string literal at the call site; one property bag, no PII. [eslint:analytics-event-name]
 R-344: Never swallow an error: every `catch` binds the error and logs it with `{ err }` and the request ID, reports it when it is unexpected, then returns a response or rethrows with cause; no empty or unused catch binding. [eslint:no-empty, eslint:no-swallowed-catch]
-R-345: Expose `GET /health` (liveness, no dependencies) and `GET /health/ready` (dependency checks, 503 when degraded) on every service and worker, registered before application routes. [manual]
-R-346: Instrument every outbound call in `clients/`: log provider, operation, duration, and outcome; forward the request ID; set a timeout. [manual]
+R-345: Expose `GET /health` (liveness, no dependencies) and `GET /health/ready` (dependency checks, 503 when degraded) on every service and worker, registered before application routes. [hook:observability-reminder]
+R-346: Instrument every outbound call in `clients/`: log provider, operation, duration, and outcome; forward the request ID; set a timeout. [hook:observability-reminder]
 
 ## Testing and quality (R-4xx)
 

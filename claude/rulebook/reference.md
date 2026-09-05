@@ -338,7 +338,7 @@ R-341: Give every inbound request one request ID and carry it everywhere that re
   - Echo the ID on the response as `X-Request-Id`, including error responses.
   - Bind it to the request context (`pino-http` child logger plus `AsyncLocalStorage` for services and repositories) so no call site passes it by hand.
   - Every log line, every error report, and every outbound call from that request carries it (R-342, R-344, R-346).
-  Enforcement: manual (whether a middleware exists and what it binds is a project-shape question; `CLAUDE-BACKEND.md` carries the pattern)
+  Enforcement: hook:observability-reminder (advisory; reminds when an entry file registers middleware and nothing mints or honors `X-Request-Id`); whether the ID reaches every log line is manual, and `CLAUDE-BACKEND.md` carries the pattern
 
 R-342: Log through the one structured logger in server code, never `console`; context first, message second, values in the object.
   Scope: server trees (`apps/server`, `packages/worker`, `server/src`, and any `src/handlers`, `src/repositories`, `src/middleware`, `src/workers`); tests, `bin/`, and `scripts/` exempt. Python: structlog or stdlib JSON logging; Go: `slog`; Ruby: lograge.
@@ -371,7 +371,7 @@ R-345: Expose liveness and readiness probes on every service and worker.
   - `GET /health` returns 200 `{ status: "ok" }` with no dependency call; it is the platform healthcheck path.
   - `GET /health/ready` checks each dependency the service cannot run without (database, cache, queue) and returns 503 `{ status: "degraded", <dependency>: "disconnected" }` when one fails; it is the post-deploy smoke target.
   - Both register before application routes and before the not-found handler; workers run a minimal HTTP server for the same two paths.
-  Enforcement: manual (`CLOUD-DEPLOYMENT.md` names the healthcheck path; `CLAUDE-BACKEND.md` carries the code)
+  Enforcement: hook:observability-reminder (advisory; reminds when an entry file registers routes with no `/health` or no `/health/ready`); `CLOUD-DEPLOYMENT.md` names the healthcheck path and `CLAUDE-BACKEND.md` carries the code
 
 R-346: Instrument every outbound call.
   Scope: every function in a `clients/` module that leaves the process (HTTP, SDK, queue, third-party database).
@@ -380,7 +380,7 @@ R-346: Instrument every outbound call.
   - Forward the request ID as `X-Request-Id` (or the provider's correlation header) on outbound HTTP.
   - Set an explicit timeout; a client with no timeout is a defect.
   - Wrap the provider once (`withClientTelemetry(provider, operation, fn)`) so call sites stay thin (R-307).
-  Enforcement: manual
+  Enforcement: hook:observability-reminder (advisory; reminds when a `clients/` module makes an outbound call with no timeout); duration and outcome logging is manual
 
 ## Testing and quality (R-4xx)
 

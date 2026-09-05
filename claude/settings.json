@@ -65,7 +65,15 @@
       "Bash(find * -exec rm*)",
       "Bash(chmod -R 777*)",
       "Bash(sudo *)",
-      "Bash(rm -rf *)"
+      "Bash(rm -rf *)",
+      "Bash(railway up*)",
+      "Bash(railway redeploy*)",
+      "Bash(vercel --prod*)",
+      "Bash(vercel deploy --prod*)",
+      "Bash(wrangler deploy*)",
+      "Bash(fly deploy*)",
+      "Bash(flyctl deploy*)",
+      "Bash(gh pr create*)"
     ]
   },
   "model": "opus[1m]",
@@ -231,6 +239,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/clean-code-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/observability-reminder.sh"
           }
         ]
       },
@@ -331,6 +343,16 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/settings-change-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PreModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/model-switch-guard.sh"
           }
         ]
       }

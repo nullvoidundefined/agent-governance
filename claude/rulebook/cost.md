@@ -19,7 +19,7 @@ R-903: Route work to the cheapest capable model.
   | Opus | Complex refactors, security-sensitive logic, ambiguous design, audits, multi-step planning |
   | Sonnet | Targeted features, well-scoped refactors, normal feature work |
   | Haiku | File moves, doc edits, single-line config, formatting, simple lookups |
-  Enforcement: manual
+  Enforcement: hook:model-switch-guard (PreModelSwitch; asks the user to confirm any switch up the price ladder, silent on lateral and downward switches); the routing choice itself is manual
 
 R-904: Verify the signal condition (R-801) before running any audit.
   Enforcement: hook:audit-signal-check (advisory; surfaces the commit-count signal at push time); manual for verification before dispatch

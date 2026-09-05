@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # llm-rule-judge.sh: on git push, ask a fast model to judge the outgoing diff
 # against the semantic-tier rules in the manifest (those a linter cannot express).
-# Deny the push ONLY on a violation whose rule has severity "error" in the manifest
-# AND confidence >= threshold. Warn-severity rule violations are printed to stderr
+# ASK (2026-09-05, human-in-the-loop) on a violation whose rule has severity
+# "error" in the manifest AND confidence >= threshold: the human adjudicates a
+# naming finding at push time instead of the model losing the push to a judge. Warn-severity rule violations are printed to stderr
 # but do not block the push. Fails OPEN (allows the push, logs to stderr) if the
 # key is unset or the judge errors / returns unparseable output: the deterministic
 # gates remain the hard guarantee, and a flaky model must not block legitimate work.
@@ -119,10 +120,10 @@ if [ "${COUNT:-0}" -gt 0 ]; then
   source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   while IFS= read -r fired_rule; do
-    [ -n "$fired_rule" ] && log_rule_fire "$fired_rule" "llm-rule-judge" "deny"
+    [ -n "$fired_rule" ] && log_rule_fire "$fired_rule" "llm-rule-judge" "ask"
   done < <(printf '%s' "$DENY_HITS" | jq -r '.[].rule' 2>/dev/null || true)
   REASON=$(printf '%s' "$DENY_HITS" | jq -r '.[] | "\(.rule) [\(.file)]: \(.why)"')
-  jq -n --arg r "Rule-judge blocked the push (confidence >= $THRESH):
-$REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  jq -n --arg r "Rule-judge findings on the outgoing diff (confidence >= $THRESH); approve the push only if each is a false positive:
+$REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
 fi
 exit 0
