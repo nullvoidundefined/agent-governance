@@ -7,7 +7,7 @@
 ## 2. Production state
 
 - `main` is green in CI (`fixtures` required) through #12. Nothing on `main` is live in Ian's `~/.claude` until pulled; after the pull: `npm ci --prefix enforce` (lockfile changed twice), delete `~/.claude/.post-compact-pending` if present, and check `claude --version` (the `if`-gated hooks need 2.1.163 or later, the model-switch guard 2.1.251 or later; older builds ignore both).
-- Both suites: 42 enforcement fixtures, 12 hook fixtures. `hook-integrity-check.sh` silent. `npm audit` clean.
+- Both suites: 43 enforcement fixtures, 12 hook fixtures. `hook-integrity-check.sh` silent. `npm audit` clean.
 
 ## 3. What shipped
 
@@ -15,6 +15,7 @@
 - **Observability (#11):** R-341 to R-346 with Spec blocks, backend and stack conventions, three custom ESLint rules plus `no-console` and `no-empty` scoped to server trees, ruff `T201`/`E722`/`S110`/`BLE001`, golangci `errcheck`/`errorlint` on a v2-schema config (the v1 file was silently rejected by v2 binaries, so the Go gate had enforced nothing), RuboCop `Lint/SuppressedException`, lexicon verbs `log`, `report`, `track`.
 - **Hooks and human-in-the-loop (#12):** `observability-reminder.sh` (advisory, R-341/R-345/R-346), `model-switch-guard.sh` (PreModelSwitch, asks on a switch up the price ladder), the judge returns `ask`, deploy and `gh pr create` ask rules.
 - **Decisions (this branch):** `model: opusplan`, `permissions.defaultMode: auto`, `code-review` and `code-simplifier` plugins off.
+- **Dockerization (branch `claude/dockerization-new-projects-cg12zd`):** R-351 under a new R-35x Deployment subsection: every deployable artifact Dockerized from its first commit (one Dockerfile per artifact, `.dockerignore`, compose, image as the deploy unit; libraries exempt). `hooks/dockerfile-reminder.sh` (advisory, PostToolUse Write|Edit) fires when an artifact marker lands with no Dockerfile up to the repo root, when a Dockerfile lacks a `.dockerignore`, and when a written Dockerfile runs as root or pulls an unpinned image. Containers sections in the backend, Python, Go, Ruby, Next, and Vite convention files; design doc `docs/superpowers/specs/2026-09-05-dockerization-rule-design.md`.
 
 ## 4. Pending
 

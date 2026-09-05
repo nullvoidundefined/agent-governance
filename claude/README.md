@@ -33,7 +33,7 @@ One enabled plugin is **third-party**, from a separate marketplace declared in `
 
 - `i-have-adhd@i-have-adhd` ([ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd), MIT): an output-style skill that shapes responses for an ADHD reader (action first, numbered steps, state restated each turn, no preamble or recap). It sets `disable-model-invocation: true`, so nothing applies until `/i-have-adhd` is invoked. Its one `SessionStart` hook reads a flag file and `SKILL.md`, writes to stdout, and exits 0 on any failure; it stays inert unless `~/.claude/.i-have-adhd-always` exists, which is not created by installing. Being third-party, it sits outside `enforce/hook-hashes.txt`, which covers this repo's own `hooks/` and `enforce/` only, not `plugins/`.
 
-Everything **inside this tracked repo** is the maintainer's: the 40 hook scripts under `hooks/` (plus `install-git-hooks.sh` and the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, four custom ESLint rules, the full-tree ratchet, and 38 fixture tests), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 13 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 31 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 40 hook scripts under `hooks/` (plus `install-git-hooks.sh` and the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, four custom ESLint rules, the full-tree ratchet, and 43 fixture tests), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 13 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 31 global-memory files, the R-001..R-906 rule formalization in `CLAUDE.md`, the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `audits/<role>.md`. The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
@@ -48,7 +48,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 3. Rules | mixed | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files. The decidable half is data: the R-316/R-317 verb lexicon lives in `enforce/lexicon.json`, and R-319/R-320/R-325 are custom ESLint rules under `enforce/rules/`. The undecidable half (R-318, R-322) is labelled `[manual]` rather than pretending otherwise |
 | 4. Audits | prose | Confidence theater, gaps invisible to the original author | `audits/` standing (Engineering, Security, Criticism) + `audits/on-request/` |
 | 5. Tests | mechanical | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke), run at turn end by `hooks/verification-gate.sh` (R-509) |
-| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (43 scripts across 8 events) |
+| 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (44 scripts across 8 events) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
 | 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
@@ -106,7 +106,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── install-git-hooks.sh         # Installs pre-push.sample into .git/hooks.
 │   ├── pre-push.sample              # Tracked pre-push: a red suite aborts the push.
 │   ├── tests/                       # 12 fixture tests for the lifecycle hooks.
-│   └── ...                          # 33 more gates; each self-documenting in its header.
+│   └── ...                          # 34 more gates; each self-documenting in its header.
 ├── enforce/                         # The mechanical enforcement surface.
 │   ├── manifest.json                # Rule id -> tier + enforcer. Single source of truth.
 │   ├── lexicon.json                 # Naming registry backing R-316 and half of R-317.
@@ -117,7 +117,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
 │   ├── rules/                       # 7 custom ESLint rules (R-319, R-316/317, R-320, R-325, R-342, R-343, R-344).
-│   └── tests/                       # 38 fixture tests; run-tests.sh runs them all.
+│   └── tests/                       # 43 fixture tests; run-tests.sh runs them all.
 ├── .github/workflows/enforce.yml    # CI: both fixture suites + the ratchet.
 ├── rules/                           # Auto-load zone: session-types.md + path-scoped
 │   │                                # symlinks to the stack CLAUDE-*.md files.

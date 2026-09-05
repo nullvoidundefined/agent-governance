@@ -11,7 +11,7 @@ Classify the session from the user's first message. Ambiguous or mixed: load the
 | `planning` | Designing feature, writing spec or plan | core + cost |
 | `multi-agent` | Dispatching subagents, parallel worktrees, multi-repo | core + agents + cost |
 | `audit` | Running engineering, security, criticism, or other audit | core + audits |
-| `deploy` | Railway/Vercel deploys, env config, infrastructure | core only |
+| `deploy` | Railway deploys, env config, infrastructure | core only |
 
 ## Stack detection
 

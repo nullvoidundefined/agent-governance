@@ -281,7 +281,43 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 ```
 
-Workers have their own `Dockerfile.worker` at the monorepo root. See `CLOUD-DEPLOYMENT.md` for the per-service Dockerfile strategy.
+Workers have their own `Dockerfile.worker` at the monorepo root. See `CLOUD-DEPLOYMENT.md` for the per-service Dockerfile strategy and Containers below for the image contract.
+
+---
+
+## Containers (R-351)
+
+Every deployable artifact (API, worker, cron job) ships with its image definition in the commit that creates it. The image is the deploy unit on every platform; Nixpacks and buildpacks are never the deploy path. Libraries under `packages/*` carry no Dockerfile.
+
+```dockerfile
+# Dockerfile (API). Build from the monorepo root so workspace packages resolve.
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/server/package.json apps/server/
+COPY packages/ packages/
+RUN pnpm install --frozen-lockfile
+COPY apps/server/ apps/server/
+RUN pnpm --filter server build && pnpm --filter server deploy --prod /out
+
+FROM node:22-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /out ./
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:3000/health || exit 1
+CMD ["node", "dist/index.js"]
+```
+
+- **Multi-stage.** The builder installs and compiles; the runtime stage copies build output and production dependencies only. Base images are pinned to a version tag, never `latest` and never untagged.
+- **Non-root.** `USER node` after the runtime `COPY` lines. The worker image is the same file with `CMD ["node", "dist/workers.js"]` as `Dockerfile.worker`; a cron job overrides `CMD` and declares no `HEALTHCHECK` because it exits.
+- **`HEALTHCHECK`** targets `/health` (R-345); the worker's health server answers the same path.
+- **`.dockerignore`** beside every Dockerfile: `.git`, `node_modules`, `dist`, `.env*`, `**/__tests__`, `**/*.test.ts`, `coverage`. No secret enters the image; configuration is environment variables at run time (R-102, R-104), never a build argument.
+- **`docker-compose.yml`** at the repo root runs the API, the worker, Postgres, and Redis for local development and integration tests; the `server` service builds from `./Dockerfile` and reads `.env.example` values, never a real `.env` (R-103).
+- **CI** builds every image on every pull request as a required check and runs the container's `HEALTHCHECK` target once before passing; the same image goes to the platform (`railway.toml` `dockerfilePath`, or a registry push).
+- The build-smoke script from `CLOUD-DEPLOYMENT.md` (runtime assets under `dist/`) runs inside the builder stage, so a missing asset fails the image build rather than the first request.
 
 ---
 

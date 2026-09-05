@@ -89,3 +89,7 @@ src/
 | Pathless layout | `_name/route.tsx` | `routes/_protected/route.tsx` |
 | Entry | `main.tsx` | `src/main.tsx` |
 | Global styles | `globals.scss` | `styles/globals.scss` |
+
+## Containers (R-351)
+
+A Vite app builds to static files and is still a deployable artifact: it ships its `Dockerfile` in the commit that creates it. The multi-stage image builds on `node:22-alpine` (`pnpm build`) and serves `dist/` from `nginx:1.27-alpine` with a checked-in `nginx.conf` that falls back to `index.html` for client-side routes and answers `/health` with 200 for the `HEALTHCHECK`; the runtime stage runs as the `nginx` user on an unprivileged port. `.dockerignore` excludes `.git`, `node_modules`, `dist`, `.env*`, and the test trees. `VITE_*` values are build arguments by nature and never carry a secret (Environment Variables above).

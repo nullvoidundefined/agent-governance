@@ -57,6 +57,10 @@ R-344: Never swallow an error: every `catch` binds the error and logs it with `{
 R-345: Expose `GET /health` (liveness, no dependencies) and `GET /health/ready` (dependency checks, 503 when degraded) on every service and worker, registered before application routes. [hook:observability-reminder]
 R-346: Instrument every outbound call in `clients/`: log provider, operation, duration, and outcome; forward the request ID; set a timeout. [hook:observability-reminder]
 
+### Deployment (R-35x)
+
+R-351: Dockerize every deployable artifact from its first commit: one `Dockerfile` per artifact (API, worker, cron job, frontend server, static site), a `.dockerignore`, and a `docker-compose.yml` that runs it with its dependencies; the image is the deploy unit on every platform; libraries and shared packages exempt. [hook:dockerfile-reminder]
+
 ## Testing and quality (R-4xx)
 
 R-401: Write tests that fail when the implementation is wrong: behavior assertions over mock-call counts; rewrite the nine anti-patterns (reference.md) on sight; never skip or suppress a failing test: fix it or delete it. [hook:content-gate]
@@ -104,6 +108,6 @@ Read on demand:
 | `~/.claude/rulebook/reference.md` | Full rule Specs: before structural/naming decisions, test design, or when a hook cites a rule |
 | `~/.claude/rulebook/agents.md`, `audits.md`, `cost.md` | Tier 2 per session type (R-001) |
 | `/structure-conventions` (skill) | Before creating, moving, or renaming a directory, module, migration, or test tree (R-304, R-305, R-309..R-314, R-319, R-321, R-323, R-324, R-326..R-329, R-407) |
-| `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Vercel, Cloudflare, environment variables |
+| `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Cloudflare, environment variables |
 | `/known-issues` (skill) | Before production deploy or debugging prior-incident-like failure |
 | `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |

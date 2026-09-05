@@ -87,6 +87,10 @@ Two hooks honour the list:
 
 Three custom rules under `rules/` plus `no-console` and `no-empty`, active only in the server trees (`apps/server`, `packages/worker`, `server/src`, and any `src/handlers`, `src/repositories`, `src/middleware`, `src/workers`; tests, `bin/`, and `scripts/` exempt). `structured-log-call` reports an interpolated log message and a context object placed after the message (Pino drops it). `analytics-event-name` reports a string or template literal as the event name at `.track(`, `.capture(`, or `trackEvent(`. `no-swallowed-catch` reports an unbound `catch` and a bound error that is never referenced. What each rule does not decide is stated in its header and in the R-34x Spec blocks of `rulebook/reference.md`; R-341, R-345, and R-346 stay manual. Fixture: `tests/observability-rules.test.sh`.
 
+## The Dockerization reminder (R-351)
+
+`hooks/dockerfile-reminder.sh` runs after every Write or Edit. When the written file marks a deployable artifact (a server or worker entry file, a `package.json` with a `start` script, a Next or Vite config, or a platform deploy config such as `railway.toml`) it walks from that file's directory to the repo root looking for a `Dockerfile`, `Dockerfile.*`, `*.Dockerfile`, or `Containerfile`, and reminds when none exists or when the one it finds has no `.dockerignore` beside it. When the written file is itself a Dockerfile it reminds on a missing `USER` instruction and on any `FROM` that is untagged or `:latest` (stage aliases and digest pins pass). Advisory only; the compose file, the CI image build, and the platform wiring stay manual. Fixture: `tests/dockerfile-reminder.test.sh`.
+
 ## The naming lexicon (R-316, R-317)
 
 "Is this a good name" is undecidable. "Is this verb in the lexicon" is set membership. `lexicon.json` is that set, so the check is a pure function of `(AST, config)` and gives the same verdict on every machine and every run.

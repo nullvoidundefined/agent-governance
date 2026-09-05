@@ -382,6 +382,20 @@ R-346: Instrument every outbound call.
   - Wrap the provider once (`withClientTelemetry(provider, operation, fn)`) so call sites stay thin (R-307).
   Enforcement: hook:observability-reminder (advisory; reminds when a `clients/` module makes an outbound call with no timeout); duration and outcome logging is manual
 
+### Deployment (R-35x)
+
+R-351: Dockerize every deployable artifact from its first commit.
+  Scope: every deployable artifact in every new project, whatever the stack. A deployable artifact is anything that runs or is served somewhere other than the developer's machine: an API service, a worker, a cron job, a frontend server (Next.js), a static site (Vite build behind nginx). Libraries and shared packages (`packages/*` consumed by an app, a published npm or PyPI package) are not deployable artifacts and carry no Dockerfile. An existing project that predates the rule adopts it at its next deploy-surface change, not by a retroactive sweep.
+  Spec:
+  - The commit that creates the artifact (its entry file, its start script, or its deploy config) also creates its `Dockerfile`; a deployable artifact never exists in the tree without its image definition.
+  - One `Dockerfile` per artifact, named for the artifact when a repo carries more than one (`Dockerfile` for the API, `Dockerfile.worker` for the worker, per `CLOUD-DEPLOYMENT.md`); a monorepo builds each image from the repo root so workspace packages resolve.
+  - Multi-stage build: a build stage installs dependencies and compiles; the runtime stage copies only the build output and production dependencies. The runtime stage pins its base image to a version tag (`node:22-alpine`, `python:3.13-slim`, `golang:1.23` for the builder and `gcr.io/distroless/static` for the runtime), never `latest` and never an untagged image.
+  - The runtime stage runs as a non-root user (`USER node`, `USER app`) and declares `HEALTHCHECK` against `GET /health` (R-345) for every long-lived service; cron jobs, which exit, declare none.
+  - `.dockerignore` sits next to the Dockerfile and excludes `.git`, `node_modules`, `dist`, `.env*`, and test and fixture trees; no secret enters the image (R-102, R-104); configuration arrives through environment variables at run time, never `COPY`-ed or baked in as a build argument.
+  - `docker-compose.yml` at the repo root runs every artifact with its dependencies (database, cache, queue) for local development and integration tests; the same image CI builds is the one the platform deploys (Railway `dockerfilePath`, Fly, Render, or a registry push), so a platform buildpack or Nixpacks is never the deploy path.
+  - CI builds every image on every pull request; the build is a required check, and a build-smoke step runs the image's `HEALTHCHECK` target before the check passes.
+  Enforcement: hook:dockerfile-reminder (advisory; reminds when an artifact entry file, a start script, or a deploy config is written and no `Dockerfile` exists between that file's directory and the repo root, when a Dockerfile has no `.dockerignore` beside it, and when a written Dockerfile runs as root or pulls an unpinned base image); the compose file, the CI build, and the platform wiring are manual, and `CLAUDE-BACKEND.md` under Containers carries the Dockerfile pattern
+
 ## Testing and quality (R-4xx)
 
 R-401: Write tests that fail when the implementation is wrong; prefer behavior assertions over mock-call counts.
@@ -538,6 +552,6 @@ Read on demand, not globally.
 | `~/.claude/CLAUDE-FRONTEND-VITE.md` | Vite + TanStack Router SPA structure, entry files, `VITE_*` env vars |
 | `~/.claude/CLAUDE-DATABASE.md` | Postgres migrations, SQL queries, schema |
 | `~/.claude/CLAUDE-STYLING.md` | SCSS modules, CSS custom properties |
-| `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Vercel, Cloudflare, environment variables |
+| `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Cloudflare, environment variables |
 | `/known-issues` (skill) | Before production deploy or debugging prior-incident-like failure |
 | `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |

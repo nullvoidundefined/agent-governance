@@ -153,7 +153,7 @@ The canonical work sequence:
 4. **Verify**: run tests, lint, format, build. Confirm every success claim with evidence.
 5. **Commit**: one logical change per commit, conventional subjects, paired tests where required.
 6. **Push**: trigger CI and deployment workflows.
-7. **Monitor**: poll all four deploy surfaces (GitHub Actions, Railway, Vercel, production health endpoints) at ~20-30 second intervals for up to 5 minutes. Never claim a deploy is done because `git push` returned zero.
+7. **Monitor**: poll all three deploy surfaces (GitHub Actions, Railway, production health endpoints) at ~20-30 second intervals for up to 5 minutes. Never claim a deploy is done because `git push` returned zero.
 
 Model routing is part of process, not afterthought:
 
@@ -299,6 +299,7 @@ Rationale and incident history removed from rule text during the 2026-07-03 rest
 - **R-322 (old R-227):** The clean-code reminder surfaces long functions as candidates only: a long orchestrator is fine, a long atomic function is not.
 - **R-330 (new 2026-07-07):** The distributed-system-demo coined `world` for the simulated system state, and it spread across 20 files in 5 directories before anyone asked whether `system` was clearer. `world` is a defensible metaphor but not a framework standard, so a domain-precise term would read better; settling the domain vocabulary at spec time makes that one decision cheap instead of a cross-cutting rename.
 - **R-341 to R-346 (new 2026-09-04):** `CLAUDE-BACKEND.md` had described Pino logging, `pino-http` request IDs, two health endpoints, and a global error handler for months without any of it being a rule; a `console.log` in a handler, a typo in an analytics event literal, and a `catch {}` around a provider call all passed every gate. The maintainer asked for enforced observability rules; the decidable parts became three ESLint rules plus `no-console` and `no-empty` scoped to the server trees, and the rest carry Spec blocks and `[manual]`.
+- **R-351 (new 2026-09-05):** `CLOUD-DEPLOYMENT.md` had carried a per-service Dockerfile strategy for months while nothing required a Dockerfile to exist; a new service could reach its first deploy on a platform buildpack, and a container arrived later as a retrofit, if at all. The maintainer asked that every new project be Dockerized from the start, one container per deployable artifact; the rule names the artifact set, the image contract (multi-stage, pinned base, non-root, healthcheck, `.dockerignore`, compose), and a write-time reminder that fires when an artifact marker lands with no Dockerfile on the path to the repo root.
 - **R-401 (old R-200):** Each listed anti-pattern was observed in real committed tests before being banned.
 - **R-516 (old R-518):** Rule enforcement is mechanical and manifest-driven, not recall-based; behavioral rules fail silently under pressure, so mechanizable rules migrate down to hooks.
 - **Ordering convention:** "Document order is by importance, not by ID" was the pre-2026-07-03 convention, abolished by the century-block renumber. Inline tombstones were the retirement record before Appendix B took that over.

@@ -71,6 +71,7 @@
     { "id": "R-341", "tier": "advisory", "enforcer": "hook:observability-reminder", "severity": "warn", "autofix": false, "note": "entry file registers middleware with no request-ID middleware" },
     { "id": "R-345", "tier": "advisory", "enforcer": "hook:observability-reminder", "severity": "warn", "autofix": false, "note": "entry file registers routes with no /health or /health/ready" },
     { "id": "R-346", "tier": "advisory", "enforcer": "hook:observability-reminder", "severity": "warn", "autofix": false, "note": "clients/ module makes an outbound call with no timeout" },
+    { "id": "R-351", "tier": "advisory", "enforcer": "hook:dockerfile-reminder", "severity": "warn", "autofix": false, "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM" },
     { "id": "R-903", "tier": "regex", "enforcer": "hook:model-switch-guard", "severity": "warn", "autofix": false, "note": "PreModelSwitch: asks before a switch up the price ladder" },
     { "id": "R-315", "tier": "llm-judge", "enforcer": "hook:llm-rule-judge", "severity": "error", "autofix": false },
     { "id": "R-316", "tier": "ast", "enforcer": "eslint:lexicon-naming", "severity": "error", "autofix": false, "note": "verb+noun against enforce/lexicon.json; active only in repos declaring a naming key in .enforce.json" },

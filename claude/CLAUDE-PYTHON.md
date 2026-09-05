@@ -164,6 +164,14 @@ Structured logging (structlog or stdlib `logging` with a JSON formatter). No sec
 - R-345: `/health` and `/health/ready` registered before application routes (`register_health(app)` above).
 - R-346: every client call logs provider, operation, `duration_ms`, and outcome, forwards the request ID, and passes an explicit `timeout=`.
 
+## Containers (R-351 in Python form)
+
+- Every deployable artifact (FastAPI or Django service, Celery or RQ worker, a scheduled job) ships its `Dockerfile` in the commit that creates it; a published package does not.
+- Multi-stage: a `python:3.13-slim` builder installs from the lockfile (`uv sync --frozen --no-dev` or `pip install --require-hashes`) into a virtualenv; the runtime stage, also `python:3.13-slim`, copies the virtualenv and the package, sets `PYTHONDONTWRITEBYTECODE=1` and `PYTHONUNBUFFERED=1`, and runs as a created `app` user (`USER app`).
+- `HEALTHCHECK` hits `/health` (R-345); `CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]` (or `gunicorn` for Django); workers and jobs override `CMD` and jobs declare no healthcheck.
+- `.dockerignore` beside the Dockerfile: `.git`, `.venv`, `__pycache__`, `.env*`, `tests/`; settings come from environment variables at run time (pydantic-settings), never a build argument.
+- `docker-compose.yml` runs the service, the worker, and Postgres for local development and integration tests.
+
 ## Testing (pytest) (R-401 in Python form)
 
 - Tests must fail when the implementation is wrong. Assert behavior and returned values, not mock-call counts.

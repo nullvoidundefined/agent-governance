@@ -126,6 +126,14 @@ Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'acti
 - `hook:structure-gate` scans `internal/`-, `cmd/`-, and `pkg/`-rooted Go trees: catch-alls deny; dir-case checks are waived for Go (lowercase packages, kebab binary names); `db/` blessed.
 - Ternaries do not exist in Go, so R-327 is structurally satisfied.
 
+## Containers (R-351 in Go form)
+
+- Every `cmd/<artifact>/main.go` ships its `Dockerfile` in the commit that creates it (`Dockerfile` for the single artifact, `Dockerfile.<artifact>` when the module builds more than one); a library module does not.
+- Multi-stage: a `golang:1.23` builder runs `go build -trimpath -ldflags="-s -w" -o /out/<artifact> ./cmd/<artifact>` with `CGO_ENABLED=0`; the runtime stage is `gcr.io/distroless/static:nonroot` (already non-root, `USER nonroot` stated anyway) and copies only the binary.
+- `HEALTHCHECK` cannot shell out in distroless; the platform healthcheck on `/health` (R-345) is the probe, and the Dockerfile documents that in a comment above `ENTRYPOINT`.
+- `.dockerignore` beside the Dockerfile: `.git`, `.env*`, `*_test.go`, `testdata/`; configuration is environment variables at run time, never a build argument.
+- `docker-compose.yml` runs the service with its dependencies for local development and integration tests (the same Postgres the testcontainers path uses).
+
 ## Observability (R-341 to R-346 in Go form)
 
 - R-341: middleware reads `X-Request-Id` or mints one, writes it to the response, and stores it in `context.Context`; handlers and services log through `slog` with the ID taken from the context (`slog.With("request_id", id)`), never as a parameter threaded by hand.

@@ -101,3 +101,7 @@ Projects built against the old single-file conventions use `lib/` and a flat `ho
 | Layouts | `layout.tsx` | `app/(protected)/layout.tsx` |
 | Global styles | `globals.scss` | `app/globals.scss` |
 | Route-level styles | `camelCase.module.scss` | `tripDetail.module.scss` |
+
+## Containers (R-351)
+
+A Next.js app is a deployable artifact: it ships its `Dockerfile` in the commit that creates it. Set `output: "standalone"` in `next.config.ts`; the multi-stage image builds on `node:22-alpine`, copies `.next/standalone`, `.next/static`, and `public/` into the runtime stage, runs `USER node`, declares `HEALTHCHECK` against a `/api/health` route handler, and starts with `CMD ["node", "server.js"]`. `.dockerignore` excludes `.git`, `node_modules`, `.next`, `.env*`, and the test trees. `NEXT_PUBLIC_*` values are build arguments by nature, so they are the one exception to run-time-only configuration and never carry a secret. The image is the deploy unit: Railway builds it from the Dockerfile (`CLOUD-DEPLOYMENT.md`), and CI builds and smoke-tests the same image on every pull request.

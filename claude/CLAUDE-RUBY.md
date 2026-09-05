@@ -140,6 +140,13 @@ Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag reques
 - R-345: `/health` and `/health/ready` routes registered before application routes.
 - R-346: every client call sets a timeout, logs provider, operation, duration, and outcome, and forwards the request ID.
 
+## Containers (R-351 in Rails form)
+
+- The Rails app, its Sidekiq or Solid Queue worker, and any scheduled job ship their image definition in the commit that creates them; a gem does not.
+- Rails 7.1+ generates a multi-stage `Dockerfile` (`ruby:3.3-slim` builder and runtime, `bundle install` with `BUNDLE_DEPLOYMENT=1`, assets precompiled in the builder, `USER rails`); keep it, pin the base tag, and add `HEALTHCHECK` on `/health` (R-345) for the web image; the worker image is the same file with `CMD ["bundle", "exec", "sidekiq"]` as `Dockerfile.worker`.
+- `.dockerignore` beside the Dockerfile: `.git`, `.env*`, `log/`, `tmp/`, `spec/`, `node_modules`; `RAILS_MASTER_KEY` and every secret arrive as run-time environment variables, never `COPY`-ed credentials.
+- `docker-compose.yml` runs web, worker, Postgres, and Redis for local development and request specs that need the full stack.
+
 ## Testing (RSpec) (R-401 in Ruby form)
 
 - Request specs over controller specs; assert status, body shape, and database effects, not mock-call counts.
