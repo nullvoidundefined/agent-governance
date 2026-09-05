@@ -219,7 +219,7 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
     - Reads: `get` by default; `fetch` under `api/` and `clients/`; `load` under `config/`, `database/`, `prompts/` and `repositories/`. Using another layer's read verb is a violation, not a preference. `list` stays unrestricted: it encodes cardinality, not transport.
     - Reserved to a tree: `drop` only under `database/` and `repositories/` (use `delete` elsewhere); `insert` only under `database/` and `repositories/` (use `create` elsewhere); `upsert` only under `database/` and `repositories/` (use `save` elsewhere).
     - Banned as bare synonyms: `calc` (use `calculate`); `add`, `init` and `make` (use `create`); `destroy` and `remove` (use `delete`); `gen` (use `generate`); `grab`, `obtain` and `retrieve` (use `get`); `do`, `execute`, `manage`, `perform`, `proc`, `process`, `run` and `util` (name the actual operation); `setup` (use `prepare`); `persist` and `record` (use `save`); `check` (use `validate`).
-    - Approved verbs (54 in total) and boolean prefixes `can`, `has`, `is` and `should` live in the registry; this list is its rendering, not a second copy.
+    - Approved verbs (57 in total) and boolean prefixes `can`, `has`, `is` and `should` live in the registry; this list is its rendering, not a second copy.
     <!-- lexicon:end -->
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
@@ -328,6 +328,59 @@ R-330: Settle the domain vocabulary during spec writing, before naming propagate
   - All file, function, and type naming conforms to that glossary.
   - Prefer domain-precise terms over evocative metaphors unless a framework makes the metaphor standard (ECS `World`, Cucumber `World`).
   Enforcement: hook:spec-glossary-check (advisory)
+
+### Observability (R-34x)
+
+R-341: Give every inbound request one request ID and carry it everywhere that request causes work.
+  Scope: every HTTP service and every worker job (the job ID plays the request ID's role there).
+  Spec:
+  - Honor an inbound `X-Request-Id` when present; generate a UUID otherwise; never trust the inbound value for anything but correlation.
+  - Echo the ID on the response as `X-Request-Id`, including error responses.
+  - Bind it to the request context (`pino-http` child logger plus `AsyncLocalStorage` for services and repositories) so no call site passes it by hand.
+  - Every log line, every error report, and every outbound call from that request carries it (R-342, R-344, R-346).
+  Enforcement: manual (whether a middleware exists and what it binds is a project-shape question; `CLAUDE-BACKEND.md` carries the pattern)
+
+R-342: Log through the one structured logger in server code, never `console`; context first, message second, values in the object.
+  Scope: server trees (`apps/server`, `packages/worker`, `server/src`, and any `src/handlers`, `src/repositories`, `src/middleware`, `src/workers`); tests, `bin/`, and `scripts/` exempt. Python: structlog or stdlib JSON logging; Go: `slog`; Ruby: lograge.
+  Spec:
+  - One logger module (`logger.ts`) exporting the Pino instance; `console.*` is never a log sink in server code.
+  - Call shape is `logger.<level>({ ...context }, "message")`; a bare message with no context is allowed; a message with interpolated values is not, and a context object after the message is a defect (Pino drops it).
+  - Errors travel as `{ err }`; identifiers travel as fields (`userId`, `linkId`, `durationMs`), never inside the message string.
+  - Levels: `debug` for developer detail, `info` for one line per request and per job, `warn` for handled anomalies, `error` for failures that need a human; no secrets or PII in any field (R-102, R-104).
+  Enforcement: eslint:no-console (scoped to the server trees); eslint:structured-log-call (decides an interpolated message and an object-after-message; the request-ID field itself is R-341, manual); ruff:T201 (Python analog, print in service code; scripts, bin, cli, and tests exempt); Go and Ruby: manual
+
+R-343: Emit analytics events through one module, from a checked-in registry, never a string literal at the call site.
+  Scope: server-side product analytics (PostHog, Segment, or the project's provider); frontend analytics follow the same shape through the frontend's `clients/analytics`.
+  Spec:
+  - One `clients/analytics/` module wraps the provider (R-307); no other file imports the provider SDK.
+  - Event names live in `analytics/events.ts` as constants, written `object_action` in past tense (`signup_completed`, `note_published`); a call site passes the constant, never a literal.
+  - One property bag per event; property keys are the domain vocabulary (R-330); no PII in properties (R-104); the user ID is the provider's distinct ID, set once at identify time.
+  - Analytics failures never fail the request: the client catches, logs at `warn` with `{ err }` (R-344), and returns.
+  Enforcement: eslint:analytics-event-name (decides a string or template literal as the first argument of `.track(`, `.capture(`, or `trackEvent(`); the single-module half is R-307, manual
+
+R-344: Never swallow an error.
+  Scope: every `catch` in server code; the same scope as R-342.
+  Spec:
+  - A `catch` binds the error and references it: log with `{ err }` and the request ID, report to the error tracker when the failure is unexpected, then return an error response or rethrow with the original as `cause`.
+  - Expected failures (a cache miss, a 404 from a provider) log at `debug` or `warn` and return a defined fallback; they are still bound and referenced.
+  - The global error handler is the one place an unexpected error becomes a 500, and it reports before it responds.
+  Enforcement: eslint:no-empty (`allowEmptyCatch: false`); eslint:no-swallowed-catch (decides an unbound `catch` and a bound-but-unreferenced error; what the block does with the error is not decidable and stays manual); ruff:E722, ruff:S110, ruff:BLE001 (Python analogs; a blind except that re-raises passes); golangci:errcheck, golangci:errorlint (Go analogs); rubocop:Lint/SuppressedException (Ruby analog)
+
+R-345: Expose liveness and readiness probes on every service and worker.
+  Spec:
+  - `GET /health` returns 200 `{ status: "ok" }` with no dependency call; it is the platform healthcheck path.
+  - `GET /health/ready` checks each dependency the service cannot run without (database, cache, queue) and returns 503 `{ status: "degraded", <dependency>: "disconnected" }` when one fails; it is the post-deploy smoke target.
+  - Both register before application routes and before the not-found handler; workers run a minimal HTTP server for the same two paths.
+  Enforcement: manual (`CLOUD-DEPLOYMENT.md` names the healthcheck path; `CLAUDE-BACKEND.md` carries the code)
+
+R-346: Instrument every outbound call.
+  Scope: every function in a `clients/` module that leaves the process (HTTP, SDK, queue, third-party database).
+  Spec:
+  - Log one line per call at `debug` on success and `warn` on failure with `{ provider, operation, durationMs, status }` and `{ err }` on failure.
+  - Forward the request ID as `X-Request-Id` (or the provider's correlation header) on outbound HTTP.
+  - Set an explicit timeout; a client with no timeout is a defect.
+  - Wrap the provider once (`withClientTelemetry(provider, operation, fn)`) so call sites stay thin (R-307).
+  Enforcement: manual
 
 ## Testing and quality (R-4xx)
 

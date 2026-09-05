@@ -49,4 +49,20 @@ ERR5=$(printf '%s' "$PAYLOAD" | PATH="$FAKEBIN:$PATH" CLAUDE_ENFORCE_BASE=HEAD~1
 printf '%s' "$ERR5" | grep -q "gate-trusted-repos" || { echo "FAIL: expected trust-skip note for untrusted repo"; exit 1; }
 [ ! -f "$FAKEBIN/RAN" ] || { echo "FAIL: golangci binary ran against an untrusted repo"; exit 1; }
 
+# The stub above proves the gate's parsing, not the config. A v1-schema config
+# was rejected outright by v2 binaries and the gate failed open, so the Go
+# gate enforced nothing (ISSUES.md P3, closed 2026-09-04). When the real binary
+# is on PATH, the bundled config must verify against it.
+# `config verify` needs the JSON schema from golangci-lint.run, so it is not
+# an offline check; `linters --config` parses the file locally and lists what
+# it enables, which is the fact that matters.
+if command -v golangci-lint >/dev/null 2>&1; then
+  ENABLED=$(golangci-lint linters --config "$HOME/.claude/enforce/golangci-enforce.yml" 2>&1 \
+    | awk '/^Enabled by your configuration linters:/{on=1; next} /^Disabled by your configuration linters:/{on=0} on && /^[a-z0-9]+:/{sub(":.*",""); print}') \
+    || { echo "FAIL: golangci-lint could not load enforce/golangci-enforce.yml ($(golangci-lint --version 2>/dev/null | head -1))"; exit 1; }
+  for linter in errcheck errorlint mnd nolintlint; do
+    printf '%s\n' "$ENABLED" | grep -qx "$linter" || { echo "FAIL: enforce/golangci-enforce.yml does not enable $linter (enabled: $(printf '%s' "$ENABLED" | tr '\n' ' '))"; exit 1; }
+  done
+fi
+
 echo "push-golangci-gate.test.sh PASS"

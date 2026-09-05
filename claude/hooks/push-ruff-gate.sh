@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # push-ruff-gate.sh: on `git push`, run the bundled enforcement ruff config over
 # the Python files added/changed in the outgoing diff. Deny the push on any
-# violation of the AST-tier rule analogs (R-324/R-326/R-329; code mapping in
+# violation of the AST-tier rule analogs (R-324/R-326/R-329/R-342/R-344; code mapping in
 # enforce/ruff-enforce.toml). The Python counterpart of push-eslint-gate.sh:
 # heavy work runs once per push, not per edit; only lines the outgoing diff
 # adds can deny (--added-only parity, 2026-07-10, Ian-approved); fails OPEN

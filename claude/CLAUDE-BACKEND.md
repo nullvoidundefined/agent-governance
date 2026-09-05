@@ -553,8 +553,110 @@ logger.debug({ hash }, "Cache hit");
 ```
 
 - Pretty printing in development, JSON in production
-- Request IDs via `pino-http` middleware
+- Request IDs via `pino-http` middleware (R-341, below)
 - Always pass error objects as `{ err }`; Pino serializes them properly
+- Never `console.*` in server code; values go in the context object, never the message string (R-342, ESLint-enforced)
+
+---
+
+## Observability (R-341 to R-346)
+
+**Request ID (R-341).** One ID per request, honored from the caller, echoed back, and bound to the request context so nothing passes it by hand:
+
+```typescript
+// middleware/requestLogger.ts
+import { randomUUID } from "node:crypto";
+import pinoHttp from "pino-http";
+import { logger } from "app/utils/logs/logger.js";
+
+export const requestLogger = pinoHttp({
+    logger,
+    genReqId: (req, res) => {
+        const requestId = (req.headers["x-request-id"] as string | undefined) ?? randomUUID();
+        res.setHeader("X-Request-Id", requestId);
+        return requestId;
+    },
+});
+
+// middleware/requestContext.ts: AsyncLocalStorage so services and repositories
+// log with the request ID without receiving it as a parameter.
+export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
+export function bindRequestContext(req: Request, _res: Response, next: NextFunction) {
+    requestContext.run({ requestId: req.id as string }, next);
+}
+```
+
+- Register `requestLogger` then `bindRequestContext` before every route; `req.log` is the request-scoped child logger.
+- Services and repositories log through `logger.child(requestContext.getStore() ?? {})` or a `getRequestLogger()` helper in `utils/logs/`; never through a logger that lacks the ID.
+- Workers use the job ID in the same role (`{ jobId }` on every line, forwarded to any HTTP call the job makes).
+
+**Analytics (R-343).** One client, one registry, no literals at the call site:
+
+```typescript
+// analytics/events.ts: the registry. object_action, past tense.
+export const EVENTS = {
+    noteCreated: "note_created",
+    signupCompleted: "signup_completed",
+} as const;
+
+// clients/analytics/trackEvent.ts: the only file that imports the provider SDK.
+export async function trackEvent(distinctId: string, event: EventName, properties: Record<string, unknown>) {
+    try {
+        await posthog.capture({ distinctId, event, properties });
+    } catch (err) {
+        logger.warn({ err, event }, "Analytics capture failed"); // never fails the request (R-344)
+    }
+}
+
+// a handler
+await trackEvent(user.id, EVENTS.signupCompleted, { plan: user.plan });
+```
+
+**Error reporting (R-344).** Every `catch` binds and uses the error; the global handler reports before it responds:
+
+```typescript
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
+    logger.error({ err, requestId: req.id }, "Unhandled error");
+    reportError(err, { requestId: req.id as string }); // clients/errorTracker
+    res.status(500).json({ error: { message: isProduction() ? "Internal server error" : String(err) } });
+}
+
+// expected failure: still bound, still logged, defined fallback
+try {
+    return await cache.get(key);
+} catch (err) {
+    logger.warn({ err, key }, "Cache read failed; continuing without it");
+    return null;
+}
+```
+
+**Outbound instrumentation (R-346).** Wrap the provider once so call sites stay thin (R-307):
+
+```typescript
+// clients/withClientTelemetry.ts
+export async function withClientTelemetry<T>(provider: string, operation: string, call: () => Promise<T>): Promise<T> {
+    const startedAt = performance.now();
+    try {
+        const result = await call();
+        logger.debug({ provider, operation, durationMs: Math.round(performance.now() - startedAt) }, "Client call succeeded");
+        return result;
+    } catch (err) {
+        logger.warn({ err, provider, operation, durationMs: Math.round(performance.now() - startedAt) }, "Client call failed");
+        throw err;
+    }
+}
+
+// clients/stripe/createCheckoutSession.ts
+export function createCheckoutSession(input: CheckoutInput) {
+    return withClientTelemetry("stripe", "createCheckoutSession", () =>
+        stripe.checkout.sessions.create(input, { timeout: 10_000, idempotencyKey: input.idempotencyKey }),
+    );
+}
+```
+
+- Outbound HTTP forwards the request ID: `headers: { "X-Request-Id": requestContext.getStore()?.requestId ?? "" }`.
+- Every client call sets a timeout; a client without one is a defect.
+- Health endpoints (R-345) are the two above under "Health Endpoints"; workers run the same two paths on their health server.
 
 ---
 

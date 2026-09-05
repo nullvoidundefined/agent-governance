@@ -83,6 +83,10 @@ Two hooks honour the list:
 
 `exempt-repos.txt` is deliberately untracked: it holds client-identifying remote URLs and this repo is public (R-106). The hooks that read it are tracked; the list itself is not.
 
+## The observability rules (R-342, R-343, R-344)
+
+Three custom rules under `rules/` plus `no-console` and `no-empty`, active only in the server trees (`apps/server`, `packages/worker`, `server/src`, and any `src/handlers`, `src/repositories`, `src/middleware`, `src/workers`; tests, `bin/`, and `scripts/` exempt). `structured-log-call` reports an interpolated log message and a context object placed after the message (Pino drops it). `analytics-event-name` reports a string or template literal as the event name at `.track(`, `.capture(`, or `trackEvent(`. `no-swallowed-catch` reports an unbound `catch` and a bound error that is never referenced. What each rule does not decide is stated in its header and in the R-34x Spec blocks of `rulebook/reference.md`; R-341, R-345, and R-346 stay manual. Fixture: `tests/observability-rules.test.sh`.
+
 ## The naming lexicon (R-316, R-317)
 
 "Is this a good name" is undecidable. "Is this verb in the lexicon" is set membership. `lexicon.json` is that set, so the check is a pure function of `(AST, config)` and gives the same verdict on every machine and every run.

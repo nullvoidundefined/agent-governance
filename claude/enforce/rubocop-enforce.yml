@@ -7,6 +7,7 @@
 #   Naming/MethodName           -> R-316 support (snake_case methods)
 #   Naming/VariableName         -> R-317 support (snake_case variables)
 #   Naming/ConstantName         -> R-324 support (UPPER_SNAKE constants)
+#   Lint/SuppressedException    -> R-344 analog (a rescue with an empty body)
 AllCops:
   DisabledByDefault: true
   SuggestExtensions: false
@@ -22,3 +23,7 @@ Naming/VariableName:
 
 Naming/ConstantName:
   Enabled: true
+
+Lint/SuppressedException:
+  Enabled: true
+  AllowComments: false

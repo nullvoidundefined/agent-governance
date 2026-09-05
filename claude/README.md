@@ -116,7 +116,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── ratchet.mjs                  # Full-tree baseline; fails when a count rises.
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
-│   ├── rules/                       # 4 custom ESLint rules (R-319, R-316/317, R-320, R-325).
+│   ├── rules/                       # 7 custom ESLint rules (R-319, R-316/317, R-320, R-325, R-342, R-343, R-344).
 │   └── tests/                       # 38 fixture tests; run-tests.sh runs them all.
 ├── .github/workflows/enforce.yml    # CI: both fixture suites + the ratchet.
 ├── rules/                           # Auto-load zone: session-types.md + path-scoped

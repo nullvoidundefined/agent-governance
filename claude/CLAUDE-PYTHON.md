@@ -155,6 +155,15 @@ Register exception handlers on the app. Map domain errors to status codes centra
 
 Structured logging (structlog or stdlib `logging` with a JSON formatter). No secrets or PII in logs (R-102, R-104). One logger per module via `logging.getLogger(__name__)`.
 
+## Observability (R-341 to R-346 in Python form)
+
+- R-341: a middleware (Starlette `BaseHTTPMiddleware` or a Django middleware) reads `X-Request-Id` or mints `uuid4()`, sets it on the response, and binds it with `structlog.contextvars.bind_contextvars(request_id=...)`; every log line carries it without being passed by hand.
+- R-342: `logger.info("note_loaded", note_id=note_id)` (structlog event name plus keyword fields), never f-strings with values in the message and never `print` in service code; ruff `T201` in `enforce/ruff-enforce.toml` covers the `print` half (scripts, bin, cli, and tests exempt).
+- R-343: one `clients/analytics.py` wraps the provider; event names come from `analytics/events.py` constants, never a literal at the call site.
+- R-344: every `except` names the specific exception and uses it (`except ValueError as err: logger.warning("cache_read_failed", exc_info=err)`), never a bare `except: pass` and never a blind `except Exception` that does not re-raise; ruff `E722`, `S110`, and `BLE001` in `enforce/ruff-enforce.toml` cover the syntactic half.
+- R-345: `/health` and `/health/ready` registered before application routes (`register_health(app)` above).
+- R-346: every client call logs provider, operation, `duration_ms`, and outcome, forwards the request ID, and passes an explicit `timeout=`.
+
 ## Testing (pytest) (R-401 in Python form)
 
 - Tests must fail when the implementation is wrong. Assert behavior and returned values, not mock-call counts.

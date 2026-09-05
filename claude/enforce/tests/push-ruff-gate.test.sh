@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies push-ruff-gate.sh denies a git push whose outgoing diff adds a Python
-# AST-tier violation (R-324/R-326/R-329 analogs), allows clean diffs, scopes to
-# added lines only, and honors the test-file per-file-ignores.
+# AST-tier violation (R-324/R-326/R-329/R-342/R-344 analogs), allows clean
+# diffs, scopes to added lines only, and honors the per-file-ignores.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/push-ruff-gate.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
@@ -44,5 +44,33 @@ OUT5=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf 'def is_expired(age):\n    return age > 86400\n' > ttl.py; git add ttl.py; git commit -q -m magic
 OUT6=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT6" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+
+# R-344 analogs: a swallowed exception is denied (E722 + S110), a blind
+# `except Exception` that does not re-raise is denied (BLE001), and the
+# accepted shapes pass: a specific exception that is logged, and a blind one
+# that re-raises with cause. The logged-blind-except shape is deliberately
+# absent: ruff 0.15 flags it and 0.16 does not.
+printf 'def load_note(load):\n    try:\n        return load()\n    except:\n        pass\n' > swallow.py
+git add swallow.py; git commit -q -m swallow
+OUT6=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT6" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+printf 'def load_note(load):\n    try:\n        return load()\n    except Exception:\n        return None\n' > swallow.py
+git add swallow.py; git commit -q -m blind
+OUT7=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT7" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+printf 'import logging\n\nlogger = logging.getLogger(__name__)\n\n\ndef load_note(load):\n    try:\n        return load()\n    except ValueError as err:\n        logger.warning("note_load_failed", exc_info=err)\n        return None\n\n\ndef load_note_strict(load):\n    try:\n        return load()\n    except Exception as err:\n        raise RuntimeError("note load failed") from err\n' > swallow.py
+git add swallow.py; git commit -q -m handled
+OUT8=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+[ -z "$OUT8" ]
+
+# R-342 analog: print in service code is denied (T201); under scripts/ it passes.
+printf 'def show_note(note):\n    print(note)\n' > show.py
+git add show.py; git commit -q -m print
+OUT9=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT9" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+git rm -q show.py; mkdir -p scripts; printf 'print("cli output")\n' > scripts/show.py
+git add scripts/show.py; git commit -q -m cli-print
+OUT10=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+[ -z "$OUT10" ]
 
 echo "push-ruff-gate.test.sh PASS"

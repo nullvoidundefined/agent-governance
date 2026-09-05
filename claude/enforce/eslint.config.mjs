@@ -6,7 +6,10 @@
  */
 import tseslint from "typescript-eslint";
 import { importX } from "eslint-plugin-import-x";
+import analyticsEventName from "./rules/analytics-event-name.mjs";
+import noSwallowedCatch from "./rules/no-swallowed-catch.mjs";
 import oneExportPerFile from "./rules/one-export-per-file.mjs";
+import structuredLogCall from "./rules/structured-log-call.mjs";
 
 // Repos run plugins the gate does not carry (eslint-plugin-security, react,
 // react-hooks); their source keeps live eslint-disable comments for those
@@ -124,6 +127,50 @@ export default tseslint.config({
   ],
   plugins: { local: { rules: { "one-export-per-file": oneExportPerFile } } },
   rules: { "local/one-export-per-file": "error" },
+}, {
+  // R-342/R-343/R-344: observability in server code. Scoped to the server
+  // trees by the directory names R-304 reserves for the backend; services/
+  // and clients/ outside a server root are not covered, because the frontend
+  // layout uses the same names and ESLint cannot read package dependencies
+  // the way structure-gate.sh does. Tests, bin/, and scripts/ are exempt.
+  files: [
+    "**/apps/server/**/*.ts",
+    "**/packages/worker/**/*.ts",
+    "**/server/src/**/*.ts",
+    "**/src/handlers/**/*.ts",
+    "**/src/repositories/**/*.ts",
+    "**/src/middleware/**/*.ts",
+    "**/src/workers/**/*.ts",
+  ],
+  ignores: [
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+    "**/tests/**",
+    "**/e2e/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/bin/**",
+    "**/scripts/**",
+    "**/*.config.ts",
+    "**/*.d.ts",
+  ],
+  plugins: {
+    observability: {
+      rules: {
+        "analytics-event-name": analyticsEventName,
+        "no-swallowed-catch": noSwallowedCatch,
+        "structured-log-call": structuredLogCall,
+      },
+    },
+  },
+  rules: {
+    "no-console": "error",
+    "no-empty": ["error", { allowEmptyCatch: false }],
+    "observability/analytics-event-name": "error",
+    "observability/no-swallowed-catch": "error",
+    "observability/structured-log-call": "error",
+  },
 }, {
   // R-313/R-319/R-314: tests and fixtures are exempt from the source-tree-only
   // rules (key/import ordering target source). member-ordering and no-IIFE still apply.
