@@ -87,6 +87,9 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── audit-security.md            # CISO persona agent.
 │   ├── audit-criticism.md           # Devil's advocate agent.
 │   ├── spec-conformance-review.md   # Reviews a diff against a named spec file.
+│   ├── test-author.md               # Slice role: writes the failing test, proves RED.
+│   ├── implementer.md               # Slice role: minimum code to GREEN, never touches tests.
+│   ├── slice-critic.md              # Slice role: read-only fresh-context review, seven questions.
 │   └── audit-*.md                   # On-request audit agents (design, financial, etc.)
 ├── audits/                          # Standing audit role definitions.
 │   ├── engineering.md               # CTO persona. Tech debt, tests, CI, architecture.
@@ -102,7 +105,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── post-compact-rules.sh        # SessionStart(compact). Re-injects the critical rules after compaction.
 │   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc.
 │   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
-│   ├── verification-gate.sh         # Stop. Blocks the turn on a red test/typecheck run.
+│   ├── verification-gate.sh         # Stop, SubagentStop. Blocks the turn on a red test/typecheck run.
+│   ├── protected-path-guard.sh      # PreToolUse. Locks tests, fixtures, specs, and gate inputs per slice and role.
 │   ├── install-git-hooks.sh         # Installs pre-push.sample into .git/hooks.
 │   ├── pre-push.sample              # Tracked pre-push: a red suite aborts the push.
 │   ├── tests/                       # 12 fixture tests for the lifecycle hooks.
@@ -114,6 +118,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── eslintOptions.mjs            # Options shared by lint.mjs and ratchet.mjs.
 │   ├── lint.mjs                     # Lints any absolute path; used by the push gate.
 │   ├── ratchet.mjs                  # Full-tree baseline; fails when a count rises.
+│   ├── tdd.sh                       # Slice loop evidence: open, red, green, close.
+│   ├── role-policy.json             # Subagent write boundaries by agent_type (R-411).
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
 │   ├── rules/                       # 7 custom ESLint rules (R-319, R-316/317, R-320, R-325, R-342, R-343, R-344).
@@ -128,14 +134,15 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   └── cost.md                      # Cost discipline and model routing.
 ├── skills/                          # User-authored skills.
 │   ├── task-start/                  # Scope classification and workflow dispatch.
-│   ├── tdd-gated-dispatch/          # Write failing tests before dispatching sub-agents.
+│   ├── tdd-gated-dispatch/          # The slice loop: open, RED, GREEN, REFACTOR, REVIEW, close.
 │   ├── all-hands/                   # Weekly priorities scan across all audit roles.
 │   ├── gof/                         # Gang of Four review (PE, Security, Critic, Designer).
 │   ├── spec-grounding/              # Grounds an externally written spec in the codebase.
 │   ├── structure-conventions/       # The conditional R-3xx rules, off the always-loaded path.
 │   └── ...                          # bug-hunt, feature-create, task-cleanup, etc.
 ├── prompts/
-│   └── subagent-branch-setup.md     # Reusable worktree snippet for agent dispatches.
+│   ├── subagent-branch-setup.md     # Reusable worktree snippet for agent dispatches.
+│   └── spec-template.md             # The fixed spec headings the slice loop reads from.
 ├── global-memory/                   # Cross-project lessons and running logs.
 │   ├── INDEX.md                     # Entry point. Auto-loaded by SessionStart.
 │   ├── feedback_*.md                # Calibration memories: how to collaborate.
@@ -160,7 +167,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 
 ### Enforcement gates and egress disclosure
 
-Five push-time gates guard `git push`: ESLint (TS), ruff (Python), RuboCop (Ruby), golangci-lint (Go), and an LLM rule judge. All fail open when their tool is unavailable and honor `enforce/exempt-repos.txt` (origin URL per line). Two trust boundaries are explicit: linters resolve from PATH or the harness bundle, never from the target repo (`bundle exec` is banned; the Go gate additionally requires the repo in `enforce/gate-trusted-repos.txt` because linting Go compiles the tree). **Egress:** when a key is available, `llm-rule-judge.sh` sends the outgoing diff of every non-exempt repo to `api.anthropic.com` at push time; without one it skips and the session-start guard says so. Key resolution: `ANTHROPIC_API_KEY` env, then the macOS keychain service `claude-judge-api-key`. Provision interactively so the value never touches shell history or a session transcript: `security add-generic-password -a "$USER" -s claude-judge-api-key -w` (prompts for the value hidden). A git `pre-push` hook runs both fixture suites before any push of this repo (installed from the tracked `hooks/pre-push.sample` by `hooks/install-git-hooks.sh`), `hooks/verification-gate.sh` blocks a turn from ending on a red suite (R-509), and `.github/workflows/enforce.yml` runs both suites plus the ratchet in CI, where `--no-verify` cannot reach them.
+Five push-time gates guard `git push`: ESLint (TS), ruff (Python), RuboCop (Ruby), golangci-lint (Go), and an LLM rule judge. All fail open when their tool is unavailable and honor `enforce/exempt-repos.txt` (origin URL per line). Two trust boundaries are explicit: linters resolve from PATH or the harness bundle, never from the target repo (`bundle exec` is banned; the Go gate additionally requires the repo in `enforce/gate-trusted-repos.txt` because linting Go compiles the tree). **Egress:** when a key is available, `llm-rule-judge.sh` sends the outgoing diff of every non-exempt repo to `api.anthropic.com` at push time; without one it skips and the session-start guard says so. Key resolution: `ANTHROPIC_API_KEY` env, then the macOS keychain service `claude-judge-api-key`. Provision interactively so the value never touches shell history or a session transcript: `security add-generic-password -a "$USER" -s claude-judge-api-key -w` (prompts for the value hidden). A git `pre-push` hook runs both fixture suites before any push of this repo (installed from the tracked `hooks/pre-push.sample` by `hooks/install-git-hooks.sh`), `hooks/verification-gate.sh` blocks a turn, and since 2026-09-06 a writing subagent's return, from ending on a red suite (R-509), and `.github/workflows/enforce.yml` runs both suites plus the ratchet in CI, where `--no-verify` cannot reach them.
 
 **Long-term drift.** A diff-scoped gate leaves the untouched majority of a codebase free to drift. `enforce/ratchet.mjs` runs every rule over the whole tree, records the count per rule in a committed `.enforce-baseline.json`, and fails when a count rises: existing debt is grandfathered, new debt is not, and the number only ever descends. Run it as a required status check on the protected branch, since a local hook is `--no-verify`-able and therefore advisory however it is written. See `enforce/README.md`.
 

@@ -20,6 +20,15 @@
 #
 # Per-project override and escape hatch: `.claude/verify.sh` in the project
 # root wins over all discovery. `CLAUDE_SKIP_VERIFY=1` bypasses entirely.
+#
+# Registered on Stop and, since 2026-09-06, on SubagentStop (the TDD harness
+# assessment C-4: the implementer subagent is the role that makes a slice
+# green, and it was the one turn the gate never saw). On SubagentStop the
+# agent_type field selects: a role whose enforce/role-policy.json entry is
+# deny ["any"] (slice-critic, spec-conformance-review) writes nothing and is
+# never blocked by a red tree it cannot fix; every other subagent is gated
+# exactly like the main session. .claude/verify.sh is a gate input protected
+# by hooks/protected-path-guard.sh (R-410).
 set -uo pipefail
 
 INPUT=$(cat)
@@ -28,6 +37,16 @@ INPUT=$(cat)
 # loop forever on a suite that stays red.
 [ "$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')" = "true" ] && exit 0
 [ -n "${CLAUDE_SKIP_VERIFY:-}" ] && exit 0
+
+# SubagentStop: skip the roles that cannot have written anything.
+EVENT=$(printf '%s' "$INPUT" | jq -r '.hook_event_name // "Stop"')
+if [ "$EVENT" = "SubagentStop" ]; then
+  AGENT=$(printf '%s' "$INPUT" | jq -r '.agent_type // ""')
+  POLICY="${CLAUDE_ROLE_POLICY_FILE:-$HOME/.claude/enforce/role-policy.json}"
+  if [ -n "$AGENT" ] && [ -f "$POLICY" ] && jq -e --arg a "$AGENT" '.roles[$a].deny == ["any"]' "$POLICY" >/dev/null 2>&1; then
+    exit 0
+  fi
+fi
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"

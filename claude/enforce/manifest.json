@@ -6,6 +6,7 @@
     { "id": "R-326", "tier": "ast", "enforcer": "eslint:no-restricted-syntax", "severity": "error", "autofix": false },
     { "id": "R-327", "tier": "ast", "enforcer": "eslint:no-nested-ternary", "severity": "error", "autofix": false },
     { "id": "R-303", "tier": "ast", "enforcer": "eslint:no-restricted-paths", "severity": "error", "autofix": false, "note": "active only in repos declaring importZones in .enforce.json" },
+    { "id": "R-303", "tier": "ast", "enforcer": "eslint:no-cycle", "severity": "error", "autofix": false, "note": "circular imports, every tree, maxDepth 8; needs the import-x parsers, extensions, and TS-aware resolver settings in eslint.config.mjs" },
     { "id": "R-324", "tier": "ast", "enforcer": "eslint:no-magic-numbers", "severity": "error", "autofix": false },
     { "id": "R-324", "tier": "ast", "enforcer": "ruff:PLR2004", "severity": "error", "autofix": false, "note": "Python analog via push-ruff-gate" },
     { "id": "R-324", "tier": "ast", "enforcer": "golangci:mnd", "severity": "error", "autofix": false, "note": "Go analog via push-golangci-gate" },
@@ -16,7 +17,7 @@
     { "id": "R-342", "tier": "ast", "enforcer": "eslint:structured-log-call", "severity": "error", "autofix": false, "note": "interpolated message or context object after the message" },
     { "id": "R-343", "tier": "ast", "enforcer": "eslint:analytics-event-name", "severity": "error", "autofix": false, "note": "string literal as the event name at a track/capture call site" },
     { "id": "R-344", "tier": "ast", "enforcer": "eslint:no-empty", "severity": "error", "autofix": false, "note": "allowEmptyCatch: false" },
-    { "id": "R-344", "tier": "ast", "enforcer": "eslint:no-swallowed-catch", "severity": "error", "autofix": false, "note": "unbound catch or a bound error never referenced" },
+    { "id": "R-344", "tier": "ast", "enforcer": "eslint:no-swallowed-catch", "severity": "error", "autofix": false, "note": "unbound catch or a bound error never referenced; server trees plus every src/services and src/clients tree since 2026-09-06" },
     { "id": "R-342", "tier": "ast", "enforcer": "ruff:T201", "severity": "error", "autofix": false, "note": "Python analog (no print in service code) via push-ruff-gate" },
     { "id": "R-344", "tier": "ast", "enforcer": "ruff:E722", "severity": "error", "autofix": false, "note": "Python analog (no bare except) via push-ruff-gate" },
     { "id": "R-344", "tier": "ast", "enforcer": "ruff:S110", "severity": "error", "autofix": false, "note": "Python analog (no try-except-pass) via push-ruff-gate" },
@@ -44,7 +45,9 @@
     { "id": "R-328", "tier": "regex", "enforcer": "hook:migration-defaults-guard", "severity": "error", "autofix": false },
     { "id": "R-403", "tier": "regex", "enforcer": "hook:fix-commit-requires-test", "severity": "error", "autofix": false },
     { "id": "R-105", "tier": "regex", "enforcer": "hook:mcp-action-guard", "severity": "error", "autofix": false, "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt" },
-    { "id": "R-401", "tier": "regex", "enforcer": "hook:content-gate", "severity": "error", "autofix": false, "note": "denies writing a skipped or exclusive test; the other eight anti-patterns stay judge-tier" },
+    { "id": "R-401", "tier": "regex", "enforcer": "hook:content-gate", "severity": "error", "autofix": false, "note": "denies writing a skipped or exclusive test (items 8 and 9)" },
+    { "id": "R-401", "tier": "ast", "enforcer": "eslint:no-self-mock", "severity": "error", "autofix": false, "note": "items 1 and 5 in test trees: a mock of the module the test is named for, and a repository test mocking the pool" },
+    { "id": "R-401", "tier": "ast", "enforcer": "eslint:behavior-assertion-required", "severity": "error", "autofix": false, "note": "item 3 in test trees: a test whose only expect() matchers are mock-call matchers; items 2, 4, 6, 7 stay with the slice critic and the judge" },
     { "id": "R-405", "tier": "regex", "enforcer": "hook:content-gate", "severity": "error", "autofix": false, "note": "denies TLS, CORS, CSP, CSRF, and bcrypt-cost weakening outside test trees" },
     { "id": "R-302", "tier": "regex", "enforcer": "hook:content-gate", "severity": "error", "autofix": false, "note": "denies a relative import whose ../ chain resolves above the git toplevel" },
     { "id": "R-507", "tier": "regex", "enforcer": "hook:conflict-markers", "severity": "error", "autofix": false },
@@ -84,7 +87,11 @@
     { "id": "R-801", "tier": "advisory", "enforcer": "hook:audit-signal-check", "severity": "warn", "autofix": false },
     { "id": "R-904", "tier": "advisory", "enforcer": "hook:audit-signal-check", "severity": "warn", "autofix": false },
     { "id": "R-506", "tier": "advisory", "enforcer": "hook:commit-message-guard", "severity": "warn", "autofix": false },
-    { "id": "R-330", "tier": "advisory", "enforcer": "hook:spec-glossary-check", "severity": "warn", "autofix": false },
-    { "id": "R-509", "tier": "regex", "enforcer": "hook:verification-gate", "severity": "error", "autofix": false, "note": "Stop-event gate; runs the project's discovered test/typecheck commands when the tree is dirty, fails open when none is discoverable" }
+    { "id": "R-330", "tier": "advisory", "enforcer": "hook:spec-glossary-check", "severity": "warn", "autofix": false, "note": "design doc written without a Domain vocabulary glossary, an Acceptance criteria section, or a Non-goals section; template in prompts/spec-template.md" },
+    { "id": "R-509", "tier": "regex", "enforcer": "hook:verification-gate", "severity": "error", "autofix": false, "note": "Stop and SubagentStop gate; runs the project's discovered test/typecheck commands when the tree is dirty, fails open when none is discoverable, skips non-writing subagent roles" },
+    { "id": "R-410", "tier": "regex", "enforcer": "hook:protected-path-guard", "severity": "error", "autofix": false, "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered via redirections, tee, and mutating-verb operands; runner configs and package.json test scripts ask" },
+    { "id": "R-411", "tier": "regex", "enforcer": "hook:protected-path-guard", "severity": "error", "autofix": false, "note": "role boundaries by the agent_type hook field against enforce/role-policy.json; no restriction when the field is absent or the role is unlisted" },
+    { "id": "R-412", "tier": "regex", "enforcer": "hook:protected-path-guard", "severity": "error", "autofix": false, "note": "phase from .claude/tdd-lock.json written by enforce/tdd.sh: open denies production writes, red and green deny test writes; opening the slice is the manual step" },
+    { "id": "R-705", "tier": "regex", "enforcer": "hook:protected-path-guard", "severity": "error", "autofix": false, "note": "the dispatch half of R-412: everything after tdd.sh open is the same lock and guard; opening the slice and committing between RED and GREEN stay manual" }
   ]
 }

@@ -53,24 +53,24 @@ Execute the change directly. Commit. Done.
 ```
 Spec:           No (unless the user asks for one)
 Plan:           No (inline mental model is sufficient)
-TDD:            Yes. Write failing test, watch it fail, implement, watch it pass.
+TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh red, implement, tdd.sh green, close (R-412).
 Model:          Sonnet
 Branch:         Yes (feature branch off main)
 Worktree:       No (unless parallel work is active)
 Subagents:      No
 Execution:      Inline with TDD discipline
-Skills invoked: superpowers:test-driven-development
+Skills invoked: tdd-gated-dispatch (single-session loop), superpowers:test-driven-development for the RED/GREEN discipline inside a slice
 ```
 
-Create a feature branch. Write tests first. Implement. Commit per task. Squash merge when done.
+Create a feature branch. One slice per behavior: open, RED, commit, GREEN, commit, close. Squash merge when done.
 
 ### Complex
 
 ```
 Spec:           Yes. One spec. Written inline or via brainstorming skill.
 Plan:           Yes. One plan. Written via writing-plans skill.
-TDD:            Yes. TDD-gated if using subagents.
-Model:          Opus for planning and review. Sonnet for implementation.
+TDD:            Yes, slices; tdd-gated-dispatch with the three role agents when using subagents.
+Model:          Opus for planning, the test author, and the critic. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
 Subagents:      Optional (if 5+ independent tasks)
@@ -85,8 +85,8 @@ One spec. One plan. One branch. Never split a complex task into multiple plans.
 ```
 Spec:           Yes. ONE spec covering all subsystems.
 Plan:           Yes. ONE plan with staged sections (not multiple plan files).
-TDD:            Yes. TDD-gated dispatch mandatory for all subagents.
-Model:          Opus throughout.
+TDD:            Yes, slices; tdd-gated-dispatch with the three role agents for every slice.
+Model:          Opus for planning, the test author, and the critic. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
 Subagents:      Yes, with tdd-gated-dispatch skill
@@ -104,7 +104,7 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 | Tier | Setup sequence |
 |---|---|
 | **Trivial** | Do the work. Skip to implementation. |
-| **Standard** | `git checkout -b feat/<slug> main`, then superpowers:test-driven-development |
+| **Standard** | `git checkout -b feat/<slug> main`, then tdd-gated-dispatch's single-session loop |
 | **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, then feature-create for the worktree, then the chosen execution skill |
 | **Saga** | As Complex, plus: Opus for all planning and review, tdd-gated-dispatch for every subagent, and a review checkpoint after each stage. No stage starts until the prior stage's tests are green. |
 
@@ -124,7 +124,7 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Brainstorming, spec writing | Opus for complex/saga, Sonnet for standard |
 | Plan writing, plan review | Opus for complex/saga, Sonnet for standard |
 | Implementation (inline) | Sonnet |
-| Implementation (subagent) | Sonnet (implementer), Opus (reviewer) |
+| Implementation (subagent) | Sonnet (implementer), Opus (test author, slice critic) |
 | Audit/review | Opus |
 | Doc edits, file moves, config | Haiku or Sonnet |
 

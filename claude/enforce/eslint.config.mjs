@@ -2,11 +2,14 @@
  * Bundled enforcement ESLint flat config for the global rule system.
  * Loaded by lint.mjs and invoked by push-eslint-gate.sh to check outgoing diffs
  * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319,
- * R-326, R-327, R-324, R-329, and R-303 when a repo opts in via .enforce.json).
+ * R-326, R-327, R-324, R-329, R-303 no-cycle everywhere and import zones when a
+ * repo opts in via .enforce.json, R-344 catch discipline, R-401 test quality).
  */
 import tseslint from "typescript-eslint";
-import { importX } from "eslint-plugin-import-x";
+import { createNodeResolver, importX } from "eslint-plugin-import-x";
 import analyticsEventName from "./rules/analytics-event-name.mjs";
+import behaviorAssertionRequired from "./rules/behavior-assertion-required.mjs";
+import noSelfMock from "./rules/no-self-mock.mjs";
 import noSwallowedCatch from "./rules/no-swallowed-catch.mjs";
 import oneExportPerFile from "./rules/one-export-per-file.mjs";
 import structuredLogCall from "./rules/structured-log-call.mjs";
@@ -39,7 +42,18 @@ export default tseslint.config({
   // they classify as "unknown" and import-x/order demands they trail relative
   // imports, the exact opposite of the projects' prettier importOrder
   // ["^@/(.*)$", "^[./]"], making both tools unsatisfiable at once.
-  settings: { "import-x/internal-regex": "^@/" },
+  // R-303 no-cycle walks the import graph, so import-x needs to parse the
+  // neighbours (import-x/parsers, import-x/extensions) and to resolve a
+  // specifier to a .ts file (the node resolver with TS extensions). Without
+  // these three settings the rule silently reports nothing (verified
+  // 2026-09-06); the plugin's own typescript preset fails to load its resolver
+  // here, so the settings are spelled out.
+  settings: {
+    "import-x/extensions": [".ts", ".tsx", ".cts", ".mts", ".js", ".jsx", ".cjs", ".mjs"],
+    "import-x/internal-regex": "^@/",
+    "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".tsx", ".cts", ".mts"] },
+    "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx", ".jsx", ".cjs", ".mjs"] })],
+  },
   rules: {
     "sort-keys": ["error", "asc", { natural: true, minKeys: 2 }],
     // R-329: @ts-expect-error self-invalidates when the underlying error is
@@ -50,6 +64,9 @@ export default tseslint.config({
     ],
     "@typescript-eslint/member-ordering": "error",
     "@typescript-eslint/no-explicit-any": "error",
+    // R-303: no circular imports, in every tree; maxDepth bounds the walk so a
+    // large graph does not turn the push gate into a minute-long run.
+    "import-x/no-cycle": ["error", { maxDepth: 8 }],
     "import-x/order": [
       "error",
       {
@@ -170,6 +187,30 @@ export default tseslint.config({
     "observability/analytics-event-name": "error",
     "observability/no-swallowed-catch": "error",
     "observability/structured-log-call": "error",
+  },
+}, {
+  // R-344 outside the server trees: swallowing an error is the same defect in
+  // a frontend client module or a shared service, so the two catch rules cover
+  // every services/ and clients/ tree under a src/. no-console and the log and
+  // analytics rules stay in the server block above, because a browser
+  // console.log is not R-342's concern.
+  files: ["**/src/services/**/*.ts", "**/src/services/**/*.tsx", "**/src/clients/**/*.ts", "**/src/clients/**/*.tsx"],
+  ignores: ["**/__tests__/**", "**/__fixtures__/**", "**/__mocks__/**", "**/tests/**", "**/e2e/**", "**/*.test.ts", "**/*.spec.ts", "**/*.d.ts"],
+  plugins: { catchDiscipline: { rules: { "no-swallowed-catch": noSwallowedCatch } } },
+  rules: {
+    "catchDiscipline/no-swallowed-catch": "error",
+    "no-empty": ["error", { allowEmptyCatch: false }],
+  },
+}, {
+  // R-401 items 1, 3, 5 in test trees (2026-09-06 TDD harness assessment
+  // H-4): the decidable anti-patterns. A self-mock, a repository test that
+  // mocks the pool, and a test asserting only mock calls are set membership
+  // over the AST; items 2, 4, 6, 7 need intent and stay with the critic.
+  files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/tests/**/*.ts", "**/tests/**/*.tsx", "**/e2e/**/*.ts", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+  plugins: { testQuality: { rules: { "behavior-assertion-required": behaviorAssertionRequired, "no-self-mock": noSelfMock } } },
+  rules: {
+    "testQuality/behavior-assertion-required": "error",
+    "testQuality/no-self-mock": "error",
   },
 }, {
   // R-313/R-319/R-314: tests and fixtures are exempt from the source-tree-only

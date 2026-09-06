@@ -8,6 +8,8 @@
 #   6. A repo with no discoverable check command fails open.
 #   7. .claude/verify.sh wins over package.json discovery.
 #   8. A tree the checks already passed on is not re-run until it changes.
+#   9. SubagentStop is gated like Stop for a writing subagent, and skipped
+#      for a role the policy marks as non-writing (deny ["any"]).
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/verification-gate.sh"
 export CLAUDE_VERIFY_MEMO_DIR
@@ -15,9 +17,10 @@ CLAUDE_VERIFY_MEMO_DIR=$(mktemp -d)
 
 # Runs the hook against a repo and echoes the block reason, or "none".
 gate() {
-  local dir="$1" active="${2:-false}"
+  local dir="$1" active="${2:-false}" event="${3:-Stop}" agent="${4:-}"
   local out
-  out=$(jq -n --arg c "$dir" --argjson a "$active" '{hook_event_name:"Stop",cwd:$c,stop_hook_active:$a}' | "$HOOK")
+  out=$(jq -n --arg c "$dir" --argjson a "$active" --arg e "$event" --arg g "$agent" \
+    '{hook_event_name:$e,cwd:$c,stop_hook_active:$a} + (if $g=="" then {} else {agent_type:$g} end)' | "$HOOK")
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.reason // "none"'; fi
 }
 
@@ -100,5 +103,21 @@ RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
 write_package_json "$REPO" 1
 GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected a block after the check turned red"; exit 1; }
 GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: a red tree was memoized as green"; exit 1; }
+
+# 9. SubagentStop: a writing subagent is gated; a non-writing role is skipped.
+REPO=$(new_repo)
+write_package_json "$REPO" 1
+GOT=$(gate "$REPO" false SubagentStop implementer)
+printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: SubagentStop for an implementer must block on red, got: $GOT"; exit 1; }
+GOT=$(gate "$REPO" false SubagentStop general-purpose)
+printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: SubagentStop for an unlisted agent type must block on red, got: $GOT"; exit 1; }
+GOT=$(gate "$REPO" false SubagentStop)
+printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: SubagentStop with no agent_type must block on red, got: $GOT"; exit 1; }
+GOT=$(gate "$REPO" false SubagentStop slice-critic)
+[ "$GOT" = "none" ] || { echo "FAIL: SubagentStop for the critic must be skipped, got: $GOT"; exit 1; }
+GOT=$(gate "$REPO" false SubagentStop spec-conformance-review)
+[ "$GOT" = "none" ] || { echo "FAIL: SubagentStop for the conformance reviewer must be skipped, got: $GOT"; exit 1; }
+GOT=$(gate "$REPO" true SubagentStop implementer)
+[ "$GOT" = "none" ] || { echo "FAIL: stop_hook_active must short-circuit SubagentStop too, got: $GOT"; exit 1; }
 
 echo "verification-gate.test.sh PASS"

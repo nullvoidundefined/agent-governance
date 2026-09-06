@@ -15,29 +15,31 @@ R-703: Send one canary agent first when dispatching N>=3 agents; fan out only af
 R-704: Execute plans with fewer than 5 independent tasks inline.
   Enforcement: manual
 
-R-705: Gate every implementation dispatch on failing tests written first.
-  Spec, in order, before dispatching:
-  1. Answer the pre-dispatch checklist in writing before any tool call.
-  2. Map the task to a test layer: unit for handlers/services, integration for API endpoints, component for UI, E2E for user flows.
-  3. Write failing tests and commit before dispatch.
-  4. Run tests, confirm FAIL (not error), record the count.
-  5. Run the full existing suite, record the passing count as the regression baseline.
-  6. Include in the dispatch prompt: task, test file paths, baseline numbers, exact definition-of-done commands, "do not modify test files".
-  7. On return: run the new tests, the full suite, and the build; all three pass before merge.
-  Pre-dispatch checklist:
-  - What test layer covers this task?
-  - What specific behavior will the failing test assert?
-  - Does this task touch existing components/hooks/utilities? If yes, the test must assert reuse, not reimplementation.
-  - Does this task have E2E behavioral requirements? If yes, write that test now.
-  - Am I invoking the exception? State explicitly why.
+R-705: Gate every implementation on a RED slice proven by `enforce/tdd.sh`.
+  Spec, per slice (R-412 carries the phase mechanics):
+  1. `tdd.sh open "B-n <behavior>" --spec <path>`; the guard now denies production writes.
+  2. The test author (you in Standard tier, the `test-author` agent in Complex and Saga) writes the test for `B-n` only and runs `tdd.sh red <file>` until it prints `RED:`.
+  3. Commit the test and the lock as `test(<scope>): B-n <behavior>` before any implementation.
+  4. The implementer (you, or the `implementer` agent) writes the minimum and runs `tdd.sh green` until it prints `GREEN:`; refactors; runs it again.
+  5. Commit the implementation. Dispatch the `slice-critic` for Complex and Saga, and for any Standard slice touching auth, money, concurrency, or an external call. `tdd.sh close`.
   Scope: the only exception is pure pixel/spacing/color aesthetic decisions with zero behavioral component. NOT exceptions: "it's visual work", "interface still being designed", "it's exploratory", "it's simple", component selection, API integration, state management, session behavior, layout correctness, dark mode, accessibility. If the thought "this counts as visual work" arises for anything beyond pixel values, write the test.
-  Enforcement: manual
+  Enforcement: manual for opening the slice and committing between RED and GREEN; hook:protected-path-guard and `enforce/tdd.sh` for everything after `open` (R-410, R-411, R-412)
 
 R-706: Cap each dispatched subagent task at 50 tool calls; stop and report when reached.
   Scope: dispatched subagent tasks, not the main session.
   Enforcement: manual
 
+R-707: Dispatch the slice roles as separate fresh contexts in Complex and Saga: `test-author` (Opus) receives the spec path and the slice id, never a plan's code blocks; `implementer` (Sonnet) receives the spec path, the test paths, and the lock; `slice-critic` (Opus) receives the spec path, the diff range, and the test paths, never the implementer's transcript or summary.
+  Spec:
+  - The primary session orchestrates: it opens and closes slices, commits, validates returns with `tdd.sh status` and `tdd.sh green`, and arbitrates nothing; a `DISPUTE:` goes to the user.
+  - Prompts carry paths, not content (R-701); the plan's behavior line for the slice is copied as text, its code is not.
+  - Role boundaries are enforced by R-411, not by the prompt; the prompt still states them so a refusal cites the rule.
+  - Standard tier runs the same loop in one session under the lock (2026-09-06 decision 3).
+  Enforcement: manual (the write boundaries are R-411)
+
 ## Review agents
+
+`agents/slice-critic.md` reviews one green slice from a fresh context with seven fixed questions (untested requirements, missing failure modes, overfit branches, mocks that hide behavior, layer bypasses and duplication, untested state transitions, green-but-unsafe code) and returns findings plus candidate tests as prose; it writes nothing. Dispatch it per slice in Complex and Saga per R-707. `agents/test-author.md` and `agents/implementer.md` are the other two slice roles.
 
 `agents/spec-conformance-review.md` reviews a diff against a named spec or plan file and reports only gaps that affect correctness or violate a stated requirement. Dispatch it after implementing against an approved spec and before merge. It needs the spec path in the dispatch prompt (R-701); with no spec it has nothing to review against and stops. It inherits the R-804 output discipline and returns the literal `No gaps found.` rather than manufacturing findings.
 

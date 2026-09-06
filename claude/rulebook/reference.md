@@ -127,7 +127,7 @@ R-303: Make dependencies flow one direction: higher layers import lower, never t
   - Backend `handlers -> services -> repositories -> clients/db`; frontend `components -> hooks -> services/clients`.
   - No upward imports, no layer skip that inverts flow, no circular imports between modules.
   - Per-stack specifics in `CLAUDE-BACKEND.md` and `CLAUDE-FRONTEND.md`. Enforce per project: `import/no-cycle` and `import/no-restricted-paths` (TypeScript), import-linter contracts (Python).
-  Enforcement: eslint:no-restricted-paths
+  Enforcement: eslint:no-restricted-paths; eslint:no-cycle (circular imports in every tree, maxDepth 8, since 2026-09-06)
 
 R-304: Use the fixed top-level vocabulary in the Express server's `src/`, one responsibility each.
   Scope: extends R-306 and R-311.
@@ -327,6 +327,7 @@ R-330: Settle the domain vocabulary during spec writing, before naming propagate
   - The spec is incomplete until it carries a `## Domain vocabulary` section, each domain noun written as `term - meaning - chosen over: <alternatives> because <reason>`.
   - All file, function, and type naming conforms to that glossary.
   - Prefer domain-precise terms over evocative metaphors unless a framework makes the metaphor standard (ECS `World`, Cucumber `World`).
+  Spec (2026-09-06): the spec also carries `## Acceptance criteria` (one numbered behavior per line, `B-1`, `B-2`, each a slice R-412 runs as RED then GREEN) and `## Non-goals`; the full heading set with each heading's intent is `prompts/spec-template.md`, and `spec-grounding` adds the missing headings when it rewrites an external spec.
   Enforcement: hook:spec-glossary-check (advisory)
 
 ### Observability (R-34x)
@@ -364,7 +365,7 @@ R-344: Never swallow an error.
   - A `catch` binds the error and references it: log with `{ err }` and the request ID, report to the error tracker when the failure is unexpected, then return an error response or rethrow with the original as `cause`.
   - Expected failures (a cache miss, a 404 from a provider) log at `debug` or `warn` and return a defined fallback; they are still bound and referenced.
   - The global error handler is the one place an unexpected error becomes a 500, and it reports before it responds.
-  Enforcement: eslint:no-empty (`allowEmptyCatch: false`); eslint:no-swallowed-catch (decides an unbound `catch` and a bound-but-unreferenced error; what the block does with the error is not decidable and stays manual); ruff:E722, ruff:S110, ruff:BLE001 (Python analogs; a blind except that re-raises passes); golangci:errcheck, golangci:errorlint (Go analogs); rubocop:Lint/SuppressedException (Ruby analog)
+  Enforcement: eslint:no-empty (`allowEmptyCatch: false`); eslint:no-swallowed-catch (decides an unbound `catch` and a bound-but-unreferenced error; what the block does with the error is not decidable and stays manual); ruff:E722, ruff:S110, ruff:BLE001 (Python analogs; a blind except that re-raises passes); golangci:errcheck, golangci:errorlint (Go analogs); rubocop:Lint/SuppressedException (Ruby analog); the two catch rules also cover every `src/services` and `src/clients` tree outside a server root since 2026-09-06 (swallowing an error is not a server-only defect)
 
 R-345: Expose liveness and readiness probes on every service and worker.
   Spec:
@@ -411,7 +412,7 @@ R-401: Write tests that fail when the implementation is wrong; prefer behavior a
     7. Loose-shape-only assertion on a value-computing function.
     8. `it.skip(...)` without reason and triage ID.
     9. Persistently red tests: fix or delete. Never `test.fixme`/`test.skip`/`it.skip`/`xit`/`xtest` to suppress a failing test; a test that cannot pass is deleted, not deferred, and re-added when the capability exists.
-  Enforcement: hook:content-gate (anti-patterns 8 and 9 only: `.only` is denied outright, a skip is denied unless its line names a triage ID; the other seven stay judge-tier and manual)
+  Enforcement: hook:content-gate (anti-patterns 8 and 9: `.only` is denied outright, a skip is denied unless its line names a triage ID); eslint:no-self-mock (items 1 and 5 in test trees: a `vi.mock`/`jest.mock` of the module the test file is named for, and a repository test mocking the pool); eslint:behavior-assertion-required (item 3: a test whose only `expect()` matchers are mock-call matchers); items 2, 4, 6, and 7 stay with the slice critic's question 4 and the judge
 
 R-403: Follow the bug-fix path in order; fix bugs test-first.
   Scope: exception for test-resistant failures (races, hardware, prod-only env): document, fix, manually verify, log a `tech-debt:` note.
@@ -443,6 +444,37 @@ R-408: Lint/format staged files only in pre-commit hooks; run full sweeps in pre
 
 R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before committing again.
   Enforcement: manual
+
+R-410: Never write a gate input, nor a locked test, fixture, or spec path once a slice is red.
+  Scope: gate inputs are `.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, and `.claude/tdd-lock.json`; locked paths are every test tree (the `tests` pattern in `enforce/role-policy.json`), the `tests[].path` entries and `locked[]` prefixes in the lock, and the spec named at `tdd.sh open`. Paths outside the repository root are not governed.
+  Spec:
+  - A gate input changes outside the session, or the session tells the user what must change and why; never by a tool call.
+  - From `tdd.sh red` until `tdd.sh close`, the tests are the contract: the implementation changes to satisfy them, never the reverse.
+  - A test believed wrong is returned as `DISPUTE: <test id>: <why>`; the session stops; the user decides; any change is a new RED written by the test author.
+  - A new behavior is a new slice (`tdd.sh close`, then `tdd.sh open`), never an edit to the current slice's tests.
+  - Test-runner configs (`vitest.config.*`, `jest.config.*`, `playwright.config.*`, `pytest.ini`, `.rspec`) and the `package.json` `test`/`typecheck` scripts ask before changing.
+  - An unreadable lock fails closed: every write is denied until the user repairs or deletes the lock outside the session.
+  Enforcement: hook:protected-path-guard (denies Write and Edit by root-relative path; denies Bash by its write targets: redirections, `tee`, and every path operand of `rm`, `mv`, `cp`, `shred`, `truncate`, `unlink`, `sed -i`, `git rm|mv|checkout|restore|clean|stash`); `enforce/tdd.sh green` compares locked-file hashes against the lock and the RED commit for anything a regex cannot see (an interpreter writing from its own source)
+
+R-411: Subagent roles write only inside their boundary.
+  Scope: subagent tool calls, identified by the `agent_type` field in the hook input; the main session and any agent type absent from `enforce/role-policy.json` carry no role restriction (R-410 and R-412 still apply).
+  Spec:
+  - `test-author`: writes test and fixture trees only (`allow: tests`); reports a missing interface in its summary rather than creating it.
+  - `implementer`: writes anything except test trees, fixtures, specs, and the lock (`deny: tests, specs, lock`).
+  - `slice-critic`: writes nothing (`deny: any`); returns findings and candidate tests as prose.
+  - Roles and patterns are data in `enforce/role-policy.json`; a new role is a new key, not a hook change.
+  Enforcement: hook:protected-path-guard (reads `agent_type`; `disallowedTools` in the agent frontmatter is the belt to this hook's braces for the critic)
+
+R-412: Work in slices, each one behavior: open, failing test, red, implementation, green, close.
+  Scope: every tier above Trivial (2026-09-06 decision 3); Standard runs it in one session, Complex and Saga dispatch the test author and implementer as separate agents.
+  Spec, in order:
+  1. `bash ~/.claude/enforce/tdd.sh open "<slice>" [--spec <path>]` writes the lock in phase `open`: production paths are read-only, test and spec paths are writable.
+  2. Write the failing test for this one behavior.
+  3. `tdd.sh red <test file...>`: the named tests must fail for an assertion or missing-module reason (a syntax error in the test, no tests found, or a skip is rejected); the rest of the suite must be green; the pass count and the test-file hashes are recorded and the phase becomes `red`: test paths are read-only, production opens up.
+  4. Write the minimum implementation. `tdd.sh green`: the named tests pass, the suite count is at or above the baseline, the hashes match the lock and the RED commit; phase becomes `green`.
+  5. Refactor under the same lock; `tdd.sh green` again if anything changed.
+  6. Commit; `tdd.sh close` removes the lock. The RED commit (`test:`) precedes the GREEN commit (`feat:`, `fix:`, or `refactor:`).
+  Enforcement: hook:protected-path-guard (phase-aware: `open` denies production writes, `red` and `green` deny test writes); opening the slice is the manual step the skills instruct
 
 ## Git and process (R-5xx)
 
@@ -483,7 +515,7 @@ R-508: Update `README.md` in the same commit when adding a user-facing feature, 
 
 R-509: Target changed files only in per-commit test runs; run the full suite at pre-push.
   Spec: the turn-level gate is `hooks/verification-gate.sh`, a Stop hook. It runs only when the working tree is dirty or the branch carries unpushed commits, so a read-only turn costs nothing. Command discovery, first match wins: `.claude/verify.sh`, then the `~/.claude` repo's own two fixture suites, then `package.json` `test` plus `typecheck`/`type-check`, then `pytest`/`mypy`, then `go test`/`go vet`, then `bundle exec rspec`. A repo with no discoverable command is not blocked. Bypass for one turn with `CLAUDE_SKIP_VERIFY=1`; per-project commands belong in `.claude/verify.sh`, never hardcoded in the hook.
-  Enforcement: hook:verification-gate (blocks the Stop with the failing command's real output); manual for the changed-file scoping at commit time
+  Enforcement: hook:verification-gate (blocks the Stop with the failing command's real output; registered on SubagentStop as well since 2026-09-06, skipping only the roles `enforce/role-policy.json` marks `deny: ["any"]`, which write nothing and cannot fix a red tree); manual for the changed-file scoping at commit time
 
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run the format/lint/build steps they already run.
   Scope: build/lint/test gates a project defines (project `CLAUDE.md`) still apply, as does the pre-push/CI full sweep (R-408, R-509).

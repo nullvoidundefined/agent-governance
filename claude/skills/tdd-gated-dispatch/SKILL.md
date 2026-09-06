@@ -1,214 +1,156 @@
 ---
 name: tdd-gated-dispatch
-description: Use when dispatching sub-agents for implementation work - requires writing failing tests before dispatch so sub-agent output is mechanically validated against a test harness
+description: Use for any Standard, Complex, or Saga task once a spec exists, to run each behavior as one RED/GREEN/REFACTOR/REVIEW slice with the harness proving each step. In Complex and Saga it dispatches the test-author, implementer, and slice-critic agents as separate fresh contexts; in Standard the same session runs the slice under the lock. Sits between writing-plans and subagent-driven-development; the Superpowers skills stay the skeleton, this skill is the enforcement.
 ---
 
-# TDD-Gated Sub-Agent Dispatch
+# TDD-Gated Dispatch
 
-## Overview
+One behavior at a time. The harness, not the prompt, proves RED and GREEN and
+keeps the tests out of the implementer's hands.
 
-Write failing tests. Dispatch the sub-agent. Validate mechanically.
+**Stack assumption:** `enforce/tdd.sh` runs Vitest or Jest. Any other runner
+refuses; the loop below still applies by hand until the runner lands.
 
-**Stack assumption:** examples use pnpm and Vitest. Substitute the project's own test and build commands throughout; the pattern is stack-independent, only the commands change.
+## What the harness enforces (so this skill does not have to ask for it)
 
-## When to Use
-
-**Use when:**
-- Dispatching a sub-agent to implement a handler, service, component, or API endpoint
-- Dispatching a sub-agent to refactor code that has existing tests
-- Any task where the expected behavior can be asserted mechanically
-- Any task where the primary agent wants a mechanical validation gate on sub-agent output
-
-**Don't use when:**
-- Task is visual/layout work with no mechanical assertion
-- Task is exploratory research or investigation
-- Task is a doc edit, config change, or file move (use simpler dispatch)
-- The interface itself is the design decision the sub-agent must make
-
-## The Pattern
-
-### Phase 1: Primary Agent Writes the Test Harness
-
-Before dispatching, the primary agent does three things:
-
-**1. Write failing tests that define the contract.**
-
-Map the task type to the right test layer:
-
-| Task type | Test layer | Example |
+| Step | Mechanism | Rule |
 |---|---|---|
-| New handler/service | Unit test | Import expected exports, call with expected args, assert return values |
-| New API endpoint | Integration test | Supertest hits expected routes, asserts status codes and response shapes |
-| New UI component | Component test | RTL renders component, asserts expected DOM and interactions |
-| New user flow | E2E test | Playwright navigates the flow, asserts page state |
-| Refactor | Existing suite | Record current pass count as the regression baseline |
+| No production edit before the failing test | `.claude/tdd-lock.json` phase `open`, `hooks/protected-path-guard.sh` | R-412 |
+| The test fails for the right reason, the rest is green | `tdd.sh red` | R-412 |
+| Tests, fixtures, and the spec are read-only from RED to close | lock phases `red`/`green`, the guard | R-410 |
+| Test author writes only tests; implementer never writes tests; critic writes nothing | `agent_type` against `enforce/role-policy.json` | R-411 |
+| Named tests pass, suite at or above baseline, locked hashes match the RED commit | `tdd.sh green` | R-412 |
+| A writing subagent cannot return on a red suite | `verification-gate.sh` on `SubagentStop` | R-509 |
 
-**2. Commit the tests to the branch.**
+What stays with you: choosing the slices, opening each one, committing between
+RED and GREEN, and arbitrating a `DISPUTE:`.
 
-**3. Run the tests and record the baseline.**
+## Slicing
 
-```bash
-# New tests should FAIL (they define unimplemented behavior)
-pnpm test -- newFeature.test.ts
-# Expected: 0 passing, N failing
+Read the spec's acceptance criteria. Each criterion that a test can fail is a
+slice, `B-1`, `B-2`, in the order the implementation needs them. A plan from
+`writing-plans` maps one task to one slice; its code blocks are a suggestion
+for the implementer and are never shown to the test author (2026-09-06
+decision 2). Before dispatching the test author, write the slice's behavior
+line and criteria into the prompt as text; do not paste the plan.
 
-# Existing suite should PASS (this is the regression baseline)
-pnpm test
-# Expected: 396 passing, 0 failing
+Too small to slice: pure pixel, spacing, or color decisions with no behavioral
+component (the only R-705 exception). Everything else is a slice.
+
+## The loop, per slice
+
+```
+1. open       bash ~/.claude/enforce/tdd.sh open "B-n <behavior>" --spec docs/specs/<slug>.md
+2. RED        test author writes the test; tdd.sh red <file> prints RED:
+3. commit     git add <test file> .claude/tdd-lock.json && git commit -m "test(<scope>): B-n <behavior>"
+4. GREEN      implementer writes the minimum; tdd.sh green prints GREEN:
+5. REFACTOR   implementer, same lock; tdd.sh green again
+6. commit     git commit -m "feat(<scope>): B-n <behavior>"   (or fix:, refactor:)
+7. REVIEW     slice critic returns findings and candidate tests
+8. close      tdd.sh close; accepted candidates become B-n+1
 ```
 
-Record both numbers. They go into the dispatch prompt.
+Step 3 before step 4 is what makes `tdd.sh green`'s hash check bind to a git
+object: skip it and the check runs against the lock only, and says so.
 
-### Phase 2: Dispatch with the Harness
+## Standard tier: one session
 
-The dispatch prompt includes five elements:
+You are the test author, then the implementer, in turn, under the same lock.
+The guard enforces the order: after `open`, a production write is denied until
+`red` has run; after `red`, a test write is denied until `close`. Run the loop
+exactly as above without dispatch. Dispatch the critic only when the slice
+touches auth, money, concurrency, or an external call.
 
-1. **Task description** (what to build)
-2. **Test file paths** (what must pass)
-3. **Baseline numbers** (what must not regress)
-4. **Definition of done** (mechanical, not subjective)
-5. **Worktree and branch setup** (per R-702)
+## Complex and Saga: three agents, fresh context each
 
-### Phase 3: Validate on Return
+Dispatch with the Agent tool, `subagent_type` naming the role file in
+`~/.claude/agents/`, and the model the role file sets (test author and critic
+on Opus, implementer on Sonnet; 2026-09-06 decision 5). Every prompt carries
+paths, not content (R-701), and the branch block from
+`~/.claude/prompts/subagent-branch-setup.md` (R-702) for `cd` only; the agents
+do not commit, you do.
 
-When the sub-agent returns:
-
-```bash
-# 1. New tests pass
-pnpm test -- newFeature.test.ts
-# Expected: N passing, 0 failing
-
-# 2. No regressions
-pnpm test
-# Expected: >= 396 passing
-
-# 3. Build clean
-pnpm build
-```
-
-If any check fails, the work is incomplete. Do not merge.
-
-## Dispatch Prompt Template
+**Test author prompt:**
 
 ```markdown
-## Task
-[One paragraph describing what to build]
+## Slice
+B-n: <behavior line from the spec>
 
-## Worktree
-cd /absolute/path/to/worktree
-Branch: feature/xyz
+## Spec
+<absolute path to the spec>; read the B-n entry, its criteria, invariants, and failure modes.
 
-## Pre-written tests (MUST pass when you are done)
-- src/__tests__/handlers/newFeature.test.ts (currently FAILING, N test cases)
-- src/__tests__/services/newService.test.ts (currently FAILING, M test cases)
+## Conventions
+<absolute path to CLAUDE-BACKEND.md or the project's test conventions>
 
-Read these test files first. They define the contract.
-
-## Existing suite baseline
-- Server: 396 tests passing
-- Web: 259 tests passing
-Your work must not reduce these numbers.
+## Branch
+<R-702 block>
 
 ## Definition of done
-1. All new tests green: `pnpm test -- newFeature newService`
-2. No regressions: `pnpm test` shows >= 396 server, >= 259 web
-3. Build clean: `pnpm build`
-4. Commit test + implementation together
-
-## What NOT to do
-- Do not modify the pre-written test files (they are the contract)
-- Do not delete or skip existing tests
-- Do not stub implementations that make tests pass without real logic
-- Do not change function signatures that existing code depends on
+`bash ~/.claude/enforce/tdd.sh red <test file>` prints RED:. Report the RED line, the failure class, every interface the test assumes, and any spec ambiguity you resolved. Do not implement. Do not commit.
 ```
 
-## What the Primary Agent Writes
-
-One worked example. The task-type table above maps the other layers; port this shape to whichever layer the task needs.
-
-```typescript
-// src/__tests__/handlers/createWidget.test.ts
-import { describe, expect, it, vi } from 'vitest';
-import { createWidgetHandler } from '../../handlers/widgets/createWidget';
-
-describe('createWidgetHandler', () => {
-    it('returns 201 with the created widget', async () => {
-        const req = { body: { name: 'Test Widget', type: 'standard' } };
-        const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
-
-        await createWidgetHandler(req as any, res as any);
-
-        expect(res.status).toHaveBeenCalledWith(201);
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ name: 'Test Widget' })
-        );
-    });
-
-    it('returns 400 when name is missing', async () => {
-        const req = { body: { type: 'standard' } };
-        const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
-
-        await createWidgetHandler(req as any, res as any);
-
-        expect(res.status).toHaveBeenCalledWith(400);
-    });
-});
-```
-
-### Refactor task (baseline-only)
-
-No new tests needed. The dispatch prompt specifies:
+**Implementer prompt** (after the RED commit):
 
 ```markdown
-## Existing suite baseline
-Server: 396 tests passing. Your refactor must not reduce this number.
+## Slice
+B-n: <behavior line>
+
+## Contract
+Tests: <absolute test path(s)>. Lock: <repo>/.claude/tdd-lock.json. Spec: <absolute spec path>, the B-n entry.
+<optional: plan task N at <absolute plan path>, a suggestion; the tests decide>
+
+## Branch
+<R-702 block>
 
 ## Definition of done
-1. `pnpm test` shows >= 396 passing
-2. Build clean
-3. No new lint errors
+`bash ~/.claude/enforce/tdd.sh green` prints GREEN:. Then refactor and run it again. Report the GREEN line, files changed, reuse found (R-308), and anything the spec asks for that no test covers. If a test is wrong, return `DISPUTE: <file>: <title>: <why>` and stop. Do not edit tests, fixtures, the spec, or the lock. Do not commit.
 ```
 
-## Handling Test Modifications
+**Critic prompt** (after the GREEN commit):
 
-**Rule: Sub-agents must not modify pre-written test files.**
+```markdown
+## Slice
+B-n: <behavior line>
 
-If a sub-agent needs to change a test to make it pass, it must report back with the discrepancy. The primary agent decides whether to update the contract.
+## Inputs
+Spec: <absolute spec path>. Tests: <absolute test path(s)>. Diff: git diff <RED commit sha>...HEAD.
 
-**Exception:** Adding `import` statements to test files when the sub-agent creates a new module that the test needs to reference is allowed, but only when the test file already has a placeholder comment like `// import will be added by implementer`.
+## Output
+The seven questions in your role file, with file:line evidence or "none found", then ## Candidate tests as behavior statements. Write nothing.
+```
 
-## Common Mistakes
+## Validating a return
 
-| Mistake | Fix |
+Mechanical, in this order; a failure at any line means the slice is not done:
+
+```bash
+bash ~/.claude/enforce/tdd.sh status                # phase red after the test author, green after the implementer
+git status --porcelain                              # only the files the role may write (R-411)
+bash ~/.claude/enforce/tdd.sh green                 # re-run yourself before the GREEN commit
+```
+
+A `DISPUTE:` return stops the loop. Show the user the test, the claim, and the
+spec line. If the user agrees the test is wrong, `tdd.sh` cannot unlock it: the
+user deletes `.claude/tdd-lock.json` outside the session, you `open` the slice
+again, and the test author writes the corrected RED. Never edit the test
+yourself.
+
+## Common mistakes
+
+| Mistake | What happens now |
 |---|---|
-| Writing tests that pass without implementation (tautological) | Assert against real return values and side effects. Verify that replacing the implementation with `throw new Error('not implemented')` causes the test to fail. |
-| Forgetting to record the baseline | Run and record the full suite count before dispatch. |
-| Letting the sub-agent modify test files | Reject and re-dispatch. |
-| Writing tests that are too specific about implementation | Test behavior (return values, side effects), not internal structure. |
-| Skipping the harness for "simple" tasks | Apply the harness regardless of task size. |
-| Not committing tests before dispatch | Commit before dispatch. |
+| Writing production code "while the test is fresh in mind" | denied by the guard until `tdd.sh red` has run |
+| Handing the test author the plan with its code | the test mirrors the plan's misunderstanding; strip the code, pass the behavior line |
+| Letting the implementer "fix" a flaky assertion | denied; the only path is `DISPUTE:` |
+| Skipping the RED commit | `tdd.sh green` hash-checks against the lock only and warns |
+| Dispatching the critic with the implementer's summary | anchored review; give it paths and the diff range only |
+| Batching three behaviors into one slice | three tests, one implementation, no minimal step; slice again |
+| Using this skill for exploratory or research work | nothing to assert; use plain dispatch |
 
-## When TDD-Gated Dispatch is Not Possible
+## Refactor-only work
 
-For tasks where the output cannot be mechanically asserted (visual work, research, exploration), fall back to:
-
-1. **Existing suite baseline check:** "These N tests pass now; they must still pass after your change."
-2. **Diff review on return:** Compare the sub-agent's output against the original file. Flag any deletions of non-trivial code.
-3. **Scope constraint:** "You may only modify files X, Y, Z. Changes to other files will be rejected."
-
-
-## Verification Checklist
-
-Before dispatching:
-- [ ] Failing tests written and committed
-- [ ] Tests run and confirmed failing (not erroring)
-- [ ] Existing suite baseline recorded
-- [ ] Dispatch prompt includes test paths, baseline, and definition of done
-- [ ] Dispatch prompt includes "do not modify test files"
-
-After sub-agent returns:
-- [ ] New tests pass
-- [ ] Existing suite count equals or exceeds baseline
-- [ ] Build clean
-- [ ] No test files were modified by the sub-agent
-- [ ] Diff review: no unexpected deletions
+Open a slice with `--lock` on the files whose behavior must not change, skip
+RED (`tdd.sh red` needs a failing test), and use the suite as the baseline:
+`tdd.sh green` still refuses a drop below the count it records at `open`.
+Until `tdd.sh` learns a refactor mode, record the count by hand in the commit
+body.

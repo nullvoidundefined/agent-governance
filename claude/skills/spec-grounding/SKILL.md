@@ -105,6 +105,8 @@ Subagent A found. Do not create a competing vocabulary section; the glossary
 already has a home and a gate. If the spec has no glossary section yet, add
 one, since the gate requires it.
 
+Add any heading from `~/.claude/prompts/spec-template.md` the spec lacks, at minimum `## Acceptance criteria` (one numbered behavior per line, each a RED slice under R-412) and `## Non-goals`; an external spec usually carries its criteria as prose, and the test author needs them as a list.
+
 Rewrite the spec's prose to use the real names in place of the vague ones. A
 spec that says "the notification service" after grounding has failed to be
 grounded.

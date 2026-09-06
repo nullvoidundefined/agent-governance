@@ -54,7 +54,7 @@ Check if a user story exists in `docs/user-stories/` for this flow.
 
 **E2E test:**
 Check if a Playwright spec covers the new flow.
-- If none exists and the flow is testable: create a placeholder spec in `e2e/` with `test.skip` and a TODO referencing the user story.
+- If none exists and the flow is testable: open a slice (`tdd.sh open`) and write it as a RED test now, or record in the user story why it waits for the next session. Never a skipped placeholder (R-401 item 9).
 - If one exists: verify it covers the acceptance criteria.
 - If the flow is not E2E-testable (extension-only, requires manual browser): document why in the user story.
 
@@ -105,7 +105,7 @@ Some projects define surface-anchor directories with co-located `CLAUDE.md` docu
 
 ## Step 3: Final Commit
 
-If any cleanup actions produced file changes (feature list, user story, E2E placeholder, story file, query params doc, spec/plan deletion), commit them:
+If any cleanup actions produced file changes (feature list, user story, story file, query params doc, spec/plan deletion), commit them:
 
 ```bash
 git add <specific files>
@@ -139,7 +139,7 @@ Cleanup intensity scales with the task tier (from task-start). Each tier adds to
 |---|---|
 | **Trivial** | Commit the change; verify tests still pass. Nothing else. |
 | **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch |
-| **Complex** | E2E test must exist (not a placeholder); Storybook stories verified; shipped spec/plan deleted; handoff if the session is ending |
+| **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; handoff if the session is ending |
 | **Saga** | Every surface tested; handoff is mandatory; consider whether enough shipped to warrant an engineering audit |
 
 ## Common Mistakes
@@ -147,7 +147,7 @@ Cleanup intensity scales with the task tier (from task-start). Each tier adds to
 - Skipping cleanup on trivial tasks and accumulating drift in the feature list
 - Writing a squash commit message that says "final cleanup" instead of summarizing the feature
 - Leaving shipped specs/plans in docs/superpowers/ (they become noise for future sessions)
-- Creating E2E placeholders and never filling them in (the placeholder must reference the user story so it is discoverable)
+- Deferring the E2E test without a line in the user story saying why and when
 - Updating the feature list but not the user story (or vice versa)
 - Forgetting to delete the feature branch after squash merge
 

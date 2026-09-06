@@ -21,7 +21,7 @@ The user provides a slug and optionally a plan path:
 The slug determines:
 - Branch name: `feat/<slug>`
 - Worktree directory: `<project>-worktrees/<slug>/`
-- Doc filenames: `US-<SLUG>.md`, `e2e/<slug>.spec.ts`
+- Doc filenames: `US-<SLUG>.md`; the E2E path `e2e/<slug>.spec.ts` is recorded, not created
 
 ## Checklist
 
@@ -82,7 +82,7 @@ Do not proceed to Step 5 if tests fail.
 
 ### Step 5: Scaffold documentation
 
-Create three files inside the worktree. All work happens in the worktree directory.
+Create two files inside the worktree. All work happens in the worktree directory.
 
 **5a. Feature-list row**
 
@@ -115,19 +115,9 @@ Create `docs/user-stories/<slug>.md`:
 
 Populate the acceptance criteria by reading the plan file. Each task that produces user-visible behavior becomes a criterion.
 
-**5c. E2E spec file**
+**5c. E2E test**
 
-Create `e2e/<slug>.spec.ts`:
-
-```typescript
-import { expect, test } from '@playwright/test';
-
-test.describe('<Feature Name>', () => {
-    test.skip('placeholder: implement per US-<SLUG>-001 acceptance criteria', async ({ page }) => {
-        // TODO: implement after feature is built
-    });
-});
-```
+Do not scaffold a skipped placeholder (R-401 item 9: a test that cannot fail protects nothing, and PROTOCOL Layer 5 bans `test.skip` outright). The first user story's E2E test is written as a RED slice when implementation starts (R-412, tdd-gated-dispatch). Record the intended path on the user story's `**E2E test:**` line so it is discoverable; the file itself does not exist until it fails for a real reason.
 
 **5d. Query params check**
 
@@ -139,7 +129,7 @@ If yes, tell the user to add entries to `docs/query-params.md` and wait for conf
 
 ```bash
 cd ../<project>-worktrees/<slug>
-git add docs/feature-list/features.md docs/user-stories/<slug>.md e2e/<slug>.spec.ts
+git add docs/feature-list/features.md docs/user-stories/<slug>.md
 git commit -m "chore: scaffold docs for feat/<slug>"
 ```
 

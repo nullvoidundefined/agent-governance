@@ -35,7 +35,7 @@ R-209: Delete filler before sending: action announcements, question echoes, tran
 
 R-301 [ts]: Lay out pnpm monorepos in the canonical shape: `apps/server`, `apps/client/<surface>`, `packages/*` under the project-agnostic `@repo/*` scope; never rename or rescope an included surface. [manual]
 R-302: Keep each project an independent git repo; shared code publishes as versioned packages, never cross-project relative imports. [hook:content-gate]
-R-303: Dependencies flow one direction (backend `handlers -> services -> repositories -> clients/db`; frontend `components -> hooks -> services/clients`); no upward, layer-skipping, or circular imports. [eslint:no-restricted-paths]
+R-303: Dependencies flow one direction (backend `handlers -> services -> repositories -> clients/db`; frontend `components -> hooks -> services/clients`); no upward, layer-skipping, or circular imports. [eslint:no-restricted-paths, eslint:no-cycle]
 R-306: Never create catch-all dirs (`lib`, `utils`, `helpers`, `common`, `core`, `misc`, `shared`); function-only modules go to `services/` (business logic), `clients/` (third-party wrappers), or `api/` (own-backend fetch wrappers). [hook:structure-gate]
 R-307: `services/` by domain then operation; `clients/` one thin module per provider, no domain logic; `api/` one fetch wrapper per route; co-locate non-code assets; export only what is imported elsewhere. [manual]
 R-308: Search the existing `services/`, `clients/`, and hook trees before adding any new unit of business logic; reuse or extend first; ask before modifying shared code. [manual]
@@ -63,13 +63,16 @@ R-351: Dockerize every deployable artifact from its first commit: one `Dockerfil
 
 ## Testing and quality (R-4xx)
 
-R-401: Write tests that fail when the implementation is wrong: behavior assertions over mock-call counts; rewrite the nine anti-patterns (reference.md) on sight; never skip or suppress a failing test: fix it or delete it. [hook:content-gate]
+R-401: Write tests that fail when the implementation is wrong: behavior assertions over mock-call counts; rewrite the nine anti-patterns (reference.md) on sight; never skip or suppress a failing test: fix it or delete it. [hook:content-gate, eslint:no-self-mock, eslint:behavior-assertion-required]
 R-403: Fix bugs test-first: write the failing test, confirm it FAILS, apply the smallest root-cause fix, confirm it PASSES, verify per R-509, commit test and fix together. [hook:fix-commit-requires-test]
 R-404: Reproduce failures locally before deploying. [manual]
 R-405: Fix root causes; never weaken the protection that surfaced the failure (CORS, CSP, rate limits, bcrypt rounds). [hook:content-gate]
 R-406: Give every user-input handler one negative-input test (oversized payload, injection, malformed encoding). [manual]
 R-408: Lint/format staged files only in pre-commit; full sweeps in pre-push and CI. [manual]
 R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before committing again. [manual]
+R-410: Never write a gate input (`.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, `.claude/tdd-lock.json`) nor, once a slice is red, any test, fixture, or spec path; a test believed wrong returns `DISPUTE: <test>` to the user. [hook:protected-path-guard]
+R-411: Subagent roles write inside their boundary (`enforce/role-policy.json`): test-author only test and fixture trees, implementer never tests, fixtures, or specs, slice-critic nothing. [hook:protected-path-guard]
+R-412: Work in slices: `tdd.sh open`, the failing test, `tdd.sh red` before any production edit, `tdd.sh green` before the commit, `tdd.sh close`; the lock denies production writes while open and test writes once red. [hook:protected-path-guard]
 
 ## Git and process (R-5xx)
 
@@ -81,7 +84,7 @@ R-505: Conventional commit subjects (`type(scope): summary`); one commit per tri
 R-506: One-sentence commit bodies; multi-line only for business-logic bugs, architectural refactors, security changes. [hook:commit-message-guard]
 R-507: Never commit unresolved conflict markers. [hook:conflict-markers]
 R-508: Update `README.md` in the same commit when adding a user-facing feature or changing structure or setup. [hook:git-workflow-guard]
-R-509: Target changed files in per-commit test runs; run the full suite at pre-push; a turn never ends on a red suite. [hook:verification-gate]
+R-509: Target changed files in per-commit test runs; run the full suite at pre-push; neither a turn nor a writing subagent ends on a red suite. [hook:verification-gate]
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run their format/lint/build steps. [manual]
 R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch, one at a time. [hook:git-workflow-guard]
 R-512: Squash-merge feature branches; one commit per feature on `main`. [hook:git-workflow-guard]
