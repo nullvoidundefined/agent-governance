@@ -307,4 +307,15 @@ Not built, by decision: a spec schema, an orchestrator, coverage thresholds, per
 8. Gate inputs are rare edits: deny `.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, and the lock; ask on `package.json` test scripts and runner configs.
 9. Judge key still pending: R-401 anti-patterns 2, 4, 6, 7 are labelled critic-only in the rule text; self-mock and mock-only assertions become ESLint rules regardless.
 
+
+Second round (2026-09-07, after PR #16 merged, asked one at a time):
+
+10. Next runner: wait for a real project; pytest, go test, and RSpec arrive with the first slice on that stack.
+11. Mutation testing: deferred until the first real slice has run.
+12. Dependency-addition guard: ask on every new dependency name in package.json, pyproject.toml, go.mod, or a Gemfile (R-331, `hooks/dependency-add-guard.sh`).
+13. `tdd.sh open --refactor`: built; the green suite is the contract, phase `refactor` locks tests like `red`.
+14. Critic cadence in Standard tier: the risk-area trigger stays (auth, money, concurrency, external calls).
+15. Ratchet re-baseline after the new ESLint rules: run by hand per repo with `ratchet.mjs --update`; no `--reason` flag (first answer reversed on re-ask).
+16. Items 12 and 13 built on one branch and one PR, merged by Ian.
+
 Superpowers stays as the process skeleton; `skills/tdd-gated-dispatch/SKILL.md` is rewritten as the integration point between `writing-plans` and `subagent-driven-development` rather than a new skill, and no Superpowers skill is forked into this repo.

@@ -13,6 +13,8 @@
 #   R-412  slice order: while .claude/tdd-lock.json says phase "open", only
 #          test, fixture, and spec paths may be written; `tdd.sh red` moves
 #          the slice to "red" and production writes open up
+#          A refactor slice (`tdd.sh open --refactor`) starts in phase
+#          "refactor", which locks tests exactly like "red"
 # Test-runner configs and the package.json test/typecheck scripts ask rather
 # than deny: a legitimate edit is rare but real (2026-09-06 decision 8).
 # Bash is covered by its write targets: redirections, tee, and the paths named
@@ -152,7 +154,7 @@ verdict_for() {
           printf 'deny|%s' "Slice '$(jq -r '.slice // "?"' "$LOCK")' is open and not yet red, so production paths are read-only (R-412). Write the failing test for this behavior first, run 'bash ~/.claude/enforce/tdd.sh red <test file>' to prove it fails for the right reason, and then '$rel' opens up."
           return
         fi ;;
-      red | green)
+      red | green | refactor)
         if is_locked "$rel" || matches "$rel" "$TESTS_PATTERN"; then
           printf 'deny|%s' "'$rel' is locked for slice '$(jq -r '.slice // "?"' "$LOCK")' (R-410): once the slice is red, tests, fixtures, and the spec are the contract and stay read-only through GREEN and REFACTOR. Make the implementation satisfy the test. If the test is wrong, return 'DISPUTE: <test id>: <why>' and stop; the user decides, and any change is a new RED. A new behavior is a new slice: 'tdd.sh close' then 'tdd.sh open'."
           return

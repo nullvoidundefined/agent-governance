@@ -87,7 +87,12 @@ jq -n '{slice:"B-1",phase:"green",tests:[{path:"src/__tests__/score.test.ts",sha
 write "$REPO/src/__tests__/score.test.ts" 'x' | expect deny "Write to the test while green"
 write "$REPO/src/services/score.ts" 'x' | expect allow "production write while green"
 
-# --- Unparsable lock fails closed --------------------------------------------
+# --- Slice lock, phase refactor: same protection as red (R-410) ---------------
+jq -n '{slice:"R-1",phase:"refactor",tests:[{path:"src/__tests__/score.test.ts",sha256:"0"}],locked:[]}' > "$REPO/.claude/tdd-lock.json"
+write "$REPO/src/__tests__/score.test.ts" 'x' | expect deny "Write to a refactor-locked test"
+write "$REPO/src/__tests__/other.test.ts" 'x' | expect deny "any test write while refactoring"
+write "$REPO/src/services/score.ts" 'x' | expect allow "production write while refactoring"
+
 printf '{not json' > "$REPO/.claude/tdd-lock.json"
 write "$REPO/src/services/score.ts" 'x' | expect deny "production write with an unreadable lock"
 write "$REPO/src/services/score.ts" 'x' | expect_reason 'unreadable' "unreadable-lock reason says so"

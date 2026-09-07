@@ -6,6 +6,13 @@
 #   tdd.sh open "<slice>" [--spec <path>] [--lock <path-or-dir/>]...
 #       writes the lock in phase "open": production paths are read-only until
 #       the failing test exists and is proven to fail for the right reason.
+#   tdd.sh open --refactor "<slice>" [--lock <test file>]... [--spec <path>]
+#       a behavior-preserving change has no RED to prove, so the green suite is
+#       the contract: runs the suite, requires it all green, records the pass
+#       count outside the locked test files as the baseline and the sha256 of
+#       every locked test file (every test file the suite ran when none is
+#       named), and starts in phase "refactor", which locks tests like "red".
+#       `tdd.sh green` then works unchanged: hashes, counts, no failures.
 #   tdd.sh red <test file>...
 #       runs the whole suite once and requires: every test in the named files
 #       fails for an assertion or a missing-module reason (a syntax error, a
@@ -149,25 +156,65 @@ names_json() {
 
 cmd_open() {
   [ -f "$LOCK" ] && die "a slice is already open ($(jq -r '.slice // "?"' "$LOCK" 2>/dev/null), phase $(phase)); finish it with 'tdd.sh green' and 'tdd.sh close', or ask the user to delete $LOCK_RELATIVE"
+  local refactor=0
+  [ "${1:-}" = "--refactor" ] && { refactor=1; shift; }
   local slice="${1:-}"; shift || true
-  [ -n "$slice" ] || die "usage: tdd.sh open \"<slice>\" [--spec <path>] [--lock <path>]..."
-  local spec="" locked='[]'
+  [ -n "$slice" ] || die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]..."
+  local spec="" locked='[]' lock_tests=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --spec) spec=$(relative "$2"); locked=$(printf '%s' "$locked" | jq -c --arg p "$spec" '. + [$p]'); shift 2 ;;
-      --lock) locked=$(printf '%s' "$locked" | jq -c --arg p "$2" '. + [$p]'); shift 2 ;;
+      --lock)
+        if [ "$refactor" -eq 1 ] && printf '%s' "$2" | grep -qE "$(jq -r '.patterns.tests' "$POLICY")"; then
+          lock_tests+=("$(relative "$2")")
+        else
+          locked=$(printf '%s' "$locked" | jq -c --arg p "$2" '. + [$p]')
+        fi
+        shift 2 ;;
       *) die "unknown option: $1" ;;
     esac
   done
   mkdir -p "$(dirname "$LOCK")"
-  jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --arg t "$(now)" \
-    '{slice:$s, phase:"open", spec:(if $spec=="" then null else $spec end), locked:$l, tests:[], openedAt:$t}' > "$LOCK"
-  say "slice open: $slice. Production paths are read-only until 'tdd.sh red <test file>' proves the failing test."
+  if [ "$refactor" -eq 0 ]; then
+    jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --arg t "$(now)" \
+      '{slice:$s, phase:"open", spec:(if $spec=="" then null else $spec end), locked:$l, tests:[], openedAt:$t}' > "$LOCK"
+    say "slice open: $slice. Production paths are read-only until 'tdd.sh red <test file>' proves the failing test."
+    return
+  fi
+  open_refactor "$slice" "$spec" "$locked" "${lock_tests[@]+"${lock_tests[@]}"}"
+}
+
+# A refactor slice: the whole suite must be green now, and the locked test
+# files (the named ones, or every test file the suite ran) become the contract.
+open_refactor() {
+  local slice="$1" spec="$2" locked="$3"; shift 3
+  local rels=("$@")
+  run_suite
+  local failing
+  failing=$(jq -r '.testResults[] | select(.status == "failed" or ([.assertionResults[] | select(.status == "failed")] | length > 0)) | .name' "$REPORT" | sed "s#^$ROOT_PHYSICAL/##")
+  [ -z "$failing" ] || { rm -f "$REPORT"; die "a refactor starts from a green suite and this one is red: $(printf '%s' "$failing" | tr '\n' ' '). Fix or RED-slice the failure first."; }
+  if [ ${#rels[@]} -eq 0 ]; then
+    while IFS= read -r name; do
+      [ -n "$name" ] && rels+=("${name#"$ROOT_PHYSICAL"/}")
+    done < <(jq -r '.testResults[].name' "$REPORT")
+  fi
+  local entries='[]' rel
+  for rel in "${rels[@]}"; do
+    [ -f "$rel" ] || die "no such test file: $rel"
+    entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" \
+      --argjson n "$(file_record "$rel" | jq '.assertionResults | length')" '. + [{path:$p, sha256:$h, failureClass:"refactor", tests:$n}]')
+  done
+  local baseline
+  baseline=$(outside_pass_count "$(names_json "${rels[@]}")") || exit 1
+  jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --argjson t "$entries" --argjson b "$baseline" --arg k "$RUNNER_KIND" --arg at "$(now)" \
+    '{slice:$s, phase:"refactor", spec:(if $spec=="" then null else $spec end), locked:$l, tests:$t, baseline:{passed:$b, runner:$k}, openedAt:$at}' > "$LOCK"
+  rm -f "$REPORT"
+  say "REFACTOR: ${#rels[@]} test file(s) locked, $baseline passing outside. Restructure, then 'tdd.sh green'; the same tests must pass unchanged."
 }
 
 cmd_red() {
   require_lock
-  case "$(phase)" in open | red) ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
+  case "$(phase)" in open | red) ;; refactor) die "this is a refactor slice; a new behavior is a new slice: 'tdd.sh green', 'tdd.sh close', then 'tdd.sh open'" ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
   esac
   [ $# -gt 0 ] || die "usage: tdd.sh red <test file>..."
   local tests_pattern rels=() rel
@@ -203,20 +250,20 @@ check_hashes() {
   [ -z "$changed" ] || die "locked test file(s) changed since RED (R-410): $(printf '%s' "$changed" | tr '\n' ' '). The tests are the contract; if one is wrong, return 'DISPUTE: <test id>: <why>' and stop."
   local red_commit
   red_commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
-  if [ -n "$red_commit" ] && git show "$red_commit:$LOCK_RELATIVE" 2>/dev/null | jq -e '.phase == "red" or .phase == "green"' >/dev/null 2>&1; then
+  if [ -n "$red_commit" ] && git show "$red_commit:$LOCK_RELATIVE" 2>/dev/null | jq -e '.phase == "red" or .phase == "green" or .phase == "refactor"' >/dev/null 2>&1; then
     changed=$(git show "$red_commit:$LOCK_RELATIVE" | jq -r '.tests[] | "\(.path) \(.sha256)"' | while read -r path recorded; do
       committed=$(git show "$red_commit:$path" 2>/dev/null | shasum -a 256 | awk '{print $1}')
       [ "$committed" = "$recorded" ] && [ -f "$path" ] && [ "$(sha "$path")" = "$committed" ] || printf '%s\n' "$path"
     done)
     [ -z "$changed" ] || die "locked test file(s) differ from the RED commit ${red_commit:0:7} (R-410): $(printf '%s' "$changed" | tr '\n' ' ')"
   else
-    say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
+    [ "$(phase)" = "refactor" ] || say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
   fi
 }
 
 cmd_green() {
   require_lock
-  case "$(phase)" in red | green) ;; *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;; esac
+  case "$(phase)" in red | green | refactor) ;; *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;; esac
   check_hashes
   run_suite
   local rels names rel record
@@ -260,5 +307,5 @@ case "${1:-}" in
   green) cmd_green ;;
   close) cmd_close ;;
   status) cmd_status ;;
-  *) die "usage: tdd.sh open \"<slice>\" [--spec <path>] | red <test file>... | green | close | status" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | close | status" ;;
 esac

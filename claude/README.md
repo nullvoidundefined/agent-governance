@@ -107,6 +107,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
 │   ├── verification-gate.sh         # Stop, SubagentStop. Blocks the turn on a red test/typecheck run.
 │   ├── protected-path-guard.sh      # PreToolUse. Locks tests, fixtures, specs, and gate inputs per slice and role.
+│   ├── dependency-add-guard.sh      # PreToolUse. Asks when a manifest gains a new dependency (R-331).
 │   ├── install-git-hooks.sh         # Installs pre-push.sample into .git/hooks.
 │   ├── pre-push.sample              # Tracked pre-push: a red suite aborts the push.
 │   ├── tests/                       # 12 fixture tests for the lifecycle hooks.

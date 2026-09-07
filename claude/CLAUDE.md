@@ -47,6 +47,7 @@ R-320: Write a file-level header comment on every new source file (skip tests, `
 R-322: Every function is exactly one of: an orchestrator that only sequences calls, or an atomic function doing one indivisible piece (~10 lines, ~25 ceiling). [hook:clean-code-reminder]
 R-325: Destructure when reading 2+ properties of an object; never destructure a method off its object. [eslint:destructure-object-reads, judge]
 R-330: Settle the domain vocabulary during spec writing; the spec carries a `## Domain vocabulary` glossary that all file, function, and type naming draws from. [hook:spec-glossary-check]
+R-331: Justify every new third-party dependency before adding it: name the need `services/`, `clients/`, and the existing packages cannot meet (R-308); a manifest gaining a dependency name asks. [hook:dependency-add-guard]
 
 ### Observability (R-34x)
 

@@ -36,7 +36,7 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 - P2 (assessment, decision 1): `enforce/tdd.sh` refuses pytest, go test, and RSpec projects rather than guessing; wire each classifier with the first real project on that stack, with the fixture driving the real runner as `tdd-red-green.test.sh` does for Vitest.
 - P2 (assessment): `protected-path-guard.sh` cannot see a file written by an interpreter from its own source (`python - <<PY`, `node -e`); `tdd.sh green` compares locked-file hashes against the RED commit as the backstop, so the gap is bounded to the window between GREEN and commit. Stated in both headers.
 - P2 (assessment, to confirm on the real build): `agent_type` reaching `PreToolUse` command hooks, and the `SubagentStop` output contract (`decision: block`); both listed in the handoff's step 1 and 2.
-- P3 (assessment, step 6): `import-x/no-cycle` and the widened R-344 block will raise counts on any repo carrying an `.enforce-baseline.json`; run `ratchet.mjs --update` there once, deliberately, before the push gate is expected to pass.
+- P3 (assessment, step 6; decision 15): `import-x/no-cycle`, the widened R-344 block, and the test-quality rules raise counts on any repo carrying an `.enforce-baseline.json`; Ian runs `ratchet.mjs --update` there once by hand before the push gate is expected to pass.
 - P3 (assessment, step 6): `behavior-assertion-required` counts matchers syntactically; an `expect` built through a helper (`expectRow(...)`) is invisible to it and a test asserting only through such helpers is not judged. Stated in the rule header.
 
 ## Resolved

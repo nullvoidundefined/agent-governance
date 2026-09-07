@@ -197,6 +197,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/protected-path-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/dependency-add-guard.sh"
           }
         ]
       },

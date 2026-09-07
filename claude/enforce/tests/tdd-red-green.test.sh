@@ -116,6 +116,40 @@ bash "$TDD" green >/dev/null
 bash "$TDD" close >/dev/null
 [ ! -f .claude/tdd-lock.json ] || { echo "FAIL: close must remove the lock"; exit 1; }
 
+# --- refactor mode: no RED, the green suite is the baseline --------------------
+# open --refactor on a red tree is refused: a refactor starts from green.
+impl src/services/score.ts 1
+expect_fail "open --refactor on a red tree" bash "$TDD" open --refactor "R-1 extract scoring" --lock src/__tests__/score.test.ts | grep -qi 'green' || { echo "FAIL: refactor-open refusal must say the tree must be green"; exit 1; }
+[ ! -f .claude/tdd-lock.json ] || { echo "FAIL: a refused refactor open must not leave a lock"; exit 1; }
+impl src/services/score.ts 2
+# open --refactor with named test files records their hashes and the outside baseline.
+bash "$TDD" open --refactor "R-1 extract scoring" --lock src/__tests__/score.test.ts >/dev/null
+[ "$(lock_field . .phase)" = "refactor" ] || { echo "FAIL: open --refactor must write phase refactor, got $(lock_field . .phase)"; exit 1; }
+[ "$(lock_field . '.tests[0].path')" = "src/__tests__/score.test.ts" ] || { echo "FAIL: --lock must record the named test"; exit 1; }
+[ "$(lock_field . '.baseline.passed')" = "1" ] || { echo "FAIL: refactor baseline must count the passing tests outside the locked files, got $(lock_field . '.baseline.passed')"; exit 1; }
+# red is not a refactor step.
+red_test src/__tests__/next.test.ts 2>/dev/null || true
+expect_fail "red while refactoring" bash "$TDD" red src/__tests__/next.test.ts >/dev/null
+rm -f src/__tests__/next.test.ts
+# an equivalent implementation stays green; phase becomes green; close works.
+printf 'const SCORE = 2;\nexport function score() { return SCORE; }\n' > src/services/score.ts
+bash "$TDD" green >/dev/null
+[ "$(lock_field . .phase)" = "green" ] || { echo "FAIL: green from refactor must move the phase to green"; exit 1; }
+# a behavior change that breaks the locked test is refused.
+impl src/services/score.ts 3
+expect_fail "green after a behavior change" bash "$TDD" green >/dev/null
+impl src/services/score.ts 2
+# a tampered locked test is refused with R-410.
+printf 'import { it, expect } from "vitest";\nimport { score } from "../services/score";\nit("scores a job at 2", () => { expect(score()).toBe(score()); });\n' > src/__tests__/score.test.ts
+expect_fail "green after tampering a refactor-locked test" bash "$TDD" green | grep -q 'R-410' || { echo "FAIL: refactor tamper refusal must cite R-410"; exit 1; }
+git checkout -q -- src/__tests__/score.test.ts
+bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
+# open --refactor with no --lock locks every test file the suite ran.
+bash "$TDD" open --refactor "R-2 rename module" >/dev/null
+[ "$(lock_field . '.tests | length')" = "2" ] || { echo "FAIL: open --refactor without --lock must lock every test file, got $(lock_field . '.tests | length')"; exit 1; }
+[ "$(lock_field . '.baseline.passed')" = "0" ] || { echo "FAIL: with every test locked the outside baseline is 0, got $(lock_field . '.baseline.passed')"; exit 1; }
+bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
+
 # status with no lock says so and exits 0.
 bash "$TDD" status | grep -qi 'no slice' || { echo "FAIL: status without a lock must say no slice is open"; exit 1; }
 

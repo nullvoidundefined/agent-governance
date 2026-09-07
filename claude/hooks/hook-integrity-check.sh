@@ -6,7 +6,7 @@
 # Warns via additionalContext, never blocks. After INTENTIONAL hook changes,
 # regenerate and commit the manifest:
 #   ~/.claude/hooks/hook-integrity-check.sh --update
-# Covered: hooks/*.sh, hooks/*.mjs, enforce/*.yml, enforce/*.toml,
+# Covered: hooks/*.sh, hooks/*.mjs, hooks/*.py, enforce/*.yml, enforce/*.toml,
 # enforce/*.mjs (lint, ratchet, eslint config, shared options), enforce/rules/*.mjs
 # (custom ESLint rules), enforce/*.sh (tdd.sh, resolveOutgoingBase.sh),
 # enforce/manifest.json, enforce/lexicon.json, enforce/role-policy.json.
@@ -21,7 +21,7 @@ CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$HOME/.claude}"
 HASH_FILE="$CLAUDE_DIR/enforce/hook-hashes.txt"
 
 compute_hashes() {
-  (cd "$CLAUDE_DIR" && { ls hooks/*.sh hooks/*.mjs enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/manifest.json enforce/lexicon.json enforce/role-policy.json 2>/dev/null || true; } \
+  (cd "$CLAUDE_DIR" && { ls hooks/*.sh hooks/*.mjs hooks/*.py enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/manifest.json enforce/lexicon.json enforce/role-policy.json 2>/dev/null || true; } \
     | sort | { xargs shasum -a 256 2>/dev/null || true; })
 }
 

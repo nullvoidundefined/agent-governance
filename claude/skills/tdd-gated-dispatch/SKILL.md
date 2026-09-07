@@ -149,8 +149,14 @@ yourself.
 
 ## Refactor-only work
 
-Open a slice with `--lock` on the files whose behavior must not change, skip
-RED (`tdd.sh red` needs a failing test), and use the suite as the baseline:
-`tdd.sh green` still refuses a drop below the count it records at `open`.
-Until `tdd.sh` learns a refactor mode, record the count by hand in the commit
-body.
+A behavior-preserving change has no RED to prove, so the green suite is the
+contract:
+
+```
+bash ~/.claude/enforce/tdd.sh open --refactor "R-n <what changes>" --lock <test files that pin the behavior>
+```
+
+The suite must be green at open; the named test files (every test file the
+suite ran when none is named) are locked and hashed; `tdd.sh green` requires
+the same tests to pass unchanged and the outside count not to drop; `tdd.sh
+red` is refused until the slice closes, because a new behavior is a new slice.

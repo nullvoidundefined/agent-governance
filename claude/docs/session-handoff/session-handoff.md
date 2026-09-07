@@ -1,25 +1,20 @@
-# Session Handoff: 2026-09-06 TDD harness assessment and slice-loop enforcement (steps 1 to 6)
+# Session Handoff: 2026-09-07 slice loop (PR #16) and dependency guard plus refactor mode (PR #17) merged
 
 ## 1. Last commit
 
-- Step 6 (test-quality ESLint rules, no-cycle, catch discipline) is the newest commit on `claude/tdd-harness-llm-code-fuf9rh`; before it `0420d3b` (spec template, step 5), `62bd02b` (role agents and the dispatch rewrite, step 4), `0b6c1f7` (SubagentStop, step 3), `0d96c35` (tdd.sh, step 2), `d116dbb` (protected-path guard, step 1), `4189a9c` and `3f2ba92` (the assessment and its nine decisions). No PR opened.
+- PR #17 (`feat(harness): R-331 dependency-add guard and tdd.sh open --refactor`) squash-merged to `main` on 2026-09-07, on top of PR #16 (`b908724`). `git log --oneline -2 main` shows both; no branch is open.
 
 ## 2. Production state
 
-- Branch is green locally: 46 enforcement fixtures, 12 hook fixtures, run against this checkout through a fake `$HOME` with a git identity. CI has not run on the branch yet (it runs on `pull_request` and `main`).
+- Both PRs merged with CI green: 47 enforcement fixtures, 12 hook fixtures, run against this checkout through a fake `$HOME` with a git identity. CI has not run on the branch yet (it runs on `pull_request` and `main`).
 - Nothing is live in Ian's `~/.claude` until the branch merges and is pulled. After the pull: `npm ci --prefix enforce` (the lockfile now carries `vitest` 5.0.0, pinned exact, as a devDependency for the live `tdd.sh` fixture), then `hooks/hook-integrity-check.sh` should be silent (the manifest was regenerated three times on the branch).
 - The judge key is still pending (decision 9); R-401 anti-patterns 2, 4, 6, 7 are critic-only until it lands.
 
 ## 3. What shipped
 
-- **Assessment (`docs/audits/2026-09-06-tdd-harness.md`):** current state, gap analysis (C-1 to C-4 critical), target workflow, concrete changes, agent-role design, guardrails, a worked example, the minimal plan, and the nine decisions asked one at a time.
-- **Step 1, `hooks/protected-path-guard.sh` (R-410, R-411, R-412):** PreToolUse on Bash and Write|Edit. Denies writes to the gate inputs (`.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, `.claude/tdd-lock.json`); asks on test-runner configs and the `package.json` test/typecheck scripts; reads the slice lock (phase `open` denies production writes, `red`/`green` deny every test-tree write plus locked fixtures and the spec); reads `agent_type` against `enforce/role-policy.json` (test-author writes tests only, implementer never tests/fixtures/specs, slice-critic and spec-conformance-review nothing). Bash is judged by redirections, `tee`, and the operands of mutating verbs. Fixture: 60 cases.
-- **Step 2, `enforce/tdd.sh` (R-412):** `open`, `red`, `green`, `close`, `status`. RED accepted only for assertion or missing-module failures with the rest of the suite green; records baseline and sha256 per file. GREEN checks hashes against the lock and the RED commit, then requires every named test to pass, none skipped, outside count at or above baseline. Vitest and Jest only. Fixture drives the bundled Vitest against a throwaway project.
-- **Step 3, `SubagentStop`:** `verification-gate.sh` registered on it; skips roles whose policy entry is `deny: ["any"]`. Six new fixture cases.
-- **Step 4, roles and the skill:** `agents/test-author.md` (Opus, writes tests only), `agents/implementer.md` (Sonnet, never writes tests, returns `DISPUTE:`), `agents/slice-critic.md` (Opus, read-only, seven questions, candidate tests as prose). `skills/tdd-gated-dispatch/SKILL.md` rewritten as the open/RED/commit/GREEN/REFACTOR/commit/REVIEW/close loop with the three dispatch prompts and the single-session Standard variant; R-705 rewritten and R-707 added in `rulebook/agents.md`; `task-start` tiers route through it; `feature-create` and `task-cleanup` no longer scaffold `test.skip` placeholders.
-- **Step 5, spec shape:** `prompts/spec-template.md`; `spec-glossary-check.sh` names whichever of `## Domain vocabulary`, `## Acceptance criteria`, `## Non-goals` a design doc lacks; `spec-grounding` adds the headings to an external spec.
-- **Step 6, ESLint:** `enforce/rules/no-self-mock.mjs` (R-401 items 1 and 5) and `behavior-assertion-required.mjs` (item 3) in test trees; `import-x/no-cycle` with the parsers, extensions, and TS resolver settings it needs (it reports nothing without them); the R-344 catch rules widened to every `src/services` and `src/clients` tree. Fixture `test-quality-rules.test.sh` drives the real ESLint.
-- Rule text: R-410 to R-412 norm lines and Spec blocks, R-509, R-401, R-303, R-344, R-330 updated; manifest rows for each; `enforce/README.md` sections; README layout; PROTOCOL "What changed on 2026-09-06" and Appendix A origin.
+- **PR #16 (merged):** the assessment, R-410 to R-412 with `hooks/protected-path-guard.sh` and `enforce/role-policy.json`, `enforce/tdd.sh`, the `SubagentStop` gate, the three role agents and the `tdd-gated-dispatch` rewrite (R-705, R-707), `prompts/spec-template.md` with the extended R-330 hook, and the test-quality, no-cycle, and catch-discipline ESLint rules.
+- **PR #17 (merged):** R-331 `hooks/dependency-add-guard.sh` plus `hooks/dependency-add-scan.py` (asks when a manifest gains a dependency name; 30-case fixture); `tdd.sh open --refactor` (green suite as the contract, phase `refactor`, guard treats it like `red`; fixture cases in both suites).
+- Decisions 10 to 16 recorded in the assessment's Decisions section.
 
 ## 4. Pending
 
@@ -30,11 +25,11 @@
 
 **Then:**
 
-3. Open the PR for the branch (`gh pr create` asks; R-514 keeps the merge with Ian) and let CI run the 58 fixtures; the ratchet step will report nothing to baseline for this repo.
-4. First real slice on a Vitest project: `tdd.sh open`, dispatch `test-author`, commit, dispatch `implementer`, `tdd.sh green`, dispatch `slice-critic`. Expect the first surprises in `tdd.sh red`'s failure classification and in the guard's Bash target extraction; both have fixtures to extend.
-5. After that run, `node ~/.claude/enforce/ratchet.mjs --update` on any backend repo with an existing baseline: `no-cycle`, the widened catch rules, and the test-quality rules add counts that must be locked in before the ratchet gate can pass there.
+3. Pull `main` and `npm ci --prefix enforce` (Vitest is in the lockfile since PR #16).
+4. First real slice on a Vitest project: `tdd.sh open`, dispatch `test-author`, commit, dispatch `implementer`, `tdd.sh green`, dispatch `slice-critic`. Expect the first surprises in `tdd.sh red`'s failure classification, the guard's Bash target extraction, and the dependency guard's ask cadence; all three have fixtures to extend.
+5. Re-baseline by hand (decision 15): `node ~/.claude/enforce/ratchet.mjs --update` once in each repo carrying `.enforce-baseline.json`, read the new `import-x/no-cycle`, `catchDiscipline/*`, and `testQuality/*` counts, commit.
 
-**Deferred by decision:** pytest, go test, and RSpec runners in `tdd.sh` (Vitest first); mutation testing on changed files; the dependency-addition guard; the judge-tier extension.
+**Deferred by decision:** pytest, go test, and RSpec runners in `tdd.sh` (decision 10); mutation testing on changed files (decision 11); the judge-tier extension (decision 9).
 
 ## 5. Next-session tasks, with files to read
 
