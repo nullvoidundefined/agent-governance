@@ -338,6 +338,13 @@ R-331: Justify every new third-party dependency before adding it.
   - A dependency the spec names is still asked about once; the cost is one prompt per deliberate addition.
   Enforcement: hook:dependency-add-guard (asks on a Write or Edit whose result carries a dependency name the file on disk lacks; an Edit is judged on the file after the replacement; `hooks/dependency-add-scan.py` parses; an unparsable result fails open)
 
+R-332: Keep every comment true to the code beside it; a comment that describes code no longer present is worse than no comment, since it actively misleads the next reader.
+  Spec:
+  - When an edit removes, renames, or restructures the code a comment describes, update or delete that comment in the same edit. Never leave it describing the prior shape.
+  - This includes references to removed parameters, deleted branches, renamed functions or files, and superseded approaches ("this used to X, now it Y" is still a stale comment if X no longer exists anywhere nearby to give the contrast meaning).
+  - Not mechanized: detecting whether a comment's claim still matches the code it sits beside requires understanding both, which is the same undecidable-in-general problem as R-318. Depends on recall at edit time.
+  Enforcement: manual
+
 ### Observability (R-34x)
 
 R-341: Give every inbound request one request ID and carry it everywhere that request causes work.

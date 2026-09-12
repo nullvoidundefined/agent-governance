@@ -12,7 +12,15 @@
 #                 any src/, not only the server trees; no-console stays server-scoped.
 set -euo pipefail
 E="$HOME/.claude/enforce"
+# Canonicalize: macOS mktemp returns a path under /var/folders, itself a
+# symlink to /private/var/folders. import-x/no-cycle tracks visited files by
+# exact path string, so linting the symlinked path makes a file's own path
+# never match itself and the cycle detection silently misses (verified
+# 2026-09-12: identical fixture passes through the realpath and fails through
+# the symlinked path). A real checkout never hits this; only the fixture path
+# needs the realpath, not the rule.
 TMP=$(mktemp -d)
+TMP=$(cd "$TMP" && pwd -P)
 mkdir -p "$TMP/src/__tests__/services" "$TMP/src/__tests__/repositories" "$TMP/src/services" "$TMP/src/clients" "$TMP/src/database"
 
 reports() {

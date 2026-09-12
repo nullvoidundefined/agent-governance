@@ -113,6 +113,10 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/codex-billing-guard.sh"
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/protected-path-guard.sh"
           },
           {
@@ -373,16 +377,6 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/settings-change-guard.sh"
-          }
-        ]
-      }
-    ],
-    "PreModelSwitch": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/model-switch-guard.sh"
           }
         ]
       }
