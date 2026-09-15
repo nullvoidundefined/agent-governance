@@ -10,6 +10,16 @@ set -euo pipefail
 
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+# Strip git global options so `git --no-pager push` matches like `git push`
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# -f guard, not `source ... || true`: a failed source aborts the shell under
+# set -e regardless of the || (observed 2026-09-16), which is a silent
+# fail-open for a guard.
+GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
+if [ -f "$GIT_INVOCATION_HELPER" ]; then
+  source "$GIT_INVOCATION_HELPER"
+  CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+fi
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
 TRUSTED_FILE="$HOME/.claude/enforce/gate-trusted-repos.txt"

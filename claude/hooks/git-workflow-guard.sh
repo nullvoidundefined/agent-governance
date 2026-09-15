@@ -25,20 +25,30 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
 
-# `git -C <path> push` and `git -c k=v commit` are the same actions with a
-# global option in front, and matching on adjacency alone lets both through.
-# Lift the options out before matching, and let -C redirect the repository the
-# rest of this hook inspects.
+# `git -C <path> push` and `git --no-pager commit` are the same actions with a
+# global option in front, and matching on adjacency alone lets them through.
+# Strip the whole option class via git-invocation.sh (2026-09-16 audit P2-1),
+# and let -C redirect the repository the rest of this hook inspects.
 GIT_DIRECTORY=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}' || true)
 if [ -n "$GIT_DIRECTORY" ]; then
   case "$GIT_DIRECTORY" in /*) CWD="$GIT_DIRECTORY" ;; *) CWD="$CWD/$GIT_DIRECTORY" ;; esac
 fi
-CMD=$(printf '%s' "$CMD" | sed -E 's/git([[:space:]]+(-C|-c)[[:space:]]+[^[:space:];&|]+)+/git/g')
+# -f guard, not `source ... || true`: a failed source aborts the shell under
+# set -e regardless of the || (observed 2026-09-16), a silent fail-open.
+GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
+if [ -f "$GIT_INVOCATION_HELPER" ]; then
+  source "$GIT_INVOCATION_HELPER"
+  CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+else
+  # Fallback keeps the pre-helper coverage rather than none.
+  CMD=$(printf '%s' "$CMD" | sed -E 's/git([[:space:]]+(-C|-c)[[:space:]]+[^[:space:];&|]+)+/git/g')
+fi
 
 printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || exit 0
 
 ask() {
-  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "$(printf '%s' "$1" | grep -oE 'R-[0-9]{3}' | head -1)" "git-workflow-guard" "ask"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
@@ -46,7 +56,8 @@ ask() {
 }
 
 deny() {
-  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "$(printf '%s' "$1" | grep -oE 'R-[0-9]{3}' | head -1)" "git-workflow-guard" "deny"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
@@ -64,10 +75,14 @@ fi
 
 TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
 # Identity is defined once in repo-identity.sh (2026-09-16 audit item 5).
-source "$(dirname "${BASH_SOURCE[0]}")/repo-identity.sh" 2>/dev/null || true
+# -f guard: a failed source aborts the shell under set -e even behind ||.
+REPO_IDENTITY_HELPER="$(dirname "${BASH_SOURCE[0]}")/repo-identity.sh"
 is_global_repo=0
-if type is_governance_repo >/dev/null 2>&1 && is_governance_repo "$TOP"; then
-  is_global_repo=1
+if [ -f "$REPO_IDENTITY_HELPER" ]; then
+  source "$REPO_IDENTITY_HELPER"
+  if is_governance_repo "$TOP"; then
+    is_global_repo=1
+  fi
 fi
 BRANCH=$(git -C "$TOP" symbolic-ref --short HEAD 2>/dev/null || true)
 on_trunk=0

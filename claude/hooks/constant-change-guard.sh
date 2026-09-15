@@ -10,6 +10,16 @@ source "$HOME/.claude/enforce/resolveOutgoingBase.sh"
 
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+# Strip git global options so `git --no-pager push` matches like `git push`
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# -f guard, not `source ... || true`: a failed source aborts the shell under
+# set -e regardless of the || (observed 2026-09-16), which is a silent
+# fail-open for a guard.
+GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
+if [ -f "$GIT_INVOCATION_HELPER" ]; then
+  source "$GIT_INVOCATION_HELPER"
+  CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+fi
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
@@ -38,7 +48,8 @@ while IFS= read -r constants_file; do
 done <<< "$CONST_FILES"
 
 if [ -n "$STALE" ]; then
-  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "R-513" "constant-change-guard" "ask"
   jq -n --arg r "constant-change-guard (R-513): the outgoing diff removes constant values that still appear in test assertions. Update every stale assertion in the same commit as the source change, or confirm to push anyway if the matches are coincidental:$STALE" \

@@ -14,6 +14,16 @@ source "$HOME/.claude/enforce/resolveOutgoingBase.sh"
 
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+# Strip git global options so `git --no-pager push` matches like `git push`
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# -f guard, not `source ... || true`: a failed source aborts the shell under
+# set -e regardless of the || (observed 2026-09-16), which is a silent
+# fail-open for a guard.
+GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
+if [ -f "$GIT_INVOCATION_HELPER" ]; then
+  source "$GIT_INVOCATION_HELPER"
+  CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+fi
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
 # Repo exemption: same allowlist as push-eslint-gate (origin URL per line).
@@ -72,7 +82,8 @@ REPORT=$(printf '%s' "$RESULTS" | jq -r --arg added "$ADDED" --arg top "$TOP/" '
   | .[]' 2>/dev/null || true)
 
 if [ -n "$REPORT" ]; then
-  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "ruff-ast" "push-ruff-gate" "deny"
   jq -n --arg r "ruff enforcement failed on the outgoing diff (R-324/R-326/R-329 Python analogs; mapping in enforce/ruff-enforce.toml). Fix the violations:
