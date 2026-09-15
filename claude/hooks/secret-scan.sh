@@ -27,7 +27,7 @@
 # thresholds and do not trigger a false positive.
 #
 # To test manually:
-#   echo '{"tool_input":{"command":"echo sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}' | ~/.claude/hooks/secret-scan.sh
+#   echo '{"tool_input":{"command":"echo sk-ant-api03-'$(printf 'A%.0s' $(seq 1 54))'"}}' | ~/.claude/hooks/secret-scan.sh
 # Should print JSON with permissionDecision=deny.
 #
 #   echo '{"tool_input":{"command":"ls -la"}}' | ~/.claude/hooks/secret-scan.sh

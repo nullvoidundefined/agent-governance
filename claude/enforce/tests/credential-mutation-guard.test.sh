@@ -35,12 +35,14 @@ allow "rm -rf node_modules"
 # Throwaway fixtures under /tmp: allow (R-103 Spec)
 allow "echo 'X=1' >> /tmp/fixture-8213/$ENVFILE"
 allow "rm /private/tmp/claude-501/scratch/$ENVFILE.test"
-# R-102 raw secret on argv still denied
-deny "railway variables --set KEY=sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+# R-102 raw secret on argv still denied (padding built at runtime so this
+# file never carries a full-length token past the publish guard, P3-3)
+FAKE_PAD=$(printf 'A%.0s' $(seq 1 54))
+deny "railway variables --set KEY=sk-ant-api03-$FAKE_PAD"
 
 # Write/Edit surface (P1-1): secrets in file payloads and writes to protected
 # credential paths are denied; clean writes and /tmp fixtures pass.
-FAKE_KEY="sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+FAKE_KEY="sk-ant-api03-$FAKE_PAD"
 deny_json() {
   printf '%s' "$1" | "$HOOK" \
     | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
