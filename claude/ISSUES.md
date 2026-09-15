@@ -22,7 +22,24 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 
 - P2 (2026-08-21 engineering audit): identical content written through a Bash heredoc bypasses `content-gate.sh` entirely, since the hook matches Write|Edit only. `secret-scan.sh` already reads heredoc bodies out of Bash commands and is the fix precedent in the same tree.
 - P2 (2026-08-21 engineering audit): three of this cycle's fixtures were constructed in a way that avoids the failure mode they should probe (`content-gate.test.sh`'s `pwd -P` normalization, `structure-gate.test.sh`'s react-only client package, `parallel-session-check.test.sh`'s `sleep` stand-in for a session process). The suite is green and still overstates coverage. Generalize: a fixture that sidesteps the environment quirk tests the hook against a world that does not exist.
-- P3 (2026-08-21 workspace hygiene): a duplicate clone of this repo's remote sits at `~/Desktop/code/personal/production/claude-config-snapshot`, four commits stale, with no pre-push hook and an untracked `.env`. Delete it or wire its hooks; a second checkout of a public-remote repo without the R-106 publish guard is the exact shape of an accidental push.
+### From the 2026-09-16 engineering audit (P2/P3; P0/P1 are current-effort, see `docs/audits/2026-09-16-engineering.md`)
+- P2 (2026-09-16 engineering audit P2-1): a git global option can defeat every push-boundary hook, including R-514.
+- P2 (P2-2): `hookspath-drift-check` blocks the very read its own comment exempts, and R-107 requires that read.
+- P2 (P2-3): the session-injected memory index contradicts `settings.json` on model routing.
+- P2 (P2-4): a global memory file claims an enforcement the rulebook says does not exist.
+- P2 (P2-5): `strict-permissions.json` documents a configuration replaced two commits ago.
+- P2 (P2-6): `claude/README.md` misstates its own title and five inventory counts.
+- P2 (P2-7): a fixture mutates live user configuration outside any sandbox.
+- P2 (P2-8): deny-tier guards use `set -euo pipefail` and fail open silently on an internal error.
+- P2 (P2-9): the CI workflow names a dependabot config that does not exist.
+- P2 (P2-10): `build-by-slice-require-review` restates a TDD loop the enforced harness (R-412/`tdd.sh`) will block, overlaps triggers with `tdd-gated-dispatch` and `feature-create`, and asserts branch protection that is not enabled; decide harness-aware rewrite vs portable-prose scope note.
+- P2 (P2-11): `~/.claude` is an untracked full copy and nothing verifies it matches the repo; the integrity check compares the live copy against itself.
+- P2 (P2-12): audit reports split between `docs/audits/` (rule text, `audit-signal-check.sh`) and `claude/docs/audits/` (nine prior reports); pick one home, move in one commit, disambiguate `audits.md:15`.
+- P3 (P3-1, unverified): an allowed command prefix may auto-approve a `&&`-chained destructive command; settleable by a single experiment.
+- P3 (P3-2): `skipDangerousModePermissionPrompt` sits against R-203.
+- P3 (P3-3): repairing the publish guard (P0-1) will make it block legitimate pushes until its base-resolution is adapted to this repo.
+- P3 (P3-4): the session-start SHA file is shared across all concurrent sessions.
+- P3 (P3-5): `CLAUDE.md` marks R-203 `[manual]` while two hooks enforce it.
 
 ### From the 2026-09-04 configuration audit (open P2/P3; the rest were fixed the same day or decided on 2026-09-05, see Resolved)
 - P2 (config audit P2-6): the judge tier is still inert on the keychain step. Alternative written up in the report: an experimental `agent` hook on `if: "Bash(git push *)"` runs on session credentials and can read the diff; `prompt` hooks cannot. `enforcement-guard-check.sh` would need to recognize a `type: agent` registration first.
