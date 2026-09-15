@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Validates the enforcement manifest: non-empty, required keys present, valid tiers,
-# and closure against the rule files: every hook:/eslint:/ruff: named in a CLAUDE.md
-# or rules/*.md Enforcement line has a manifest entry for that rule id, every
+# and closure against the rule files: every hook:/eslint:/ruff: named in a
+# rulebook/*.md Enforcement line has a manifest entry for that rule id (the
+# CLAUDE.md bracket tags name only each rule's primary enforcer and are not
+# parsed here; 2026-09-16 audit P3-5 verified the reverse direction manually,
+# zero enforcers cited there without a manifest entry), every
 # manifest hook enforcer names a script that exists in hooks/, and ruff:* entries
 # require the push-ruff-gate script and its bundled config to exist.
 set -euo pipefail
