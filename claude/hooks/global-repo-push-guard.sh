@@ -46,8 +46,22 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
 # Identity is defined once in repo-identity.sh (2026-09-16 audit P0-1: the
 # old inline path-equality test went dead when the repo left ~/.claude).
+# A missing helper fails CLOSED to ask: this guard must never silently skip
+# the publish review because its own install is incomplete, and a bare
+# `source` of a missing file kills the shell under set -e with no output.
+REPO_IDENTITY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-identity.sh"
+if [ ! -f "$REPO_IDENTITY_HELPER" ]; then
+  jq -n '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "ask",
+      permissionDecisionReason: "global-repo-push-guard: repo-identity.sh is missing beside this hook, so the R-106 publish review cannot decide whether this push publishes the public agent-governance repo. Verify the outgoing content manually before approving."
+    }
+  }'
+  exit 0
+fi
 # shellcheck source=repo-identity.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-identity.sh"
+source "$REPO_IDENTITY_HELPER"
 is_governance_repo "$ROOT" || exit 0
 
 # Fail CLOSED when no base resolves: this is the publish guard for a public

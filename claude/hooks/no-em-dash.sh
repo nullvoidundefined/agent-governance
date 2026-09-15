@@ -71,7 +71,8 @@ esac
 
 # U+2014 is the em dash. The UTF-8 byte sequence is E2 80 94.
 if printf '%s' "$CONTENT" | grep -q $'\xe2\x80\x94'; then
-  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "R-207" "no-em-dash" "deny"
   jq -n --arg tool "$TOOL" '{

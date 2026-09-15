@@ -46,7 +46,8 @@ if [ "$is_test" = 0 ]; then
 fi
 [ "$is_test" = 1 ] || exit 0
 
-source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+[ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 log_rule_fire "R-907" "codex-test-author-guard" "ask"
 jq -n --arg r "codex-test-author-guard (R-907): $BASE is a test file, and tests are authored by the codex CLI, never by the model writing the implementation. Dispatch codex to write or change it, or return DISPUTE: <test> if a codex-authored test looks wrong. Confirm only if this edit genuinely must come from Claude (for example harness plumbing the user asked for)." \

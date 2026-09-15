@@ -32,7 +32,8 @@ command -v python3 >/dev/null 2>&1 || exit 0
 ADDED=$(printf '%s' "$INPUT" | python3 "$(dirname "${BASH_SOURCE[0]}")/dependency-add-scan.py" "$FILE" 2>/dev/null)
 [ -n "$ADDED" ] || exit 0
 
-source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+[ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 log_rule_fire "R-331" "dependency-add-guard" "ask"
 COUNT=$(printf '%s\n' "$ADDED" | wc -w | tr -d ' ')

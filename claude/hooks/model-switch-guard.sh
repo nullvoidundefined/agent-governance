@@ -24,7 +24,8 @@ FROM_RANK=$(rank "$FROM"); TO_RANK=$(rank "$TO")
 [ "$FROM_RANK" -gt 0 ] && [ "$TO_RANK" -gt 0 ] || exit 0
 [ "$TO_RANK" -gt "$FROM_RANK" ] || exit 0
 
-source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+[ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 log_rule_fire "R-903" "model-switch-guard" "ask"
 jq -n --arg from "$FROM" --arg to "$TO" '{

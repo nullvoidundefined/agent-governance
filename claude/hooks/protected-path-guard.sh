@@ -32,7 +32,8 @@ AGENT=$(printf '%s' "$INPUT" | jq -r '.agent_type // ""')
 POLICY="${CLAUDE_ROLE_POLICY_FILE:-$HOME/.claude/enforce/role-policy.json}"
 
 emit() {
-  source "$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh" 2>/dev/null || true
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "$(printf '%s' "$2" | grep -oE 'R-[0-9]{3}' | head -1)" "protected-path-guard" "$1"
   jq -n --arg d "$1" --arg r "$2" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
