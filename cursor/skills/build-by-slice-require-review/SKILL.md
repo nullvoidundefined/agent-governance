@@ -27,13 +27,31 @@ Size PRs to the reader: go smaller for dense, concurrent, or security-sensitive 
 ## The loop
 
 1. Read the spec, flows, and acceptance criteria.
-2. Plan the next slice: list its PRs and each PR's single concern.
-3. **Gate 1:** present the slice plan and get explicit user approval before building.
+2. Plan the next slice: write its slice plan document (below) listing its PRs, each PR's single concern described in the PR description format.
+3. **Gate 1:** present the slice plan document and get explicit user approval before building.
 4. Build each PR as a sequence of TDD tasks (below).
 5. Open the PR; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; branch protection requires manual approval.
-6. After merge, update the spec and the tracker, then start the next PR or slice.
+6. After merge, update the spec, the tracker, and the slice plan document, then start the next PR or slice.
 
 For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge, and offer to send it to a third-party AI review (for example Copilot).
+
+## Slice plan document
+
+Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record.
+
+## PR description format
+
+Describe every PR with these fields, in the slice plan document and in the PR body. Each field is its own paragraph, separated by blank lines:
+
+- **Context:** where the build stands when this PR starts.
+- **Problem:** what this PR solves and why it lands now.
+- **Approach:** how, and why this way. Short paragraphs, 2 to 4 sentences each, one idea per paragraph, blank lines between; never one block of text.
+- **Contents:** what is in the diff.
+- **Tests:** the tests that prove it.
+- **Review focus:** where the reviewer's attention pays most.
+- **Size:** approximate files and lines.
+
+On the first mention of any framework or tool in a document, state what it is and why the project uses it in one clause or sentence; later mentions in the same document stay bare.
 
 ## TDD rules (every task)
 
