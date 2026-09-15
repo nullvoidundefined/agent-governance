@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh sessionStart session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
+        "timeout": 30
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan no-em-dash fix-commit-requires-test conflict-markers commit-message-guard destructive-db-guard destructive-command-guard global-repo-push-guard git-workflow-guard push-eslint-gate push-ruff-gate push-rubocop-gate push-golangci-gate constant-change-guard audit-signal-check llm-rule-judge single-file-folder-gate build-cheatsheets",
+        "timeout": 180
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterShellExecution redact-output",
+        "timeout": 30
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeMCPExecution mcp-action-guard destructive-db-guard",
+        "timeout": 30
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh preToolUse secret-scan no-em-dash migration-defaults-guard structure-gate content-gate",
+        "timeout": 30
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate new-file-header-reminder flat-directory-reminder spec-glossary-check clean-code-reminder observability-reminder dockerfile-reminder",
+        "timeout": 60
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeReadFile",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh stop verification-gate ntfy-notify",
+        "timeout": 660
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh sessionEnd session-end",
+        "timeout": 60
+      }
+    ]
+  }
+}
