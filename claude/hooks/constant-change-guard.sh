@@ -3,7 +3,11 @@
 # outgoing diff changes a constants module and removes a quoted value that still
 # appears in test files, asks before pushing so stale assertions ship knowingly
 # or get fixed. Fails open when no base ref resolves.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 
 # shellcheck source=../enforce/resolveOutgoingBase.sh
 source "$HOME/.claude/enforce/resolveOutgoingBase.sh"

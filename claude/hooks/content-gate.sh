@@ -9,7 +9,11 @@
 #          independent repos; shared code ships as a versioned package)
 # Per-edit, no Node spawn. Every check reads only the added text, so existing
 # violations stay editable and only newly written ones are denied.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in Write | Edit) ;; *) exit 0 ;; esac

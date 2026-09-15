@@ -7,7 +7,11 @@
 # adds can deny (--added-only parity, 2026-07-10, Ian-approved); fails OPEN
 # with a stderr note when no ruff binary is available, because a missing tool
 # must not block legitimate work.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 
 # shellcheck source=../enforce/resolveOutgoingBase.sh
 source "$HOME/.claude/enforce/resolveOutgoingBase.sh"

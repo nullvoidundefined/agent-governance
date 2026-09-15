@@ -40,7 +40,11 @@
 #   printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m \\"fix %s typo\\""}}' "$(printf '\xe2\x80\x94')" | ~/.claude/hooks/no-em-dash.sh
 # Should print JSON with permissionDecision=deny.
 
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')

@@ -4,7 +4,11 @@
 # (R-313 no co-location; R-314 one top-level __tests__ tree per package src/),
 # and loose modules at an Express server's src/ root (R-304 layer vocabulary).
 # Per-edit, no Node spawn.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in Write|Edit) ;; *) exit 0 ;; esac

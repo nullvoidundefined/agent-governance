@@ -13,7 +13,11 @@
 # baked into several tool names (notion-create-pages), so the verb is rarely
 # first. The browser server is exempt; tab and click actions carry their own
 # site permission model and are not external systems of record.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in mcp__*) ;; *) exit 0 ;; esac

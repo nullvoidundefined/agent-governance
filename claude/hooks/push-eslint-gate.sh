@@ -4,7 +4,11 @@
 # error-level violation of the AST-tier rules (R-323/R-321/R-319/R-326/R-327/
 # R-324, plus R-303 in repos with .enforce.json import zones). Heavy work runs
 # once per push, not per edit.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 
 # shellcheck source=../enforce/resolveOutgoingBase.sh
 source "$HOME/.claude/enforce/resolveOutgoingBase.sh"

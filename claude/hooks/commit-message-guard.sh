@@ -3,7 +3,11 @@
 # Denies a non-conventional subject or more than two triage IDs in the scope
 # (R-505); asks on a body longer than three non-trailer lines (R-506, whose
 # multi-line exemption is a user judgment). Unparseable commands fail open.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')

@@ -33,7 +33,11 @@
 #   echo '{"tool_input":{"command":"ls -la"}}' | ~/.claude/hooks/secret-scan.sh
 # Should print nothing and exit 0.
 
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')

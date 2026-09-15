@@ -161,3 +161,7 @@ Counts errors only; warnings are advisory and would make the gate fail on advice
 Run it as a required status check on the protected branch. A local hook is `--no-verify`-able, which makes it advisory no matter how it is written; determinism needs the check to run where it cannot be skipped.
 
 Known limit, stated rather than hidden: the gate compares per-rule totals, so deleting one violation and adding another under the same rule nets to zero and passes. Per-file keying would catch that and would churn on every rename. Totals are the deliberate trade, and the push gate (`lint.mjs --added-only`) is what catches the newly added line.
+
+## Hook `set` convention (2026-09-16 audit P2-8)
+
+Any hook that can emit a `permissionDecision` runs `set -uo pipefail`, never `-e`: under `-e` an unexpected internal error (an unguarded grep, a missing file in a command substitution) kills the hook before it emits, and a PreToolUse hook that emits nothing is an allow, so the guard fails open silently. Failing closed is structural: explicit `exit 0` paths, `|| true` on probes, and an `ask` emission where a guard cannot decide. Advisory reminder hooks may omit `set` entirely. `deny-tier-set-convention.test.sh` enforces this mechanically. The same audit found that `source missing-file || true` still aborts the shell (source failure is a shell error the `||` never sees); sourcing a helper therefore always sits behind an `[ -f ... ]` guard.

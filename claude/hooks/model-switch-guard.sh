@@ -6,7 +6,11 @@
 # sonnet -> opus -> fable) and stays silent on lateral or downward switches
 # and on model names it cannot rank. Asks, never blocks: stepping up is often
 # right, and the point is that it is a decision someone made.
-set -euo pipefail
+# set -uo, no -e: an unexpected internal error under -e kills the hook before
+# it can emit a decision, and a PreToolUse hook that emits nothing is an
+# allow; a guard fails closed by structure, never open by accident
+# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+set -uo pipefail
 INPUT=$(cat 2>/dev/null || true)
 FROM=$(printf '%s' "$INPUT" | jq -r '.from_model // ""' 2>/dev/null || true)
 TO=$(printf '%s' "$INPUT" | jq -r '.to_model // ""' 2>/dev/null || true)
