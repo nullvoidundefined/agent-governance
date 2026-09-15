@@ -36,7 +36,7 @@ R-907: Write implementation code and the tests that verify it with different mod
   |---|---|
   | Implementation | Claude (this session) |
   | Tests for that implementation | `codex` CLI (OpenAI), dispatched as a separate process, not written inline by Claude |
-  Enforcement: manual. The `codex` CLI is installed (`/opt/homebrew/bin/codex`); invoke it explicitly for test authoring rather than writing the tests in the same Claude session that wrote the implementation. Verified 2026-09-10 end-to-end: Claude wrote a buggy implementation, `codex exec` independently wrote tests from the docstring contract and caught the bug. Billing is guarded mechanically by R-908
+  Enforcement: hook:codex-test-author-guard (PreToolUse Write/Edit; asks whenever Claude targets a test file, since codex writes tests from its own process and never trips it; CODEX_TEST_GUARD=off silences harness-internal work). The `codex` CLI is installed (`/opt/homebrew/bin/codex`); invoke it explicitly for test authoring rather than writing the tests in the same Claude session that wrote the implementation. Verified 2026-09-10 end-to-end: Claude wrote a buggy implementation, `codex exec` independently wrote tests from the docstring contract and caught the bug. Billing is guarded mechanically by R-908. Model routing: dispatch codex with a cheap-but-capable model (`codex exec -m gpt-5.1-codex-mini`, or low reasoning effort) for routine test authoring; the account is a $20 ChatGPT membership with tight rate limits, so reserve the default top model for genuinely hard slices (queue concurrency, transactions)
 
 R-908: Warn before any `codex` CLI invocation that would bill the metered OpenAI API instead of the ChatGPT subscription R-907 assumes.
   Spec:
