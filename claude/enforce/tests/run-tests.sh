@@ -3,6 +3,15 @@
 set -uo pipefail
 # Fixture fires are not telemetry: silence the rule-fire log for the run.
 export CLAUDE_FIRE_LOG=/dev/null
+# When this suite runs as a pre-push hook fired from a linked worktree, git
+# sets GIT_DIR (and friends) in the hook's environment pointing at the real
+# repo. Every fixture below builds its own throwaway repo with `git -C
+# "$sandbox" init`/`config`, but `-C` loses to an inherited GIT_DIR: git
+# targets GIT_DIR instead of the `-C` path, silently reconfiguring the real
+# repo a fixture only meant to touch its own sandbox (2026-09-16, confirmed
+# by direct reproduction after a real push from a worktree left this repo's
+# own .git/config with core.bare=true and a fixture's dummy git identity).
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 DIR="$(cd "$(dirname "$0")" && pwd)"
 fail=0
 for t in "$DIR"/*.test.sh; do
