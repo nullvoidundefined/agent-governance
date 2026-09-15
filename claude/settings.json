@@ -1,7 +1,41 @@
 {
   "permissions": {
     "allow": [
-      "Bash"
+      "Bash(awk *)",
+      "Bash(cat *)",
+      "Bash(cd *)",
+      "Bash(chmod +x *)",
+      "Bash(cp *)",
+      "Bash(date*)",
+      "Bash(df *)",
+      "Bash(diff *)",
+      "Bash(du *)",
+      "Bash(echo *)",
+      "Bash(export *)",
+      "Bash(file *)",
+      "Bash(find *)",
+      "Bash(gh *)",
+      "Bash(git *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(jq *)",
+      "Bash(ln *)",
+      "Bash(ls*)",
+      "Bash(lsof *)",
+      "Bash(mkdir *)",
+      "Bash(mv *)",
+      "Bash(npm *)",
+      "Bash(pnpm *)",
+      "Bash(printf *)",
+      "Bash(ps *)",
+      "Bash(rg *)",
+      "Bash(sed *)",
+      "Bash(tail *)",
+      "Bash(time *)",
+      "Bash(touch *)",
+      "Bash(wc *)",
+      "Bash(which *)",
+      "Bash(yarn *)"
     ],
     "deny": [
       "Bash(rm -rf /)",
@@ -73,7 +107,9 @@
       "Bash(wrangler deploy*)",
       "Bash(fly deploy*)",
       "Bash(flyctl deploy*)",
-      "Bash(gh pr create*)"
+      "Bash(gh pr create*)",
+      "Bash(bash *)",
+      "Bash(sh *)"
     ],
     "defaultMode": "auto"
   },
