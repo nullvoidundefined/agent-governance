@@ -12,14 +12,9 @@
 #
 # The global repo is exempt from the two main-branch rules: main IS its
 # working branch, and its pushes are already gated by global-repo-push-guard
-# for R-106. Two independent checks recognize it, either is sufficient:
-#   - legacy: the git toplevel is realpath `$HOME/.claude`. True only when
-#     `~/.claude` is itself a git repo root, which stops holding once it
-#     becomes a symlink into a monorepo subdirectory.
-#   - durable: the toplevel's `origin` remote URL contains
-#     `nullvoidundefined/agent-governance`. Works identically on a local
-#     clone or a fresh CI checkout, since both share the same origin remote
-#     regardless of where on disk the checkout lands.
+# for R-106. Recognition is delegated to repo-identity.sh (origin remote
+# URL, or the legacy ~/.claude toplevel); when the helper cannot be
+# sourced the repo is treated as non-exempt, which fails toward asking.
 # Advisories print to stderr and never block.
 set -euo pipefail
 INPUT=$(cat)
@@ -68,12 +63,12 @@ if printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:
 fi
 
 TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
-TOP_REAL=$(cd "$TOP" 2>/dev/null && pwd -P) || exit 0
-GLOBAL_REPO=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || GLOBAL_REPO=""
+# Identity is defined once in repo-identity.sh (2026-09-16 audit item 5).
+source "$(dirname "${BASH_SOURCE[0]}")/repo-identity.sh" 2>/dev/null || true
 is_global_repo=0
-[ -n "$GLOBAL_REPO" ] && [ "$TOP_REAL" = "$GLOBAL_REPO" ] && is_global_repo=1
-ORIGIN_URL=$(git -C "$TOP" remote get-url origin 2>/dev/null || true)
-case "$ORIGIN_URL" in *nullvoidundefined/agent-governance*) is_global_repo=1 ;; esac
+if type is_governance_repo >/dev/null 2>&1 && is_governance_repo "$TOP"; then
+  is_global_repo=1
+fi
 BRANCH=$(git -C "$TOP" symbolic-ref --short HEAD 2>/dev/null || true)
 on_trunk=0
 case "$BRANCH" in main | master) on_trunk=1 ;; esac
