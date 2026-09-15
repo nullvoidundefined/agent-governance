@@ -21,7 +21,7 @@
 
 ## 4. Pending (by urgency)
 
-- **User, now (P0-2)**: rotate the GitHub PAT in `GITHUB_ACCESS_TOKEN` (leaked into transcripts, including this session's), purge the two transcripts named in ISSUES.md, run the vendor CLI config scan in a terminal. ~15 minutes.
+- **User, now (P0-2)**: rotate the GitHub PAT in `GITHUB_ACCESS_TOKEN` (leaked into transcripts, including the 2026-09-16 remediation session's), then purge the transcripts; exact file paths are in `claude/ISSUES.md` under PENDING USER ACTION. Shell history and vendor CLI configs both scanned clean, so this is the whole remaining exposure. ~10 minutes.
 - User decision: `skipDangerousModePermissionPrompt` recorded as an accepted risk in ISSUES.md; remove the key if the acceptance no longer holds.
 - Small residue in ISSUES.md: confirm PreModelSwitch event reality (one command); consider generating README inventory counts.
 - Unexplained once: `.git/config` flipped `bare = true` mid-session (restored, never recurred across four subsequent suite runs). A parallel session was active in the same tree; if it recurs, suspect a fixture running `git init --bare` with an empty target variable.
