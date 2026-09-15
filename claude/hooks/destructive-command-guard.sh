@@ -69,9 +69,13 @@ fi
 
 # --- git core.hooksPath ---------------------------------------------------
 
-# Reads are fine; hookspath-drift-check.sh depends on them.
-if printf '%s' "$norm" | grep -Eqi "${AT}git config[^|;&]*core\.hooksPath" \
-    && ! printf '%s' "$norm" | grep -Eqi 'git config (--get|--get-all|--list|-l)([[:space:]]|$)'; then
+# Reads are fine; hookspath-drift-check.sh and the R-107 investigation depend
+# on them. A write is the key followed by a value token (or an --unset); a
+# read leaves core.hooksPath as the final token, whatever read flag spelling
+# precedes it (2026-09-16 audit P2-2: the old flag-spelling exemption denied
+# the bare `git config core.hooksPath` read the rule itself mandates).
+if printf '%s' "$norm" | grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]" \
+    || printf '%s' "$norm" | grep -Eqi "${AT}git config[^|;&]*--unset[^|;&]*core\.hooksPath"; then
     emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
 fi
 
