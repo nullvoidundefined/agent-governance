@@ -1,41 +1,33 @@
-# Session Handoff: 2026-09-07 slice loop (PR #16) and dependency guard plus refactor mode (PR #17) merged
+# Session Handoff: 2026-09-16 engineering-audit remediation (all P findings addressed)
 
 ## 1. Last commit
 
-- PR #17 (`feat(harness): R-331 dependency-add guard and tdd.sh open --refactor`) squash-merged to `main` on 2026-09-07, on top of PR #16 (`b908724`). `git log --oneline -2 main` shows both; no branch is open.
+- `6e201f5` `chore(ci): shellcheck at error severity over hooks and enforce scripts (audit Code Quality)`, on `main`, with this handoff and the ISSUES.md maintenance bundled into the commit after it. No branch is open.
 
 ## 2. Production state
 
-- Both PRs merged with CI green: 47 enforcement fixtures, 12 hook fixtures, run against this checkout through a fake `$HOME` with a git identity. CI has not run on the branch yet (it runs on `pull_request` and `main`).
-- Nothing is live in Ian's `~/.claude` until the branch merges and is pulled. After the pull: `npm ci --prefix enforce` (the lockfile now carries `vitest` 5.0.0, pinned exact, as a devDependency for the live `tdd.sh` fixture), then `hooks/hook-integrity-check.sh` should be silent (the manifest was regenerated three times on the branch).
-- The judge key is still pending (decision 9); R-401 anti-patterns 2, 4, 6, 7 are critic-only until it lands.
+- The repo is `agent-governance` (public remote); `~/.claude`, `~/.codex`, `~/.cursor` are synced copies, refreshed via `./sync.sh` after every fix this session. `sync.sh` now stamps `~/.claude/.sync-source` so `hook-integrity-check.sh` verifies live == repo at every session start (audit P2-11).
+- Both fixture suites green at handoff time (enforce + hooks, run via the Stop gate and pre-push). CI `fixtures` is a required status check on `main` (branch protection enabled 2026-09-16, `enforce_admins` off to preserve the R-514 owner exemption). The local pre-push hook is installed in this checkout and validates the pushed tree, not the synced copy.
+- The R-106 publish guard is live again: it recognizes the repo by origin remote (`repo-identity.sh`) and scans the whole monorepo diff. It was inert from the 2026-09-15 migration until this session (audit P0-1).
+- CI went red mid-session on `27b8e7c` (a fixture pinned the old pre-push marker string); repaired in `030ac31` and green since.
 
-## 3. What shipped
+## 3. What shipped (all on `main`, one commit per finding)
 
-- **PR #16 (merged):** the assessment, R-410 to R-412 with `hooks/protected-path-guard.sh` and `enforce/role-policy.json`, `enforce/tdd.sh`, the `SubagentStop` gate, the three role agents and the `tdd-gated-dispatch` rewrite (R-705, R-707), `prompts/spec-template.md` with the extended R-330 hook, and the test-quality, no-cycle, and catch-discipline ESLint rules.
-- **PR #17 (merged):** R-331 `hooks/dependency-add-guard.sh` plus `hooks/dependency-add-scan.py` (asks when a manifest gains a dependency name; 30-case fixture); `tdd.sh open --refactor` (green suite as the contract, phase `refactor`, guard treats it like `red`; fixture cases in both suites).
-- Decisions 10 to 16 recorded in the assessment's Decisions section.
+- **P0/P1**: publish guard by remote identity + fixture rebuilt around remote identity (P0-1); verification gate discovers `claude/` suites (P1-1); pre-push validates the pushed repo, installed here, branch protection + required check (P1-2); audit-signal baseline advances and nested `docs/` excluded (P1-3); session handoff moved to root `docs/session-handoff/` where `session-start.sh` reads it (P1-4); nine prior audit reports moved to root `docs/audits/`, `audits.md` path made unambiguous (P2-12).
+- **Hooks hardening**: git global-option strip generalized once in `git-invocation.sh` across ten push-boundary hooks with a bypass-corpus fixture (P2-1); `core.hooksPath` read/write split keys on the value token in hook and settings (P2-2); decision-emitting hooks dropped `set -e` with the convention documented in `enforce/README.md` and enforced by `deny-tier-set-convention.test.sh` (P2-8); all helper sourcing sits behind `[ -f ]` guards because a failed `source` aborts the shell even behind `|| true`; the publish guard asks (fails closed) when its helper is missing.
+- **Docs/config drift**: INDEX.md model-routing line matches `settings.json` with a sync fixture (P2-3, P2-4); `strict-permissions.json` retired (P2-5); `claude/README.md` title and five counts corrected (P2-6); `structure-gate.test.sh` no longer mutates live config (P2-7); `dependabot.yml` restored at root `.github/` (P2-9); `build-by-slice-require-review` defers in-harness TDD to tdd-gated-dispatch and ports re-cloned (P2-10).
+- **P3s**: fixture credential literals built at runtime (P3-3); session SHA stamp keyed per repo toplevel (P3-4); R-203 bracket and `manifest.test.sh` docstring corrected (P3-5); suite runners reject partial passes; shellcheck (errors) added to CI, clean locally on 0.11.0.
+- P3-1 resolved as a false positive: Claude Code decomposes compound commands per subcommand for permission matching (recorded in ISSUES.md).
 
-## 4. Pending
+## 4. Pending (by urgency)
 
-**Ian, before anything else (both are one-command checks on the real build):**
+- **User, now (P0-2)**: rotate the GitHub PAT in `GITHUB_ACCESS_TOKEN` (leaked into transcripts, including this session's), purge the two transcripts named in ISSUES.md, run the vendor CLI config scan in a terminal. ~15 minutes.
+- User decision: `skipDangerousModePermissionPrompt` recorded as an accepted risk in ISSUES.md; remove the key if the acceptance no longer holds.
+- Small residue in ISSUES.md: confirm PreModelSwitch event reality (one command); consider generating README inventory counts.
+- Unexplained once: `.git/config` flipped `bare = true` mid-session (restored, never recurred across four subsequent suite runs). A parallel session was active in the same tree; if it recurs, suspect a fixture running `git init --bare` with an empty target variable.
 
-1. Confirm `agent_type` reaches a `PreToolUse` command hook: add a scratch hook that logs `jq -r '.agent_type // "none"'` and dispatch one subagent. If absent, R-411 falls back to lock-only and the agent files in step 4 need their own `hooks:` block.
-2. Confirm the Stop contract on the installed build still honors `{decision: "block", reason}` and `stop_hook_active` for `SubagentStop`; the current hooks reference excerpt shows `continueConversation` instead. A mismatch fails open silently.
+## 5. Next session: read first
 
-**Then:**
-
-3. Pull `main` and `npm ci --prefix enforce` (Vitest is in the lockfile since PR #16).
-4. First real slice on a Vitest project: `tdd.sh open`, dispatch `test-author`, commit, dispatch `implementer`, `tdd.sh green`, dispatch `slice-critic`. Expect the first surprises in `tdd.sh red`'s failure classification, the guard's Bash target extraction, and the dependency guard's ask cadence; all three have fixtures to extend.
-5. Re-baseline by hand (decision 15): `node ~/.claude/enforce/ratchet.mjs --update` once in each repo carrying `.enforce-baseline.json`, read the new `import-x/no-cycle`, `catchDiscipline/*`, and `testQuality/*` counts, commit.
-
-**Deferred by decision:** pytest, go test, and RSpec runners in `tdd.sh` (decision 10); mutation testing on changed files (decision 11); the judge-tier extension (decision 9).
-
-**Deferred from the 2026-09-12 agent-governance monorepo work (architectural, own spec needed):** build a real, reusable translator that regenerates `~/.cursor` and `~/.codex` mirror content from `~/.claude`'s. None exists today, `.claude-port.json`'s `"builder"` field names a script (`cursor/build.mjs`, `openai/build.mjs`) that was never actually committed anywhere; both mirrors are frozen at their 2026-09-05 bootstrap commit and are already stale. See `docs/superpowers/specs/2026-09-12-agent-governance-monorepo-design.md` (Dependencies, Non-goals) for what was verified.
-
-## 5. Next-session tasks, with files to read
-
-- Read `skills/tdd-gated-dispatch/SKILL.md` before the first slice; it is the operating procedure, and `docs/audits/2026-09-06-tdd-harness.md` is the rationale.
-- Read `hooks/protected-path-guard.sh` header and `enforce/tdd.sh` header before touching either; both state what they do not see (an interpreter writing from its own source) and why the GREEN hash check exists.
-- `enforce/role-policy.json` is the single place roles and path patterns live; a new role is a new key, and `tdd.sh red` validates test paths against the same `tests` pattern.
-- When adding an enforcer, R-516 binds: manifest row plus fixture; `hook-integrity-check.sh --update` now also covers `enforce/*.sh` and `role-policy.json`.
+- `docs/audits/2026-09-16-engineering.md` (the report; all P findings remediated, prioritized table at the end).
+- `claude/ISSUES.md` Open section (the pending user actions above).
+- `claude/hooks/repo-identity.sh` and `claude/hooks/git-invocation.sh` (the two new shared helpers every push-boundary hook now consumes).

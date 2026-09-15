@@ -7,6 +7,8 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 ### Accepted risks (deliberate, revisit on incident)
 - NOTE (2026-08-01): pre-rewrite commit SHAs cited in older audit reports and log entries no longer resolve; git history was rewritten on 2026-08-01 (see Resolved). GitHub may serve old objects from caches or forks for a while; request GC via support if that matters.
 - PENDING USER ACTION (2026-08-01): judge tier is fully wired to the keychain (`claude-judge-api-key`); it activates the moment the rotated key is stored via `security add-generic-password -a "$USER" -s claude-judge-api-key -w` in a terminal outside any session.
+- ACCEPTED RISK (2026-09-16, audit P3-2, standing since the 2026-07-31 audits): `settings.json` keeps `skipDangerousModePermissionPrompt: true` against R-203's spirit; flagged in two archived audit reports and left deliberately, recorded here so the acceptance lives where future sessions look. Revisit on incident.
+- RESOLVED AS FALSE POSITIVE (2026-09-16, audit P3-1): `&&`-chained commands cannot ride an `allow` prefix past an `ask` rule; Claude Code decomposes on shell operators (`&&`, `||`, `;`, `|`, `|&`, newlines) and deny/ask rules match every subcommand, including subshells and command substitutions (permissions doc, "Compound commands"). Remaining caveat: `bash -c '...'` wraps the inner text away from rule matching, which is exactly why `Bash(bash *)`/`Bash(sh *)` sit in `ask`.
 
 ### From the 2026-07-31 full-harness audits (P2/P3)
 - P2 (security): `destructive-db-guard.sh` blanket `localhost` early-return misses SSH-tunneled remote DBs; argv-only scope. Known limitation; needs a design, not a patch.
@@ -22,24 +24,10 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 
 - P2 (2026-08-21 engineering audit): identical content written through a Bash heredoc bypasses `content-gate.sh` entirely, since the hook matches Write|Edit only. `secret-scan.sh` already reads heredoc bodies out of Bash commands and is the fix precedent in the same tree.
 - P2 (2026-08-21 engineering audit): three of this cycle's fixtures were constructed in a way that avoids the failure mode they should probe (`content-gate.test.sh`'s `pwd -P` normalization, `structure-gate.test.sh`'s react-only client package, `parallel-session-check.test.sh`'s `sleep` stand-in for a session process). The suite is green and still overstates coverage. Generalize: a fixture that sidesteps the environment quirk tests the hook against a world that does not exist.
-### From the 2026-09-16 engineering audit (P2/P3; P0/P1 are current-effort, see `docs/audits/2026-09-16-engineering.md`)
-- P2 (2026-09-16 engineering audit P2-1): a git global option can defeat every push-boundary hook, including R-514.
-- P2 (P2-2): `hookspath-drift-check` blocks the very read its own comment exempts, and R-107 requires that read.
-- P2 (P2-3): the session-injected memory index contradicts `settings.json` on model routing.
-- P2 (P2-4): a global memory file claims an enforcement the rulebook says does not exist.
-- P2 (P2-5): `strict-permissions.json` documents a configuration replaced two commits ago.
-- P2 (P2-6): `claude/README.md` misstates its own title and five inventory counts.
-- P2 (P2-7): a fixture mutates live user configuration outside any sandbox.
-- P2 (P2-8): deny-tier guards use `set -euo pipefail` and fail open silently on an internal error.
-- P2 (P2-9): the CI workflow names a dependabot config that does not exist.
-- P2 (P2-10): `build-by-slice-require-review` restates a TDD loop the enforced harness (R-412/`tdd.sh`) will block, overlaps triggers with `tdd-gated-dispatch` and `feature-create`, and asserts branch protection that is not enabled; decide harness-aware rewrite vs portable-prose scope note.
-- P2 (P2-11): `~/.claude` is an untracked full copy and nothing verifies it matches the repo; the integrity check compares the live copy against itself.
-- P2 (P2-12): audit reports split between `docs/audits/` (rule text, `audit-signal-check.sh`) and `claude/docs/audits/` (nine prior reports); pick one home, move in one commit, disambiguate `audits.md:15`.
-- P3 (P3-1, unverified): an allowed command prefix may auto-approve a `&&`-chained destructive command; settleable by a single experiment.
-- P3 (P3-2): `skipDangerousModePermissionPrompt` sits against R-203.
-- P3 (P3-3): repairing the publish guard (P0-1) will make it block legitimate pushes until its base-resolution is adapted to this repo.
-- P3 (P3-4): the session-start SHA file is shared across all concurrent sessions.
-- P3 (P3-5): `CLAUDE.md` marks R-203 `[manual]` while two hooks enforce it.
+### From the 2026-09-16 engineering audit (remediated 2026-09-16, residue only; full report `docs/audits/2026-09-16-engineering.md`)
+- PENDING USER ACTION (2026-09-16, audit P0-2): rotate the GitHub PAT held in the `GITHUB_ACCESS_TOKEN` environment variable (it leaked into session transcripts, including this remediation session's, when `env` output was printed; the shell-history scan was clean), then purge `~/.claude/projects/-Users-iangreenough--claude/f5ab3bde-ae94-477f-af19-a16a292f2144.jsonl` and this session's transcript, and delete or triage `~/.claude/projects/-Users-iangreenough-Desktop-code-personal-production-doppelscript/a69cecdb-d90d-4022-87a1-03989d11fa64.jsonl` (an `ASIA` STS key id passed through it). Vendor CLI config scan (`~/.railway`, `~/.vercel`, `~/.stripe`, `gh hosts.yml`, `~/.netrc`) still needs a manual terminal run; those paths are R-102 off-path for sessions.
+- P3 (audit P2-4 residue): confirm whether a PreModelSwitch-style hook event has become real on the installed build; `rulebook/cost.md` R-903 stays authoritative that `model-switch-guard.sh` is never invoked until then.
+- P3 (audit P2-6 residue): consider generating the `claude/README.md` inventory counts between markers the way `renderLexiconSpec.mjs` does for the verb lists, with a fixture failing on divergence; the counts were hand-corrected this cycle and will drift again.
 
 ### From the 2026-09-04 configuration audit (open P2/P3; the rest were fixed the same day or decided on 2026-09-05, see Resolved)
 - P2 (config audit P2-6): the judge tier is still inert on the keychain step. Alternative written up in the report: an experimental `agent` hook on `if: "Bash(git push *)"` runs on session credentials and can read the diff; `prompt` hooks cannot. `enforcement-guard-check.sh` would need to recognize a `type: agent` registration first.
