@@ -41,7 +41,7 @@ git -C "$REPO" commit -qm "chore: seed"
 [ "$(decision 'git push origin +main' "$REPO")" = "ask" ]               # force marker on the refspec
 [ "$(decision "git -C $REPO push origin main" /tmp)" = "ask" ]          # -C form names the repo, not the cwd
 [ "$(decision 'git push origin feature/scoring' "$REPO")" = "ask" ] && exit 1  # a feature branch is not gated
-[ "$(decision 'git push' "$HOME/.claude")" = "none" ]           # global repo exempt: R-106 owns its pushes
+[ "$(decision 'git push' "$HOME/dev/agent-governance")" = "none" ]  # global repo exempt (by origin remote): R-106 owns its pushes
 
 # R-511: five files across three directories staged on main.
 for path in src/routes/jobs.ts src/routes/users.ts src/handlers/scoreJob.ts src/services/score.ts src/services/rank.ts; do

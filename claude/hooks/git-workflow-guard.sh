@@ -10,9 +10,17 @@
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
 #          and touches no README
 #
-# The ~/.claude repo is exempt from the two main-branch rules: main IS its
+# The global repo is exempt from the two main-branch rules: main IS its
 # working branch, and its pushes are already gated by global-repo-push-guard
-# for R-106. Advisories print to stderr and never block.
+# for R-106. Two independent checks recognize it, either is sufficient:
+#   - legacy: the git toplevel is realpath `$HOME/.claude`. True only when
+#     `~/.claude` is itself a git repo root, which stops holding once it
+#     becomes a symlink into a monorepo subdirectory.
+#   - durable: the toplevel's `origin` remote URL contains
+#     `nullvoidundefined/agent-governance`. Works identically on a local
+#     clone or a fresh CI checkout, since both share the same origin remote
+#     regardless of where on disk the checkout lands.
+# Advisories print to stderr and never block.
 set -euo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
@@ -64,6 +72,8 @@ TOP_REAL=$(cd "$TOP" 2>/dev/null && pwd -P) || exit 0
 GLOBAL_REPO=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || GLOBAL_REPO=""
 is_global_repo=0
 [ -n "$GLOBAL_REPO" ] && [ "$TOP_REAL" = "$GLOBAL_REPO" ] && is_global_repo=1
+ORIGIN_URL=$(git -C "$TOP" remote get-url origin 2>/dev/null || true)
+case "$ORIGIN_URL" in *nullvoidundefined/agent-governance*) is_global_repo=1 ;; esac
 BRANCH=$(git -C "$TOP" symbolic-ref --short HEAD 2>/dev/null || true)
 on_trunk=0
 case "$BRANCH" in main | master) on_trunk=1 ;; esac
