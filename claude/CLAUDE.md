@@ -16,7 +16,7 @@ R-102: Keep secret files off-path by default (`.env*`, `~/.aws`, `~/.ssh`, `~/.g
 R-103: Treat every real credential file as read-only; never a scratch, test, or verification target; env-file fixtures go to a throwaway `/tmp` path. [hook:secret-scan]
 R-104: Sanitize artifacts before writing them: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. [manual]
 R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn. [hook:mcp-action-guard]
-R-106: Every push of `~/.claude` is publishing (public remote): `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
+R-106: Every push of the agent-governance repo (public remote; the source that syncs into `~/.claude`) is publishing: `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
 R-107: Investigate any `core.hooksPath` resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal. [hook:hookspath-drift-check]
 
 ## Conduct and output (R-2xx)

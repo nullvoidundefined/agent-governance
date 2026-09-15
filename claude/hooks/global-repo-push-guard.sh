@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # global-repo-push-guard.sh
 #
-# PreToolUse(Bash) hook. Enforces R-106 for the PUBLIC ~/.claude repo.
-# When a `git push` is about to run from the ~/.claude working tree, it
-# scans `git diff origin/main` and denies the push if the outgoing diff
-# adds either:
+# PreToolUse(Bash) hook. Enforces R-106 for the PUBLIC agent-governance
+# repo (the source that syncs into ~/.claude). When a `git push` is about
+# to run from that repo's working tree, it scans `git diff origin/main`
+# and denies the push if the outgoing diff adds either:
 #   1. a string matching a known secret pattern, or
 #   2. this machine's real home path (the actual local-path leak vector).
 #
 # Scope notes:
-#   - Only the ~/.claude repo is gated; pushes from any other repo pass
-#     through untouched.
+#   - Only the governance repo is gated (recognized per repo-identity.sh:
+#     origin remote URL, or the legacy ~/.claude path); pushes from any
+#     other repo pass through untouched. The whole monorepo diff is
+#     scanned: claude/, codex/, and cursor/ publish to the same public
+#     remote and are equally exposed.
 #   - The secret patterns MIRROR secret-scan.sh; keep the two in sync.
 #     (tech-debt: extract to a shared pattern file once a second consumer
 #     makes the duplication costly.)
@@ -41,9 +44,11 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || exit 0
 
 ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
-ROOT_REAL=$(cd "$ROOT" 2>/dev/null && pwd -P) || exit 0
-EXPECTED=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || exit 0
-[ "$ROOT_REAL" = "$EXPECTED" ] || exit 0
+# Identity is defined once in repo-identity.sh (2026-09-16 audit P0-1: the
+# old inline path-equality test went dead when the repo left ~/.claude).
+# shellcheck source=repo-identity.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-identity.sh"
+is_governance_repo "$ROOT" || exit 0
 
 # Fail CLOSED when no base resolves: this is the publish guard for a public
 # remote, and "cannot compute the outgoing diff" must not mean "publish
@@ -58,7 +63,7 @@ if [ -z "$BASE" ]; then
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "ask",
-      permissionDecisionReason: "global-repo-push-guard: cannot resolve an outgoing base (origin/main missing?), so the R-106 publish review cannot run. Verify the outgoing content manually before approving this push of the public ~/.claude repo."
+      permissionDecisionReason: "global-repo-push-guard: cannot resolve an outgoing base (origin/main missing?), so the R-106 publish review cannot run. Verify the outgoing content manually before approving this push of the public agent-governance repo."
     }
   }'
   exit 0
@@ -101,7 +106,7 @@ PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 PATTERN+='|AIza[0-9A-Za-z_-]{35}'
 
 if printf '%s' "$ADDED" | grep -qE "$PATTERN"; then
-  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds a string matching a known secret pattern. The ~/.claude remote is public (R-106); a pushed secret is published irreversibly. Remove the secret from the committed history before pushing."
+  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds a string matching a known secret pattern. The agent-governance remote is public (R-106); a pushed secret is published irreversibly. Remove the secret from the committed history before pushing."
   exit 0
 fi
 
@@ -109,7 +114,7 @@ USER_NAME=$(id -un 2>/dev/null || echo "")
 HOME_RE="/(Users|home)/${USER_NAME}(/|$)"
 if printf '%s' "$ADDED" | grep -Fq "$HOME" \
    || { [ -n "$USER_NAME" ] && printf '%s' "$ADDED" | grep -qE "$HOME_RE"; }; then
-  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds this machine's real home path. The ~/.claude remote is public (R-106); local filesystem paths must not be published. Replace the absolute path with a placeholder (\$HOME or ~) before pushing."
+  deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds this machine's real home path. The agent-governance remote is public (R-106); local filesystem paths must not be published. Replace the absolute path with a placeholder (\$HOME or ~) before pushing."
   exit 0
 fi
 
