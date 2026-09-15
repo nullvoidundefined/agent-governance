@@ -70,6 +70,13 @@ jobs:
       - name: Confirm ruff resolves
         run: ruff --version
 
+      # Error severity only: the hook tree is not shellcheck-clean at info/
+      # warning level, and turning those on wholesale would bury real errors.
+      # Errors are the class that produced the 2026-08-21 set -e landmine and
+      # the 2026-09-16 fail-open findings (audit, Code Quality).
+      - name: shellcheck (errors only)
+        run: shellcheck --severity=error claude/hooks/*.sh claude/enforce/*.sh
+
       - name: Install the checkout at ~/.claude
         run: |
           rm -rf "$HOME/.claude"
