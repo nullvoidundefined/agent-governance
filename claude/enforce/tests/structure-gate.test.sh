@@ -68,16 +68,19 @@ allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$BANNED_FIXTURE/
 deny  "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$BANNED_FIXTURE/src/brandNew/shared/Widget.tsx\"}}"     # would create shared/
 rm -rf "$BANNED_FIXTURE"
 
-# R-313 co-location exemption is scoped to repos named in colocated-test-repos.txt.
+# R-313 co-location exemption is scoped to repos named in the allowlist. The
+# fixture supplies its own via CLAUDE_COLOCATED_ALLOWLIST_FILE and never
+# touches the live gitignored file (2026-09-16 audit P2-7: the old
+# append-and-restore left the mutation behind whenever an assertion between
+# the two steps failed, and clobbered concurrent runs).
 COLOCATED_FIXTURE=$(mktemp -d)
-ALLOWLIST="$HOME/.claude/enforce/colocated-test-repos.txt"
-ALLOWLIST_BACKUP=$(mktemp)
-cp "$ALLOWLIST" "$ALLOWLIST_BACKUP" 2>/dev/null || : >"$ALLOWLIST_BACKUP"
-printf '%s\n' "$COLOCATED_FIXTURE" >>"$ALLOWLIST"
+FIXTURE_ALLOWLIST=$(mktemp)
+printf '%s\n' "$COLOCATED_FIXTURE" >"$FIXTURE_ALLOWLIST"
+export CLAUDE_COLOCATED_ALLOWLIST_FILE="$FIXTURE_ALLOWLIST"
 allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$COLOCATED_FIXTURE/src/handlers/auth.test.ts\"}}"       # exempt repo
 deny  '{"tool_name":"Write","tool_input":{"file_path":"/x/src/handlers/other.test.ts"}}'                                # non-exempt repo still denied
-cp "$ALLOWLIST_BACKUP" "$ALLOWLIST"
-rm -rf "$COLOCATED_FIXTURE" "$ALLOWLIST_BACKUP"
+unset CLAUDE_COLOCATED_ALLOWLIST_FILE
+rm -rf "$COLOCATED_FIXTURE" "$FIXTURE_ALLOWLIST"
 
 # R-304: a new module loose at the Express server's src/ root is denied. Scoped by
 # the nearest package.json's express dependency, so the client tree is untouched.

@@ -94,7 +94,10 @@ done
 # Listed one absolute repo root per line in the allowlist below. R-313 still
 # fires everywhere else, including all greenfield work. Adopting a foreign
 # codebase's layout is not the same as choosing it.
-COLOCATED_ALLOWLIST="$HOME/.claude/enforce/colocated-test-repos.txt"
+# Overridable for fixtures (2026-09-16 audit P2-7: the test appended to the
+# live allowlist and a failing assertion left the mutation behind), same
+# pattern as CLAUDE_MANIFEST_FILE in enforcement-guard-check.sh.
+COLOCATED_ALLOWLIST="${CLAUDE_COLOCATED_ALLOWLIST_FILE:-$HOME/.claude/enforce/colocated-test-repos.txt}"
 skip_colocation_check=0
 if [ -f "$COLOCATED_ALLOWLIST" ]; then
   while IFS= read -r allowed_root || [ -n "$allowed_root" ]; do
