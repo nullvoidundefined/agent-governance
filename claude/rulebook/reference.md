@@ -103,6 +103,16 @@ R-208: Never praise without falsifiable reasoning; no softening, no compliment s
 R-209: Delete filler before sending: action announcements, question echoes, transitions, hedge words, sign-offs, apologies, trailing summaries, sentences starting with "I".
   Enforcement: manual
 
+R-210: Write human-facing prose in complete sentences with full context: not terse, not verbose, leaning toward verbose.
+  Spec:
+  - Scope: documents (specs, plans, READMEs, slice plans), PR bodies, chat explanations, and code comments. Model-facing instruction files stay imperative and lean per R-206.
+  - Complete sentences only: no fragments, no stripped particles or articles, no punchy noun-phrase prose that looks impressive without explaining what is happening.
+  - Every sentence carries its context. The four faults named in the documentation-create skill are defects: a definite reference to something never introduced, a count without its items, a judgement without its reason, a comparison missing a term.
+  - When length and context conflict, choose the longer sentence that carries full context over the shorter one that does not.
+  - R-209 and this rule compose: R-209 deletes filler (which adds no information); R-210 adds context (which does). Deleting context to satisfy R-209 is a violation of both.
+  - Origin: 2026-09-16, the job-hunter spec rewrite; the terse first draft was rejected as "a wall of terse, context-free gobbledygook".
+  Enforcement: manual; the documentation-create skill is the working procedure
+
 ## Architecture and naming (R-3xx)
 
 Ordered macro to micro: monorepo, then application and layer boundaries, then directory taxonomy, then file, then intra-file structure.

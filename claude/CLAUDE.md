@@ -30,6 +30,7 @@ R-206: Write model-facing instructions as direct imperatives; omit rationale. [m
 R-207: Never use U+2014 (em dash). [hook:no-em-dash]
 R-208: Never praise without falsifiable reasoning; no softening, no compliment sandwich. [manual]
 R-209: Delete filler before sending: action announcements, question echoes, transitions, hedge words, sign-offs, apologies, trailing summaries, sentences starting with "I". [manual]
+R-210: Write human-facing prose (documents, PR bodies, explanations, code comments) in complete sentences with full context: not terse, not verbose, leaning toward verbose; never strip particles or grammatical structure for punchiness; prefer the longer sentence that carries full context over the shorter one that does not. [manual]
 
 ## Architecture and naming (R-3xx), ordered macro to micro
 
