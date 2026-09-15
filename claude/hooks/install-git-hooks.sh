@@ -18,9 +18,11 @@ set -euo pipefail
 REPO="${1:-$HOME/.claude}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SAMPLE="$SCRIPT_DIR/pre-push.sample"
-MARKER="Git pre-push hook for the ~/.claude repo"
-# The unversioned hook this script replaced (SETUP.md, 2026-07-31 audit P1).
-LEGACY_MARKER="Unversioned git pre-push hook for the ~/.claude repo"
+MARKER="Git pre-push hook for the agent-governance repo"
+# Superseded headers this script may upgrade in place: the unversioned hook
+# (SETUP.md, 2026-07-31 audit P1) and the pre-monorepo sample (2026-09-16
+# audit P1-2).
+LEGACY_MARKER="Unversioned git pre-push hook for the ~/.claude repo\|Git pre-push hook for the ~/.claude repo"
 
 [ -f "$SAMPLE" ] || { echo "install-git-hooks: $SAMPLE is missing." >&2; exit 1; }
 git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
