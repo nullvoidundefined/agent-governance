@@ -1,0 +1,415 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf ~/)",
+      "Bash(rm -rf $HOME)",
+      "Bash(rm ~/.claude/hooks/*)",
+      "Bash(rm -rf ~/.claude/hooks*)",
+      "Bash(chmod -x ~/.claude/hooks/*)",
+      "Bash(git push --mirror*)",
+      "Bash(git config *core.hooksPath*)",
+      "Bash(gh repo delete*)",
+      "Bash(gh release delete*)",
+      "Bash(gh repo edit --visibility public*)",
+      "Bash(gh api -X DELETE*)",
+      "Bash(gh api --method DELETE*)",
+      "Bash(gh auth token*)",
+      "Bash(gh alias set*)",
+      "Bash(security find-generic-password*)",
+      "Read(//**/.env)",
+      "Read(//**/.env.local)",
+      "Read(//**/.env.*.local)",
+      "Read(//**/.env.development)",
+      "Read(//**/.env.staging)",
+      "Read(//**/.env.production)",
+      "Read(//**/.env.test)",
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Read(~/.netrc)"
+    ],
+    "ask": [
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit -n *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fd*)",
+      "Bash(git filter-repo*)",
+      "Bash(git filter-branch*)",
+      "Bash(uvx git-filter-repo*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh pr review --approve*)",
+      "Bash(gh secret set*)",
+      "Bash(gh variable set*)",
+      "Bash(gh extension install*)",
+      "Bash(gh release create*)",
+      "Bash(gh release edit*)",
+      "Bash(gh repo archive*)",
+      "Bash(gh repo rename*)",
+      "Bash(gh issue delete*)",
+      "Bash(gh workflow run*)",
+      "Bash(gh run rerun*)",
+      "Bash(gh ssh-key add*)",
+      "Bash(gh gpg-key add*)",
+      "Bash(npm publish*)",
+      "Bash(pnpm publish*)",
+      "Bash(yarn publish*)",
+      "Bash(find * -delete*)",
+      "Bash(find * -exec rm*)",
+      "Bash(chmod -R 777*)",
+      "Bash(sudo *)",
+      "Bash(rm -rf *)",
+      "Bash(railway up*)",
+      "Bash(railway redeploy*)",
+      "Bash(vercel --prod*)",
+      "Bash(vercel deploy --prod*)",
+      "Bash(wrangler deploy*)",
+      "Bash(fly deploy*)",
+      "Bash(flyctl deploy*)",
+      "Bash(gh pr create*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "opusplan",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/secret-scan.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-em-dash.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/fix-commit-requires-test.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/conflict-markers.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/commit-message-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/destructive-db-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/destructive-command-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/codex-billing-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/protected-path-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/global-repo-push-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/git-workflow-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-eslint-gate.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-ruff-gate.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-rubocop-gate.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/push-golangci-gate.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/constant-change-guard.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/audit-signal-check.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/llm-rule-judge.sh",
+            "if": "Bash(git *)"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/single-file-folder-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/build-cheatsheets.sh",
+            "timeout": 60,
+            "statusMessage": "Rebuilding feature cheat sheets",
+            "if": "Bash(git *)"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/secret-scan.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-em-dash.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/migration-defaults-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/structure-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/content-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/protected-path-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/dependency-add-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/mcp-action-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/destructive-db-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/redact-output.sh",
+            "statusMessage": "Scanning output for secrets..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/new-file-header-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/flat-directory-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/spec-glossary-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/clean-code-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/observability-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/dockerfile-reminder.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/task-commit-reminder.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/session-start.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/hookspath-drift-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/redaction-guard-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/enforcement-guard-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/parallel-session-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/hook-integrity-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/post-compact-rules.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/session-end.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/verification-gate.sh",
+            "timeout": 660,
+            "statusMessage": "Running project checks before ending the turn"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/ntfy-notify.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/verification-gate.sh",
+            "timeout": 660,
+            "statusMessage": "Running project checks before the subagent returns"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/ntfy-notify.sh"
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "user_settings",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/settings-change-guard.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "code-review@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": false,
+    "typescript-lsp@claude-plugins-official": true,
+    "posthog@claude-plugins-official": false,
+    "stripe@claude-plugins-official": false,
+    "i-have-adhd@i-have-adhd": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "i-have-adhd": {
+      "source": {
+        "source": "github",
+        "repo": "ayghri/i-have-adhd"
+      }
+    }
+  },
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark",
+  "agentPushNotifEnabled": true
+}

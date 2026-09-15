@@ -1,0 +1,34 @@
+# ruff-enforce.toml: bundled enforcement config for push-ruff-gate.sh, the
+# Python analog of the AST-tier ESLint bundle (eslint.config.mjs). Selects only
+# the codes that back manifest rules; project-level ruff configs stay untouched
+# because the gate passes this file via --config, which disables discovery.
+#
+# Code -> rule mapping:
+#   PLR2004  magic-value-comparison  -> R-324 (extract meaningful literals)
+#   ANN401   any-type                -> R-329 analog (no typing.Any)
+#   PGH003   blanket-type-ignore     -> R-329 analog (suppressions carry codes)
+#   PGH004   blanket-noqa            -> R-329 analog (suppressions carry codes)
+#   E731     lambda-assignment       -> R-326 analog (named def, never lambda-to-name)
+#   T201     print                   -> R-342 analog (the logger, never print, in service code)
+#   E722     bare-except             -> R-344 analog (bind the exception)
+#   S110     try-except-pass         -> R-344 analog (never swallow it)
+#   BLE001   blind-except            -> R-344 analog (catch the specific exception; a blind
+#                                       `except Exception` that re-raises passes)
+
+[lint]
+select = ["ANN401", "BLE001", "E722", "E731", "PGH003", "PGH004", "PLR2004", "S110", "T201"]
+
+[lint.per-file-ignores]
+# R-324 exempts test/fixture literals; test doubles legitimately type Any.
+# R-342/R-344 scope is service code: tests print and catch broadly on purpose,
+# and CLI entry points print by design.
+"**/tests/**" = ["ANN401", "BLE001", "PLR2004", "T201"]
+"**/test_*.py" = ["ANN401", "BLE001", "PLR2004", "T201"]
+"**/*_test.py" = ["ANN401", "BLE001", "PLR2004", "T201"]
+"**/conftest.py" = ["ANN401", "BLE001", "PLR2004", "T201"]
+"**/__fixtures__/**" = ["ANN401", "BLE001", "PLR2004", "T201"]
+"**/migrations/**" = ["PLR2004"]
+"**/scripts/**" = ["T201"]
+"**/bin/**" = ["T201"]
+"**/cli/**" = ["T201"]
+"**/__main__.py" = ["T201"]

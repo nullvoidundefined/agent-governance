@@ -1,0 +1,33 @@
+{
+  "_comment": "Read by hooks/protected-path-guard.sh (R-411) and enforce/tdd.sh. `patterns` are extended regexes matched against a path relative to the repo root. `roles` are keyed by the `agent_type` the hook input carries in subagent context; a role with `allow` may write only matching paths, a role with `deny` may write anything else. An agent_type absent from this table gets no role restriction (lock and gate-input rules still apply). hooks/verification-gate.sh skips a SubagentStop for any role whose deny list is [\"any\"]: a read-only agent cannot fix a red tree it did not write.",
+  "patterns": {
+    "any": ".",
+    "lock": "^\\.claude/tdd-lock\\.json$",
+    "specs": "^docs/(specs|superpowers/specs)/",
+    "tests": "(^|/)(__tests__|__fixtures__|__mocks__|tests|spec|e2e|testdata)/|\\.(test|spec)\\.[cm]?[jt]sx?$|(^|/)test_[^/]*\\.py$|_test\\.py$|(^|/)conftest\\.py$|_spec\\.rb$|_test\\.go$"
+  },
+  "roles": {
+    "implementer": {
+      "deny": [
+        "tests",
+        "specs",
+        "lock"
+      ]
+    },
+    "slice-critic": {
+      "deny": [
+        "any"
+      ]
+    },
+    "spec-conformance-review": {
+      "deny": [
+        "any"
+      ]
+    },
+    "test-author": {
+      "allow": [
+        "tests"
+      ]
+    }
+  }
+}

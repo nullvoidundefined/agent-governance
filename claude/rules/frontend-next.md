@@ -1,0 +1,1 @@
+../CLAUDE-FRONTEND-NEXT.md

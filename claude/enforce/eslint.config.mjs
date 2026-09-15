@@ -1,0 +1,255 @@
+/**
+ * Bundled enforcement ESLint flat config for the global rule system.
+ * Loaded by lint.mjs and invoked by push-eslint-gate.sh to check outgoing diffs
+ * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319,
+ * R-326, R-327, R-324, R-329, R-303 no-cycle everywhere and import zones when a
+ * repo opts in via .enforce.json, R-344 catch discipline, R-401 test quality).
+ */
+import tseslint from "typescript-eslint";
+import { createNodeResolver, importX } from "eslint-plugin-import-x";
+import analyticsEventName from "./rules/analytics-event-name.mjs";
+import behaviorAssertionRequired from "./rules/behavior-assertion-required.mjs";
+import noSelfMock from "./rules/no-self-mock.mjs";
+import noSwallowedCatch from "./rules/no-swallowed-catch.mjs";
+import oneExportPerFile from "./rules/one-export-per-file.mjs";
+import structuredLogCall from "./rules/structured-log-call.mjs";
+
+// Repos run plugins the gate does not carry (eslint-plugin-security, react,
+// react-hooks); their source keeps live eslint-disable comments for those
+// rules. ESLint errors with "Definition for rule ... was not found" on a
+// disable comment whose rule is undefined here, failing the gate on comments
+// the repo's own lint requires. No-op stubs keep those comments inert; the
+// gate never enforced these rules, so nothing it checks is weakened.
+const NOOP_RULE = { create: () => ({}) };
+const foreignRulePlugins = {
+  react: { rules: { "forbid-dom-props": NOOP_RULE } },
+  "react-hooks": { rules: { "exhaustive-deps": NOOP_RULE } },
+  security: { rules: { "detect-non-literal-fs-filename": NOOP_RULE } },
+};
+
+export default tseslint.config({
+  files: ["**/*.ts", "**/*.tsx"],
+  plugins: {
+    "@typescript-eslint": tseslint.plugin,
+    "import-x": importX,
+    ...foreignRulePlugins,
+  },
+  languageOptions: {
+    parser: tseslint.parser,
+    parserOptions: { ecmaFeatures: { jsx: true } },
+  },
+  // "@/..." path aliases are internal modules, not scoped packages. Without this
+  // they classify as "unknown" and import-x/order demands they trail relative
+  // imports, the exact opposite of the projects' prettier importOrder
+  // ["^@/(.*)$", "^[./]"], making both tools unsatisfiable at once.
+  // R-303 no-cycle walks the import graph, so import-x needs to parse the
+  // neighbours (import-x/parsers, import-x/extensions) and to resolve a
+  // specifier to a .ts file (the node resolver with TS extensions). Without
+  // these three settings the rule silently reports nothing (verified
+  // 2026-09-06); the plugin's own typescript preset fails to load its resolver
+  // here, so the settings are spelled out.
+  settings: {
+    "import-x/extensions": [".ts", ".tsx", ".cts", ".mts", ".js", ".jsx", ".cjs", ".mjs"],
+    "import-x/internal-regex": "^@/",
+    "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".tsx", ".cts", ".mts"] },
+    "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx", ".jsx", ".cjs", ".mjs"] })],
+  },
+  rules: {
+    "sort-keys": ["error", "asc", { natural: true, minKeys: 2 }],
+    // R-329: @ts-expect-error self-invalidates when the underlying error is
+    // fixed, so it stays legal with a description; blind suppressions do not.
+    "@typescript-eslint/ban-ts-comment": [
+      "error",
+      { "ts-check": false, "ts-expect-error": "allow-with-description", "ts-ignore": true, "ts-nocheck": true },
+    ],
+    "@typescript-eslint/member-ordering": "error",
+    "@typescript-eslint/no-explicit-any": "error",
+    // R-303: no circular imports, in every tree; maxDepth bounds the walk so a
+    // large graph does not turn the push gate into a minute-long run.
+    "import-x/no-cycle": ["error", { maxDepth: 8 }],
+    "import-x/order": [
+      "error",
+      {
+        alphabetize: { order: "asc" },
+        // distinctGroup:true so a before-positioned pathGroup (react, next) is
+        // its own group for newlines-between: trivago Prettier configs with
+        // importOrderSeparation:true put a blank line after the react/next
+        // family, and with false the gate flagged that required blank line as
+        // "empty line within import group" on every file whose react import
+        // precedes other externals (voyager push deadlock, 2026-07-07).
+        distinctGroup: true,
+        groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
+        "newlines-between": "always",
+        // R-804(b): projects using @trivago/prettier-plugin-sort-imports document
+        // react/next-first and app//@/ as separated internal groups; the gate
+        // accepts that documented layout instead of fighting pre-commit Prettier
+        // (reconciled 2026-07-06 when the voyager push deadlocked between hooks).
+        // The bare "react"/"next" patterns keep root-package imports in the same
+        // before-positioned family as their subpaths, so Prettier's alphabetical
+        // "next" then "next/link" (type import first) passes instead of the gate
+        // demanding "next/link" ahead of the bare "next" type import.
+        // One pathGroup per trivago Prettier group ('^react$', '^react-dom',
+        // '^next'), so distinctGroup:true puts blank lines exactly at
+        // Prettier's group boundaries: next and next/** share one pathGroup
+        // (adjacent, no blank line), while react/react-dom/next families are
+        // blank-line separated from each other and from other externals.
+        pathGroups: [
+          { pattern: "react", group: "external", position: "before" },
+          { pattern: "react-dom{,/**}", group: "external", position: "before" },
+          { pattern: "next{,/**}", group: "external", position: "before" },
+          { pattern: "app/**", group: "internal" },
+          { pattern: "@/**", group: "internal" },
+        ],
+        pathGroupsExcludedImportTypes: ["react", "react-dom", "next"],
+      },
+    ],
+    "max-lines-per-function": ["warn", { max: 60, skipBlankLines: true, skipComments: true }],
+    "no-magic-numbers": [
+      "error",
+      { detectObjects: false, enforceConst: true, ignore: [0, 1, -1], ignoreArrayIndexes: true, ignoreDefaultValues: true },
+    ],
+    "no-nested-ternary": "error",
+    "no-restricted-syntax": [
+      "error",
+      { selector: "CallExpression[callee.type='FunctionExpression']", message: "No IIFE (R-326): use a named function and call it." },
+      { selector: "CallExpression[callee.type='ArrowFunctionExpression']", message: "No IIFE (R-326): use a named async function and call it." },
+    ],
+  },
+}, {
+  // R-319: one exported symbol per file, scoped to the function-module trees only
+  // (services, api, clients). Constants and types modules group multiple exports
+  // per R-307/R-309 and are intentionally NOT subject to this rule, so types.ts /
+  // constants.ts files (and promoted types/ constants/ folders) are ignored here
+  // even when they live inside a services/api/clients tree.
+  files: [
+    "**/services/**/*.ts",
+    "**/services/**/*.tsx",
+    "**/api/**/*.ts",
+    "**/api/**/*.tsx",
+    "**/clients/**/*.ts",
+    "**/clients/**/*.tsx",
+  ],
+  ignores: [
+    "**/types.ts",
+    "**/constants.ts",
+    "**/types/**/*.ts",
+    "**/constants/**/*.ts",
+    // Next.js App Router route handlers live under app/api/ and MUST export one
+    // function per HTTP method from a single route.ts; the framework resolves
+    // them by name from that file, so they cannot be split. The "**/api/**"
+    // glob above targets the R-307 fetch-wrapper tree (services/api), not this
+    // one, and swept these in only because both path segments are named "api".
+    "**/app/api/**/route.ts",
+    "**/app/api/**/route.tsx",
+  ],
+  plugins: { local: { rules: { "one-export-per-file": oneExportPerFile } } },
+  rules: { "local/one-export-per-file": "error" },
+}, {
+  // R-342/R-343/R-344: observability in server code. Scoped to the server
+  // trees by the directory names R-304 reserves for the backend; services/
+  // and clients/ outside a server root are not covered, because the frontend
+  // layout uses the same names and ESLint cannot read package dependencies
+  // the way structure-gate.sh does. Tests, bin/, and scripts/ are exempt.
+  files: [
+    "**/apps/server/**/*.ts",
+    "**/packages/worker/**/*.ts",
+    "**/server/src/**/*.ts",
+    "**/src/handlers/**/*.ts",
+    "**/src/repositories/**/*.ts",
+    "**/src/middleware/**/*.ts",
+    "**/src/workers/**/*.ts",
+  ],
+  ignores: [
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+    "**/tests/**",
+    "**/e2e/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/bin/**",
+    "**/scripts/**",
+    "**/*.config.ts",
+    "**/*.d.ts",
+  ],
+  plugins: {
+    observability: {
+      rules: {
+        "analytics-event-name": analyticsEventName,
+        "no-swallowed-catch": noSwallowedCatch,
+        "structured-log-call": structuredLogCall,
+      },
+    },
+  },
+  rules: {
+    "no-console": "error",
+    "no-empty": ["error", { allowEmptyCatch: false }],
+    "observability/analytics-event-name": "error",
+    "observability/no-swallowed-catch": "error",
+    "observability/structured-log-call": "error",
+  },
+}, {
+  // R-344 outside the server trees: swallowing an error is the same defect in
+  // a frontend client module or a shared service, so the two catch rules cover
+  // every services/ and clients/ tree under a src/. no-console and the log and
+  // analytics rules stay in the server block above, because a browser
+  // console.log is not R-342's concern.
+  files: ["**/src/services/**/*.ts", "**/src/services/**/*.tsx", "**/src/clients/**/*.ts", "**/src/clients/**/*.tsx"],
+  ignores: ["**/__tests__/**", "**/__fixtures__/**", "**/__mocks__/**", "**/tests/**", "**/e2e/**", "**/*.test.ts", "**/*.spec.ts", "**/*.d.ts"],
+  plugins: { catchDiscipline: { rules: { "no-swallowed-catch": noSwallowedCatch } } },
+  rules: {
+    "catchDiscipline/no-swallowed-catch": "error",
+    "no-empty": ["error", { allowEmptyCatch: false }],
+  },
+}, {
+  // R-401 items 1, 3, 5 in test trees (2026-09-06 TDD harness assessment
+  // H-4): the decidable anti-patterns. A self-mock, a repository test that
+  // mocks the pool, and a test asserting only mock calls are set membership
+  // over the AST; items 2, 4, 6, 7 need intent and stay with the critic.
+  files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/tests/**/*.ts", "**/tests/**/*.tsx", "**/e2e/**/*.ts", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+  plugins: { testQuality: { rules: { "behavior-assertion-required": behaviorAssertionRequired, "no-self-mock": noSelfMock } } },
+  rules: {
+    "testQuality/behavior-assertion-required": "error",
+    "testQuality/no-self-mock": "error",
+  },
+}, {
+  // R-313/R-319/R-314: tests and fixtures are exempt from the source-tree-only
+  // rules (key/import ordering target source). member-ordering and no-IIFE still apply.
+  // tests/ and e2e/ cover projects whose CLAUDE.md overrides R-314 with a
+  // top-level mirror tree (R-313 also names tests/ as the Python layout).
+  files: [
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    // Co-located test files (legacy layout in some packages) are tests too.
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__mocks__/**",
+    "**/tests/**",
+    "**/e2e/**",
+  ],
+  rules: {
+    "import-x/order": "off",
+    "local/one-export-per-file": "off",
+    "no-magic-numbers": "off",
+    "sort-keys": "off",
+  },
+}, {
+  // R-324/R-307: declarative modules legitimately hold literal numbers that
+  // are domain vocabulary, not runtime magic numbers, and cannot be replaced
+  // by named constants in place:
+  //   - type modules: numeric literal TYPE unions (price_level: 1 | 2 | 3 | 4,
+  //     an HTTP-status literal type); ESLint's ignoreNumericLiteralTypes only
+  //     covers standalone literal types, not union members.
+  //   - schema modules (R-304/R-305 name schemas/): Zod validators whose
+  //     bounds and literal unions (z.literal(4), .max(10)) ARE the declared
+  //     contract, self-documented by the schema.
+  // Runtime logic in services/handlers/etc. stays fully covered.
+  files: [
+    "**/types.ts",
+    "**/types/**/*.ts",
+    "**/schemas.ts",
+    "**/schemas/**/*.ts",
+    "**/*.d.ts",
+  ],
+  rules: { "no-magic-numbers": "off" },
+});
