@@ -34,5 +34,16 @@ rm docs/session-handoff/session-handoff.md
 OUT3=$(echo '{}' | "$HOOK" || true)
 printf '%s' "$OUT3" | grep -q 'Most recent handoff doc' && { echo "FAIL: handoff section without a handoff file"; exit 1; } || true
 
+# SHA stamp is keyed by repo toplevel (2026-09-16 audit P3-4): two sessions
+# in different repos write different files instead of clobbering one shared
+# baseline, and the file carries HEAD of its own repo.
+STAMP_TMP=$(mktemp -d)
+TMPDIR="$STAMP_TMP" bash "$HOOK" <<< '{}' >/dev/null 2>&1 || true
+REPO_KEY=$(printf '%s' "$(git rev-parse --show-toplevel)" | shasum | awk '{print $1}')
+STAMP_FILE="$STAMP_TMP/claude-session-start-sha-$REPO_KEY"
+[ -f "$STAMP_FILE" ] || { echo "FAIL: expected repo-keyed SHA stamp at claude-session-start-sha-<key>"; exit 1; }
+[ "$(cat "$STAMP_FILE")" = "$(git rev-parse HEAD)" ] || { echo "FAIL: keyed stamp must hold this repo's HEAD"; exit 1; }
+rm -rf "$STAMP_TMP"
+
 cd / && rm -rf "$REPO"
 echo "session-start.test.sh PASS"

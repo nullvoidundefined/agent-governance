@@ -75,10 +75,15 @@ if [ -f "$RETIREMENT_CANDIDATES" ] && [ -s "$RETIREMENT_CANDIDATES" ]; then
   CTX+=$'\n\n'
 fi
 
-# Capture HEAD SHA for velocity metrics (R-602).
-# The session-end hook reads this to compute commit counts.
+# Capture HEAD SHA for velocity metrics (R-602). The session-end hook reads
+# this to compute commit counts. Keyed by the repo toplevel hash, matching
+# verification-gate.sh's memo keying (2026-09-16 audit P3-4: one shared
+# filename meant two concurrent sessions in different repos or worktrees
+# overwrote each other's baseline and the handoff commit count flattered).
 if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-  git rev-parse HEAD 2>/dev/null > "${TMPDIR:-/tmp}/claude-session-start-sha" || true
+  REPO_TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null || echo unknown)
+  REPO_KEY=$(printf '%s' "$REPO_TOPLEVEL" | shasum | awk '{print $1}')
+  git rev-parse HEAD 2>/dev/null > "${TMPDIR:-/tmp}/claude-session-start-sha-$REPO_KEY" || true
 fi
 
 # If we have nothing to emit, exit silently.

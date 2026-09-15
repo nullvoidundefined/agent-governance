@@ -119,7 +119,12 @@ fi
 # Compute session commit stats and write to a temp file.
 # The handoff doc author reads this file for the "Session metrics" section.
 
-START_SHA_FILE="${TMPDIR:-/tmp}/claude-session-start-sha"
+# Keyed per repo toplevel to match session-start.sh (2026-09-16 audit P3-4);
+# the unkeyed filename is read as a fallback for a session whose start
+# predates the keying.
+REPO_KEY=$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null)" | shasum | awk '{print $1}')
+START_SHA_FILE="${TMPDIR:-/tmp}/claude-session-start-sha-$REPO_KEY"
+[ -f "$START_SHA_FILE" ] || START_SHA_FILE="${TMPDIR:-/tmp}/claude-session-start-sha"
 METRICS_FILE="${TMPDIR:-/tmp}/claude-session-metrics.md"
 
 if [ -f "$START_SHA_FILE" ] && command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
