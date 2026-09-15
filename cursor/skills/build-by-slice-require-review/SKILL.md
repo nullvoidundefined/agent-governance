@@ -1,6 +1,6 @@
 ---
 name: build-by-slice-require-review
-description: Use when building or implementing a feature, starting a slice, or executing any multi-PR build where the user must review and approve the work as it lands. Triggers on "build", "implement", "start the slice", "next slice", or kicking off work from an approved spec.
+description: Use when running a feature build as user-reviewed slices and PRs, starting a slice, or executing any multi-PR build where the user must review and approve the work as it lands. Triggers on "start the slice", "next slice", "build this slice by slice", or "implement with review gates". For the in-harness TDD slice mechanics under the R-412 lock, tdd-gated-dispatch owns the trigger.
 ---
 <!-- Cloned from claude/skills/build-by-slice-require-review/SKILL.md. Do not edit here; change the source and re-copy. -->
 
@@ -30,7 +30,7 @@ Size PRs to the reader: go smaller for dense, concurrent, or security-sensitive 
 2. Plan the next slice: write its slice plan document (below) listing its PRs, each PR's single concern described in the PR description format.
 3. **Gate 1:** present the slice plan document and get explicit user approval before building.
 4. Build each PR as a sequence of TDD tasks (below).
-5. Open the PR; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; branch protection requires manual approval.
+5. Open the PR; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; protect the branch so merge requires manual approval wherever the host supports it, and hold the same discipline manually where it does not.
 6. After merge, update the spec, the tracker, and the slice plan document, then start the next PR or slice.
 
 For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge, and offer to send it to a third-party AI review (for example Copilot).
@@ -52,6 +52,10 @@ Describe every PR with these fields, in the slice plan document and in the PR bo
 - **Size:** approximate files and lines.
 
 On the first mention of any framework or tool in a document, state what it is and why the project uses it in one clause or sentence; later mentions in the same document stay bare.
+
+## Harness note
+
+This skill is portable prose: it governs the slice, PR, and review cadence in any tool. In a Claude Code session governed by the R-412 slice lock, run each task's red/green/refactor through the tdd-gated-dispatch skill and `tdd.sh` (`open`, `red`, `green`, `close`); the lock denies production writes outside that sequence, and this skill's TDD rules describe the same cycle the harness enforces, not an alternative to it.
 
 ## TDD rules (every task)
 

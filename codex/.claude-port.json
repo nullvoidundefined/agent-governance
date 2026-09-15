@@ -6,7 +6,7 @@
     "hooks/codex-hook-adapter.sh": "sha256:736ca9381901bb90193c761a984f2dcbed09e2f2ac8a54966206fedd5e31e6da",
     "skills/all-hands/SKILL.md": "sha256:e4070f23d29931a19ae914820ac8e67d602e483a4f675bb752513b71113894af",
     "skills/bug-hunt/SKILL.md": "sha256:dcc32b8df9fadac794423a835bdfc3b34d4ae4c29382455f50e9a5e93ad3abe6",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:ee3e31254a7193e4f49617aeb32f3076160731af1e61fda171dc7b32a98026cb",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:60affbb9aae651bcdfc00f293fcc4b935b28ab92cd9947171a4f18a0543f6a4a",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:f5c9a272840e320d6e79cee12be063a9ff6552ecad1b80d8d606ca369ecc6370",
     "skills/documentation-create/SKILL.md": "sha256:f7b2dbe0ea089142ce8ec8e1495cf108a37fd0fdecc08a742daaebd4537454cf",
     "skills/feature-create/SKILL.md": "sha256:d39de23df7584284c5d01a49772bfff8f4117b7b5a155b54664d9e08f04d2b8a",
