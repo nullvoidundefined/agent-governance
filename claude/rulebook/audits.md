@@ -12,7 +12,7 @@ R-801: Run audits on signal only.
 
 R-802: Have audit roles declare P0-P3 findings independently and never act on them directly.
   Spec:
-  - Reports to `docs/audits/YYYY-MM-DD-<role>.md`.
+  - Reports to `docs/audits/YYYY-MM-DD-<role>.md`, resolved from the repository root (the directory `audit-signal-check.sh` reads to advance its baseline); never under a per-tool folder such as `claude/docs/audits/`.
   - P0/P1 current-effort; P2/P3 to `ISSUES.md`.
   - Roles do not commit code, modify settings, or run destructive actions.
   Enforcement: manual

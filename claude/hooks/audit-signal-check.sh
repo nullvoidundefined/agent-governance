@@ -5,8 +5,8 @@
 # additionalContext note when any surface crosses the R-801 signal threshold,
 # so the audit trigger no longer depends on recall. With no audit on record it
 # falls back to a 30-day window. Commits on the audit's own date count as
-# covered; docs/ and root-level files are excluded. Never blocks, never sets a
-# permission decision; silent outside git repos.
+# covered; docs/ trees at any depth and root-level files are excluded. Never
+# blocks, never sets a permission decision; silent outside git repos.
 set -euo pipefail
 
 SIGNAL_THRESHOLD=5
@@ -43,7 +43,10 @@ else
   BASELINE="the last 30 days (no engineering audit on record)"
 fi
 
-HOT_SURFACES=$(git -C "$TOP" log --no-merges --since="$SINCE" --name-only --pretty=format:'@%H' -- . ':(exclude)docs' 2>/dev/null | awk -v threshold="$SIGNAL_THRESHOLD" '
+# The glob-magic exclude covers a docs/ tree at any depth, e.g. claude/docs
+# post-migration (2026-09-16 audit P1-3; plain `*/docs` does not cross the
+# slash and excluded nothing).
+HOT_SURFACES=$(git -C "$TOP" log --no-merges --since="$SINCE" --name-only --pretty=format:'@%H' -- . ':(exclude)docs' ':(glob,exclude)**/docs/**' 2>/dev/null | awk -v threshold="$SIGNAL_THRESHOLD" '
   /^@/ { for (surface in seen_in_commit) delete seen_in_commit[surface]; next }
   !NF { next }
   {

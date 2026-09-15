@@ -63,6 +63,17 @@ rm docs/audits/*-engineering*.md
 GOT=$(advisory 'git push origin main')
 printf '%s' "$GOT" | grep -qi 'no engineering audit' || { echo "FAIL: expected no-audit-on-record advisory, got: $GOT"; exit 1; }
 
+# Nested docs trees are excluded like the top-level one (2026-09-16 audit
+# P1-3: claude/docs was counted as an engineering surface despite the header
+# promising docs are excluded).
+for i in 1 2 3 4 5; do
+  mkdir -p claude/docs/handoffs
+  echo "note $i" > "claude/docs/handoffs/note$i.md"
+  git add -A && git commit -qm "docs: note $i"
+done
+GOT=$(advisory 'git push origin main')
+printf '%s' "$GOT" | grep -q 'claude/docs' && { echo "FAIL: nested docs tree counted as a surface: $GOT"; exit 1; }
+
 # Non-push commands untouched.
 GOT=$(advisory 'git status')
 [ "$GOT" = "none" ] || { echo "FAIL: expected none for non-push, got $GOT"; exit 1; }
