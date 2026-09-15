@@ -17,6 +17,23 @@
 #     tree is dirty or the branch carries unpushed commits.
 #   - Fails open: a repo with no discoverable check command is not blocked,
 #     otherwise every prose repo deadlocks on every turn.
+#   - One automatic retry on a non-timeout failure, after a short pause
+#     (2026-09-15, an E2E-heavy project session hit repeated spurious blocks:
+#     a stray dev server left listening on the suite's fixed port, and heavy
+#     CPU contention from concurrent builds pushing individual page loads past
+#     Playwright's own per-test timeout, both of which cleared on a plain
+#     manual rerun every time with no code change). Retrying the identical
+#     check is not R-204's "relaxing the gate": nothing about what counts as
+#     passing changes, only a transient-failure false positive gets one
+#     chance to clear before blocking the turn on it. A hard timeout (124)
+#     never retries; see below.
+#   - Timeout enforcement has a portable fallback (2026-09-16): macOS ships
+#     neither `timeout` nor `gtimeout` by default, and the prior fallback ran
+#     the check with no time limit at all when both were absent, so a hung
+#     check could block a Stop turn indefinitely with no 124. The fallback
+#     now polls the backgrounded check in 1s increments and kills it directly
+#     on timeout; see run_with_timeout for why it does not use a sleep-then-
+#     kill watchdog subshell instead.
 #
 # Per-project override and escape hatch: `.claude/verify.sh` in the project
 # root wins over all discovery. `CLAUDE_SKIP_VERIFY=1` bypasses entirely.
@@ -132,9 +149,41 @@ CHECKS=$(printf '%s' "$CHECKS" | sed '/^$/d')
 run_with_timeout() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$TIMEOUT_SECONDS" bash -c "$1" 2>&1
-  else
-    bash -c "$1" 2>&1
+    return
   fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$TIMEOUT_SECONDS" bash -c "$1" 2>&1
+    return
+  fi
+  # Polls in 1s increments rather than backgrounding a `sleep N` watchdog
+  # that kills the command on wakeup: killing that watchdog subshell (once
+  # the command finishes early) does not kill the `sleep` binary it already
+  # forked, which is then reparented and keeps the command-substitution pipe
+  # open for up to the full timeout even though the real work is done. That
+  # orphan hung every check on this fallback path, discovered while adding
+  # this fallback in the first place. No such subshell exists to leak here.
+  local out_file status waited=0
+  out_file=$(mktemp)
+  bash -c "$1" >"$out_file" 2>&1 &
+  local cmd_pid=$!
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    if [ "$waited" -ge "$TIMEOUT_SECONDS" ]; then
+      kill -TERM "$cmd_pid" 2>/dev/null
+      sleep 1
+      kill -KILL "$cmd_pid" 2>/dev/null
+      wait "$cmd_pid" 2>/dev/null
+      cat "$out_file"
+      rm -f "$out_file"
+      return 124
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$cmd_pid" 2>/dev/null
+  status=$?
+  cat "$out_file"
+  rm -f "$out_file"
+  return "$status"
 }
 
 block() {
@@ -145,17 +194,39 @@ block() {
   exit 0
 }
 
+RETRY_DELAY_SECONDS="${CLAUDE_VERIFY_RETRY_DELAY:-10}"
+
 while IFS= read -r check; do
   [ -n "$check" ] || continue
   OUTPUT=$(run_with_timeout "$check")
   STATUS=$?
   [ "$STATUS" -eq 0 ] && continue
 
+  RETRIED=0
+  # A first failure that is not a hard timeout gets one automatic retry after a
+  # short pause. E2E suites in particular are sensitive to transient CPU
+  # contention (another concurrent build, a stray dev server still holding the
+  # port) that clears on its own within seconds; blocking the turn on that is
+  # a false positive, not R-204's "relaxing the gate" (the same check runs
+  # again unchanged, nothing about the failure condition is loosened). A
+  # timeout (124) skips the retry: doubling a 600s wait before blocking is the
+  # wrong tradeoff, and a check that needs the full budget once is unlikely to
+  # need less on an immediate second attempt.
+  if [ "$STATUS" -ne 124 ]; then
+    sleep "$RETRY_DELAY_SECONDS"
+    RETRIED=1
+    OUTPUT=$(run_with_timeout "$check")
+    STATUS=$?
+    [ "$STATUS" -eq 0 ] && continue
+  fi
+
   TAIL=$(printf '%s' "$OUTPUT" | tail -n "$MAX_OUTPUT_LINES" | tail -c "$MAX_OUTPUT_CHARS")
   if [ "$STATUS" -eq 124 ]; then
     TAIL="Command exceeded CLAUDE_VERIFY_TIMEOUT (${TIMEOUT_SECONDS}s) and was killed."$'\n\n'"$TAIL"
   fi
-  block "R-509 verification gate: \`${check}\` failed (exit ${STATUS}) in ${ROOT}.
+  RETRY_NOTE=""
+  [ "$RETRIED" -eq 1 ] && RETRY_NOTE=" (failed again on an automatic retry after ${RETRY_DELAY_SECONDS}s, so this is not transient contention)"
+  block "R-509 verification gate: \`${check}\` failed (exit ${STATUS}) in ${ROOT}${RETRY_NOTE}.
 
 ${TAIL}
 

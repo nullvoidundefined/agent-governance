@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies verification-gate.sh (R-509 Stop gate). Seven invariants:
+# Verifies verification-gate.sh (R-509 Stop gate). Invariants:
 #   1. A clean working tree is silent (no check runs, nothing to verify).
 #   2. A dirty tree with a passing check is silent.
 #   3. A dirty tree with a failing check blocks and pastes the real output.
@@ -10,10 +10,19 @@
 #   8. A tree the checks already passed on is not re-run until it changes.
 #   9. SubagentStop is gated like Stop for a writing subagent, and skipped
 #      for a role the policy marks as non-writing (deny ["any"]).
+#   10. A check failing once but passing on the automatic retry does not block
+#       (2026-09-15 retry addition).
+#   11. A check failing twice in a row blocks, naming the retry in the reason.
+#   12. A hard timeout (124) never retries.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/verification-gate.sh"
-export CLAUDE_VERIFY_MEMO_DIR
+export CLAUDE_VERIFY_MEMO_DIR CLAUDE_VERIFY_RETRY_DELAY
 CLAUDE_VERIFY_MEMO_DIR=$(mktemp -d)
+# Zero by default so tests 1-9 (which don't exercise retry behavior at all)
+# don't each pay the real 10s pause on every failing-check assertion. Tests
+# 10 and 11 already set this explicitly for clarity; the export just makes
+# it the file-wide default too.
+CLAUDE_VERIFY_RETRY_DELAY=0
 
 # Runs the hook against a repo and echoes the block reason, or "none".
 gate() {
@@ -103,6 +112,35 @@ RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
 write_package_json "$REPO" 1
 GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected a block after the check turned red"; exit 1; }
 GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: a red tree was memoized as green"; exit 1; }
+
+# 10. A check failing once but passing on the automatic retry does not block.
+REPO=$(new_repo)
+FLAG_FILE=$(mktemp -u)
+cat > "$REPO/package.json" <<EOF
+{ "name": "fixture", "version": "1.0.0", "scripts": { "test": "if [ -f $FLAG_FILE ]; then exit 0; else touch $FLAG_FILE; exit 1; fi" } }
+EOF
+GOT=$(CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
+[ "$GOT" = "none" ] || { echo "FAIL: a check passing on retry must not block, got: $GOT"; exit 1; }
+rm -f "$FLAG_FILE"
+
+# 11. A check failing twice in a row blocks and names the retry in the reason.
+REPO=$(new_repo)
+write_package_json "$REPO" 1
+GOT=$(CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
+printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected an R-509 block after two failures, got: $GOT"; exit 1; }
+printf '%s' "$GOT" | grep -q 'automatic retry' || { echo "FAIL: block reason must note the automatic retry, got: $GOT"; exit 1; }
+
+# 12. A hard timeout (124) never retries: runs exactly once.
+REPO=$(new_repo)
+RUN_LOG=$(mktemp)
+cat > "$REPO/package.json" <<EOF
+{ "name": "fixture", "version": "1.0.0", "scripts": { "test": "echo run >> $RUN_LOG; sleep 2" } }
+EOF
+GOT=$(CLAUDE_VERIFY_TIMEOUT=1 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
+printf '%s' "$GOT" | grep -q 'CLAUDE_VERIFY_TIMEOUT' || { echo "FAIL: expected a timeout block, got: $GOT"; exit 1; }
+printf '%s' "$GOT" | grep -qv 'automatic retry' || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
+RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
+[ "$RUNS" = "1" ] || { echo "FAIL: a timeout must not retry, expected 1 run, got $RUNS"; exit 1; }
 
 # 9. SubagentStop: a writing subagent is gated; a non-writing role is skipped.
 REPO=$(new_repo)
