@@ -64,3 +64,8 @@ sync_one() {
 sync_one claude "$TARGET_CLAUDE"
 sync_one cursor "$TARGET_CURSOR"
 sync_one codex "$TARGET_CODEX"
+
+# Stamp the source so hook-integrity-check.sh can compare the live copy
+# against this checkout (2026-09-16 audit P2-11: after the migration nothing
+# verified live == repo, a property `git status` used to provide for free).
+printf '%s\n' "$REPO_ROOT" > "$TARGET_CLAUDE/.sync-source"
