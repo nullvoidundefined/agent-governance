@@ -17,7 +17,10 @@ fail=0
 for t in "$DIR"/*.test.sh; do
   name=$(basename "$t")
   [ "$name" = "run-tests.sh" ] && continue
-  if out=$(bash "$t" 2>&1) && printf '%s' "$out" | grep -q "PASS"; then
+  # Require PASS and reject any FAIL line: a fixture printing per-case
+  # "FAIL: ..." lines while exiting 0 was reported ok by the old grep
+  # (2026-09-16 audit, Testing item 4).
+  if out=$(bash "$t" 2>&1) && printf '%s' "$out" | grep -q "PASS" && ! printf '%s' "$out" | grep -q "FAIL"; then
     echo "ok   $name"
   else
     echo "FAIL $name"; printf '%s\n' "$out" | tail -3; fail=1
