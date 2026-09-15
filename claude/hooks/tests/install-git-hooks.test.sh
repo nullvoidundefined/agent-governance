@@ -52,7 +52,7 @@ fresh_repo "$REPO"
 run_install "$REPO"
 check "installs into a repo with no pre-push" test "$rc" -eq 0
 check "installed hook carries the current marker" \
-    grep -q "Git pre-push hook for the ~/.claude repo" "$TARGET"
+    grep -q "Git pre-push hook for the agent-governance repo" "$TARGET"
 check "installed hook is executable" test -x "$TARGET"
 
 # 2. Re-running over its own output is idempotent.
@@ -75,7 +75,7 @@ printf '%s\n' "$LEGACY_BODY" > "$TARGET"; chmod +x "$TARGET"
 run_install "$REPO"
 check "upgrades the legacy hook instead of refusing" test "$rc" -eq 0
 check "upgraded hook carries the current marker" \
-    grep -q "Git pre-push hook for the ~/.claude repo" "$TARGET"
+    grep -q "Git pre-push hook for the agent-governance repo" "$TARGET"
 check "upgrade reports itself as an upgrade" \
     grep -qi "upgrad" <<<"$out"
 
@@ -83,6 +83,16 @@ check "upgrade reports itself as an upgrade" \
 check "legacy hook is backed up" test -f "$TARGET.legacy.bak"
 check "backup holds the original legacy body" \
     grep -q "2026-07-31 engineering audit P1" "$TARGET.legacy.bak"
+
+# 5b. The pre-monorepo sample header is also a superseded predecessor
+# (2026-09-16 audit P1-2: the sample was rewritten to validate the pushed
+# repo, and installed copies of the old sample must upgrade, not refuse).
+fresh_repo "$REPO"
+printf '#!/usr/bin/env bash\n# Git pre-push hook for the ~/.claude repo: a red fixture suite aborts the push.\nexit 0\n' > "$TARGET"; chmod +x "$TARGET"
+run_install "$REPO"
+check "upgrades the pre-monorepo sample instead of refusing" test "$rc" -eq 0
+check "pre-monorepo upgrade carries the current marker" \
+    grep -q "Git pre-push hook for the agent-governance repo" "$TARGET"
 
 # 6. A non-repo target is still rejected.
 NON_REPO="$SANDBOX/plain"; mkdir -p "$NON_REPO"
