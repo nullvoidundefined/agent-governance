@@ -52,6 +52,7 @@
     "commands/spec-conformance-review.md": "sha256:ccd8c90dc996e940ffbf022bb9f1a6bf53318efd484865b38cd65dc0c5249d60",
     "skills/all-hands/SKILL.md": "sha256:77b12e0a681ba9e9ce371b191258dde7e37849b9d6829fd814ff86f2d86f709f",
     "skills/bug-hunt/SKILL.md": "sha256:08cc90744309f063eadc42d10f59ef777dd1624e5e565ab473ee1f862357555e",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:6799edf57a01aff625c148d59ab5e43991c2c25edd4b37c21d401ab813cc3173",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:edf81fc30c85bb417fb0e68964ab6f580fed26a5eb53138b8a2845e5b68be777",
     "skills/documentation-create/SKILL.md": "sha256:47ae6ff45a8707653f6b1af8bd6a2346547e636125bb30a640c8a6567cc4b277",
     "skills/feature-create/SKILL.md": "sha256:4aedbb057409662bbdf9b674a10abf4adc2cb5d709d3c1ece22f1a4403122f61",
