@@ -11,7 +11,6 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 
 ### From the 2026-07-31 full-harness audits (P2/P3)
 - P2 (security): `destructive-db-guard.sh` blanket `localhost` early-return misses SSH-tunneled remote DBs; argv-only scope. Known limitation; needs a design, not a patch.
-- P2 (security): `ntfy-notify.sh` posts to an unauthenticated public ntfy topic; moved to HTTPS 2026-08-01, but topic auth and payload minimization remain open.
 - P2 (criticism): no false-block measurement exists; the new fire log records fires, not wrongly-blocked work. Add a `[false-block]` marker convention to memory entries.
 - P2 (criticism): `global-memory/` and `rulebook/` carry redundant, drifting copies of collaboration rules (`PROTOCOL.md:33` vs `INDEX.md`); consolidate to one source.
 - P2 (criticism): `settings.json` has no schema validation. Since 2026-09-04 `settings-change-guard.sh` refuses a mid-session user settings file that does not parse or drops a manifest-required hook; a full key-level lint remains open.
@@ -20,7 +19,7 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 - P2 (2026-07-31 engineering audit): commit 266d05e is an unpaired `fix:` touching only `enforce/eslint.config.mjs` with no test; single instance, R-403 pattern note.
 - P3 (2026-07-31 engineering audit): `structure-gate.sh` applies the TS-only R-314 nested-`__tests__` deny message to Python test filenames; untested edge, low likelihood.
 - P3 (2026-07-31 engineering audit): `push-ruff-gate.sh` and `push-eslint-gate.sh` split the changed-file list with `xargs`, mishandling a space-containing path; pre-existing pattern shared by both gates.
-- P3 (2026-07-03 engineering audit): session-lifecycle and notifier hooks (`session-start.sh`, `pre-compact.sh`, `ntfy-notify.sh`) have no fixture tests; they are environment-heavy (session payloads, network) and need harness design before testing is honest rather than performative.
+- P3 (2026-07-03 engineering audit): session-lifecycle hooks (`session-start.sh`, `pre-compact.sh`) have no fixture tests; they are environment-heavy (session payloads) and need harness design before testing is honest rather than performative.
 
 - P2 (2026-08-21 engineering audit): identical content written through a Bash heredoc bypasses `content-gate.sh` entirely, since the hook matches Write|Edit only. `secret-scan.sh` already reads heredoc bodies out of Bash commands and is the fix precedent in the same tree.
 - P2 (2026-08-21 engineering audit): three of this cycle's fixtures were constructed in a way that avoids the failure mode they should probe (`content-gate.test.sh`'s `pwd -P` normalization, `structure-gate.test.sh`'s react-only client package, `parallel-session-check.test.sh`'s `sleep` stand-in for a session process). The suite is green and still overstates coverage. Generalize: a fixture that sidesteps the environment quirk tests the hook against a world that does not exist.
@@ -40,6 +39,7 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 - P3 (assessment, step 6): `behavior-assertion-required` counts matchers syntactically; an `expect` built through a helper (`expectRow(...)`) is invisible to it and a test asserting only through such helpers is not judged. Stated in the rule header.
 
 ## Resolved
+- 2026-09-15: `ntfy-notify.sh` removed entirely (Ian no longer uses ntfy), along with its `Notification` and `Stop` wiring in `settings.json`. Closes the two open items above about it (unauthenticated topic, no fixture tests): both are moot once the hook no longer exists.
 - 2026-09-06: the TDD harness assessment's four critical gaps closed on `claude/tdd-harness-llm-code-fuf9rh`: C-1 (no lock on tests, fixtures, specs) and C-2 (writable gate inputs) by `hooks/protected-path-guard.sh` (R-410, R-411, R-412); C-3 (no RED evidence) by `enforce/tdd.sh`; C-4 (`SubagentStop` unregistered) by the `verification-gate.sh` registration that skips non-writing roles.
 - 2026-09-05 (Ian, asked one at a time): P1-3 `model` is `opusplan`; P2-1 `permissions.defaultMode` is `auto`; P2-9 the `code-review` and `code-simplifier` plugins are disabled in favor of the bundled `/code-review` and `/simplify`; P2-6 the judge key will be stored in the keychain by Ian (the PENDING USER ACTION row above stands until then). The Sonnet-default memory now records the `opusplan` decision instead of contradicting settings.json.
 - 2026-09-04: `enforce/golangci-enforce.yml` migrated to the golangci-lint v2 schema. Verified against golangci-lint 2.5.0, which rejected the v1 file outright ("unsupported version of the configuration"); since the gate fails open on unparseable output, the Go gate had enforced nothing on any v2 install. `push-golangci-gate.test.sh` now runs `config verify` whenever the binary is on PATH, so the schema cannot silently drift again.

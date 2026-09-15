@@ -7,7 +7,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 - **git** and **bash** (macOS or Linux; on Windows use WSL, the hooks are bash).
 - **jq** is required. Every PreToolUse and SessionStart hook parses its input with `jq`; without it the hooks fail. Install with `brew install jq` or your package manager.
 - **node** is required by the clean-code scanner (`hooks/clean-code-scan.mjs`) and the ESLint push gate (`enforce/lint.mjs`).
-- **python3** is needed by `ntfy-notify.sh`, the manifest closure test, and the latency test's clock.
+- **python3** is needed by the manifest closure test and the latency test's clock.
 - Optional per stack, all fail open when absent at runtime: **ruff** (or uv), **rubocop**, **golangci-lint** for the Python/Ruby/Go push gates.
 - **ruff is not optional to run the fixture suite**, however. `push-ruff-gate.test.sh` drives the real binary, while the RuboCop and golangci fixtures stub their linters through `CLAUDE_RUBOCOP_CMD` / `CLAUDE_GOLANGCI_CMD`. Without ruff on PATH that one test fails on a missing tool rather than on a defect, which is what the first CI runs did. Install it (`pipx install ruff`) or expect that single failure.
 - **Claude Code** itself.

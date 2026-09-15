@@ -338,10 +338,6 @@
             "command": "~/.claude/hooks/verification-gate.sh",
             "timeout": 660,
             "statusMessage": "Running project checks before ending the turn"
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/ntfy-notify.sh"
           }
         ]
       }
@@ -355,17 +351,6 @@
             "command": "~/.claude/hooks/verification-gate.sh",
             "timeout": 660,
             "statusMessage": "Running project checks before the subagent returns"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/ntfy-notify.sh"
           }
         ]
       }
