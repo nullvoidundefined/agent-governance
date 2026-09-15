@@ -10,7 +10,7 @@ type: feedback
 
 **How to apply (user side):**
 
-- `~/.claude/settings.json` sets `"model": "opusplan"` (decided 2026-09-05 after the config audit): Opus while in plan mode, Sonnet for execution, so the expensive model runs only where design happens. `hooks/model-switch-guard.sh` asks before any manual switch up the price ladder. The contradiction the audit filed as P1-3 is closed.
+- `~/.claude/settings.json` sets `"model": "opusplan"` (decided 2026-09-05 after the config audit): Opus while in plan mode, Sonnet for execution, so the expensive model runs only where design happens. That settings default is what closed the audit's P1-3; enforcement status for `hooks/model-switch-guard.sh` is whatever `rulebook/cost.md` (R-903) says, and as of 2026-09-16 it says the script is registered on no real hook event, so switch discipline stays honor-system.
 - When a session genuinely needs Opus (audits, complex refactors, security reviews, ambiguous architecture, multi-step debugging), type `/model opus` consciously to step up. The friction is the feature: Opus becomes a deliberate choice, not a default.
 
 **How to apply (Claude side):**
