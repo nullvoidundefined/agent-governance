@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# sync.test.sh: verifies sync.sh copies each folder into its target, leaves
-# each tool's runtime-only state untouched, refuses on invalid JSON without a
-# partial write, is idempotent, syncs only git-tracked source content (never
-# untracked/gitignored local state such as node_modules), and mirrors tracked
-# deletions. Every target is a temp dir via the SYNC_*_HOME overrides, so this
-# never touches a real ~/.claude, ~/.cursor, or ~/.codex.
+# sync.test.sh: verifies sync.sh copies each folder into its target, never
+# deletes anything already there (no rsync --delete, see sync.sh's header for
+# why), refuses on invalid JSON without a partial write, is idempotent, and
+# syncs only git-tracked source content (never untracked/gitignored local
+# state such as node_modules). Every target is a temp dir via the SYNC_*_HOME
+# overrides, so this never touches a real ~/.claude, ~/.cursor, or ~/.codex.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP=$(mktemp -d); TMP=$(cd "$TMP" && pwd -P)
@@ -33,9 +33,12 @@ run_sync >/dev/null
 [ -f "$TMP/live/claude/CLAUDE.md" ] || { echo "FAIL: CLAUDE.md not synced"; exit 1; }
 diff "$TMP/repo/claude/CLAUDE.md" "$TMP/live/claude/CLAUDE.md" >/dev/null || { echo "FAIL: synced content differs"; exit 1; }
 
+# --- sync never deletes: pre-existing live-only content (runtime state, a
+# stray file, anything) survives every sync unconditionally, there is no
+# exclude list to keep current because there is nothing to protect against.
 mkdir -p "$TMP/live/claude/sessions"; echo "keep me" > "$TMP/live/claude/sessions/marker.txt"
 run_sync >/dev/null
-[ -f "$TMP/live/claude/sessions/marker.txt" ] || { echo "FAIL: sync deleted excluded runtime state"; exit 1; }
+[ -f "$TMP/live/claude/sessions/marker.txt" ] || { echo "FAIL: sync deleted live-only content it must never touch"; exit 1; }
 
 cp "$TMP/live/claude/CLAUDE.md" "$TMP/live/claude/CLAUDE.md.before"
 echo "{not json" > "$TMP/repo/claude/settings.json"
@@ -62,9 +65,10 @@ run_sync >"$TMP/untracked-run.log" 2>&1 || { echo "FAIL: sync refused because of
 [ ! -e "$TMP/live/claude/untracked-dir" ] || { echo "FAIL: untracked directory leaked into destination"; exit 1; }
 rm -rf "$TMP/repo/claude/untracked-invalid.json" "$TMP/repo/claude/untracked-dir"
 
-# --- a tracked file removed from source (git rm) must disappear from the
-# destination on the next sync: sync mirrors what's tracked, it never
-# accumulates an ever-growing pile of previously-synced files.
+# --- a tracked file removed from source (git rm) is NOT removed from the
+# destination on the next sync: sync only ever adds or updates, it never
+# deletes, even a file it once put there itself stays behind once the
+# source stops tracking it, until someone cleans it up by hand.
 echo "temporary" > "$TMP/repo/claude/removable.txt"
 git -C "$TMP/repo" add claude/removable.txt
 git -C "$TMP/repo" commit -q -m "fixture: add removable tracked file"
@@ -72,7 +76,7 @@ run_sync >/dev/null
 [ -f "$TMP/live/claude/removable.txt" ] || { echo "FAIL: tracked file was not synced"; exit 1; }
 git -C "$TMP/repo" rm -q claude/removable.txt
 run_sync >/dev/null
-[ ! -e "$TMP/live/claude/removable.txt" ] || { echo "FAIL: deleted tracked file was not removed from destination"; exit 1; }
+[ -f "$TMP/live/claude/removable.txt" ] || { echo "FAIL: sync deleted a file from the destination; it must never delete anything"; exit 1; }
 
 rm -rf "$TMP"
 echo "sync.test.sh PASS"

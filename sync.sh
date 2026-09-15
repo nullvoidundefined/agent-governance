@@ -10,27 +10,32 @@
 # considered by the JSON pre-flight check: a source folder is a git checkout,
 # not a scratch directory, and its local side effects (e.g. `npm ci` dropping
 # node_modules/ under claude/enforce/) are not part of what ships.
+#
+# Never deletes anything from a live directory (no rsync --delete). An
+# earlier version did, gated by a hand-maintained per-tool exclude list
+# meant to protect each tool's own runtime state (sessions, auth, caches,
+# logs, local config). That list needed to name every such path, forever,
+# across three different, evolving tools, and it did not: the first real
+# run deleted a live SDD workspace directory outright, plus Codex's entire
+# config.toml and its 696KB global-state file, none of which were in the
+# list. A hand-typed denylist that must be exhaustive to be safe is the
+# wrong shape. Sync now only ever adds or updates tracked files; nothing
+# already sitting in a live directory is ever removed by it, even a
+# tracked file removed from the source stays behind until cleaned up by
+# hand. That is a strictly safer trade than the alternative.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CLAUDE="${SYNC_CLAUDE_HOME:-$HOME/.claude}"
 TARGET_CURSOR="${SYNC_CURSOR_HOME:-$HOME/.cursor}"
 TARGET_CODEX="${SYNC_CODEX_HOME:-$HOME/.codex}"
 
-EXCLUDE_CLAUDE=(sessions cache history.jsonl paste-cache shell-snapshots projects .git backups 'daemon*' file-history)
-EXCLUDE_CURSOR=(extensions ide_state.json cli-config.json argv.json ai-tracking .git)
-EXCLUDE_CODEX=(sessions log cache auth.json history.jsonl '*.sqlite*' .tmp ipc dictation-history .git)
-
 sync_one() {
-  local folder="$1" dest="$2"; shift 2
-  local excludes=("$@")
-  local rsync_args=(-a --delete)
-  for e in "${excludes[@]}"; do rsync_args+=(--exclude "$e"); done
+  local folder="$1" dest="$2"
+  local rsync_args=(-a)
 
   # Stage a copy of only the git-tracked files for this folder. Building a
-  # clean staging tree (rather than filtering rsync's own --delete pass
-  # against the live working directory) keeps the "mirror what's tracked"
-  # semantics simple and correct: the final rsync below is a plain, ordinary
-  # full-tree sync from staging, so --delete behaves exactly as it always has.
+  # clean staging tree keeps the "only ship what's tracked" semantics simple
+  # and correct: the final rsync below copies exactly that tree, nothing more.
   local filelist staging
   filelist=$(mktemp)
   git -C "$REPO_ROOT" ls-files -- "$folder" > "$filelist"
@@ -56,6 +61,6 @@ sync_one() {
   echo "synced $REPO_ROOT/$folder -> $dest"
 }
 
-sync_one claude "$TARGET_CLAUDE" "${EXCLUDE_CLAUDE[@]}"
-sync_one cursor "$TARGET_CURSOR" "${EXCLUDE_CURSOR[@]}"
-sync_one codex "$TARGET_CODEX" "${EXCLUDE_CODEX[@]}"
+sync_one claude "$TARGET_CLAUDE"
+sync_one cursor "$TARGET_CURSOR"
+sync_one codex "$TARGET_CODEX"
