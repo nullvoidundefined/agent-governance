@@ -31,6 +31,8 @@
 
 **Deferred by decision:** pytest, go test, and RSpec runners in `tdd.sh` (decision 10); mutation testing on changed files (decision 11); the judge-tier extension (decision 9).
 
+**Deferred from the 2026-09-12 agent-governance monorepo work (architectural, own spec needed):** build a real, reusable translator that regenerates `~/.cursor` and `~/.codex` mirror content from `~/.claude`'s. None exists today, `.claude-port.json`'s `"builder"` field names a script (`cursor/build.mjs`, `openai/build.mjs`) that was never actually committed anywhere; both mirrors are frozen at their 2026-09-05 bootstrap commit and are already stale. See `docs/superpowers/specs/2026-09-12-agent-governance-monorepo-design.md` (Dependencies, Non-goals) for what was verified.
+
 ## 5. Next-session tasks, with files to read
 
 - Read `skills/tdd-gated-dispatch/SKILL.md` before the first slice; it is the operating procedure, and `docs/audits/2026-09-06-tdd-harness.md` is the rationale.

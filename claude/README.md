@@ -246,6 +246,12 @@ This repo is shaped by incidents, not by feature requests. To propose a new rule
 4. **Cut something when you add something.** `CLAUDE.md` loads on every session, so anything conditional belongs in a skill instead. The 200-line cap is enforced by `enforce/tests/claude-md-lint.test.sh`, which also fails if a rule's norm line and its `rulebook/reference.md` Spec drift apart.
 5. **Ship the fixture with the rule.** R-516: every mechanizable rule needs a `manifest.json` entry naming its tier and enforcer, plus a fixture test under `enforce/tests/`. A rule with no manifest entry depends on recall, and the manifest closure test will say so.
 
+## Planned: consolidating with the Cursor and Codex mirrors
+
+`~/.cursor` and `~/.codex` already mirror this repo's rules into Cursor's `.mdc` rule format and Codex's `AGENTS.md`/`config.toml` conventions, each as its own separate git remote (`cursor-global-rules`, `openai-global-rules`) built from this repo via a `build.mjs` script per target and a `.claude-port.json` hash manifest that tracks drift. Collapsing all three into one monorepo, one remote, is under design.
+
+The one real technical constraint: each tool expects its config at a fixed path (`~/.claude`, `~/.cursor`, `~/.codex`), none of them can be told "look inside monorepo/claude/ instead," at least not that I've verified. So a single monorepo needs something at each of those three fixed paths pointing into it.
+
 ## Version history and audit trail
 
 The git history of this repo is the change log. Dated audit reports live in [`docs/audits/`](./docs/audits/); the current handoff is in [`docs/session-handoff/`](./docs/session-handoff/). The git history of this repo is the authoritative record of how the framework has evolved.
