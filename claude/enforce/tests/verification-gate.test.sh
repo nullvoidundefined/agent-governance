@@ -158,4 +158,16 @@ GOT=$(gate "$REPO" false SubagentStop spec-conformance-review)
 GOT=$(gate "$REPO" true SubagentStop implementer)
 [ "$GOT" = "none" ] || { echo "FAIL: stop_hook_active must short-circuit SubagentStop too, got: $GOT"; exit 1; }
 
+# 13. Monorepo layout: the governance suites one level down under claude/ are
+# discovered (2026-09-16 audit P1-1: the toplevel-only lookup found nothing at
+# the agent-governance root, so R-509 ran no checks in the one repo that
+# enforces it).
+REPO=$(new_repo)
+mkdir -p "$REPO/claude/enforce/tests" "$REPO/claude/hooks/tests"
+touch "$REPO/claude/CLAUDE.md"
+printf 'echo MONOREPO_SUITE_MARKER\nexit 1\n' > "$REPO/claude/enforce/tests/run-tests.sh"
+printf 'exit 0\n' > "$REPO/claude/hooks/tests/run-tests.sh"
+GOT=$(gate "$REPO")
+printf '%s' "$GOT" | grep -q 'MONOREPO_SUITE_MARKER' || { echo "FAIL: monorepo claude/ suites must be discovered and block on red, got: $GOT"; exit 1; }
+
 echo "verification-gate.test.sh PASS"

@@ -122,10 +122,16 @@ has_npm_script() { jq -e --arg s "$1" '.scripts[$s] // empty' package.json >/dev
 if [ -f .claude/verify.sh ]; then
   add_check "bash .claude/verify.sh"
 elif [ -f enforce/tests/run-tests.sh ] && [ -f hooks/tests/run-tests.sh ] && [ -f CLAUDE.md ]; then
-  # The ~/.claude repo itself. It has no typecheck: no TypeScript source, and
-  # enforce/*.mjs is plain JS with no tsc. Both fixture suites are the checks.
+  # A governance-shaped tree at the toplevel (the pre-migration ~/.claude
+  # layout, or a CI checkout of claude/ itself). No typecheck: plain shell
+  # and JS with no tsc. Both fixture suites are the checks.
   add_check "bash enforce/tests/run-tests.sh"
   add_check "bash hooks/tests/run-tests.sh"
+elif [ -f claude/enforce/tests/run-tests.sh ] && [ -f claude/hooks/tests/run-tests.sh ] && [ -f claude/CLAUDE.md ]; then
+  # The agent-governance monorepo: the same governance tree one level down
+  # under claude/ (2026-09-16 audit P1-1).
+  add_check "bash claude/enforce/tests/run-tests.sh"
+  add_check "bash claude/hooks/tests/run-tests.sh"
 elif [ -f package.json ]; then
   PM=$(package_manager)
   has_npm_script test && add_check "$PM test"
