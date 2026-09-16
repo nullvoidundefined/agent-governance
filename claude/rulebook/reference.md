@@ -15,7 +15,7 @@ R-001: Run the session-start procedure before any other work.
   1. Confirm the SessionStart hook (`hooks/session-start.sh`) injected `~/.claude/global-memory/INDEX.md` and the SHA-verified project handoff; Read either only when its block is absent from the injected context (`lesson_no_reread_auto_injected_context.md`). Auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`, first 200 lines) loads on its own and is re-injected after compaction.
   2. Read `~/.claude/rules/session-types.md`; classify the session type from the user's first message.
   3. Read Tier 2 files for that session type per the session-types load map.
-  4. Run `git status -s ~/.claude`; triage non-empty.
+  4. Run `git -C "$(cat ~/.claude/.sync-source)" status -s`; triage non-empty (`~/.claude` is a sync target of the agent-governance repo, not a git repo itself).
   5. Read `docs/session-handoff/session-handoff.md` if present; verify the last-commit SHA against `git log`.
   6. Read the project `CLAUDE.md`.
   - First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`.
@@ -61,8 +61,8 @@ R-105: Obtain explicit confirmation before any destructive MCP action (delete, d
   - The browser server is exempt: tab and click actions carry their own site permission model and are not external systems of record.
   Enforcement: hook:mcp-action-guard (asks; "don't ask again" on a specific tool is the user's own pre-authorization)
 
-R-106: Treat every push of `~/.claude` as publishing; its remote is public.
-  Spec: before pushing, run `git diff origin/main`, then verify no secrets, no local filesystem paths, and no client-identifying content. Secrets and the real home path are hook-enforced; client-identifying content stays a manual check.
+R-106: Treat every push of the agent-governance repo as publishing; its remote is public, and it is the source that syncs into `~/.claude`, `~/.codex`, and `~/.cursor`.
+  Spec: before pushing, run `git diff origin/main`, then verify no secrets, no local filesystem paths, and no client-identifying content. Secrets and the real home path are hook-enforced; client-identifying content stays a manual check. The repo is recognized by its origin remote (`hooks/repo-identity.sh`), not by path.
   Enforcement: hook:global-repo-push-guard
 
 R-107: Investigate any `core.hooksPath` value resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal.
@@ -185,7 +185,7 @@ R-309: Collapse any domain folder holding exactly one source module into a flat 
   Spec:
   - A folder is justified only by two or more sibling source files.
   - Re-nest into a folder the moment a second file is added.
-  Enforcement: hook:single-file-folder-gate (advisory)
+  Enforcement: hook:single-file-folder-reminder (advisory)
 
 R-310: Regroup any source directory holding more than 20 sibling source modules into domain subfolders.
   Scope: every source tree on every stack; the threshold is a smell that forces the regroup decision, not a hard cap (R-318). A genuinely flat peer set with no domain seams (a `migrations/` directory, a route-segment folder) may stay flat when documented in the directory's nearest `CLAUDE.md`.
@@ -225,7 +225,7 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
   - One verb lexicon across the codebase, with the synonyms bound to a layer rather than left to taste (tightened 2026-09-04: four interchangeable read verbs is a four-way drift surface, and the R-304/R-305 directory is what makes "remote" versus "in memory" decidable from the path instead of from intent).
     <!-- lexicon:begin -->
-    <!-- Generated from enforce/lexicon.json by renderLexiconSpec.mjs. Do not hand-edit: change the registry and run --write. -->
+    <!-- Generated from enforce/lexicon.json by render-lexicon-spec.mjs. Do not hand-edit: change the registry and run --write. -->
     - Reads: `get` by default; `fetch` under `api/` and `clients/`; `load` under `config/`, `database/`, `prompts/` and `repositories/`. Using another layer's read verb is a violation, not a preference. `list` stays unrestricted: it encodes cardinality, not transport.
     - Reserved to a tree: `drop` only under `database/` and `repositories/` (use `delete` elsewhere); `insert` only under `database/` and `repositories/` (use `create` elsewhere); `upsert` only under `database/` and `repositories/` (use `save` elsewhere).
     - Banned as bare synonyms: `calc` (use `calculate`); `add`, `init` and `make` (use `create`); `destroy` and `remove` (use `delete`); `gen` (use `generate`); `grab`, `obtain` and `retrieve` (use `get`); `do`, `execute`, `manage`, `perform`, `proc`, `process`, `run` and `util` (name the actual operation); `setup` (use `prepare`); `persist` and `record` (use `save`); `check` (use `validate`).
@@ -233,8 +233,8 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
     <!-- lexicon:end -->
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
-  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/renderLexiconSpec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
-  Enforcement: eslint:lexicon-naming (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
+  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/render-lexicon-spec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
+  Enforcement: eslint:naming-lexicon (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.
   Spec:
@@ -245,7 +245,7 @@ R-317: Name variables descriptively; never abbreviate where the full word reads 
   - A name must read as natural English when the code is read aloud; rename any name that does not communicate intent.
   - Exception (Go): the idiomatic short names (`err`, `ok`, `ctx`, `i`, one-letter receivers) are correct in small scopes; descriptive names still required for anything living beyond a screen.
   - Two of these are decidable and are enforced as data: a variable bound to an array literal or a `.map()`/`.filter()` result carries a plural noun, and a single-word variable is not one of the participles listed in `enforce/lexicon.json` under `bareAdjectives`. The rest stays judgment.
-  Enforcement: eslint:lexicon-naming (plural collections, bare adjectives); judge for the rest
+  Enforcement: eslint:naming-lexicon (plural collections, bare adjectives); judge for the rest
 
 R-318: Give each file one responsibility; split when it serves more than one concern.
   Spec:
@@ -549,7 +549,7 @@ R-510: Trust pre-commit hooks for what they cover; do not manually re-run the fo
 
 R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch.
   Spec: no concurrent feature work; no overlapping refactors; land one, start the next.
-  Enforcement: hook:git-workflow-guard (commit-time advisory when the staged change spans 5+ files across 3+ directories on `main`; the ~/.claude repo is exempt because `main` is its working branch)
+  Enforcement: hook:git-workflow-guard (commit-time advisory when the staged change spans 5+ files across 3+ directories on `main`; the agent-governance repo, recognized via `repo-identity.sh`, is exempt because `main` is its working branch)
 
 R-512: Squash-merge feature branches: `git merge --squash`; one commit per feature on `main`.
   Enforcement: hook:git-workflow-guard (denies `gh pr merge --merge` and `--rebase`)
@@ -564,7 +564,7 @@ R-514: Never merge a PR without explicit user authorization in the current turn.
   - Claude may create PRs, push branches, and request Copilot review (`gh pr create --reviewer copilot`).
   - Default path: (1) CI passes; (2) Copilot review passes; (3) the user explicitly asks to merge after both are confirmed green. "Merge when ready" is not authorization.
   - Direct pushes to `main`/`master`: warn the user and name the risks (no CI gate, no Copilot review, no rollback point); execute only on express user request in the current turn.
-  Enforcement: hook:git-workflow-guard (asks before `gh pr merge` and before any push whose target branch resolves to `main`/`master`; the ~/.claude repo is exempt, its pushes being R-106's business)
+  Enforcement: hook:git-workflow-guard (asks before `gh pr merge` and before any push whose target branch resolves to `main`/`master`; the agent-governance repo, recognized via `repo-identity.sh`, is exempt, its pushes being R-106's business)
 
 R-515: Resolve every addressed reviewer thread on GitHub in the same turn as the fix commit.
   Spec:
@@ -582,7 +582,7 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 
 ## Lifecycle and memory (R-6xx)
 
-R-601: Offer a handoff doc at session end; commit/push dirty `~/.claude`; update `TODO.md`/`ISSUES.md` with deferred work.
+R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work.
   Enforcement: manual
 
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets.

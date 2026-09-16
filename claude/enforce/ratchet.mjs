@@ -30,7 +30,7 @@ import { ESLint } from "eslint";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { buildEslintOptions } from "./eslintOptions.mjs";
+import { buildEslintOptions } from "./eslint-options.mjs";
 
 const BASELINE_FILENAME = ".enforce-baseline.json";
 const SOURCE_EXTENSION_PATTERN = /\.tsx?$/;

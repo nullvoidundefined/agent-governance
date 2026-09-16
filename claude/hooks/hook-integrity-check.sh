@@ -8,7 +8,7 @@
 #   ~/.claude/hooks/hook-integrity-check.sh --update
 # Covered: hooks/*.sh, hooks/*.mjs, hooks/*.py, enforce/*.yml, enforce/*.toml,
 # enforce/*.mjs (lint, ratchet, eslint config, shared options), enforce/rules/*.mjs
-# (custom ESLint rules), enforce/*.sh (tdd.sh, resolveOutgoingBase.sh),
+# (custom ESLint rules), enforce/*.sh (tdd.sh, resolve-outgoing-base.sh),
 # enforce/manifest.json, enforce/lexicon.json, enforce/role-policy.json.
 # enforce/rules/ and lexicon.json joined 2026-09-04: a custom rule body and the
 # naming registry decide what the gate enforces, so an unnoticed edit to either

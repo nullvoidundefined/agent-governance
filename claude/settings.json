@@ -204,7 +204,7 @@
                     },
                     {
                         "type": "command",
-                        "command": "~/.claude/hooks/single-file-folder-gate.sh"
+                        "command": "~/.claude/hooks/single-file-folder-reminder.sh"
                     },
                     {
                         "type": "command",
@@ -406,6 +406,17 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/settings-change-guard.sh"
+                    }
+                ]
+            }
+        ],
+        "PreModelSwitch": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/model-switch-guard.sh"
                     }
                 ]
             }

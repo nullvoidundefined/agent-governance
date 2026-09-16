@@ -33,4 +33,4 @@ R-805: Restrict audit roles to reading project source/docs/tests; Security addit
   Spec: no role reads `.env`, `~/.aws`, `~/.ssh`, or keychains without per-turn authorization.
   Enforcement: manual
 
-Standing roles: Engineering (`~/.claude/audits/engineering.md`), Security (`~/.claude/audits/security.md`), Criticism (`~/.claude/audits/criticism.md`).
+Standing roles: Engineering (`~/.claude/agents/audit-engineering.md`), Security (`~/.claude/agents/audit-security.md`), Criticism (`~/.claude/agents/audit-criticism.md`); the agent files are canonical, and the stubs under `~/.claude/audits/` only forward to them.

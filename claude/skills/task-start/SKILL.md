@@ -13,6 +13,10 @@ Examine scope. Determine process. Dispatch the right workflow.
 
 Without this skill, every task starts with an implicit judgment call: "Is this big enough to need a spec? A plan? TDD? Subagents?" Those calls are inconsistent. This skill makes them mechanical.
 
+This skill's tier table (Step 1) and Model Routing table are the canonical
+specs for R-901 and R-903; `rulebook/cost.md` points here rather than
+restating them.
+
 ## Step 1: Classify Scope
 
 Read the user's request. Check the codebase for context (files involved, cross-package dependencies, test coverage). Classify into exactly one tier:

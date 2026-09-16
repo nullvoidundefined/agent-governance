@@ -245,7 +245,8 @@
             "tier": "regex",
             "enforcer": "hook:secret-scan",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "fixture: tests/secret-scan.test.sh (pattern-deny slice)"
         },
         {
             "id": "R-102",
@@ -274,7 +275,8 @@
             "tier": "regex",
             "enforcer": "hook:secret-scan",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "fixture: tests/credential-mutation-guard.test.sh (mutation slice of secret-scan.sh; no hook of that name exists)"
         },
         {
             "id": "R-106",
@@ -499,7 +501,7 @@
         {
             "id": "R-309",
             "tier": "advisory",
-            "enforcer": "hook:single-file-folder-gate",
+            "enforcer": "hook:single-file-folder-reminder",
             "severity": "warn",
             "autofix": false
         },
@@ -590,7 +592,7 @@
         {
             "id": "R-316",
             "tier": "ast",
-            "enforcer": "eslint:lexicon-naming",
+            "enforcer": "eslint:naming-lexicon",
             "severity": "error",
             "autofix": false,
             "note": "verb+noun against enforce/lexicon.json; active only in repos declaring a naming key in .enforce.json"
@@ -598,7 +600,7 @@
         {
             "id": "R-317",
             "tier": "ast",
-            "enforcer": "eslint:lexicon-naming",
+            "enforcer": "eslint:naming-lexicon",
             "severity": "error",
             "autofix": false,
             "note": "the decidable half only (plural collections, bare adjectives); same opt-in as R-316"
@@ -644,6 +646,14 @@
             "enforcer": "hook:audit-signal-check",
             "severity": "warn",
             "autofix": false
+        },
+        {
+            "id": "R-903",
+            "tier": "advisory",
+            "enforcer": "hook:model-switch-guard",
+            "severity": "warn",
+            "autofix": false,
+            "note": "PreModelSwitch systemMessage on any switch up the price ladder; silent on lateral, downward, or unrankable model ids"
         },
         {
             "id": "R-904",

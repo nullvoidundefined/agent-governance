@@ -8,9 +8,9 @@
  * audit, filed as a P3). "Edit both together" is a recall instruction, which is
  * exactly the class of rule this repo is trying to stop relying on.
  *
- *   node enforce/renderLexiconSpec.mjs            print the canonical block
- *   node enforce/renderLexiconSpec.mjs --write    rewrite reference.md in place
- *   node enforce/renderLexiconSpec.mjs --check    exit 1 if reference.md differs
+ *   node enforce/render-lexicon-spec.mjs            print the canonical block
+ *   node enforce/render-lexicon-spec.mjs --write    rewrite reference.md in place
+ *   node enforce/render-lexicon-spec.mjs --check    exit 1 if reference.md differs
  *
  * The block lives between the two markers below. Everything outside them stays
  * hand-written: the policy and its rationale are prose worth reading, only the
@@ -128,7 +128,7 @@ function renderBanned(lexicon) {
 function renderBlock(lexicon) {
   return [
     BEGIN_MARKER,
-    `${INDENT}<!-- Generated from enforce/lexicon.json by renderLexiconSpec.mjs. Do not hand-edit: change the registry and run --write. -->`,
+    `${INDENT}<!-- Generated from enforce/lexicon.json by render-lexicon-spec.mjs. Do not hand-edit: change the registry and run --write. -->`,
     renderReads(lexicon),
     renderScoped(lexicon),
     renderBanned(lexicon),
@@ -149,7 +149,7 @@ const lexicon = JSON.parse(readFileSync(lexiconPath, "utf8"));
 
 const lexiconProblems = validateLexicon(lexicon);
 if (lexiconProblems.length > 0) {
-  console.error("renderLexiconSpec: enforce/lexicon.json contradicts itself:");
+  console.error("render-lexicon-spec: enforce/lexicon.json contradicts itself:");
   for (const problem of lexiconProblems) console.error(`  - ${problem}`);
   process.exit(1);
 }
@@ -166,30 +166,30 @@ const referenceText = readFileSync(referencePath, "utf8");
 const actual = extractBlock(referenceText);
 
 if (actual === null) {
-  console.error(`renderLexiconSpec: markers not found in ${referencePath}. Expected ${BEGIN_MARKER.trim()} and ${END_MARKER.trim()}.`);
+  console.error(`render-lexicon-spec: markers not found in ${referencePath}. Expected ${BEGIN_MARKER.trim()} and ${END_MARKER.trim()}.`);
   process.exit(1);
 }
 
 if (mode === "--write") {
   if (actual === expected) {
-    console.log("renderLexiconSpec: reference.md already matches the registry.");
+    console.log("render-lexicon-spec: reference.md already matches the registry.");
     process.exit(0);
   }
   writeFileSync(referencePath, referenceText.replace(actual, expected));
-  console.log("renderLexiconSpec: rewrote the R-316 lexicon block from lexicon.json. Commit both.");
+  console.log("render-lexicon-spec: rewrote the R-316 lexicon block from lexicon.json. Commit both.");
   process.exit(0);
 }
 
 if (mode === "--check") {
   if (actual === expected) process.exit(0);
-  console.error("renderLexiconSpec: rulebook/reference.md disagrees with enforce/lexicon.json (R-316).\n");
+  console.error("render-lexicon-spec: rulebook/reference.md disagrees with enforce/lexicon.json (R-316).\n");
   console.error("--- reference.md has ---");
   console.error(actual);
   console.error("\n--- the registry renders ---");
   console.error(expected);
-  console.error("\nRun: node enforce/renderLexiconSpec.mjs --write");
+  console.error("\nRun: node enforce/render-lexicon-spec.mjs --write");
   process.exit(1);
 }
 
-console.error(`renderLexiconSpec: unknown mode ${mode}; expected --print, --write or --check.`);
+console.error(`render-lexicon-spec: unknown mode ${mode}; expected --print, --write or --check.`);
 process.exit(1);

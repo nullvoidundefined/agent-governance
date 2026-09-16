@@ -24,7 +24,7 @@ R-312: Multi-word directories are camelCase in every source tree; exceptions: Ne
 
 ## Directory shape
 
-R-309: Collapse any domain folder holding exactly one source module into a flat file; a folder needs 2+ sibling source files. [hook:single-file-folder-gate]
+R-309: Collapse any domain folder holding exactly one source module into a flat file; a folder needs 2+ sibling source files. [hook:single-file-folder-reminder]
 R-310: Regroup any source directory past 20 sibling source modules into domain subfolders (count excludes `__tests__/`, barrels, sibling `constants.ts`/`types.ts`). [hook:flat-directory-reminder]
 
 ## Test placement

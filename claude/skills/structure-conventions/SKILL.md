@@ -22,7 +22,7 @@ R-312: Multi-word directories are camelCase in every source tree; exceptions: Ne
 
 ## Directory shape
 
-R-309: Collapse any domain folder holding exactly one source module into a flat file; a folder needs 2+ sibling source files. [hook:single-file-folder-gate]
+R-309: Collapse any domain folder holding exactly one source module into a flat file; a folder needs 2+ sibling source files. [hook:single-file-folder-reminder]
 R-310: Regroup any source directory past 20 sibling source modules into domain subfolders (count excludes `__tests__/`, barrels, sibling `constants.ts`/`types.ts`). [hook:flat-directory-reminder]
 
 ## Test placement
@@ -50,7 +50,8 @@ R-328 [ts]: Migration defaults: bare strings for constants, `pgm.func()` for SQL
 
 ## What stayed in CLAUDE.md
 
-The R-3xx rules with no mechanical enforcer at the tool call stay always-loaded,
+Every R-3xx rule not listed in this skill stays always-loaded in `CLAUDE.md`,
 because for those the norm line is what prevents the mistake rather than what
-explains the block: R-301, R-302, R-303, R-306, R-307, R-308, R-315, R-316,
-  R-317, R-318, R-320, R-322, R-325, and R-330.
+explains the block. The membership is defined by that complement, not by a
+second list here: `enforce/tests/claude-md-lint.test.sh` fails when a rule id
+has a Spec but a norm line in neither file, so the split cannot silently gap.

@@ -27,8 +27,8 @@ grep -q '<!-- lexicon:begin -->' "$REFERENCE" || { echo "FAIL: reference.md has 
 grep -q '<!-- lexicon:end -->' "$REFERENCE" || { echo "FAIL: reference.md has no lexicon:end marker"; exit 1; }
 
 # 2. Committed tree is in sync.
-node "$E/renderLexiconSpec.mjs" --check >/dev/null 2>&1 || {
-  echo "FAIL: reference.md is out of sync with lexicon.json. Run: node enforce/renderLexiconSpec.mjs --write"
+node "$E/render-lexicon-spec.mjs" --check >/dev/null 2>&1 || {
+  echo "FAIL: reference.md is out of sync with lexicon.json. Run: node enforce/render-lexicon-spec.mjs --write"
   exit 1
 }
 
@@ -37,7 +37,7 @@ node "$E/renderLexiconSpec.mjs" --check >/dev/null 2>&1 || {
 # assert --check notices.
 SANDBOX=$(mktemp -d)
 mkdir -p "$SANDBOX/enforce" "$SANDBOX/rulebook"
-cp "$E/renderLexiconSpec.mjs" "$E/lexicon.json" "$SANDBOX/enforce/"
+cp "$E/render-lexicon-spec.mjs" "$E/lexicon.json" "$SANDBOX/enforce/"
 cp "$REFERENCE" "$SANDBOX/rulebook/reference.md"
 
 # A coherent change: ban a verb that no group or scope table references, so the
@@ -50,19 +50,19 @@ node -e '
   fs.writeFileSync(path, JSON.stringify(lexicon, null, 2) + "\n");
 ' "$SANDBOX/enforce/lexicon.json"
 
-if node "$SANDBOX/enforce/renderLexiconSpec.mjs" --check >/dev/null 2>&1; then
+if node "$SANDBOX/enforce/render-lexicon-spec.mjs" --check >/dev/null 2>&1; then
   echo "FAIL: --check passed after the registry changed; the sync check cannot detect drift"
   exit 1
 fi
 
 # 4. --write reconciles, and running it again is a no-op.
-node "$SANDBOX/enforce/renderLexiconSpec.mjs" --write >/dev/null
-node "$SANDBOX/enforce/renderLexiconSpec.mjs" --check >/dev/null 2>&1 || {
+node "$SANDBOX/enforce/render-lexicon-spec.mjs" --write >/dev/null
+node "$SANDBOX/enforce/render-lexicon-spec.mjs" --check >/dev/null 2>&1 || {
   echo "FAIL: --write did not bring reference.md back into sync"
   exit 1
 }
 BEFORE=$(shasum -a 256 "$SANDBOX/rulebook/reference.md" | cut -d' ' -f1)
-node "$SANDBOX/enforce/renderLexiconSpec.mjs" --write >/dev/null
+node "$SANDBOX/enforce/render-lexicon-spec.mjs" --write >/dev/null
 AFTER=$(shasum -a 256 "$SANDBOX/rulebook/reference.md" | cut -d' ' -f1)
 [ "$BEFORE" = "$AFTER" ] || { echo "FAIL: --write is not idempotent ($BEFORE vs $AFTER)"; exit 1; }
 
@@ -83,8 +83,8 @@ node -e '
   lexicon.bannedVerbs.fetch = "get";
   fs.writeFileSync(path, JSON.stringify(lexicon, null, 2) + "\n");
 ' "$SANDBOX/enforce/lexicon.json"
-CONTRADICTION=$(node "$SANDBOX/enforce/renderLexiconSpec.mjs" --print 2>&1 || true)
-node "$SANDBOX/enforce/renderLexiconSpec.mjs" --print >/dev/null 2>&1 && {
+CONTRADICTION=$(node "$SANDBOX/enforce/render-lexicon-spec.mjs" --print 2>&1 || true)
+node "$SANDBOX/enforce/render-lexicon-spec.mjs" --print >/dev/null 2>&1 && {
   echo "FAIL: a registry that bans a verb its own scope table binds must be rejected"
   exit 1
 } || true

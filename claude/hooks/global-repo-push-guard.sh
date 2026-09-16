@@ -73,8 +73,8 @@ is_governance_repo "$ROOT" || exit 0
 # unreviewed" (2026-07-31 security audit P2; siblings use the same resolver).
 # Anchored to this script's real location, not $HOME: the fixture test runs
 # the guard under a sandboxed HOME where no enforce/ tree exists.
-# shellcheck source=../enforce/resolveOutgoingBase.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)/resolveOutgoingBase.sh"
+# shellcheck source=../enforce/resolve-outgoing-base.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)/resolve-outgoing-base.sh"
 BASE=$(cd "$ROOT" && resolve_outgoing_base)
 if [ -z "$BASE" ]; then
   jq -n '{

@@ -6,7 +6,7 @@ Project-level `CLAUDE.md` adds guidance but does not override these unless it ex
 
 ## Session init (R-0xx)
 
-R-001: Run the session-start procedure before any other work: (1) confirm the SessionStart hook injected `~/.claude/global-memory/INDEX.md` and the SHA-verified `docs/session-handoff/session-handoff.md`; Read either only if its block is absent; (2) classify the session type per `rules/session-types.md`; (3) read that type's Tier 2 files; (4) `git status -s ~/.claude`, triage non-empty; (5) read the project `CLAUDE.md`; auto memory (`MEMORY.md`) loads on its own. First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. Re-read and re-declare on reclassification. [manual]
+R-001: Run the session-start procedure before any other work: (1) confirm the SessionStart hook injected `~/.claude/global-memory/INDEX.md` and the SHA-verified `docs/session-handoff/session-handoff.md`; Read either only if its block is absent; (2) classify the session type per `rules/session-types.md`; (3) read that type's Tier 2 files; (4) `git -C "$(cat ~/.claude/.sync-source)" status -s`, triage non-empty; (5) read the project `CLAUDE.md`; auto memory (`MEMORY.md`) loads on its own. First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. Re-read and re-declare on reclassification. [manual]
 R-002: Load the R-001 files at session start; run the reads in parallel where possible. [manual]
 
 ## Secrets and trust (R-1xx)
@@ -41,8 +41,8 @@ R-306: Never create catch-all dirs (`lib`, `utils`, `helpers`, `common`, `core`,
 R-307: `services/` by domain then operation; `clients/` one thin module per provider, no domain logic; `api/` one fetch wrapper per route; co-locate non-code assets; export only what is imported elsewhere. [manual]
 R-308: Search the existing `services/`, `clients/`, and hook trees before adding any new unit of business logic; reuse or extend first; ask before modifying shared code. [manual]
 R-315: Name files for their specific responsibility, predictable without opening them: `generatePublicNote.ts`, not `generate.ts`. [judge]
-R-316: Name functions verb + noun (the noun is mandatory); one verb lexicon across the codebase; booleans take `is`/`has`/`can`/`should`. [eslint:lexicon-naming, judge]
-R-317: Name variables descriptively: no generic names, no bare adjectives (`scoredJob`, not `scored`), plural nouns for collections; every name reads as natural English. [eslint:lexicon-naming, judge]
+R-316: Name functions verb + noun (the noun is mandatory); one verb lexicon across the codebase; booleans take `is`/`has`/`can`/`should`. [eslint:naming-lexicon, judge]
+R-317: Name variables descriptively: no generic names, no bare adjectives (`scoredJob`, not `scored`), plural nouns for collections; every name reads as natural English. [eslint:naming-lexicon, judge]
 R-318: One responsibility per file; size is a smell, not a hard cap. [manual]
 R-320: Write a file-level header comment on every new source file (skip tests, `.d.ts`, barrels, single-constant files, pure re-exports). [eslint:file-header-comment, hook:new-file-header-reminder]
 R-322: Every function is exactly one of: an orchestrator that only sequences calls, or an atomic function doing one indivisible piece (~10 lines, ~25 ceiling). [hook:clean-code-reminder]
@@ -98,7 +98,7 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 
 ## Lifecycle and memory (R-6xx)
 
-R-601: Offer a handoff doc at session end; commit/push dirty `~/.claude`; update `TODO.md`/`ISSUES.md` with deferred work. [manual]
+R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work. [manual]
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [manual]
 R-603: Route learnings to per-project feedback memory (tags: `success`, `correction`, `fired: R-NNN`, `miss: R-NNN; gap:`). [manual]
 R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-identifying or project-specific content stays in the project repo. [manual]

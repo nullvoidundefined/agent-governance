@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# single-file-folder-gate.sh: on git push, warn (advisory, never blocks) when a changed
+# single-file-folder-reminder.sh: on git push, warn (advisory, never blocks) when a changed
 # source folder holds exactly one source module (R-309 prefers a flat file over a
 # single-file folder). Respects per-repo exemptions in .enforce.json
 # (singleFileFolderExemptions). Tests, index, constants, and types modules do not count
 # as the folder's source module.
 set -euo pipefail
-source "$HOME/.claude/enforce/resolveOutgoingBase.sh"
+source "$HOME/.claude/enforce/resolve-outgoing-base.sh"
 
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
@@ -66,7 +66,7 @@ while IFS= read -r dir; do
     */components/*) [ "$lone_module" = "$(basename "$dir").tsx" ] && continue ;;
   esac
   if [ "$count" -eq 1 ]; then
-    echo "single-file-folder-gate: '$dir' holds one source module; R-309 prefers a flat file. Add a second module or exempt the folder in .enforce.json." >&2
+    echo "single-file-folder-reminder: '$dir' holds one source module; R-309 prefers a flat file. Add a second module or exempt the folder in .enforce.json." >&2
   fi
 done <<< "$DIRS"
 exit 0

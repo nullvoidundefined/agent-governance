@@ -9,8 +9,8 @@
 # (2026-09-16 audit P2-8; convention documented in enforce/README.md).
 set -uo pipefail
 
-# shellcheck source=../enforce/resolveOutgoingBase.sh
-source "$HOME/.claude/enforce/resolveOutgoingBase.sh"
+# shellcheck source=../enforce/resolve-outgoing-base.sh
+source "$HOME/.claude/enforce/resolve-outgoing-base.sh"
 
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')

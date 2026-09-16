@@ -55,10 +55,12 @@ object: skip it and the check runs against the lock only, and says so.
 
 ## Standard tier: one session
 
-You are the test author, then the implementer, in turn, under the same lock.
-The guard enforces the order: after `open`, a production write is denied until
-`red` has run; after `red`, a test write is denied until `close`. Run the loop
-exactly as above without dispatch. Dispatch the critic only when the slice
+You are the orchestrator and the implementer under the same lock, and R-907
+governs who authors the test: dispatch `codex exec` to write it, or confirm
+the codex-test-author-guard's ask when the test genuinely must come from this
+session (`rulebook/cost.md`). The guard enforces the order: after `open`, a
+production write is denied until `red` has run; after `red`, a test write is
+denied until `close`. Run the loop exactly as above without dispatch. Dispatch the critic only when the slice
 touches auth, money, concurrency, or an external call.
 
 ## Complex and Saga: three agents, fresh context each

@@ -16,6 +16,11 @@
 # Fixture data (json, sql, txt, captured responses) is not a test and stays
 # silent: R-907 covers test logic, not the data it reads.
 #
+# Scope: R-907 targets the author that also writes implementation. The
+# dedicated test-author subagent (R-707) never writes implementation, since
+# R-411 confines it to test and fixture trees, so it satisfies the
+# different-author intent and passes silently; every other agent_type asks.
+#
 # Escape hatch: CODEX_TEST_GUARD=off in the environment silences the guard
 # for harness-internal work (for example this repo's own fixture suite).
 # Limitation: a Bash heredoc writing a test file is not seen here; that path
@@ -25,6 +30,8 @@ set -uo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in Write | Edit) ;; *) exit 0 ;; esac
+AGENT=$(printf '%s' "$INPUT" | jq -r '.agent_type // ""')
+[ "$AGENT" = "test-author" ] && exit 0
 FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
 [ -n "$FILE" ] || exit 0
 BASE=$(basename "$FILE")

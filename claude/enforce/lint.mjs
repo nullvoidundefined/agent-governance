@@ -6,14 +6,14 @@
  * error-level rule is violated; exits 0 when clean.
  *
  * The opt-in rules a repo declares in .enforce.json (R-303 import zones,
- * R-316 naming lexicon) are wired by eslintOptions.mjs, shared with ratchet.mjs
+ * R-316 naming lexicon) are wired by eslint-options.mjs, shared with ratchet.mjs
  * so the single-file gate and the full-tree baseline enforce the same set.
  */
 import { ESLint } from "eslint";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { buildEslintOptions } from "./eslintOptions.mjs";
+import { buildEslintOptions } from "./eslint-options.mjs";
 
 // --added-only <base>: report only violations on lines the diff base..HEAD ADDS.
 // Added 2026-07-10 (Ian-approved reconciliation): the push gate previously linted

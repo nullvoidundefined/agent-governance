@@ -1,33 +1,33 @@
-# Session Handoff: 2026-09-16 engineering-audit remediation (all P findings addressed)
+# Session Handoff: 2026-09-17 repo hygiene audit and remediation (claude/ focus)
 
 ## 1. Last commit
 
-- `6e201f5` `chore(ci): shellcheck at error severity over hooks and enforce scripts (audit Code Quality)`, on `main`, with this handoff and the ISSUES.md maintenance bundled into the commit after it. No branch is open.
+- `9bfdcdf` `docs(claude): count the two fixtures this branch adds into the README inventory`, tip of `claude/hygiene-audit-2026-09-17` (16 commits, branched from `315a8fb` on `main`). This handoff is bundled into the commit after it. NOT merged, NOT pushed: the user decides the merge (R-514) and the R-106 publish check runs at push.
 
 ## 2. Production state
 
-- The repo is `agent-governance` (public remote); `~/.claude`, `~/.codex`, `~/.cursor` are synced copies, refreshed via `./sync.sh` after every fix this session. `sync.sh` now stamps `~/.claude/.sync-source` so `hook-integrity-check.sh` verifies live == repo at every session start (audit P2-11).
-- Both fixture suites green at handoff time (enforce + hooks, run via the Stop gate and pre-push). CI `fixtures` is a required status check on `main` (branch protection enabled 2026-09-16, `enforce_admins` off to preserve the R-514 owner exemption). The local pre-push hook is installed in this checkout and validates the pushed tree, not the synced copy.
-- The R-106 publish guard is live again: it recognizes the repo by origin remote (`repo-identity.sh`) and scans the whole monorepo diff. It was inert from the 2026-09-15 migration until this session (audit P0-1).
-- CI went red mid-session on `27b8e7c` (a fixture pinned the old pre-push marker string); repaired in `030ac31` and green since.
+- Both fixture suites fully green post-remediation: 53 enforce + 15 hooks = 68 fixtures (two added this session). `~/.claude` synced from the branch tip via `./sync.sh`, so the live harness runs the branch's hooks; if the branch is discarded instead of merged, re-run `./sync.sh` from `main`.
+- `model-switch-guard.sh` is LIVE for the first time: registered under `PreModelSwitch` (a real event, verified against the current hooks docs; the repo's prior "not a real event" claim was wrong), warning via `systemMessage` on up-ladder switches.
+- `codex-test-author-guard.sh` now exempts `agent_type` test-author; R-907 is scoped to inline authoring (user decision this session).
 
-## 3. What shipped (all on `main`, one commit per finding)
+## 3. What shipped (one commit per finding)
 
-- **P0/P1**: publish guard by remote identity + fixture rebuilt around remote identity (P0-1); verification gate discovers `claude/` suites (P1-1); pre-push validates the pushed repo, installed here, branch protection + required check (P1-2); audit-signal baseline advances and nested `docs/` excluded (P1-3); session handoff moved to root `docs/session-handoff/` where `session-start.sh` reads it (P1-4); nine prior audit reports moved to root `docs/audits/`, `audits.md` path made unambiguous (P2-12).
-- **Hooks hardening**: git global-option strip generalized once in `git-invocation.sh` across ten push-boundary hooks with a bypass-corpus fixture (P2-1); `core.hooksPath` read/write split keys on the value token in hook and settings (P2-2); decision-emitting hooks dropped `set -e` with the convention documented in `enforce/README.md` and enforced by `deny-tier-set-convention.test.sh` (P2-8); all helper sourcing sits behind `[ -f ]` guards because a failed `source` aborts the shell even behind `|| true`; the publish guard asks (fails closed) when its helper is missing.
-- **Docs/config drift**: INDEX.md model-routing line matches `settings.json` with a sync fixture (P2-3, P2-4); `strict-permissions.json` retired (P2-5); `claude/README.md` title and five counts corrected (P2-6); `structure-gate.test.sh` no longer mutates live config (P2-7); `dependabot.yml` restored at root `.github/` (P2-9); `build-by-slice-require-review` defers in-harness TDD to tdd-gated-dispatch and ports re-cloned (P2-10).
-- **P3s**: fixture credential literals built at runtime (P3-3); session SHA stamp keyed per repo toplevel (P3-4); R-203 bracket and `manifest.test.sh` docstring corrected (P3-5); suite runners reject partial passes; shellcheck (errors) added to CI, clean locally on 0.11.0.
-- P3-1 resolved as a false positive: Claude Code decomposes compound commands per subcommand for permission matching (recorded in ISSUES.md).
+- **Audit**: 5 subagents reviewed dead code, layer necessity, naming, README/setup drift, and current-docs best practices; ~30 findings, all P0-P2 fixed this session. No dangling references existed; layers all judged load-bearing.
+- **Contradictions**: R-907 scoped to inline with guard exemption + fixture (RED then GREEN); PreModelSwitch activation (settings.json, manifest R-903 entry, cost.md, ISSUES.md); task-start made canonical for the R-901/R-903 tables (cost.md now points, its 3-tier table with nonexistent role names removed); pre-monorepo `~/.claude`-as-repo phrasing retired from R-001/R-106/R-511/R-514/R-601 in reference.md and CLAUDE.md (R-001 step 4 now checks `git -C "$(cat ~/.claude/.sync-source)" status -s`).
+- **Dead code**: nested `claude/.github/` deleted; 5 shipped specs deleted per cleanup-specs-plans (2026-09-12 monorepo spec kept, it is referenced by sync.sh and root README); codex/cursor READMEs rewritten off the retired `build.mjs` pipeline.
+- **Docs**: claude/README counts corrected (9 eslint rules, 72 rules/119 lines, 68 fixtures, 50 hook registrations across 8 events), `audits/` consistently described as pointer stubs with `agents/audit-*.md` canonical (README + rulebook/audits.md), docs/ tree and bootstrap and the already-shipped consolidation section rewritten to monorepo reality; structure-conventions "what stayed" list replaced by its generating rule; build-cheatsheets got a fixture + tooling-hook convention note in enforce/README.
+- **Naming**: `single-file-folder-gate` renamed `-reminder` (only non-blocking -gate; codex/cursor hooks.json adapters updated, they invoke hooks by name); `eslint:lexicon-naming` tag aligned to `naming-lexicon` file with the tag convention documented in enforce/README; `secret-scan.test.sh` added for the R-102 pattern-deny path with manifest notes naming which fixture covers which slice; three camelCase enforce/ files kebab-cased with all imports/callers swept.
 
 ## 4. Pending (by urgency)
 
-- **User, now (P0-2)**: rotate the GitHub PAT in `GITHUB_ACCESS_TOKEN` (leaked into transcripts, including the 2026-09-16 remediation session's), then purge the transcripts; exact file paths are in `claude/ISSUES.md` under PENDING USER ACTION. Shell history and vendor CLI configs both scanned clean, so this is the whole remaining exposure. ~10 minutes.
-- User decision: `skipDangerousModePermissionPrompt` recorded as an accepted risk in ISSUES.md; remove the key if the acceptance no longer holds.
-- Small residue in ISSUES.md: confirm PreModelSwitch event reality (one command); consider generating README inventory counts.
-- Unexplained once: `.git/config` flipped `bare = true` mid-session (restored, never recurred across four subsequent suite runs). A parallel session was active in the same tree; if it recurs, suspect a fixture running `git init --bare` with an empty target variable.
+- **User, now (P0-2, unchanged from 2026-09-16)**: rotate the GitHub PAT and purge the transcripts listed in `claude/ISSUES.md` PENDING USER ACTION. ~10 minutes.
+- **User decision**: merge `claude/hygiene-audit-2026-09-17` (squash per R-512, or merge preserving the 16 per-finding commits; the user chooses), then push.
+- New ISSUES.md P2: decide resurrect-versus-retire for the codex/cursor port pipeline (~60 stale "GENERATED by build.mjs" headers, PORT-STATUS at 42 hooks vs the current 49, frozen `.claude-port.json` hashes).
+- P3 findings deliberately not fixed: `-guard` suffix does not distinguish ask-only from deny-capable hooks; "guard" used generically in enforce/README prose; `audits/` stub layer removable only after grepping downstream repos for `claude/audits/` path references; optional modernizations from the best-practices review (@-file imports in CLAUDE.md, `paths:` frontmatter on stack-scoped skills, `effort`/`permissionMode` on audit agents).
+- Unexplained once (second anomaly of this class in this repo): a python heredoc write to `skills/structure-conventions/SKILL.md` printed success but left the file untouched (mtime unmoved); the identical retry worked. Writes were read-back-verified afterward. If it recurs, suspect the same parallel-session interference logged 2026-09-16.
 
 ## 5. Next session: read first
 
-- `docs/audits/2026-09-16-engineering.md` (the report; all P findings remediated, prioritized table at the end).
-- `claude/ISSUES.md` Open section (the pending user actions above).
-- `claude/hooks/repo-identity.sh` and `claude/hooks/git-invocation.sh` (the two new shared helpers every push-boundary hook now consumes).
+- `git log --oneline main..claude/hygiene-audit-2026-09-17` (the 16 per-finding commits).
+- `claude/ISSUES.md` Open section (PAT rotation, port-pipeline decision).
+- `claude/rulebook/cost.md` R-907 and `claude/hooks/codex-test-author-guard.sh` (the new inline-only scoping) if doing TDD slice work.

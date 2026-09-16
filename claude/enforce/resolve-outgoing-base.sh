@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# resolveOutgoingBase.sh: shared helper that resolves the git base ref for the outgoing diff
+# resolve-outgoing-base.sh: shared helper that resolves the git base ref for the outgoing diff
 # on a push. Precedence: CLAUDE_ENFORCE_BASE env var > @{push} tracking ref > origin/<branch>
 # remote ref > first existing of origin/main, main, origin/master, master (via merge-base) >
 # nothing (empty string, callers must treat empty as "skip"). Source this file, then call

@@ -18,7 +18,7 @@ R-704: Execute plans with fewer than 5 independent tasks inline.
 R-705: Gate every implementation on a RED slice proven by `enforce/tdd.sh`.
   Spec, per slice (R-412 carries the phase mechanics):
   1. `tdd.sh open "B-n <behavior>" --spec <path>`; the guard now denies production writes.
-  2. The test author (you in Standard tier, the `test-author` agent in Complex and Saga) writes the test for `B-n` only and runs `tdd.sh red <file>` until it prints `RED:`.
+  2. The test author writes the test for `B-n` only and runs `tdd.sh red <file>` until it prints `RED:`. In Complex and Saga that is the `test-author` agent (exempt from the R-907 guard, since R-411 keeps it out of implementation). In Standard tier, where the same session later implements, R-907 applies: dispatch `codex exec` to author the test, or confirm the guard's ask when the test genuinely must come from this session.
   3. Commit the test and the lock as `test(<scope>): B-n <behavior>` before any implementation.
   4. The implementer (you, or the `implementer` agent) writes the minimum and runs `tdd.sh green` until it prints `GREEN:`; refactors; runs it again.
   5. Commit the implementation. Dispatch the `slice-critic` for Complex and Saga, and for any Standard slice touching auth, money, concurrency, or an external call. `tdd.sh close`.

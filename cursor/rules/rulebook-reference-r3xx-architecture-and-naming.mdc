@@ -79,7 +79,7 @@ R-309: Collapse any domain folder holding exactly one source module into a flat 
   Spec:
   - A folder is justified only by two or more sibling source files.
   - Re-nest into a folder the moment a second file is added.
-  Enforcement: hook:single-file-folder-gate (advisory)
+  Enforcement: hook:single-file-folder-reminder (advisory)
 
 R-310: Regroup any source directory holding more than 20 sibling source modules into domain subfolders.
   Scope: every source tree on every stack; the threshold is a smell that forces the regroup decision, not a hard cap (R-318). A genuinely flat peer set with no domain seams (a `migrations/` directory, a route-segment folder) may stay flat when documented in the directory's nearest `CLAUDE.md`.
@@ -119,7 +119,7 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
   - One verb lexicon across the codebase, with the synonyms bound to a layer rather than left to taste (tightened 2026-09-04: four interchangeable read verbs is a four-way drift surface, and the R-304/R-305 directory is what makes "remote" versus "in memory" decidable from the path instead of from intent).
     <!-- lexicon:begin -->
-    <!-- Generated from enforce/lexicon.json by renderLexiconSpec.mjs. Do not hand-edit: change the registry and run --write. -->
+    <!-- Generated from enforce/lexicon.json by render-lexicon-spec.mjs. Do not hand-edit: change the registry and run --write. -->
     - Reads: `get` by default; `fetch` under `api/` and `clients/`; `load` under `config/`, `database/`, `prompts/` and `repositories/`. Using another layer's read verb is a violation, not a preference. `list` stays unrestricted: it encodes cardinality, not transport.
     - Reserved to a tree: `drop` only under `database/` and `repositories/` (use `delete` elsewhere); `insert` only under `database/` and `repositories/` (use `create` elsewhere); `upsert` only under `database/` and `repositories/` (use `save` elsewhere).
     - Banned as bare synonyms: `calc` (use `calculate`); `add`, `init` and `make` (use `create`); `destroy` and `remove` (use `delete`); `gen` (use `generate`); `grab`, `obtain` and `retrieve` (use `get`); `do`, `execute`, `manage`, `perform`, `proc`, `process`, `run` and `util` (name the actual operation); `setup` (use `prepare`); `persist` and `record` (use `save`); `check` (use `validate`).
@@ -127,8 +127,8 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
     <!-- lexicon:end -->
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
-  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/renderLexiconSpec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
-  Enforcement: eslint:lexicon-naming (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
+  - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/render-lexicon-spec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
+  Enforcement: eslint:naming-lexicon (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.
   Spec:
@@ -139,7 +139,7 @@ R-317: Name variables descriptively; never abbreviate where the full word reads 
   - A name must read as natural English when the code is read aloud; rename any name that does not communicate intent.
   - Exception (Go): the idiomatic short names (`err`, `ok`, `ctx`, `i`, one-letter receivers) are correct in small scopes; descriptive names still required for anything living beyond a screen.
   - Two of these are decidable and are enforced as data: a variable bound to an array literal or a `.map()`/`.filter()` result carries a plural noun, and a single-word variable is not one of the participles listed in `enforce/lexicon.json` under `bareAdjectives`. The rest stays judgment.
-  Enforcement: eslint:lexicon-naming (plural collections, bare adjectives); judge for the rest
+  Enforcement: eslint:naming-lexicon (plural collections, bare adjectives); judge for the rest
 
 R-318: Give each file one responsibility; split when it serves more than one concern.
   Spec:

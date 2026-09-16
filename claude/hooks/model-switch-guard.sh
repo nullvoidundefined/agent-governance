@@ -2,9 +2,11 @@
 # model-switch-guard.sh: PreModelSwitch hook for R-903 (route work to the
 # cheapest capable model). Until 2026-09-05 nothing enforced the rule from
 # the harness side: the Sonnet-default memory could only ask Claude to notice.
-# This asks the human to confirm any switch UP the price ladder (haiku ->
-# sonnet -> opus -> fable) and stays silent on lateral or downward switches
-# and on model names it cannot rank. Asks, never blocks: stepping up is often
+# This warns on any switch UP the price ladder (haiku -> sonnet -> opus ->
+# fable) and stays silent on lateral or downward switches and on model names
+# it cannot rank. Warns, never blocks: PreModelSwitch carries no
+# permissionDecision channel (that is a tool-event concept; this event blocks
+# only via exit 2, which would veto rather than confirm), stepping up is often
 # right, and the point is that it is a decision someone made.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
@@ -31,12 +33,8 @@ FROM_RANK=$(rank "$FROM"); TO_RANK=$(rank "$TO")
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
-log_rule_fire "R-903" "model-switch-guard" "ask"
+log_rule_fire "R-903" "model-switch-guard" "warn"
 jq -n --arg from "$FROM" --arg to "$TO" '{
-  hookSpecificOutput: {
-    hookEventName: "PreModelSwitch",
-    permissionDecision: "ask",
-    permissionDecisionReason: ("R-903: this switches up the price ladder (" + $from + " to " + $to + "). Confirm the next stretch needs it: complex refactor, security-sensitive logic, ambiguous design, audit, or multi-step planning. Mechanical work stays on the cheaper tier.")
-  }
+  systemMessage: ("R-903: this switches up the price ladder (" + $from + " to " + $to + "). Confirm the next stretch needs it: complex refactor, security-sensitive logic, ambiguous design, audit, or multi-step planning. Mechanical work stays on the cheaper tier.")
 }'
 exit 0

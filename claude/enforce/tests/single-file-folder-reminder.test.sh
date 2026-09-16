@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Verifies single-file-folder-gate warns (advisory, stderr) when a changed source folder holds
+# Verifies single-file-folder-reminder warns (advisory, stderr) when a changed source folder holds
 # exactly one source module (R-309), and that .enforce.json exemptions suppress the warning.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/single-file-folder-gate.sh"
+HOOK="$HOME/.claude/hooks/single-file-folder-reminder.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main
@@ -49,4 +49,4 @@ git add .; git commit -q -m component
 ERR5=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
 printf '%s' "$ERR5" | grep -q "src/components/Header" && { echo "FAIL: a paired component folder is the R-305 layout, not an R-309 violation"; exit 1; } || true
 
-echo "single-file-folder-gate.test.sh PASS"
+echo "single-file-folder-reminder.test.sh PASS"

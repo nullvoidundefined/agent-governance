@@ -7,9 +7,9 @@ set -euo pipefail
 HOOK="$HOME/.claude/hooks/codex-test-author-guard.sh"
 
 decision() {
-  local tool="$1" path="$2" guard="${3:-on}"
+  local tool="$1" path="$2" guard="${3:-on}" agent="${4:-}"
   local out
-  out=$(jq -n --arg t "$tool" --arg f "$path" '{tool_name:$t,tool_input:{file_path:$f}}' | CODEX_TEST_GUARD="$guard" "$HOOK")
+  out=$(jq -n --arg t "$tool" --arg f "$path" --arg a "$agent" '{tool_name:$t,tool_input:{file_path:$f}} + (if $a == "" then {} else {agent_type:$a} end)' | CODEX_TEST_GUARD="$guard" "$HOOK")
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "none"'; fi
 }
 
@@ -33,5 +33,11 @@ decision() {
 
 # The escape hatch silences the guard.
 [ "$(decision Write /repo/apps/server/tests/test_queue.py off)" = "none" ] || { echo "FAIL: expected none with CODEX_TEST_GUARD=off"; exit 1; }
+
+# The dedicated test-author role (R-707) never writes implementation (R-411),
+# so R-907's different-author intent is already satisfied: silent for it.
+[ "$(decision Write /repo/src/__tests__/handlers/authHandler.test.ts on test-author)" = "none" ] || { echo "FAIL: expected none for the test-author agent"; exit 1; }
+# Every other subagent still asks; the implementer must never touch tests.
+[ "$(decision Write /repo/src/__tests__/handlers/authHandler.test.ts on implementer)" = "ask" ] || { echo "FAIL: expected ask for the implementer agent"; exit 1; }
 
 echo "PASS: codex-test-author-guard"

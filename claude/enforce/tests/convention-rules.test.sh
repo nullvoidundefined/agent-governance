@@ -25,7 +25,7 @@ E="$HOME/.claude/enforce"
 TMP=$(mktemp -d)
 cd "$TMP"
 mkdir -p src/services src/types
-# R-320 is opt-in per repo (see eslintOptions.mjs); R-325 is default-on.
+# R-320 is opt-in per repo (see eslint-options.mjs); R-325 is default-on.
 printf '{"fileHeaders":true}\n' > .enforce.json
 
 run() { node "$E/lint.mjs" "$TMP/$1" >/dev/null 2>&1; }

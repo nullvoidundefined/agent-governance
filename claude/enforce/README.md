@@ -14,6 +14,8 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 { "id": "R-323", "tier": "ast", "enforcer": "eslint:sort-keys", "severity": "error", "autofix": true }
 ```
 
+`eslint:<name>` names the mechanism and the rule module, not the runtime rule id: for a custom rule, `<name>` is the file basename under `rules/` (`eslint:naming-lexicon` is `rules/naming-lexicon.mjs`), while the id registered at runtime carries a plugin namespace that varies by config (`lexicon/naming`, `convention/file-header-comment`, `observability/no-swallowed-catch`). For an off-the-shelf rule, `<name>` is the bare rule id (`eslint:no-console`, `eslint:no-cycle` for `import-x/no-cycle`). Grep `eslint.config.mjs` and `eslint-options.mjs` for the runtime registration, not for the tag string.
+
 ## Tiers
 
 | Tier | Enforced by | When | Examples |
@@ -52,13 +54,14 @@ The push gates are an **anti-accident layer**, not a hard security boundary. The
 - `manifest.json` -- rule id to tier/enforcer mapping.
 - `eslint.config.mjs` + `rules/` -- bundled flat config and custom rules.
 - `lint.mjs` -- runs the config against any absolute file path via the ESLint Node API (`cwd:/`), so files in any repo are in scope. Invoked by the push gate.
-- `eslintOptions.mjs` -- builds the ESLint options shared by `lint.mjs` and `ratchet.mjs`, including the two opt-in rules. Both must activate the identical rule set or the baseline counts violations the push gate never reports.
+- `eslint-options.mjs` -- builds the ESLint options shared by `lint.mjs` and `ratchet.mjs`, including the two opt-in rules. Both must activate the identical rule set or the baseline counts violations the push gate never reports.
 - `lexicon.json` -- the naming registry backing R-316 and half of R-317.
 - `ratchet.mjs` -- full-tree violation baseline (see below).
 - `judge-prompt.md` -- instructions for the semantic-rule judge.
 - `tests/` -- one fixture test per enforcer; `run-tests.sh` runs them all.
 - Hooks live in `~/.claude/hooks/` and are registered in `~/.claude/settings.json`.
 - `enforcement-guard-check.sh` verifies at session start that every manifest hook is still registered.
+- One registered hook is tooling rather than a rule enforcer and so carries no manifest entry: `build-cheatsheets.sh` regenerates docs on trusted-repo pushes and enforces no invariant. It still ships a fixture test (`hooks/tests/build-cheatsheets.test.sh`); any other tooling hook follows the same convention.
 
 ## Adding a rule
 
@@ -115,7 +118,7 @@ It decides: the leading word of a named function is an approved verb or a boolea
 
 It does not decide whether the lexicon carves the domain well, nor R-318/R-322 (one responsibility), which are undecidable and stay with the judge rather than being faked with a line-count proxy.
 
-`lexicon.json` is the single source. The R-316 verb lists in `rulebook/reference.md` are generated from it by `renderLexiconSpec.mjs` between `<!-- lexicon:begin -->` markers: change the registry, run `node enforce/renderLexiconSpec.mjs --write`, commit both. `lexicon-spec-sync.test.sh` fails the suite if they diverge, and `--check`/`--write` also reject a registry that contradicts itself (a banned verb still bound to a layer by `verbGroups` or `scopeVerbs`).
+`lexicon.json` is the single source. The R-316 verb lists in `rulebook/reference.md` are generated from it by `render-lexicon-spec.mjs` between `<!-- lexicon:begin -->` markers: change the registry, run `node enforce/render-lexicon-spec.mjs --write`, commit both. `lexicon-spec-sync.test.sh` fails the suite if they diverge, and `--check`/`--write` also reject a registry that contradicts itself (a banned verb still bound to a layer by `verbGroups` or `scopeVerbs`).
 
 Opt in per repo, because the vocabulary is the repo's:
 
