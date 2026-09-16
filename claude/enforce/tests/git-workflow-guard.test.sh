@@ -41,7 +41,14 @@ git -C "$REPO" commit -qm "chore: seed"
 [ "$(decision 'git push origin +main' "$REPO")" = "ask" ]               # force marker on the refspec
 [ "$(decision "git -C $REPO push origin main" /tmp)" = "ask" ]          # -C form names the repo, not the cwd
 [ "$(decision 'git push origin feature/scoring' "$REPO")" = "ask" ] && exit 1  # a feature branch is not gated
-[ "$(decision 'git push' "$HOME/dev/agent-governance")" = "none" ]  # global repo exempt (by origin remote): R-106 owns its pushes
+# The governance repo is exempt wherever it lives: identity is the origin
+# remote (repo-identity.sh), so the fixture builds a sandbox repo carrying the
+# governance remote instead of depending on the real checkout's path (that
+# path-coupled form went stale the first time the repo moved, 2026-09-17).
+GOV_REPO=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$GOV_REPO" init -q -b main
+git -C "$GOV_REPO" remote add origin "https://github.com/nullvoidundefined/agent-governance.git"
+[ "$(decision 'git push' "$GOV_REPO")" = "none" ]  # global repo exempt (by origin remote): R-106 owns its pushes
 
 # R-511: five files across three directories staged on main.
 for path in src/routes/jobs.ts src/routes/users.ts src/handlers/scoreJob.ts src/services/score.ts src/services/rank.ts; do
