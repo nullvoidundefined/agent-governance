@@ -16,7 +16,11 @@ set -euo pipefail
 
 CLAUDE_MD="${CLAUDE_MD_FILE:-$HOME/.claude/CLAUDE.md}"
 REFERENCE_MD="${CLAUDE_REFERENCE_FILE:-$HOME/.claude/rulebook/reference.md}"
-RULES_DIR="$HOME/.claude/rules"
+# Overridable like the two inputs above it: with CLAUDE_MD_FILE and
+# CLAUDE_REFERENCE_FILE pointed at a checkout and this one hardwired to the live
+# copy, the fixture linted two different trees at once and a rules/ defect in
+# the repo went unlinted until it was synced (2026-09-17 audit P2-8).
+RULES_DIR="${CLAUDE_RULES_DIR:-$HOME/.claude/rules}"
 MAX_LINES=200
 
 LINE_COUNT=$(wc -l < "$CLAUDE_MD" | tr -d ' ')
