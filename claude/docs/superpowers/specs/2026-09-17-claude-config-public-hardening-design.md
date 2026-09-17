@@ -1,7 +1,7 @@
 # Claude config public hardening
 
 **Ticket:** IAN-76 (tranche 1 of four; the remaining tranches open their own tickets as each starts)
-**Plans:** `docs/superpowers/plans/2026-09-17-config-hardening-tranche-1-safety.md`
+**Plans:** the tranche 1 plan is written to `claude/docs/superpowers/plans/2026-09-17-config-hardening-tranche-1-safety.md`, which `claude/.gitignore` excludes (`plans/`), so it lives in the authoring session's working tree and never reaches this repository. Treat this spec as the durable artifact and regenerate the plan from it when the tranche is picked up.
 
 ## Goal
 
