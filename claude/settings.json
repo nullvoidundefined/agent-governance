@@ -127,7 +127,9 @@
             "Bash(flyctl deploy*)",
             "Bash(gh pr create*)",
             "Bash(bash -c *)",
-            "Bash(sh -c *)"
+            "Bash(sh -c *)",
+            "Bash(bash -lc *)",
+            "Bash(sh -lc *)"
         ],
         "defaultMode": "auto"
     },
