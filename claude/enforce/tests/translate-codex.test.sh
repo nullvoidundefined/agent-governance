@@ -574,6 +574,36 @@ check "write restores the gitignore" test -f "$GI"
 
 # The manifest hashes .gitignore like any other generated file, and still
 # does not claim it hand-authored.
+# The generator's own modules are hashed under builder_files, because the
+# enforcement surface's manifest cannot reach translate/ at all: sync.sh copies
+# claude/ only, so an entry for it would read as permanent drift beside a live
+# install (2026-09-17 audit, the integrity-coverage item). An edit to the
+# translator that no --write blessed must therefore fail --check here.
+manifestHashesEveryBuilderModule() {
+  local expected actual
+  expected=$( (cd "$REPO_TOP/translate" && ls ./*.mjs) | sed 's#^\./#translate/#' | sort)
+  actual=$(jq -r '.builder_files | keys[]' "$SRC6/codex/.claude-port.json" | sort)
+  [ "$expected" = "$actual" ]
+}
+builderHashesAreDigests() { jq -e '[.builder_files[] | test("^sha256:")] | all' "$SRC6/codex/.claude-port.json" >/dev/null; }
+check "manifest hashes every builder module" manifestHashesEveryBuilderModule
+check "builder hashes are sha256 digests" builderHashesAreDigests
+# Corrupt one builder hash in place: --check must report the manifest stale
+# rather than accepting a translator it never hashed.
+python3 - "$SRC6/codex/.claude-port.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+m = json.load(open(p))
+key = sorted(m["builder_files"])[0]
+m["builder_files"][key] = "sha256:" + "0" * 64
+open(p, "w").write(json.dumps(m, indent=2) + "\n")
+PY
+OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
+check "a stale builder hash fails check" test "$ST" -eq 1
+check "a stale builder hash names the manifest" grep -q "^stale: .claude-port.json$" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
+node "$TRANSLATOR" --check --root "$SRC6"; check "write restores the builder hashes" test $? -eq 0
+
 manifestHashesGitignore() { jq -e '.files[".gitignore"] | test("^sha256:")' "$SRC6/codex/.claude-port.json" >/dev/null; }
 manifestOmitsGitignoreFromHandAuthored() { jq -e '.hand_authored | index(".gitignore") | not' "$SRC6/codex/.claude-port.json" >/dev/null; }
 check "manifest hashes the gitignore" manifestHashesGitignore

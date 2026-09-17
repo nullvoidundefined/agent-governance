@@ -29,7 +29,6 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 - P3 (audit P2-6 residue): consider generating the `claude/README.md` inventory counts between markers the way `render-lexicon-spec.mjs` does for the verb lists, with a fixture failing on divergence; the counts were hand-corrected this cycle and will drift again.
 
 ### From the 2026-09-17 engineering audit of claude/enforce (P0 none, P1 all four remediated on the branch; full report `docs/audits/2026-09-17-engineering.md`)
-- P2 (integrity coverage, the part the extended globs cannot reach): `translate/*.mjs` sits outside the synced surface (`sync.sh` copies `claude/` only), so it cannot be hashed against a live install and is not in the manifest, even though CI gates on it and a behaviour-only edit would not change the translator's output. A separate repo-side hash list checked in CI is the candidate mechanism.
 - VERIFIED FALSE, not a finding (2026-09-17): the audit's doc-drift table claims `.github/dependabot.yml` is absent and `enforce.yml:37-40` therefore stale. The file exists (restored in `612551d`), so that row is dropped per R-804(a); the report carries a verifier's note at the row.
 
 ### From the 2026-09-17 hygiene audit (open)
