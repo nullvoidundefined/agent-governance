@@ -49,6 +49,7 @@
 !/rules/cloud-deployment.mdc
 !/rules/database.mdc
 !/rules/frontend-next.mdc
+!/rules/frontend-react.mdc
 !/rules/frontend-vite.mdc
 !/rules/frontend.mdc
 !/rules/go.mdc
@@ -68,6 +69,8 @@
 !/rules/structure-conventions.mdc
 !/rules/styling.mdc
 !/skills/
+!/skills/add-stack-track/
+!/skills/add-stack-track/SKILL.md
 !/skills/all-hands/
 !/skills/all-hands/SKILL.md
 !/skills/bug-hunt/

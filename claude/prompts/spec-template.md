@@ -1,13 +1,6 @@
 # Spec template
 
-**Purpose:** the fixed headings a behavioral spec carries so the test author (R-705, R-707) and `agents/spec-conformance-review.md` have explicit requirements to work from. Copy the headings below into `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` (the `brainstorming` skill's path) or into an externally written spec during `spec-grounding`. `hooks/spec-glossary-check.sh` reminds when a design doc lacks `## Acceptance criteria`, `## Non-goals`, or the `## Assumption ledger (optional)
-
-For specs grounded on external research or another session's claims: one row per load-bearing assumption, so verification is work someone owns rather than a hope. Delete the section when the spec rests only on code in this repo.
-
-| Claim | Source | Verification command or check | Status (unverified/confirmed/refuted) | Owner | Next action |
-|---|---|---|---|---|---|
-
-## Domain vocabulary` glossary (R-330). Delete a heading only with a one-line reason under it; an absent heading reads as "not considered".
+**Purpose:** the fixed headings a behavioral spec carries so the test author (R-705, R-707) and `agents/spec-conformance-review.md` have explicit requirements to work from. Copy the headings below into `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` (the `brainstorming` skill's path) or into an externally written spec during `spec-grounding`. `hooks/spec-glossary-check.sh` reminds when a design doc lacks `## Acceptance criteria`, `## Non-goals`, or the `## Domain vocabulary` glossary (R-330). Delete a heading only with a one-line reason under it; an absent heading reads as "not considered".
 
 **How to use:** keep prose short under each heading. The load-bearing section is `## Acceptance criteria`: one numbered behavior per line, each one a slice the harness runs as RED then GREEN (R-412). A criterion a test cannot fail is not a criterion; move it to `## Non-goals` or rewrite it.
 
@@ -61,6 +54,20 @@ The log lines, request-ID propagation (R-341), analytics events from the registr
 ## Security
 
 Who may call it, what is validated at the boundary, what is never logged (R-104).
+
+## Assumption ledger (optional)
+
+For specs grounded on external research or another session's claims: one row per load-bearing assumption, so verification is work someone owns rather than a hope. Delete the section when the spec rests only on code in this repo.
+
+| Claim | Source | Verification command or check | Status (unverified/confirmed/refuted) | Owner | Next action |
+|---|---|---|---|---|---|
+
+## Assumption ledger (optional)
+
+For specs grounded on external research or another session's claims: one row per load-bearing assumption, so verification is work someone owns rather than a hope. Delete the section when the spec rests only on code in this repo.
+
+| Claim | Source | Verification command or check | Status (unverified/confirmed/refuted) | Owner | Next action |
+|---|---|---|---|---|---|
 
 ## Domain vocabulary
 
