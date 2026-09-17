@@ -62,6 +62,8 @@
 
 ## Permission rules
 
+The matching lives in `~/.claude/enforce/settings-permission-rules.sh`, which the adapter sources. If that helper, or `settings.json` itself, cannot be read, the adapter denies the shell call or the file read and says so: a permission mirror that cannot evaluate its deny list has not established that the call is safe. This is the one place the adapter fails closed; everywhere else an adapter fault answers allow so a fault cannot lock the user out of the editor.
+
 | settings.json layer | Under Cursor |
 |---|---|
 | `permissions.deny` `Bash(...)` | mirrored by the adapter on `beforeShellExecution` (deny) |

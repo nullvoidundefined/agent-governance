@@ -62,6 +62,8 @@
 
 ## Permission rules
 
+The matching lives in `~/.claude/enforce/settings-permission-rules.sh`, which the adapter sources. If that helper, or `settings.json` itself, cannot be read, the adapter denies the call and says so: a permission mirror that cannot evaluate its deny list has not established that a command is safe.
+
 | settings.json layer | Under Codex |
 |---|---|
 | `permissions.deny` `Bash(...)` | mirrored by the adapter on `PreToolUse` Bash (deny) |
@@ -69,3 +71,16 @@
 | `permissions.deny` `Read(...)` | not ported: Codex reads files through shell commands, which have no read event; the secret-scan hook still blocks mutation of those paths |
 | `permissions.allow`, `permissions.defaultMode` | not ported: Codex's sandbox and approval policy in config.toml govern what runs without a prompt |
 | `model`, `enabledPlugins` | not ported: Claude Code runtime settings with no Codex equivalent |
+
+## File operations
+
+Codex edits files through one `apply_patch` call rather than through Write and Edit, so the adapter replays each operation in the patch as the call the gates are written against.
+
+| apply_patch operation | Replayed to the hooks as |
+|---|---|
+| `*** Add File:` | `Write` with `file_path` and `content` |
+| `*** Update File:` | `Edit` with `file_path`, `old_string` and `new_string` |
+| `*** Delete File:` | `Bash` with `rm -- '<path>'`, the shape a Claude Code deletion actually takes, so the path being deleted reaches protected-path-guard |
+| `*** Move to:` | `Bash` with `mv -- '<source>' '<destination>'`, in addition to the content event for that file, so a guard sees the destination and not only the source |
+
+Paths are made absolute against the call's `cwd` before the replay, because the gates resolve what they are given rather than what the patch abbreviated.
