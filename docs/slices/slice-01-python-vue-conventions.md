@@ -2,7 +2,8 @@
 
 Spec: `claude/docs/superpowers/specs/2026-09-17-python-vue-convention-tracks-design.md`
 Branch: `feat/python-vue-conventions` (the slice branch; each PR branches from it and squash-merges back, and the slice branch squash-merges to `main` when PR 7 lands)
-Status: awaiting Gate 1 approval
+Status: Gate 1 approved 2026-09-17; PR 1 in progress
+Tracker: Linear project Agent Governance, slice ticket IAN-72, one child ticket per PR
 Started: 2026-09-17
 
 ## Purpose
@@ -13,7 +14,7 @@ This slice brings the Python convention track to the depth of the TypeScript tra
 
 | PR | Concern | Share | PR number | Merged | Scope change |
 |---|---|---|---|---|---|
-| 1 | `add-stack-track` skill and invariant test | 8% | | | |
+| 1 | `add-stack-track` skill and invariant test | 8% | IAN-73 | | No manifest entry: the invariant test is a repo-level test like `manifest.test.sh`, which carries none; the manifest models rule enforcers. |
 | 2 | Frontend core refactor and `CLAUDE-FRONTEND-REACT.md` | 15% | | | |
 | 3 | `CLAUDE-FRONTEND-VUE.md` and `CLAUDE-FRONTEND-NUXT.md` | 20% | | | |
 | 4 | `CLAUDE-PYTHON.md` rewrite | 25% | | | |
