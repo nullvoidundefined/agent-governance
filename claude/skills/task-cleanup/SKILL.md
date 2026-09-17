@@ -82,6 +82,7 @@ Check if the spec and plan are fully shipped (all tasks done, all acceptance cri
 Run the project's test, build, and lint commands (whatever `package.json`, `Makefile`, or the project `CLAUDE.md` defines). All three must pass before any merge decision.
 
 **Merge decision:**
+- Confirm with the user before merging. `git-workflow-guard` gates `gh pr merge` (R-514) and not a local `git merge`, so the ask here is the skill's, and "merge when ready" from an earlier turn is not it.
 - Squash merge onto main: `git checkout main && git merge --squash feat/<slug>`
 - Write a squash commit message that summarizes the whole feature, not just the last change.
 - Delete the feature branch after merge: `git branch -d feat/<slug>`
