@@ -7,7 +7,10 @@
 # search, read, fetch, query, download).
 #
 # Ask, never deny: R-105 wants explicit confirmation, not prohibition. Choosing
-# "don't ask again" for one tool is the user's own pre-authorization.
+# "don't ask again" for one tool is the user's own pre-authorization, and so is
+# naming a tool under the active tracker in ~/.claude/TICKET-TRACKER.json: the
+# ticket-lifecycle skill's own writes (create, update, comment, label, project)
+# pass without a prompt, every other MCP write still asks (2026-09-17 decision).
 #
 # Verbs are matched per token, not on the leading word: server prefixes are
 # baked into several tool names (notion-create-pages), so the verb is rarely
@@ -51,6 +54,29 @@ done
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+
+# Pre-authorized tracker tools. The per-machine ticket tracker config names the
+# MCP tools the ticket-lifecycle skill writes through; a call to one of them is
+# the user's standing authorization for ticket writes and passes silently.
+TRACKER_CONFIG="${TICKET_TRACKER_CONFIG:-$HOME/.claude/TICKET-TRACKER.json}"
+
+# is_tracker_tool <tool name>
+# Returns 0 when the tracker config exists, parses, and lists the tool name as
+# one of the active tracker's `tools` values; returns 1 otherwise (absent or
+# malformed config included, so a broken config never widens the exemption).
+# Prints nothing.
+is_tracker_tool() {
+  [ -f "$TRACKER_CONFIG" ] || return 1
+  jq -e --arg t "$1" \
+    '(.trackers[.active].tools // {}) | to_entries | map(.value) | index($t) != null' \
+    "$TRACKER_CONFIG" >/dev/null 2>&1
+}
+
+if is_tracker_tool "$TOOL"; then
+  log_rule_fire "R-105" "mcp-action-guard" "preauthorized-tracker-tool"
+  exit 0
+fi
+
 log_rule_fire "R-105" "mcp-action-guard" "ask"
 
 jq -n --arg t "$TOOL" --arg r "$REASON" \
