@@ -25,15 +25,15 @@ The slug determines:
 - Worktree directory: `<project>-worktrees/<slug>/`, a sibling of the project (the same location `hooks/parallel-session-check.sh` points at; Claude Code's own worktree tool uses `.claude/worktrees/` inside the repo, and a project uses one or the other, never both)
 - Doc filenames: `US-<SLUG>.md`; the E2E path `e2e/<slug>.spec.ts` is recorded, not created
 
-## Step 1: Run the scaffold script
+## Step 1: Resolve the ticket, then run the scaffold script
 
-Everything mechanical in this skill is one script with an exit code per stop:
+Resolve the ticket key first, from the plan's or spec's `**Ticket:**` line. If neither carries one, open the ticket now through `/ticket-lifecycle` before creating the worktree (R-605); a feature whose ticket is opened after the fact has no usable `started_at`. Then run the script, which does everything mechanical in this skill with an exit code per stop:
 
 ```bash
-bash ~/.claude/skills/feature-create/scripts/scaffold.sh <slug> [plan-path]
+bash ~/.claude/skills/feature-create/scripts/scaffold.sh <slug> [plan-path] --ticket <ticket-key>
 ```
 
-In order, it: validates the slug; resolves the plan (explicit path, else the newest `docs/superpowers/plans/*<slug>*`); refuses when `feat/<slug>` or the worktree directory already exists; resolves the default branch from `origin/HEAD` (else `main`, else `master`), fetches it, and creates the worktree from it; installs and runs the baseline suite inside the worktree; appends the feature-list row and writes the user-story skeleton; commits them as `chore(docs): scaffold docs for feat/<slug>`; and prints a summary ending with whether the plan mentions query parameters.
+In order, it: validates the slug; resolves the plan (explicit path, else the newest `docs/superpowers/plans/*<slug>*`); refuses when `feat/<slug>` or the worktree directory already exists; resolves the default branch from `origin/HEAD` (else `main`, else `master`), fetches it, and creates the worktree from it; installs and runs the baseline suite inside the worktree; appends the feature-list row and writes the user-story skeleton with its `**Ticket:**` line; commits them as `chore(docs): scaffold docs for feat/<slug>` with a `Refs: <ticket-key>` trailer (an accepted trailer in `hooks/commit-message-guard.sh`, carried on every commit for this feature); and prints a summary ending with whether the plan mentions query parameters.
 
 Report each stop verbatim to the user; do not work around it:
 
@@ -49,7 +49,7 @@ Report each stop verbatim to the user; do not work around it:
 
 ## Step 2: Fill the user story
 
-The script leaves `docs/user-stories/<slug>.md` with the story id, the E2E path line, and a placeholder acceptance-criteria list. Read the plan file and replace the placeholder: each task that produces user-visible behavior becomes one numbered criterion, one per testable behavior. Move the appended feature-list row into the section that best matches the feature when the file has sections. Amend nothing; commit the filled story on the feature branch as `docs(<slug>): acceptance criteria for US-<SLUG>`.
+The script leaves `docs/user-stories/<slug>.md` with the story id, the E2E path line, the ticket line, and a placeholder acceptance-criteria list. Read the plan file and replace the placeholder: each task that produces user-visible behavior becomes one numbered criterion, one per testable behavior. Move the appended feature-list row into the section that best matches the feature when the file has sections. Amend nothing; commit the filled story on the feature branch as `docs(<slug>): acceptance criteria for US-<SLUG>` with the `Refs:` trailer.
 
 **E2E test.** Do not scaffold a skipped placeholder (R-401 item 9: a test that cannot fail protects nothing, and PROTOCOL Layer 5 bans `test.skip` outright). The first user story's E2E test is written as a RED slice when implementation starts (R-412, tdd-gated-dispatch). The `**E2E test:**` line the script wrote records the intended path so it is discoverable; the file itself does not exist until it fails for a real reason.
 
@@ -64,11 +64,12 @@ Present the recommendation:
 - If 5+ independent tasks: "This plan has N tasks (M independent). I recommend **subagent-driven-development** for parallel execution. Want to go with that, or use **executing-plans** (step-by-step)?"
 - If mostly sequential or <5 independent: "This plan has N tasks, mostly sequential. I recommend **executing-plans** for step-by-step execution. Want to go with that, or use **subagent-driven-development** (parallel)?"
 
-If the user says "not yet" or "later": "Workspace is ready at `<path>` on branch `feat/<slug>`. Pick it up anytime."
+If the user says "not yet" or "later": "Workspace is ready at `<path>` on branch `feat/<slug>`. Pick it up anytime." Leave the ticket where it is; the work has not started.
 
-Otherwise, invoke the chosen skill with:
+Otherwise, advance the ticket through `/ticket-lifecycle` to `in-progress` and write `branch` and `plan_link` onto it, recording the workspace as the branch name and never as a local filesystem path (R-106). Then invoke the chosen skill with:
 - Plan file path
 - Worktree path (so the execution skill knows where to work)
+- Ticket key (so every commit carries the `Refs:` trailer)
 
 ## Common Mistakes
 
@@ -76,9 +77,11 @@ Otherwise, invoke the chosen skill with:
 - Re-running the shell steps by hand instead of the script, and branching from a stale local `main` or from the current branch: the script fetches the default branch and branches from `origin/<base>`.
 - Leaving the acceptance criteria placeholder in the user story.
 - Asking the query-params question when the summary said `no`.
+- Creating the worktree before the ticket exists, which leaves `started_at` later than the work it is supposed to bound.
+- Writing the worktree's absolute path onto the ticket. The branch name is the join key; the path is local and unpublishable (R-106).
 
 ## Integration Points
 
 - **Called after:** brainstorming, writing-plans
-- **Calls:** executing-plans OR subagent-driven-development
+- **Calls:** executing-plans OR subagent-driven-development, ticket-lifecycle (`advance` to `in-progress`)
 - **Paired with:** task-cleanup (teardown, merge decision, worktree removal)

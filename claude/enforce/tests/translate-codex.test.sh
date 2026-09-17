@@ -3,7 +3,7 @@
 # 2026-09-17-codex-translator-design.md). Hermetic: builds a miniature
 # claude/ source tree in a sandbox and never reads the real trees, so the
 # fixture survives repo moves (2026-09-17 lesson). Grows one section per
-# acceptance criterion B-1..B-10.
+# acceptance criterion B-1..B-11.
 set -uo pipefail
 REPO_TOP=$(git rev-parse --show-toplevel)
 TRANSLATOR="$REPO_TOP/translate/codex.mjs"
@@ -147,7 +147,6 @@ EOF
   "hand_authored": [
     "hooks/codex-hook-adapter.sh",
     "README.md",
-    ".gitignore",
     "skills/session-start/SKILL.md",
     "skills/session-handoff/SKILL.md"
   ],
@@ -167,8 +166,10 @@ EOF
 Sandbox stub hand-authored README for the codex translator fixture.
 EOF
 
+  # Deliberately stale: .gitignore is generated (B-11), so this stub exists
+  # only to prove --check reports it stale before the first --write.
   cat >"$dir/codex/.gitignore" <<'EOF'
-# Sandbox stub hand-authored gitignore for the codex translator fixture.
+# Sandbox stale gitignore stub for the codex translator fixture.
 EOF
 
   cat >"$dir/codex/skills/session-start/SKILL.md" <<'EOF'
@@ -464,6 +465,22 @@ check "write summary reports removal count" grep -q "wrote .* files, removed 1 o
 node "$TRANSLATOR" --check --root "$SRC4"; check "check clean after orphan removed" test $? -eq 0
 OUT=$(node "$TRANSLATOR" --write --root "$SRC4" 2>&1); check "write summary omits removed clause when clean" not grep -q "removed" <<<"$OUT"
 
+# Deleting a skill on the claude/ side orphans codex/skills/<name>/SKILL.md,
+# and unlinking the file alone leaves the directory behind: invisible to git
+# (which stores no empty directories) and invisible to --check (which lists
+# files), so it survives every later run. Removing an emptied directory is
+# the same single-owner invariant as removing the orphan itself.
+mkdir -p "$SRC4/codex/skills/gone-skill/nested"
+printf 'stale skill\n' >"$SRC4/codex/skills/gone-skill/SKILL.md"
+printf 'stale nested\n' >"$SRC4/codex/skills/gone-skill/nested/NOTE.md"
+node "$TRANSLATOR" --write --root "$SRC4" >/dev/null 2>&1
+check "write removes the orphaned skill file" test ! -e "$SRC4/codex/skills/gone-skill/SKILL.md"
+check "write removes the emptied skill directory" test ! -d "$SRC4/codex/skills/gone-skill"
+check "write removes the emptied nested directory" test ! -d "$SRC4/codex/skills/gone-skill/nested"
+check "write keeps a directory that still holds planned files" test -d "$SRC4/codex/skills/sample-skill"
+check "write keeps codex/skills itself" test -d "$SRC4/codex/skills"
+node "$TRANSLATOR" --check --root "$SRC4"; check "check clean after directory cleanup" test $? -eq 0
+
 # Task 10: duplicate agent frontmatter name collision guard (final review
 # finding 4). Two claude/agents files sharing one frontmatter name would
 # otherwise both plan to write agents/helper-role.toml.
@@ -484,5 +501,81 @@ EOF
 OUT=$(node "$TRANSLATOR" --check --root "$SRC5" 2>&1); ST=$?
 check "duplicate agent name fails check" test "$ST" -eq 2
 check "duplicate agent name names offender" grep -qE "helper-role(-duplicate)?\.md" <<<"$OUT"
+
+# Task 11: codex/.gitignore is generated from the planned tree (B-11). It is
+# an allowlist (`*` then one `!/` entry per tracked path), so while it was
+# hand-authored a newly added skill was generated, ignored by git, and
+# --check still passed: the port silently lost a file. Generating it makes
+# the allowlist derived data, and staleness a --check failure.
+SRC6=$(mktemp -d); trap 'rm -rf "$SANDBOX" "$SRC" "$SRC2" "$SRC3" "$SRC4" "$SRC5" "$SRC6"' EXIT
+make_source_tree "$SRC6"
+GI="$SRC6/codex/.gitignore"
+
+# The stub written by make_source_tree is not what the renderer produces, so
+# the pre-write tree is stale on .gitignore and no longer missing a
+# hand-authored file (the port map no longer claims it).
+OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
+check "stale gitignore fails check" test "$ST" -eq 1
+check "stale gitignore named" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "gitignore no longer claimed hand-authored" not grep -q "missing hand-authored file: .gitignore" <<<"$OUT"
+
+node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
+check "gitignore written" test -f "$GI"
+check "gitignore header names the translator" grep -q "translate/codex.mjs" "$GI"
+check "gitignore ignores everything by default" grep -qx -- '\*' "$GI"
+check "gitignore allowlists itself" grep -qx -- '!/.gitignore' "$GI"
+check "gitignore allowlists the manifest" grep -qx -- '!/.claude-port.json' "$GI"
+check "gitignore allowlists the rules doc" grep -qx -- '!/AGENTS.md' "$GI"
+check "gitignore allowlists a generated skill" grep -qx -- '!/skills/sample-skill/SKILL.md' "$GI"
+check "gitignore allowlists that skill's directory" grep -qx -- '!/skills/sample-skill/' "$GI"
+check "gitignore allowlists an agent-derived skill" grep -qx -- '!/skills/audit-sample/SKILL.md' "$GI"
+check "gitignore allowlists a generated agent toml" grep -qx -- '!/agents/helper-role.toml' "$GI"
+check "gitignore allowlists a hand-authored file" grep -qx -- '!/README.md' "$GI"
+check "gitignore allowlists a nested hand-authored file" grep -qx -- '!/hooks/codex-hook-adapter.sh' "$GI"
+check "gitignore allowlists that file's directory" grep -qx -- '!/hooks/' "$GI"
+check "gitignore allowlists a hand-authored skill" grep -qx -- '!/skills/session-start/SKILL.md' "$GI"
+# Entry order is the deterministic-output invariant, checked in C locale
+# because the renderer sorts byte-wise, not by the caller's collation.
+gitignoreEntriesSorted() { local e; e=$(grep '^!/' "$GI"); [ "$e" = "$(LC_ALL=C sort <<<"$e")" ]; }
+check "gitignore entries sorted deterministically" gitignoreEntriesSorted
+check "no unported hook path allowlisted" not grep -q "beta-check" "$GI"
+node "$TRANSLATOR" --check --root "$SRC6"; check "check clean after write" test $? -eq 0
+
+# The regression itself: a skill added to claude/ reaches the allowlist with
+# no hand edit to .gitignore.
+mkdir -p "$SRC6/claude/skills/late-skill"
+cat >"$SRC6/claude/skills/late-skill/SKILL.md" <<'EOF'
+---
+name: late-skill
+description: sandbox skill added after the first write
+---
+
+# Late Skill
+
+the sandbox late-skill body line
+EOF
+OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
+check "new skill makes gitignore stale" test "$ST" -eq 1
+check "new skill names gitignore stale" grep -q "^stale: .gitignore$" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
+check "new skill lands in the allowlist" grep -qx -- '!/skills/late-skill/SKILL.md' "$GI"
+check "new skill directory lands in the allowlist" grep -qx -- '!/skills/late-skill/' "$GI"
+node "$TRANSLATOR" --check --root "$SRC6"; check "check clean after the new skill" test $? -eq 0
+
+# A deleted .gitignore is stale (rewritten by --write), never an orphan and
+# never a missing hand-authored file.
+rm "$GI"
+OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1)
+check "absent gitignore reports stale" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "absent gitignore is not an orphan" not grep -q "orphaned: .gitignore" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
+check "write restores the gitignore" test -f "$GI"
+
+# The manifest hashes .gitignore like any other generated file, and still
+# does not claim it hand-authored.
+manifestHashesGitignore() { jq -e '.files[".gitignore"] | test("^sha256:")' "$SRC6/codex/.claude-port.json" >/dev/null; }
+manifestOmitsGitignoreFromHandAuthored() { jq -e '.hand_authored | index(".gitignore") | not' "$SRC6/codex/.claude-port.json" >/dev/null; }
+check "manifest hashes the gitignore" manifestHashesGitignore
+check "manifest omits gitignore from hand-authored" manifestOmitsGitignoreFromHandAuthored
 
 [ "$fail" -eq 0 ] && echo "translate-codex.test.sh PASS" || exit 1

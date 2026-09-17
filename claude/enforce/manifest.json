@@ -287,6 +287,14 @@
             "note": "fixture: tests/credential-mutation-guard.test.sh (mutation slice of secret-scan.sh; no hook of that name exists)"
         },
         {
+            "id": "R-108",
+            "tier": "regex",
+            "enforcer": "hook:secret-scan",
+            "severity": "error",
+            "autofix": false,
+            "note": "credential-shaped literals (URI userinfo password, password/secret/token assignment with a literal) in Bash argv, Write content, or Edit new_string; placeholder shapes pass; fixture: tests/secret-scan.test.sh; tree closure (every tracked file through the hook): tests/credential-shape-scan.test.sh"
+        },
+        {
             "id": "R-106",
             "tier": "regex",
             "enforcer": "hook:global-repo-push-guard",
@@ -314,7 +322,7 @@
             "enforcer": "hook:hook-integrity-check",
             "severity": "warn",
             "autofix": false,
-            "note": "hash manifest over hooks/ and enforce configs; regenerate with --update"
+            "note": "hash manifest over hooks/, the two fixture suites, and enforce configs; regenerate with --update. hooks/tests/hook-integrity-check.test.sh covers the guard behaviour (drift, absent manifest, --update floors); enforce/tests/hook-hashes-closure.test.sh covers the committed manifest being closed in both directions, which is what CI fails on"
         },
         {
             "id": "R-203",

@@ -15,7 +15,7 @@ Resurrect the port pipeline the 2026-09-12 monorepo migration deferred: a checke
 
 ## Outputs
 
-- `--write` regenerates in place: `codex/AGENTS.md`, `codex/agents/*.toml`, `codex/skills/*/SKILL.md`, `codex/hooks.json`, `codex/PORT-STATUS.md`, and `codex/.claude-port.json` (manifest: builder name, per-file sha256, source path or `hand-authored`). Every generated file opens with a header naming `translate/codex.mjs` and its source path. Exit 0.
+- `--write` regenerates in place: `codex/AGENTS.md`, `codex/agents/*.toml`, `codex/skills/*/SKILL.md`, `codex/hooks.json`, `codex/PORT-STATUS.md`, `codex/.gitignore` (the allowlist of tracked paths), and `codex/.claude-port.json` (manifest: builder name, per-file sha256, source path or `hand-authored`). Every generated file opens with a header naming `translate/codex.mjs` and its source path. Exit 0.
 - `--check` writes nothing; exit 0 when every generated file matches what `--write` would produce and every registered hook is classified in the port map; otherwise exit 1 listing each stale or unclassified item, one per line.
 
 ## Acceptance criteria
@@ -30,11 +30,13 @@ Resurrect the port pipeline the 2026-09-12 monorepo migration deferred: a checke
 - B-8: `--check` exits 1 naming the hook when `settings.json` registers a hook that has neither a port-map event translation nor a per-hook override (a new hook cannot silently vanish from the port).
 - B-9: `--check` exits 1 naming the file when a hand-authored file listed in the port map is absent; it never diffs hand-authored content.
 - B-10: Running with no mode, both modes, or an unknown flag prints usage and exits 2 without touching any file.
+- B-11: `--write` renders `codex/.gitignore` from the planned tree: a leading `*`, then one `!/<path>` per generated and hand-authored file plus one `!/<dir>/` per ancestor directory of each, sorted byte-wise. A skill or agent added on the `claude/` side therefore reaches the allowlist with no hand edit, and an allowlist that has fallen behind the tree is a stale file `--check` fails on. Added 2026-09-17, after a new skill was generated, ignored by git, and passed `--check`, which compares content and knows nothing about what git tracks.
 
 ## Invariants
 
-- The translator never writes outside `codex/` (and never touches `codex/hooks/codex-hook-adapter.sh`, `codex/README.md`, `codex/.gitignore`, or any other file the port map marks hand-authored).
+- The translator never writes outside `codex/` (and never touches `codex/hooks/codex-hook-adapter.sh`, `codex/README.md`, or any other file the port map marks hand-authored). `codex/.gitignore` was hand-authored until 2026-09-17 and is now generated, because an allowlist that has to be exhaustive to be correct is the wrong shape for a hand-typed file (the same lesson `sync.sh` records about its retired exclude list).
 - `--check` never mutates the tree (byte-identical before and after, verified over the whole `codex/` dir).
+- `--write` leaves no residue of a deleted source: the orphaned file is unlinked and any directory the deletion empties is removed with it. An emptied directory is invisible to git (which stores no empty directories) and to `--check` (which compares files), so nothing else would ever surface it.
 - Output is deterministic: two consecutive `--write` runs produce byte-identical trees (stable ordering, no timestamps).
 - `claude/` sources are read-only to the translator.
 
@@ -76,4 +78,5 @@ Runs locally on the checked-in tree only; no network, no secrets read. Generated
 - translator - the `translate/codex.mjs` generator that renders `codex/` from `claude/` - chosen over: "builder" or "build.mjs" because the retired pipeline's name now means the dead artifacts, and over "mirror" because the monorepo spec uses mirror for the OUTPUT tree, not the tool.
 - port map - `translate/codex-port-map.json`, the checked-in data naming each hook event's Codex equivalent and the hand-authored file list - chosen over: hardcoding in the translator because `--check`'s B-8 closure guarantee needs the mapping to be data.
 - generated file - a `codex/` file the translator owns wholesale; hand edits to it are overwritten by the next `--write` - chosen over: "output" because PORT-STATUS and AGENTS.md are also repo-tracked sources for sync.sh.
-- hand-authored file - a `codex/` file the port map exempts from generation (adapter, README, .gitignore); `--check` requires existence only - chosen over: "manual" to avoid colliding with the `[manual]` enforcer tier.
+- hand-authored file - a `codex/` file the port map exempts from generation (the adapter, the README, the two semantic-render skills); `--check` requires existence only - chosen over: "manual" to avoid colliding with the `[manual]` enforcer tier.
+- allowlist - `codex/.gitignore`, which ignores everything under `codex/` and then names every tracked path back in - chosen over: "ignore file", which describes the mechanism and hides the fact that its content is the list of what git keeps, and over "manifest", which is `.claude-port.json`.

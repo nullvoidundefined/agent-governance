@@ -83,6 +83,53 @@ if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
   exit 0
 fi
 
+# R-108: a credential-shaped literal is a finding even when it is fake.
+# Secret scanners (GitGuardian on every PR of a public repository) flag the
+# shape, not the validity: a fixture's fake `postgres://user:<password>@host`
+# URI, with a made-up word in the placeholder's place, went red on 2026-09-17
+# exactly as a real one would, and the branch had to be rewritten. Two shapes are denied in any Write or Edit payload and on
+# argv: a URI whose userinfo carries a password, and a password/secret/token
+# assignment carrying a literal value. A placeholder shape passes: a value
+# that starts with `$`, `<`, `%`, or `{` (an env reference, an angle-bracket
+# placeholder, a printf slot, a template), or that is one of the words
+# scanners already discount (password, changeme, placeholder, example,
+# redacted, dummy, xxx...). The fix is never a different fake: build the
+# value at run time from parts (`printf '%s://%s:%s@%s'`), or write the
+# placeholder.
+PLACEHOLDER_VALUE='^([$<%{]|(password|passwd|changeme|placeholder|example|redacted|dummy|fake|secret|x+|\*+|\.\.\.)$)'
+URI_WITH_PASSWORD='[a-z][a-z0-9+.-]*://[^/[:space:]:@"'"'"']+:[^@[:space:]"'"'"']+@'
+credential_shape_hit() {
+  local text="$1" match value
+  # URI userinfo passwords: keep the password segment and test it for a
+  # placeholder shape.
+  while IFS= read -r match; do
+    [ -n "$match" ] || continue
+    value=${match#*://}; value=${value#*:}; value=${value%@}
+    printf '%s' "$value" | grep -qiE "$PLACEHOLDER_VALUE" || { printf 'a URI carrying a password (%s)' "${match%%:*}://user:...@"; return 0; }
+  done < <(printf '%s' "$text" | grep -oE "$URI_WITH_PASSWORD" || true)
+  # password/secret/token assignments with a literal value of six or more
+  # characters: quoted, or a bare token of literal-looking characters that
+  # ends at a delimiter (so `os.environ["DB_PASSWORD"]`, `getToken()`, and
+  # `process.env.SESSION_SECRET!`, which continue into `[`, `(`, or `.`, are
+  # code, not literals).
+  while IFS= read -r match; do
+    [ -n "$match" ] || continue
+    value=$(printf '%s' "$match" | sed -E 's/^[^=:]*[=:][[:space:]]*//; s/[[:space:],;)}]$//; s/^["'"'"']//; s/["'"'"']$//')
+    printf '%s' "$value" | grep -qiE "$PLACEHOLDER_VALUE" || { printf 'a %s assignment with a literal value' "$(printf '%s' "$match" | grep -oiE '^[a-z_-]+')"; return 0; }
+  done < <(printf '%s' "$text" | grep -oiE '(^|[^a-z_])(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)[[:space:]]*[=:][[:space:]]*("[^"[:space:]]{6,}"|'"'"'[^'"'"'[:space:]]{6,}'"'"'|[A-Za-z0-9_+/=!#-]{6,})([[:space:],;)}]|$)' | sed -E 's/^[^a-zA-Z_]//' || true)
+  return 1
+}
+if HIT=$(credential_shape_hit "$SCAN_TEXT"); then
+  jq -n --arg hit "$HIT" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: ("secret-scan hook BLOCKED this tool call (R-108): it writes " + $hit + ", a credential-shaped literal. Secret scanners flag the shape whether or not the value is real, so a fake one still turns the PR red and forces a history rewrite. Build the value at run time from parts (printf with %s slots, a variable assembled in the fixture) or write a placeholder (<password>, ${DB_PASSWORD}, changeme); never a different-looking fake.")
+    }
+  }'
+  exit 0
+fi
+
 # R-103: credential files are read-only. Block any command that creates,
 # overwrites, appends to, moves, deletes, or edits a protected path
 # (.env, .env.*, ~/.aws, ~/.ssh, ~/.gnupg, ~/.config/gh/hosts.yml).
@@ -95,9 +142,26 @@ PROT="$HOMEDIRS/\.(aws|ssh|gnupg)(/[^[:space:]\"';|&]*)?"
 PROT+="|$HOMEDIRS/\.config/gh/hosts\.yml"
 PROT+="|(^|[[:space:]\"'=/])\.env(\.[A-Za-z0-9_-]+)?([[:space:]\"';|&]|$)"
 
-MUTATE_VERBS='(rm|mv|cp|tee|shred|truncate|unlink|sed[[:space:]]+-[a-zA-Z]*i[a-zA-Z]*)'
+# In-place editors are spelled several ways and the pattern used to match only
+# one of them: `sed -i` as a bare token. That missed `sed -i.bak` (the portable
+# spelling this repo's own fixtures use, which is how the gap stayed invisible),
+# `sed --in-place`, and perl's `-i`/`-pi` entirely (2026-09-17 audit P2-6).
+# `-[a-zA-Z]*i[a-zA-Z.]*` now also admits a suffix, `--in-place` is named, and
+# perl is only a mutation when an in-place flag is present, so `perl -ne` stays
+# a read.
+SED_IN_PLACE='sed[[:space:]]+(-[a-zA-Z]*i[a-zA-Z.]*|--in-place(=[^[:space:]]*)?)'
+PERL_IN_PLACE='perl[[:space:]]+([^[:space:]]+[[:space:]]+)*-[a-zA-Z]*i[a-zA-Z.]*'
+MUTATE_VERBS="(rm|mv|cp|tee|shred|truncate|unlink|$SED_IN_PLACE|$PERL_IN_PLACE)"
 MUTATION="(^|[;&|][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?$MUTATE_VERBS([[:space:]]+-[^[:space:]]+)*([[:space:]][^;|&]*)?($PROT)"
-REDIRECT=">>?[[:space:]]*($PROT)"
+# The redirect target may carry a directory prefix: `> server/.env` is the same
+# mutation as `> .env`, and PROT's .env branch opens with a single character
+# class (which does include `/`), so without somewhere for the prefix to go the
+# pattern could only ever match a credential file at the top level. The prefix
+# run stops at whitespace, another redirect, and the command separators, so it
+# cannot reach across into the next command (2026-09-17 audit P1-3; the
+# Write/Edit branch below always handled nesting, which is what made the Bash
+# branch's gap a discrepancy rather than a policy).
+REDIRECT=">>?[[:space:]]*[^[:space:]>;|&]*($PROT)"
 
 if printf '%s' "$SAFE_CMD" | grep -qE "$MUTATION" || printf '%s' "$SAFE_CMD" | grep -qE "$REDIRECT"; then
   jq -n '{

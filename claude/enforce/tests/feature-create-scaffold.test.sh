@@ -32,8 +32,8 @@ SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
 REPO="$SB/my-app"; WT="$SB/worktrees"
 make_repo "$REPO" main
 
-# Happy path.
-OUT=$(cd "$REPO" && "$SCAFFOLD" voice-presets --worktree-parent "$WT" --no-fetch 2>&1); ST=$?
+# Happy path, with a ticket key.
+OUT=$(cd "$REPO" && "$SCAFFOLD" voice-presets --ticket IAN-7 --worktree-parent "$WT" --no-fetch 2>&1); ST=$?
 check "happy path exits 0" test "$ST" -eq 0
 check "worktree created" test -d "$WT/voice-presets"
 check "branch is feat/<slug>" test "$(git -C "$WT/voice-presets" branch --show-current)" = "feat/voice-presets"
@@ -41,7 +41,9 @@ check "feature-list row appended" grep -q '| Voice Presets | \*\*Planned\*\* | U
 check "user story written" test -f "$WT/voice-presets/docs/user-stories/voice-presets.md"
 check "user story carries the story id" grep -q 'US-VOICE-PRESETS-001' "$WT/voice-presets/docs/user-stories/voice-presets.md"
 check "user story records the e2e path" grep -q 'e2e/voice-presets.spec.ts' "$WT/voice-presets/docs/user-stories/voice-presets.md"
+check "user story carries the ticket key" grep -q '^\*\*Ticket:\*\* IAN-7$' "$WT/voice-presets/docs/user-stories/voice-presets.md"
 check "scaffold committed with a scope" test "$(git -C "$WT/voice-presets" log -1 --format=%s)" = "chore(docs): scaffold docs for feat/voice-presets"
+check "scaffold commit carries the Refs trailer" test "$(git -C "$WT/voice-presets" log -1 --format=%b | tr -d '\n')" = "Refs: IAN-7"
 check "worktree clean after commit" test -z "$(git -C "$WT/voice-presets" status --porcelain)"
 check "plan auto-discovered" reports "plan:          docs/superpowers/plans/2026-09-17-voice-presets.md"
 check "query params detected" reports "query params:  yes"
@@ -66,6 +68,7 @@ rm "$REPO/docs/superpowers/plans/2026-09-18-voice-presets-v2.md"
 OUT=$(cd "$REPO" && "$SCAFFOLD" "Bad Slug" --worktree-parent "$WT" --no-fetch 2>&1); ST=$?
 check "bad slug refused with 2" test "$ST" -eq 2
 check "explicit plan path honoured" bash -c "cd '$REPO' && '$SCAFFOLD' explicit docs/superpowers/plans/2026-09-17-voice-presets.md --worktree-parent '$WT' --no-fetch >/dev/null 2>&1 && test -d '$WT/explicit'"
+check "no ticket leaves the placeholder" grep -q '^\*\*Ticket:\*\* <ticket-key>$' "$WT/explicit/docs/user-stories/explicit.md"
 
 # Red baseline: worktree kept, nothing scaffolded, exit 7.
 OUT=$(cd "$REPO" && FEATURE_CREATE_TEST_CMD=false "$SCAFFOLD" red-base docs/superpowers/plans/2026-09-17-voice-presets.md --worktree-parent "$WT" --no-fetch 2>&1); ST=$?

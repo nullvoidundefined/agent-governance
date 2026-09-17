@@ -8,8 +8,11 @@
 # steps to the session: the acceptance criteria in the user story (read from
 # the plan) and the execution recommendation.
 #
-# Usage: scaffold.sh <slug> [plan-path] [--worktree-parent <dir>]
+# Usage: scaffold.sh <slug> [plan-path] [--ticket <key>] [--worktree-parent <dir>]
 #                    [--base <branch>] [--no-fetch]
+# --ticket writes the key onto the user story's **Ticket:** line and as the
+# Refs: trailer of the scaffold commit (R-605); without it the story carries
+# the <ticket-key> placeholder for the session to fill.
 # Environment: FEATURE_CREATE_INSTALL_CMD and FEATURE_CREATE_TEST_CMD override
 # the detected install and test commands (set either to "skip" to omit it).
 #
@@ -22,17 +25,18 @@ set -uo pipefail
 say() { printf 'feature-create: %s\n' "$*"; }
 die() { printf 'feature-create: %s\n' "$*" >&2; exit "${2:-8}"; }
 
-SLUG=""; PLAN=""; WORKTREE_PARENT=""; BASE=""; FETCH=1
+SLUG=""; PLAN=""; WORKTREE_PARENT=""; BASE=""; FETCH=1; TICKET=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --worktree-parent) WORKTREE_PARENT="${2:-}"; shift 2 ;;
     --base) BASE="${2:-}"; shift 2 ;;
+    --ticket) TICKET="${2:-}"; shift 2 ;;
     --no-fetch) FETCH=0; shift ;;
     --*) die "unknown option $1" 2 ;;
     *) if [ -z "$SLUG" ]; then SLUG="$1"; elif [ -z "$PLAN" ]; then PLAN="$1"; else die "unexpected argument $1" 2; fi; shift ;;
   esac
 done
-[ -n "$SLUG" ] || die "usage: scaffold.sh <slug> [plan-path] [--worktree-parent <dir>] [--base <branch>] [--no-fetch]" 2
+[ -n "$SLUG" ] || die "usage: scaffold.sh <slug> [plan-path] [--ticket <key>] [--worktree-parent <dir>] [--base <branch>] [--no-fetch]" 2
 printf '%s' "$SLUG" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
 
 # --- Step 1: inputs --------------------------------------------------------
@@ -138,6 +142,7 @@ if [ -d docs/user-stories ]; then
 1. <!-- Derive from the plan's task descriptions; one criterion per testable behavior -->
 
 **E2E test:** \`e2e/$SLUG.spec.ts\`
+**Ticket:** ${TICKET:-<ticket-key>}
 EOF
   scaffolded+=("$STORY")
   say "wrote $STORY; fill the acceptance criteria from $PLAN"
@@ -148,9 +153,13 @@ fi
 # --- Step 6: commit ----------------------------------------------------------
 COMMIT=""
 if [ "${#scaffolded[@]}" -gt 0 ]; then
-  git add "${scaffolded[@]}" && git commit -q -m "chore(docs): scaffold docs for $BRANCH" || die "scaffold commit failed" 8
+  if [ -n "$TICKET" ]; then
+    git add "${scaffolded[@]}" && git commit -q -m "chore(docs): scaffold docs for $BRANCH" -m "Refs: $TICKET" || die "scaffold commit failed" 8
+  else
+    git add "${scaffolded[@]}" && git commit -q -m "chore(docs): scaffold docs for $BRANCH" || die "scaffold commit failed" 8
+  fi
   COMMIT=$(git rev-parse --short HEAD)
-  say "committed $COMMIT: chore(docs): scaffold docs for $BRANCH"
+  say "committed $COMMIT: chore(docs): scaffold docs for $BRANCH${TICKET:+ (Refs: $TICKET)}"
 else
   say "nothing scaffolded; no commit"
 fi
