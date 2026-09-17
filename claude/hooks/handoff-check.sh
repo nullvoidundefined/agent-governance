@@ -4,7 +4,10 @@
 # session loads it, one session too late to fix a wrong SHA, and nothing
 # checked the size cap or the section order at all. When the written file is
 # docs/session-handoff/session-handoff.md this reminds, naming each miss:
-#   - over 8 KB (R-602's cap);
+#   - over 8 KB (R-602's cap), measured over the NARRATIVE only: the
+#     marker-delimited task-state block that session-end.sh generates is
+#     excluded first, because R-602 places that generated block outside the
+#     budget and nobody writing a handoff controls how large it grows;
 #   - a missing or out-of-order section; the six, in order, are last commit,
 #     production state, session metrics, what shipped, pending, next session
 #     (matched case-insensitively against the "## " headings, so numbering
@@ -25,7 +28,29 @@ CONTENT=$(printf '%s' "$INPUT" | jq -r '.tool_input.content // ""' 2>/dev/null |
 MAX_BYTES=8192
 missing=()
 
-bytes=$(printf '%s' "$CONTENT" | wc -c | tr -d ' ')
+# narrative_without_task_state prints handoff content $1 with the generated
+# <!-- task-state:begin --> / <!-- task-state:end --> block removed, the
+# marker lines themselves included. R-602 caps the NARRATIVE at 8 KB, and
+# session-end.sh's render_task_state_section appends a task list it
+# generates itself, whose size is a function of how many tasks the session
+# touched rather than of anything the author wrote. Measuring the whole file
+# therefore reported a cap violation against a perfectly compliant narrative
+# as soon as that block grew, and the only way to silence it was to cut real
+# narrative (PR #14 review). Matching is on the literal marker lines only,
+# exactly as the renderer writes and replaces them, so a fenced code block
+# quoting an example "## Task state" heading is never stripped.
+narrative_without_task_state() {
+  printf '%s' "$1" | awk '
+    BEGIN { skipping = 0 }
+    /^<!-- task-state:begin -->[[:space:]]*$/ { skipping = 1; next }
+    /^<!-- task-state:end -->[[:space:]]*$/ { if (skipping) { skipping = 0; next } }
+    skipping { next }
+    { print }
+  '
+}
+
+NARRATIVE=$(narrative_without_task_state "$CONTENT")
+bytes=$(printf '%s' "$NARRATIVE" | wc -c | tr -d ' ')
 [ "$bytes" -le "$MAX_BYTES" ] || missing+=("it is $bytes bytes, over the 8 KB cap; cut detail, not sections")
 
 HEADINGS=$(printf '%s\n' "$CONTENT" | grep -E '^## ' | tr '[:upper:]' '[:lower:]' || true)

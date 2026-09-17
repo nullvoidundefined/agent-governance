@@ -75,6 +75,40 @@ check "missing sha named" reports "no commit SHA in backticks"
 OUT=$(run "$FILE" "$SB/big.md")
 check "oversized handoff named" reports "over the 8 KB cap"
 
+# --- The generated task-state block sits outside the narrative budget
+# (PR #14 review). R-602 caps the narrative at 8 KB; session-end.sh's
+# render_task_state_section appends a marker-delimited "## Task state"
+# section it generates itself, whose size nobody writing the handoff
+# controls. Measuring the whole file therefore reported a cap violation
+# against a compliant narrative as soon as the generated block grew, and
+# the only way to silence it was to cut real narrative. The block is
+# excluded from the measurement, and only from the measurement: narrative
+# that is genuinely over the cap is still named. ---
+{
+  good
+  printf '\n<!-- task-state:begin -->\n## Task state\n\n'
+  i=1
+  while [ "$i" -le 220 ]; do
+    printf -- '- [in_progress] A generated task line long enough to matter here (task %s) (updated 2026-09-17T00:00:00Z)\n' "$i"
+    i=$((i + 1))
+  done
+  printf '<!-- task-state:end -->\n'
+} > "$SB/withtaskstate.md"
+BIG_BLOCK_BYTES=$(wc -c < "$SB/withtaskstate.md" | tr -d ' ')
+check "the task-state fixture really is over the raw 8 KB cap" test "$BIG_BLOCK_BYTES" -gt 8192
+OUT=$(run "$FILE" "$SB/withtaskstate.md")
+check "a compliant narrative plus a large generated task-state block is silent" silent
+
+# Negative control: narrative genuinely over the cap is still named, even
+# with a generated block present.
+{
+  good
+  printf 'x%.0s' $(seq 1 8200)
+  printf '\n<!-- task-state:begin -->\n## Task state\n\n- [in_progress] T (task 1)\n<!-- task-state:end -->\n'
+} > "$SB/bignarrative.md"
+OUT=$(run "$FILE" "$SB/bignarrative.md")
+check "an oversized narrative is still named when a task-state block is present" reports "over the 8 KB cap"
+
 OUT=$(printf 'not json' | bash "$HOOK" 2>&1); ST=$?
 check "malformed input exits 0" test "$ST" -eq 0
 check "malformed input is silent" silent
