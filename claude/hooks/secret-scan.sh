@@ -49,28 +49,40 @@ SCAN_TEXT=$(printf '%s' "$INPUT" | jq -r '(.tool_input.command // "") + "\n" + (
 # Patterns use basic POSIX ERE (grep -E), no PCRE features.
 # Each subpattern requires enough trailing characters to exclude placeholders
 # and discussion references like "sk-ant-api03-..." or "whsec_REDACTED".
-PATTERN='sk-ant-api03-[A-Za-z0-9_-]{50,}'
-PATTERN+='|whsec_[A-Za-z0-9]{20,}'
-PATTERN+='|sk_live_[A-Za-z0-9]{20,}'
-PATTERN+='|sk_test_[A-Za-z0-9]{20,}'
-PATTERN+='|rk_live_[A-Za-z0-9]{20,}'
-PATTERN+='|rk_test_[A-Za-z0-9]{20,}'
-PATTERN+='|ghp_[A-Za-z0-9]{30,}'
-PATTERN+='|gho_[A-Za-z0-9]{30,}'
-PATTERN+='|ghs_[A-Za-z0-9]{30,}'
-PATTERN+='|ghu_[A-Za-z0-9]{30,}'
-PATTERN+='|vcp_[A-Za-z0-9]{20,}'
-PATTERN+='|\bre_[A-Za-z0-9_-]{30,}'
-PATTERN+='|rnd_[A-Za-z0-9]{20,}'
-PATTERN+='|xoxb-[A-Za-z0-9-]{40,}'
-PATTERN+='|xoxp-[A-Za-z0-9-]{40,}'
-PATTERN+='|xoxa-[A-Za-z0-9-]{40,}'
-PATTERN+='|xoxs-[A-Za-z0-9-]{40,}'
-PATTERN+='|AKIA[0-9A-Z]{16}'
-PATTERN+='|ASIA[0-9A-Z]{16}'
-PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
-PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
-PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
+#
+# The pattern set lives in enforce/secret-patterns.txt (one alternative per
+# line, `#` comments) so doctor.sh --release can reuse the same list for its
+# tracked-file scan. A guard fails closed, never open: if the shared data
+# file is missing or unreadable, fall back to this hardcoded minimal set
+# rather than scanning nothing (2026-09-17, B-4 pattern extraction).
+PATTERNS_FILE="$(dirname "${BASH_SOURCE[0]}")/../enforce/secret-patterns.txt"
+if [ -f "$PATTERNS_FILE" ]; then
+  PATTERN=$(grep -v '^#' "$PATTERNS_FILE" | grep -v '^$' | paste -sd'|' -)
+fi
+if [ -z "${PATTERN:-}" ]; then
+  PATTERN='sk-ant-api03-[A-Za-z0-9_-]{50,}'
+  PATTERN+='|whsec_[A-Za-z0-9]{20,}'
+  PATTERN+='|sk_live_[A-Za-z0-9]{20,}'
+  PATTERN+='|sk_test_[A-Za-z0-9]{20,}'
+  PATTERN+='|rk_live_[A-Za-z0-9]{20,}'
+  PATTERN+='|rk_test_[A-Za-z0-9]{20,}'
+  PATTERN+='|ghp_[A-Za-z0-9]{30,}'
+  PATTERN+='|gho_[A-Za-z0-9]{30,}'
+  PATTERN+='|ghs_[A-Za-z0-9]{30,}'
+  PATTERN+='|ghu_[A-Za-z0-9]{30,}'
+  PATTERN+='|vcp_[A-Za-z0-9]{20,}'
+  PATTERN+='|\bre_[A-Za-z0-9_-]{30,}'
+  PATTERN+='|rnd_[A-Za-z0-9]{20,}'
+  PATTERN+='|xoxb-[A-Za-z0-9-]{40,}'
+  PATTERN+='|xoxp-[A-Za-z0-9-]{40,}'
+  PATTERN+='|xoxa-[A-Za-z0-9-]{40,}'
+  PATTERN+='|xoxs-[A-Za-z0-9-]{40,}'
+  PATTERN+='|AKIA[0-9A-Z]{16}'
+  PATTERN+='|ASIA[0-9A-Z]{16}'
+  PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
+  PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+  PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
+fi
 
 if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
   jq -n '{

@@ -53,16 +53,15 @@ Universal rules in `CLAUDE.md` (untagged) apply to every stack; each track docum
 
 ## Verify the install
 
-Run BOTH fixture suites; all tests should pass:
+Run `bash claude/enforce/doctor.sh --full` (wraps both fixture suites plus the install checks); it should exit 0:
 
 ```
-bash ~/.claude/enforce/tests/run-tests.sh
-bash ~/.claude/hooks/tests/run-tests.sh
+bash ~/.claude/enforce/doctor.sh --full
 ```
 
-The same two suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
+`--full` runs the settings-parse, settings-schema-keys, hook-registration, hook-integrity, hook-executability, deps, sandbox-availability, statusline, and port-freshness checks, then both fixture suites (`enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh`) as one `fixture-suites` check. See `enforce/README.md` for the full check list, the exit contract, and the `--release` gate. The same two fixture suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
 
-The ESLint-backed tests in the first suite need `enforce/node_modules`, which is
+The ESLint-backed tests the fixture suites drive need `enforce/node_modules`, which is
 gitignored and therefore absent from a fresh clone. Run `npm install` in
 `~/.claude/enforce` first, or six tests fail on a missing ESLint.
 

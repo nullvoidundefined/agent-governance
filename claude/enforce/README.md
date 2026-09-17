@@ -63,6 +63,70 @@ The push gates are an **anti-accident layer**, not a hard security boundary. The
 - `enforcement-guard-check.sh` verifies at session start that every manifest hook is still registered.
 - One registered hook is tooling rather than a rule enforcer and so carries no manifest entry: `build-cheatsheets.sh` regenerates docs on trusted-repo pushes and enforces no invariant. It still ships a fixture test (`hooks/tests/build-cheatsheets.test.sh`); any other tooling hook follows the same convention.
 
+## Doctor (install verification)
+
+`doctor.sh` is a standalone verifier for an installed harness end to end: it checks the checkout itself, not any one rule, so it carries no `manifest.json` entry and is not wired into `settings.json` as a registered hook. It follows the same tooling-script convention already established by `build-cheatsheets.sh` (see Components above): no manifest entry, but its own fixture suite is mandatory. `tests/doctor.test.sh` proves the contract, 37/37 at the time of writing, driven entirely against sandbox trees (`--root` and a sandboxed `HOME`) so it never reads or mutates the live `~/.claude` checkout or a real credential file.
+
+### Running it
+
+```
+bash enforce/doctor.sh              # fast: settings, hooks, environment
+bash enforce/doctor.sh --full       # adds both fixture suites
+bash enforce/doctor.sh --release    # implies --full, adds the publish gate
+bash enforce/doctor.sh --root <dir> # point at a specific checkout instead of two directories up from doctor.sh
+```
+
+Output is one line per check: `<verdict> <name>: <detail>`, verdict one of `pass`, `warn`, `fail`, `skipped`.
+
+### Checks (default mode; always run)
+
+| Check | Verdict semantics |
+|---|---|
+| `settings-parse` | `fail` when `claude/settings.json` is missing or fails to parse as JSON; `pass` when it parses. |
+| `settings-schema-keys` | `skipped` when the vendored schema is missing or unreadable. Otherwise every top-level key of `settings.json` (`$schema` excluded) is checked against the schema's declared `properties`: an unknown key not listed in `doctor-accepted-keys.txt` is `fail`, naming the key; an unknown key that is listed there is `warn`, naming the key; every key known is `pass`. |
+| `hook-registration` (verifier: `hooks/enforcement-guard-check.sh`) | `skipped` when that verifier is not installed at the live `~/.claude/hooks/`. Otherwise the verifier runs and doctor branches on its OUTPUT content, not its exit status, since both live verifiers always exit 0 even when they have a finding (the finding travels as `hookSpecificOutput.additionalContext` JSON, a plain-text verifier also tolerated): a nonzero exit is `fail`; any finding text is `warn`; no finding is `pass` ("clean"). Branching on content rather than exit status means a tampered or silently-broken verifier cannot read as clean by returning 0 with no output. |
+| `hook-integrity` (verifier: `hooks/hook-integrity-check.sh`) | Same verdict rules as `hook-registration`, against the integrity verifier instead of the registration verifier. |
+| `hook-executability` | `skipped` when the live `~/.claude/settings.json` is missing or unparseable. Otherwise every hook command it registers under `~/.claude/hooks/*.sh` is checked for the executable bit and a clean `bash -n` syntax parse; `fail` names every script that fails either check; `pass` when every registered hook is executable and syntax-clean. |
+| `deps` | `fail` naming whichever of `jq`, `node`, `git` is missing from `PATH`; `pass` when all three are present. |
+| `sandbox-availability` | `pass` on Darwin (Seatbelt is built in). On Linux, `pass` when both `bwrap` and `socat` are present, else `warn`. Any other OS is `warn`, naming the OS. |
+| `statusline` | `skipped` when the live settings carry no `statusLine.command`. Otherwise the configured command is fed a sample status payload; `fail` when it errors or prints nothing, `pass` showing the first line of its output otherwise. |
+| `port-freshness` | `skipped` when `translate/codex.mjs` is absent at the resolved root (this checkout does not carry the monorepo's translator). Otherwise runs `translate/codex.mjs --check --root <root>`; `fail` when it reports drift, `pass` when the codex port matches its sources. |
+
+### `--full` adds
+
+| Check | Verdict semantics |
+|---|---|
+| `fixture-suites` | Runs `enforce/tests/run-tests.sh` then `hooks/tests/run-tests.sh` in order. `skipped` when either path is missing from the resolved root (breaks out without running anything further). `fail` naming the first suite that comes back red (breaks out without running the second). `pass` ("both suites green") only when both suites ran and neither failed. |
+
+### `--release` adds (and implies `--full`)
+
+| Check | Verdict semantics |
+|---|---|
+| `release-blockers` | `fail` when `claude/ISSUES.md` contains the literal string `PENDING USER ACTION` (hardening spec B-4: a pending user action, such as a credential rotation or a transcript purge, stays first among release considerations until the user closes it out). `pass` when no such marker is present. Doctor cannot judge whether the pending action still matters; it only reports that `ISSUES.md` still marks one open. Closing the item means the human performs the action and then edits `ISSUES.md` to remove or reclassify the marker. |
+| `release-secret-scan` | `skipped` when no pattern file is found (see below). Otherwise builds the same shared pattern union `secret-scan.sh` uses, adds a rule scoped to the invoking machine's actual username in a `/Users/<user>` or `/home/<user>` path (not a blanket path match: a generic placeholder such as `/Users/alice` in docs or fixtures is allowed on purpose, the same convention `global-repo-push-guard.sh` already applies for R-106), then runs `git grep` across the tracked tree, excluding `enforce/secret-patterns.txt` itself since it legitimately contains the pattern text. `fail` names every tracked file with a hit; `pass` when the tree is clean. |
+
+### Exit contract
+
+`0` when nothing failed (warns and skips do not block); `1` when any check reports `fail`; `2` on a usage error (an unrecognized flag, or `--root` given no argument). `skipped` never counts toward readiness: it is tallied separately from `pass`/`warn`/`fail`, cannot by itself cause a nonzero exit, and never gets folded into `pass` so a check that could not run is never reported as one that succeeded.
+
+### The vendored schema: provenance and refresh
+
+`claude-code-settings.schema.json` is vendored from SchemaStore, a community-maintained JSON Schema catalog, at `https://json.schemastore.org/claude-code-settings.json`. As of 2026-09-17 there is no Anthropic-hosted schema for Claude Code settings; SchemaStore's community schema is the best available source and `doctor.sh` never fetches it at runtime, only reads the checked-in copy, so `settings-schema-keys` runs fully offline. Refresh it with:
+
+```
+curl -fsSL https://json.schemastore.org/claude-code-settings.json -o claude/enforce/claude-code-settings.schema.json
+```
+
+After refreshing, re-run `bash enforce/doctor.sh --root .` and read the `settings-schema-keys` line: a key that newly fails or newly warns means the vendored copy moved relative to `doctor-accepted-keys.txt`. Add a line to `doctor-accepted-keys.txt` for a key the refreshed schema still does not declare, with a comment explaining why it is real and intentional; drop a line once the refreshed schema declares that key itself, so a key silently removed from the upstream schema in a later refresh gets caught again rather than staying accepted forever on stale grounds.
+
+### The accepted-keys review contract
+
+`doctor-accepted-keys.txt` is a plain list, one settings key per line, of keys that are real and deliberate in this repo's `settings.json` but not yet declared by the vendored schema. Review the whole file every time the schema is refreshed (above) and every time a new key is added to `settings.json` ahead of the upstream schema catching up: a key present in both the file and the refreshed schema is redundant but harmless (it resolves through the schema check first and never reaches the accepted-list branch); a key present in the file but no longer used anywhere in `settings.json` should be removed so the file stays a record of live, deliberate exceptions rather than accumulated history.
+
+### Shared secret patterns (`secret-patterns.txt`)
+
+`enforce/secret-patterns.txt` is the single R-102 pattern source: one `grep -E` alternative per line, comments and blank lines stripped, joined with `|` by every consumer. `hooks/secret-scan.sh` reads it at hook time relative to its own location (`../enforce/secret-patterns.txt`); `doctor.sh --release`'s `release-secret-scan` reads the same file relative to `--root`, falling back to its own directory when the root tree does not carry a `claude/enforce/` copy. Both consumers fail closed rather than open when the file is missing or unreadable: `secret-scan.sh` falls back to an inline hardcoded copy of the same pattern set, documented in its own header, so the hook never goes blind; `release-secret-scan` reports `skipped` rather than treating "no scan ran" as a clean tree, and, per the exit contract above, a skipped check cannot pass the release gate on its own. Editing the shared file changes both consumers at once; `secret-scan.sh`'s inline fallback has no test enforcing it stays in sync with the shared file, so update it by eye in the same change.
+
 ## Adding a rule
 
 1. Add the one-line norm to `~/.claude/CLAUDE.md` and the full Spec block to `~/.claude/rulebook/reference.md`.
