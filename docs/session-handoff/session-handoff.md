@@ -1,46 +1,43 @@
-# Session Handoff: 2026-09-17 skills audit, remediation, and merge of main
+# Session handoff
 
-## 1. Last commit
+## Last commit
 
-- Branch `claude/intelligent-wozniak-gvgw7m`, last commit before the merge of `origin/main` (`6bc9b24`, the ticket-lifecycle workstream) is `10e88e3` fix(skills): repo-setup accepts an existing workflow and takes the required check name as --ci-context. The merge commit and a port regeneration follow it. PR #3 is open against `main`; squash merge per R-512 once CI is green.
-- The branch history was rewritten once: the commit that introduced `feedback-tool.test.sh` carried a fake `postgres://user:<password>@host` literal that GitGuardian flagged, so that commit was amended and the branch force-pushed. No real credential was ever involved.
+- `dd58b14` fix(hooks): the destroy class covers retire, and every document carrying R-105 matches the hook (on `claude/mcp-guard-tracker-exemption`)
+- This session ran in Claude Code on the web, container ephemeral. Every artifact below is pushed; nothing of value is local-only except the two items under Pending that say so.
 
-## 2. Production state
+## Production state
 
-- Both fixture suites green on the merged tree (67 enforce fixtures, 16 hook fixtures), `node translate/codex.mjs --check` current, `hook-hashes.txt` regenerated under main's wider contract (fixtures and npm manifests are hashed too, 183 entries).
-- The Codex `.gitignore` is now generated from the planned tree (main's change), so the hand-written allowlist lines this branch added were replaced by the renderer's output; skill support files are planned, so they are allowlisted automatically.
-- `./sync.sh` ran in this container only into throwaway targets (rsync installed with apt): every skill script arrives executable and both new hooks arrive. The live `~/.claude` on the maintainer's machine is untouched until `./sync.sh` runs there.
-- `repo-setup --check` has not run against this repository: the container has no `gh`. Running it here needs the maintainer's admin token on a machine with `gh`.
+- `main` is at `3138809` (PR #3, the skills audit). Three PRs open against it, none merged.
+- `main` now requires a pull request: a GitHub repository ruleset rejects direct pushes. The operator considers that over-broad and wants it scoped to the build-by-slice-require-review flow; nothing in the repo controls it, only Settings, Rules, Rulesets.
+- The llm-judge tier cannot run in this container (no `ANTHROPIC_API_KEY`, no secret-store entry), so three to four manifest rules fail open on every push.
+- `rsync` is absent from this container, so `sync.sh` dies at line 46 with a bare `127` and no diagnostic.
 
-## 3. Session metrics
+## Session metrics
 
-- Commits this session: 33 on the branch plus the merge
-- Files changed: 150 before the merge
-- Rework commits (file touched by 2+ commits): 41 (the skill files, their two port copies, the port manifest, and the hash manifest were each touched by several per-skill commits by design)
-- Velocity flag: NORMAL
+- Commits: 6 across four branches (1 on `ticket-lifecycle-skill-ourn3y`, 2 on `permissive-bash-permissions`, 2 on `mcp-guard-tracker-exemption`, 1 on `config-hardening-safety`).
+- Files changed: about 80, dominated by the 65-file Codex port regeneration.
+- Rework count: 3. One commit pushed without its staged files, one permission change that reopened two recorded holes, one guard whose PR body claimed a verb was covered when it was not.
+- Velocity flag: slow. Half the session went on correcting this session's own output rather than new work.
 
-## 4. What shipped
+## What shipped
 
-- **Audit** `docs/audits/2026-09-17-skills.md`: all 15 skills, two P1 cross-cutting findings, per-skill P2/P3 findings, 13 ranked script candidates, an implementation-status section.
-- **Guards**: `enforce/tests/skills-lint.test.sh`; `hooks/handoff-check.sh` (R-602 at write time, manifest entry, CLAUDE.md bracket); `spec-glossary-check.sh` extended to slice plans.
-- **Skill scripts, each with a fixture**: feature-create `scaffold.sh` (now with `--ticket`, writing the `**Ticket:**` line and the `Refs:` trailer main's R-605 asks for), spec-grounding `check.sh`, `tdd.sh validate <role>`, task-start `task-tier.sh`, task-cleanup `scan.sh`, `hooks/session-metrics.sh`, bug-hunt `dangling-refs.sh`, cleanup-specs-plans `inventory.sh`, documentation-create `prose-flags.sh`, protocol `section.sh`, resolve-user-feedback `feedback.mjs`, repo-setup `setup.sh` with `--ci-context`.
-- **Merge of main**: ticket-lifecycle integration folded into the rewritten feature-create, task-cleanup, and task-start; `hook-integrity-check.sh` keeps main's floors and refusal messages plus this branch's `skills/*/scripts/*` coverage; README counts refreshed (17 skills, 51 hooks, 83 fixtures).
-- **Cursor**: all 17 skill copies re-cloned with a "Cloned from" header; `cursor/hooks.json` registers `handoff-check`.
+- **PR #8**, `claude/ticket-lifecycle-skill-ourn3y`: the fifteen P2 and P3 findings from the 2026-09-17 engineering audit, merged with PR #3. Its new R-516 closure test caught #3's undeclared `handoff-check` enforcer on first contact. Also made `skills-lint` read the checkout instead of `~/.claude/skills`.
+- **PR #10**, `claude/permissive-bash-permissions`, ticket IAN-77: `Bash(bash *)`/`Bash(sh *)` leave the ask list, four asks on the inline form (`bash -c`, `sh -c`, `-lc` spellings) replace them, curated allow list untouched. `settings-change-guard.test.sh` gained invariant 5, which reads the checkout and fails against a blanket `Bash` allow or a missing interpreter ask.
+- **PR #11**, `claude/mcp-guard-tracker-exemption`, ticket IAN-78: R-105 exempts the private tracker's write class; `merge`, `submit`, `upload`, `apply`, the destroy and transmit classes, and every other server still ask. `retire`/`retract` added to the destroy class after review found `retire_issue_label` drew no decision at all. Rule text synchronized across `CLAUDE.md`, `reference.md`, the manifest note, the ticket-lifecycle skill, its design spec, and the Codex and Cursor copies.
+- **`claude/config-hardening-safety`**, ticket IAN-76, pushed but no PR: the tranche-1 plan at `docs/superpowers/plans/2026-09-17-config-hardening-tranche-1-safety.md`, grounded in probe results rather than the spec's prose.
+- Linear is configured as the tracker. Eight canonical states map onto six Linear statuses plus four existing labels; the nine canonical fields live in a description metadata block because Linear has no custom issue fields.
 
-## 5. Pending
+## Pending
 
-- **User, now (P0-2, unchanged since 2026-09-16)**: rotate the GitHub PAT and purge the transcripts named under PENDING USER ACTION in `claude/ISSUES.md`.
-- **User, now**: squash-merge PR #3 when the `enforce` check is green, then `./sync.sh` on the maintainer's machine. Editing any fixture now needs `hooks/hook-integrity-check.sh --update` in the same commit (main's contract).
-- **User, then**: `bash ~/.claude/skills/repo-setup/scripts/setup.sh nullvoidundefined/agent-governance --check --ci-context fixtures`, and apply what it reports; closes 2026-09-16 P1-2 (no branch protection). Needs an admin `gh` token.
-- **User, one command**: delete the four renamed leftovers from the live tree (`~/.claude/enforce/eslintOptions.mjs`, `renderLexiconSpec.mjs`, `resolveOutgoingBase.sh`, `~/.claude/hooks/single-file-folder-gate.sh`); `sync.sh` never deletes.
-- **User, before the ticket skill can do anything**: pick a tracker and copy `claude/TICKET-TRACKER.template.json` to `~/.claude/TICKET-TRACKER.json` (no ticket key exists for this session's work; the degraded path of R-605).
-- **Decision**: whether cloud sessions should run `sync.sh` into the container's `~/.claude` at SessionStart (rsync installs with apt there); see the session's closing message.
-- **P2**: the rest of the cursor port item in `claude/ISSUES.md` (rules, agents, commands, `PORT-STATUS.md`); the skills half is done.
-- **P3**: audit X-4 (which skills announce at start) is undecided; `/skill-doctor` has not been run; `$ARGUMENTS` substitution inside the protocol skill's `` ! `` block is unverified on the real build (an empty argument prints the whole file, the old behaviour).
+1. **PAT rotation and transcript purge (`claude/ISSUES.md:28`), operator action, blocks B-4 and the spec's `publishable` state.** Unchanged all session. No agent can close it.
+2. **Place `~/.claude/TICKET-TRACKER.json` on the operator's machine, 2 minutes.** It was written in this container, is gitignored by design (it carries the team id), and will die with the container. The file was sent to the operator in chat.
+3. **B-3, the open credential read path, effort: half a day.** `secret-scan.sh` enforces R-103 on the Bash path and not R-102 at all. Verified with synthetic paths: `cp .env /tmp/x` is denied, while `cat .env`, `base64 <key>`, `python3 -c "open(<key>).read()"`, `node -e "readFileSync(<creds>)"`, `curl -F file=@<creds>` and `curl --data-binary @<key>` all draw no decision. The eleven `Read(...)` deny rules bind only the `Read` tool. Slices 1 and 2 of the tranche-1 plan close it.
+4. **Three fixtures read `$HOME` instead of the checkout, effort: 2 hours.** `post-compact-rules` (reads a real tier ledger), `hook-hashes-closure` (reads the live tree), and the `HOOK` path in every `enforce/tests` fixture. They fail in a container for reasons no commit caused. Belongs with the tranche-2 doctor work.
+5. **Unaddressed PR #8 review findings, effort: 3 hours.** Copilot raised ten, several correct and untouched: the judge-liveness probe reports healthy from `secret-tool`/`pass` while `llm-rule-judge.sh` still resolves only `ANTHROPIC_API_KEY` or macOS `security`; `isRegistrationPorted` still uses `in` rather than an own-property check; the CLI computes `unexpected` and discards it, so the token is never named; both heredoc extractors reject a hyphenated delimiter and anchor the closing delimiter to end-of-command, so a chained `git commit -F - <<MSG ... MSG; git push` still bypasses R-403/R-505/R-506; `claude-md-lint` counts rule files before the exemption, so an effectively empty directory passes.
 
-## 6. Next session: read first
+## Next session
 
-- `docs/audits/2026-09-17-skills.md`, the Implementation status section last, then `docs/audits/2026-09-17-engineering.md` from main.
-- `git log --oneline 2cd9219..HEAD` (one commit per finding or script, then the merge).
-- `claude/enforce/tests/skills-lint.test.sh` before editing any skill, and `claude/enforce/tests/hook-hashes-closure.test.sh` before editing any hook or fixture.
-- `claude/skills/repo-setup/SKILL.md` before applying it anywhere; read the two rulesets' shape, `--required-reviews`, and `--ci-context`.
+1. Read `docs/superpowers/plans/2026-09-17-config-hardening-tranche-1-safety.md`, then `claude/hooks/secret-scan.sh` and `claude/enforce/tests/secret-scan.test.sh`. Start slice 1 on `claude/config-hardening-safety`: fixture first, proven RED, then the read denial. Ticket IAN-76.
+2. Before that, if the three PRs still sit open: read `claude/ISSUES.md:11` and `:69` before touching `claude/settings.json` for any reason. This session made a permission claim without reading them and was wrong.
+3. The PR watch subscriptions and the hourly check-in belonged to the web session and do not transfer. Re-subscribe or check the PRs by hand.
+4. For PR #8's findings, read `claude/hooks/commit-message-guard.sh:47` and `claude/hooks/fix-commit-requires-test.sh:89` together: both heredoc extractors share the same two defects.
