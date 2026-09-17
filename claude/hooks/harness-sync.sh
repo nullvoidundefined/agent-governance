@@ -50,13 +50,32 @@ if [ -z "$CHECKOUT" ]; then
   exit 0
 fi
 
-# Drift: any tracked claude/ file missing from or different in the live tree.
-drifted=0
-while IFS= read -r rel; do
-  [ -n "$rel" ] || continue
-  live="$LIVE/${rel#claude/}"
-  if [ ! -f "$live" ] || ! cmp -s "$CHECKOUT/$rel" "$live"; then drifted=$((drifted + 1)); fi
-done < <(git -C "$CHECKOUT" ls-files -- claude 2>/dev/null)
+# Drift: any tracked file of any synced payload missing from or different in
+# its live tree. ./sync.sh writes all three targets, but this check used to
+# compare claude/ alone, so a stale ~/.cursor or ~/.codex could never trigger
+# the sync that would repair it: a Cursor or Codex session kept running last
+# week's adapter and rules while a Claude session on the same machine was
+# current (2026-09-18, found while adding the project-local Cursor bootstrap).
+# Each payload's live home honors the same override variables sync.sh reads,
+# so a fixture can point all three at a sandbox.
+CURSOR_LIVE="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}"
+CODEX_LIVE="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}"
+
+# countDriftedPayloadFiles(payload, liveRoot): tracked files under <payload>/
+# in the checkout that are missing from liveRoot or differ from it.
+countDriftedPayloadFiles() {
+  local payload="$1" live_root="$2" rel live count=0
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    live="$live_root/${rel#"$payload"/}"
+    if [ ! -f "$live" ] || ! cmp -s "$CHECKOUT/$rel" "$live"; then count=$((count + 1)); fi
+  done < <(git -C "$CHECKOUT" ls-files -- "$payload" 2>/dev/null)
+  printf '%s' "$count"
+}
+
+drifted=$(countDriftedPayloadFiles claude "$LIVE")
+drifted=$((drifted + $(countDriftedPayloadFiles cursor "$CURSOR_LIVE")))
+drifted=$((drifted + $(countDriftedPayloadFiles codex "$CODEX_LIVE")))
 
 notes=()
 if [ "$drifted" -gt 0 ]; then
@@ -65,7 +84,7 @@ if [ "$drifted" -gt 0 ]; then
       (apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq rsync >/dev/null 2>&1) || true
     fi
     if ! command -v rsync >/dev/null 2>&1; then
-      say_context "harness-sync (R-003): the live ~/.claude differs from $CHECKOUT in $drifted tracked file(s), and rsync is not installed, so ./sync.sh cannot run. Install rsync and run ./sync.sh from the checkout before relying on any gate this session."
+      say_context "harness-sync (R-003): the live harness (~/.claude, ~/.cursor, ~/.codex) differs from $CHECKOUT in $drifted tracked file(s), and rsync is not installed, so ./sync.sh cannot run. Install rsync and run ./sync.sh from the checkout before relying on any gate this session."
       exit 0
     fi
     notes+=("rsync installed")
