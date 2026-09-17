@@ -177,12 +177,27 @@ else
   fi
 fi
 
-if [ -f "$ROOT_DIR/translate/codex.mjs" ]; then
-  if node "$ROOT_DIR/translate/codex.mjs" --check --root "$ROOT_DIR" >/dev/null 2>&1; then report pass port-freshness "codex port matches its sources"
-  else report fail port-freshness "translate/codex.mjs --check reports drift; run --write"; fi
-else
-  report skipped port-freshness "no translator at $ROOT_DIR/translate/codex.mjs"
-fi
+# check_port_freshness(target, relative-translator-path): reports one
+# port-freshness-<target> line, per target rather than one shared line, so a
+# stale cursor/ tree cannot hide behind a green codex check or vice versa.
+# pass when "<translator> --check" exits 0 against this ROOT_DIR; fail when
+# it reports drift (the fix is --write); skipped when this checkout carries
+# no translator at all (a legacy or live-copy layout).
+check_port_freshness() {
+  local target="$1" rel="$2" translator="$ROOT_DIR/$2"
+  if [ -f "$translator" ]; then
+    if node "$translator" --check --root "$ROOT_DIR" >/dev/null 2>&1; then
+      report pass "port-freshness-$target" "$target port matches its sources"
+    else
+      report fail "port-freshness-$target" "$rel --check reports drift; run --write"
+    fi
+  else
+    report skipped "port-freshness-$target" "no translator at $ROOT_DIR/$rel"
+  fi
+}
+
+check_port_freshness codex translate/codex.mjs
+check_port_freshness cursor translate/cursor.mjs
 
 # Task 5: --full fixture suites and the --release publish gate (B-4).
 if [ "$MODE_FULL" = 1 ]; then

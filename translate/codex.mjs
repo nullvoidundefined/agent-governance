@@ -2,11 +2,8 @@
 // codex.mjs: renders codex/'s generated files from their claude/ sources.
 // --write regenerates in place; --check exits 1 when the tree is behind.
 // Spec: claude/docs/superpowers/specs/2026-09-17-codex-translator-design.md
-import { fileURLToPath } from "node:url";
 import path from "node:path";
-import fs from "node:fs";
 import {
-  SourceError,
   splitFrontmatter,
   loadTextFile,
   loadSettingsHooks,
@@ -19,120 +16,30 @@ import { renderSkillCopy, renderSkillSupportFile } from "./render-codex-skills.m
 import { renderRulesDoc } from "./render-codex-rules.mjs";
 import { renderHooksConfig, renderPortStatus } from "./render-codex-hooks.mjs";
 import { renderGitignore } from "./render-codex-gitignore.mjs";
-import { buildManifest, MANIFEST_PATH } from "./build-manifest.mjs";
+import { buildManifest } from "./build-manifest.mjs";
+import {
+  writePlannedTree as writePlannedTreeCore,
+  checkPlannedTree as checkPlannedTreeCore,
+  claimPlannedPath,
+  MANIFEST_PATH,
+  listFilesWithExtension,
+  listSkillDirs,
+  makeMarkdownSourceLoader,
+  makeSkillSourceLoader,
+  runExporterCli,
+} from "./exporter-core.mjs";
 
-const CLI_USAGE = "usage: node translate/codex.mjs --write|--check [--root <repo-dir>]";
+const TARGET_SUBDIR = "codex";
+const USAGE = "usage: node translate/codex.mjs --write|--check [--root <repo-dir>]";
 
-// refuseCli(detail): the refusal every unusable argv resolves to, carrying the
-// usage line and, above it, what exactly was wrong. The offending token used to
-// be found and then discarded, so all four refusals printed the same generic
-// usage line and left the author guessing which of their arguments the
-// translator would not take (PR #8 review). The caller prints .error, exits 2,
-// and writes nothing.
-function refuseCli(detail) {
-  return { error: `codex.mjs: ${detail}\n${CLI_USAGE}` };
-}
+// loadMarkdownSource(file): codex's claude/agents/*.md loader, built from
+// the shared factory (exporter-core.mjs) closing over this file's own
+// splitFrontmatter/loadTextFile imports.
+const loadMarkdownSource = makeMarkdownSourceLoader(loadTextFile, splitFrontmatter);
 
-// parseCliMode(argv) -> { mode, rootDir } or the refuseCli shape. Never throws
-// and never half-parses: a caller that sees .error has a diagnostic to print
-// and nothing else to do.
-function parseCliMode(argv) {
-  const known = new Set(["--write", "--check", "--root"]);
-  const rootIndex = argv.indexOf("--root");
-  // Every token is accounted for, not just the `--`-prefixed ones. Filtering
-  // to `--` tokens meant a bare positional or a single-dash flag was silently
-  // discarded and rootDir fell back to this script's own repository, so
-  // `--check /some/other/tree` reported on the wrong tree and `--write` pruned
-  // orphans and emptied directories in the wrong one (2026-09-17 audit P2-1).
-  const rootValueIndex = rootIndex === -1 ? -1 : rootIndex + 1;
-  const unexpected = argv.find((token, index) =>
-    index !== rootValueIndex && !known.has(token));
-  if (unexpected !== undefined) {
-    return refuseCli(`unrecognized argument "${unexpected}"; the repository directory goes after --root and there are no positional arguments`);
-  }
-  const modes = argv.filter((f) => f === "--write" || f === "--check");
-  if (modes.length === 0) return refuseCli("no mode given; pass exactly one of --write or --check");
-  if (modes.length > 1) return refuseCli(`${modes.join(" and ")} cannot both be given; pass exactly one of --write or --check`);
-  if (rootIndex === -1) {
-    return { mode: modes[0].slice(2), rootDir: path.resolve(fileURLToPath(import.meta.url), "../..") };
-  }
-  // A bare --root (no following value, or the next token is itself a flag)
-  // is a usage error, not a crash: without this guard rootDir is undefined
-  // and every later path.join(undefined, ...) throws a TypeError.
-  const rootValue = argv[rootIndex + 1];
-  if (rootValue === undefined) return refuseCli("--root was given with no repository directory after it");
-  if (rootValue.startsWith("--")) return refuseCli(`--root was followed by the flag "${rootValue}" rather than a repository directory`);
-  return { mode: modes[0].slice(2), rootDir: rootValue };
-}
-
-function listFilesWithExtension(dir, extension) {
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((name) => name.endsWith(extension)).sort().map((name) => path.join(dir, name));
-}
-
-// listFilesRecursive(dir) -> sorted paths relative to dir, forward-slash
-// free (path.join keeps the platform separator, matched by callers that
-// also build their planned paths with path.join): every regular file under
-// dir, walked depth-first, dir itself omitted from each path.
-function listFilesRecursive(dir) {
-  if (!fs.existsSync(dir)) return [];
-  const found = [];
-  const walk = (subDir) => {
-    for (const entry of fs.readdirSync(path.join(dir, subDir), { withFileTypes: true })) {
-      const relPath = subDir ? path.join(subDir, entry.name) : entry.name;
-      if (entry.isDirectory()) walk(relPath);
-      else found.push(relPath);
-    }
-  };
-  walk("");
-  return found.sort();
-}
-
-// findOrphanFiles(rootDir, planned, portMap) -> sorted codex-relative paths:
-// every file on disk under <rootDir>/codex/ that renderPlannedTree did not
-// plan and the port map does not list as hand_authored. Generated output
-// whose claude/ source was deleted (an agent or skill file removed) leaves
-// exactly this kind of file behind; codex.mjs owns generated content
-// wholesale, so an orphan is always a defect, never intentional.
-function findOrphanFiles(rootDir, planned, portMap) {
-  const plannedPaths = new Set(planned.map((file) => file.path));
-  const handAuthoredPaths = new Set(portMap.hand_authored);
-  return listFilesRecursive(path.join(rootDir, "codex"))
-    .filter((relPath) => !plannedPaths.has(relPath) && !handAuthoredPaths.has(relPath));
-}
-
-function listSkillDirs(dir) {
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(dir, entry.name))
-    .sort();
-}
-
-function loadMarkdownSource(file) {
-  return { file, ...splitFrontmatter(loadTextFile(file), file) };
-}
-
-// loadSkillSource(skillDir): the skill's SKILL.md as a markdown source plus
-// supportFiles, every other file under the directory (scripts/, reference
-// material) as { rel, content, mode }, rel forward-slash separated relative
-// to the skill directory, content a Buffer (a script is copied byte for
-// byte, never decoded), mode the source's permission bits so an executable
-// stays executable in the port.
-function loadSkillSource(skillDir) {
-  const source = loadMarkdownSource(path.join(skillDir, "SKILL.md"));
-  const supportFiles = listFilesRecursive(skillDir)
-    .filter((rel) => rel !== "SKILL.md")
-    .map((rel) => {
-      const fullPath = path.join(skillDir, rel);
-      return {
-        rel: rel.split(path.sep).join("/"),
-        content: fs.readFileSync(fullPath),
-        mode: fs.statSync(fullPath).mode & 0o777,
-      };
-    });
-  return { ...source, supportFiles };
-}
+// loadSkillSource(skillDir): the skill's SKILL.md plus its bundled support
+// files, from the shared factory (exporter-core.mjs).
+const loadSkillSource = makeSkillSourceLoader(loadTextFile, splitFrontmatter);
 
 // Loads and validates every translator input under the given root: settings
 // hooks, the port map, the rule corpus, every agent, and every skill. Every
@@ -151,45 +58,34 @@ function loadSources(rootDir) {
 // codex-relative (the caller prefixes codex/). Agents render before skills,
 // each list already alphabetical (listFilesWithExtension/listSkillFiles
 // sort), so output is deterministic. Two source files racing to own one
-// codex/ path is a source defect, not a silent overwrite, so it is a
-// SourceError: two agents sharing a frontmatter name would both plan
-// agents/<name>.toml, and a skill.md whose name collides with an
-// agent-derived skill path would do the same under skills/<name>/SKILL.md.
+// codex/ path is a source defect, not a silent overwrite, so every path
+// whose target is derived from claude/ source content (rather than fixed by
+// this exporter's own file layout) goes through exporter-core's
+// claimPlannedPath, which throws a SourceError naming the offending source
+// the moment a second source claims a path the first already owns: two
+// agents sharing a frontmatter name would both plan agents/<name>.toml, and
+// a skill.md whose name collides with an agent-derived skill would do the
+// same under skills/<name>/SKILL.md. One Set spans the whole planned tree
+// (not one Set per file type), seeded with the three fixed-path renders
+// below, so an agent or skill colliding with one of those is caught the
+// same way (review round 1).
 function renderPlannedTree(sources) {
   const planned = [
     renderRulesDoc(sources.claudeMdText, sources.sessionTypesText, sources.settingsHooks, sources.portMap),
     renderHooksConfig(sources.settingsHooks, sources.portMap),
     renderPortStatus(sources.settingsHooks, sources.portMap),
   ];
-  const agentTomlPaths = new Set();
-  const skillPaths = new Set();
+  const seenPaths = new Set(planned.map((file) => file.path));
   for (const agent of sources.agents) {
-    const tomlFile = renderAgentToml(agent);
-    if (agentTomlPaths.has(tomlFile.path)) {
-      throw new SourceError(agent.file, `agent name collides with another agent at ${tomlFile.path}`);
-    }
-    agentTomlPaths.add(tomlFile.path);
-    planned.push(tomlFile);
+    planned.push(claimPlannedPath(seenPaths, agent.file, renderAgentToml(agent)));
     if (matchesAgentSkillList(agent.frontmatter.name, sources.portMap.agents_to_skills)) {
-      const rendered = renderAgentSkill(agent);
-      planned.push(rendered);
-      skillPaths.add(rendered.path);
+      planned.push(claimPlannedPath(seenPaths, agent.file, renderAgentSkill(agent)));
     }
   }
   for (const skill of sources.skills) {
-    const rendered = renderSkillCopy(skill);
-    if (skillPaths.has(rendered.path)) {
-      throw new SourceError(skill.file, `skill name collides with an agent-derived skill at ${rendered.path}`);
-    }
-    planned.push(rendered);
-    skillPaths.add(rendered.path);
+    planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillCopy(skill)));
     for (const supportFile of skill.supportFiles) {
-      const copied = renderSkillSupportFile(skill, supportFile);
-      if (skillPaths.has(copied.path)) {
-        throw new SourceError(skill.file, `skill support file collides with a planned path at ${copied.path}`);
-      }
-      planned.push(copied);
-      skillPaths.add(copied.path);
+      planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillSupportFile(skill, supportFile)));
     }
   }
   // The allowlist names every path git must track, so it is rendered once
@@ -202,43 +98,12 @@ function renderPlannedTree(sources) {
   return planned;
 }
 
-// removeEmptyDirectories(dir): deletes every directory under dir that holds
-// no files, deepest first, leaving dir itself in place. Unlinking an orphan
-// is only half of removing it: deleting a skill on the claude/ side orphans
-// codex/skills/<name>/SKILL.md, and the emptied directory it leaves behind is
-// invisible to git (which stores no empty directories) and to --check (which
-// compares files), so it would survive every later run unnoticed.
-function removeEmptyDirectories(dir) {
-  if (!fs.existsSync(dir)) return;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) removeEmptyDirectories(path.join(dir, entry.name));
-  }
-  if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
-}
-
-// Writes every planned file under <rootDir>/codex/. Renders the full tree
-// before writing the first file, so a render failure never leaves a partial
-// write on disk. Afterward it deletes every orphan and every directory the
-// deletions emptied (R-306/single-owner: this script owns generated content
-// wholesale, so a stale leftover from a deleted claude/ source is never left
-// for a human to notice by hand).
+// writePlannedTree(rootDir, planned, portMap): codex's writer. Target-
+// agnostic machinery (all-in-memory-then-write, mkdir -p, orphan removal,
+// summary line) lives in exporter-core; this delegates with codex's target
+// subdir and hand-authored list.
 function writePlannedTree(rootDir, planned, portMap) {
-  for (const file of planned) {
-    const fullPath = path.join(rootDir, "codex", file.path);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, file.content);
-    // A support file carries its source mode so a bundled script stays
-    // executable; --check compares content only, so a mode-only drift is
-    // repaired by the next --write rather than reported.
-    if (file.mode !== undefined) fs.chmodSync(fullPath, file.mode);
-  }
-  const orphans = findOrphanFiles(rootDir, planned, portMap);
-  for (const orphan of orphans) fs.unlinkSync(path.join(rootDir, "codex", orphan));
-  for (const entry of fs.readdirSync(path.join(rootDir, "codex"), { withFileTypes: true })) {
-    if (entry.isDirectory()) removeEmptyDirectories(path.join(rootDir, "codex", entry.name));
-  }
-  const removedClause = orphans.length > 0 ? `, removed ${orphans.length} orphans` : "";
-  console.log(`wrote ${planned.length} files${removedClause}`);
+  writePlannedTreeCore(rootDir, TARGET_SUBDIR, planned, portMap.hand_authored);
 }
 
 // findUnclassifiedHookNames(settingsHooks, portMap): hook names carrying at
@@ -287,36 +152,17 @@ function findRetiredHookNames(settingsHooks, portMap) {
 }
 
 // checkPlannedTree(rootDir, planned, sources) -> { lines, hasFailure }:
-// compares the rendered tree against disk and the port map's declarations
-// against settings.json, reading only, never writing. `lines` carries every
-// stale/unclassified/missing-hand-authored/orphaned/warning message, in that
-// order; `hasFailure` is true when any stale, unclassified, missing
-// hand-authored, or orphaned line fired (a retired-hook warning alone never
-// fails).
+// codex's checker. Target-agnostic machinery (stale/missing-hand-authored/
+// orphaned lines, reading only, never writing) lives in exporter-core; this
+// delegates for that, then layers codex's own hook-classification checks
+// (unclassified and retired hook names) on top, folding their failures into
+// the same hasFailure (a retired-hook warning alone never fails).
 function checkPlannedTree(rootDir, planned, sources) {
-  const lines = [];
-  let hasFailure = false;
-  for (const file of planned) {
-    const fullPath = path.join(rootDir, "codex", file.path);
-    let onDisk = null;
-    try { onDisk = fs.readFileSync(fullPath); } catch { onDisk = null; }
-    if (onDisk === null || !onDisk.equals(Buffer.from(file.content))) {
-      lines.push(`stale: ${file.path}`);
-      hasFailure = true;
-    }
-  }
+  const core = checkPlannedTreeCore(rootDir, TARGET_SUBDIR, planned, sources.portMap.hand_authored);
+  const lines = [...core.lines];
+  let hasFailure = core.hasFailure;
   for (const name of findUnclassifiedHookNames(sources.settingsHooks, sources.portMap)) {
     lines.push(`unclassified hook: ${name}`);
-    hasFailure = true;
-  }
-  for (const entry of sources.portMap.hand_authored) {
-    if (!fs.existsSync(path.join(rootDir, "codex", entry))) {
-      lines.push(`missing hand-authored file: ${entry}`);
-      hasFailure = true;
-    }
-  }
-  for (const orphan of findOrphanFiles(rootDir, planned, sources.portMap)) {
-    lines.push(`orphaned: ${orphan}`);
     hasFailure = true;
   }
   for (const name of findRetiredHookNames(sources.settingsHooks, sources.portMap)) {
@@ -325,28 +171,15 @@ function checkPlannedTree(rootDir, planned, sources) {
   return { lines, hasFailure };
 }
 
-const cli = parseCliMode(process.argv.slice(2));
-if (cli.error) {
-  console.error(cli.error);
-  process.exit(2);
-}
-
-let sources;
-let planned;
-try {
-  sources = loadSources(cli.rootDir);
-  planned = renderPlannedTree(sources);
-} catch (err) {
-  if (!(err instanceof SourceError)) throw err;
-  console.error(err.message);
-  process.exit(2);
-}
-
-if (cli.mode === "write") {
-  writePlannedTree(cli.rootDir, planned, sources.portMap);
-  process.exit(0);
-}
-
-const { lines, hasFailure } = checkPlannedTree(cli.rootDir, planned, sources);
-for (const line of lines) console.log(line);
-process.exit(hasFailure ? 1 : 0);
+// The shared runExporterCli epilogue (exporter-core.mjs, review I-3a) drives
+// this exporter's own loadSources/renderPlannedTree/checkPlannedTree
+// directly; writePlannedTree is wrapped since this module's own signature
+// takes portMap rather than the full sources object runExporterCli passes.
+runExporterCli(process.argv.slice(2), {
+  builderName: "codex.mjs",
+  usage: USAGE,
+  loadSources,
+  renderPlannedTree,
+  writePlannedTree: (rootDir, planned, sources) => writePlannedTree(rootDir, planned, sources.portMap),
+  checkPlannedTree,
+});

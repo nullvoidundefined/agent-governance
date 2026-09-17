@@ -1,5 +1,4 @@
 {
-  "builder": "translate/codex.mjs",
   "events": {
     "PreToolUse": "PreToolUse",
     "PostToolUse": "PostToolUse",
