@@ -29,10 +29,12 @@ const HEADER_LINES = [
   "# translate/cursor-port-map.json, then run: node translate/cursor.mjs --write",
   "#",
   "# An allowlist, not a denylist: everything under cursor/ is ignored, then every",
-  "# generated and hand-authored file is named back in. Anything a tool drops here",
-  "# on its own (local state, scratch, caches) stays untracked without having to be",
-  "# predicted, and a generated file can no longer go missing from git for want of",
-  "# a hand edit.",
+  "# generated and hand-authored file is named back in, so a generated file can no",
+  "# longer go missing from git for want of a hand edit. A file a tool drops here",
+  "# on its own stays untracked, but the next --write treats it as an orphan and",
+  "# DELETES it unless translate/cursor-port-map.json classifies its path (or its",
+  "# directory, with a trailing slash) runtime-only-ignored; keep undeclared",
+  "# scratch outside cursor/.",
 ];
 
 // ancestorDirsOf(filePath) -> every ancestor directory of filePath, each

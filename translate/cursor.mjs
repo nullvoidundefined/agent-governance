@@ -111,6 +111,25 @@ function loadSources(rootDir) {
   };
 }
 
+// handAuthoredPathsOf(portMap): the hand_authored object's paths whose class
+// is one of the two hand-authored B-9 classes. Runtime-only-ignored entries
+// live in the same object but are NOT hand-authored: they are never named
+// into the gitignore allowlist and never required to exist by --check.
+function handAuthoredPathsOf(portMap) {
+  return Object.entries(portMap.hand_authored)
+    .filter(([, cls]) => cls.startsWith("hand-authored"))
+    .map(([p]) => p);
+}
+
+// runtimeIgnoredPathsOf(portMap): the hand_authored object's paths classed
+// runtime-only-ignored: tool-dropped state the orphan sweep must leave in
+// place (an entry ending "/" covers the whole directory).
+function runtimeIgnoredPathsOf(portMap) {
+  return Object.entries(portMap.hand_authored)
+    .filter(([, cls]) => cls === "runtime-only-ignored")
+    .map(([p]) => p);
+}
+
 // buildManifestClassifications(planned, handAuthored) -> { path: class }:
 // "generated" for every planned path, and each hand-authored path's own
 // B-9 class from the port map's hand_authored object. Object.entries
@@ -186,7 +205,7 @@ function renderPlannedTree(sources) {
   // the manifest is built after this and is never a member of `planned`);
   // it is itself generated (study section 6 ruling), so it is pushed here
   // rather than added to the port map's hand-authored set.
-  planned.push(renderCursorGitignore(planned, Object.keys(sources.portMap.hand_authored)));
+  planned.push(renderCursorGitignore(planned, handAuthoredPathsOf(sources.portMap)));
   // The manifest hashes every other planned file (now including the
   // gitignore), so it is computed last, over exactly this list; it never
   // hashes itself.
@@ -201,7 +220,7 @@ function renderPlannedTree(sources) {
 // map's hand_authored is a path -> class object, unlike codex's flat
 // array, so its keys are what exporter-core's list-shaped parameter needs).
 function writePlannedTree(rootDir, planned, portMap) {
-  writePlannedTreeCore(rootDir, TARGET_SUBDIR, planned, Object.keys(portMap.hand_authored));
+  writePlannedTreeCore(rootDir, TARGET_SUBDIR, planned, handAuthoredPathsOf(portMap), runtimeIgnoredPathsOf(portMap));
 }
 
 // isRegistrationClassified(name, event, portMap): true when this specific
@@ -273,7 +292,7 @@ function findRetiredHookNames(settingsHooks, portMap) {
 // (unclassified and retired hook names) on top, folding their failures into
 // the same hasFailure (a retired-hook warning alone never fails).
 function checkPlannedTree(rootDir, planned, sources) {
-  const core = checkPlannedTreeCore(rootDir, TARGET_SUBDIR, planned, Object.keys(sources.portMap.hand_authored));
+  const core = checkPlannedTreeCore(rootDir, TARGET_SUBDIR, planned, handAuthoredPathsOf(sources.portMap), runtimeIgnoredPathsOf(sources.portMap));
   const lines = [...core.lines];
   let hasFailure = core.hasFailure;
   for (const name of findUnclassifiedHookNames(sources.settingsHooks, sources.portMap)) {

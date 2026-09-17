@@ -210,18 +210,32 @@ function listFilesRecursive(dir) {
   return found.sort();
 }
 
-// findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList) -> sorted
-// target-relative paths: every file on disk under <rootDir>/<targetSubdir>/
-// that the planned tree did not plan and handAuthoredList does not name.
+// isRuntimeIgnoredPath(relPath, runtimeIgnoredList): true when the port map
+// classifies this path runtime-only-ignored, either exactly or by directory
+// prefix (an entry ending "/" covers everything under it). Runtime state a
+// tool drops into the target tree survives the orphan sweep only when the
+// map declares it; an undeclared stray is still an orphan (PR #13 review:
+// the gitignore's blanket survive-anything promise was false, and the B-9
+// class existed in the manifest without ever reaching the sweep).
+function isRuntimeIgnoredPath(relPath, runtimeIgnoredList) {
+  return runtimeIgnoredList.some((entry) =>
+    entry.endsWith("/") ? relPath.startsWith(entry) : relPath === entry);
+}
+
+// findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList,
+// runtimeIgnoredList) -> sorted target-relative paths: every file on disk
+// under <rootDir>/<targetSubdir>/ that the planned tree did not plan,
+// handAuthoredList does not name, and runtimeIgnoredList does not cover.
 // Generated output whose claude/ source was deleted (an agent or skill file
 // removed) leaves exactly this kind of file behind; the exporter owns
 // generated content wholesale, so an orphan is always a defect, never
 // intentional.
-export function findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList) {
+export function findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList, runtimeIgnoredList = []) {
   const plannedPaths = new Set(planned.map((file) => file.path));
   const handAuthoredPaths = new Set(handAuthoredList);
   return listFilesRecursive(path.join(rootDir, targetSubdir))
-    .filter((relPath) => !plannedPaths.has(relPath) && !handAuthoredPaths.has(relPath));
+    .filter((relPath) => !plannedPaths.has(relPath) && !handAuthoredPaths.has(relPath)
+      && !isRuntimeIgnoredPath(relPath, runtimeIgnoredList));
 }
 
 // removeEmptyDirectories(dir): deletes every directory under dir that holds
@@ -248,7 +262,7 @@ function removeEmptyDirectories(dir) {
 // never left for a human to notice by hand), skipping anything named in
 // handAuthoredList so a human-edited file is never swept up as an orphan,
 // and removes any directories the deletions emptied.
-export function writePlannedTree(rootDir, targetSubdir, planned, handAuthoredList) {
+export function writePlannedTree(rootDir, targetSubdir, planned, handAuthoredList, runtimeIgnoredList = []) {
   for (const file of planned) {
     const fullPath = path.join(rootDir, targetSubdir, file.path);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -258,7 +272,7 @@ export function writePlannedTree(rootDir, targetSubdir, planned, handAuthoredLis
     // repaired by the next --write rather than reported.
     if (file.mode !== undefined) fs.chmodSync(fullPath, file.mode);
   }
-  const orphans = findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList);
+  const orphans = findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList, runtimeIgnoredList);
   for (const orphan of orphans) fs.unlinkSync(path.join(rootDir, targetSubdir, orphan));
   for (const entry of fs.readdirSync(path.join(rootDir, targetSubdir), { withFileTypes: true })) {
     if (entry.isDirectory()) removeEmptyDirectories(path.join(rootDir, targetSubdir, entry.name));
@@ -274,7 +288,7 @@ export function writePlannedTree(rootDir, targetSubdir, planned, handAuthoredLis
 // Target-specific checks (codex's hook-registration classification, for
 // instance) are not this function's job: the caller appends its own lines
 // and folds its own hasFailure in on top of this result.
-export function checkPlannedTree(rootDir, targetSubdir, planned, handAuthoredList) {
+export function checkPlannedTree(rootDir, targetSubdir, planned, handAuthoredList, runtimeIgnoredList = []) {
   const lines = [];
   let hasFailure = false;
   for (const file of planned) {
@@ -292,7 +306,7 @@ export function checkPlannedTree(rootDir, targetSubdir, planned, handAuthoredLis
       hasFailure = true;
     }
   }
-  for (const orphan of findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList)) {
+  for (const orphan of findOrphanFiles(rootDir, targetSubdir, planned, handAuthoredList, runtimeIgnoredList)) {
     lines.push(`orphaned: ${orphan}`);
     hasFailure = true;
   }

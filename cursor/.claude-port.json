@@ -3,8 +3,8 @@
   "builder_files": {
     "translate/build-manifest.mjs": "sha256:177d5a56a7c35991eb0291408269a01e10e88b3a9839aaa6d1f163501421a442",
     "translate/codex.mjs": "sha256:39bfae799843585320568633490cdaddce9f940532ac0c75e302ee7c8958be6e",
-    "translate/cursor.mjs": "sha256:5afae51c9322887304d6d97db473ada3ae9033f08ab1337ad1b645bf07fc61bd",
-    "translate/exporter-core.mjs": "sha256:5ce934d3e42c6ac4a6f6e26a41d06bbb6cb484d72a9328d43ce8be22d40df8d4",
+    "translate/cursor.mjs": "sha256:de436a86b0173dd35f3baa5758b2d3080cc90e65697550d01cbfd3afa7ef33f9",
+    "translate/exporter-core.mjs": "sha256:bb21a7fac18c8c17bb73e15dd8db7fe0b64258c0da0f1531b367eb589d285043",
     "translate/parse-sources.mjs": "sha256:34608907ddc2e8ea55b9e1648669fae359bc9272f15958835b02d7d86f2b0ccb",
     "translate/render-codex-agents.mjs": "sha256:88f503f9f1063fb514f6657b8707d3468c2c53c414150d5a6a25a25060f40d6b",
     "translate/render-codex-gitignore.mjs": "sha256:d0f1a0d030fff0536981ce1cac8f15be1b479de2b8f8a2453fecf031c1159c6e",
@@ -12,14 +12,14 @@
     "translate/render-codex-rules.mjs": "sha256:45e5facea13844c4f7043e6d9d9e805448630a63501344968ec0c7bf9ebbd7fd",
     "translate/render-codex-skills.mjs": "sha256:444fef4f04b07a9be1b44c3caa0e098487bf1c86c8614a1d3163e556fe9669e9",
     "translate/render-cursor-agents.mjs": "sha256:03819a8f05e70b21856ced07aa479f92dc3e95277a3ad168e4d1f7fe0c980a0e",
-    "translate/render-cursor-gitignore.mjs": "sha256:8803494c5a83c1da23f4dae729f1595464a5c84afe0aadb3fd2e607e204ee57d",
+    "translate/render-cursor-gitignore.mjs": "sha256:8b939eda4c504448ecd46d35aabc48c7633cf314906a46e2aaf356c12872e684",
     "translate/render-cursor-hooks.mjs": "sha256:57f70fd0bd00071624e30e5d1d124d9c4015d7727b260be3109d658f642b712f",
-    "translate/render-cursor-rules.mjs": "sha256:dcc046f11005ff1f783aa8e4c81625313494c9547a0a23f3b037b15c31e504f3",
+    "translate/render-cursor-rules.mjs": "sha256:dbdc55b1d4743b01de998c6185feb28a3cd185998becca89cae30d774853fce9",
     "translate/render-cursor-skills.mjs": "sha256:e4f81afc414adff3b7f70ae234d231c62fbd9a050991f792c1c0c2e75fb0942d",
     "translate/render-cursor-stack-rules.mjs": "sha256:45e956eec91b77b34794f4c7d86070fc63784ed506d1f42a25d2b11a9ee718c9"
   },
   "files": {
-    ".gitignore": "sha256:6b22c41fbfc5be6fa2dd690913769415b7e156953a26b8454e087f964ceeae91",
+    ".gitignore": "sha256:82a489e6b970adf5963aebaa1297bb0a2dd546b17f0621abb99920b2439d5121",
     "PORT-STATUS.md": "sha256:7bc3e8aa0bff06b210e4f32463294d87051c88ba95ba43cc5bd8cbb0436c133f",
     "agents/audit-criticism.md": "sha256:d2c130cb9ec0f35995a7aadb6786b0e5e0a176f91731df0dbc64a6dc7c1419cb",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",

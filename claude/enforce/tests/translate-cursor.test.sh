@@ -1100,6 +1100,62 @@ check "hand-authored path never flagged as orphan" \
 OUT=$(node "$TRANSLATOR" --write --root "$SRC" 2>&1); ST=$?
 check "write removes orphan" test ! -e "$SRC/cursor/rules/stale-rule.mdc"
 check "write summary reports removal count" grep -q "wrote .* files, removed 1 orphans" <<<"$OUT"
+
+# PR #13 review: the generated .gitignore promised that tool-dropped state
+# under cursor/ survives, while the orphan sweep deleted every unplanned
+# file. The B-9 class runtime-only-ignored now reaches the sweep: a declared
+# path (or directory, trailing slash) is neither flagged by --check nor
+# deleted by --write, and an undeclared stray is still an orphan.
+make_cursor_source_tree "$SRC"
+python3 - "$SRC/translate/cursor-port-map.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+data["hand_authored"][".cursor-cache/"] = "runtime-only-ignored"
+data["hand_authored"]["local-state.json"] = "runtime-only-ignored"
+with open(path, "w") as f:
+    json.dump(data, f)
+PY
+node "$TRANSLATOR" --write --root "$SRC" >/dev/null 2>&1
+mkdir -p "$SRC/cursor/.cursor-cache/sub"
+printf 'cache\n' >"$SRC/cursor/.cursor-cache/sub/blob.bin"
+printf '{}\n' >"$SRC/cursor/local-state.json"
+printf 'undeclared\n' >"$SRC/cursor/scratch-note.txt"
+OUT=$(node "$TRANSLATOR" --check --root "$SRC" 2>&1); ST=$?
+check "runtime-only-ignored directory is not flagged" \
+  test -z "$(grep 'orphaned: .cursor-cache' <<<"$OUT")"
+check "runtime-only-ignored file is not flagged" \
+  test -z "$(grep 'orphaned: local-state.json' <<<"$OUT")"
+check "undeclared stray is still an orphan" grep -q "orphaned: scratch-note.txt" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC" >/dev/null 2>&1
+check "write keeps the runtime-only-ignored directory" test -e "$SRC/cursor/.cursor-cache/sub/blob.bin"
+check "write keeps the runtime-only-ignored file" test -e "$SRC/cursor/local-state.json"
+check "write still deletes the undeclared stray" test ! -e "$SRC/cursor/scratch-note.txt"
+GITIGNORE_BODY=$(cat "$SRC/cursor/.gitignore")
+check "gitignore does not name runtime-only-ignored paths in the allowlist" \
+  test -z "$(grep '^!local-state.json' <<<"$GITIGNORE_BODY")"
+check "gitignore header states the orphan sweep" \
+  grep -q "runtime-only-ignored" <<<"$GITIGNORE_BODY"
+
+# PR #13 review: Class A descriptions were an unchecked lookup, so a removed
+# fixed key rendered the literal "undefined" into an always-on rule file.
+make_cursor_source_tree "$SRC"
+python3 - "$SRC/translate/cursor-port-map.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+del data["rule_descriptions"]["000-global-rules.mdc"]
+with open(path, "w") as f:
+    json.dump(data, f)
+PY
+OUT=$(node "$TRANSLATOR" --check --root "$SRC" 2>&1); ST=$?
+check "missing Class A description exits 2" test "$ST" -eq 2
+check "missing Class A description names the key" \
+  grep -q "rule_descriptions missing entry for 000-global-rules.mdc" <<<"$OUT"
+make_cursor_source_tree "$SRC"
+node "$TRANSLATOR" --write --root "$SRC" >/dev/null 2>&1
 node "$TRANSLATOR" --check --root "$SRC"; check "check clean after orphan removed" test $? -eq 0
 OUT=$(node "$TRANSLATOR" --write --root "$SRC" 2>&1)
 check "write summary omits removed clause when clean" test -z "$(grep 'removed' <<<"$OUT")"

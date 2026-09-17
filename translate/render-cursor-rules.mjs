@@ -22,7 +22,7 @@ const PORT_MAP_PATH = "translate/cursor-port-map.json";
 // rendered .mdc filename, empty globs (Class A rules are never path-
 // scoped), alwaysApply always true.
 function renderClassAFrontmatter(mdcName, portMap) {
-  const description = portMap.rule_descriptions[mdcName];
+  const description = requireRuleDescription(mdcName, portMap);
   return `---\ndescription: ${description}\nglobs:\nalwaysApply: true\n---\n`;
 }
 
