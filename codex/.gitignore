@@ -31,6 +31,8 @@
 !/hooks/
 !/hooks/codex-hook-adapter.sh
 !/skills/
+!/skills/add-stack-track/
+!/skills/add-stack-track/SKILL.md
 !/skills/all-hands/
 !/skills/all-hands/SKILL.md
 !/skills/audit-criticism/
