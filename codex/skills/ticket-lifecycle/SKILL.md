@@ -122,7 +122,7 @@ Tracker missing a canonical field (a Notion database without an `estimate_minute
 
 ## Confirmation posture
 
-Every write here is a `create`, `update`, `save`, `add`, or `comment` MCP call. R-105 was narrowed on 2026-09-17 so the private tracker's write class passes without a prompt, which is what makes advancing a ticket at every state change affordable; `hooks/mcp-action-guard.sh` still asks on a tracker call that lands code, submits for review, uploads, or applies, on anything the destroy or transmit classes match (`delete_comment`, `retire_issue_label`, `share_issue`), and on every other server. When it does ask, one call per confirmation: never batch several writes behind one prompt. A denial is a decision: do not re-ask for the same write in the same turn, and note in the close report that the ticket is behind the work. Never suppress the guard and never ask to bypass it (R-203).
+Every write here is a `create`, `update`, `save`, `add`, or `comment` MCP call. R-105 was narrowed on 2026-09-17 so the write class passes without a prompt on the Linear server alone, while a Notion, Jira, or Asana write still asks, which is what makes advancing a ticket at every state change affordable; `hooks/mcp-action-guard.sh` still asks on a tracker call that lands code, submits for review, uploads, or applies, on anything the destroy or transmit classes match (`delete_comment`, `retire_issue_label`, `share_issue`), and on every other server. When it does ask, one call per confirmation: never batch several writes behind one prompt. A denial is a decision: do not re-ask for the same write in the same turn, and note in the close report that the ticket is behind the work. Never suppress the guard and never ask to bypass it (R-203).
 
 A tracker failure (server down, auth expired, denial) never blocks the engineering work. Report the failed call, record the intended field set in the handoff doc, retry at the next lifecycle event.
 
@@ -141,4 +141,4 @@ A tracker failure (server down, auth expired, denial) never blocks the engineeri
 
 - **Called by:** task-start (`open`, `estimate`), feature-create (`advance` to `in-progress`), task-cleanup (`close`), the user directly (`report`, `estimate`)
 - **Composes with:** tdd-gated-dispatch (a slice opening is the `in-progress` event), superpowers:finishing-a-development-branch (the merge is the `done` event)
-- **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write), R-106 (nothing client-identifying in this repo)
+- **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write, except the Linear server's write class), R-106 (nothing client-identifying in this repo)

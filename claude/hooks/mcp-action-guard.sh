@@ -5,8 +5,8 @@
 # tool. This hook asks before any MCP call whose action names a mutating or
 # transmitting verb, and stays silent on the read-only majority (get, list,
 # search, read, fetch, query, download). Two servers are exempt: the browser,
-# whose tab actions carry their own site permission model, and the private
-# tracker for the write class only, narrowed by the operator on 2026-09-17 and
+# whose tab actions carry their own site permission model, and the Linear
+# server for the write class only, narrowed by the operator on 2026-09-17 and
 # documented at the case below, which is why some mutating calls are silent.
 #
 # Ask, never deny: R-105 wants explicit confirmation, not prohibition. Choosing
@@ -51,7 +51,7 @@ for token in $(printf '%s' "$ACTION" | tr '_' ' '); do
 done
 [ -z "$REASON" ] && exit 0
 
-# The operator narrowed R-105 for the private tracker on 2026-09-17: the
+# The operator narrowed R-105 for the Linear server on 2026-09-17: the
 # ticket-lifecycle skill writes at every state change, so a confirmation
 # landed every few minutes, and each one bought little, because the tracker is
 # private to the operator and a wrong field is editable in place. The narrowing

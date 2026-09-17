@@ -2,7 +2,7 @@
   "builder": "translate/codex.mjs",
   "files": {
     ".gitignore": "sha256:582af03a2a1193af52c78a20c68065f19512e709860c60ca81c9837613d09d2c",
-    "AGENTS.md": "sha256:c743b50d20cd6418216aee5a95cad896b5e6887405033994841ad74ef46d7ddc",
+    "AGENTS.md": "sha256:260f41731458081a83f158729a1514cb7e6ec052d321ff9627b15cd171767455",
     "PORT-STATUS.md": "sha256:9bd4597f250f590bf83edbf4a0fc5169cb5081e5d38b06acebaffffdcc8c38bc",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
@@ -64,7 +64,7 @@
     "skills/task-start/SKILL.md": "sha256:e06165cf390031fffb4415b27263a713e513eb5f1f4538fbecc609657de74dff",
     "skills/task-start/scripts/task-tier.sh": "sha256:9ab69338da21a8c9363803bca2e27489f343cd2cfca9ca8a7777f52cd0adf2ae",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:98b8ebf05c3d0910195c6e25af545a9c8818a7efee7dbd54b06e323ad7fce5af",
-    "skills/ticket-lifecycle/SKILL.md": "sha256:161ff15412cf87a9021a5929d8c5e9cd96a4b007340c5d9e61543553436959ef"
+    "skills/ticket-lifecycle/SKILL.md": "sha256:3858e70eff7e4d6b4604f4c97a9152cc947918be113739dd3c9e500c6e6b9197"
   },
   "hand_authored": [
     "hooks/codex-hook-adapter.sh",

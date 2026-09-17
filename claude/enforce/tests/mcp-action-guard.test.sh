@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies mcp-action-guard.sh asks on mutating and transmitting MCP calls (R-105)
 # and stays silent on read-only ones, on non-MCP tools, on the browser server, and on
-# private-tracker writes, while still asking when a tracker call lands code,
+# Linear-server writes, while still asking when a tracker call lands code,
 # destroys state, or transmits outward.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/mcp-action-guard.sh"
