@@ -14,7 +14,7 @@
 - GitHub rulesets: `require-pr-squash` (23599560) requires a PR and squash on `main` and `feat/python-vue-conventions` (direct pushes to the slice branch are blocked; docs ride in PR branches). `copilot-review-all-branches` (23605283) targets all branches with the independent `copilot_code_review` rule, `review_on_push` true, so every push gets an automatic Copilot pass; the older `automatic_copilot_code_review_enabled` parameter on the pull-request rule is silently dropped by the REST API and absent from GraphQL, so never use it. Standing rule from the owner, recorded in project memory and slice 02 PR 3: after opening a PR, poll for Copilot's review, verify each comment, fix the valid ones, reply to the rest, resolve threads with the SHA; two rounds cap.
 - Open PRs at handoff time: PR #4 (slice 01 PR 2, frontend core split, Copilot round 1 fixed in a57a0a1) and PR #6 (chore against `main`: mcp-action-guard pre-authorizes the active tracker's tools from `TICKET-TRACKER.json`, fails closed on malformed configs, Copilot round 1 fixed in 8bda0f2). Both await Gate 2. After PR #6 merges, `./sync.sh` from a checkout at that commit ends the per-ticket prompts.
 - Worktrees: `agent-governance-conventions` (chore branch checked out) and `agent-governance-pr4` (slice 01 PR 2 branch).
-- Codex test authoring works with two conditions found this session: `codex exec` needs stdin closed (`</dev/null`) or it waits for more input, and `gpt-5.1-codex-mini` (the model R-907 in cost.md names) is rejected on the ChatGPT-login account; omit `-m`. Both go into slice 02.
+- Codex test authoring: `codex exec` needs stdin closed (`</dev/null`) and no `-m` (the cost.md model is rejected on this account); fix queued for slice 02.
 
 ## 3. What shipped
 
@@ -22,13 +22,13 @@
 - Docs: `claude/docs/superpowers/specs/2026-09-17-python-vue-convention-tracks-design.md`; `docs/slices/slice-01-python-vue-conventions.md`; `claude/docs/superpowers/specs/2026-09-17-application-baseline-design.md` (slice 02: R-347, R-413, R-421 to R-426, Testing and Evals spec headings enforced by `spec-glossary-check.sh`, build-skill pointers).
 - Code: `claude/skills/add-stack-track/SKILL.md`; the invariant test above, codex-authored, with a comment block above every function per the owner's new rule (proposed R-333, slice 02 PR 4).
 - Slice 02 plan `docs/slices/slice-02-application-baseline.md` (four PRs: rules, spec template and hook, skill pointers plus ticket-lifecycle Linear row plus a new `repo-setup` skill, R-333) awaiting spec review then Gate 1.
-- Research distilled into the specs and the Voyager 2.0 project memory (raw agent reports not persisted): template-express-next inventory, Voyager 1.0 eval-harness audit, LangGraph eval practice.
+- Research distilled into the specs and project memory: template-express-next inventory, Voyager 1.0 eval audit, LangGraph eval practice.
 - Project memories (voyager_2.0 project dir): workstreams, testing bar, database reuse, answer tiles, no deprecated tools, codex procedure, Copilot loop, function comment blocks.
 
 ## 4. Pending, by urgency
 
 - P1: Gate 2 for PR #4 (slice 01 PR 2) and PR #6 (guard chore, against `main`). After each merge: verify landing with `git log`, close the ticket with actuals (IAN-75 for PR #4). PR #2 merged 2026-09-17 as 7d85293; IAN-73 closed, ratio 3.7.
-- P1: Sync `origin/main` into live `~/.claude` to clear the three drift failures and the integrity warning. About 5 minutes, owner's checkout.
+- Live `~/.claude` is synced by the other session from local `main` at c29bce9 (ahead of origin); never sync from a 6bc9b24-era checkout. The slice branch is based on 6bc9b24 and must be reconciled with `main` once c29bce9 is on origin, before slice 01 PR 7; expect conflicts in hook-hashes, README, reference.md, and skills, plus new checks (skills-lint needs a Cursor clone per skill, translate/cursor.mjs --check once it lands).
 - P2: Re-apply `automatic_copilot_code_review_enabled` on ruleset 23599560 now that Copilot is active, and verify the parameter persists. About 5 minutes.
 - P2: Owner review of the slice 02 spec, then Gate 1 on its slice plan (written, four PRs).
 - P2: Add a Linear row to the ticket-lifecycle skill's provider table and the project-per-repository rule; fold into slice 02 PR 3 or a `chore(skills)` PR. About 20 minutes.
