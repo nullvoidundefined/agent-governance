@@ -29,6 +29,9 @@
 #
 # Usage: setup.sh <owner/repo> [--check] [--stack node|python|go|ruby]
 #                 [--branches main,staging] [--required-reviews N]
+#                 [--ci-context <check name>]   (default ci; the name of the
+#                 status check protect-merge requires, for a repository whose
+#                 workflow already exists under another job name)
 # Run from the repository's checkout (local files are written there).
 # REPO_SETUP_GH_CMD overrides the gh binary (fixtures stub it).
 # Exit: 0 baseline met (or applied); 1 with --check when any item is missing;
@@ -37,13 +40,14 @@ set -uo pipefail
 
 GH="${REPO_SETUP_GH_CMD:-gh}"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0
+REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK=1; shift ;;
     --stack) STACK="${2:-}"; shift 2 ;;
     --branches) BRANCHES="${2:-}"; shift 2 ;;
     --required-reviews) REVIEWS="${2:-0}"; shift 2 ;;
+    --ci-context) CI_CONTEXT="${2:-ci}"; shift 2 ;;
     --*) echo "repo-setup: unknown option $1" >&2; exit 2 ;;
     *) REPO="$1"; shift ;;
   esac
@@ -51,7 +55,7 @@ done
 if [ -z "$REPO" ]; then
   REPO=$("$GH" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
 fi
-printf '%s' "$REPO" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || { echo "usage: setup.sh <owner/repo> [--check] [--stack s] [--branches a,b] [--required-reviews N]" >&2; exit 2; }
+printf '%s' "$REPO" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || { echo "usage: setup.sh <owner/repo> [--check] [--stack s] [--branches a,b] [--required-reviews N] [--ci-context name]" >&2; exit 2; }
 OWNER="${REPO%%/*}"
 command -v "$GH" >/dev/null 2>&1 || { echo "repo-setup: gh is not installed" >&2; exit 3; }
 "$GH" auth status >/dev/null 2>&1 || { echo "repo-setup: gh is not authenticated (gh auth login)" >&2; exit 3; }
@@ -86,7 +90,16 @@ write_if_absent() { # <path> <template> [sed expr]
     report "$4" MISSING "$path absent"
   fi
 }
-write_if_absent .github/workflows/ci.yml "template-ci-$STACK.yml" "" ci
+# A repository that already runs CI under another file name (this repo's
+# enforce.yml, job "fixtures") satisfies the item; the template is written
+# only when no workflow exists at all, and --ci-context names the check the
+# protect-merge ruleset requires.
+existing_workflows=$(ls .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null | tr '\n' ' ' || true)
+if [ -n "$existing_workflows" ]; then
+  report ci OK "workflow present: ${existing_workflows% }; ruleset requires check '$CI_CONTEXT'"
+else
+  write_if_absent .github/workflows/ci.yml "template-ci-$STACK.yml" "" ci
+fi
 write_if_absent .github/dependabot.yml template-dependabot.yml "s/__ECOSYSTEM__/$ECOSYSTEM/" dependabot
 write_if_absent .github/pull_request_template.md template-pull-request.md "" pr-template
 write_if_absent .gitignore "template-gitignore-$STACK" "" gitignore
@@ -125,7 +138,7 @@ ensure_ruleset() { # <name> <json>
   fi
 }
 ensure_ruleset protect-refs "{\"name\":\"protect-refs\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[],\"conditions\":{\"ref_name\":{\"include\":[$refs_json],\"exclude\":[]}},\"rules\":[{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"}]}"
-ensure_ruleset protect-merge "{\"name\":\"protect-merge\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[{\"actor_id\":5,\"actor_type\":\"RepositoryRole\",\"bypass_mode\":\"always\"}],\"conditions\":{\"ref_name\":{\"include\":[$refs_json],\"exclude\":[]}},\"rules\":[{\"type\":\"pull_request\",\"parameters\":{\"required_approving_review_count\":$REVIEWS,\"dismiss_stale_reviews_on_push\":true,\"require_code_owner_review\":false,\"require_last_push_approval\":false,\"required_review_thread_resolution\":true}},{\"type\":\"required_status_checks\",\"parameters\":{\"strict_required_status_checks_policy\":true,\"required_status_checks\":[{\"context\":\"ci\"}]}}]}"
+ensure_ruleset protect-merge "{\"name\":\"protect-merge\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[{\"actor_id\":5,\"actor_type\":\"RepositoryRole\",\"bypass_mode\":\"always\"}],\"conditions\":{\"ref_name\":{\"include\":[$refs_json],\"exclude\":[]}},\"rules\":[{\"type\":\"pull_request\",\"parameters\":{\"required_approving_review_count\":$REVIEWS,\"dismiss_stale_reviews_on_push\":true,\"require_code_owner_review\":false,\"require_last_push_approval\":false,\"required_review_thread_resolution\":true}},{\"type\":\"required_status_checks\",\"parameters\":{\"strict_required_status_checks_policy\":true,\"required_status_checks\":[{\"context\":\"$CI_CONTEXT\"}]}}]}"
 
 # --- merge policy --------------------------------------------------------------
 policy=$("$GH" api "repos/$REPO" --jq '[.allow_squash_merge, .allow_merge_commit, .allow_rebase_merge, .delete_branch_on_merge, .allow_auto_merge] | map(tostring) | join(",")' 2>/dev/null || echo "")

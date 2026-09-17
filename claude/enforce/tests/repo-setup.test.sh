@@ -111,6 +111,17 @@ check "python stack detected: ruff in ci" grep -q 'ruff check' "$REPO2/.github/w
 check "python stack: pip ecosystem" grep -q 'package-ecosystem: pip' "$REPO2/.github/dependabot.yml"
 check "required reviews honoured" jqe '.rules[] | select(.type=="pull_request") | .parameters.required_approving_review_count == 2' "$STUB_STATE/ruleset-protect-merge.json"
 
+# 5b. A repository with its own workflow under another name keeps it, and
+#     --ci-context names the check the ruleset requires.
+REPO3="$SB/existing"; mkdir -p "$REPO3/.github/workflows"; git -C "$REPO3" init -q -b main
+rm -f "$STUB_STATE/rulesets" "$STUB_STATE"/ruleset-*.json
+printf 'name: enforce\njobs:\n  fixtures:\n    runs-on: ubuntu-latest\n' > "$REPO3/.github/workflows/enforce.yml"
+OUT=$(cd "$REPO3" && bash "$SETUP" acme/widget --ci-context fixtures 2>&1)
+check "existing workflow satisfies ci" row ci OK
+check "existing workflow named in the report" bash -c "printf '%s' \"\$0\" | grep -q 'workflow present: .github/workflows/enforce.yml'" "$OUT"
+check "no ci.yml written beside an existing workflow" test ! -e "$REPO3/.github/workflows/ci.yml"
+check "ci-context honoured in the ruleset" jqe '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[0].context == "fixtures"' "$STUB_STATE/ruleset-protect-merge.json"
+
 # 6. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?
 check "bad repo name is a usage error" test "$ST" -eq 2

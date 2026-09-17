@@ -28,7 +28,7 @@ Bring a GitHub repository to the baseline every project starts from, or audit on
 | `secret-scan` | Secret scanning and push protection on | A pushed credential is blocked at the push, not found in an audit |
 | `greptile` | The Greptile GitHub App installed for the owner | AI review on every PR; the API cannot install an app, so the script reports the install link |
 
-`--required-reviews N` adds N required approvals to `protect-merge`; the default is 0 because a solo maintainer cannot approve their own PR and would be locked out. Pass 1 or more for a team.
+`--required-reviews N` adds N required approvals to `protect-merge`; the default is 0 because a solo maintainer cannot approve their own PR and would be locked out. Pass 1 or more for a team. A repository that already runs CI under another workflow file satisfies the `ci` item as it is; pass `--ci-context <job name>` so `protect-merge` requires the check that workflow actually reports (this repository's `enforce.yml` reports `fixtures`).
 
 ## Procedure
 
