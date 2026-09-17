@@ -25,6 +25,16 @@ R-001: Run the session-start procedure before any other work.
 R-002: Load the shared context files mandated by R-001 at session start; run steps in parallel where possible.
   Enforcement: manual
 
+R-003: Run every session under the synced harness; no session runs bare.
+  Scope: every Claude Code session, local or remote (Claude Code on the web), in every project; the Cursor and Codex ports through their adapters.
+  Spec:
+  - At SessionStart, `hooks/harness-sync.sh` finds the agent-governance checkout (its argument, then the `~/.claude/.sync-source` stamp `sync.sh` writes, then `$CLAUDE_PROJECT_DIR` when that is the harness repo) and compares every tracked `claude/` file against the live `~/.claude`; any missing or different file runs `./sync.sh`, and `enforce/node_modules` is installed with npm when absent so the ESLint push gates can run.
+  - `rsync` is installed with apt when absent in a remote session; a laptop without it is told to install it and run `./sync.sh` by hand.
+  - Bootstrap in a remote session: a cloud container starts with no `~/.claude` at all, so the user-level registration cannot fire. The agent-governance repository carries a repo-level `.claude/settings.json` that runs `harness-sync.sh` with `$CLAUDE_PROJECT_DIR`; every other repository carries `.claude/hooks/harness-bootstrap.sh`, written by the `repo-setup` skill, which clones the agent-governance repository into the container and runs the same hook.
+  - A session that reaches no checkout says so once (remote only; silent locally, where the harness is already installed) and treats every rule as manual for that session. Tracking degrades loudly, never silently.
+  - The sync never deletes (sync.sh's own rule); hooks registered by the synced `settings.json` apply from the next tool call, the rules apply at once.
+  Enforcement: hook:harness-sync (SessionStart, first in the chain, advisory: syncs or reports; fixture `hooks/tests/harness-sync.test.sh`); the repo-level bootstrap is installed by `repo-setup` (its `harness` item, `--check` reports a repository without it)
+
 ## Secrets and trust (R-1xx)
 
 R-101: Never run destructive data-loss actions against production; a human must run them manually.
