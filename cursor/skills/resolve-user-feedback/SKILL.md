@@ -1,6 +1,7 @@
 ---
 name: resolve-user-feedback
 description: Use when the user wants to triage or address accumulated user-submitted feature requests and bug reports held in an application feedback table.
+disable-model-invocation: true
 ---
 <!-- Cloned from claude/skills/resolve-user-feedback/SKILL.md. Do not edit here; change the source and re-copy; enforce/tests/skills-lint.test.sh fails when this copy drifts. -->
 
@@ -52,7 +53,7 @@ Present the classification to the user and ask which entries to include. Default
 
 ### Step 3: Investigate root causes
 
-For each actionable entry, dispatch parallel Explore agents (Sonnet model) to investigate:
+For each actionable entry, dispatch parallel Explore agents (Sonnet model) to investigate, sending one as a canary first and fanning out only after it returns clean (R-703):
 
 - Trace the user's described action through the codebase
 - Identify the specific files, functions, and lines involved
@@ -89,7 +90,7 @@ Follow project conventions:
 
 ### Step 6: Mark entries as closed
 
-After all fixes pass tests, update the database:
+After all fixes pass tests, update the database. This is a write to a managed or remote database, so R-101 applies: name the target host and the ids about to close, and get explicit confirmation in the current turn before running it (`destructive-db-guard` classifies DELETE and DROP, not UPDATE, so nothing mechanical asks for you).
 
 ```sql
 UPDATE app_feedback
@@ -102,17 +103,14 @@ Only close entries whose fixes are verified. Leave aspirational/skipped entries 
 
 ### Step 7: Commit
 
-Commit all changes together with a descriptive message:
+One commit per feedback ID (R-505; R-403 commits each bug's test and fix together), with the ID as the scope:
 
 ```
-fix: address N user feedback items (bugs and feature requests)
-
-- FB-XX: one-line summary
-- FB-XX: one-line summary
-...
+fix(FB-12): <one-line summary of the fix>
+feat(FB-15): <one-line summary of the feature>
 ```
 
-Include the spec file in the commit.
+Include the spec file in the first commit of the batch. Never fold N fixes into one `fix: address N user feedback items` commit: the guard counts triage IDs in the scope, and a scopeless subject hides the IDs from it.
 
 ## Model Routing
 
