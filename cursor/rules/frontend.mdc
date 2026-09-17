@@ -1,5 +1,5 @@
 ---
-description: Framework-agnostic frontend conventions - directory vocabulary, API calls, error handling, formatting. Auto-attached to shared client source trees; component syntax and state primitives live in the framework files.
+description: Shared React client conventions - components, features, state, hooks, api wrappers. Auto-attached to .tsx files and client source trees.
 globs: **/src/components/**,**/src/features/**,**/src/state/**,**/src/hooks/**,**/src/api/**,**/app/components/**,**/app/composables/**,**/app/stores/**
 alwaysApply: false
 ---
