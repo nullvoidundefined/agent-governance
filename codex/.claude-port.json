@@ -41,7 +41,7 @@
     "skills/structure-conventions/SKILL.md": "sha256:bab12655c787e52cb10d940c8a99c028a7220f933f02c8f1559f47b06fc90e70",
     "skills/task-cleanup/SKILL.md": "sha256:922a129f59f07aa57adcef02397e64382e774fcbfbc40ae95eaad8fa6e71d9dd",
     "skills/task-start/SKILL.md": "sha256:f9b662942dad610772e965e6f1c46d5fb5d3a5ee60a78ea93339087c8d8ee259",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:22f70d7185fc27233d735238e905d70fa35c7eb06fe89334d35717dae73fa4e7"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:1cba2e493037bb6a604569465d0b62c1bc43f7ac67a77109f26c84d1a655a711"
   },
   "hand_authored": [
     "hooks/codex-hook-adapter.sh",
