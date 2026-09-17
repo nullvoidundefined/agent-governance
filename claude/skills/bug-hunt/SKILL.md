@@ -44,7 +44,13 @@ Run `node ~/.claude/enforce/lint.mjs <changed files>` before reading anything: R
    - Type safety gaps (unsafe casts, `any` usage)
    - Test coverage gaps (new code paths without tests)
 
-4. **Cross-reference.** Check if deleted files are still imported elsewhere. Check if new exports are consumed correctly.
+4. **Cross-reference.** Run the deterministic half first; it resolves the range the same way step 1 does and greps the tree for every import specifier that still names a file the range deleted or renamed:
+
+```bash
+bash ~/.claude/skills/bug-hunt/scripts/dangling-refs.sh [<range>]
+```
+
+Each `DANGLING:` line is a finding with its `file:line` already attached. Then check by hand what the grep cannot decide: whether new exports are consumed correctly.
 
 5. **Report findings.** The report goes to the conversation, not to `docs/audits/`; this is a diff-level tool, not an R-802 audit role. Use this format:
 
