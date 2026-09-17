@@ -97,7 +97,14 @@ has_section "Non-goals" || fail 'missing "## Non-goals" section'
 # 6. Only the spec changed.
 if [ "$CHECK_GIT" -eq 1 ]; then
   if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    spec_rel=$(realpath --relative-to="$ROOT" "$SPEC" 2>/dev/null || python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$SPEC" "$ROOT")
+    # $ROOT is fully symlink-resolved (git rev-parse --show-toplevel does
+    # that), so $SPEC must be too before the relative path is computed: on
+    # macOS a spec under /tmp/... (-> /private/tmp/...) otherwise looks like
+    # it sits outside $ROOT entirely, and the spec itself shows up in
+    # "others" as if it were some other file, failing invariant 6 on every
+    # grounded spec.
+    spec_real=$(realpath "$SPEC" 2>/dev/null || python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SPEC")
+    spec_rel=$(realpath --relative-to="$ROOT" "$spec_real" 2>/dev/null || python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$spec_real" "$ROOT")
     others=$(git -C "$ROOT" status --porcelain --untracked-files=all | awk '{print $NF}' | grep -vxF "$spec_rel" || true)
     [ -z "$others" ] || fail "files other than the spec are modified or untracked: $(printf '%s' "$others" | tr '\n' ' ')"
   else
