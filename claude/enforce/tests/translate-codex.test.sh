@@ -269,8 +269,8 @@ check "hooks.json ends with newline" hooksJsonEndsWithNewline
 
 PS="$SRC/codex/PORT-STATUS.md"
 check "PORT-STATUS.md exists" test -f "$PS"
-check "port-status row per registration" grep -q '\`alpha-guard\`' "$PS"
-check "ported row names event and matcher" grep -q 'ported: \`PreToolUse\` (matcher \`Bash\`)' "$PS"
+check "port-status row per registration" grep -q '`alpha-guard`' "$PS"
+check "ported row names event and matcher" grep -q 'ported: `PreToolUse` (matcher `Bash`)' "$PS"
 check "unported row carries reason" grep -q 'not ported: ConfigChange is a Claude Code event; sandbox stub reason.' "$PS"
 check "counts derived line present" grep -qE '^[0-9]+ of [0-9]+ hook registrations port, across [0-9]+ Codex events\.' "$PS"
 check "counts derived correctly" grep -q '^1 of 2 hook registrations port, across 1 Codex events.' "$PS"
@@ -383,9 +383,9 @@ HJ2="$SRC2/codex/hooks.json"
 PS2="$SRC2/codex/PORT-STATUS.md"
 dualEventStillPortedUnderPreToolUse() { jq -e '.hooks.PreToolUse[0].hooks[0].command | test("alpha-guard")' "$HJ2" >/dev/null; }
 check "dual-event hook still ported under PreToolUse" dualEventStillPortedUnderPreToolUse
-check "dual-event hook has two port-status rows" test "$(grep -c '\`alpha-guard\`' "$PS2")" -eq 2
-check "dual-event ported row present" grep -q '\`alpha-guard\`.*ported: \`PreToolUse\`' "$PS2"
-check "dual-event not-ported row present" grep -q '\`alpha-guard\`.*not ported:' "$PS2"
+check "dual-event hook has two port-status rows" test "$(grep -c '`alpha-guard`' "$PS2")" -eq 2
+check "dual-event ported row present" grep -q '`alpha-guard`.*ported: `PreToolUse`' "$PS2"
+check "dual-event not-ported row present" grep -q '`alpha-guard`.*not ported:' "$PS2"
 node "$TRANSLATOR" --check --root "$SRC2"; check "dual-event sandbox check stays clean" test $? -eq 0
 
 # Case 2 + 3: rename PreToolUse's translated event to PreCommand, and add
@@ -398,7 +398,7 @@ hooksJsonKeyIsPreCommand() { jq -e '.hooks | has("PreCommand")' "$HJ2" >/dev/nul
 check "renamed event becomes hooks.json key" hooksJsonKeyIsPreCommand
 emptyMatcherGroupOmitsMatcher() { jq -e '.hooks.PreCommand[-1] | has("matcher") | not' "$HJ2" >/dev/null; }
 check "empty matcher group omits matcher key" emptyMatcherGroupOmitsMatcher
-check "renamed event ported row" grep -q '\`alpha-guard\`.*ported: \`PreCommand\`' "$PS2"
+check "renamed event ported row" grep -q '`alpha-guard`.*ported: `PreCommand`' "$PS2"
 check "empty matcher row omits matcher clause" grep -qF '| `delta-check` | PreToolUse | ported: `PreCommand` |' "$PS2"
 node "$TRANSLATOR" --check --root "$SRC2"; check "renamed-event sandbox check stays clean" test $? -eq 0
 
