@@ -55,7 +55,10 @@ JUDGE_KEYCHAIN_SERVICE="${CLAUDE_JUDGE_KEYCHAIN_SERVICE:-claude-judge-api-key}"
 # `security` is macOS-only, so on Linux the only satisfying path used to be an
 # env var and the warning could not be cleared the way the message described
 # (2026-09-17 audit P3-7). A host with none of these stores still warns exactly
-# as before.
+# as before. This list and the one llm-rule-judge.sh resolves a key from are the
+# same list on purpose: a store counted here that the judge could not read
+# reported a healthy judge that still fail-opened on every push (PR #8 review),
+# so a store added to either file belongs in both.
 JUDGE_KEY_AVAILABLE=0
 judge_key_in_a_store() {
   [ -n "${ANTHROPIC_API_KEY:-}" ] && return 0
