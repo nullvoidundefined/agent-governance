@@ -291,6 +291,10 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/spec-glossary-check.sh"
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/handoff-check.sh"
                     }
                 ]
             },

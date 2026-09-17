@@ -99,7 +99,7 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 ## Lifecycle and memory (R-6xx)
 
 R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work. [manual]
-R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [manual]
+R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [hook:handoff-check]
 R-603: Route learnings to per-project feedback memory (tags: `success`, `correction`, `fired: R-NNN`, `miss: R-NNN; gap:`). [manual]
 R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-identifying or project-specific content stays in the project repo. [manual]
 

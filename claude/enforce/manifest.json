@@ -1,6 +1,14 @@
 {
     "rules": [
         {
+            "id": "R-602",
+            "tier": "advisory",
+            "enforcer": "hook:handoff-check",
+            "severity": "warning",
+            "autofix": false,
+            "note": "PostToolUse Write on docs/session-handoff/session-handoff.md: size cap, section order, SHA resolution; content stays manual"
+        },
+        {
             "id": "R-323",
             "tier": "ast",
             "enforcer": "eslint:sort-keys",

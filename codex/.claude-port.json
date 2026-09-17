@@ -1,8 +1,8 @@
 {
   "builder": "translate/codex.mjs",
   "files": {
-    "AGENTS.md": "sha256:c243cb27d3eba4853ee9386ed6fda1c325ffc339b5e93b34f969308f1cab3077",
-    "PORT-STATUS.md": "sha256:00e86ef838e399b4aea53ed945f10995f60395978672960697ed5da9b296316a",
+    "AGENTS.md": "sha256:a29e52ad383daa7e4c4103fe1c4dec5760099cf44df0a87579974f2e97f4ff5a",
+    "PORT-STATUS.md": "sha256:9bd4597f250f590bf83edbf4a0fc5169cb5081e5d38b06acebaffffdcc8c38bc",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
     "agents/audit-design.toml": "sha256:096747f9f18673dee96a5f6d32cb17c6285a7b18d243fdbb9f85d33883b180b3",
@@ -16,7 +16,7 @@
     "agents/slice-critic.toml": "sha256:583a13776f84973cae852233d1d1cf58bdad35a73ad9a8759af9f3ab4b0fed05",
     "agents/spec-conformance-review.toml": "sha256:1d5b1cb324078a5753bcb5cf9f9d0d973499e52e1b6e26b74ddb95b255b5f567",
     "agents/test-author.toml": "sha256:4e8e3fb616479238d64465d83068f1a4c5bf3906d23470fdd0eb87e04ec83374",
-    "hooks.json": "sha256:2778f8dc6ddd86e082626e2d17397d2718dbccc49f117cc7765eb4f68ff4e2be",
+    "hooks.json": "sha256:3d75a7f6aff10c0e65498fe88d77f508413667d7356867f64e695b1f33fa1d01",
     "skills/all-hands/SKILL.md": "sha256:0d470818244fe82c6c0c0e760f766b6d28fb0a9ecc7acecd342351a57961212a",
     "skills/audit-criticism/SKILL.md": "sha256:345d45c383cd6d7d4c6cc03c4f777b153bde4ff0c6158122726e2603822b17a3",
     "skills/audit-customer/SKILL.md": "sha256:634a67f27666b2fcb13fece90c804057ac34b9817bf030a529441e6c3e528853",
