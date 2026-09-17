@@ -231,4 +231,95 @@ write_session_snapshot() (
 
 write_session_snapshot "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
 
+# render_task_state_section renders the CURRENT session's live task-state
+# tracker (task-state-tracker.sh's ~/.claude/projects/<key>/
+# task-state.<session-id>.json) into a "## Task state" section of
+# docs/session-handoff/session-handoff.md under the session cwd's repo, but
+# only when that handoff file already exists: the handoff is repo-owned,
+# and this hook must never create one on a repo that does not keep one. Any
+# pre-existing "## Task state" section (heading through the next "## "
+# heading, or EOF) is stripped before the fresh section is appended, so a
+# second render in the same session replaces rather than accumulates. Every
+# task is rendered, not only the incomplete ones: this section is a
+# session-end summary of everything the tracker recorded, unlike
+# session-start.sh's interrupted-task offering, which surfaces only
+# non-completed work from a DIFFERENT session. Once every task in the state
+# file is completed, the state file itself is deleted (independent of
+# whether a handoff file existed to render into); otherwise it is left for
+# the next session-start to offer as interrupted work. Runs in a `set +e`
+# subshell (same posture as write_session_snapshot): a corrupt or
+# unreadable state file, or any write failure, is skipped with a stderr
+# note and never fails session end.
+render_task_state_section() (
+  set +e
+  local transcript_path="$1" session_cwd="$2"
+  local key session_id state_file handoff_file handoff_dir tmp_file body section all_completed
+
+  if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
+    return 0
+  fi
+
+  key=$(basename "$(dirname "$transcript_path")" 2>/dev/null)
+  session_id=$(basename "$transcript_path" 2>/dev/null)
+  session_id="${session_id%.jsonl}"
+  if [ -z "$key" ] || [ "$key" = "." ] || [ "$key" = "/" ] || [ -z "$session_id" ]; then
+    return 0
+  fi
+
+  state_file="$PROJECTS_DIR/$key/task-state.$session_id.json"
+  [ -f "$state_file" ] || return 0
+
+  if ! jq -e . "$state_file" >/dev/null 2>&1; then
+    echo "session-end: task-state render skipped: unreadable state file $state_file" >&2
+    return 0
+  fi
+
+  all_completed=$(jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' "$state_file" 2>/dev/null)
+
+  if [ -n "$session_cwd" ]; then
+    handoff_file="$session_cwd/docs/session-handoff/session-handoff.md"
+    if [ -f "$handoff_file" ]; then
+      body=$(jq -r '
+        .tasks // {}
+        | to_entries
+        | sort_by(.value.created_at // "")
+        | .[]
+        | "- [" + .value.status + "] " + .value.subject + " (updated " + .value.updated_at + ")"
+      ' "$state_file" 2>/dev/null)
+
+      section=$'## Task state\n\n'
+      if [ -n "$body" ]; then
+        section+="$body"$'\n'
+      else
+        section+="(no tasks recorded)"$'\n'
+      fi
+
+      handoff_dir=$(dirname "$handoff_file")
+      tmp_file=$(mktemp "$handoff_dir/.session-handoff.md.XXXXXX" 2>/dev/null)
+      if [ -n "$tmp_file" ]; then
+        # Strip any pre-existing "## Task state" section (that heading
+        # through the next "## " heading, or EOF) before appending the
+        # fresh one, so a second render replaces rather than accumulates.
+        awk '
+          BEGIN { skipping = 0 }
+          /^## Task state[[:space:]]*$/ { skipping = 1; next }
+          skipping && /^## / { skipping = 0 }
+          skipping { next }
+          { print }
+        ' "$handoff_file" > "$tmp_file"
+
+        printf '\n%s' "$section" >> "$tmp_file"
+        mv -f "$tmp_file" "$handoff_file" 2>/dev/null || rm -f "$tmp_file" 2>/dev/null
+      fi
+    fi
+  fi
+
+  if [ "$all_completed" = "true" ]; then
+    rm -f "$state_file" 2>/dev/null
+  fi
+  return 0
+)
+
+render_task_state_section "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
+
 exit 0

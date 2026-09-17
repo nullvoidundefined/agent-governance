@@ -76,6 +76,7 @@ ctx_has()      { printf '%s' "$1" | grep -qF -- "$2"; }
 ctx_lacks()    { ! printf '%s' "$1" | grep -qF -- "$2"; }
 ctx_nonempty() { [ -n "$1" ]; }
 no_file()      { [ ! -f "$1" ]; }
+file_exists()  { [ -f "$1" ]; }
 
 # Runs the hook with HOME=$1 and the JSON payload $2 on stdin, returns the
 # additionalContext string (empty if the hook emitted no JSON at all, which
@@ -253,6 +254,62 @@ check "non-resume start emits no changed line" ctx_lacks "$CTX_STARTUP" "changed
 check "non-resume start emits no missing line" ctx_lacks "$CTX_STARTUP" "missing "
 check "non-resume start emits no HEAD moved line" ctx_lacks "$CTX_STARTUP" "HEAD moved"
 check "positive control: resume on the identical snapshot DOES drift" ctx_has "$CTX_ALTERED" "changed $ALTERED_DISPLAY"
+
+# --- Interrupted task offering (task-state-tracker) ---
+#
+# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.json
+# for the CURRENT project key (same key session-start.sh's other checks
+# derive from transcript_path). A file from a DIFFERENT session id holding
+# at least one non-completed task is offered as interrupted work; a file
+# whose tasks are ALL completed is pruned (deleted) and never offered. Runs
+# on every start reason, not gated to source == "resume" (unlike the B-8
+# drift check above): a fresh startup after a crash is exactly when a prior
+# session's tasks need offering.
+
+TASK_KEY_DIR="$DRIFT_SANDBOX/.claude/projects/taskstate-current"
+mkdir -p "$TASK_KEY_DIR"
+CURRENT_TASK_TRANSCRIPT="$TASK_KEY_DIR/current-session.jsonl"
+printf '{}\n' > "$CURRENT_TASK_TRANSCRIPT"
+
+# Interrupted state file from another session id -> injection block naming
+# the subject and status; its completed sibling task is not offered; the
+# file itself is left in place for the next scan.
+INTERRUPTED_STATE="$TASK_KEY_DIR/task-state.other-session.json"
+jq -n '{
+  state_version: 1,
+  session_id: "other-session",
+  cwd: "/some/repo",
+  branch: "feature/x",
+  updated_at: "2026-09-17T00:00:00Z",
+  tasks: {
+    "1": {subject: "Finish the migration", status: "in_progress", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"},
+    "2": {subject: "Write the tests", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"}
+  }
+}' > "$INTERRUPTED_STATE"
+
+CTX_TASKSTATE=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "interrupted task names the status and subject" ctx_has "$CTX_TASKSTATE" "[in_progress] Finish the migration"
+check "interrupted block names the prior session id" ctx_has "$CTX_TASKSTATE" "other-session"
+check "interrupted block names the prior branch" ctx_has "$CTX_TASKSTATE" "feature/x"
+check "completed sibling task is not offered" ctx_lacks "$CTX_TASKSTATE" "Write the tests"
+check "interrupted state file is left in place" file_exists "$INTERRUPTED_STATE"
+
+# All-completed file -> pruned (deleted), no injection block for it.
+ALLDONE_STATE="$TASK_KEY_DIR/task-state.alldone-session.json"
+jq -n '{
+  state_version: 1,
+  session_id: "alldone-session",
+  cwd: "/some/repo",
+  branch: "main",
+  updated_at: "2026-09-17T00:00:00Z",
+  tasks: {
+    "1": {subject: "Ship the release", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"}
+  }
+}' > "$ALLDONE_STATE"
+
+CTX_ALLDONE=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "all-completed state file is pruned" no_file "$ALLDONE_STATE"
+check "all-completed file yields no injection block" ctx_lacks "$CTX_ALLDONE" "Ship the release"
 
 rm -rf "$DRIFT_SANDBOX"
 

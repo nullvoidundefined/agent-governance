@@ -205,6 +205,65 @@ check_resume_drift() (
   return 0
 )
 
+# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.json
+# for the CURRENT project key (task-state-tracker.sh's live PostToolUse
+# output) for tasks left behind by a session other than this one. A file
+# whose session id differs from the current session and holds at least one
+# task with status != "completed" is reported as interrupted work; a file
+# whose tasks are ALL completed is pruned (deleted) unconditionally, so a
+# finished tracker never accumulates. Unlike check_resume_drift above, this
+# runs on every start reason, not gated to source == "resume": a fresh
+# startup after a crash is exactly the moment a prior session's tasks need
+# offering. The whole function runs in a `set +e` subshell (same posture as
+# check_resume_drift): a corrupt or unreadable state file is skipped with a
+# stderr note, never fails the hook. Cheap by construction: a directory
+# glob plus one or two small jq calls per file, and there are 0-3 files in
+# practice (task-state-tracker.sh writes at most one file per live
+# session).
+check_interrupted_tasks() (
+  set +e
+  local transcript_path="$1" current_session_id="$2"
+  local key state_dir file all_completed sid branch cwd_val body out
+
+  key=""
+  case "$transcript_path" in
+    */*) key="${transcript_path%/*}"; key="${key##*/}" ;;
+  esac
+  [ -n "$key" ] && [ "$key" != "." ] && [ "$key" != "/" ] || return 0
+
+  state_dir="$HOME/.claude/projects/$key"
+  [ -d "$state_dir" ] || return 0
+
+  out=""
+  for file in "$state_dir"/task-state.*.json; do
+    [ -e "$file" ] || continue
+    if ! jq -e . "$file" >/dev/null 2>&1; then
+      echo "session-start: skipping unreadable task-state file $file" >&2
+      continue
+    fi
+
+    all_completed=$(jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' "$file" 2>/dev/null)
+    if [ "$all_completed" = "true" ]; then
+      rm -f "$file" 2>/dev/null
+      continue
+    fi
+
+    sid=$(jq -r '.session_id // "unknown"' "$file" 2>/dev/null)
+    [ -n "$sid" ] || sid="unknown"
+    [ "$sid" = "$current_session_id" ] && continue
+
+    branch=$(jq -r '.branch // ""' "$file" 2>/dev/null)
+    cwd_val=$(jq -r '.cwd // ""' "$file" 2>/dev/null)
+    body=$(jq -r '.tasks // {} | to_entries[] | select(.value.status != "completed") | "- [" + .value.status + "] " + .value.subject' "$file" 2>/dev/null)
+
+    out+="Interrupted tasks from a prior session ($sid, branch $branch, cwd $cwd_val):"$'\n'
+    out+="$body"$'\n'
+  done
+
+  [ -n "$out" ] && printf '%s' "$out"
+  return 0
+)
+
 if [ "$SOURCE" = "resume" ]; then
   DRIFT_OUTPUT=$(check_resume_drift "$SOURCE" "$TRANSCRIPT_PATH" "$SESSION_CWD" 2>/dev/null || true)
   if [ -n "$DRIFT_OUTPUT" ]; then
@@ -212,6 +271,17 @@ if [ "$SOURCE" = "resume" ]; then
     CTX+="$DRIFT_OUTPUT"
     CTX+=$'\n\n'
   fi
+fi
+
+CURRENT_SESSION_ID=""
+case "$TRANSCRIPT_PATH" in
+  */*) CURRENT_SESSION_ID="${TRANSCRIPT_PATH##*/}"; CURRENT_SESSION_ID="${CURRENT_SESSION_ID%.jsonl}" ;;
+esac
+INTERRUPTED_OUTPUT=$(check_interrupted_tasks "$TRANSCRIPT_PATH" "$CURRENT_SESSION_ID" 2>/dev/null || true)
+if [ -n "$INTERRUPTED_OUTPUT" ]; then
+  CTX+=$'## Interrupted tasks (task-state-tracker)\n\n'
+  CTX+="$INTERRUPTED_OUTPUT"
+  CTX+=$'\n'
 fi
 
 if [ -f "$GLOBAL_MEMORY_INDEX" ]; then

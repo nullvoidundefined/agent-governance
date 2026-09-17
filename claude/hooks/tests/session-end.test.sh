@@ -148,6 +148,110 @@ CORRUPT_SNAPSHOT="$CORRUPT_KEY_DIR/session-snapshot.json"
 check "hook exits 0 on a corrupt transcript" exit_code_is "$CORRUPT_EXIT" 0
 check "no snapshot written for a corrupt transcript" no_file "$CORRUPT_SNAPSHOT"
 
+# --- Task state render into the handoff doc ---
+#
+# render_task_state_section reads the CURRENT session's
+# task-state.<session-id>.json (task-state-tracker.sh's live output) and
+# renders it into a "## Task state" section of docs/session-handoff/
+# session-handoff.md under the session cwd's repo, but only when that
+# handoff file already exists (the handoff is repo-owned). Then deletes the
+# session's task-state file when every task is completed; otherwise leaves
+# it in place for the next session-start to offer as interrupted work.
+
+# Case A: some tasks incomplete -> section rendered with all tasks (not
+# just the incomplete ones), state file left in place.
+TS_REPO="$SANDBOX/task-state-repo"
+mkdir -p "$TS_REPO/docs/session-handoff"
+git -C "$TS_REPO" init -q
+git -C "$TS_REPO" config user.email t@t
+git -C "$TS_REPO" config user.name t
+cat > "$TS_REPO/docs/session-handoff/session-handoff.md" <<'EOF'
+# Handoff
+
+- Last commit: `deadbeef` chore: seed
+
+## Pending
+
+- something pending
+EOF
+git -C "$TS_REPO" add -A
+git -C "$TS_REPO" commit -qm seed
+
+TS_KEY_DIR="$SANDBOX/.claude/projects/task-state-render-key"
+mkdir -p "$TS_KEY_DIR"
+TS_TRANSCRIPT="$TS_KEY_DIR/render-session.jsonl"
+printf '{}\n' > "$TS_TRANSCRIPT"
+TS_STATE_FILE="$TS_KEY_DIR/task-state.render-session.json"
+jq -n '{
+  state_version: 1,
+  session_id: "render-session",
+  cwd: "'"$TS_REPO"'",
+  branch: "main",
+  updated_at: "2026-09-17T00:10:00Z",
+  tasks: {
+    "1": {subject: "Ship the render", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:05:00Z"},
+    "2": {subject: "Write the docs", status: "in_progress", created_at: "2026-09-17T00:01:00Z", updated_at: "2026-09-17T00:10:00Z"}
+  }
+}' > "$TS_STATE_FILE"
+
+TS_PAYLOAD=$(jq -n --arg t "$TS_TRANSCRIPT" --arg c "$TS_REPO" '{transcript_path:$t, cwd:$c}')
+printf '%s' "$TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+
+TS_HANDOFF="$TS_REPO/docs/session-handoff/session-handoff.md"
+handoff_has()      { grep -qF -- "$2" "$1"; }
+handoff_count()    { [ "$(grep -c -- "$2" "$1")" -eq "$3" ]; }
+ctx_lacks_file()   { ! grep -qF -- "$2" "$1"; }
+
+check "handoff gains a Task state heading" handoff_has "$TS_HANDOFF" "## Task state"
+check "handoff renders the completed task" handoff_has "$TS_HANDOFF" "- [completed] Ship the render (updated 2026-09-17T00:05:00Z)"
+check "handoff renders the in-progress task" handoff_has "$TS_HANDOFF" "- [in_progress] Write the docs (updated 2026-09-17T00:10:00Z)"
+check "prior handoff content (Pending section) is preserved" handoff_has "$TS_HANDOFF" "## Pending"
+check "Task state heading appears exactly once" handoff_count "$TS_HANDOFF" "## Task state" 1
+check "state file left in place (not all completed)" file_exists "$TS_STATE_FILE"
+
+# Re-run to prove replace, not accumulate: the heading still appears once
+# and stale content from a prior render is gone.
+jq '.tasks["2"].status = "completed" | .tasks["2"].updated_at = "2026-09-17T00:20:00Z" | .updated_at = "2026-09-17T00:20:00Z"' \
+  "$TS_STATE_FILE" > "$TS_STATE_FILE.tmp" && mv "$TS_STATE_FILE.tmp" "$TS_STATE_FILE"
+printf '%s' "$TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+check "Task state heading still appears exactly once after a second render" handoff_count "$TS_HANDOFF" "## Task state" 1
+check "second render reflects the updated status" handoff_has "$TS_HANDOFF" "- [completed] Write the docs (updated 2026-09-17T00:20:00Z)"
+check "second render drops the stale in_progress line" ctx_lacks_file "$TS_HANDOFF" "- [in_progress] Write the docs"
+
+# Case B: all tasks completed -> state file deleted after render.
+check "all-completed state file is deleted after render" no_file "$TS_STATE_FILE"
+
+# Case C: no handoff file in the session cwd's repo -> render is skipped
+# entirely (the handoff is repo-owned), but the hook still exits 0 and a
+# fully-completed state file is still pruned.
+NOHANDOFF_REPO="$SANDBOX/no-handoff-repo"
+mkdir -p "$NOHANDOFF_REPO"
+git -C "$NOHANDOFF_REPO" init -q
+git -C "$NOHANDOFF_REPO" config user.email t@t
+git -C "$NOHANDOFF_REPO" config user.name t
+git -C "$NOHANDOFF_REPO" commit -q --allow-empty -m seed
+
+NOHANDOFF_KEY_DIR="$SANDBOX/.claude/projects/no-handoff-key"
+mkdir -p "$NOHANDOFF_KEY_DIR"
+NOHANDOFF_TRANSCRIPT="$NOHANDOFF_KEY_DIR/nohandoff-session.jsonl"
+printf '{}\n' > "$NOHANDOFF_TRANSCRIPT"
+NOHANDOFF_STATE="$NOHANDOFF_KEY_DIR/task-state.nohandoff-session.json"
+jq -n '{
+  state_version: 1,
+  session_id: "nohandoff-session",
+  cwd: "'"$NOHANDOFF_REPO"'",
+  branch: "main",
+  updated_at: "2026-09-17T00:00:00Z",
+  tasks: {"1": {subject: "Solo task", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"}}
+}' > "$NOHANDOFF_STATE"
+
+NOHANDOFF_PAYLOAD=$(jq -n --arg t "$NOHANDOFF_TRANSCRIPT" --arg c "$NOHANDOFF_REPO" '{transcript_path:$t, cwd:$c}')
+NOHANDOFF_EXIT=0
+printf '%s' "$NOHANDOFF_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" || NOHANDOFF_EXIT=$?
+check "hook exits 0 with no handoff file present" exit_code_is "$NOHANDOFF_EXIT" 0
+check "no handoff file was created" no_file "$NOHANDOFF_REPO/docs/session-handoff/session-handoff.md"
+check "state file is still pruned once all tasks are completed" no_file "$NOHANDOFF_STATE"
+
 if [ "$fail" -eq 0 ]; then
     echo "ALL PASS"
     exit 0
