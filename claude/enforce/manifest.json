@@ -723,7 +723,7 @@
             "enforcer": "hook:protected-path-guard",
             "severity": "error",
             "autofix": false,
-            "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered via redirections, tee, and mutating-verb operands; runner configs and package.json test scripts ask"
+            "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered via redirections, tee, and mutating-verb operands; runner configs and package.json test scripts ask; the live TICKET-TRACKER.json (R-105 standing authorization) asks on any write"
         },
         {
             "id": "R-411",

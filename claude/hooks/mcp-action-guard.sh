@@ -63,22 +63,21 @@ TRACKER_CONFIG="${TICKET_TRACKER_CONFIG:-$HOME/.claude/TICKET-TRACKER.json}"
 # is_tracker_tool <tool name>
 # Returns 0 only when the tracker config exists, is exactly one JSON object,
 # names an active tracker whose `tools` value is an object, and one of that
-# object's values names the tool; returns 1 for every other shape (absent
-# file, parse error, several top-level values, `tools` as an array or string),
-# so a malformed config never widens the exemption. A value names the tool when
-# it equals the full name, or, only for a call arriving through the Cursor
-# adapter (`mcp__cursor__<bare>`, which strips the server), when its bare
-# suffix after the last `__` equals the call's bare name. Prints nothing.
+# object's string values equals the full tool name; returns 1 for every other
+# shape (absent file, parse error, several top-level values, `tools` as an
+# array or string, a non-string value), so a malformed config never widens the
+# exemption. The match is the full server-qualified name only: a client that
+# strips the server before this hook runs (the Cursor adapter today) cannot
+# be pre-authorized, because a bare name cannot tell one server's tool from
+# another's. Prints nothing.
 is_tracker_tool() {
   [ -f "$TRACKER_CONFIG" ] || return 1
-  local bare="" ; case "$1" in mcp__cursor__*) bare="${1##*__}" ;; esac
-  jq -es --arg t "$1" --arg b "$bare" '
+  jq -es --arg t "$1" '
     length == 1
     and (.[0] | type) == "object"
     and (.[0].active | type) == "string"
     and ((.[0].trackers[.[0].active].tools? // null) | type) == "object"
-    and ([.[0].trackers[.[0].active].tools | to_entries[] | .value | select(type == "string")]
-         | any(. == $t or ($b != "" and (split("__") | last) == $b)))
+    and ([.[0].trackers[.[0].active].tools | to_entries[] | .value | select(type == "string")] | index($t) != null)
   ' "$TRACKER_CONFIG" >/dev/null 2>&1
 }
 

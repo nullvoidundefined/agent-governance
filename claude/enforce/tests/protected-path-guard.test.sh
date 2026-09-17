@@ -49,6 +49,41 @@ write "$REPO/src/__tests__/score.test.ts" 'it("x", () => {});' | expect allow "t
 jq -nc '{tool_name:"Read",tool_input:{file_path:"/x/.claude/verify.sh"}}' | expect allow "Read is never gated"
 jq -nc '{tool_name:"Write",tool_input:{}}' | expect allow "empty file_path is silent"
 
+# --- Ticket tracker config protection applies outside repositories too ------
+(
+  TRACKER_DIR=$(cd "$(mktemp -d)" && pwd -P)
+  trap 'rm -rf "$TRACKER_DIR"' EXIT
+  export TICKET_TRACKER_CONFIG="$TRACKER_DIR/TICKET-TRACKER.json"
+  printf '{}\n' > "$TICKET_TRACKER_CONFIG"
+
+  write "$TICKET_TRACKER_CONFIG" '{}' | expect ask "Write to tracker config from the repo"
+  edit "$TICKET_TRACKER_CONFIG" '{}' '{ }' | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+    | expect ask "Edit to tracker config outside a repo"
+  bash_call "printf x > $TICKET_TRACKER_CONFIG" | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+    | expect ask "Bash redirect into tracker config outside a repo"
+  bash_call "sed -i \"\" s/a/b/ $TICKET_TRACKER_CONFIG" | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+    | expect ask "Bash sed -i on tracker config outside a repo"
+  bash_call "cat $TICKET_TRACKER_CONFIG" | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+    | expect allow "Bash read of tracker config"
+  write "$TRACKER_DIR/notes.json" '{}' | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+    | expect allow "Write beside tracker config outside a repo"
+  write "$REPO/.enforce.json" '{}' | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+    | expect deny "Absolute Write to .enforce.json from outside the repo"
+
+  # Keep the real hooks available while testing the default path under a new
+  # HOME. The subshell restores HOME and the config override on exit.
+  mkdir -p "$TRACKER_DIR/home/.claude"
+  ln -s "$(cd "$(dirname "$HOOK")" && pwd -P)" "$TRACKER_DIR/home/.claude/hooks"
+  printf '{}\n' > "$TRACKER_DIR/home/.claude/TICKET-TRACKER.json"
+  (
+    export HOME="$TRACKER_DIR/home"
+    unset TICKET_TRACKER_CONFIG
+    HOOK="$HOME/.claude/hooks/protected-path-guard.sh"
+    bash_call 'cp /tmp/x ~/.claude/TICKET-TRACKER.json' | jq --arg cwd "$TRACKER_DIR" '.cwd = $cwd' \
+      | expect ask "Bash cp to tilde tracker config outside a repo"
+  )
+)
+
 # --- Slice lock, phase open: tests may be written, production may not (R-412) -
 jq -n '{slice:"B-1",phase:"open",tests:[],locked:[]}' > "$REPO/.claude/tdd-lock.json"
 write "$REPO/src/services/score.ts" 'x' | expect deny "production write while the slice is open"

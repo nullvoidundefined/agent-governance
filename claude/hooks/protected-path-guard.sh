@@ -21,7 +21,8 @@
 # alongside a mutating verb (rm, mv, cp, sed -i, git rm/mv/checkout/restore).
 # An interpreter that writes a file from inside its own source is not seen
 # here; `tdd.sh green` compares hashes against the RED commit for that case.
-# Paths outside the repository root are not governed. Silent on allow.
+# Paths outside the repository root are not governed, except the ticket
+# tracker config (below). Silent on allow.
 set -uo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
@@ -77,10 +78,13 @@ else
   [ -n "$FILE" ] || exit 0
   ROOT=$(repo_root_for "$(dirname "$(physical_path "$FILE")")")
 fi
-[ -n "$ROOT" ] || exit 0
-ROOT_PHYSICAL=$(cd "$ROOT" && pwd -P)
+# No repository root: nothing below governs the path, except the ticket
+# tracker config check, which runs on every call. relative_path returns empty
+# for every path when ROOT_PHYSICAL is empty.
+ROOT_PHYSICAL=""
+[ -n "$ROOT" ] && ROOT_PHYSICAL=$(cd "$ROOT" && pwd -P)
 
-LOCK="$ROOT/.claude/tdd-lock.json"
+LOCK="${ROOT:-/nonexistent}/.claude/tdd-lock.json"
 LOCK_STATE="none"
 PHASE=""
 LOCKED=""
@@ -103,9 +107,26 @@ if [ -n "$AGENT" ] && [ -f "$POLICY" ]; then
   fi
 fi
 
+# The ticket tracker config is the standing authorization behind R-105: the
+# tools it names pass mcp-action-guard without a prompt, so a write to it
+# widens what runs unprompted. It lives outside every repository, so it is
+# the one path this guard judges regardless of the repository root.
+TRACKER_CONFIG_PHYSICAL=$(physical_path "${TICKET_TRACKER_CONFIG:-$HOME/.claude/TICKET-TRACKER.json}")
+
+# is_tracker_config <path>
+# Expands a leading ~ to $HOME, resolves the path physically, and returns 0
+# when it is the ticket tracker config file; returns 1 otherwise. Prints
+# nothing.
+is_tracker_config() {
+  local candidate="$1"
+  case "$candidate" in "~") candidate="$HOME" ;; "~/"*) candidate="$HOME/${candidate#\~/}" ;; esac
+  [ "$(physical_path "$candidate")" = "$TRACKER_CONFIG_PHYSICAL" ]
+}
+
 # Root-relative form of a path, or empty when it lies outside the repository.
 relative_path() {
   local physical
+  [ -n "$ROOT_PHYSICAL" ] || { printf ''; return 0; }
   physical=$(physical_path "$1")
   case "$physical" in
     "$ROOT_PHYSICAL"/*) printf '%s' "${physical#"$ROOT_PHYSICAL"/}" ;;
@@ -194,6 +215,9 @@ apply_verdict() {
 }
 
 if [ "$TOOL" != "Bash" ]; then
+  if is_tracker_config "$FILE"; then
+    emit ask "This writes the ticket tracker config, the standing authorization behind R-105: every MCP tool it names under the active tracker runs without a prompt. Confirm the change is deliberate and names only the tracker's own write tools."
+  fi
   apply_verdict "$(relative_path "$FILE")"
   exit 0
 fi
@@ -225,6 +249,9 @@ while IFS= read -r target; do
   [ -n "$target" ] || continue
   target="${target#\'}"; target="${target%\'}"; target="${target#\"}"; target="${target%\"}"
   case "$target" in /dev/*) continue ;; esac
+  if is_tracker_config "$target"; then
+    emit ask "This command writes the ticket tracker config, the standing authorization behind R-105: every MCP tool it names under the active tracker runs without a prompt. Confirm the change is deliberate and names only the tracker's own write tools."
+  fi
   apply_verdict "$(relative_path "$target")"
 done <<< "$TARGETS"
 exit 0
