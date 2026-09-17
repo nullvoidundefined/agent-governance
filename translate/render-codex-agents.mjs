@@ -1,7 +1,17 @@
 // render-codex-agents.mjs: renders claude/agents/*.md to codex/agents/*.toml,
 // and the agents the port map's agents_to_skills list names to
 // codex/skills/<name>/SKILL.md as well.
-import { renderGeneratedHeader } from "./parse-sources.mjs";
+import { renderGeneratedHeaderFor } from "./exporter-core.mjs";
+
+const BUILDER_NAME = "translate/codex.mjs";
+
+// matchesAgentSkillList now lives in exporter-core.mjs (review I-2: both
+// exporters need the identical glob-suffix matching, and cursor's renderer
+// used to import it sideways from this codex-specific module). Re-exported
+// here, rather than moving codex.mjs's own import, so
+// `import { matchesAgentSkillList } from "./render-codex-agents.mjs"` stays
+// valid at its existing call site.
+export { matchesAgentSkillList } from "./exporter-core.mjs";
 
 // escapeTomlBasicString(value): escapes backslashes and double quotes for a
 // TOML basic string. Serves both the single-line basic strings (name,
@@ -19,7 +29,7 @@ function escapeTomlBasicString(value) {
 export function renderAgentToml(agent) {
   const { name, description } = agent.frontmatter;
   const content = [
-    `# ${renderGeneratedHeader(`agents/${name}.md`)}`,
+    `# ${renderGeneratedHeaderFor(BUILDER_NAME, `agents/${name}.md`)}`,
     `name = "${escapeTomlBasicString(name)}"`,
     `description = "${escapeTomlBasicString(description)}"`,
     `developer_instructions = """`,
@@ -30,12 +40,8 @@ export function renderAgentToml(agent) {
   return { path: `agents/${name}.toml`, content };
 }
 
-export function matchesAgentSkillList(name, patterns) {
-  return patterns.some((p) => (p.endsWith("*") ? name.startsWith(p.slice(0, -1)) : name === p));
-}
-
 export function renderAgentSkill(agent) {
   const { name, description } = agent.frontmatter;
-  const content = `---\nname: ${name}\ndescription: ${description}\n---\n${renderGeneratedHeader(`agents/${name}.md`)}\n\n${agent.body.trimStart()}`;
+  const content = `---\nname: ${name}\ndescription: ${description}\n---\n${renderGeneratedHeaderFor(BUILDER_NAME, `agents/${name}.md`)}\n\n${agent.body.trimStart()}`;
   return { path: `skills/${name}/SKILL.md`, content };
 }

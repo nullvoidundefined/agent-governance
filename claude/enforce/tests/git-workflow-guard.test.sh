@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:git-workflow-guard
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
 # merge (R-514), denies a non-squash merge (R-512), and warns on a cross-cutting
 # commit to main (R-511) and a surface-adding commit with no README (R-508).

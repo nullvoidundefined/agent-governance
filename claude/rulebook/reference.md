@@ -604,6 +604,7 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
   - Tiers: `regex` | `ast` | `llm-judge` | `advisory`. A rule with no manifest entry is unenforced and depends on memory.
   - Deterministic checks run per edit (cheap, no Node/network); ESLint and the semantic judge run at the push boundary.
   - Session start verifies every manifest hook stays registered. See `~/.claude/enforce/README.md`.
+  Spec, second clause ("ship a fixture test"), mechanized 2026-09-17 (audit P2-3): every fixture declares the enforcers it proves in a `# Covers: <enforcer>[, ...]` header line, and `enforce/tests/manifest-fixture-closure.test.sh` compares those declarations against the manifest in both directions, so a manifest enforcer with no declaration and a declaration naming no manifest enforcer both fail. The declaration sits beside the assertions that justify it rather than in a second manifest column, because several enforcers are proven behaviourally without ever being named (`eslint:no-cycle` and `eslint:no-restricted-paths` are proven by `import-direction.test.sh`), which makes a name grep report gaps that are not real. The closure is over the enumeration, not over the proof: a dishonest `# Covers:` line passes, and no check can read intent.
   Enforcement: hook:enforcement-guard-check
 
 ## Lifecycle and memory (R-6xx)

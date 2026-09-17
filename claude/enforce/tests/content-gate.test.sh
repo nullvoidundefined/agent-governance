@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:content-gate
 # Verifies content-gate.sh denies suppressed tests (R-401), weakened protections
 # (R-405), and repo-escaping relative imports (R-302), and allows the legitimate
 # neighbours of each.

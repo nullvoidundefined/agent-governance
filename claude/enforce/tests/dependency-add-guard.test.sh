@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:dependency-add-guard
 # Verifies dependency-add-guard.sh (R-331): a Write or Edit that adds a new
 # third-party dependency name to package.json, pyproject.toml, go.mod, or a
 # Gemfile asks, naming the packages; a version change, a script change, or an

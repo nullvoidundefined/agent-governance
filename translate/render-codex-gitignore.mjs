@@ -17,10 +17,13 @@ const HEADER_LINES = [
   "# translate/codex-port-map.json, then run: node translate/codex.mjs --write",
   "#",
   "# An allowlist, not a denylist: everything under codex/ is ignored, then every",
-  "# generated and hand-authored file is named back in. Anything a tool drops here",
-  "# on its own (local state, scratch, caches) stays untracked without having to be",
-  "# predicted, and a generated file can no longer go missing from git for want of",
-  "# a hand edit.",
+  "# generated and hand-authored file is named back in, so a generated file can no",
+  "# longer go missing from git for want of a hand edit.",
+  "#",
+  "# Nothing else belongs in this directory. --write deletes any file it did not",
+  "# plan and removes the directories those deletions empty, so keep no scratch,",
+  "# no local state and no notes here; an OS artifact such as .DS_Store will fail",
+  "# --check until the next --write sweeps it.",
 ];
 
 // renderGitignore(trackedPaths, portMap) -> { path: ".gitignore", content }:

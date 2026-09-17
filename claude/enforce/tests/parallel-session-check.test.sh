@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:parallel-session-check
 # Verifies parallel-session-check.sh warns when another live session holds the
 # same working tree (R-501), stays silent when it is alone or when the other
 # registration is a dead process, and keys on the tree rather than the session.

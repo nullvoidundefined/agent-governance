@@ -644,6 +644,14 @@
             "autofix": false
         },
         {
+            "id": "R-325",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
+        },
+        {
             "id": "R-505",
             "tier": "regex",
             "enforcer": "hook:commit-message-guard",

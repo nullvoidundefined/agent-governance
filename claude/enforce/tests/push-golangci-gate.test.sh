@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: golangci:errcheck, golangci:errorlint, golangci:mnd, golangci:nolintlint
 # Verifies push-golangci-gate.sh denies a push whose outgoing diff adds a Go
 # AST-tier violation, scopes to added lines, and fails open on unparseable
 # output. golangci-lint is stubbed via CLAUDE_GOLANGCI_CMD (canned JSON), so

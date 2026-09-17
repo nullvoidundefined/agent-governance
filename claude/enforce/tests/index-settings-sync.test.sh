@@ -12,7 +12,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_ROOT="$SCRIPT_DIR/../.."
 
 SETTINGS_MODEL=$(jq -r '.model // ""' "$CLAUDE_ROOT/settings.json")
-[ -n "$SETTINGS_MODEL" ] || { echo "index-settings-sync.test.sh SKIP: settings.json sets no model"; exit 0; }
+# A skip must still print PASS, because run-tests.sh requires that word and
+# read this branch as a red suite whenever settings.json legitimately set no
+# model, which means "use the default" (audit P3-3). This is the suite's skip
+# convention: the word PASS, then SKIPPED and the reason.
+[ -n "$SETTINGS_MODEL" ] || { echo "index-settings-sync.test.sh PASS (SKIPPED: settings.json sets no model, so there is no claim to contradict)"; exit 0; }
 
 INDEX_LINE=$(grep 'feedback_default_sonnet_proactive_switch' "$CLAUDE_ROOT/global-memory/INDEX.md" | head -1)
 [ -n "$INDEX_LINE" ] || { echo "FAIL: INDEX.md no longer lists the session-default memory"; exit 1; }
