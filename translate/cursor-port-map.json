@@ -1,105 +1,65 @@
 {
-  "classifications_note": "class values: generated | importable | hand-authored-local | hand-authored-mapped | runtime-only-ignored | unsupported (B-9 taxonomy from the parked source-neutral spec)",
-  "hand_authored": {
-    "README.md": "hand-authored-local",
-    "hooks/claude-hook-adapter.sh": "hand-authored-mapped",
-    "commands/session-start.md": "hand-authored-local",
-    "commands/session-handoff.md": "hand-authored-local"
-  },
-  "agents_to_subagents": [
-    "audit-*",
-    "spec-conformance-review"
-  ],
-  "events": {
-    "PreToolUse": {
-      "Bash": [
-        "beforeShellExecution"
-      ],
-      "Write|Edit": [
-        "afterFileEdit",
-        "preToolUse"
-      ],
-      "mcp__.*": [
-        "beforeMCPExecution"
-      ]
+    "classifications_note": "class values: generated | importable | hand-authored-local | hand-authored-mapped | runtime-only-ignored | unsupported (B-9 taxonomy from the parked source-neutral spec)",
+    "hand_authored": {
+        "README.md": "hand-authored-local",
+        "hooks/claude-hook-adapter.sh": "hand-authored-mapped",
+        "commands/session-start.md": "hand-authored-local",
+        "commands/session-handoff.md": "hand-authored-local"
     },
-    "PostToolUse": {
-      "Bash": [
-        "afterShellExecution"
-      ],
-      "Write": [
-        "afterFileEdit"
-      ],
-      "Write|Edit": [
-        "afterFileEdit"
-      ]
+    "agents_to_subagents": ["audit-*", "spec-conformance-review"],
+    "events": {
+        "PreToolUse": {
+            "Bash": ["beforeShellExecution"],
+            "Write|Edit": ["afterFileEdit", "preToolUse"],
+            "mcp__.*": ["beforeMCPExecution"]
+        },
+        "PostToolUse": { "Bash": ["afterShellExecution"], "Write": ["afterFileEdit"], "Write|Edit": ["afterFileEdit"] },
+        "SessionStart": { "*": ["sessionStart"] },
+        "SessionEnd": { "*": ["sessionEnd"] },
+        "Stop": { "*": ["stop"] },
+        "SubagentStop": { "*": [] },
+        "ConfigChange": { "*": [] },
+        "PreModelSwitch": { "*": [] }
     },
-    "SessionStart": {
-      "*": [
-        "sessionStart"
-      ]
+    "adapter_internal_events": ["beforeReadFile"],
+    "unported_reasons": {
+        "settings-change-guard": "ConfigChange is a Claude Code event; Cursor does not read settings.json live.",
+        "model-switch-guard": "PreModelSwitch is a Claude Code event; Cursor selects models in its own UI.",
+        "verification-gate": {
+            "SubagentStop": "SubagentStop has no Cursor equivalent; the stop event covers the main loop only. This hook's Stop registration ports (see the row above)."
+        },
+        "task-commit-reminder": "fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor.",
+        "post-compact-rules": "re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event."
     },
-    "SessionEnd": {
-      "*": [
-        "sessionEnd"
-      ]
+    "rule_descriptions": {
+        "000-global-rules.mdc": "Global rules R-001 to R-604 - the canonical rule file for every session. Always on.",
+        "001-session-types.mdc": "Session types - classify the session from the first message and load its Tier 2 rules (R-001). Always on.",
+        "002-global-memory-index.mdc": "Global memory index - cross-project feedback and efficiency lessons, loaded at every session start (R-001, R-002). Always on.",
+        "backend.mdc": "Express 5 and TypeScript API conventions - layers, handlers, services, repositories, clients, logging, containers. Auto-attached to server source trees.",
+        "cloud-deployment.mdc": "Cloud deployment - Railway, Cloudflare, environment variables, deploy commands, and deploy-time checks. Fetch for deploy sessions or when touching environment configuration.",
+        "database.mdc": "PostgreSQL conventions - migrations, raw SQL, repositories, schema rules. Auto-attached to migrations, .sql files, database and repository trees.",
+        "frontend-next.mdc": "Next.js App Router conventions. Auto-attached to app/ routes and next.config.",
+        "frontend-vite.mdc": "Vite and TanStack Router SPA conventions. Auto-attached to vite.config, src/main.tsx, and src/routes.",
+        "frontend.mdc": "Shared React client conventions - components, features, state, hooks, api wrappers. Auto-attached to .tsx files and client source trees.",
+        "frontend-react.mdc": "React-specific frontend conventions: hooks, component and provider patterns, state management. Auto-attached to .tsx and .jsx files and to src/state and src/hooks trees; read together with frontend.mdc, the framework-agnostic core.",
+        "go.mdc": "Go net/http and chi track - layout, pgx, golangci-lint, analogs of the [ts] rules. Auto-attached to .go files and go.mod.",
+        "python.mdc": "Python and FastAPI track - layout, SQLAlchemy, Alembic, pytest, ruff and mypy, analogs of the [ts] rules. Auto-attached to .py files.",
+        "ruby.mdc": "Ruby on Rails API track - layout, RSpec, RuboCop, analogs of the [ts] rules. Auto-attached to .rb files and the Gemfile.",
+        "rulebook-agents.mdc": "R-7xx Agents and Dispatch - Tier 2 rules for multi-agent sessions. Fetch when dispatching subagents, parallel worktrees, or multi-repo work (R-001).",
+        "rulebook-audits.mdc": "R-8xx Audits - Tier 2 rules for audit sessions. Fetch when running an engineering, security, criticism, or on-request audit (R-001).",
+        "rulebook-cost.mdc": "R-9xx Cost, Routing, and Estimation - Tier 2 rules for planning and multi-agent sessions. Fetch when tagging plan tasks, choosing a model, or estimating work (R-001).",
+        "rulebook-reference-convention-files.mdc": "Rulebook reference - Convention files. Fetch when choosing which convention file applies.",
+        "rulebook-reference-r0xx-session-init.mdc": "Full Spec, Scope, and Enforcement for the R-0xx rules (Session init). Fetch when the session-start procedure needs its full Spec. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "rulebook-reference-r1xx-secrets-and-trust.mdc": "Full Spec, Scope, and Enforcement for the R-1xx rules (Secrets and trust). Fetch before touching credentials, databases, MCP actions, or a push of ~/.claude. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "rulebook-reference-r2xx-conduct-and-output.mdc": "Full Spec, Scope, and Enforcement for the R-2xx rules (Conduct and output). Fetch when a conduct or output rule needs its full Spec. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "rulebook-reference-r3xx-architecture-and-naming.mdc": "Full Spec, Scope, and Enforcement for the R-3xx rules (Architecture and naming). Read before any structural or naming decision. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "rulebook-reference-r4xx-testing-and-quality.mdc": "Full Spec, Scope, and Enforcement for the R-4xx rules (Testing and quality). Read before designing tests - the nine test anti-patterns live here. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "rulebook-reference-r5xx-git-and-process.mdc": "Full Spec, Scope, and Enforcement for the R-5xx rules (Git and process). Read before commit, push, merge, or pull-request work. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "rulebook-reference-r6xx-lifecycle-and-memory.mdc": "Full Spec, Scope, and Enforcement for the R-6xx rules (Lifecycle and memory). Fetch at session end, before writing a handoff or routing a learning to memory. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
+        "structure-conventions.mdc": "The stack-specific structural and syntax rules (R-304, R-305, R-309 to R-314, R-319, R-321, R-323, R-324, R-326 to R-329, R-407). Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a TypeScript server or web client, before writing a pg migration default, and when planning a package layout. Each rule here is also enforced mechanically at the tool call, so this skill is the pre-emptive read, not the backstop.",
+        "styling.mdc": "SCSS module and CSS custom property conventions. Auto-attached to .scss and .module.css files."
     },
-    "Stop": {
-      "*": [
-        "stop"
-      ]
-    },
-    "SubagentStop": {
-      "*": []
-    },
-    "ConfigChange": {
-      "*": []
-    },
-    "PreModelSwitch": {
-      "*": []
-    }
-  },
-  "adapter_internal_events": [
-    "beforeReadFile"
-  ],
-  "unported_reasons": {
-    "settings-change-guard": "ConfigChange is a Claude Code event; Cursor does not read settings.json live.",
-    "model-switch-guard": "PreModelSwitch is a Claude Code event; Cursor selects models in its own UI.",
-    "verification-gate": {
-      "SubagentStop": "SubagentStop has no Cursor equivalent; the stop event covers the main loop only. This hook's Stop registration ports (see the row above)."
-    },
-    "task-commit-reminder": "fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor.",
-    "post-compact-rules": "re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event."
-  },
-  "rule_descriptions": {
-    "000-global-rules.mdc": "Global rules R-001 to R-604 - the canonical rule file for every session. Always on.",
-    "001-session-types.mdc": "Session types - classify the session from the first message and load its Tier 2 rules (R-001). Always on.",
-    "002-global-memory-index.mdc": "Global memory index - cross-project feedback and efficiency lessons, loaded at every session start (R-001, R-002). Always on.",
-    "backend.mdc": "Express 5 and TypeScript API conventions - layers, handlers, services, repositories, clients, logging, containers. Auto-attached to server source trees.",
-    "cloud-deployment.mdc": "Cloud deployment - Railway, Cloudflare, environment variables, deploy commands, and deploy-time checks. Fetch for deploy sessions or when touching environment configuration.",
-    "database.mdc": "PostgreSQL conventions - migrations, raw SQL, repositories, schema rules. Auto-attached to migrations, .sql files, database and repository trees.",
-    "frontend-next.mdc": "Next.js App Router conventions. Auto-attached to app/ routes and next.config.",
-    "frontend-vite.mdc": "Vite and TanStack Router SPA conventions. Auto-attached to vite.config, src/main.tsx, and src/routes.",
-    "frontend.mdc": "Shared React client conventions - components, features, state, hooks, api wrappers. Auto-attached to .tsx files and client source trees.",
-    "frontend-react.mdc": "React-specific frontend conventions: hooks, component and provider patterns, state management. Auto-attached to .tsx and .jsx files and to src/state and src/hooks trees; read together with frontend.mdc, the framework-agnostic core.",
-    "go.mdc": "Go net/http and chi track - layout, pgx, golangci-lint, analogs of the [ts] rules. Auto-attached to .go files and go.mod.",
-    "python.mdc": "Python and FastAPI track - layout, SQLAlchemy, Alembic, pytest, ruff and mypy, analogs of the [ts] rules. Auto-attached to .py files.",
-    "ruby.mdc": "Ruby on Rails API track - layout, RSpec, RuboCop, analogs of the [ts] rules. Auto-attached to .rb files and the Gemfile.",
-    "rulebook-agents.mdc": "R-7xx Agents and Dispatch - Tier 2 rules for multi-agent sessions. Fetch when dispatching subagents, parallel worktrees, or multi-repo work (R-001).",
-    "rulebook-audits.mdc": "R-8xx Audits - Tier 2 rules for audit sessions. Fetch when running an engineering, security, criticism, or on-request audit (R-001).",
-    "rulebook-cost.mdc": "R-9xx Cost, Routing, and Estimation - Tier 2 rules for planning and multi-agent sessions. Fetch when tagging plan tasks, choosing a model, or estimating work (R-001).",
-    "rulebook-reference-convention-files.mdc": "Rulebook reference - Convention files. Fetch when choosing which convention file applies.",
-    "rulebook-reference-r0xx-session-init.mdc": "Full Spec, Scope, and Enforcement for the R-0xx rules (Session init). Fetch when the session-start procedure needs its full Spec. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "rulebook-reference-r1xx-secrets-and-trust.mdc": "Full Spec, Scope, and Enforcement for the R-1xx rules (Secrets and trust). Fetch before touching credentials, databases, MCP actions, or a push of ~/.claude. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "rulebook-reference-r2xx-conduct-and-output.mdc": "Full Spec, Scope, and Enforcement for the R-2xx rules (Conduct and output). Fetch when a conduct or output rule needs its full Spec. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "rulebook-reference-r3xx-architecture-and-naming.mdc": "Full Spec, Scope, and Enforcement for the R-3xx rules (Architecture and naming). Read before any structural or naming decision. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "rulebook-reference-r4xx-testing-and-quality.mdc": "Full Spec, Scope, and Enforcement for the R-4xx rules (Testing and quality). Read before designing tests - the nine test anti-patterns live here. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "rulebook-reference-r5xx-git-and-process.mdc": "Full Spec, Scope, and Enforcement for the R-5xx rules (Git and process). Read before commit, push, merge, or pull-request work. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "rulebook-reference-r6xx-lifecycle-and-memory.mdc": "Full Spec, Scope, and Enforcement for the R-6xx rules (Lifecycle and memory). Fetch at session end, before writing a handoff or routing a learning to memory. Fetch whenever a norm line in the global rules is not enough to act on, or when a hook or the push judge cites one of these rules.",
-    "structure-conventions.mdc": "The stack-specific structural and syntax rules (R-304, R-305, R-309 to R-314, R-319, R-321, R-323, R-324, R-326 to R-329, R-407). Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a TypeScript server or web client, before writing a pg migration default, and when planning a package layout. Each rule here is also enforced mechanically at the tool call, so this skill is the pre-emptive read, not the backstop.",
-    "styling.mdc": "SCSS module and CSS custom property conventions. Auto-attached to .scss and .module.css files."
-  },
-  "cursor_preamble": "The canonical rule file, loaded into every session. One norm line per rule; the complete Spec, Scope, and Enforcement detail for every rule lives in `~/.claude/rulebook/reference.md` (under Cursor also the `rulebook-reference-*` rules, one per block), read on demand: before structural or naming decisions (R-3xx), before test design (R-4xx), or whenever a norm line is not enough to act on. The conditional, mechanically enforced structure rules live in the `/structure-conventions` skill rather than here. The trailing bracket names the enforcer: `[manual]` depends on recall; `[judge]` is the push-time LLM judge; hooks and ESLint fire mechanically. Under Cursor the hooks fire through `~/.cursor/hooks.json` (the adapter is `~/.cursor/hooks/claude-hook-adapter.sh`); a tag reading `hook:X in Claude Code; manual in Cursor` names a hook with no Cursor event, so that rule depends on recall here. `[ts]`/`[py]` after a rule ID scope it to a stack. Rationale and history: `PROTOCOL.md`.",
-  "index_trailing_paragraph": "Unlike the auto-loading described above, per-project auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`) does NOT load on its own under Cursor: this index is an always-on Cursor rule (R-001, R-002) precisely because nothing else re-injects context automatically here, and the `sessionStart` hook injecting it a second time where Cursor honors hook context is the substitute. Read `~/.claude/projects/<project>/memory/MEMORY.md` directly when the project has one; `hooks/session-end.sh` still scans that directory for `fired:` and `miss:` lines and rolls them into `rule_fires.md` and `rule_misses.md` (R-603).",
-  "port_status_appendix": "## Permission rules\n\n| settings.json layer | Under Cursor |\n|---|---|\n| `permissions.deny` `Bash(...)` | mirrored by the adapter on `beforeShellExecution` (deny) |\n| `permissions.ask` `Bash(...)` | mirrored by the adapter on `beforeShellExecution` (ask) |\n| `permissions.deny` `Read(...)` | mirrored by the adapter on `beforeReadFile` (deny) |\n| `permissions.allow` | not ported: Cursor's own command allowlist governs what runs without a prompt |\n| `permissions.defaultMode`, `model`, `enabledPlugins` | not ported: Claude Code runtime settings with no Cursor equivalent |"
+    "cursor_preamble": "The canonical rule file, loaded into every session. One norm line per rule; the complete Spec, Scope, and Enforcement detail for every rule lives in `~/.claude/rulebook/reference.md` (under Cursor also the `rulebook-reference-*` rules, one per block), read on demand: before structural or naming decisions (R-3xx), before test design (R-4xx), or whenever a norm line is not enough to act on. The conditional, mechanically enforced structure rules live in the `/structure-conventions` skill rather than here. The trailing bracket names the enforcer: `[manual]` depends on recall; `[judge]` is the push-time LLM judge; hooks and ESLint fire mechanically. Under Cursor the hooks fire through `~/.cursor/hooks.json` (the adapter is `~/.cursor/hooks/claude-hook-adapter.sh`); a tag reading `hook:X in Claude Code; manual in Cursor` names a hook with no Cursor event, so that rule depends on recall here. `[ts]`/`[py]` after a rule ID scope it to a stack. Rationale and history: `PROTOCOL.md`.",
+    "index_trailing_paragraph": "Unlike the auto-loading described above, per-project auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`) does NOT load on its own under Cursor: this index is an always-on Cursor rule (R-001, R-002) precisely because nothing else re-injects context automatically here, and the `sessionStart` hook injecting it a second time where Cursor honors hook context is the substitute. Read `~/.claude/projects/<project>/memory/MEMORY.md` directly when the project has one; `hooks/session-end.sh` still scans that directory for `fired:` and `miss:` lines and rolls them into `rule_fires.md` and `rule_misses.md` (R-603).",
+    "port_status_appendix": "## Permission rules\n\n| settings.json layer | Under Cursor |\n|---|---|\n| `permissions.deny` `Bash(...)` | mirrored by the adapter on `beforeShellExecution` (deny) |\n| `permissions.ask` `Bash(...)` | mirrored by the adapter on `beforeShellExecution` (ask) |\n| `permissions.deny` `Read(...)` | mirrored by the adapter on `beforeReadFile` (deny) |\n| `permissions.allow` | not ported: Cursor's own command allowlist governs what runs without a prompt |\n| `permissions.defaultMode`, `model`, `enabledPlugins` | not ported: Claude Code runtime settings with no Cursor equivalent |"
 }
