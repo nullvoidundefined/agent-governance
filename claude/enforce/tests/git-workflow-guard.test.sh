@@ -42,6 +42,16 @@ git -C "$REPO" commit -qm "chore: seed"
 [ "$(decision 'git push origin refs/heads/main' "$REPO")" = "ask" ]     # fully qualified ref
 [ "$(decision 'git push origin +main' "$REPO")" = "ask" ]               # force marker on the refspec
 [ "$(decision "git -C $REPO push origin main" /tmp)" = "ask" ]          # -C form names the repo, not the cwd
+# Every other shape that names a target repository (2026-09-18 audit, defect 4).
+# The old extraction read `-C` alone, from the FIRST git invocation, with an
+# unquoted path, so each of these was judged against the cwd instead.
+[ "$(decision "git --work-tree $REPO push origin main" /tmp)" = "ask" ]
+[ "$(decision "git --work-tree=$REPO push origin main" /tmp)" = "ask" ]
+[ "$(decision "git -c core.pager=cat -C $REPO push origin main" /tmp)" = "ask" ]
+[ "$(decision "git -C /nowhere fetch && git -C $REPO push origin main" /tmp)" = "ask" ]
+QUOTED_REPO="$REPO with spaces"
+cp -R "$REPO" "$QUOTED_REPO"
+[ "$(decision "git -C \"$QUOTED_REPO\" push origin main" /tmp)" = "ask" ]
 [ "$(decision 'git push origin feature/scoring' "$REPO")" = "ask" ] && exit 1  # a feature branch is not gated
 # The governance repo is exempt wherever it lives: identity is the origin
 # remote (repo-identity.sh), so the fixture builds a sandbox repo carrying the

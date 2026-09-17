@@ -5,12 +5,16 @@
 # (singleFileFolderExemptions). Tests, index, constants, and types modules do not count
 # as the folder's source module.
 set -euo pipefail
-source "$HOME/.claude/enforce/resolve-outgoing-base.sh"
+ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)"
+source "$ENFORCE_DIR/resolve-outgoing-base.sh"
 
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+RAW_CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+CMD="$RAW_CMD"
 # Strip git global options so `git --no-pager push` matches like `git push`
-# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh),
+# then recover which repository the push names so that every query below
+# runs against THAT repository (2026-09-18 audit, defect 4).
 # -f guard, not `source ... || true`: a failed source aborts the shell under
 # set -e regardless of the || (observed 2026-09-16), which is a silent
 # fail-open for a guard.
@@ -18,16 +22,20 @@ GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 if [ -f "$GIT_INVOCATION_HELPER" ]; then
   source "$GIT_INVOCATION_HELPER"
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+  # The target is read from the UNSTRIPPED command, because stripping is
+  # exactly what throws it away (2026-09-18 audit, defect 4).
+  parse_git_target_options "$RAW_CMD" push
 fi
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-TOP="$(git rev-parse --show-toplevel)"
+TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$TOP" ] || exit 0
 # Go is deliberately absent: single-file packages are idiomatic Go, so the
 # R-309 advisory does not apply to .go trees.
-FILES=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|py|rb)$' || true)
+FILES=$(run_git_on_target diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|py|rb)$' || true)
 [ -z "$FILES" ] && exit 0
 
 EXEMPT=""

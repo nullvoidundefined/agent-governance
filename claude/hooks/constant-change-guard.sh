@@ -10,12 +10,16 @@
 set -uo pipefail
 
 # shellcheck source=../enforce/resolve-outgoing-base.sh
-source "$HOME/.claude/enforce/resolve-outgoing-base.sh"
+ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)"
+source "$ENFORCE_DIR/resolve-outgoing-base.sh"
 
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+RAW_CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+CMD="$RAW_CMD"
 # Strip git global options so `git --no-pager push` matches like `git push`
-# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh),
+# then recover which repository the push names so that every query below
+# runs against THAT repository (2026-09-18 audit, defect 4).
 # -f guard, not `source ... || true`: a failed source aborts the shell under
 # set -e regardless of the || (observed 2026-09-16), which is a silent
 # fail-open for a guard.
@@ -23,21 +27,25 @@ GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 if [ -f "$GIT_INVOCATION_HELPER" ]; then
   source "$GIT_INVOCATION_HELPER"
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+  # The target is read from the UNSTRIPPED command, because stripping is
+  # exactly what throws it away (2026-09-18 audit, defect 4).
+  parse_git_target_options "$RAW_CMD" push
 fi
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+run_git_on_target rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-CONST_FILES=$(git diff --name-only "$BASE"..HEAD 2>/dev/null | grep -E '(^|/)constants(\.([jt]sx?|py|rb|go)$|/)' || true)
+CONST_FILES=$(run_git_on_target diff --name-only "$BASE"..HEAD 2>/dev/null | grep -E '(^|/)constants(\.([jt]sx?|py|rb|go)$|/)' || true)
 [ -z "$CONST_FILES" ] && exit 0
 
-TOP=$(git rev-parse --show-toplevel)
+TOP=$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$TOP" ] || exit 0
 STALE=""
 while IFS= read -r constants_file; do
   [ -z "$constants_file" ] && continue
-  DIFF=$(git diff "$BASE"..HEAD -- "$constants_file" 2>/dev/null || true)
+  DIFF=$(run_git_on_target diff "$BASE"..HEAD -- "$constants_file" 2>/dev/null || true)
   REMOVED=$(printf '%s\n' "$DIFF" | grep '^-' | grep -oE "'[^']{3,}'|\"[^\"]{3,}\"" | sed "s/^[\"']//;s/[\"']$//" | sort -u)
   KEPT=$(printf '%s\n' "$DIFF" | grep '^+' | grep -oE "'[^']{3,}'|\"[^\"]{3,}\"" | sed "s/^[\"']//;s/[\"']$//" | sort -u)
   while IFS= read -r removed_value; do

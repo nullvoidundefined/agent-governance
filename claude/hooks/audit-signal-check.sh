@@ -13,9 +13,12 @@ SIGNAL_THRESHOLD=5
 FALLBACK_WINDOW='30 days ago'
 
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+RAW_CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+CMD="$RAW_CMD"
 # Strip git global options so `git --no-pager push` matches like `git push`
-# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh),
+# then recover which repository the push names so that every query below
+# runs against THAT repository (2026-09-18 audit, defect 4).
 # -f guard, not `source ... || true`: a failed source aborts the shell under
 # set -e regardless of the || (observed 2026-09-16), which is a silent
 # fail-open for a guard.
@@ -23,11 +26,20 @@ GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 if [ -f "$GIT_INVOCATION_HELPER" ]; then
   source "$GIT_INVOCATION_HELPER"
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+  # The target is read from the UNSTRIPPED command, because stripping is
+  # exactly what throws it away (2026-09-18 audit, defect 4).
+  parse_git_target_options "$RAW_CMD" push
 fi
+# Fallback for an unreachable helper: every query runs against the ambient
+# repository, which is exactly the behaviour this hook had before targeting
+# existed. Declared here rather than inside the branch above so that the
+# function is defined on both paths.
+declare -f run_git_on_target >/dev/null 2>&1 || run_git_on_target() { git "$@"; }
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel)
+run_git_on_target rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+TOP=$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$TOP" ] || exit 0
 
 # Repo exemption (2026-07-27, Ian-approved): repos listed by origin URL in
 # enforce/exempt-repos.txt skip this advisory entirely. Repo-wide audit signals
@@ -36,7 +48,7 @@ TOP=$(git rev-parse --show-toplevel)
 # worktrees.
 EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"
 if [ -f "$EXEMPT_FILE" ]; then
-  ORIGIN_URL=$(git -C "$TOP" remote get-url origin 2>/dev/null || true)
+  ORIGIN_URL=$(run_git_on_target remote get-url origin 2>/dev/null || true)
   if [ -n "$ORIGIN_URL" ] && grep -qxF "$ORIGIN_URL" "$EXEMPT_FILE"; then
     exit 0
   fi

@@ -13,13 +13,21 @@
 # (2026-09-16 audit P2-8; convention documented in enforce/README.md).
 set -uo pipefail
 
+# The rule text, the judge prompt and the manifest are files this repo ships,
+# so they are resolved beside the hook rather than through the live install: a
+# hook run out of a checkout must judge against that checkout's rules.
+CLAUDE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENFORCE_DIR="$CLAUDE_DIR/enforce"
 # shellcheck source=../enforce/resolve-outgoing-base.sh
-source "$HOME/.claude/enforce/resolve-outgoing-base.sh"
+source "$ENFORCE_DIR/resolve-outgoing-base.sh"
 
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+RAW_CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+CMD="$RAW_CMD"
 # Strip git global options so `git --no-pager push` matches like `git push`
-# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh).
+# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh),
+# then recover which repository the push names so that every query below
+# runs against THAT repository (2026-09-18 audit, defect 4).
 # -f guard, not `source ... || true`: a failed source aborts the shell under
 # set -e regardless of the || (observed 2026-09-16), which is a silent
 # fail-open for a guard.
@@ -27,6 +35,9 @@ GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 if [ -f "$GIT_INVOCATION_HELPER" ]; then
   source "$GIT_INVOCATION_HELPER"
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+  # The target is read from the UNSTRIPPED command, because stripping is
+  # exactly what throws it away (2026-09-18 audit, defect 4).
+  parse_git_target_options "$RAW_CMD" push
 fi
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 
@@ -36,7 +47,7 @@ printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
 # carried no exemption at all. Disclosure lives in README.md (Enforcement).
 EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"
 if [ -f "$EXEMPT_FILE" ]; then
-  ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+  ORIGIN_URL=$(run_git_on_target remote get-url origin 2>/dev/null || true)
   if [ -n "$ORIGIN_URL" ] && grep -qxF "$ORIGIN_URL" "$EXEMPT_FILE"; then
     exit 0
   fi
@@ -45,7 +56,7 @@ fi
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-DIFF=$(git diff --diff-filter=ACMR "$BASE"..HEAD -- '*.ts' '*.tsx' '*.py' '*.rb' '*.go' 2>/dev/null || true)
+DIFF=$(run_git_on_target diff --diff-filter=ACMR "$BASE"..HEAD -- '*.ts' '*.tsx' '*.py' '*.rb' '*.go' 2>/dev/null || true)
 [ -z "$DIFF" ] && exit 0
 
 THRESH=0.8
@@ -101,9 +112,9 @@ else
       index($0, id ": ") == 1 || index($0, id " [") == 1 { p = 1; print; next }
       p && (/^R-[0-9]/ || /^## /) { exit }
       p { print }
-    ' "$HOME/.claude/rulebook/reference.md" || true
+    ' "$CLAUDE_DIR/rulebook/reference.md" || true
   done)
-  SYS=$(cat "$HOME/.claude/enforce/judge-prompt.md")
+  SYS=$(cat "$ENFORCE_DIR/judge-prompt.md")
   USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" '{rules:$rt, diff:$d} | tostring')
   BODY=$(jq -n --arg s "$SYS" --arg u "$USERMSG" '{model:"claude-haiku-4-5-20251001",max_tokens:1024,temperature:0,system:$s,messages:[{role:"user",content:$u}]}')
   RAW=$(curl -sS https://api.anthropic.com/v1/messages \
