@@ -31,7 +31,10 @@ TARGET_CODEX="${SYNC_CODEX_HOME:-$HOME/.codex}"
 
 sync_one() {
   local folder="$1" dest="$2"
-  local rsync_args=(-a)
+  # --checksum: a live file edited to the same size within the same second as
+  # the tracked one is still drift (the R-003 hook compares content), so the
+  # copy decides by content too, never by size and mtime alone.
+  local rsync_args=(-a --checksum)
 
   # Stage a copy of only the git-tracked files for this folder. Building a
   # clean staging tree keeps the "only ship what's tracked" semantics simple
