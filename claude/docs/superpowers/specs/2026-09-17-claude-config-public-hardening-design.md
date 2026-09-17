@@ -1,5 +1,8 @@
 # Claude config public hardening
 
+**Ticket:** IAN-76 (tranche 1 of four; the remaining tranches open their own tickets as each starts)
+**Plans:** the tranche 1 plan is written to `claude/docs/superpowers/plans/2026-09-17-config-hardening-tranche-1-safety.md`, which `claude/.gitignore` excludes (`plans/`), so it lives in the authoring session's working tree and never reaches this repository. Treat this spec as the durable artifact and regenerate the plan from it when the tranche is picked up.
+
 ## Goal
 
 Prepare the Claude Code governance harness for public reuse by incorporating the highest-value ideas found in peer harnesses while preserving this repo's incident-driven rulebook, manifest-backed enforcement, and fixture-test discipline. The work should make the harness safer to run, easier to install, easier to verify, and clearer about what the Claude, Codex, and Cursor ports can actually enforce.
