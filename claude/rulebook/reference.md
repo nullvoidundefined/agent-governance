@@ -586,7 +586,7 @@ R-601: Offer a handoff doc at session end; commit a dirty agent-governance check
   Enforcement: manual
 
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets.
-  Spec, in order: (1) last commit SHA + subject; (2) production state; (3) what shipped (grouped, traceable); (4) pending (by urgency, with effort estimate); (5) next-session tasks with files to read. Bundle into the final commit.
+  Spec, in order: (1) last commit SHA + subject; (2) production state; (3) session metrics (commits, files changed, rework count, velocity flag; `hooks/session-end.sh` computes the same four from the SHA `session-start.sh` stamps at session start, so the numbers in the handoff and in the hook's `## Session metrics` block agree); (4) what shipped (grouped, traceable); (5) pending (by urgency, with effort estimate); (6) next-session tasks with files to read. Bundle into the final commit.
   Enforcement: manual
 
 R-603: Route learnings to per-project feedback memory.
