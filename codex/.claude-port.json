@@ -2,11 +2,11 @@
   "builder": "translate/codex.mjs",
   "builder_files": {
     "translate/build-manifest.mjs": "sha256:6b38dc505ed6a47906b1e2b6c12849ec2b5e76089046944dc0790346d8841ec1",
-    "translate/codex.mjs": "sha256:f2c02f063581d99dd32336644f9897a2060e912e72b0f516940312dbc0a2b323",
-    "translate/parse-sources.mjs": "sha256:c5f14291a39c8eccb9b9baecac97089b0ff286b53af1e44ca1de9781f67943fa",
+    "translate/codex.mjs": "sha256:ea548ec1f1c4d630ddeee02c351705f7473cfbcb8a0d2d5561b257dc5008456e",
+    "translate/parse-sources.mjs": "sha256:72b7d0e208b227e505198000da9edc6df151e51546bb0afcdf9a2671705e882c",
     "translate/render-codex-agents.mjs": "sha256:ccdfb05be84581ba395c5eeea553e31d1654d38f458e6b7027d88fa54c737e2f",
     "translate/render-codex-gitignore.mjs": "sha256:d0f1a0d030fff0536981ce1cac8f15be1b479de2b8f8a2453fecf031c1159c6e",
-    "translate/render-codex-hooks.mjs": "sha256:e83bfa394061840082d42e289e27326671be8a3294af226cd0a2bf5b84de272f",
+    "translate/render-codex-hooks.mjs": "sha256:d4013cbc11c6b9347fa1bc6af0887c16ab22ef341f11d3c118c365db779bcce1",
     "translate/render-codex-rules.mjs": "sha256:45e5facea13844c4f7043e6d9d9e805448630a63501344968ec0c7bf9ebbd7fd",
     "translate/render-codex-skills.mjs": "sha256:c77f22f2935798fec756d985a072a6919a018be4587285511b7124b6c5f581e6"
   },

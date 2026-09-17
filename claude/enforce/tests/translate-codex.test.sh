@@ -628,4 +628,33 @@ manifestOmitsGitignoreFromHandAuthored() { jq -e '.hand_authored | index(".gitig
 check "manifest hashes the gitignore" manifestHashesGitignore
 check "manifest omits gitignore from hand-authored" manifestOmitsGitignoreFromHandAuthored
 
+
+# PR #8 review (Copilot, translate/codex.mjs): the unclassified-hook closure
+# check took its own-property care, but isRegistrationPorted still asked
+# `hookName in portMap.unported_reasons`, and `in` walks the prototype chain.
+# A hook whose name happens to be an Object.prototype member therefore read as
+# carrying an unported reason it never had, and dropped out of the generated
+# Codex hooks entirely. The check now lives once, in the shared classification
+# path, so every caller gets the same answer.
+SRC7=$(mktemp -d); trap 'rm -rf "$SANDBOX" "$SRC" "$SRC2" "$SRC3" "$SRC4" "$SRC5" "$SRC6" "$SRC7"' EXIT
+make_source_tree "$SRC7"
+add_settings_hook "$SRC7" "constructor" "PreToolUse" "Bash"
+add_settings_hook "$SRC7" "toString" "PreToolUse" "Bash"
+node "$TRANSLATOR" --write --root "$SRC7" >/dev/null 2>&1
+HJ7="$SRC7/codex/hooks.json"
+PS7="$SRC7/codex/PORT-STATUS.md"
+prototypeNamedHooksPorted() { jq -e '[.hooks.PreToolUse[].hooks[].command] | (any(test("constructor")) and any(test("toString")))' "$HJ7" >/dev/null; }
+check "hooks named for prototype members still port" prototypeNamedHooksPorted
+check "prototype-named hook not marked unported" not grep -q '`constructor`.*not ported' "$PS7"
+node "$TRANSLATOR" --check --root "$SRC7"; check "prototype-named hook sandbox check stays clean" test $? -eq 0
+
+# A prototype-named hook that really does carry an unported reason is still
+# reported unported, so the own-property fix did not simply stop reading the map.
+jq '.unported_reasons["toString"] = "sandbox stub reason for the prototype-name regression."' \
+  "$SRC7/translate/codex-port-map.json" >"$SRC7/translate/codex-port-map.json.tmp" \
+  && mv "$SRC7/translate/codex-port-map.json.tmp" "$SRC7/translate/codex-port-map.json"
+node "$TRANSLATOR" --write --root "$SRC7" >/dev/null 2>&1
+check "a real unported reason on a prototype name still drops the hook" not grep -q "toString" "$HJ7"
+check "its port-status row carries the reason" grep -q '`toString`.*not ported: sandbox stub reason for the prototype-name regression.' "$PS7"
+
 [ "$fail" -eq 0 ] && echo "translate-codex.test.sh PASS" || exit 1

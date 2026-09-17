@@ -62,6 +62,17 @@ export function hookNameFromCommand(command) {
   return base.endsWith(".sh") ? base.slice(0, -3) : base;
 }
 
+// hasUnportedReason(hookName, portMap): true when the port map's own
+// unported_reasons object carries an entry for this hook. hasOwnProperty, not
+// `in`: `in` walks the prototype chain, so a hook literally named "constructor"
+// or "toString" read as carrying a reason it never had and dropped out of the
+// generated Codex hooks (audit P3-1 fixed this in codex.mjs's closure check and
+// left it standing here, reported on PR #8). Every classification path asks
+// this one function so the two answers cannot diverge again.
+export function hasUnportedReason(hookName, portMap) {
+  return Object.prototype.hasOwnProperty.call(portMap.unported_reasons, hookName);
+}
+
 // isRegistrationPorted(hookName, event, portMap): true when this specific
 // Claude Code event's registration of hookName would carry into Codex: the
 // hook has no unported reason, and this event maps to a real Codex event.
@@ -70,7 +81,7 @@ export function hookNameFromCommand(command) {
 // gets the right answer for each (the PORT-STATUS.md renderer, Task 6, needs
 // one row per registration, not one row per hook).
 export function isRegistrationPorted(hookName, event, portMap) {
-  if (hookName in portMap.unported_reasons) return false;
+  if (hasUnportedReason(hookName, portMap)) return false;
   return portMap.events[event] != null;
 }
 

@@ -12,6 +12,7 @@ import {
   loadSettingsHooks,
   loadPortMap,
   hookNameFromCommand,
+  hasUnportedReason,
 } from "./parse-sources.mjs";
 import { renderAgentToml, renderAgentSkill, matchesAgentSkillList } from "./render-codex-agents.mjs";
 import { renderSkillCopy, renderSkillSupportFile } from "./render-codex-skills.mjs";
@@ -240,9 +241,11 @@ function findUnclassifiedHookNames(settingsHooks, portMap) {
         const name = hookNameFromCommand(hook.command);
         // hasOwnProperty, not `in`: `in` walks the prototype chain, so a hook
         // literally named "constructor" or "toString" would read as already
-        // classified and vanish from the closure check (audit P3-1).
+        // classified and vanish from the closure check (audit P3-1). The
+        // unported_reasons half of that question is hasUnportedReason, shared
+        // with parse-sources.mjs, where the same hole outlived this fix.
         if (Object.prototype.hasOwnProperty.call(overrides, name)
-          || Object.prototype.hasOwnProperty.call(portMap.unported_reasons, name)) continue;
+          || hasUnportedReason(name, portMap)) continue;
         names.add(name);
       }
     }
