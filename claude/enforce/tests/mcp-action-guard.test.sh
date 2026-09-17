@@ -50,6 +50,16 @@ pass mcp__claude_ai_Linear__save_comment
 ask  mcp__claude_ai_Linear__delete_issue_label
 ask  mcp__claude_ai_Gmail__send_message
 
+# Cursor adapter calls match listed bare names; other servers require exact names.
+pass mcp__cursor__save_issue
+ask  mcp__cursor__delete_issue
+ask  mcp__other_server__save_issue
+
+# Non-string tool values are ignored without excluding valid string values.
+printf '%s\n' '{"active":"linear","trackers":{"linear":{"tools":{"create":42,"comment":"mcp__claude_ai_Linear__save_comment"}}}}' >"$TRACKER_CONFIG"
+pass mcp__claude_ai_Linear__save_comment
+ask  mcp__cursor__save_issue
+
 # Missing and malformed configs do not pre-authorize tracker writes.
 export TICKET_TRACKER_CONFIG="$TRACKER_CONFIG/nonexistent"
 ask mcp__claude_ai_Linear__save_issue
