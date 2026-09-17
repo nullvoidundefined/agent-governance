@@ -47,8 +47,14 @@ if [ -n "$DUPLICATED" ]; then
   exit 1
 fi
 
+# Invariant 3 inspected nothing and passed in silence when the glob matched
+# no file, the same shape P1-4 found in deny-tier-set-convention.test.sh. The
+# directory always holds session-types.md plus the path-scoped stack symlinks,
+# so an empty match means the wrong tree, not a valid layout (audit P3-4).
+RULES_FILE_COUNT=0
 for rule_file in "$RULES_DIR"/*.md; do
   [ -e "$rule_file" ] || continue
+  RULES_FILE_COUNT=$((RULES_FILE_COUNT + 1))
   BASENAME=$(basename "$rule_file")
   [ "$BASENAME" = "session-types.md" ] && continue
   if [ "$(head -1 "$rule_file")" != "---" ]; then
@@ -56,5 +62,10 @@ for rule_file in "$RULES_DIR"/*.md; do
     exit 1
   fi
 done
+
+if [ "$RULES_FILE_COUNT" -eq 0 ]; then
+  echo "FAIL: invariant 3 inspected no file under $RULES_DIR, so it proved nothing; the directory should hold session-types.md plus the path-scoped stack rule files" >&2
+  exit 1
+fi
 
 echo "claude-md-lint.test.sh PASS ($LINE_COUNT lines, $(printf '%s\n' "$NORM_IDS" | wc -l | tr -d ' ') rules in sync, $(printf '%s\n' "$SKILL_IDS" | grep -cE '^R-' || true) carried by skills)"
