@@ -21,7 +21,13 @@ End-to-end workflow for triaging, fixing, and closing user-submitted feedback (b
 
 ### Step 1: Retrieve open feedback
 
-Query the staging/production database for all open entries:
+Query the staging/production database for all open entries through the bundled tool, which composes the SQL from validated identifiers and bound parameters so no query is written by hand:
+
+```bash
+node ~/.claude/skills/resolve-user-feedback/scripts/feedback.mjs list [--table app_feedback] [--status-col status]
+```
+
+It reads `DATABASE_URL` from the environment or the project's `.env`, resolves `pg` from the project's own `node_modules`, and prints the table below (`--dry-run` shows the SQL and connects to nothing). The query it runs:
 
 ```sql
 SELECT id, type, description, page_url, created_at
@@ -29,8 +35,6 @@ FROM app_feedback
 WHERE status = 'open'
 ORDER BY created_at DESC;
 ```
-
-Run this via the server's `.env` database connection. Use `dotenv/config` to load credentials.
 
 Present findings as a table:
 
@@ -90,7 +94,13 @@ Follow project conventions:
 
 ### Step 6: Mark entries as closed
 
-After all fixes pass tests, update the database. This is a write to a managed or remote database, so R-101 applies: name the target host and the ids about to close, and get explicit confirmation in the current turn before running it (`destructive-db-guard` classifies DELETE and DROP, not UPDATE, so nothing mechanical asks for you).
+After all fixes pass tests, close the verified ids through the same tool. This is a write to a managed or remote database, so R-101 applies: the tool refuses without `--confirm`, printing the target host and the ids so you can ask the user in the current turn, and `destructive-db-guard` classifies DELETE and DROP, not UPDATE, so nothing else asks for you.
+
+```bash
+node ~/.claude/skills/resolve-user-feedback/scripts/feedback.mjs close <id> [<id>...] --confirm
+```
+
+The query it runs, with the ids bound as an array parameter:
 
 ```sql
 UPDATE app_feedback
