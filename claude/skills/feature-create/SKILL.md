@@ -1,6 +1,8 @@
 ---
 name: feature-create
 description: Use when starting implementation of a feature that already has an approved plan, before any code is written. Triggers on "start feature", "create feature", "kick off", or immediately after a plan is finished.
+argument-hint: <slug> [plan-path]
+disable-model-invocation: true
 ---
 
 # Feature Create
