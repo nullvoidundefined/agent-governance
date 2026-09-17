@@ -126,13 +126,15 @@ The seven questions in your role file, with file:line evidence or "none found", 
 
 ## Validating a return
 
-Mechanical, in this order; a failure at any line means the slice is not done:
+One command per role; a non-zero exit means the slice is not done:
 
 ```bash
-bash ~/.claude/enforce/tdd.sh status                # phase red after the test author, green after the implementer
-git status --porcelain                              # only the files the role may write (R-411)
-bash ~/.claude/enforce/tdd.sh green                 # re-run yourself before the GREEN commit
+bash ~/.claude/enforce/tdd.sh validate test-author    # phase red; only test and fixture paths changed
+bash ~/.claude/enforce/tdd.sh validate implementer    # phase green; no test, fixture, spec, or lock writes; GREEN re-run
+bash ~/.claude/enforce/tdd.sh validate slice-critic   # nothing written at all
 ```
+
+It reads the boundary from `enforce/role-policy.json` (R-411) and judges `git status --porcelain` against it, so the orchestrator never applies the patterns by eye; `tdd.sh status` still prints the lock when the refusal needs context. Run the implementer's validate before the GREEN commit, the critic's after it.
 
 A `DISPUTE:` return stops the loop. Show the user the test, the claim, and the
 spec line. If the user agrees the test is wrong, `tdd.sh` cannot unlock it: the
