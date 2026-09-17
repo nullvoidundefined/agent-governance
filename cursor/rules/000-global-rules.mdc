@@ -22,7 +22,7 @@ R-101: Never run destructive data-loss actions (`DROP`, `TRUNCATE`, `DELETE FROM
 R-102: Keep secret files off-path by default (`.env*`, `~/.aws`, `~/.ssh`, `~/.gnupg`, gh hosts.yml, keychains, browser stores); when the user names one, use the value from memory and never echo it. [hook:secret-scan, hook:redact-output]
 R-103: Treat every real credential file as read-only; never a scratch, test, or verification target; env-file fixtures go to a throwaway `/tmp` path. [hook:secret-scan]
 R-104: Sanitize artifacts before writing them: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. [manual]
-R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn; private-tracker writes are exempt unless they land code, submit, upload, or apply. [hook:mcp-action-guard]
+R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn; Linear-tracker writes are exempt unless they land code, submit, upload, or apply. [hook:mcp-action-guard]
 R-106: Every push of `~/.claude` is publishing (public remote): `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
 R-107: Investigate any `core.hooksPath` resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal. [hook:hookspath-drift-check]
 

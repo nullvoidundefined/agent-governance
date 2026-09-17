@@ -367,7 +367,7 @@
             "enforcer": "hook:mcp-action-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt, and a private-tracker bookkeeping write is exempt unless it lands code, submits, uploads, or applies"
+            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt, and the Linear server exempt for the write class alone (that server only, not every tracker the ticket skill supports) (merge, submit, upload, apply still ask, as do the destroy and transmit classes on every server)"
         },
         {
             "id": "R-401",

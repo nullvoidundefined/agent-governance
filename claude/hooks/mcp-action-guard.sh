@@ -4,8 +4,10 @@
 # mail sent, issues and pages written or deleted, files created in a design
 # tool. This hook asks before any MCP call whose action names a mutating or
 # transmitting verb, and stays silent on the read-only majority (get, list,
-# search, read, fetch, query, download) and on a private-tracker bookkeeping
-# write that stays inside the tracker (below).
+# search, read, fetch, query, download). Two servers are exempt: the browser,
+# whose tab actions carry their own site permission model, and the Linear
+# server for the write class only, narrowed by the operator on 2026-09-17 and
+# documented at the case below, which is why some mutating calls are silent.
 #
 # Ask, never deny: R-105 wants explicit confirmation, not prohibition. Choosing
 # "don't ask again" for one tool is the user's own pre-authorization.
@@ -38,7 +40,7 @@ for token in $(printf '%s' "$ACTION" | tr '_' ' '); do
       REASON="transmits content outside this machine"; break ;;
     create | save | update | edit | write | add | apply | upload | move | duplicate | rename | submit | merge | generate | mark | use)
       REASON="writes to an external system of record"; break ;;
-    delete | remove | trash | drop | archive | revoke | rotate | cancel | unmark | unlabel | retire)
+    delete | remove | trash | drop | archive | revoke | rotate | cancel | unmark | unlabel | retire | retract)
       REASON="destroys or retracts external state"; break ;;
     # Database MCP servers (neon, supabase) reach a managed Postgres that
     # R-101's Bash-only guard never sees. 'run' and 'query' stay out: too
@@ -49,7 +51,7 @@ for token in $(printf '%s' "$ACTION" | tr '_' ' '); do
 done
 [ -z "$REASON" ] && exit 0
 
-# The operator narrowed R-105 for the private tracker on 2026-09-17: the
+# The operator narrowed R-105 for the Linear server on 2026-09-17: the
 # ticket-lifecycle skill writes at every state change, so a confirmation
 # landed every few minutes, and each one bought little, because the tracker is
 # private to the operator and a wrong field is editable in place. The narrowing

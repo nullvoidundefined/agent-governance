@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies mcp-action-guard.sh asks on mutating and transmitting MCP calls (R-105)
 # and stays silent on read-only ones, on non-MCP tools, on the browser server, and on
-# private-tracker writes, while still asking when a tracker call lands code,
+# Linear-server writes, while still asking when a tracker call lands code,
 # destroys state, or transmits outward.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/mcp-action-guard.sh"
@@ -14,9 +14,10 @@ ask  mcp__claude_ai_Gmail__trash_thread           # destroys
 ask  mcp__claude_ai_Linear__merge_diff            # lands code, so it asks despite the tracker exemption
 ask  mcp__claude_ai_Linear__delete_comment        # destroys, so it asks despite the tracker exemption
 ask  mcp__claude_ai_Linear__share_issue           # transmits outward, so it asks despite the tracker exemption
-ask  mcp__claude_ai_Linear__retire_issue_label    # destroys; 'retire' tokenizes apart from 'issue label'
-ask  mcp__claude_ai_Linear__submit_diff_review    # lands code for review, carved out of the tracker exemption
-ask  mcp__claude_ai_Linear__create_attachment_from_upload  # carries a file out, carved out of the tracker exemption
+ask  mcp__claude_ai_Linear__submit_diff_review    # submits for review, so it asks despite the tracker exemption
+ask  mcp__claude_ai_Linear__create_attachment_from_upload  # carries a file out, so it asks
+ask  mcp__claude_ai_Linear__retire_issue_label    # retiring a label destroys state, so it asks
+ask  mcp__github__retire_thing                    # the destroy class covers retire on every server
 ask  mcp__claude_ai_Notion__notion-create-pages   # verb behind a server prefix
 ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix
 ask  mcp__claude_ai_Google_Calendar__delete_event # destroys
