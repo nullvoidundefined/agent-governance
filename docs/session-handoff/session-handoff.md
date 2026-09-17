@@ -14,6 +14,7 @@
 
 ## 3. What shipped
 
+- **Cross-model dialogue spec**: `claude/docs/superpowers/specs/2026-09-17-cross-model-dialogue-design.md` specifies a harness upgrade for Claude/Codex challenge workflows: a `cross-model-dialogue` skill, read-only `assumption-reviewer` and `dispute-reviewer` roles, `docs/dialogues/` packets, role-policy entries, and fixtures proving the new reviewers cannot write. It keeps R-907/R-412 intact and treats model disagreement as bounded artifacts, not free-form chat.
 - **Source-neutral sync spec**: `claude/docs/superpowers/specs/2026-09-17-source-neutral-governance-sync-design.md` defines the replacement for the Claude-as-source assumption. It treats `claude/`, `codex/`, and `cursor/` as peer edit surfaces, introduces a neutral governance model with per-surface importers/exporters, and uses the existing Codex translator as the compatibility baseline to generalize. Key criteria: `--from claude` preserves current Codex output byte-for-byte; `--from codex` round-trips importable Codex edits back to Claude and forward to Cursor; Cursor may start as legacy/gap-reporting; generated and hand-authored ownership is explicit; sibling edit conflicts block writes.
 - **Inherited hygiene-audit context**: prior branch work fixed repo hygiene, PreModelSwitch/R-903 contradictions, task-start/cost docs, codex/cursor README drift, naming cleanup, fixture counts, and audit pointer docs. Read the prior commits if resuming that branch.
 
@@ -37,6 +38,7 @@
 
 - `git log --oneline main..claude/hygiene-audit-2026-09-17` (the 16 per-finding commits).
 - `claude/ISSUES.md` Open section (PAT rotation, port-pipeline decision).
+- `claude/docs/superpowers/specs/2026-09-17-cross-model-dialogue-design.md`, `claude/rulebook/agents.md`, `claude/rulebook/cost.md`, `claude/skills/tdd-gated-dispatch/SKILL.md`, and `claude/enforce/role-policy.json` before implementing Claude/Codex dialogue workflows.
 - `claude/docs/superpowers/specs/2026-09-17-source-neutral-governance-sync-design.md`, `translate/codex.mjs`, `translate/codex-port-map.json`, `codex/README.md`, and `cursor/README.md` before touching translator or propagation architecture.
 - `claude/settings.json`, `claude/CLAUDE.md`, `claude/enforce/README.md`, and the official Claude Code docs for sandboxing, settings, hooks, and best practices before starting the current-practice config-audit workstream.
 - `claude/rulebook/cost.md` R-907 and `claude/hooks/codex-test-author-guard.sh` (the new inline-only scoping) if doing TDD slice work.
