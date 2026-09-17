@@ -77,9 +77,12 @@ CTX=""
 # half: the transcript path's parent directory name.
 #
 # Two house rules applied to every reported path (matching doctor.sh's
-# ${VAR/#$HOME/\~} convention): PATHS ONLY, no hash values or other
+# redact_home convention): PATHS ONLY, no hash values or other
 # snapshot content leaks into the output; and the home directory prefix
 # is always rendered as ~ rather than the real absolute path.
+# Not ${path/#$HOME/~}: bash 5.2 tilde-expands that replacement back into
+# $HOME, and bash 3.2 (macOS) keeps the backslash of the escaped form.
+redact_home() { case "$1" in "$HOME"|"$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 check_resume_drift() (
   set +e
   local source="$1" transcript_path="$2" session_cwd="$3"
@@ -163,7 +166,7 @@ check_resume_drift() (
       existing_recorded+=("$recorded")
     else
       [ "$recorded" = "missing" ] && continue
-      display_path="${fp/#$HOME/\~}"
+      display_path="$(redact_home "$fp")"
       lines+="missing $display_path"$'\n'
     fi
   done <<< "$entries"
@@ -182,7 +185,7 @@ check_resume_drift() (
       fp="${existing_paths[$idx]}"
       idx=$((idx + 1))
       [ "$current" = "$recorded" ] && continue
-      display_path="${fp/#$HOME/\~}"
+      display_path="$(redact_home "$fp")"
       lines+="changed $display_path"$'\n'
     done <<< "$hash_output"
   fi

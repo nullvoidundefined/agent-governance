@@ -22,6 +22,11 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# Renders a path under $HOME with a tilde prefix. Not ${path/#$HOME/~}: bash
+# 5.2 tilde-expands that replacement back into $HOME, and bash 3.2 (macOS)
+# keeps the backslash of the escaped form, so neither spelling is portable.
+redact_home() { case "$1" in "$HOME"|"$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
+
 report() { # verdict, check-name, detail...
   local verdict="$1" name="$2"; shift 2
   case "$verdict" in
@@ -48,7 +53,7 @@ ACCEPTED_FILE="$ROOT_DIR/claude/enforce/doctor-accepted-keys.txt"
 [ -f "$ACCEPTED_FILE" ] || ACCEPTED_FILE="$(dirname "${BASH_SOURCE[0]}")/doctor-accepted-keys.txt"
 
 if [ ! -f "$SETTINGS_FILE" ]; then
-  report fail settings-parse "${SETTINGS_FILE/#$HOME/\~} is missing"
+  report fail settings-parse "$(redact_home "$SETTINGS_FILE") is missing"
 elif jq empty "$SETTINGS_FILE" >/dev/null 2>&1; then
   report pass settings-parse "$SETTINGS_FILE parses"
   KNOWN_KEYS=$(jq -r '.properties | keys[]' "$SCHEMA_FILE" 2>/dev/null)
@@ -93,7 +98,7 @@ for verifier in enforcement-guard-check hook-integrity-check; do
       if [ -n "$FINDING" ]; then report warn "$NAME" "$(head -1 <<<"$FINDING")"; else report pass "$NAME" "clean"; fi
     fi
   else
-    report skipped "$NAME" "${V/#$HOME/\~} not installed"
+    report skipped "$NAME" "$(redact_home "$V") not installed"
   fi
 done
 
@@ -102,13 +107,13 @@ if [ -f "$LIVE_CLAUDE/settings.json" ] && jq empty "$LIVE_CLAUDE/settings.json" 
   while IFS= read -r cmd; do
     script="${cmd/#\~/$HOME}"; script="${script%% *}"
     case "$script" in "$HOME"/.claude/hooks/*.sh)
-      { [ -x "$script" ] && bash -n "$script" 2>/dev/null; } || BAD_HOOKS="$BAD_HOOKS ${script/#$HOME/\~}" ;;
+      { [ -x "$script" ] && bash -n "$script" 2>/dev/null; } || BAD_HOOKS="$BAD_HOOKS $(redact_home "$script")" ;;
     esac
   done < <(jq -r '.hooks[]?[]?.hooks[]?.command // empty' "$LIVE_CLAUDE/settings.json")
   if [ -n "$BAD_HOOKS" ]; then report fail hook-executability "not executable or has syntax errors:$BAD_HOOKS"
   else report pass hook-executability "every registered hook executable and syntax-clean"; fi
 else
-  report skipped hook-executability "no parseable live settings at ${LIVE_CLAUDE/#$HOME/\~}/settings.json"
+  report skipped hook-executability "no parseable live settings at $(redact_home "$LIVE_CLAUDE")/settings.json"
 fi
 
 # Task 4: environment probes (B-6): required deps, Bash sandbox availability,
@@ -168,7 +173,7 @@ else
   if SL_OUT=$(printf '%s' "$SL_SAMPLE" | bash -c "$SL_BIN" 2>/dev/null) && [ -n "$SL_OUT" ]; then
     report pass statusline "renders: $(head -1 <<<"$SL_OUT")"
   else
-    report fail statusline "${SL_CMD/#$HOME/\~} errored or printed nothing on a sample payload"
+    report fail statusline "$(redact_home "$SL_CMD") errored or printed nothing on a sample payload"
   fi
 fi
 
@@ -229,7 +234,7 @@ if [ "$MODE_RELEASE" = 1 ]; then
     # skipped never counts toward release readiness (B-4): this whole block
     # only runs under --release, so a missing pattern file must fail, not
     # skip, or a broken checkout could read release-ready.
-    report fail release-secret-scan "no pattern file at ${PATTERNS_FILE/#$HOME/\~}; release readiness cannot be evaluated"
+    report fail release-secret-scan "no pattern file at $(redact_home "$PATTERNS_FILE"); release readiness cannot be evaluated"
   fi
 fi
 
