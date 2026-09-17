@@ -69,7 +69,7 @@ Eight states, each tied to an event the repo can actually observe. The tracker's
 - B-6: `close` writes `completed_at`, `actual_minutes`, `rework_count`, and the computed `estimate_ratio` in the same update as the status change, so a ticket is never `done` with the actuals missing.
 - B-7: `report <granularity> <range>` groups tickets by `completed_at` into day, week, or month buckets and reports per bucket: ticket count, summed `actual_minutes`, the count by tier, and the median `estimate_ratio`. Tickets with no `completed_at` are excluded and counted separately as open.
 - B-8: `estimate <tier>` returns the median and the 80th percentile of `actual_minutes` over closed tickets matching that tier and `assist`, with the sample size stated. Below five samples it returns no number from history, says the sample is too small, and falls back to the R-906 heuristic, labelled as a heuristic.
-- B-9: Every write to the tracker is a single MCP call the user confirms under R-105. No operation batches several writes behind one confirmation, and none is retried silently after a denial.
+- B-9: Every write to the tracker is a single MCP call. Since R-105's 2026-09-17 tracker narrowing, `hooks/mcp-action-guard.sh` confirms it with the user only when the call also lands code, submits for review, uploads a file, or applies a change; a plain bookkeeping write (a status update, a transition comment) is exempt and proceeds silently. No operation batches several writes behind one confirmation, and none is retried silently after a denial.
 - B-10: With no `~/.claude/TICKET-TRACKER.json` present, every operation reports that no tracker is configured, points at the template, and records the same field set in the handoff doc instead. The work proceeds; the tracking degrades loudly rather than silently.
 - B-11: Ticket titles, descriptions, and comments are sanitized before they are written: no secret values (R-102), no PII, and no local filesystem paths (R-104, R-106).
 
@@ -128,7 +128,7 @@ The tracker is the observability surface: the ticket list grouped by `completed_
 
 ## Security
 
-Tracker credentials live in the MCP server's own configuration and never in this repo or in a prompt (R-102). The instance config holds identifiers rather than secrets, and is gitignored anyway because a project key and a workspace ID identify a client (R-106). Ticket bodies are sanitized before writing (R-104): secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. Every write passes through the R-105 confirmation, which is the security property that matters most here, because a misdirected ticket write is content leaving the machine to an external system of record.
+Tracker credentials live in the MCP server's own configuration and never in this repo or in a prompt (R-102). The instance config holds identifiers rather than secrets, and is gitignored anyway because a project key and a workspace ID identify a client (R-106). Ticket bodies are sanitized before writing (R-104): secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. A plain bookkeeping write (status change, transition comment) is exempt from R-105's confirmation since the 2026-09-17 narrowing, because the tracker is private to the operator and a wrong field is editable in place; a call that lands code, submits for review, uploads a file, or applies a change still passes through the confirmation, since that is content leaving the machine for a use the operator cannot undo by re-editing the same record.
 
 ## Domain vocabulary
 
