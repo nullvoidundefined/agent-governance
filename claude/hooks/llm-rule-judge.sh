@@ -54,17 +54,43 @@ MANIFEST="${CLAUDE_MANIFEST_FILE:-$HOME/.claude/enforce/manifest.json}"
 if [ -n "${CLAUDE_JUDGE_CMD:-}" ]; then
   RESP=$("$CLAUDE_JUDGE_CMD")
 else
-  # Key resolution: env first, then the macOS keychain (2026-08-01, judge
-  # activation). The keychain keeps the key out of dotfiles, transcripts, and
-  # hook argv (R-102); provision once, interactively so the value never
-  # touches a shell history or session:
+  # Key resolution: env first, then every supported secret store (2026-08-01
+  # judge activation; the store list joined 2026-09-18 after the PR #8 review).
+  # A store keeps the key out of dotfiles, transcripts, and hook argv (R-102);
+  # provision once, interactively so the value never touches a shell history:
   #   security add-generic-password -a "$USER" -s claude-judge-api-key -w
+  #   secret-tool store --label='claude judge' service claude-judge-api-key
+  #   pass insert claude-judge-api-key
+  # The list has to match the one enforcement-guard-check.sh probes when it
+  # decides whether the judge tier is live: while this path read the macOS
+  # keychain alone, a Linux host with a secret-tool or pass entry cleared the
+  # degraded-judge warning and still got a judge that fail-opened on every push.
   JUDGE_KEYCHAIN_SERVICE="${CLAUDE_JUDGE_KEYCHAIN_SERVICE:-claude-judge-api-key}"
+  # read_judge_key_from_stores(): the key held by the first secret store that
+  # has one, printed to stdout; exits non-zero when no store answers. Each probe
+  # is guarded on its binary existing, because `security` is macOS-only and
+  # secret-tool and pass are typically Linux.
+  read_judge_key_from_stores() {
+    local found=""
+    if command -v security >/dev/null 2>&1; then
+      found=$(security find-generic-password -s "$JUDGE_KEYCHAIN_SERVICE" -w 2>/dev/null || true)
+      [ -n "$found" ] && { printf '%s' "$found"; return 0; }
+    fi
+    if command -v secret-tool >/dev/null 2>&1; then
+      found=$(secret-tool lookup service "$JUDGE_KEYCHAIN_SERVICE" 2>/dev/null || true)
+      [ -n "$found" ] && { printf '%s' "$found"; return 0; }
+    fi
+    if command -v pass >/dev/null 2>&1; then
+      found=$(pass show "$JUDGE_KEYCHAIN_SERVICE" 2>/dev/null | head -1 || true)
+      [ -n "$found" ] && { printf '%s' "$found"; return 0; }
+    fi
+    return 1
+  }
   if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    ANTHROPIC_API_KEY=$(security find-generic-password -s "$JUDGE_KEYCHAIN_SERVICE" -w 2>/dev/null || true)
+    ANTHROPIC_API_KEY=$(read_judge_key_from_stores || true)
   fi
   if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    echo "llm-rule-judge: no API key in env or keychain ($JUDGE_KEYCHAIN_SERVICE), skipping semantic gate" >&2
+    echo "llm-rule-judge: no API key in env, the macOS keychain, secret-tool, or pass ($JUDGE_KEYCHAIN_SERVICE), skipping semantic gate" >&2
     exit 0
   fi
   RULE_IDS=$(jq -r '.rules[] | select(.tier=="llm-judge") | .id' "$MANIFEST")

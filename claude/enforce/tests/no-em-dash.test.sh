@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:no-em-dash
 # Verifies no-em-dash.sh denies U+2014 in Write/Edit/Bash content, allows clean
 # punctuation, and exempts search-tool commands (R-207). The em dash is built at
 # runtime so this file stays em-dash-free.

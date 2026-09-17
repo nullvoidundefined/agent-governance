@@ -16,7 +16,11 @@ set -euo pipefail
 
 CLAUDE_MD="${CLAUDE_MD_FILE:-$HOME/.claude/CLAUDE.md}"
 REFERENCE_MD="${CLAUDE_REFERENCE_FILE:-$HOME/.claude/rulebook/reference.md}"
-RULES_DIR="$HOME/.claude/rules"
+# Overridable like the two inputs above it: with CLAUDE_MD_FILE and
+# CLAUDE_REFERENCE_FILE pointed at a checkout and this one hardwired to the live
+# copy, the fixture linted two different trees at once and a rules/ defect in
+# the repo went unlinted until it was synced (2026-09-17 audit P2-8).
+RULES_DIR="${CLAUDE_RULES_DIR:-$HOME/.claude/rules}"
 MAX_LINES=200
 
 LINE_COUNT=$(wc -l < "$CLAUDE_MD" | tr -d ' ')
@@ -47,8 +51,14 @@ if [ -n "$DUPLICATED" ]; then
   exit 1
 fi
 
+# Invariant 3 inspected nothing and passed in silence when the glob matched
+# no file, the same shape P1-4 found in deny-tier-set-convention.test.sh. The
+# directory always holds session-types.md plus the path-scoped stack symlinks,
+# so an empty match means the wrong tree, not a valid layout (audit P3-4).
+RULES_FILE_COUNT=0
 for rule_file in "$RULES_DIR"/*.md; do
   [ -e "$rule_file" ] || continue
+  RULES_FILE_COUNT=$((RULES_FILE_COUNT + 1))
   BASENAME=$(basename "$rule_file")
   [ "$BASENAME" = "session-types.md" ] && continue
   if [ "$(head -1 "$rule_file")" != "---" ]; then
@@ -56,5 +66,10 @@ for rule_file in "$RULES_DIR"/*.md; do
     exit 1
   fi
 done
+
+if [ "$RULES_FILE_COUNT" -eq 0 ]; then
+  echo "FAIL: invariant 3 inspected no file under $RULES_DIR, so it proved nothing; the directory should hold session-types.md plus the path-scoped stack rule files" >&2
+  exit 1
+fi
 
 echo "claude-md-lint.test.sh PASS ($LINE_COUNT lines, $(printf '%s\n' "$NORM_IDS" | wc -l | tr -d ' ') rules in sync, $(printf '%s\n' "$SKILL_IDS" | grep -cE '^R-' || true) carried by skills)"

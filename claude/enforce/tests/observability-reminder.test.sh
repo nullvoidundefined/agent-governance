@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:observability-reminder
 # Verifies observability-reminder.sh (advisory PostToolUse for R-341, R-345,
 # R-346). Six invariants:
 #   1. An Express app.ts with routes and no /health reminds R-345.

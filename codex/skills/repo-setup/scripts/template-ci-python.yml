@@ -1,0 +1,33 @@
+# ci.yml: lint and test on every pull request and on pushes to the protected
+# branches. The job is named "ci" because the protect-merge ruleset requires
+# a status check with exactly that context. Written by the repo-setup skill;
+# edit freely once it exists, the skill never overwrites.
+name: ci
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest

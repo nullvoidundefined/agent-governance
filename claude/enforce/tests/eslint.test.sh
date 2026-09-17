@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: eslint:ban-ts-comment, eslint:member-ordering, eslint:no-explicit-any, eslint:no-magic-numbers, eslint:no-nested-ternary, eslint:no-restricted-syntax, eslint:sort-keys
 # Verifies the bundled ESLint config flags R-323 (sort-keys) and R-319 (one export per file)
 # and passes clean code. R-319 is scoped to the function-module trees (services/api/clients);
 # constants and types modules group multiple exports per R-307 and are exempt.

@@ -31,9 +31,11 @@ RED and GREEN, and arbitrating a `DISPUTE:`.
 Read the spec's acceptance criteria. Each criterion that a test can fail is a
 slice, `B-1`, `B-2`, in the order the implementation needs them. A plan from
 `writing-plans` maps one task to one slice; its code blocks are a suggestion
-for the implementer and are never shown to the test author (2026-09-06
-decision 2). Before dispatching the test author, write the slice's behavior
-line and criteria into the prompt as text; do not paste the plan.
+for the implementer and are never shown to the test author (decision 2 of the
+TDD harness assessment, `docs/audits/2026-09-06-tdd-harness.md`; every
+"decision N" below is from that document). Before dispatching the test author,
+write the slice's behavior line and criteria into the prompt as text; do not
+paste the plan.
 
 Too small to slice: pure pixel, spacing, or color decisions with no behavioral
 component (the only R-705 exception). Everything else is a slice.
@@ -41,7 +43,7 @@ component (the only R-705 exception). Everything else is a slice.
 ## The loop, per slice
 
 ```
-1. open       bash ~/.claude/enforce/tdd.sh open "B-n <behavior>" --spec docs/specs/<slug>.md
+1. open       bash ~/.claude/enforce/tdd.sh open "B-n <behavior>" --spec docs/superpowers/specs/<date>-<slug>-design.md
 2. RED        test author writes the test; tdd.sh red <file> prints RED:
 3. commit     git add <test file> .claude/tdd-lock.json && git commit -m "test(<scope>): B-n <behavior>"
 4. GREEN      implementer writes the minimum; tdd.sh green prints GREEN:
@@ -124,13 +126,15 @@ The seven questions in your role file, with file:line evidence or "none found", 
 
 ## Validating a return
 
-Mechanical, in this order; a failure at any line means the slice is not done:
+One command per role; a non-zero exit means the slice is not done:
 
 ```bash
-bash ~/.claude/enforce/tdd.sh status                # phase red after the test author, green after the implementer
-git status --porcelain                              # only the files the role may write (R-411)
-bash ~/.claude/enforce/tdd.sh green                 # re-run yourself before the GREEN commit
+bash ~/.claude/enforce/tdd.sh validate test-author    # phase red; only test and fixture paths changed
+bash ~/.claude/enforce/tdd.sh validate implementer    # phase green; no test, fixture, spec, or lock writes; GREEN re-run
+bash ~/.claude/enforce/tdd.sh validate slice-critic   # nothing written at all
 ```
+
+It reads the boundary from `enforce/role-policy.json` (R-411) and judges `git status --porcelain` against it, so the orchestrator never applies the patterns by eye; `tdd.sh status` still prints the lock when the refusal needs context. Run the implementer's validate before the GREEN commit, the critic's after it.
 
 A `DISPUTE:` return stops the loop. Show the user the test, the claim, and the
 spec line. If the user agrees the test is wrong, `tdd.sh` cannot unlock it: the

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:flat-directory-reminder
 # Verifies flat-directory-reminder.sh nudges when a directory exceeds 20 source
 # modules and stays silent below the threshold (R-310).
 set -euo pipefail

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Verifies settings-change-guard.sh (ConfigChange, R-516). Four invariants:
+# Covers: hook:settings-change-guard
+# Verifies settings-change-guard.sh (ConfigChange, R-516). Five invariants:
 #   1. The live settings.json, which registers every manifest-required hook, passes.
 #   2. A copy that drops a required hook is blocked, naming the hook.
 #   3. A non-user source is ignored even when the file is broken.
 #   4. A file that does not parse is blocked.
+#   5. The committed permission shape keeps the inline interpreter form out of
+#      auto-approval, checked against the repo checkout rather than $HOME so a
+#      local edit cannot decide the verdict.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/settings-change-guard.sh"
 LIVE="$HOME/.claude/settings.json"
@@ -30,4 +34,48 @@ printf '{ "permissions": { "allow": ["Bash"], }\n' > "$TMP/broken.json"
 OUT=$(run user_settings "$TMP/broken.json")
 printf '%s' "$OUT" | jq -e '.decision == "block"' >/dev/null || { echo "FAIL: expected a block on unparseable settings, got: $OUT"; exit 1; }
 
-echo "settings-change-guard.test.sh PASS"
+# 5. The permission shape cannot auto-approve an interpreter wrapper.
+#
+# Two properties, both learned the hard way and recorded in ISSUES.md before
+# this fixture existed. A blanket "Bash" allow entry makes auto mode skip its
+# own classifier for every Bash command (ISSUES.md:69, the stated reason the
+# lenient list was reversed on 2026-09-15), and `bash -c '...'` wraps its inner
+# text away from permission-rule matching (ISSUES.md:11), so an interpreter
+# wrapper with no ask entry carries a denied command straight past the deny
+# list. Neither property is visible in a diff that only removes an ask line,
+# which is exactly how both were reopened on 2026-09-17.
+REPO_SETTINGS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/settings.json"
+INTERPRETER_ASK_PATTERNS=("Bash(bash -c *)" "Bash(sh -c *)" "Bash(bash -lc *)" "Bash(sh -lc *)")
+assert_interpreter_guarded() {
+  local file="$1" label="$2" blanket pattern present
+  blanket=$(jq -r '[.permissions.allow[]? | select(. == "Bash")] | length' "$file")
+  [ "$blanket" -eq 0 ] || { echo "FAIL: $label carries a blanket \"Bash\" allow entry, which makes auto mode skip its classifier for every Bash command (ISSUES.md:69)"; return 1; }
+  # Each of the four inline forms needs its own entry: a length check that
+  # only asks "is at least one present" still passes with three of the four
+  # deleted, silently widening the exemption one interpreter flag at a time.
+  for pattern in "${INTERPRETER_ASK_PATTERNS[@]}"; do
+    present=$(jq --arg p "$pattern" '[.permissions.ask[]? | select(. == $p)] | length' "$file")
+    [ "$present" -gt 0 ] || { echo "FAIL: $label has no ask entry for '$pattern', so that inline interpreter form can carry a denied command past the deny list (ISSUES.md:11)"; return 1; }
+  done
+  return 0
+}
+
+assert_interpreter_guarded "$REPO_SETTINGS" "the committed settings.json" || exit 1
+
+# The same assertions must reject the shape that reopened both holes, or they
+# would pass without testing anything.
+jq '.permissions.allow = ["Bash"] | .permissions.ask = [.permissions.ask[] | select(startswith("Bash(bash") or startswith("Bash(sh") | not)]' \
+  "$REPO_SETTINGS" > "$TMP/lenient.json"
+if assert_interpreter_guarded "$TMP/lenient.json" "the lenient shape" >/dev/null 2>&1; then
+  echo "FAIL: invariant 5 accepted a blanket Bash allow with no interpreter ask, so it proves nothing"; exit 1
+fi
+
+# Dropping just one of the four forms (bash -lc *, say) must also fail, or a
+# length-of-the-union check would pass with three of four silently deleted.
+jq '.permissions.ask = [.permissions.ask[] | select(. != "Bash(bash -lc *)")]' \
+  "$REPO_SETTINGS" > "$TMP/partial.json"
+if assert_interpreter_guarded "$TMP/partial.json" "the partially-covered shape" >/dev/null 2>&1; then
+  echo "FAIL: invariant 5 accepted a shape missing the bash -lc * ask entry, so it does not prove each form individually"; exit 1
+fi
+
+echo "settings-change-guard.test.sh PASS (5 invariants, interpreter shape checked against the checkout)"

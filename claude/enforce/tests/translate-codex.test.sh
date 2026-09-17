@@ -98,6 +98,11 @@ description: sandbox skill
 
 the sandbox skill body line
 EOF
+  # A support file bundled beside SKILL.md (skills audit 2026-09-17): copied
+  # byte for byte, no header, executable bit kept.
+  mkdir -p "$dir/claude/skills/sample-skill/scripts"
+  printf '#!/usr/bin/env bash\necho "the sandbox support script line"\n' >"$dir/claude/skills/sample-skill/scripts/helper.sh"
+  chmod +x "$dir/claude/skills/sample-skill/scripts/helper.sh"
 
   cat >"$dir/claude/settings.json" <<'EOF'
 {
@@ -187,6 +192,38 @@ OUT=$(node "$TRANSLATOR" --frobnicate --root "$SANDBOX" 2>&1); ST=$?
 check "unknown flag exits 2" test "$ST" -eq 2
 check "usage errors touch nothing" test -z "$(ls -A "$SANDBOX")"
 
+# P2-1 (2026-09-17 audit): a bare positional argument and a single-dash flag
+# were both discarded, because only `--`-prefixed tokens were inspected, and
+# rootDir then fell back to the script's own repository. `--check` against the
+# wrong tree is merely wrong; `--write` prunes orphans and removes emptied
+# directories, so it is destructive. Both spellings must be usage errors.
+#
+# PR #8 review (Copilot, translate/codex.mjs): the rejected token was found and
+# then thrown away, so every one of these refusals printed the same generic
+# usage line and the author had to guess which argument the translator would
+# not take. Each refusal names the token it refused. outputNames wraps the
+# herestring so the assertion stays one check() argument list.
+outputNames() { grep -q -F -- "$1" <<<"$OUT"; }
+OUT=$(node "$TRANSLATOR" --check "$SANDBOX" 2>&1); ST=$?
+check "positional root exits 2" test "$ST" -eq 2
+check "positional root prints usage" grep -q -- "--write" <<<"$OUT"
+check "positional root names the token" outputNames "\"$SANDBOX\""
+OUT=$(node "$TRANSLATOR" --check -root "$SANDBOX" 2>&1); ST=$?
+check "single-dash flag exits 2" test "$ST" -eq 2
+check "single-dash flag names the token" outputNames '"-root"'
+OUT=$(node "$TRANSLATOR" --frobnicate --root "$SANDBOX" 2>&1); ST=$?
+check "unknown flag names the token" outputNames '"--frobnicate"'
+OUT=$(node "$TRANSLATOR" --check --root "$SANDBOX" extra 2>&1); ST=$?
+check "trailing positional after --root exits 2" test "$ST" -eq 2
+check "trailing positional names the token" outputNames '"extra"'
+OUT=$(node "$TRANSLATOR" --write --check --root "$SANDBOX" 2>&1); ST=$?
+check "both modes name the conflict" outputNames "--write"
+OUT=$(node "$TRANSLATOR" --root "$SANDBOX" 2>&1); ST=$?
+check "no mode says a mode is required" outputNames "--write or --check"
+# An empty root also exits 2 through SourceError, so the usage line is what
+# distinguishes a parse refusal from a load failure here.
+check "trailing positional prints usage" grep -q -- "usage:" <<<"$OUT"
+
 # Final review finding 2: bare --root with no following value is a usage
 # error (exit 2), not a crash. Run outside any sandbox root so a regression
 # to the old TypeError behavior cannot leave stray writes on disk anywhere.
@@ -227,6 +264,10 @@ check "non-audit agent does not" test ! -e "$SRC/codex/skills/helper-role"
 # the body region carries no unescaped double quote, and the tricky lines
 # round-trip through escaping exactly as TOML requires.
 BODY_REGION=$(awk '/^developer_instructions = """$/{flag=1; next} flag && /^"""$/{flag=0; next} flag' "$TOML")
+# A negative assertion over a fragile extraction passes when the extraction
+# yields nothing, so the non-emptiness precondition comes first and makes this
+# check and the three below it honest on their own (audit P3-2).
+check "toml body region extracted" test -n "$BODY_REGION"
 check "toml body has no unescaped double quote" not grep -qE '[^\\]"' <<<"$BODY_REGION"
 check "toml body keeps apostrophe run verbatim" grep -qF "Line with three apostrophes: '''" <<<"$BODY_REGION"
 check "toml body escapes the quote and backslash" grep -qF 'Line with a quote \" and a backslash \\ together.' <<<"$BODY_REGION"
@@ -239,6 +280,20 @@ check "skill copy exists" test -f "$COPIED"
 check "header sits after frontmatter" skillHeaderAfterFrontmatter "$COPIED"
 check "body is verbatim" grep -qF "the sandbox skill body line" "$COPIED"
 check "frontmatter is verbatim" grep -q "^description: sandbox skill$" "$COPIED"
+
+# Skill support files (skills audit 2026-09-17): every file beside SKILL.md
+# ports verbatim with its mode, appears in the manifest, and drifts like any
+# generated file.
+SUPPORT="$SRC/codex/skills/sample-skill/scripts/helper.sh"
+check "support file copied" test -f "$SUPPORT"
+check "support file verbatim" cmp -s "$SRC/claude/skills/sample-skill/scripts/helper.sh" "$SUPPORT"
+check "support file executable" test -x "$SUPPORT"
+check "support file in manifest" grep -q '"skills/sample-skill/scripts/helper.sh"' "$SRC/codex/.claude-port.json"
+printf '# edited in the port\n' >>"$SUPPORT"
+OUT=$(node "$TRANSLATOR" --check --root "$SRC" 2>&1); ST=$?
+check "edited support file fails check" test "$ST" -eq 1
+check "edited support file named stale" grep -q "stale: skills/sample-skill/scripts/helper.sh" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC" >/dev/null 2>&1
 
 # Task 5: AGENTS.md with port-aware tag rewrites (B-1).
 # alpha-guard is registered under PreToolUse, which the map's events
@@ -290,6 +345,17 @@ manifestHashesAgentsMd() { jq -e '.files["AGENTS.md"] | startswith("sha256:")' "
 check "manifest hashes AGENTS.md" manifestHashesAgentsMd
 manifestMarksHandAuthored() { jq -e '.hand_authored | index("hooks/codex-hook-adapter.sh") != null' "$MF" >/dev/null; }
 check "manifest marks hand-authored" manifestMarksHandAuthored
+# B-6 regression guard: hand_authored is copied from the port map verbatim,
+# order preserved, never sorted. make_source_tree's list above is
+# deliberately non-alphabetical (hooks/... before README.md before
+# .gitignore before the two skills/ paths), so an implementation that
+# alphabetizes hand_authored instead of preserving insertion order fails
+# this exact-array-equality check even though "marks hand-authored" above
+# still passes.
+manifestPreservesHandAuthoredOrder() {
+  jq -e '.hand_authored == ["hooks/codex-hook-adapter.sh","README.md","skills/session-start/SKILL.md","skills/session-handoff/SKILL.md"]' "$MF" >/dev/null
+}
+check "manifest preserves hand_authored insertion order" manifestPreservesHandAuthoredOrder
 handAuthoredNotHashed() { jq -e '.files | has("hooks/codex-hook-adapter.sh") | not' "$MF" >/dev/null; }
 check "hand-authored not hashed" handAuthoredNotHashed
 manifestBuilderNamesTranslator() { jq -e '.builder == "translate/codex.mjs"' "$MF" >/dev/null; }
@@ -497,7 +563,7 @@ GI="$SRC6/codex/.gitignore"
 # hand-authored file (the port map no longer claims it).
 OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
 check "stale gitignore fails check" test "$ST" -eq 1
-check "stale gitignore named" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "stale gitignore named" grep -qFx 'stale: .gitignore' <<<"$OUT"
 check "gitignore no longer claimed hand-authored" not grep -q "missing hand-authored file: .gitignore" <<<"$OUT"
 
 node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
@@ -537,7 +603,7 @@ the sandbox late-skill body line
 EOF
 OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
 check "new skill makes gitignore stale" test "$ST" -eq 1
-check "new skill names gitignore stale" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "new skill names gitignore stale" grep -qFx 'stale: .gitignore' <<<"$OUT"
 node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
 check "new skill lands in the allowlist" grep -qx -- '!/skills/late-skill/SKILL.md' "$GI"
 check "new skill directory lands in the allowlist" grep -qx -- '!/skills/late-skill/' "$GI"
@@ -547,16 +613,75 @@ node "$TRANSLATOR" --check --root "$SRC6"; check "check clean after the new skil
 # never a missing hand-authored file.
 rm "$GI"
 OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1)
-check "absent gitignore reports stale" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "absent gitignore reports stale" grep -qFx 'stale: .gitignore' <<<"$OUT"
 check "absent gitignore is not an orphan" not grep -q "orphaned: .gitignore" <<<"$OUT"
 node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
 check "write restores the gitignore" test -f "$GI"
 
 # The manifest hashes .gitignore like any other generated file, and still
 # does not claim it hand-authored.
+# The generator's own modules are hashed under builder_files, because the
+# enforcement surface's manifest cannot reach translate/ at all: sync.sh copies
+# claude/ only, so an entry for it would read as permanent drift beside a live
+# install (2026-09-17 audit, the integrity-coverage item). An edit to the
+# translator that no --write blessed must therefore fail --check here.
+manifestHashesEveryBuilderModule() {
+  local expected actual
+  expected=$( (cd "$REPO_TOP/translate" && ls ./*.mjs) | sed 's#^\./#translate/#' | sort)
+  actual=$(jq -r '.builder_files | keys[]' "$SRC6/codex/.claude-port.json" | sort)
+  [ "$expected" = "$actual" ]
+}
+builderHashesAreDigests() { jq -e '[.builder_files[] | test("^sha256:")] | all' "$SRC6/codex/.claude-port.json" >/dev/null; }
+check "manifest hashes every builder module" manifestHashesEveryBuilderModule
+check "builder hashes are sha256 digests" builderHashesAreDigests
+# Corrupt one builder hash in place: --check must report the manifest stale
+# rather than accepting a translator it never hashed.
+python3 - "$SRC6/codex/.claude-port.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+m = json.load(open(p))
+key = sorted(m["builder_files"])[0]
+m["builder_files"][key] = "sha256:" + "0" * 64
+open(p, "w").write(json.dumps(m, indent=2) + "\n")
+PY
+OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
+check "a stale builder hash fails check" test "$ST" -eq 1
+check "a stale builder hash names the manifest" grep -q "^stale: .claude-port.json$" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
+node "$TRANSLATOR" --check --root "$SRC6"; check "write restores the builder hashes" test $? -eq 0
+
 manifestHashesGitignore() { jq -e '.files[".gitignore"] | test("^sha256:")' "$SRC6/codex/.claude-port.json" >/dev/null; }
 manifestOmitsGitignoreFromHandAuthored() { jq -e '.hand_authored | index(".gitignore") | not' "$SRC6/codex/.claude-port.json" >/dev/null; }
 check "manifest hashes the gitignore" manifestHashesGitignore
 check "manifest omits gitignore from hand-authored" manifestOmitsGitignoreFromHandAuthored
+
+
+# PR #8 review (Copilot, translate/codex.mjs): the unclassified-hook closure
+# check took its own-property care, but isRegistrationPorted still asked
+# `hookName in portMap.unported_reasons`, and `in` walks the prototype chain.
+# A hook whose name happens to be an Object.prototype member therefore read as
+# carrying an unported reason it never had, and dropped out of the generated
+# Codex hooks entirely. The check now lives once, in the shared classification
+# path, so every caller gets the same answer.
+SRC7=$(mktemp -d); trap 'rm -rf "$SANDBOX" "$SRC" "$SRC2" "$SRC3" "$SRC4" "$SRC5" "$SRC6" "$SRC7"' EXIT
+make_source_tree "$SRC7"
+add_settings_hook "$SRC7" "constructor" "PreToolUse" "Bash"
+add_settings_hook "$SRC7" "toString" "PreToolUse" "Bash"
+node "$TRANSLATOR" --write --root "$SRC7" >/dev/null 2>&1
+HJ7="$SRC7/codex/hooks.json"
+PS7="$SRC7/codex/PORT-STATUS.md"
+prototypeNamedHooksPorted() { jq -e '[.hooks.PreToolUse[].hooks[].command] | (any(test("constructor")) and any(test("toString")))' "$HJ7" >/dev/null; }
+check "hooks named for prototype members still port" prototypeNamedHooksPorted
+check "prototype-named hook not marked unported" not grep -q '`constructor`.*not ported' "$PS7"
+node "$TRANSLATOR" --check --root "$SRC7"; check "prototype-named hook sandbox check stays clean" test $? -eq 0
+
+# A prototype-named hook that really does carry an unported reason is still
+# reported unported, so the own-property fix did not simply stop reading the map.
+jq '.unported_reasons["toString"] = "sandbox stub reason for the prototype-name regression."' \
+  "$SRC7/translate/codex-port-map.json" >"$SRC7/translate/codex-port-map.json.tmp" \
+  && mv "$SRC7/translate/codex-port-map.json.tmp" "$SRC7/translate/codex-port-map.json"
+node "$TRANSLATOR" --write --root "$SRC7" >/dev/null 2>&1
+check "a real unported reason on a prototype name still drops the hook" not grep -q "toString" "$HJ7"
+check "its port-status row carries the reason" grep -q '`toString`.*not ported: sandbox stub reason for the prototype-name regression.' "$PS7"
 
 [ "$fail" -eq 0 ] && echo "translate-codex.test.sh PASS" || exit 1

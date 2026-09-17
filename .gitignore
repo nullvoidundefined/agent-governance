@@ -1,3 +1,8 @@
 node_modules/
 *.log
 .DS_Store
+# Claude Code's built-in worktrees for this repo (a session's scratch checkouts).
+.claude/worktrees/
+# task-start's per-repo ledger (claude/skills/task-start/scripts/task-tier.sh):
+# session-local state, never a fixture or a tracked artifact.
+.claude/task-tier.json

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:protected-path-guard
 # Verifies protected-path-guard.sh: the always-protected gate inputs (R-410),
 # the slice lock phases written by enforce/tdd.sh (R-410, R-412), and the
 # per-role write boundaries keyed on agent_type (R-411). Every case feeds a

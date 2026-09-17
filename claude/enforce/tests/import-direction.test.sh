@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: eslint:no-restricted-paths
 # Verifies lint.mjs enforces per-repo import-direction zones from a repo's .enforce.json
 # (R-303): a lower layer importing a higher one is flagged only when .enforce.json declares it.
 set -euo pipefail

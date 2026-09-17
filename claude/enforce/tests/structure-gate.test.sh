@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:structure-gate
 # Verifies structure-gate.sh denies banned/kebab source dirs and allows camelCase + app routes.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/structure-gate.sh"

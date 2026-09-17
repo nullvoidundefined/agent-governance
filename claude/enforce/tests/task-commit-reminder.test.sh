@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:task-commit-reminder
 # Verifies task-commit-reminder.sh: marking a task completed with a dirty
 # working tree emits an R-504 commit-now reminder; clean trees, non-completed
 # updates, and non-repo directories stay silent.

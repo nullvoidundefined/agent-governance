@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh new-file-header-reminder flat-directory-reminder spec-glossary-check",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh new-file-header-reminder flat-directory-reminder spec-glossary-check handoff-check",
             "timeout": 60
           }
         ]
@@ -72,8 +72,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
-            "timeout": 60
+            "command": "~/.codex/hooks/codex-hook-adapter.sh harness-sync session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
+            "timeout": 300
           }
         ]
       },

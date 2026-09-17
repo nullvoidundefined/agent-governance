@@ -3,13 +3,13 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh sessionStart session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh sessionStart harness-sync session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
         "timeout": 30
       }
     ],
     "beforeShellExecution": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan no-em-dash fix-commit-requires-test conflict-markers commit-message-guard destructive-db-guard destructive-command-guard global-repo-push-guard git-workflow-guard push-eslint-gate push-ruff-gate push-rubocop-gate push-golangci-gate constant-change-guard audit-signal-check llm-rule-judge single-file-folder-reminder build-cheatsheets",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan no-em-dash fix-commit-requires-test conflict-markers commit-message-guard destructive-db-guard destructive-command-guard codex-billing-guard protected-path-guard global-repo-push-guard git-workflow-guard push-eslint-gate push-ruff-gate push-rubocop-gate push-golangci-gate constant-change-guard audit-signal-check llm-rule-judge single-file-folder-reminder build-cheatsheets",
         "timeout": 180
       }
     ],
@@ -27,13 +27,13 @@
     ],
     "preToolUse": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh preToolUse secret-scan no-em-dash migration-defaults-guard structure-gate content-gate",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh preToolUse secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard",
         "timeout": 30
       }
     ],
     "afterFileEdit": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate new-file-header-reminder flat-directory-reminder spec-glossary-check clean-code-reminder observability-reminder dockerfile-reminder",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard new-file-header-reminder flat-directory-reminder spec-glossary-check handoff-check clean-code-reminder observability-reminder dockerfile-reminder",
         "timeout": 60
       }
     ],
@@ -45,7 +45,7 @@
     ],
     "stop": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh stop verification-gate ntfy-notify",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh stop verification-gate",
         "timeout": 660
       }
     ],
