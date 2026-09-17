@@ -1,5 +1,11 @@
 # Cross-model dialogue workflows
 
+## Status: parked with harvest (reviewed 2026-09-17)
+
+Reviewed against the shipped R-907/R-908 cross-model test authorship, the gof and all-hands review machinery, and the repo's incident-first principle; parked rather than planned. The spec's companion research doc concedes the candidate tools were never installed or exercised, no recorded incident shows a defect a second-model challenger would have caught, and the Codex-as-primary mode (B-9) has no mechanical enforcement path: every write boundary here is a Claude Code PreToolUse hook, which a codex-exec actor bypasses by construction, so R-411 cannot bind the actor that mode makes first-class. The proposed dispute-reviewer arbiter also contradicts the recorded decision that disputes go to the human (PROTOCOL.md; agents.md R-707).
+
+Harvested instead: (a) an R-907 degradation clause in rulebook/cost.md covering codex unavailability; (b) the assumption-ledger table as an optional section of prompts/spec-template.md. Re-open the framework only on a concrete incident: a shipped defect an available second-model challenger demonstrably would have caught, or a real Codex-as-primary operator demand backed by an enforcement design for non-Claude actors.
+
 ## Goal
 
 Add first-class workflows for productive dialogue between Claude Code and Codex when both tools are available, while degrading cleanly to single-tool review when only one is configured. The harness should use model disagreement deliberately: the configured primary tool acts, the configured challenger criticizes, and the primary session resolves findings through evidence rather than conversational consensus. The design extends the existing TDD slice loop, spec conformance review, and Codex test-author split without weakening their role boundaries.
