@@ -14,9 +14,10 @@ Every application build must carry four test levels, tracing on top of the exist
 
 | PR | Concern | Share | PR number | Merged | Scope change |
 |---|---|---|---|---|---|
-| 1 | Rulebook and norm lines: R-347, R-413, R-421 to R-426 | 40% | | | |
-| 2 | Spec template headings and `spec-glossary-check.sh` extension | 35% | | | |
-| 3 | Skill pointers, ticket-lifecycle Linear row, README, sync, hashes, handoff | 25% | | | Adds the Linear provider row and the project-per-repository rule, raised 2026-09-17 during slice 01 |
+| 1 | Rulebook and norm lines: R-347, R-413, R-421 to R-426, plus the R-907 model-line fix | 36% | | | |
+| 2 | Spec template headings and `spec-glossary-check.sh` extension | 31% | | | |
+| 3 | Skill pointers, ticket-lifecycle Linear row, repo-setup skill, README, sync, hashes, handoff | 23% | | | Adds the Linear provider row, the project-per-repository rule, and a new `repo-setup` skill (repo creation, branch protection with required checks and squash-only, the Copilot auto-review ruleset, Dependabot, CI and Docker scaffolds, the Linear project), raised 2026-09-17 during slice 01 |
+| 4 | R-333 function comment blocks: rule, shell-side hook, fixture | 10% | | | Added 2026-09-17: every function carries a comment block, mandatory in shell |
 
 Later list (deferred, not in this slice): judge calibration tooling; `observability-reminder.sh` span detection; the reference `evals/` runner (template workstream).
 
@@ -30,7 +31,7 @@ Later list (deferred, not in this slice): judge calibration tooling; `observabil
 
 R-347 joins the R-34x observability block. R-413 follows R-412 in testing. R-421 to R-426 open an agent-evals sub-block inside testing with a two-line preface stating that the block applies to any application making an LLM call. Manifest entries are added for R-413 and R-422 only, both on `hook:spec-glossary-check` at the advisory tier, because PR 2 makes that hook enforce their spec sections; the other six are manual and carry no entry.
 
-**Contents:** `claude/CLAUDE.md` (eight norm lines); `claude/rulebook/reference.md` (eight Spec blocks, about 90 lines); `claude/enforce/manifest.json` (two entries).
+**Contents:** `claude/CLAUDE.md` (eight norm lines); `claude/rulebook/reference.md` (eight Spec blocks, about 90 lines); `claude/enforce/manifest.json` (two entries); `claude/rulebook/cost.md` R-907 model line corrected: `gpt-5.1-codex-mini` is rejected on a ChatGPT-login Codex account, so routine test authoring omits `-m` and takes the account default (found 2026-09-17).
 
 **Tests:** `manifest.test.sh` (closure: every rule citing a hook enforcer has an entry, the hook script exists). `claude-md-lint.test.sh` (norm line shape). `convention-rules.test.sh` where it asserts rule-ID cross-references. All three green; cites B-1 and B-2.
 
@@ -76,6 +77,24 @@ Then the closing ceremony: README convention-files and skills tables, `sync.sh`,
 
 **Size:** 9 files, about 120 lines.
 
+## PR 4: R-333 function comment blocks
+
+**Context:** PRs 1 to 3 have landed. The owner set a standing rule on 2026-09-17: every function carries a comment block saying what it does, mandatory in shell scripts, and in every other language except a function whose name and signature already say everything. R-320 covers file headers only; nothing covers functions.
+
+**Problem:** Shell has no types, signatures, or return values beyond an exit code, so a function's contract lives nowhere unless a comment carries it. The shell half of the rule is mechanizable (a comment line immediately above every `name() {` or `function name`), so it should not depend on recall.
+
+**Approach:** One rule, R-333, in the R-3xx block: a norm line in `claude/CLAUDE.md`, a Spec block in `claude/rulebook/reference.md` stating the shell mandate and the other-language exemption for trivially self-explanatory functions, enforcement `hook:function-comment-reminder` for shell (advisory) and the judge for the rest.
+
+The hook is a PostToolUse reminder on Write and Edit of `*.sh` files: it lists every function definition whose preceding non-blank line is not a comment and reminds naming them. Advisory, never blocking, exits 0 on any fault, matching `new-file-header-reminder.sh`. The codex test-author prompt in tdd-gated-dispatch gains the requirement so dispatched tests comply from the first draft.
+
+**Contents:** `claude/CLAUDE.md`; `claude/rulebook/reference.md`; `claude/hooks/function-comment-reminder.sh`; `claude/hooks/tests/function-comment-reminder.test.sh`; `claude/enforce/manifest.json`; `claude/skills/tdd-gated-dispatch/SKILL.md` (one line in the test author prompt); `claude/enforce/hook-hashes.txt`.
+
+**Tests:** Fixture: a shell file with one commented and one uncommented function reminds naming only the uncommented one; a fully commented file is silent; a non-shell file is silent; malformed hook input exits 0. `manifest.test.sh` and `hook-hashes-closure.test.sh` green.
+
+**Review focus:** The function-definition regex (both `name()` and `function name` forms) and that the reminder never fires on a heredoc line that happens to look like a definition.
+
+**Size:** 7 files, about 120 lines.
+
 ## Gate rules for this slice
 
 - Spec review precedes Gate 1: the owner reviews the slice 02 spec, then this document.
@@ -83,4 +102,4 @@ Then the closing ceremony: README convention-files and skills tables, `sync.sh`,
 - Gate 2: each PR approved on GitHub before merge. Squash merge, branch deleted, landing verified with `git log`.
 - No PR starts before the previous one is merged, and PR 1 does not start before slice 01 PR 7 has merged and synced.
 - New ideas go to the Later list above.
-- Time estimate for the executor, divided per R-906: about 30 minutes each for PRs 1 and 2, about 20 minutes for PR 3, plus review wait at each gate.
+- Time estimate for the executor, divided per R-906: about 30 minutes each for PRs 1 and 2, about 50 minutes for PR 3 (the repo-setup skill added), about 25 minutes for PR 4, plus review wait at each gate.
