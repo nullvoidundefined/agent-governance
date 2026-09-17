@@ -1,116 +1,118 @@
 #!/usr/bin/env bash
-# Proves every convention file under claude/ is wired end to end: a `paths:`
-# frontmatter block, a rules/ symlink that resolves to it, and a mention in
-# rules/session-types.md or the frontend core's Framework Files table. Runs
-# the check on the real tree, then on sandbox copies with one wire removed
-# each, and requires each copy to be rejected naming the unwired file
-# (spec 2026-09-17-python-vue-convention-tracks-design.md, AC-8).
+# Verifies every convention track has path frontmatter, a resolving rules link,
+# and a reference in the session table or frontend convention file.
+# Fresh sandbox mutations prove missing wiring is rejected by filename.
 set -uo pipefail
-DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-fail=0
-TMPDIRS=""
-cleanup() { for d in $TMPDIRS; do rm -rf "$d"; done; }
-trap cleanup EXIT
 
-resolve_path() {
-  python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
-}
-
-has_paths_frontmatter() {
-  awk 'BEGIN { code = 1 }
-       NR == 1 && $0 != "---" { exit }
-       NR > 1 && $0 == "---" { code = (found ? 0 : 1); exit }
-       /^paths:/ { in_paths = 1 }
-       in_paths && /^  - "/ { found = 1 }
-       END { exit code }' "$1"
-}
-
-has_resolving_symlink() {
-  local target="$1" root="$2" link
-  local wanted
-  wanted="$(resolve_path "$target")"
-  for link in "$root"/rules/*.md; do
-    [ -L "$link" ] || continue
-    [ -e "$link" ] || continue
-    if [ "$(resolve_path "$link")" = "$wanted" ]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-is_mentioned() {
-  local base="$1" root="$2"
-  grep -qF "$base" "$root/rules/session-types.md" "$root/CLAUDE-FRONTEND.md" 2>/dev/null
-}
-
+# Checks convention frontmatter, resolving rules links, and loading references.
+# Argument: root ($1) is the convention tree directory to inspect.
+# Prints an unwired diagnostic for each missing requirement, or nothing on success.
+# Returns 0 when all requirements pass, or 1 when any requirement fails.
 check_tree() {
-  local root="$1" rc=0 file base
-  for file in "$root"/CLAUDE-*.md; do
-    [ -e "$file" ] || continue
-    base="$(basename "$file")"
-    if ! has_paths_frontmatter "$file"; then
-      echo "unwired: $base has no paths: frontmatter block"; rc=1
+  local root="$1" convention basename link target linked failed=0
+  for convention in "$root"/CLAUDE-*.md; do
+    [ -f "$convention" ] || continue
+    basename="${convention##*/}"
+    if ! awk '
+      NR == 1 { if ($0 != "---") exit 1; next }
+      $0 == "---" { closed = 1; exit }
+      /^paths:[[:space:]]*$/ { paths = 1; next }
+      paths && /^  - "[^"]+"$/ { glob = 1 }
+      END { if (!closed || !glob) exit 1 }
+    ' "$convention"; then
+      printf 'unwired: %s missing path frontmatter\n' "$basename"
+      failed=1
     fi
-    if ! has_resolving_symlink "$file" "$root"; then
-      echo "unwired: $base has no resolving rules/ symlink"; rc=1
+
+    linked=0
+    target=$(python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$convention")
+    for link in "$root"/rules/* "$root"/rules/.[!.]* "$root"/rules/..?*; do
+      [ -L "$link" ] && [ -e "$link" ] || continue
+      if [ "$(python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$link")" = "$target" ]; then
+        linked=1
+        break
+      fi
+    done
+    if [ "$linked" -eq 0 ]; then
+      printf 'unwired: %s missing rules symlink\n' "$basename"
+      failed=1
     fi
-    if ! is_mentioned "$base" "$root"; then
-      echo "unwired: $base is not named in rules/session-types.md or CLAUDE-FRONTEND.md"; rc=1
+
+    if ! grep -Fq "$basename" "$root/rules/session-types.md" "$root/CLAUDE-FRONTEND.md"; then
+      printf 'unwired: %s missing loading reference\n' "$basename"
+      failed=1
     fi
   done
-  return $rc
+  return "$failed"
 }
 
-make_sandbox() {
-  local sandbox
-  sandbox="$(mktemp -d)"
-  TMPDIRS="$TMPDIRS $sandbox"
-  cp "$DIR"/CLAUDE-*.md "$sandbox"/
-  cp -R "$DIR/rules" "$sandbox/rules"
-  echo "$sandbox"
+real_tree="$(cd "$(dirname "$0")/../.." && pwd)"
+failure=0
+temp_directories=()
+# Removes every recorded sandbox directory when the script exits.
+trap 'for directory in "${temp_directories[@]}"; do rm -rf "$directory"; done' EXIT
+
+if output=$(check_tree "$real_tree"); then
+  echo 'PASS: real tree wired'
+else
+  printf '%s\n' "$output" | sed 's/^unwired:/FAIL:/'
+  failure=1
+fi
+
+# Creates a temporary copy of the convention files and rules and records it for cleanup.
+# Takes no arguments; uses real_tree as the source and sets sandbox to the copy path.
+# Prints nothing on success; setup commands may print errors to standard error.
+# Returns 1 if temporary directory creation fails, otherwise the copy command status.
+create_sandbox() {
+  sandbox=$(mktemp -d) || return 1
+  temp_directories+=("$sandbox")
+  cp -R "$real_tree"/CLAUDE-*.md "$real_tree/rules" "$sandbox/"
 }
 
-expect_rejected() {
-  local case_id="$1" sandbox="$2" base="$3" out
-  out="$(check_tree "$sandbox" 2>&1)"
-  if [ $? -ne 0 ] && printf '%s' "$out" | grep -qF "$base"; then
-    echo "PASS: $case_id rejected naming $base"
-  else
-    echo "FAIL: $case_id not rejected or $base not named"; fail=1
+if ! create_sandbox; then
+  echo 'FAIL: sandbox setup failed'
+  exit 1
+fi
+if output=$(check_tree "$sandbox"); then
+  echo 'PASS: sandbox baseline wired'
+else
+  printf '%s\n' "$output" | sed 's/^unwired:/FAIL:/'
+  failure=1
+fi
+
+# Checks that each missing wiring requirement is rejected in a fresh sandbox.
+for case_id in C1 C2 C3; do
+  if ! create_sandbox; then
+    echo 'FAIL: sandbox setup failed'
+    exit 1
   fi
-}
-
-# A. The real tree is wired.
-if out="$(check_tree "$DIR" 2>&1)"; then
-  echo "PASS: real tree wired"
-else
-  printf '%s\n' "$out" | sed 's/^unwired:/FAIL:/'; fail=1
-fi
-
-# B. An untouched sandbox copy is wired.
-BASE="$(make_sandbox)"
-if check_tree "$BASE" >/dev/null 2>&1; then
-  echo "PASS: sandbox baseline wired"
-else
-  echo "FAIL: sandbox baseline not wired"; fail=1
-fi
-
-# C1. A removed symlink is caught.
-S1="$(make_sandbox)"
-rm "$S1/rules/python.md"
-expect_rejected "C1 missing symlink" "$S1" "CLAUDE-PYTHON.md"
-
-# C2. A stripped frontmatter block is caught.
-S2="$(make_sandbox)"
-sed '1,/^---$/d' "$S2/CLAUDE-GO.md" > "$S2/CLAUDE-GO.md.tmp" && mv "$S2/CLAUDE-GO.md.tmp" "$S2/CLAUDE-GO.md"
-expect_rejected "C2 missing frontmatter" "$S2" "CLAUDE-GO.md"
-
-# C3. A file no detection table names is caught.
-S3="$(make_sandbox)"
-for doc in "$S3/rules/session-types.md" "$S3/CLAUDE-FRONTEND.md"; do
-  grep -vF "CLAUDE-RUBY.md" "$doc" > "$doc.tmp" && mv "$doc.tmp" "$doc"
+  case "$case_id" in
+    C1)
+      mutated_basename=CLAUDE-PYTHON.md
+      rm "$sandbox/rules/python.md" || exit 1
+      ;;
+    C2)
+      mutated_basename=CLAUDE-GO.md
+      awk 'NR == 1 { next } !closed { if ($0 == "---") closed = 1; next } { print }' \
+        "$sandbox/$mutated_basename" > "$sandbox/stripped.md" || exit 1
+      mv "$sandbox/stripped.md" "$sandbox/$mutated_basename" || exit 1
+      ;;
+    C3)
+      mutated_basename=CLAUDE-RUBY.md
+      for reference in rules/session-types.md CLAUDE-FRONTEND.md; do
+        awk 'index($0, "CLAUDE-RUBY.md") == 0' "$sandbox/$reference" > "$sandbox/filtered.md" || exit 1
+        mv "$sandbox/filtered.md" "$sandbox/$reference" || exit 1
+      done
+      ;;
+  esac
+  output=$(check_tree "$sandbox")
+  result=$?
+  if [ "$result" -eq 1 ] && [[ "$output" == *"$mutated_basename"* ]]; then
+    printf 'PASS: %s rejected naming %s\n' "$case_id" "$mutated_basename"
+  else
+    printf 'FAIL: %s not rejected\n' "$case_id"
+    failure=1
+  fi
 done
-expect_rejected "C3 missing mention" "$S3" "CLAUDE-RUBY.md"
 
-exit $fail
+exit "$failure"
