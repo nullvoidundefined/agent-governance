@@ -187,7 +187,7 @@ The `structure-conventions` skill gains the Nuxt vocabulary in R-305 and the Pyt
 Each criterion is testable and cited by the tests in the slice plan.
 
 - AC-1: A file at `app/components/Foo/Foo.vue` matches the `paths:` of the Vue file and the core, and matches no glob in the React, Next, or Vite files. Verified by a test that runs each file's globs against a fixture path list.
-- AC-2: `grep -c 'React\|useCallback\|Zustand' CLAUDE-FRONTEND.md` returns 0 after the refactor.
+- AC-2: after the refactor the core carries no React rule: `grep -cE "useCallback|useState|useRef|Zustand|use client|React\.FC|from 'react'|React 19" CLAUDE-FRONTEND.md` returns 0. The framework name may still appear where the core dispatches to the React file or contrasts the two frameworks' directory names.
 - AC-3: `CLAUDE-PYTHON.md` contains none of the strings `Django`, `Celery`, `RQ`, `pip install`, or `stdlib`, and contains a section header for every row of the outline above.
 - AC-4: `CLAUDE-PYTHON.md` is between 800 and 1000 lines, the band that matches `CLAUDE-BACKEND.md` plus the 14 sections the Express file never documents.
 - AC-5: The ESLint fixture test fails on a `.vue` fixture containing a nested ternary, a magic number, and an `any`, and passes on the compliant fixture.

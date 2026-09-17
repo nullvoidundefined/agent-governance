@@ -7,7 +7,7 @@ paths:
 
 # Vite Frontend Conventions
 
-Framework-specific rules for Vite React single-page apps. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core); everything not covered here follows the core.
+Framework-specific rules for Vite React single-page apps. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core) and `~/.claude/CLAUDE-FRONTEND-REACT.md` (the React rules); everything not covered here follows those two.
 
 ---
 
@@ -37,7 +37,7 @@ src/
 ├── api/                      # Own-backend fetch wrappers (see core)
 ├── clients/                  # Third-party SDK wrappers (see core)
 ├── services/                 # Domain logic (see core)
-├── state/                    # Stores, hooks, context providers (see core)
+├── state/                    # Stores, hooks, context providers (see the React file)
 ├── config/                   # queryClient.ts, router config, env parsing
 ├── constants/
 ├── data/
@@ -76,7 +76,7 @@ src/
 ## Path Alias
 
 - `@/` maps to `src/`, configured in both `vite.config.ts` (`resolve.alias`) and `tsconfig.json` (`paths`)
-- Import ordering group 1 (see core) is React plus `@tanstack/react-router` imports
+- Import ordering group 1 (see the React file) is React plus `@tanstack/react-router` imports
 
 ---
 

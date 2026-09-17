@@ -2,7 +2,7 @@
   "builder": "translate/codex.mjs",
   "files": {
     ".gitignore": "sha256:1cb2b307367ce7207dde4a511834accda3bab934540d275867bbfbcf266542ee",
-    "AGENTS.md": "sha256:92d917d448ac355eab92877b0d1b5aa0535910423c0cf432e91708b27c03235d",
+    "AGENTS.md": "sha256:814b914e0b93bede4ee14663734b98d5a4f71a97be25a10ddee6bea0a1504654",
     "PORT-STATUS.md": "sha256:00e86ef838e399b4aea53ed945f10995f60395978672960697ed5da9b296316a",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
