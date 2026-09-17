@@ -40,7 +40,7 @@ The invariant that the procedure protects is separately mechanized as a shell te
 
 **Review focus:** The three assertions in the test: that each one fails independently and names the file, and that the symlink check follows the link rather than testing for the link's existence only.
 
-**Size:** 3 files, about 200 lines.
+**Size:** 6 files (skill, test, enforce README line, spec consistency edit, slice record, generated codex port), about 260 lines.
 
 ## PR 2: Frontend core refactor and `CLAUDE-FRONTEND-REACT.md`
 

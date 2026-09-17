@@ -4,9 +4,10 @@
 # Fresh sandbox mutations prove missing wiring is rejected by filename.
 set -uo pipefail
 
-# Checks convention frontmatter, resolving rules links, and loading references.
-# Loading references must appear in rules/session-types.md or the Framework Files
-# section of CLAUDE-FRONTEND.md, ending before the next level-two heading.
+# Checks convention frontmatter, resolving rules/*.md symlinks, and loading references.
+# Loading references must appear in the Stack detection section of rules/session-types.md
+# or the Framework Files section of CLAUDE-FRONTEND.md, each ending before the next
+# level-two heading.
 # Argument: root ($1) is the convention tree directory to inspect.
 # Prints an unwired diagnostic for each missing requirement, or nothing on success.
 # Returns 0 when all requirements pass, or 1 when any requirement fails.
@@ -28,7 +29,7 @@ check_tree() {
 
     linked=0
     target=$(python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$convention")
-    for link in "$root"/rules/* "$root"/rules/.[!.]* "$root"/rules/..?*; do
+    for link in "$root"/rules/*.md; do
       [ -L "$link" ] && [ -e "$link" ] || continue
       if [ "$(python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$link")" = "$target" ]; then
         linked=1
@@ -40,7 +41,11 @@ check_tree() {
       failed=1
     fi
 
-    if ! grep -Fq "$basename" "$root/rules/session-types.md" && ! awk '
+    if ! awk '
+      /^## Stack detection$/ { in_section = 1; print; next }
+      in_section && /^## / { exit }
+      in_section { print }
+    ' "$root/rules/session-types.md" | grep -Fq "$basename" && ! awk '
       /^## Framework Files$/ { in_section = 1; print; next }
       in_section && /^## / { exit }
       in_section { print }
