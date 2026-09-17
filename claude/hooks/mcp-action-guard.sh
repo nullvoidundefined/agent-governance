@@ -48,6 +48,26 @@ for token in $(printf '%s' "$ACTION" | tr '_' ' '); do
 done
 [ -z "$REASON" ] && exit 0
 
+# The operator narrowed R-105 for the private tracker on 2026-09-17: the
+# ticket-lifecycle skill writes at every state change, so a confirmation
+# landed every few minutes, and each one bought little, because the tracker is
+# private to the operator and a wrong field is editable in place. The narrowing
+# stops at the write class and at writes that stay inside the tracker. A
+# tracker call that lands code, submits for review, or carries a file out is
+# not bookkeeping, so it still asks; so does anything the destroy or transmit
+# classes matched, which is why this sits after REASON is decided rather than
+# beside the browser exemption above.
+case "$SERVER" in
+  Linear | claude_ai_Linear)
+    if [ "$REASON" = "writes to an external system of record" ]; then
+      case " $(printf '%s' "$ACTION" | tr '_' ' ') " in
+        *" merge "* | *" submit "* | *" upload "* | *" apply "*) ;;
+        *) exit 0 ;;
+      esac
+    fi
+    ;;
+esac
+
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }

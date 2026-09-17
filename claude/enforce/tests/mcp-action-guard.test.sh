@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Verifies mcp-action-guard.sh asks on mutating and transmitting MCP calls (R-105)
-# and stays silent on read-only ones, on non-MCP tools, and on the browser server.
+# and stays silent on read-only ones, on non-MCP tools, on the browser server, and on
+# private-tracker writes, while still asking when a tracker call lands code,
+# destroys state, or transmits outward.
 set -euo pipefail
 HOOK="$HOME/.claude/hooks/mcp-action-guard.sh"
 ask() { printf '{"tool_name":"%s","tool_input":{}}' "$1" | "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null; }
@@ -9,8 +11,9 @@ pass() { [ -z "$(printf '{"tool_name":"%s","tool_input":{}}' "$1" | "$HOOK")" ];
 ask  mcp__claude_ai_Gmail__send_message           # transmits
 ask  mcp__claude_ai_Gmail__forward                # transmits
 ask  mcp__claude_ai_Gmail__trash_thread           # destroys
-ask  mcp__claude_ai_Linear__save_issue            # writes
-ask  mcp__claude_ai_Linear__merge_diff            # writes
+ask  mcp__claude_ai_Linear__merge_diff            # lands code, so it asks despite the tracker exemption
+ask  mcp__claude_ai_Linear__delete_comment        # destroys, so it asks despite the tracker exemption
+ask  mcp__claude_ai_Linear__share_issue           # transmits outward, so it asks despite the tracker exemption
 ask  mcp__claude_ai_Notion__notion-create-pages   # verb behind a server prefix
 ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix
 ask  mcp__claude_ai_Google_Calendar__delete_event # destroys
@@ -31,6 +34,11 @@ pass mcp__claude_ai_Google_Drive__download_file_content   # read-only
 pass mcp__claude_ai_Linear__list_issue_labels     # 'labels' is not the verb 'label'
 pass mcp__claude_ai_Gmail__untrash_message        # restorative, not destructive
 pass mcp__claude-in-chrome__tabs_create_mcp       # browser server exempt
+pass mcp__claude_ai_Linear__save_issue            # tracker write exempt: private bookkeeping
+pass mcp__claude_ai_Linear__save_comment          # tracker write exempt
+pass mcp__Linear__save_issue                      # the same server without the claude_ai prefix
+ask  mcp__github__create_pull_request             # a public repo is publishing, never exempt
+ask  mcp__claude_ai_Notion__notion-create-pages   # only the tracker is exempt, not every writer
 pass mcp__plugin_context7_context7__query-docs    # a docs lookup is not a database write
 pass Write                                        # non-MCP tool
 
