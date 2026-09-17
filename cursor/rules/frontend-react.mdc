@@ -43,7 +43,7 @@ The shared vocabulary lives in the core. React adds one rule to it:
 ### File Structure (top to bottom)
 
 ```typescript
-import { useState, useCallback } from 'react';      // 1. React imports
+import { useCallback, useState } from 'react';      // 1. React imports
 import type { FormEvent } from 'react';             //    Type-only imports use `type`
 import { useQuery } from '@tanstack/react-query';   //    Third-party imports
 import { fetchMessages } from '@/api/fetchMessages'; //   Local imports (@ alias)
@@ -92,10 +92,10 @@ The five groups and their order are in the core. In React, group 1 is React plus
 
 ```typescript
 // 1. React / framework imports
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // 2. Third-party packages
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 // 3. Local imports (@ alias paths)
 import { fetchTrips } from '@/api/fetchTrips';
