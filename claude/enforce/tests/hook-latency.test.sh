@@ -9,6 +9,14 @@
 # costs 10-100x a bare spawn and blows the multiplier under any load.
 set -euo pipefail
 
+# The LIVE copy on purpose, and the one path in this suite that is not
+# overridable by design: this fixture measures what a session actually spawns,
+# which is the installed hook, not what the checkout would spawn once synced. A
+# settings override below lets a caller name a different chain, but the scripts
+# timed are always the installed ones. Recorded here because the asymmetry
+# looked like the live-versus-repo drift class and was filed as such (2026-09-17
+# audit P2-8); it is a deliberate choice, and its sibling claude-md-lint.test.sh
+# was the half that really was inconsistent.
 HOOKS_DIR="$HOME/.claude/hooks"
 BUDGET_MULTIPLIER=6
 BUDGET_FLOOR_MS=250

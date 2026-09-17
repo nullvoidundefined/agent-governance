@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:single-file-folder-reminder
 # Verifies single-file-folder-reminder warns (advisory, stderr) when a changed source folder holds
 # exactly one source module (R-309), and that .enforce.json exemptions suppress the warning.
 set -euo pipefail

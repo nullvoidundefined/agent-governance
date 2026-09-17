@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:mcp-action-guard
 # Verifies mcp-action-guard.sh asks on mutating and transmitting MCP calls (R-105)
 # and stays silent on read-only ones, on non-MCP tools, and on the browser server.
 set -euo pipefail

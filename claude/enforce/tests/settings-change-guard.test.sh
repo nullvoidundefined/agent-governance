@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:settings-change-guard
 # Verifies settings-change-guard.sh (ConfigChange, R-516). Five invariants:
 #   1. The live settings.json, which registers every manifest-required hook, passes.
 #   2. A copy that drops a required hook is blocked, naming the hook.

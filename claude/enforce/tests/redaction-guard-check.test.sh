@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:redaction-guard-check
 # Verifies redaction-guard-check.sh warns when a secret-handling hook is missing
 # from settings and stays silent when both are registered (R-102). Uses the
 # REDACTION_GUARD_SETTINGS override with throwaway settings files.

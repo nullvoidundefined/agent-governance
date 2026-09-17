@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:new-file-header-reminder
 # Test harness for new-file-header-reminder.sh (PostToolUse Write nudge).
 #
 # Covers Python support: a new .py source file with no leading comment or

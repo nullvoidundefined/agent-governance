@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:clean-code-reminder
 # Verifies clean-code-reminder.sh flags a function body over the ~25-line
 # ceiling and stays silent for short functions (R-322).
 set -euo pipefail

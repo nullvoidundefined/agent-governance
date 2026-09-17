@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:handoff-check
 # handoff-check.test.sh: verifies hooks/handoff-check.sh (R-602 reminder,
 # 2026-09-17 skills audit S-5): silent on a handoff that meets the Spec and on
 # any other path; reminds naming the miss on an oversized file, a missing

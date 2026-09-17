@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:harness-sync
 # harness-sync.test.sh: verifies hooks/harness-sync.sh (R-003) against a
 # sandbox checkout and a fake HOME: the first run syncs the checkout's tracked
 # claude/ files into ~/.claude and says so; a second run finds no drift and
@@ -25,6 +26,11 @@ silent() { [ -z "$OUT" ]; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
 CO="$SB/agent-governance"; mkdir -p "$CO/claude/hooks" "$CO/cursor" "$CO/codex"
+# The hook stamps and reports the checkout's PHYSICAL path (macOS mktemp
+# hands out /var/... which is a symlink to /private/var/...), so resolve CO
+# the same way before building expected strings, or every path comparison
+# fails on macOS while passing on Linux CI.
+CO=$(cd "$CO" && pwd -P)
 git -C "$CO" init -q -b main
 git -C "$CO" config user.email t@example.invalid; git -C "$CO" config user.name t
 cp "$REAL_SYNC" "$CO/sync.sh"; chmod +x "$CO/sync.sh"

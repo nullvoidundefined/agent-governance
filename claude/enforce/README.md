@@ -22,10 +22,12 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 |------|-------------|------|----------|
 | `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) or per Bash call | R-312, R-306, R-311, R-103 |
 | `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-323, R-321, R-319, R-326, R-324, R-303 |
-| `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-315, R-316, R-317, R-322, R-318, R-325, R-320 |
+| `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-315, R-316, R-317, R-325 |
 | `advisory` | a non-blocking warning or confirm prompt (reminder, push-time stderr, or `ask`) | per edit or per push | R-310, R-309, R-506, R-513, R-801 |
 
 Per-edit checks must stay cheap (no Node, no network). All heavy work (ESLint, the model call) runs once per push.
+
+The row above lists exactly the manifest's `llm-judge` rows and nothing else. It listed seven rules until 2026-09-17 (audit P2-4): R-320 and R-322 left the tier in the 2026-09-04 reclassification as pure AST questions, R-318's own Spec in `rulebook/reference.md` argues against ever judging it ("a non-deterministic verdict on an undecidable property is confidence theater"), and R-325's documented judge half had no manifest row, so the judge never evaluated the one thing the doc said it decided. Only that last one was a defect, and it is fixed; the other three were the table drifting ahead of decisions already taken.
 
 ## Per-repo config: `.enforce.json`
 
@@ -129,7 +131,7 @@ Output is one line per check: `<verdict> <name>: <detail>`, verdict one of `pass
 | `deps` | `fail` naming whichever of `jq`, `node`, `git` is missing from `PATH`; `pass` when all three are present. |
 | `sandbox-availability` | Combines the OS probe (Darwin: always available via built-in Seatbelt; Linux: available when both `bwrap` and `socat` are present; any other OS: unavailable, naming it) with `settings.json`'s `sandbox` block: `pass` when the primitive is available and `sandbox.enabled` is `true`; `warn` ("configured but disabled") when available and a `sandbox` block is present but `enabled` is `false` or absent from the block; `warn` ("not enabled in settings") when available and no `sandbox` block exists at all; `warn` when enabled but unavailable on this host, naming the missing primitive; `warn` when neither holds. Never `fail`, so a host without the primitive keeps working (B-2: `failIfUnavailable: false`). This checkout's shipped default is `enabled: false`, so a real-tree run reports `warn ... configured but disabled`; see "Sandbox configuration (B-2)" above for why and the manual enablement procedure. |
 | `statusline` | `skipped` when the live settings carry no `statusLine.command`. Otherwise the configured command is fed a sample status payload; `fail` when it errors or prints nothing, `pass` showing the first line of its output otherwise. Spec B-5 also names "cache hit rate when available" as a rendered field; the shipped `status-line.sh` omits it because the documented statusLine stdin payload carries no cache-hit-rate field to read. |
-| `port-freshness` | `skipped` when `translate/codex.mjs` is absent at the resolved root (this checkout does not carry the monorepo's translator). Otherwise runs `translate/codex.mjs --check --root <root>`; `fail` when it reports drift, `pass` when the codex port matches its sources. |
+| `port-freshness-codex`, `port-freshness-cursor` | One line per translator target, so a stale `cursor/` tree cannot hide behind a green codex line or vice versa. Each is `skipped` when its translator (`translate/codex.mjs` or `translate/cursor.mjs`) is absent at the resolved root (this checkout does not carry the monorepo's translator). Otherwise runs `<translator> --check --root <root>`; `fail` when it reports drift, `pass` when that target's port matches its sources. |
 
 ### `--full` adds
 
