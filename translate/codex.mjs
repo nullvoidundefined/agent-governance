@@ -21,6 +21,21 @@ import { renderHooksConfig, renderPortStatus } from "./render-codex-hooks.mjs";
 import { renderGitignore } from "./render-codex-gitignore.mjs";
 import { buildManifest, MANIFEST_PATH } from "./build-manifest.mjs";
 
+const CLI_USAGE = "usage: node translate/codex.mjs --write|--check [--root <repo-dir>]";
+
+// refuseCli(detail): the refusal every unusable argv resolves to, carrying the
+// usage line and, above it, what exactly was wrong. The offending token used to
+// be found and then discarded, so all four refusals printed the same generic
+// usage line and left the author guessing which of their arguments the
+// translator would not take (PR #8 review). The caller prints .error, exits 2,
+// and writes nothing.
+function refuseCli(detail) {
+  return { error: `codex.mjs: ${detail}\n${CLI_USAGE}` };
+}
+
+// parseCliMode(argv) -> { mode, rootDir } or the refuseCli shape. Never throws
+// and never half-parses: a caller that sees .error has a diagnostic to print
+// and nothing else to do.
 function parseCliMode(argv) {
   const known = new Set(["--write", "--check", "--root"]);
   const rootIndex = argv.indexOf("--root");
@@ -32,9 +47,12 @@ function parseCliMode(argv) {
   const rootValueIndex = rootIndex === -1 ? -1 : rootIndex + 1;
   const unexpected = argv.find((token, index) =>
     index !== rootValueIndex && !known.has(token));
-  if (unexpected !== undefined) return null;
+  if (unexpected !== undefined) {
+    return refuseCli(`unrecognized argument "${unexpected}"; the repository directory goes after --root and there are no positional arguments`);
+  }
   const modes = argv.filter((f) => f === "--write" || f === "--check");
-  if (modes.length !== 1) return null;
+  if (modes.length === 0) return refuseCli("no mode given; pass exactly one of --write or --check");
+  if (modes.length > 1) return refuseCli(`${modes.join(" and ")} cannot both be given; pass exactly one of --write or --check`);
   if (rootIndex === -1) {
     return { mode: modes[0].slice(2), rootDir: path.resolve(fileURLToPath(import.meta.url), "../..") };
   }
@@ -42,7 +60,8 @@ function parseCliMode(argv) {
   // is a usage error, not a crash: without this guard rootDir is undefined
   // and every later path.join(undefined, ...) throws a TypeError.
   const rootValue = argv[rootIndex + 1];
-  if (rootValue === undefined || rootValue.startsWith("--")) return null;
+  if (rootValue === undefined) return refuseCli("--root was given with no repository directory after it");
+  if (rootValue.startsWith("--")) return refuseCli(`--root was followed by the flag "${rootValue}" rather than a repository directory`);
   return { mode: modes[0].slice(2), rootDir: rootValue };
 }
 
@@ -307,8 +326,8 @@ function checkPlannedTree(rootDir, planned, sources) {
 }
 
 const cli = parseCliMode(process.argv.slice(2));
-if (!cli) {
-  console.error("usage: node translate/codex.mjs --write|--check [--root <repo-dir>]");
+if (cli.error) {
+  console.error(cli.error);
   process.exit(2);
 }
 

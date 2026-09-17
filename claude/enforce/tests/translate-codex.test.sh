@@ -197,13 +197,29 @@ check "usage errors touch nothing" test -z "$(ls -A "$SANDBOX")"
 # rootDir then fell back to the script's own repository. `--check` against the
 # wrong tree is merely wrong; `--write` prunes orphans and removes emptied
 # directories, so it is destructive. Both spellings must be usage errors.
+#
+# PR #8 review (Copilot, translate/codex.mjs): the rejected token was found and
+# then thrown away, so every one of these refusals printed the same generic
+# usage line and the author had to guess which argument the translator would
+# not take. Each refusal names the token it refused. outputNames wraps the
+# herestring so the assertion stays one check() argument list.
+outputNames() { grep -q -F -- "$1" <<<"$OUT"; }
 OUT=$(node "$TRANSLATOR" --check "$SANDBOX" 2>&1); ST=$?
 check "positional root exits 2" test "$ST" -eq 2
 check "positional root prints usage" grep -q -- "--write" <<<"$OUT"
+check "positional root names the token" outputNames "\"$SANDBOX\""
 OUT=$(node "$TRANSLATOR" --check -root "$SANDBOX" 2>&1); ST=$?
 check "single-dash flag exits 2" test "$ST" -eq 2
+check "single-dash flag names the token" outputNames '"-root"'
+OUT=$(node "$TRANSLATOR" --frobnicate --root "$SANDBOX" 2>&1); ST=$?
+check "unknown flag names the token" outputNames '"--frobnicate"'
 OUT=$(node "$TRANSLATOR" --check --root "$SANDBOX" extra 2>&1); ST=$?
 check "trailing positional after --root exits 2" test "$ST" -eq 2
+check "trailing positional names the token" outputNames '"extra"'
+OUT=$(node "$TRANSLATOR" --write --check --root "$SANDBOX" 2>&1); ST=$?
+check "both modes name the conflict" outputNames "--write"
+OUT=$(node "$TRANSLATOR" --root "$SANDBOX" 2>&1); ST=$?
+check "no mode says a mode is required" outputNames "--write or --check"
 # An empty root also exits 2 through SourceError, so the usage line is what
 # distinguishes a parse refusal from a load failure here.
 check "trailing positional prints usage" grep -q -- "usage:" <<<"$OUT"

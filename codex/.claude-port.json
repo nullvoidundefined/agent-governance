@@ -2,7 +2,7 @@
   "builder": "translate/codex.mjs",
   "builder_files": {
     "translate/build-manifest.mjs": "sha256:6b38dc505ed6a47906b1e2b6c12849ec2b5e76089046944dc0790346d8841ec1",
-    "translate/codex.mjs": "sha256:ea548ec1f1c4d630ddeee02c351705f7473cfbcb8a0d2d5561b257dc5008456e",
+    "translate/codex.mjs": "sha256:a5a0a9cb52fc4f4a86377681ac33cd30135df76dfbe7c9f4d7541aeea1bcf274",
     "translate/parse-sources.mjs": "sha256:72b7d0e208b227e505198000da9edc6df151e51546bb0afcdf9a2671705e882c",
     "translate/render-codex-agents.mjs": "sha256:ccdfb05be84581ba395c5eeea553e31d1654d38f458e6b7027d88fa54c737e2f",
     "translate/render-codex-gitignore.mjs": "sha256:d0f1a0d030fff0536981ce1cac8f15be1b479de2b8f8a2453fecf031c1159c6e",
