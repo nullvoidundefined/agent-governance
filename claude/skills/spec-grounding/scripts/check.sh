@@ -97,7 +97,12 @@ has_section "Non-goals" || fail 'missing "## Non-goals" section'
 # 6. Only the spec changed.
 if [ "$CHECK_GIT" -eq 1 ]; then
   if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    spec_rel=$(realpath --relative-to="$ROOT" "$SPEC" 2>/dev/null || python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$SPEC" "$ROOT")
+    # Canonicalize both sides before computing the relative path: macOS
+    # mktemp hands out /var/... symlink paths while git's toplevel is the
+    # physical /private/var/..., and a relpath across the two forms never
+    # matches the porcelain listing (BSD realpath also lacks --relative-to,
+    # so python3 is the portable canonicalizer).
+    spec_rel=$(python3 -c 'import os,sys; print(os.path.relpath(os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])))' "$SPEC" "$ROOT")
     others=$(git -C "$ROOT" status --porcelain --untracked-files=all | awk '{print $NF}' | grep -vxF "$spec_rel" || true)
     [ -z "$others" ] || fail "files other than the spec are modified or untracked: $(printf '%s' "$others" | tr '\n' ' ')"
   else
