@@ -140,6 +140,44 @@ check "missing task id appends no line" line_count_is "$LOG_FILE" 4
 check "missing task id writes exactly one stderr line" [ "$(printf '%s\n' "$STDERR4" | wc -l | tr -d ' ')" -eq 1 ]
 check "stderr line names the event type" stderr_names_tool "$STDERR4" "TaskUpdate"
 
+# --- Case 4b (PR #14 review): a REJECTED TaskUpdate must not be persisted
+# as if it had succeeded. The payload shape here is the real one, taken from
+# a live transcript's toolUseResult for a rejected TaskUpdate:
+#   {"success": false, "taskId": "5", "updatedFields": [], "error": "Task not found"}
+# Recording it would put a status the tool refused to apply into the folded
+# snapshot, so the next handoff or resume would report work as finished that
+# was never finished. ---
+REJECTED_PAYLOAD=$(jq -n --arg t "$TRANSCRIPT" --arg c "$REPO" \
+  '{tool_name:"TaskUpdate", transcript_path:$t, cwd:$c,
+    tool_input:{taskId:"99", status:"completed"},
+    tool_response:{success:false, taskId:"99", updatedFields:[], error:"Task not found"}}')
+EXIT_REJECTED=0
+STDERR_REJECTED=$(printf '%s' "$REJECTED_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" 2>&1 1>/dev/null) || EXIT_REJECTED=$?
+check "a rejected TaskUpdate exits 0" exit_code_is "$EXIT_REJECTED" 0
+check "a rejected TaskUpdate appends no line" line_count_is "$LOG_FILE" 4
+check "a rejected TaskUpdate is reported on stderr" stderr_names_tool "$STDERR_REJECTED" "TaskUpdate"
+
+# --- Case 4c: an errors-only response shape is refused the same way, and a
+# response carrying no success/error field at all is still recorded. The
+# gate is deliberately one-sided: TaskCreate's successful response is
+# {"task":{...}} with no `success` key at all, so treating an absent field
+# as failure would turn the whole tracker off on the next payload-shape
+# change. ---
+ERROR_ONLY_PAYLOAD=$(jq -n --arg t "$TRANSCRIPT" --arg c "$REPO" \
+  '{tool_name:"TaskUpdate", transcript_path:$t, cwd:$c,
+    tool_input:{taskId:"98", status:"in_progress"},
+    tool_response:{error:"Task not found"}}')
+printf '%s' "$ERROR_ONLY_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" 2>/dev/null
+check "an error-only response appends no line" line_count_is "$LOG_FILE" 4
+
+NO_SIGNAL_PAYLOAD=$(jq -n --arg t "$TRANSCRIPT" --arg c "$REPO" \
+  '{tool_name:"TaskUpdate", transcript_path:$t, cwd:$c,
+    tool_input:{taskId:"1", status:"in_progress"},
+    tool_response:{taskId:"1"}}')
+printf '%s' "$NO_SIGNAL_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+check "a response with no explicit failure signal is still recorded" line_count_is "$LOG_FILE" 5
+check "line 5 status is in_progress" [ "$(line_n_field "$LOG_FILE" 5 '.status')" = "in_progress" ]
+
 # --- Case 5: writes never touch the real HOME ---
 REAL_HOME_LOG="$HOME/.claude/projects/$KEY/task-state.$SESSION_ID.jsonl"
 check "nothing was written under the real HOME" [ ! -e "$REAL_HOME_LOG" ]
@@ -148,12 +186,12 @@ check "nothing was written under the real HOME" [ ! -e "$REAL_HOME_LOG" ]
 EXIT5=0
 printf 'not json at all {{{' | HOME="$SANDBOX" bash "$HOOK" || EXIT5=$?
 check "hook exits 0 on malformed stdin" exit_code_is "$EXIT5" 0
-check "malformed stdin appends no line" line_count_is "$LOG_FILE" 4
+check "malformed stdin appends no line" line_count_is "$LOG_FILE" 5
 
 # --- Case 7: an unrelated tool_name is silently ignored ---
 OTHER_OUT=$(jq -n --arg t "$TRANSCRIPT" --arg c "$REPO" '{tool_name:"Edit", transcript_path:$t, cwd:$c, tool_input:{}}' | HOME="$SANDBOX" bash "$HOOK")
 check "no output for an unrelated tool" [ -z "$OTHER_OUT" ]
-check "unrelated tool appends no line" line_count_is "$LOG_FILE" 4
+check "unrelated tool appends no line" line_count_is "$LOG_FILE" 5
 
 # --- Case 8 (fix round 1, C1): six concurrent TaskCreate events against the
 # SAME session must all survive. This is the case that lost 5 of 6 tasks

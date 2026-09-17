@@ -38,11 +38,13 @@
 # runs inside a `set +e` subshell (session-end.sh's write_session_snapshot
 # pattern) so a jq hiccup, an unreadable transcript, or malformed stdin never
 # propagates past this script. No output on the happy path: PostToolUse
-# context noise has a real cost. The one exception is a payload that names a
-# tracked tool but carries no resolvable task id (fix round 1, M4): that
-# writes one stderr line naming the event, because a silent skip there would
-# let a future payload-shape change turn the whole feature off with no
-# signal anywhere.
+# context noise has a real cost. There are two exceptions, both one stderr
+# line naming the event: a payload that names a tracked tool but carries no
+# resolvable task id (fix round 1, M4), and a payload whose tool_response
+# explicitly says the call was refused (PR #14 review, see
+# response_failure_reason below). Both are silent-skip paths where a future
+# payload-shape change could turn the whole feature off with no signal
+# anywhere.
 #
 # To test manually:
 #   jq -nc '{tool_name:"TaskCreate",transcript_path:"/path/to/<key>/<sid>.jsonl",cwd:"/repo",tool_input:{subject:"x",description:"y"},tool_response:{task:{id:"1",subject:"x"}}}' \
@@ -52,6 +54,42 @@
 set -uo pipefail
 
 INPUT=$(cat 2>/dev/null || true)
+
+# response_failure_reason prints a short human-readable reason when the
+# PostToolUse tool_response on stdin carries an EXPLICIT signal that the
+# TaskCreate or TaskUpdate call was refused, and prints nothing at all
+# otherwise. PostToolUse fires after a failed call as readily as after a
+# successful one, and the branches below read the REQUESTED taskId and
+# status out of tool_input, so without this gate a rejected transition was
+# recorded as though it had been applied and the next handoff or resume
+# reported work as finished that the tool had refused to finish (PR #14
+# review).
+#
+# The gate is deliberately one-sided. Only four shapes count as explicit
+# failure: success == false, isError == true, a non-empty `error`, and a
+# status or result string of error/failed/failure/rejected/denied. The
+# first two of those come from the real payload: a live transcript's
+# toolUseResult for a refused TaskUpdate is
+# {"success":false,"taskId":"5","updatedFields":[],"error":"Task not found"}.
+# An ABSENT field is never read as failure, because the successful
+# TaskCreate response is {"task":{...}} and carries no `success` key at
+# all; requiring a positive success signal would drop every TaskCreate
+# today, and would silently turn the whole tracker off the first time the
+# response shape changed. A tool_response that is missing, null, or not an
+# object likewise yields no reason, and the event is recorded.
+response_failure_reason() {
+  printf '%s' "$INPUT" | jq -r '
+    (.tool_response? // null) as $r
+    | if ($r | type) != "object" then ""
+      elif ($r.success == false) then "tool_response.success is false"
+      elif ($r.isError == true) then "tool_response.isError is true"
+      elif (($r | has("error")) and ($r.error != null) and ($r.error != "")) then "tool_response.error is set"
+      elif ((($r.status // $r.result // "") | if type == "string" then ascii_downcase else "" end)
+            | . == "error" or . == "failed" or . == "failure" or . == "rejected" or . == "denied")
+        then "tool_response reports a failed outcome"
+      else "" end
+  ' 2>/dev/null
+}
 
 # main: reads the PostToolUse stdin payload, derives the project key and
 # session id from transcript_path exactly as session-start.sh and
@@ -63,7 +101,7 @@ INPUT=$(cat 2>/dev/null || true)
 main() (
   set -euo pipefail
 
-  local tool transcript_path cwd key session_id
+  local tool transcript_path cwd key session_id failure_reason
   local task_id subject status branch now state_dir log_file line
 
   tool=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
@@ -71,6 +109,12 @@ main() (
     TaskCreate|TaskUpdate) ;;
     *) return 0 ;;
   esac
+
+  failure_reason=$(response_failure_reason)
+  if [ -n "$failure_reason" ]; then
+    echo "task-state-tracker: $tool was refused ($failure_reason), not recording it" >&2
+    return 0
+  fi
 
   transcript_path=$(printf '%s' "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null)
   cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)
