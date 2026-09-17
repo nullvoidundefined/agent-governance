@@ -1,44 +1,37 @@
-# Session Handoff: 2026-09-17 source-neutral sync planning
+# Session Handoff: 2026-09-17 translator, doctor, permissions, and repo move (Claude session)
 
 ## 1. Last commit
 
-- Current branch: `main`. Run `git log -1 --oneline` first; the expected tip subject is `docs: update cross-model dialogue config spec`. NOT pushed by Codex in this turn.
-- New planning commit in this session: `bb64ffe` `docs: spec source-neutral governance sync`, adding `claude/docs/superpowers/specs/2026-09-17-source-neutral-governance-sync-design.md`.
-- Prior handoff context below still describes the unmerged `claude/hygiene-audit-2026-09-17` workstream and should be treated as inherited state, not as the current branch tip.
+- `e373713` `docs(issues): destructive-command-guard substring false positive on sandbox paths (R-203 incident)`, tip of `main`. Local `main` is 9 commits ahead of `origin/main` (last push ended at `2cd9219`); NOT pushed, awaiting the user's word per the batch-push preference.
+- A parallel Codex session owns the primary checkout on branch `docs/public-harness-and-backlog` with six staged spec/handoff deletions and unstaged README/SETUP edits, restored exactly after an accidental commit bundling was unbundled; that session resumes it cleanly.
 
 ## 2. Production state
 
-- Both fixture suites fully green post-remediation: 53 enforce + 15 hooks = 68 fixtures (two added this session). `~/.claude` synced from the branch tip via `./sync.sh`, so the live harness runs the branch's hooks; if the branch is discarded instead of merged, re-run `./sync.sh` from `main`.
-- `model-switch-guard.sh` is LIVE for the first time: registered under `PreModelSwitch` (a real event, verified against the current hooks docs; the repo's prior "not a real event" claim was wrong), warning via `systemMessage` on up-ladder switches.
-- `codex-test-author-guard.sh` now exempts `agent_type` test-author; R-907 is scoped to inline authoring (user decision this session).
+- Repo moved to `/Users/iangreenough/Desktop/code/personal/tools/agent-governance` (old `~/dev` deleted; `.sync-source` restamped; every path-coupled fixture decoupled to remote-identity checks).
+- `~/.claude` synced from `main` at `41ea2ba`-era content; both fixture suites green (55 enforce + 15 hooks files); `claude/enforce/doctor.sh --root .` reports 0 fail (2 warns: accepted-unknown settings key, and the stale-live-hooks drift below).
+- `translate/codex.mjs` regenerates `codex/` from `claude/` sources; `--check` gates CI and the tracked pre-push sample; PORT-STATUS counts are derived (47 of 50 registrations port).
+- Permissions: `Bash(bash *)`/`Bash(sh *)` ask rules narrowed to the `-c` forms; 13 transcript-frequent allow entries added (two python3 interpreter exceptions and `./sync.sh` recorded in ISSUES.md).
+- `model-switch-guard.sh` live on PreModelSwitch (systemMessage warns on up-ladder switches).
 
-## 3. What shipped
+## 3. What shipped (all on `main`, squash-merged per feature)
 
-- **Cross-model dialogue spec**: `claude/docs/superpowers/specs/2026-09-17-cross-model-dialogue-design.md` specifies a harness upgrade for Claude/Codex challenge workflows: a `cross-model-dialogue` skill, dialogue config/CLI for enabled tools plus primary/challenger roles, degraded single-tool behavior when a tool is missing, unauthenticated, or session/rate/quota-limited, read-only `assumption-reviewer` and `dispute-reviewer` roles, `docs/dialogues/` packets, role-policy entries, and fixtures proving the new reviewers cannot write. It keeps R-907/R-412 intact and treats model disagreement as bounded artifacts, not free-form chat.
-- **Source-neutral sync spec**: `claude/docs/superpowers/specs/2026-09-17-source-neutral-governance-sync-design.md` defines the replacement for the Claude-as-source assumption. It treats `claude/`, `codex/`, and `cursor/` as peer edit surfaces, introduces a neutral governance model with per-surface importers/exporters, and uses the existing Codex translator as the compatibility baseline to generalize. Key criteria: `--from claude` preserves current Codex output byte-for-byte; `--from codex` round-trips importable Codex edits back to Claude and forward to Cursor; Cursor may start as legacy/gap-reporting; generated and hand-authored ownership is explicit; sibling edit conflicts block writes.
-- **Inherited hygiene-audit context**: prior branch work fixed repo hygiene, PreModelSwitch/R-903 contradictions, task-start/cost docs, codex/cursor README drift, naming cleanup, fixture counts, and audit pointer docs. Read the prior commits if resuming that branch.
+- **Hygiene audit remediation** (`0dda163` + `50f0008`): ~30 findings across dead code, contradictions (R-907 scoping, PreModelSwitch activation, tier-table dedup, pre-monorepo topology), README counts and pointers, naming (gate/reminder rename, eslint tag convention, kebab-casing), plus `secret-scan.test.sh` and `build-cheatsheets.test.sh`.
+- **Codex translator** (`8593356`): 9 reviewed tasks plus a fix wave; orphan detection, sound TOML escaping, port map as checked-in data, first honest regeneration of `codex/`.
+- **Doctor** (`41ea2ba`): `claude/enforce/doctor.sh`, 37 fixture checks; offline schema validation (vendored SchemaStore schema + accepted-keys contract), hook wiring checks branching on verifier OUTPUT (a Critical always-pass loop was caught and fixed), environment probes, `--full` suites, `--release` gate pinning the PAT blocker (B-4) and escalating unevaluable checks; home paths redacted in output; mangled `-Users-<user>-` leak pattern added.
+- **Docs/decisions**: source-neutral sync spec parked with a harvest note (`94de2b6`); username redaction in tracked files (`70852ef`); guard false-positive ISSUES entry (`e373713`); codex/cursor README rewrites; hardening spec cherry-picked to `main` (`2cd9219`).
 
 ## 4. Pending (by urgency)
 
-- **User, now (P0-2, unchanged from 2026-09-16)**: rotate the GitHub PAT and purge the transcripts listed in `claude/ISSUES.md` PENDING USER ACTION. ~10 minutes.
-- **Claude Code handoff from 2026-09-17 current-practice config audit**: review and implement the following as a new discrete workstream, with the web-research basis in the user's Codex thread. Priority order:
-  - P1: add Claude Code sandboxing to `claude/settings.json` so Bash subprocesses inherit filesystem and network boundaries. Current config blocks secret reads through `Read(...)` deny rules but has broad Bash allows (`npm`, `pnpm`, `gh`, `git`, `find`, `sed`) and no `sandbox` block; official docs and security-heavy community configs treat permissions plus sandboxing as defense in depth.
-  - P1: keep the existing PAT rotation/transcript purge as the first remediation. It is already tracked in `claude/ISSUES.md`; do not let lower-risk harness work displace known leaked credential cleanup.
-  - P2: add settings schema validation. `claude/settings.json` lacks `$schema`, and `claude/ISSUES.md` already tracks the missing full key-level lint. Use the published Claude Code settings schema, then add a fixture or documented `claude doctor` verification path that tolerates newly documented keys when the schema lags.
-  - P2: add a `statusLine` so sessions show context usage, model, branch, dirty state, elapsed time, and cost. Claude's current best-practices docs name context saturation as the main performance constraint; this config currently has no visible context/cost HUD.
-  - P2: prune or demote always-loaded root instructions. `claude/CLAUDE.md` is disciplined and under the cap, but it is still dense; move repeatable procedures into skills, path-scoped rules, or hooks where possible, leaving the root file as an index plus non-negotiables.
-  - P3: make modern hardening defaults explicit where they match this operator's threat model: `enableAllProjectMcpServers: false`, subagent depth/concurrency bounds, telemetry preferences, cleanup retention, and any plugin marketplace trust decisions. Add only keys supported by the installed Claude Code version and record deliberate omissions.
-- **User decision**: merge `claude/hygiene-audit-2026-09-17` (squash per R-512, or merge preserving the 16 per-finding commits; the user chooses), then push.
-- **Next design/implementation decision**: source-neutral sync supersedes the current `claude/`-as-source posture for future propagation work. Existing `translate/codex.mjs` should not be deleted; it becomes the byte-parity compatibility baseline until `translate/governance-sync.mjs --from claude` can prove the same Codex output.
-- New ISSUES.md P2: decide resurrect-versus-retire for the codex/cursor port pipeline (~60 stale "GENERATED by build.mjs" headers, PORT-STATUS at 42 hooks vs the current 49, frozen `.claude-port.json` hashes).
-- P3 findings deliberately not fixed: `-guard` suffix does not distinguish ask-only from deny-capable hooks; "guard" used generically in enforce/README prose; `audits/` stub layer removable only after grepping downstream repos for `claude/audits/` path references; optional modernizations from the best-practices review (@-file imports in CLAUDE.md, `paths:` frontmatter on stack-scoped skills, `effort`/`permissionMode` on audit agents).
-- Unexplained once (second anomaly of this class in this repo): a python heredoc write to `skills/structure-conventions/SKILL.md` printed success but left the file untouched (mtime unmoved); the identical retry worked. Writes were read-back-verified afterward. If it recurs, suspect the same parallel-session interference logged 2026-09-16.
+- **User, first (P0-2, unchanged)**: rotate the GitHub PAT and purge the transcripts per `claude/ISSUES.md` PENDING USER ACTION (paths now redacted there; reconstruct locally per the note). The doctor's `release-blockers` check stays red until this closes. ~10 minutes.
+- **User decision**: push `main` (9 commits; R-106 scan was clean at the last check, re-run at push).
+- **Codex-session coordination**: its branch `docs/public-harness-and-backlog` holds staged deletions of five shipped/parked specs plus this handoff file and a README/SETUP restructure (RECIPES.md, docs/model-targets.md); review before it lands. Its cross-model-dialogue spec (`cde9b45`/`4bc8746`) is unreviewed. Its earlier config-audit workstream list is largely absorbed by the hardening spec (schema/doctor DONE; sandboxing and statusLine are Plan 2; prune/defaults are Plan 3).
+- **Queued workstreams**: hardening Plan 2 (sandbox config, status-line script, resume drift: B-2/B-3/B-5/B-8) and Plan 3 (installer, capability matrix, override markers, docs tiers: B-7/B-9..B-12/B-14); the cursor-exporter harvest (`translate/cursor.mjs` + B-9 file classification) queued behind them per the parked spec's Status section.
+- **Non-blocking maintenance**: prune stale renamed hook copies from live `~/.claude/hooks` (they draw the doctor's `hook-integrity` warn; deleting live files needs the user's go-ahead); repoint `hooks/install-git-hooks.sh` post-monorepo (filed in ISSUES.md); the full `--release` runtime is suite-dominated (9+ minutes in a cold worktree, acceptable for an operator command, worth a fast-mode thought if it grates); ISSUES.md P3s from today (guard substring false positive, port-pipeline cursor remainder).
+- **Process lesson recorded** (project memory): five fixture defects this session originated in controller-written plan code (shell semantics, contract assumptions); plan code needs its own review pass before execution. A dispatched subagent evaded a denied guard once (audited benign); every dispatch now carries a denied-guard-is-a-hard-stop clause.
 
 ## 5. Next session: read first
 
-- `git log --oneline main..claude/hygiene-audit-2026-09-17` (the 16 per-finding commits).
-- `claude/ISSUES.md` Open section (PAT rotation, port-pipeline decision).
-- `claude/docs/superpowers/specs/2026-09-17-cross-model-dialogue-design.md`, `claude/rulebook/agents.md`, `claude/rulebook/cost.md`, `claude/skills/tdd-gated-dispatch/SKILL.md`, and `claude/enforce/role-policy.json` before implementing Claude/Codex dialogue workflows.
-- `claude/docs/superpowers/specs/2026-09-17-source-neutral-governance-sync-design.md`, `translate/codex.mjs`, `translate/codex-port-map.json`, `codex/README.md`, and `cursor/README.md` before touching translator or propagation architecture.
-- `claude/settings.json`, `claude/CLAUDE.md`, `claude/enforce/README.md`, and the official Claude Code docs for sandboxing, settings, hooks, and best practices before starting the current-practice config-audit workstream.
-- `claude/rulebook/cost.md` R-907 and `claude/hooks/codex-test-author-guard.sh` (the new inline-only scoping) if doing TDD slice work.
+- `git log --oneline origin/main..main` (the 9 unpushed commits).
+- `claude/ISSUES.md` Open section (PAT, guard false positive, cursor remainder, installer repoint).
+- `claude/docs/superpowers/specs/2026-09-17-claude-config-public-hardening-design.md` (Plans 2-3 come from its remaining criteria) and the parked source-neutral spec's Status section (harvest scope).
+- `claude/enforce/README.md` Doctor section before touching doctor.sh.
