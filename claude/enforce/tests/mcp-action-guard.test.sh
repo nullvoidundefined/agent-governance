@@ -52,4 +52,45 @@ ask  mcp__claude_ai_Notion__notion-create-pages   # only the tracker is exempt, 
 pass mcp__plugin_context7_context7__query-docs    # a docs lookup is not a database write
 pass Write                                        # non-MCP tool
 
+# PR #11 review: Cursor's adapter rewrites a bare MCP tool name to
+# mcp__cursor__<tool>, so the real server is gone and the tracker narrowing
+# above could never match under Cursor. The guard resolves the synthetic
+# segment against the active tracker's own tools map, which is the one place
+# that already names them. A sandbox HOME carries the config so the real one
+# is never read, and the case runs in both directions: a listed tracker tool
+# resolves and is exempt, an unlisted tool keeps the synthetic segment and
+# still asks.
+SANDBOX_HOME=$(mktemp -d)
+mkdir -p "$SANDBOX_HOME/.claude"
+cat >"$SANDBOX_HOME/.claude/TICKET-TRACKER.json" <<'TRACKER_JSON'
+{
+  "active": "Linear",
+  "trackers": {
+    "Linear": {
+      "tools": {
+        "create_issue": "mcp__claude_ai_Linear__save_issue",
+        "comment": "mcp__claude_ai_Linear__save_comment"
+      }
+    }
+  }
+}
+TRACKER_JSON
+
+# askWithHome / passWithHome: the same two predicates as above, run against a
+# sandbox HOME so the tracker config under test is the fixture's own.
+askWithHome() {
+  printf '{"tool_name":"%s","tool_input":{}}' "$1" \
+    | HOME="$SANDBOX_HOME" "$HOOK" \
+    | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null
+}
+passWithHome() {
+  [ -z "$(printf '{"tool_name":"%s","tool_input":{}}' "$1" | HOME="$SANDBOX_HOME" "$HOOK")" ]
+}
+
+passWithHome mcp__cursor__save_issue    # a tracker tool under Cursor's synthetic server resolves and is exempt
+passWithHome mcp__cursor__save_comment  # the second configured tracker tool, same path
+askWithHome  mcp__cursor__create_page   # an unlisted tool keeps the synthetic server and still asks
+askWithHome  mcp__cursor__delete_issue  # a destroy verb asks even when the tool name resolves to the tracker
+rm -rf "$SANDBOX_HOME"
+
 echo "mcp-action-guard.test.sh PASS"

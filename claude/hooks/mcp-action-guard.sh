@@ -79,8 +79,30 @@ fi
 # not bookkeeping, so it still asks; so does anything the destroy or transmit
 # classes matched, which is why this sits after REASON is decided rather than
 # beside the browser exemption above.
+# Cursor supplies bare MCP tool names, and its adapter prefixes a synthetic
+# "cursor" server segment (cursor/hooks/claude-hook-adapter.sh), so the real
+# server identity is gone by the time this hook sees the call and the
+# narrowing below would never match under Cursor (PR #11 review). The tracker
+# config is the one place that already names the tracker's own tools, so a
+# synthetic-server call is resolved against it: a bare name listed under the
+# active tracker's tools map is treated as that server's call, and anything
+# else keeps the synthetic segment and stays subject to the full guard.
+resolve_synthetic_server() {
+  local config="$HOME/.claude/TICKET-TRACKER.json" bare="${TOOL##*__}"
+  [ -f "$config" ] || return 0
+  jq -e --arg t "$bare" '
+    (type == "object")
+    and (.active | type == "string")
+    and (.trackers[.active].tools | type == "object")
+    and ([.trackers[.active].tools | to_entries[] | .value]
+         | map(sub("^mcp__.*__"; "")) | index($t) != null)
+  ' "$config" >/dev/null 2>&1 || return 0
+  SERVER=$(jq -r '.active' "$config" 2>/dev/null || printf '')
+}
+case "$SERVER" in cursor) resolve_synthetic_server ;; esac
+
 case "$SERVER" in
-  Linear | claude_ai_Linear)
+  Linear | claude_ai_Linear | linear)
     if [ "$REASON" = "writes to an external system of record" ]; then
       case " $(printf '%s' "$ACTION" | tr '_' ' ') " in
         *" merge "* | *" submit "* | *" upload "* | *" apply "*) ;;
