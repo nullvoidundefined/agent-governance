@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:secret-scan
 # Verifies secret-scan.sh's R-102 secret-pattern deny path: a full-length
 # secret in any of the three scanned fields (Bash command, Write content,
 # Edit new_string) denies, while placeholders under the length thresholds

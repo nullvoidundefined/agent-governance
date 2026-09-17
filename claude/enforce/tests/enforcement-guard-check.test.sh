@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:enforcement-guard-check
 # Verifies enforcement-guard-check.sh is silent when every manifest-required hook is
 # registered, and warns (naming the hook) when one is missing.
 set -euo pipefail

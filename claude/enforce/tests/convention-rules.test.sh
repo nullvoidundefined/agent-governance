@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: eslint:destructure-object-reads, eslint:file-header-comment
 # Verifies the two rules moved off the llm-judge tier on 2026-09-04, both of
 # which are pure AST questions and were previously decided by nothing.
 #

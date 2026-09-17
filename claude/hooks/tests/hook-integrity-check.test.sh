@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:hook-integrity-check
 # Verifies hook-integrity-check.sh: silent when disk matches the hash manifest,
 # warns naming the file when a hook is tampered with, and --update regenerates.
 set -euo pipefail

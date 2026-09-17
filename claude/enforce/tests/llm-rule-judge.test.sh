@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:llm-rule-judge
 # Verifies llm-rule-judge.sh denies a push when the judge returns a high-confidence
 # violation, and allows below-threshold or empty verdicts. Uses CLAUDE_JUDGE_CMD to
 # stub the model, so no live API call.

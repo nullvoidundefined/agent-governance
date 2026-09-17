@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:verification-gate
 # Verifies verification-gate.sh (R-509 Stop gate). Invariants:
 #   1. A clean working tree is silent (no check runs, nothing to verify).
 #   2. A dirty tree with a passing check is silent.

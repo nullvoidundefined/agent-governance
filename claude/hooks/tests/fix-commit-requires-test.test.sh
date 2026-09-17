@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:fix-commit-requires-test
 # Verifies fix-commit-requires-test.sh (R-403): a fix-family commit with no staged
 # test file denies; staged TS or Python test files allow. The tests/ tree and
 # pytest filename conventions (test_*.py, *_test.py) count as test files.

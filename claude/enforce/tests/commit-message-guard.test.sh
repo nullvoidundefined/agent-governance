@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:commit-message-guard
 # Verifies commit-message-guard.sh: conventional subject and max-2 triage IDs (deny, R-505),
 # oversized body (ask, R-506), everything else untouched.
 set -euo pipefail

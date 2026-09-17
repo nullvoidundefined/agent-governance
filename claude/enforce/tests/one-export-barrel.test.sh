@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: eslint:one-export-per-file
 # Verifies the one-export-per-file rule's pure-barrel exemption (2026-07-10):
 # a re-export-only index.ts passes, a mixed index.ts still fails, and a
 # multi-re-export file NOT named index still fails. Fixtures live under a

@@ -56,8 +56,12 @@ jobs:
       # on a bare runner; the ruff one does not, and the first CI runs failed on
       # "no ruff or uvx on PATH" rather than on any defect. Stubbing ruff to
       # match the other two would make the suite hermetic at the cost of no
-      # longer checking that enforce/ruff-enforce.toml actually selects
-      # PLR2004/E731/ANN401, so CI provides the binary instead.
+      # longer checking that enforce/ruff-enforce.toml actually selects the
+      # codes it lists, so CI provides the binary instead. The fixture drives
+      # ANN401, BLE001, E722, E731, PGH003, PLR2004, S110 and T201; this line
+      # named ANN401 among three codes while the fixture exercised none of it
+      # until 2026-09-17 (audit P2-3), so keep it in step with
+      # push-ruff-gate.test.sh's `# Covers:` header rather than with intent.
       #
       # Pinned: an unpinned ruff would let an upstream release change rule
       # behavior and turn CI red with no commit to blame. Bump deliberately, and

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:spec-glossary-check
 # Test harness for spec-glossary-check.sh (PostToolUse Write backstop, R-330).
 #
 # A superpowers spec design doc (*-design.md under docs/superpowers/specs/) must

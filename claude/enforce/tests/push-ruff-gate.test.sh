@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: ruff:ANN401, ruff:BLE001, ruff:E722, ruff:E731, ruff:PGH003, ruff:PLR2004, ruff:S110, ruff:T201
 # Verifies push-ruff-gate.sh denies a git push whose outgoing diff adds a Python
 # AST-tier violation (R-324/R-326/R-329/R-342/R-344 analogs), allows clean
 # diffs, scopes to added lines only, and honors the per-file-ignores.
@@ -62,6 +63,52 @@ printf 'import logging\n\nlogger = logging.getLogger(__name__)\n\n\ndef load_not
 git add swallow.py; git commit -q -m handled
 OUT8=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 [ -z "$OUT8" ]
+
+# P2-3 (2026-09-17 audit): ANN401, PGH003 and S110 were selected in
+# ruff-enforce.toml and named in the manifest with no case driving them, and
+# the CI workflow's comment claimed this fixture checked ANN401. S110 was
+# reachable only together with E722 above, so it never proved itself either.
+# Each is now driven alone, on its own file, so a code dropped from the select
+# list fails here rather than silently stopping enforcement.
+printf 'from typing import Any\n\n\ndef handle(payload: Any) -> None:\n    return None\n' > anytype.py
+git add anytype.py; git commit -qm "test: anytype"
+OUT_ANN=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT_ANN" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
+  || { echo "FAIL: ANN401 (a typing.Any parameter) must deny"; exit 1; }
+printf '%s' "$OUT_ANN" | grep -q "ANN401" \
+  || { echo "FAIL: the ANN401 denial must name the code; got: $OUT_ANN"; exit 1; }
+
+printf 'def total(items):\n    return sum(items)  # type: ignore\n' > blanket.py
+git add blanket.py; git commit -qm "test: blanket ignore"
+OUT_PGH=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT_PGH" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
+  || { echo "FAIL: PGH003 (a blanket type ignore) must deny"; exit 1; }
+printf '%s' "$OUT_PGH" | grep -q "PGH003" \
+  || { echo "FAIL: the PGH003 denial must name the code; got: $OUT_PGH"; exit 1; }
+printf 'def total(items):\n    return sum(items)  # type: ignore[arg-type]\n' > blanket.py
+git add blanket.py; git commit -qm "test: coded ignore"
+OUT_PGH_OK=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+[ -z "$OUT_PGH_OK" ] || { echo "FAIL: a type-ignore carrying its code must pass; got: $OUT_PGH_OK"; exit 1; }
+
+# S110 cannot be isolated: ruff 0.15.8 raises it only for a BROAD handler
+# swallowed by pass, and that same shape always raises BLE001 too, while a
+# specific handler (`except ValueError: pass`) raises neither (verified against
+# the pinned ruff). So the honest assertion is that the denial NAMES S110,
+# which proves the code is selected and reported rather than merely listed in
+# ruff-enforce.toml; the earlier swallow case asserted only that something
+# denied, which S110 could have stopped contributing to unnoticed.
+printf 'def load(read):\n    try:\n        read()\n    except Exception:\n        pass\n' > s110.py
+git add s110.py; git commit -qm "test: s110"
+OUT_S110=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT_S110" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
+  || { echo "FAIL: a broad handler swallowed by pass must deny"; exit 1; }
+printf '%s' "$OUT_S110" | grep -q "S110" \
+  || { echo "FAIL: the denial must name S110, not only its BLE001 companion; got: $OUT_S110"; exit 1; }
+printf 'def load(read):\n    try:\n        read()\n    except ValueError:\n        pass\n' > s110.py
+git add s110.py; git commit -qm "test: specific handler"
+OUT_S110_OK=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+[ -z "$OUT_S110_OK" ] \
+  || { echo "FAIL: a specific handler is out of S110's scope in the pinned ruff and must pass; got: $OUT_S110_OK"; exit 1; }
 
 # R-342 analog: print in service code is denied (T201); under scripts/ it passes.
 printf 'def show_note(note):\n    print(note)\n' > show.py
