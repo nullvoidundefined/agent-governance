@@ -1,46 +1,49 @@
-# Session Handoff: 2026-09-17 skills audit, remediation, and merge of main
+# Session Handoff: 2026-09-17 R-003 synced harness, then the local-main reconciliation
 
 ## 1. Last commit
 
-- Branch `claude/intelligent-wozniak-gvgw7m`, last commit before the merge of `origin/main` (`6bc9b24`, the ticket-lifecycle workstream) is `10e88e3` fix(skills): repo-setup accepts an existing workflow and takes the required check name as --ci-context. The merge commit and a port regeneration follow it. PR #3 is open against `main`; squash merge per R-512 once CI is green.
-- The branch history was rewritten once: the commit that introduced `feedback-tool.test.sh` carried a fake `postgres://user:<password>@host` literal that GitGuardian flagged, so that commit was amended and the branch force-pushed. No real credential was ever involved.
+- PR #5 (R-003, `harness-sync.sh`, the repo-setup harness item, checksum copy in `sync.sh`) squash-merged to `main` as `7b489d1`.
+- Branch `claude/intelligent-wozniak-gvgw7m`, restarted from `7b489d1`, carries one merge commit: `origin/reconcile/local-main` (the maintainer's 15 local `main` commits that never reached GitHub: `doctor.sh`, the session-safety hardening with the status-line HUD and resume drift detection, R-907, the parked cross-model and source-neutral sync specs, issue entries) merged onto the merged `main`. Three conflicts resolved: `claude/ISSUES.md` (union, cursor item combined), `claude/README.md` (counts refreshed, both hook descriptions kept), `hook-hashes.txt` (regenerated). Squash merge per R-512 once green and authorized (R-514).
+- The maintainer's old local `main` is preserved as `backup/local-main-2026-09-17` on their machine and as `origin/reconcile/local-main`.
 
 ## 2. Production state
 
-- Both fixture suites green on the merged tree (67 enforce fixtures, 16 hook fixtures), `node translate/codex.mjs --check` current, `hook-hashes.txt` regenerated under main's wider contract (fixtures and npm manifests are hashed too, 183 entries).
-- The Codex `.gitignore` is now generated from the planned tree (main's change), so the hand-written allowlist lines this branch added were replaced by the renderer's output; skill support files are planned, so they are allowlisted automatically.
-- `./sync.sh` ran in this container only into throwaway targets (rsync installed with apt): every skill script arrives executable and both new hooks arrive. The live `~/.claude` on the maintainer's machine is untouched until `./sync.sh` runs there.
-- `repo-setup --check` has not run against this repository: the container has no `gh`. Running it here needs the maintainer's admin token on a machine with `gh`.
+- Both fixture suites green on this tree (85 fixtures: the new `harness-sync.test.sh` and the extended `repo-setup.test.sh` included), `node translate/codex.mjs --check` current, `hook-hashes.txt` regenerated (188 entries), `shellcheck --severity=error` clean over the new and changed scripts.
+- `sync.sh` now passes `--checksum` to rsync: a live file edited to the same size within the same second as the tracked one was skipped by the size-and-mtime quick check, which the fixture exposed as a race.
+- The live `~/.claude` on the maintainer's machine still predates PR #3 and this PR until `./sync.sh` runs there once; after that, `harness-sync.sh` re-syncs drift at every SessionStart on its own.
+- In this container nothing was synced into the session's own `~/.claude`; the hook was exercised only against sandbox checkouts and fake homes.
 
 ## 3. Session metrics
 
-- Commits this session: 33 on the branch plus the merge
-- Files changed: 150 before the merge
-- Rework commits (file touched by 2+ commits): 41 (the skill files, their two port copies, the port manifest, and the hash manifest were each touched by several per-skill commits by design)
+- Commits this session: 6
+- Files changed: 33
+- Rework commits (file touched by 2+ commits): 0
 - Velocity flag: NORMAL
 
 ## 4. What shipped
 
-- **Audit** `docs/audits/2026-09-17-skills.md`: all 15 skills, two P1 cross-cutting findings, per-skill P2/P3 findings, 13 ranked script candidates, an implementation-status section.
-- **Guards**: `enforce/tests/skills-lint.test.sh`; `hooks/handoff-check.sh` (R-602 at write time, manifest entry, CLAUDE.md bracket); `spec-glossary-check.sh` extended to slice plans.
-- **Skill scripts, each with a fixture**: feature-create `scaffold.sh` (now with `--ticket`, writing the `**Ticket:**` line and the `Refs:` trailer main's R-605 asks for), spec-grounding `check.sh`, `tdd.sh validate <role>`, task-start `task-tier.sh`, task-cleanup `scan.sh`, `hooks/session-metrics.sh`, bug-hunt `dangling-refs.sh`, cleanup-specs-plans `inventory.sh`, documentation-create `prose-flags.sh`, protocol `section.sh`, resolve-user-feedback `feedback.mjs`, repo-setup `setup.sh` with `--ci-context`.
-- **Merge of main**: ticket-lifecycle integration folded into the rewritten feature-create, task-cleanup, and task-start; `hook-integrity-check.sh` keeps main's floors and refusal messages plus this branch's `skills/*/scripts/*` coverage; README counts refreshed (17 skills, 51 hooks, 83 fixtures).
-- **Cursor**: all 17 skill copies re-cloned with a "Cloned from" header; `cursor/hooks.json` registers `handoff-check`.
+- **R-003** norm line, Spec, and advisory manifest entry `hook:harness-sync`: every session runs under the synced harness; a session that cannot reach a checkout says so once and treats every rule as manual.
+- **`hooks/harness-sync.sh`**: SessionStart, first in the group in `claude/settings.json` and in both ports; compares every tracked `claude/` file against the live tree, runs `./sync.sh` when any is absent or differs, installs `rsync` (apt) and the enforce dependencies (npm) in a remote container, emits `additionalContext`, exits 0 on every path.
+- **Repo-level `.claude/settings.json`** in agent-governance runs the hook with `$CLAUDE_PROJECT_DIR`, so a cloud session on this repository bootstraps its harness before anything else loads; `.claude/worktrees/` is gitignored.
+- **`repo-setup` `harness` item**: `--harness-repo <url>` (default: origin of the `.sync-source` checkout); writes `.claude/hooks/harness-bootstrap.sh` from a template and registers it in `.claude/settings.json`, merging with `jq` when the file exists; the SKILL.md baseline table and commit step name the two files.
+- **Docs**: `enforce/README.md` section on the synced harness, `claude/README.md` session-start paragraph and hooks tree, root `README.md` sentence.
 
 ## 5. Pending
 
 - **User, now (P0-2, unchanged since 2026-09-16)**: rotate the GitHub PAT and purge the transcripts named under PENDING USER ACTION in `claude/ISSUES.md`.
-- **User, now**: squash-merge PR #3 when the `enforce` check is green, then `./sync.sh` on the maintainer's machine. Editing any fixture now needs `hooks/hook-integrity-check.sh --update` in the same commit (main's contract).
-- **User, then**: `bash ~/.claude/skills/repo-setup/scripts/setup.sh nullvoidundefined/agent-governance --check --ci-context fixtures`, and apply what it reports; closes 2026-09-16 P1-2 (no branch protection). Needs an admin `gh` token.
+- **User, now**: authorize the squash merge of PR #5 when `enforce` is green, then `./sync.sh` on the maintainer's machine once; from then on the hook keeps `~/.claude` current.
+- **User, then**: `bash ~/.claude/skills/repo-setup/scripts/setup.sh nullvoidundefined/agent-governance --check --ci-context fixtures`, and apply what it reports; the `harness` row reports `OK` here because the repo-level settings run `harness-sync.sh` directly. Needs an admin `gh` token.
 - **User, one command**: delete the four renamed leftovers from the live tree (`~/.claude/enforce/eslintOptions.mjs`, `renderLexiconSpec.mjs`, `resolveOutgoingBase.sh`, `~/.claude/hooks/single-file-folder-gate.sh`); `sync.sh` never deletes.
 - **User, before the ticket skill can do anything**: pick a tracker and copy `claude/TICKET-TRACKER.template.json` to `~/.claude/TICKET-TRACKER.json` (no ticket key exists for this session's work; the degraded path of R-605).
-- **Decision**: whether cloud sessions should run `sync.sh` into the container's `~/.claude` at SessionStart (rsync installs with apt there); see the session's closing message.
-- **P2**: the rest of the cursor port item in `claude/ISSUES.md` (rules, agents, commands, `PORT-STATUS.md`); the skills half is done.
-- **P3**: audit X-4 (which skills announce at start) is undecided; `/skill-doctor` has not been run; `$ARGUMENTS` substitution inside the protocol skill's `` ! `` block is unverified on the real build (an empty argument prints the whole file, the old behaviour).
+- **Next session, once a tracker exists**: dry-run `open` on a real task and check the field mapping against the live database before it writes for real; the first few tasks fall back to the R-906 heuristic because `estimate <tier>` quotes no number from history below five comparable closed tickets.
+- **Audit residue, all in `claude/ISSUES.md`**: the 2026-09-17 engineering audit's P2 and P3 items, none blocking; read P2-1 first (a positional argument to `translate/codex.mjs` is silently ignored and `--write` then prunes the real tree), then the note that `translate/*.mjs` cannot be hashed, since it sits outside the surface `sync.sh` copies.
+- **Deferred by design**: the mechanical tier for R-605 and R-606; a hook can only read a local signal, and the only candidate is a per-branch link file whose shape depends on the tracker chosen (recorded in the spec's Non-goals).
+- **P2**: the rest of the cursor port item in `claude/ISSUES.md` (rules, agents, commands, `PORT-STATUS.md`); the skills half is done, and the decision is recorded there: a one-directional `translate/cursor.mjs` exporter harvested from the parked source-neutral sync spec.
+- **P3**: audit X-4 (which skills announce at start) is undecided; `/skill-doctor` has not been run; `$ARGUMENTS` substitution inside the protocol skill's `` ! `` block is unverified on the real build.
 
 ## 6. Next session: read first
 
-- `docs/audits/2026-09-17-skills.md`, the Implementation status section last, then `docs/audits/2026-09-17-engineering.md` from main.
-- `git log --oneline 2cd9219..HEAD` (one commit per finding or script, then the merge).
-- `claude/enforce/tests/skills-lint.test.sh` before editing any skill, and `claude/enforce/tests/hook-hashes-closure.test.sh` before editing any hook or fixture.
-- `claude/skills/repo-setup/SKILL.md` before applying it anywhere; read the two rulesets' shape, `--required-reviews`, and `--ci-context`.
+- `claude/hooks/harness-sync.sh` header and `claude/rulebook/reference.md` under R-003 before touching SessionStart or `sync.sh`.
+- `git log --oneline 3138809..HEAD` (one commit per finding).
+- `claude/skills/repo-setup/SKILL.md` before applying it anywhere; the `harness` row, `--harness-repo`, and `--ci-context`.
+- `docs/audits/2026-09-17-skills.md`, the Implementation status section, for the audit follow-ups still open.

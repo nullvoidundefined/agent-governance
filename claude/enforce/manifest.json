@@ -1,6 +1,14 @@
 {
     "rules": [
         {
+            "id": "R-003",
+            "tier": "advisory",
+            "enforcer": "hook:harness-sync",
+            "severity": "warning",
+            "autofix": false,
+            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
+        },
+        {
             "id": "R-602",
             "tier": "advisory",
             "enforcer": "hook:handoff-check",
