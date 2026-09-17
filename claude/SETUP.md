@@ -20,7 +20,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
    - `bash ~/.claude/hooks/install-git-hooks.sh` writes `.git/hooks/pre-push` from the tracked `hooks/pre-push.sample`, so a red suite aborts any push. It refuses to clobber a pre-push it did not write, printing the exact `mv` to run if you want it replaced; its own superseded predecessor is the one hook it upgrades in place, backed up to `pre-push.legacy.bak` first. This step used to be "write a bash script that does X", and the script it described was simply absent from the checkout; the sample is tracked now so the description cannot drift from it.
    - `.git/info/exclude`: local-only exclusions for anything client-identifying that must never be tracked (versioned `.gitignore` covers the standard runtime dirs).
 4. Regenerate the hook-integrity manifest so it matches your checkout: `hooks/hook-integrity-check.sh --update`, then commit `enforce/hook-hashes.txt` if it changed.
-5. Start a Claude Code session. The SessionStart hooks load the global memory index, verify hook integrity, report enforcement closure (including whether the llm-judge tier can run; see the egress disclosure in README.md), and warn on a `core.hooksPath` that points outside the repo (R-107).
+5. Start a Claude Code session. The SessionStart hooks load the global memory index, verify hook integrity, report enforcement closure (including whether the llm-judge tier can run; see the egress disclosure in README.md), and warn on a `core.hooksPath` that points outside the repo (R-107). The same session starts rendering the `statusLine` HUD (`status-line.sh`: model, branch, context, cost, elapsed, rate limit) with no separate setup step; each field degrades to `-` rather than failing the line. The `sandbox` block ships `enabled: false` (configured but inactive); see "Containment boundaries" below and `enforce/README.md`'s "Sandbox configuration (B-2)" section for the manual enablement procedure.
 
 ## What does not ship (gitignored) and must be recreated
 
@@ -40,6 +40,10 @@ The framework files (`CLAUDE.md`, `PROTOCOL.md`, rules, hooks, agents, skills, c
 - `global-memory/rule_fires.md` and `global-memory/rule_misses.md` are incident logs from the previous owner's sessions. Truncate each to its header so you accumulate your own.
 - `global-memory/INDEX.md` indexes the above; update it after editing.
 
+## Containment boundaries
+
+Hooks and permission deny rules catch mistakes at the Claude Code tool-call boundary; they do not confine a spawned subprocess, and a determined actor working outside that boundary can bypass them. The one layer that would confine a Bash subprocess at the OS level, the sandbox, ships in this repo's `settings.json` configured but disabled by default (`sandbox.enabled: false`). See `enforce/README.md`'s "Containment boundaries" section for the full secret-vector coverage table (which layer catches which kind of leak, and the one vector, an interpreter reading a secret file directly, that no layer covers until the sandbox is both enabled and given a `sandbox.credentials` block) and the "Sandbox configuration (B-2)" subsection for the manual enablement procedure and the two live incidents that led to shipping it disabled.
+
 ## Stacks
 
 Four convention tracks load on demand by detected stack (see `rules/session-types.md`):
@@ -53,16 +57,15 @@ Universal rules in `CLAUDE.md` (untagged) apply to every stack; each track docum
 
 ## Verify the install
 
-Run BOTH fixture suites; all tests should pass:
+Run `bash claude/enforce/doctor.sh --full` (wraps both fixture suites plus the install checks); it should exit 0:
 
 ```
-bash ~/.claude/enforce/tests/run-tests.sh
-bash ~/.claude/hooks/tests/run-tests.sh
+bash ~/.claude/enforce/doctor.sh --full
 ```
 
-The same two suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
+`--full` runs the settings-parse, settings-schema-keys, hook-registration, hook-integrity, hook-executability, deps, sandbox-availability, statusline, and port-freshness checks, then both fixture suites (`enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh`) as one `fixture-suites` check. See `enforce/README.md` for the full check list, the exit contract, and the `--release` gate. The same two fixture suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
 
-The ESLint-backed tests in the first suite need `enforce/node_modules`, which is
+The ESLint-backed tests the fixture suites drive need `enforce/node_modules`, which is
 gitignored and therefore absent from a fresh clone. Run `npm install` in
 `~/.claude/enforce` first, or six tests fail on a missing ESLint.
 

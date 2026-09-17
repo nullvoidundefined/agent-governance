@@ -4,7 +4,9 @@
 # SessionEnd hook for Claude Code. Scans per-project feedback memory
 # files for lines starting with `fired:` or `miss:` (the R-603 prefix
 # convention) and routes new entries into ~/.claude/global-memory/
-# rule_fires.md or rule_misses.md respectively.
+# rule_fires.md or rule_misses.md respectively. Also writes a resume
+# snapshot of the session's edited files, their content hashes, and git
+# HEAD (spec B-8 write half; see write_session_snapshot below).
 #
 # Why this exists: R-603 in ~/.claude/CLAUDE.md says every session ends
 # by routing what it learned to the surface that will use it next. The
@@ -36,6 +38,14 @@
 # entry.
 
 set -euo pipefail
+
+# Read the SessionEnd JSON payload once up front (B-8 write half: the
+# resume snapshot below needs transcript_path and cwd from it). An empty
+# or malformed payload degrades to empty fields rather than failing the
+# hook: this script's whole point is to run unattended at session end.
+INPUT=$(cat 2>/dev/null || true)
+TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+SESSION_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
 
 PROJECTS_DIR="$HOME/.claude/projects"
 GLOBAL_MEMORY="$HOME/.claude/global-memory"
@@ -125,5 +135,100 @@ METRICS_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/session-metrics.sh"
 if [ -f "$METRICS_SCRIPT" ] && command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
   bash "$METRICS_SCRIPT" > "$METRICS_FILE" 2>/dev/null || true
 fi
+
+# Resume snapshot writer (B-8 write half). Records the edited files, their
+# content hashes, and git HEAD at session end, so a future SessionStart can
+# warn on resume when the working tree has drifted since (spec B-8). The
+# whole function runs in a `set +e` subshell: a snapshot is advisory
+# infrastructure, never load-bearing, so any failure inside it (missing
+# transcript, unreadable file, jq hiccup) degrades to a stderr note and the
+# hook still exits 0. Failures here must never abort session end.
+#
+# <key> reuses the project directory the transcript already lives under
+# (~/.claude/projects/<key>/<session-id>.jsonl): this script has no other
+# project-key derivation to reuse, so the transcript path's parent
+# directory name IS the fallback per the task brief.
+write_session_snapshot() (
+  set +e
+  local transcript_path="$1" project_dir="$2"
+  local key snapshot_dir total_lines valid_lines files git_head files_json fp digest hashval tmp_file
+
+  if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
+    echo "session-end: snapshot skipped: no readable transcript_path" >&2
+    return 1
+  fi
+
+  key=$(basename "$(dirname "$transcript_path")" 2>/dev/null)
+  if [ -z "$key" ] || [ "$key" = "." ] || [ "$key" = "/" ]; then
+    echo "session-end: snapshot skipped: could not derive a project key" >&2
+    return 1
+  fi
+
+  # A transcript that fails to parse as JSON on every line is corrupt, not
+  # merely quiet; write no snapshot rather than an empty or misleading one.
+  # A transcript with valid lines but zero Write/Edit/NotebookEdit entries
+  # is a legitimate no-edits session and still gets a snapshot.
+  total_lines=$(wc -l < "$transcript_path" 2>/dev/null | tr -d ' ')
+  valid_lines=$(jq -R -r 'try (fromjson | "1") catch empty' "$transcript_path" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${total_lines:-0}" -gt 0 ] && [ "${valid_lines:-0}" -eq 0 ]; then
+    echo "session-end: snapshot skipped: transcript did not parse as JSONL" >&2
+    return 1
+  fi
+
+  files=$(jq -R -r '
+    try fromjson catch empty
+    | select(.message.content? != null)
+    | .message.content[]?
+    | select(.type=="tool_use" and (.name=="Write" or .name=="Edit" or .name=="NotebookEdit"))
+    | .input.file_path // empty
+  ' "$transcript_path" 2>/dev/null | sort -u)
+
+  git_head="none"
+  if [ -n "$project_dir" ] && git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git_head=$(git -C "$project_dir" rev-parse HEAD 2>/dev/null || echo none)
+    [ -n "$git_head" ] || git_head="none"
+  fi
+
+  files_json="{}"
+  while IFS= read -r fp; do
+    [ -z "$fp" ] && continue
+    hashval="missing"
+    if [ -f "$fp" ]; then
+      digest=$(shasum -a 256 "$fp" 2>/dev/null | awk '{print $1}')
+      [ -n "$digest" ] && hashval="sha256:$digest"
+    fi
+    files_json=$(printf '%s' "$files_json" | jq -c --arg k "$fp" --arg v "$hashval" '. + {($k): $v}' 2>/dev/null)
+    [ -n "$files_json" ] || files_json="{}"
+  done <<< "$files"
+
+  snapshot_dir="$PROJECTS_DIR/$key"
+  mkdir -p "$snapshot_dir" 2>/dev/null
+  if [ ! -d "$snapshot_dir" ]; then
+    echo "session-end: snapshot skipped: could not create $snapshot_dir" >&2
+    return 1
+  fi
+
+  tmp_file=$(mktemp "$snapshot_dir/.session-snapshot.json.XXXXXX" 2>/dev/null)
+  if [ -z "$tmp_file" ]; then
+    echo "session-end: snapshot skipped: could not create a temp file" >&2
+    return 1
+  fi
+
+  if jq -n --arg head "$git_head" --argjson files "$files_json" \
+      '{snapshot_version: 1, git_head: $head, files: $files}' > "$tmp_file" 2>/dev/null; then
+    mv -f "$tmp_file" "$snapshot_dir/session-snapshot.json" 2>/dev/null
+    if [ -f "$snapshot_dir/session-snapshot.json" ]; then
+      return 0
+    fi
+    echo "session-end: snapshot skipped: atomic rename into place failed" >&2
+    rm -f "$tmp_file" 2>/dev/null
+    return 1
+  fi
+  echo "session-end: snapshot skipped: jq failed to assemble the snapshot" >&2
+  rm -f "$tmp_file" 2>/dev/null
+  return 1
+)
+
+write_session_snapshot "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
 
 exit 0

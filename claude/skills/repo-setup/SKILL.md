@@ -26,6 +26,7 @@ Bring a GitHub repository to the baseline every project starts from, or audit on
 | `alerts` | Dependabot vulnerability alerts and automated security fixes on | A known CVE opens a PR instead of waiting for an audit |
 | `secret-scan` | Secret scanning and push protection on | A pushed credential is blocked at the push, not found in an audit |
 | `greptile` | The Greptile GitHub App installed for the owner | AI review on every PR; the API cannot install an app, so the script reports the install link |
+| `harness` | `.claude/hooks/harness-bootstrap.sh` registered at SessionStart in `.claude/settings.json` (merged with jq when the file exists) | R-003: every session runs under the synced harness. A cloud container starts with no `~/.claude`, so the repository itself clones the agent-governance repository and syncs it at session start; locally the hook only re-syncs drift. The clone URL comes from `--harness-repo` or the origin of the checkout `sync.sh` last synced from (its `.sync-source` stamp) |
 
 `--required-reviews N` adds N required approvals to `protect-merge`; the default is 0 because a solo maintainer cannot approve their own PR and would be locked out. Pass 1 or more for a team. A repository that already runs CI under another workflow file satisfies the `ci` item as it is; pass `--ci-context <job name>` so `protect-merge` requires the check that workflow actually reports (this repository's `enforce.yml` reports `fixtures`).
 
@@ -49,7 +50,7 @@ Bring a GitHub repository to the baseline every project starts from, or audit on
 
 3. Do the one manual item when the report says so: open `https://github.com/apps/greptile/installations/new`, grant the repository, re-run `--check` to confirm `greptile OK`.
 
-4. Commit the written files together (`chore(repo): CI, Dependabot, PR template, gitignore baseline`), open the first PR, and confirm the `ci` check appears on it; a ruleset that requires a context no workflow reports blocks every merge until the workflow runs once.
+4. Commit the written files together, `.claude/settings.json` and `.claude/hooks/harness-bootstrap.sh` included (`chore(repo): CI, Dependabot, PR template, gitignore, harness baseline`), open the first PR, and confirm the `ci` check appears on it; a ruleset that requires a context no workflow reports blocks every merge until the workflow runs once.
 
 5. Report the final `--check` table to the user. Every row `OK` is the definition of done.
 

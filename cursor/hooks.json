@@ -3,7 +3,7 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh sessionStart session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh sessionStart harness-sync session-start hookspath-drift-check redaction-guard-check enforcement-guard-check parallel-session-check hook-integrity-check",
         "timeout": 30
       }
     ],
