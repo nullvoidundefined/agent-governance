@@ -1,5 +1,11 @@
 # Source-neutral governance sync
 
+## Status: parked with harvest (reviewed 2026-09-17)
+
+Reviewed against the shipped codex translator and the public-hardening spec; parked rather than planned, for three reasons. First, the bidirectional half (importing codex/ or cursor/ edits back into a neutral model) serves an operator who edits in those surfaces, and no incident in this repo's history shows that demand; the recorded failure mode was hand-ports drifting from lack of regeneration, which translate/codex.mjs already fixed. Second, the claude-to-codex transforms are deliberately lossy (tools/model dropped, tags rewritten), so honest round-tripping either needs lossless side-channel storage, making the neutral model claude/ under another name, or supports only the narrow subset B-4's own fixture list concedes. Third, the public-hardening spec written the same day lists this exact machinery as a non-goal until the harness is release-ready, and both specs claim PORT-STATUS generation, which needs one owner.
+
+Harvested instead, in the existing one-directional architecture: (a) translate/cursor.mjs, a second exporter closing the cursor/ stale-artifact P2 in ISSUES.md; (b) this spec's B-9 file-classification taxonomy (generated, importable, hand-authored local, hand-authored mapped, runtime-only ignored, unsupported) bolted onto the existing port map, which also closes the derived-.gitignore deferral. Re-open the neutral-model core only on a concrete incident of an intentional edit made in codex/ or cursor/ being lost or unpropagatable.
+
 ## Goal
 
 Replace the implicit "Claude is the eldest sibling" model with a source-neutral propagation system for the `agent-governance` monorepo. Any supported surface folder (`claude/`, `codex/`, or `cursor/`) can be the place where an operator makes an intentional edit. The propagation tool imports that edited surface into a neutral governance model, validates what was learned, and exports the result to every sibling surface that can represent it. The existing `translate/codex.mjs` proves the render/check pattern, but its one-way `claude/` to `codex/` source assumption becomes a migration target, not the long-term architecture.
