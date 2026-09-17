@@ -140,6 +140,30 @@ check_paths 0 CLAUDE-FRONTEND-NEXT.md "${next_paths[@]}" &&
   check_paths 1 CLAUDE-FRONTEND-VITE.md "${nuxt_paths[@]}"
 report_result "$?" A3 'Next and Vite exclude every Nuxt path'
 
+# A3b: the hand-maintained Cursor mirror is not the Claude source; a diff
+# that narrows the source's frontmatter can leave the mirror's globs stale,
+# widened back to matching every framework's app/ tree. Checks the cursor
+# Next rule's globs line directly against the same fixture paths.
+cursor_next_globs_match() {
+  local candidate="$1"
+  python3 - "$claude_directory/../cursor/rules/frontend-next.mdc" "$candidate" <<'PY'
+import fnmatch, re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+m = re.search(r"^globs:\s*(.+)$", text, re.MULTILINE)
+globs = [g.strip() for g in m.group(1).split(",")] if m else []
+sys.exit(0 if any(fnmatch.fnmatch(sys.argv[2], g) for g in globs) else 1)
+PY
+}
+if [ -f "$claude_directory/../cursor/rules/frontend-next.mdc" ]; then
+  ok=0
+  for p in "${next_paths[@]}"; do cursor_next_globs_match "$p" || ok=1; done
+  for p in "${nuxt_paths[@]}"; do ! cursor_next_globs_match "$p" || ok=1; done
+  report_result "$ok" A3b 'Cursor Next mirror matches the same src/app scope as the Claude source'
+else
+  report_result 0 A3b 'skipped: cursor/rules/frontend-next.mdc is absent'
+fi
+
 if [ ! -f "$claude_directory/CLAUDE-FRONTEND-VUE.md" ] ||
   [ ! -f "$claude_directory/CLAUDE-FRONTEND-NUXT.md" ]; then
   report_result 0 A4 'skipped: Vue or Nuxt convention file is absent'
