@@ -227,6 +227,28 @@ check "second render drops the stale in_progress line" ctx_lacks_file "$TS_HANDO
 # Case B: all tasks completed -> log deleted after render.
 check "all-completed log is deleted after render" no_file "$TS_LOG"
 
+# Case B2 (PR #14 review): the log is the session's only durable record until
+# the render reaches the handoff, so a render that could not land must not
+# prune it. An unwritable handoff directory makes both mktemp and the atomic
+# mv fail while everything upstream still succeeds, so all_completed is true
+# and the old code deleted the log regardless.
+UNWRITABLE_REPO="$SANDBOX/unwritable-repo"
+UNWRITABLE_HANDOFF_DIR="$UNWRITABLE_REPO/docs/session-handoff"
+mkdir -p "$UNWRITABLE_HANDOFF_DIR"
+printf '# Handoff\n\n## Pending\n\n- something\n' > "$UNWRITABLE_HANDOFF_DIR/session-handoff.md"
+UNWRITABLE_LOG="$TS_KEY_DIR/task-state.render-session.jsonl"
+append_task_line "$UNWRITABLE_LOG" "2026-09-17T01:00:00Z" "9" "Finish the render" "created" "$UNWRITABLE_REPO" "main"
+append_task_line "$UNWRITABLE_LOG" "2026-09-17T01:05:00Z" "9" "" "completed" "$UNWRITABLE_REPO" "main"
+chmod 500 "$UNWRITABLE_HANDOFF_DIR"
+UNWRITABLE_PAYLOAD=$(jq -n --arg t "$TS_TRANSCRIPT" --arg c "$UNWRITABLE_REPO" \
+  '{transcript_path:$t, cwd:$c}')
+printf '%s' "$UNWRITABLE_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" >/dev/null 2>&1
+UNWRITABLE_EXIT=$?
+chmod 700 "$UNWRITABLE_HANDOFF_DIR"
+check "hook still exits 0 when the render cannot land" test "$UNWRITABLE_EXIT" -eq 0
+check "a failed render never prunes the all-completed log" file_exists "$UNWRITABLE_LOG"
+rm -f "$UNWRITABLE_LOG"
+
 # Case C: no handoff file in the session cwd's repo -> render is skipped
 # entirely (the handoff is repo-owned), but the hook still exits 0 and a
 # fully-completed log is still pruned.

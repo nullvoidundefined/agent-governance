@@ -359,9 +359,18 @@ render_task_state_section() (
 
   all_completed=$(printf '%s' "$folded" | jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' 2>/dev/null)
 
+  # render_succeeded tracks whether the completed state actually reached a
+  # durable artifact. Pruning the log is only safe once it has: a failed
+  # mktemp or a failed mv leaves the handoff untouched, and deleting the log
+  # anyway would destroy the session's only record of the work (PR #14
+  # review). A repo with no handoff file has no artifact to reach and never
+  # will, so that case prunes as before rather than accumulating logs forever.
+  render_succeeded="true"
+
   if [ -n "$session_cwd" ]; then
     handoff_file="$session_cwd/docs/session-handoff/session-handoff.md"
     if [ -f "$handoff_file" ]; then
+      render_succeeded="false"
       body=$(printf '%s' "$folded" | jq -r '
         .tasks // {}
         | to_entries
@@ -395,12 +404,16 @@ render_task_state_section() (
         ' "$handoff_file" > "$tmp_file"
 
         printf '\n%s' "$section" >> "$tmp_file"
-        mv -f "$tmp_file" "$handoff_file" 2>/dev/null || rm -f "$tmp_file" 2>/dev/null
+        if mv -f "$tmp_file" "$handoff_file" 2>/dev/null; then
+          render_succeeded="true"
+        else
+          rm -f "$tmp_file" 2>/dev/null
+        fi
       fi
     fi
   fi
 
-  if [ "$all_completed" = "true" ]; then
+  if [ "$all_completed" = "true" ] && [ "$render_succeeded" = "true" ]; then
     rm -f "$log_file" 2>/dev/null
   fi
   return 0
