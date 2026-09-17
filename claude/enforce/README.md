@@ -49,6 +49,26 @@ The push gates are an **anti-accident layer**, not a hard security boundary. The
 
 **New-branch behaviour:** when a branch has no remote tracking ref and no `@{push}` ref exists, the push gate resolves a merge-base fallback (first existing of `origin/main`, `main`, `origin/master`, `master`). On a first push from a brand-new branch with none of those reachable, the gate fails open (skips the check) to avoid blocking legitimate work.
 
+## Containment boundaries
+
+Hooks and permission deny rules are anti-accident layers, the same category the push gates belong to above: they intercept a Claude Code tool call before or after it runs and can be bypassed by anything that acts outside that boundary, a raw shell, a shell alias, an interpreter that a Bash call spawns and that then runs free of any further interception. Sandboxing is different in kind: it is the containment boundary for Bash subprocesses, an OS-level restriction (Seatbelt on macOS, bubblewrap plus socat on Linux) on what a spawned process can read, write, and reach over the network, enforced by the kernel rather than by watching tool calls. Of the mechanisms below, only the sandbox actually confines a subprocess; every other row observes and denies or redacts at the tool-call boundary.
+
+The table states, for each way a secret can leave this harness, which layer covers it today and which script or config enforces that coverage. A row naming the sandbox states plainly whether that layer is live: `settings.json`'s shipped `sandbox` block ships `enabled: false` (see "Sandbox configuration (B-2)" below), so no row in this table claims active sandbox protection.
+
+| Vector | Layer that covers it | Enforced by |
+|---|---|---|
+| `Read` tool on a secret path | permission deny rules | `permissions.deny` `Read(...)` rows in `settings.json` (`.env*` variants, `~/.aws/**`, `~/.ssh/**`, `~/.gnupg/**`, `~/.config/gh/hosts.yml`, `~/.netrc`) |
+| Secret string in a Bash command or heredoc | hook, deny | `hooks/secret-scan.sh`, patterns from `enforce/secret-patterns.txt`, scanning `.tool_input.command` |
+| Secret string in a Write/Edit payload | hook, deny | `hooks/secret-scan.sh`, same shared patterns, scanning `.tool_input.content` (Write) and `.tool_input.new_string` (Edit) |
+| Credential-file mutation (Bash or Write/Edit) | hook, deny | `hooks/secret-scan.sh` R-103 paths (`.env*`, `~/.aws`, `~/.ssh`, `~/.gnupg`, `~/.config/gh/hosts.yml`), blocking create, overwrite, append, move, and delete |
+| Interpreter reading a secret file (`python3 -c "open('.env')"`) | OS sandbox, configured but disabled by default | `sandbox.filesystem` / `sandbox.credentials`, once configured and enabled. The shipped block ships `sandbox.enabled: false` and carries no `credentials` block, so this vector is uncovered today; it would stay uncovered even if `enabled` were flipped to `true` as-is, because `sandbox.filesystem` grants unrestricted reads absent an explicit `denyRead` or `credentials.files` entry, and this checkout configures neither. See "Sandbox configuration (B-2)" below for the rollout procedure and why enabling it is not yet a one-line change. |
+| Secret leaving via tool stdout | hook, redact (detection, not prevention) | `hooks/redact-output.sh`. A PostToolUse hook cannot remove content already delivered to the model and already written verbatim to the session transcript, so this hook flags the exposure and warns the model to treat the value as leaked rather than stopping the leak itself. |
+| Secret in tracked files at release | doctor | `enforce/doctor.sh --release`'s `release-secret-scan` check, run against the same shared pattern file |
+
+**Rollback levers.** `sandbox.enabled: false`, the shipped default, is the full rollback: no sandboxed command runs confined. `excludedCommands` (`git push`, `git fetch`, `git pull`) is the narrower, per-command rollback lever available once the sandbox is enabled, carved out because SSH transport for those three commands reaches `github.com` over a socket the `network.allowedDomains` allowlist may not cover on every platform.
+
+**The honest gap.** Interpreter reads of secret files are not blocked by any layer in this table today. The permission `Read` deny rows apply only to the `Read` tool itself and never reach a process an interpreter spawns via Bash; `secret-scan.sh` scans the Bash command string and Write/Edit payloads, not what a spawned interpreter does once it starts running; the sandbox, the one layer built to confine that subprocess, ships disabled, and even enabling it would not close this particular gap until `sandbox.credentials` is configured, deferred to a later slice because its key shape (a `files` list plus environment-variable protection, see the vendored schema) needs its own verification round before it ships.
+
 ## Components
 
 - `manifest.json` -- rule id to tier/enforcer mapping.
@@ -62,6 +82,89 @@ The push gates are an **anti-accident layer**, not a hard security boundary. The
 - Hooks live in `~/.claude/hooks/` and are registered in `~/.claude/settings.json`.
 - `enforcement-guard-check.sh` verifies at session start that every manifest hook is still registered.
 - One registered hook is tooling rather than a rule enforcer and so carries no manifest entry: `build-cheatsheets.sh` regenerates docs on trusted-repo pushes and enforces no invariant. It still ships a fixture test (`hooks/tests/build-cheatsheets.test.sh`); any other tooling hook follows the same convention.
+
+## Doctor (install verification)
+
+`doctor.sh` is a standalone verifier for an installed harness end to end: it checks the checkout itself, not any one rule, so it carries no `manifest.json` entry and is not wired into `settings.json` as a registered hook. It follows the same tooling-script convention already established by `build-cheatsheets.sh` (see Components above): no manifest entry, but its own fixture suite is mandatory. `tests/doctor.test.sh` proves the contract, 41/41 at the time of writing, driven entirely against sandbox trees (`--root` and a sandboxed `HOME`) so it never reads or mutates the live `~/.claude` checkout or a real credential file.
+
+### Running it
+
+```
+bash enforce/doctor.sh              # fast: settings, hooks, environment
+bash enforce/doctor.sh --full       # adds both fixture suites
+bash enforce/doctor.sh --release    # implies --full, adds the publish gate
+bash enforce/doctor.sh --root <dir> # point at a specific checkout instead of two directories up from doctor.sh
+```
+
+Output is one line per check: `<verdict> <name>: <detail>`, verdict one of `pass`, `warn`, `fail`, `skipped`.
+
+### Sandbox configuration (B-2)
+
+`settings.json` carries a conservative `sandbox` block that satisfies spec B-2's alternative clause ("declares sandbox configuration or an explicit sandbox bootstrap path") by shipping **`enabled: false`**, fully configured but inactive, with the enablement procedure below as the documented bootstrap path. The block: `enabled: false`, `failIfUnavailable: false`, a `network.allowedDomains` allowlist (`github.com`, `*.github.com`, `api.anthropic.com`, `registry.npmjs.org`), `excludedCommands` naming `git push`, `git fetch`, `git pull`, and a `filesystem.allowWrite` allowance for the temp roots (`//var/folders/**`, `//private/tmp/**`, `//tmp/**`). `failIfUnavailable: false` keeps sessions working on hosts without the sandbox primitive (a host that cannot sandbox degrades to unsandboxed rather than refusing to run). The three git network commands are excluded outright because SSH transport reaches `github.com` over a socket the domain allowlist may not cover on every platform, and a broken `git push` is a harness outage; revisit the exclusion once observed working under the allowlist. The exclusion list is the documented rollback lever for one command class; `sandbox.enabled: false` (the shipped default) is the full rollback.
+
+**Why it ships disabled: two live incidents (2026-09-17, review round 1).**
+
+1. *Temp-dir denial.* The first cut of this block set `enabled: true` with no `filesystem.allowWrite`. Once that synced into the live `~/.claude/settings.json`, every bare `mktemp` call inside a Bash tool invocation started failing (`mkdtemp failed on /var/folders/.../T: Operation not permitted`): Seatbelt denies writes to the macOS system temp root by default and the sandboxed subprocess does not honor an inherited `TMPDIR` override. This broke this very fixture suite's own sandbox-tree helpers (every `mktemp -d` call in `doctor.test.sh`) and any other worktree tooling that shells out to `mktemp`.
+2. *Exclusive-allowlist tree denial.* Adding `filesystem.allowWrite: ["//var/folders/**", "//private/tmp/**", "//tmp/**"]` fixed `mktemp`, but `allowWrite` is exclusive: once any entry is present, only listed paths are writable, and nothing outside the three temp roots qualifies. `./sync.sh` writing into `~/.claude` failed (`rsync: mkstempat: Operation not permitted`), and a `git commit` inside this worktree failed the same way (`fatal: Unable to create '<main-repo>/.git/worktrees/<worktree>/index.lock': Operation not permitted`), because a git worktree's `.git` metadata resolves into the main checkout's `.git/worktrees/` directory, outside both the worktree's own tree and the temp allowlist. Enumerating every path this repo's own tooling needs to write (`~/.claude`, `~/.cursor`, `~/.codex`, the main checkout's `.git/worktrees/`, and whatever else a future tool touches) is an ever-growing, fragile list; the schema's alternative is `sandbox.filesystem.disabled: true` ("Skip filesystem isolation while keeping network isolation: sandboxed commands get unrestricted read and write access to the host filesystem, and network egress stays confined to `network.allowedDomains`"), which trades away the filesystem boundary entirely to keep only the network one. Neither option was adopted: enumerating paths starves the harness incident by incident, and `filesystem.disabled: true` blanket-allows the filesystem, which defeats containment beyond the network boundary. The block ships disabled instead, `filesystem.allowWrite`'s temp entries kept as a documented starting point, `filesystem.disabled` intentionally left unset (not adopted, for the reason above) rather than added and left inert.
+
+**Enablement procedure (manual, operator-run):**
+
+1. Set `sandbox.enabled: true` in `claude/settings.json`, then `./sync.sh` to push it into `~/.claude`.
+2. **Restart the Claude Code session.** Settings changes read mid-session (as both incidents above demonstrate) apply unevenly to a session already in flight; a fresh session picks up the full configuration cleanly.
+3. Run `bash claude/enforce/doctor.sh --root .` and confirm `pass sandbox-availability` (not `warn`).
+4. Smoke test, both must succeed: a bare `mktemp -d` (temp-dir denial class) and a scratch `git commit` inside the worktree, e.g. a throwaway file added and committed then reset (exclusive-allowlist class, since git worktree metadata writes outside both the tree and the temp allowlist).
+5. If either smoke test fails, iterate on `sandbox.filesystem.allowWrite` (add the specific path that failed) or accept the containment tradeoff of `sandbox.filesystem.disabled: true` (documented above); do not ship `enabled: true` with a smoke test failing. If the operator instead wants a fallback, set `sandbox.enabled: false` again and `./sync.sh`.
+
+`enforce/tests/doctor.test.sh` carries a regression guard (`sandboxTempAllowancePresent`) asserting the committed block, whenever `sandbox.enabled` is `true`, still pairs it with a `filesystem.allowWrite` entry covering both `var/folders` and `tmp`, so a future edit that flips `enabled` back on without carrying the temp allowance forward fails the fixture suite instead of the next live session.
+
+### Checks (default mode; always run)
+
+| Check | Verdict semantics |
+|---|---|
+| `settings-parse` | `fail` when `claude/settings.json` is missing or fails to parse as JSON; `pass` when it parses. |
+| `settings-schema-keys` | `skipped` when the vendored schema is missing or unreadable. Otherwise every top-level key of `settings.json` (`$schema` excluded) is checked against the schema's declared `properties`: an unknown key not listed in `doctor-accepted-keys.txt` is `fail`, naming the key; an unknown key that is listed there is `warn`, naming the key; every key known is `pass`. |
+| `hook-registration` (verifier: `hooks/enforcement-guard-check.sh`) | `skipped` when that verifier is not installed at the live `~/.claude/hooks/`. Otherwise the verifier runs and doctor branches on its OUTPUT content, not its exit status, since both live verifiers always exit 0 even when they have a finding (the finding travels as `hookSpecificOutput.additionalContext` JSON, a plain-text verifier also tolerated): a nonzero exit is `fail`; any finding text is `warn`; no finding is `pass` ("clean"). Branching on content rather than exit status means a tampered or silently-broken verifier cannot read as clean by returning 0 with no output. |
+| `hook-integrity` (verifier: `hooks/hook-integrity-check.sh`) | Same verdict rules as `hook-registration`, against the integrity verifier instead of the registration verifier. |
+| `hook-executability` | `skipped` when the live `~/.claude/settings.json` is missing or unparseable. Otherwise every hook command it registers under `~/.claude/hooks/*.sh` is checked for the executable bit and a clean `bash -n` syntax parse; `fail` names every script that fails either check; `pass` when every registered hook is executable and syntax-clean. |
+| `deps` | `fail` naming whichever of `jq`, `node`, `git` is missing from `PATH`; `pass` when all three are present. |
+| `sandbox-availability` | Combines the OS probe (Darwin: always available via built-in Seatbelt; Linux: available when both `bwrap` and `socat` are present; any other OS: unavailable, naming it) with `settings.json`'s `sandbox` block: `pass` when the primitive is available and `sandbox.enabled` is `true`; `warn` ("configured but disabled") when available and a `sandbox` block is present but `enabled` is `false` or absent from the block; `warn` ("not enabled in settings") when available and no `sandbox` block exists at all; `warn` when enabled but unavailable on this host, naming the missing primitive; `warn` when neither holds. Never `fail`, so a host without the primitive keeps working (B-2: `failIfUnavailable: false`). This checkout's shipped default is `enabled: false`, so a real-tree run reports `warn ... configured but disabled`; see "Sandbox configuration (B-2)" above for why and the manual enablement procedure. |
+| `statusline` | `skipped` when the live settings carry no `statusLine.command`. Otherwise the configured command is fed a sample status payload; `fail` when it errors or prints nothing, `pass` showing the first line of its output otherwise. Spec B-5 also names "cache hit rate when available" as a rendered field; the shipped `status-line.sh` omits it because the documented statusLine stdin payload carries no cache-hit-rate field to read. |
+| `port-freshness` | `skipped` when `translate/codex.mjs` is absent at the resolved root (this checkout does not carry the monorepo's translator). Otherwise runs `translate/codex.mjs --check --root <root>`; `fail` when it reports drift, `pass` when the codex port matches its sources. |
+
+### `--full` adds
+
+| Check | Verdict semantics |
+|---|---|
+| `fixture-suites` | Runs `enforce/tests/run-tests.sh` then `hooks/tests/run-tests.sh` in order. `skipped` when either path is missing from the resolved root (breaks out without running anything further). `fail` naming the first suite that comes back red (breaks out without running the second). `pass` ("both suites green") only when both suites ran and neither failed. |
+
+### `--release` adds (and implies `--full`)
+
+| Check | Verdict semantics |
+|---|---|
+| `release-blockers` | `fail` when `claude/ISSUES.md` contains the literal string `PENDING USER ACTION` (hardening spec B-4: a pending user action, such as a credential rotation or a transcript purge, stays first among release considerations until the user closes it out). `pass` when no such marker is present. Doctor cannot judge whether the pending action still matters; it only reports that `ISSUES.md` still marks one open. Closing the item means the human performs the action and then edits `ISSUES.md` to remove or reclassify the marker. |
+| `release-secret-scan` | `skipped` when no pattern file is found (see below). Otherwise builds the same shared pattern union `secret-scan.sh` uses, adds a rule scoped to the invoking machine's actual username in a `/Users/<user>` or `/home/<user>` path (not a blanket path match: a generic placeholder such as `/Users/alice` in docs or fixtures is allowed on purpose, the same convention `global-repo-push-guard.sh` already applies for R-106), then runs `git grep` across the tracked tree, excluding `enforce/secret-patterns.txt` itself since it legitimately contains the pattern text. `fail` names every tracked file with a hit; `pass` when the tree is clean. |
+
+### Exit contract
+
+`0` when nothing failed (warns and skips do not block); `1` when any check reports `fail`; `2` on a usage error (an unrecognized flag, or `--root` given no argument). `skipped` never counts toward readiness: it is tallied separately from `pass`/`warn`/`fail`, cannot by itself cause a nonzero exit, and never gets folded into `pass` so a check that could not run is never reported as one that succeeded.
+
+### The vendored schema: provenance and refresh
+
+`claude-code-settings.schema.json` is vendored from SchemaStore, a community-maintained JSON Schema catalog, at `https://json.schemastore.org/claude-code-settings.json`. As of 2026-09-17 there is no Anthropic-hosted schema for Claude Code settings; SchemaStore's community schema is the best available source and `doctor.sh` never fetches it at runtime, only reads the checked-in copy, so `settings-schema-keys` runs fully offline. Refresh it with:
+
+```
+curl -fsSL https://json.schemastore.org/claude-code-settings.json -o claude/enforce/claude-code-settings.schema.json
+```
+
+After refreshing, re-run `bash enforce/doctor.sh --root .` and read the `settings-schema-keys` line: a key that newly fails or newly warns means the vendored copy moved relative to `doctor-accepted-keys.txt`. Add a line to `doctor-accepted-keys.txt` for a key the refreshed schema still does not declare, with a comment explaining why it is real and intentional; drop a line once the refreshed schema declares that key itself, so a key silently removed from the upstream schema in a later refresh gets caught again rather than staying accepted forever on stale grounds.
+
+### The accepted-keys review contract
+
+`doctor-accepted-keys.txt` is a plain list, one settings key per line, of keys that are real and deliberate in this repo's `settings.json` but not yet declared by the vendored schema. Review the whole file every time the schema is refreshed (above) and every time a new key is added to `settings.json` ahead of the upstream schema catching up: a key present in both the file and the refreshed schema is redundant but harmless (it resolves through the schema check first and never reaches the accepted-list branch); a key present in the file but no longer used anywhere in `settings.json` should be removed so the file stays a record of live, deliberate exceptions rather than accumulated history.
+
+### Shared secret patterns (`secret-patterns.txt`)
+
+`enforce/secret-patterns.txt` is the single R-102 pattern source: one `grep -E` alternative per line, comments and blank lines stripped, joined with `|` by every consumer. `hooks/secret-scan.sh` reads it at hook time relative to its own location (`../enforce/secret-patterns.txt`); `doctor.sh --release`'s `release-secret-scan` reads the same file relative to `--root`, falling back to its own directory when the root tree does not carry a `claude/enforce/` copy. Both consumers fail closed rather than open when the file is missing or unreadable: `secret-scan.sh` falls back to an inline hardcoded copy of the same pattern set, documented in its own header, so the hook never goes blind; `release-secret-scan` reports `skipped` rather than treating "no scan ran" as a clean tree, and, per the exit contract above, a skipped check cannot pass the release gate on its own. Editing the shared file changes both consumers at once; `secret-scan.sh`'s inline fallback has no test enforcing it stays in sync with the shared file, so update it by eye in the same change.
 
 ## Adding a rule
 
@@ -93,6 +196,9 @@ Three custom rules under `rules/` plus `no-console` and `no-empty`, active only 
 ## The test-quality rules (R-401 items 1, 3, 5) and no-cycle (R-303)
 
 Two custom rules under `rules/`, active only in test trees. `no-self-mock` reports a `vi.mock`/`jest.mock`/`.doMock` whose specifier names the module the test file is named for (`score.test.ts` mocking `../services/score`, item 1) and a repository test mocking the pool or anything under `database/` (item 5). `behavior-assertion-required` reports a test whose every `expect()` matcher is a mock-call matcher (`toHaveBeenCalled*`, `toBeCalled*`, item 3); one behavior assertion beside them passes, and a test with no `expect()` is not judged. Items 2, 4, 6, and 7 need the test's intent and stay with the slice critic and the judge. `import-x/no-cycle` runs in every tree with `maxDepth: 8`; it needs the `import-x/parsers`, `import-x/extensions`, and TS-aware `resolver-next` settings in `eslint.config.mjs`, without which it silently reports nothing. The R-344 catch rules now also cover every `src/services` and `src/clients` tree, server or not. Fixture: `tests/test-quality-rules.test.sh`.
+
+## The synced harness (R-003)
+`hooks/harness-sync.sh` runs first at SessionStart. It finds the agent-governance checkout (its argument, then the `~/.claude/.sync-source` stamp `sync.sh` writes, then `$CLAUDE_PROJECT_DIR` when that is the harness repository itself), compares every tracked `claude/` file against the live `~/.claude`, and runs `./sync.sh` when any is missing or different; in a remote session it installs `rsync` with apt when absent, and it installs `enforce/node_modules` with npm when absent so the ESLint push gates can run. A cloud container starts with no `~/.claude`, so the user-level registration cannot fire there: this repository's own `.claude/settings.json` runs the hook with `$CLAUDE_PROJECT_DIR`, and every other repository carries `.claude/hooks/harness-bootstrap.sh`, written by the `repo-setup` skill (its `harness` item), which clones the agent-governance repository and runs the same hook. A session that reaches no checkout says so once (remote only) and treats every rule as manual. Advisory: it emits `additionalContext`, never blocks. Fixture: `hooks/tests/harness-sync.test.sh`.
 
 ## Credential-shaped literals (R-108)
 `hooks/secret-scan.sh` denies, beside its full-length secret patterns (R-102), two shapes that scanners flag whether or not the value is real: a URI whose userinfo carries a password (`scheme://user:password@host`) and a `password`/`passwd`/`secret`/`api_key`/`access_token`/`auth_token`/`token` assignment (`=` or `:`) whose value is a literal of six or more characters. A value that starts with `$`, `<`, `%`, or `{`, or that is a word scanners already discount (`password`, `changeme`, `placeholder`, `example`, `redacted`, `dummy`, `fake`, `xxx`, `...`), passes. The rule exists because a fixture's fake Postgres URI turned GitGuardian red on a PR on 2026-09-17 and, since the scanner reads every commit of the PR, the branch had to be rewritten rather than patched. A fixture that needs such a value builds it at run time from parts (`printf '%s://%s:%s@%s' ...`); a document writes the placeholder. Fixture: `tests/secret-scan.test.sh`.

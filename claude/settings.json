@@ -1,7 +1,13 @@
 {
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
     "permissions": {
         "allow": [
+            "Bash(./sync.sh)",
             "Bash(awk *)",
+            "Bash(bash claude/enforce/tests/*)",
+            "Bash(bash claude/hooks/tests/*)",
+            "Bash(bash enforce/tests/*)",
+            "Bash(bash hooks/tests/*)",
             "Bash(cat *)",
             "Bash(cd *)",
             "Bash(chmod +x *)",
@@ -24,10 +30,18 @@
             "Bash(lsof *)",
             "Bash(mkdir *)",
             "Bash(mv *)",
+            "Bash(node translate/*)",
             "Bash(npm *)",
+            "Bash(npx eslint *)",
+            "Bash(npx prettier *)",
+            "Bash(npx tsc *)",
+            "Bash(npx vitest *)",
             "Bash(pnpm *)",
             "Bash(printf *)",
             "Bash(ps *)",
+            "Bash(python3 - *)",
+            "Bash(python3 -c *)",
+            "Bash(railway logs *)",
             "Bash(rg *)",
             "Bash(sed *)",
             "Bash(tail *)",
@@ -119,7 +133,22 @@
         ],
         "defaultMode": "auto"
     },
+    "sandbox": {
+        "enabled": false,
+        "failIfUnavailable": false,
+        "network": {
+            "allowedDomains": ["github.com", "*.github.com", "api.anthropic.com", "registry.npmjs.org"]
+        },
+        "excludedCommands": ["git push", "git fetch", "git pull"],
+        "filesystem": {
+            "allowWrite": ["//var/folders/**", "//private/tmp/**", "//tmp/**"]
+        }
+    },
     "model": "opusplan",
+    "statusLine": {
+        "type": "command",
+        "command": "~/.claude/status-line.sh"
+    },
     "hooks": {
         "PreToolUse": [
             {
@@ -331,6 +360,11 @@
             {
                 "matcher": "",
                 "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/harness-sync.sh",
+                        "timeout": 300
+                    },
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/session-start.sh"
