@@ -20,7 +20,7 @@ track loaded by recall only.
 
 ## Checklist
 
-Work through each step in order. Run the invariant test (step 7) before opening the PR.
+Work through each step in order. Run the invariant test (step 7) and the translator check (step 8) before opening the PR.
 
 ### Step 1: Write the convention file
 
@@ -81,15 +81,16 @@ bash claude/hooks/tests/run-tests.sh
 
 All three must print PASS with no FAIL line.
 
-### Step 8: Sync and publish
+### Step 8: Regenerate the ports, the hash manifest, and publish
 
 ```bash
-./sync.sh
-~/.claude/hooks/hook-integrity-check.sh --update
+node translate/codex.mjs --write
+CLAUDE_INTEGRITY_ROOT="$PWD/claude" bash claude/hooks/hook-integrity-check.sh --update
+node translate/codex.mjs --check
 git diff origin/main
 ```
 
-Review the diff for secrets, local filesystem paths, and client-identifying content before pushing (R-106). Commit `claude/enforce/hook-hashes.txt` with the change.
+The translator regenerates the codex port of every skill and its manifest; CI's port check fails on a new skill without it. The hash update registers every new hook and fixture file in `claude/enforce/hook-hashes.txt`; CI's closure test fails on a new fixture without it. Review the diff for secrets, local filesystem paths, and client-identifying content before pushing (R-106). Commit the port, the hash manifest, and the change together. After merge, run `./sync.sh` from a checkout at the merged commit.
 
 ## Refusal conditions
 
