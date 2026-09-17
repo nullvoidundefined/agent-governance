@@ -30,11 +30,11 @@ Later list (deferred, not in this slice): Python naming-lexicon AST enforcer; SF
 
 **Problem:** The Vue track is about to be added the same way, and the sixth track after it. The procedure must exist as a checklist before the Vue PRs run, so those PRs are its first execution rather than a fifth hand-wired track.
 
-**Approach:** A skill is a markdown file under `claude/skills/<name>/SKILL.md` that Claude Code loads on demand; it carries the procedure. The skill is a six-step numbered checklist taken verbatim from the spec's section 4, with no rationale (R-206).
+**Approach:** A skill is a markdown file under `claude/skills/<name>/SKILL.md` that Claude Code loads on demand; it carries the procedure. The skill is an eight-step numbered checklist: convention file, rules symlink, detection rows, enforcer analogs, structure gate, repo docs, verification, ports and hash manifest then publish. Imperatives only, no rationale (R-206).
 
 The invariant that the procedure protects is separately mechanized as a shell test in `enforce/tests/`, because a manual structure rule loses to what is already on disk (feedback memory `feedback_mechanize_structure_rules`). The test iterates every `claude/CLAUDE-*.md` except `CLAUDE.md` and asserts three things per file: a `paths:` frontmatter block, a resolving `claude/rules/*.md` symlink, and a mention in `session-types.md` or the core's Framework Files table.
 
-**Contents:** `claude/skills/add-stack-track/SKILL.md`; `claude/enforce/tests/convention-track-invariants.test.sh`; one manifest entry registering the test as the enforcer for the stack track procedure; the existing test runner picks the new test up by glob.
+**Contents:** `claude/skills/add-stack-track/SKILL.md`; `claude/enforce/tests/convention-track-invariants.test.sh`, named under Components in `claude/enforce/README.md`; the existing test runner picks the new test up by glob. No manifest entry: the manifest registers enforcers of numbered rules, and this is a repo-level test like `manifest.test.sh`.
 
 **Tests:** The invariant test itself, run against the repo (passes today, since all four tracks are wired) and against a temporary copy with one symlink removed, one `paths:` block stripped, and one session-types row deleted (three failing cases, each asserting the failure names the offending file). Cites AC-8.
 

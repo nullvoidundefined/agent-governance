@@ -92,7 +92,7 @@ node translate/codex.mjs --check
 git diff origin/main
 ```
 
-The translator regenerates the codex port of every skill and its manifest; CI's port check fails on a new skill without it. The hash update registers every new hook and fixture file in `claude/enforce/hook-hashes.txt`; CI's closure test fails on a new fixture without it. Review the diff for secrets, local filesystem paths, and client-identifying content before pushing (R-106). Commit the port, the hash manifest, and the change together. After merge, run `./sync.sh` from a checkout at the merged commit.
+Commit the regenerated codex port, `claude/enforce/hook-hashes.txt`, and the change together. Review the diff for secrets, local filesystem paths, and client-identifying content before pushing (R-106). After merge, run `./sync.sh` from a checkout at the merged commit.
 
 ## Refusal conditions
 
