@@ -42,7 +42,7 @@
     "commands/audit-ux.md": "sha256:8a131255913384b5184c22b447da75792555bf84eafcac7961162e545012fbaa",
     "commands/spec-conformance-review.md": "sha256:292c3d0e222778fac5340b0f15c1e4b3239ae44c6f8902b4d05ad1e25b8ae1f0",
     "hooks.json": "sha256:e1c997cb90b114e0d37d1eef9197e71b1da4c5962e2ffdeef9562583c6db8c07",
-    "rules/000-global-rules.mdc": "sha256:27c648b5bf25535a2fd17441e023ea6ce90ca67b0863404c78d7b70a6e1289ab",
+    "rules/000-global-rules.mdc": "sha256:5a513327dc3e1436b5a6077f3c5f94432ba7e1aa4f6fda894479ee2920e49e21",
     "rules/001-session-types.mdc": "sha256:5c8d0ec2f2146dd95bc5860a6c582015d6d812b800e154bf357be8ab719e9bc2",
     "rules/002-global-memory-index.mdc": "sha256:f87fcc12b6580008110f71ca587f26429e7d8d85adf721408cdbbf2447e84183",
     "rules/backend.mdc": "sha256:3454a8a4f4610939e225ac9d954693400f3fbb849f8fc031229569f9f47da0e2",
@@ -59,12 +59,12 @@
     "rules/rulebook-cost.mdc": "sha256:5508a2e6d0b86ca603227eaf52c35413c86238cb7902aca3e5370f4d0d00b442",
     "rules/rulebook-reference-convention-files.mdc": "sha256:02733adb73361880b75c002b87c61a23eed574fbdc9e6314754f619fbc0028a3",
     "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:de2d30c4157153f0c9c79c3e13087e07724c174527d5fb9e0371c44f59180107",
-    "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:3445a7c7ac6c7cd8b75fe77b407997ff3279df21109c943a63f44e9cb9f42150",
+    "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:4df3a766e5c57a6c66bf43a758017f1990baf9966f525b0c9eb1fee4232c2d8f",
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:42c8270ebcb1510dd654af638e0cb8ea7e88a1e6aaff2d7d0d9667bd0c4a9ea1",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:7604b095a06b22c9c03d8937347312ac1767a32de15a92e53a07073971412d90",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:e3cd93813d6d30b4226b0ddf7b4de5f9411423d0b846f43235d9bdc5c246c878",
     "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:017bb153a4d12931eb669403fb4d289f95617b5b3db7ac80fe3a198ea4a25e38",
-    "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:a6825e86087df711f2c8abd9db6cdc61c8f4a2478d5d0749a30f284168a42f18",
+    "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:e090ab6c2cf6466b0b440738d497e0b2d1ba44c2f687bcdad7f451790cbb13df",
     "rules/structure-conventions.mdc": "sha256:4351ae26e58068347efb8898386cacfed002e9b587ee04bfa7abb2e2e9533a0f",
     "rules/styling.mdc": "sha256:16884fbee74cb563d917cb9582230f5dcc6e209f5c3cfe980d572a4db650557b",
     "skills/all-hands/SKILL.md": "sha256:fc17c9db87a7fd501a6f0d9eb2a4f8cab907fabb4c87db388d6373e4f02d573a",
@@ -105,7 +105,7 @@
     "skills/task-start/SKILL.md": "sha256:88072bba5847c4b87fa74e61387dc433f735c67bd24fbc83a354baba8cc793b8",
     "skills/task-start/scripts/task-tier.sh": "sha256:9ab69338da21a8c9363803bca2e27489f343cd2cfca9ca8a7777f52cd0adf2ae",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:979d0c0a7b96ac08c265d3381dd34eb748e71d33c970e7f6d6d105f5b2406423",
-    "skills/ticket-lifecycle/SKILL.md": "sha256:1c070acc15db10ec5e5dc5801851d3786911ceee56db056560758db65c69832f"
+    "skills/ticket-lifecycle/SKILL.md": "sha256:23c5c539d4cdce68b5f9fbbf3ec7b3920c9d83670d1c74897badf4b7cf686ccd"
   },
   "classes": {
     ".gitignore": "generated",
