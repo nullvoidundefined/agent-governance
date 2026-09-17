@@ -1,0 +1,144 @@
+---
+name: ticket-lifecycle
+description: Use to open, advance, close, or report on the external tracker ticket (Jira, Notion, or Asana) that tracks a task. Triggers at task classification, at every state change in the work, at task close, and on "what did I ship this week" or "how long does this tier take".
+---
+<!-- Cloned from claude/skills/ticket-lifecycle/SKILL.md. Do not edit here; change the source and re-copy; enforce/tests/skills-lint.test.sh fails when this copy drifts. -->
+
+# Ticket Lifecycle
+
+Open a ticket when a task is classified. Move it when the work moves. Close it with measured actuals. Read the history back for rollups and estimates.
+
+**Announce at start:** "I'm using the ticket-lifecycle skill to [open|advance|close|report on] the tracker ticket for this work."
+
+Design: `docs/superpowers/specs/2026-09-17-ticket-lifecycle-design.md`.
+
+## Instance config
+
+Read `~/.claude/TICKET-TRACKER.json` before any operation. It names the active tracker, its MCP tool names, its container, and the canonical-state mapping. The template is `~/.claude/TICKET-TRACKER.template.json`; the real file is gitignored.
+
+Config absent: say once, in this turn, "No tracker is configured (`~/.claude/TICKET-TRACKER.json` is absent; copy `TICKET-TRACKER.template.json` and fill it in)." Then record the same field set in `docs/session-handoff/session-handoff.md` and continue the work. Do not repeat the warning per operation.
+
+Never type a provider status name that is not in the config's `states` map. An unmapped canonical state stops the operation and asks.
+
+## Canonical states
+
+| State | Enter when |
+|---|---|
+| `backlog` | Captured, not started. |
+| `specced` | Spec written and accepted (complex, saga). |
+| `planned` | Plan written and accepted (complex, saga). |
+| `in-progress` | First slice opens (`tdd.sh open`), or first edit lands on a trivial task. |
+| `in-review` | Branch pushed, review or PR open. |
+| `blocked` | Waiting on an answer or an external dependency. |
+| `done` | Squash-merged and `task-cleanup` reported clean. |
+| `dropped` | Abandoned. |
+
+Trivial and standard tiers go `backlog` to `in-progress` directly. `blocked` returns to the state it interrupted. `done` and `dropped` are terminal: reopening means a new ticket linking the old key.
+
+## Canonical fields
+
+| Field | Source |
+|---|---|
+| `title` | Imperative summary of the task. |
+| `tier` | `task-start` classification (R-901). |
+| `assist` | `llm` when Claude drove the implementation, `human` otherwise. |
+| `model` | Routing decision (R-903). |
+| `estimate_minutes` | The estimate after the R-906 division. From `estimate <tier>` below when history allows. |
+| `repo` | Repository name only. Never a local filesystem path (R-106). |
+| `branch` | `feat/<slug>`, or the branch the work lands on. |
+| `spec_link`, `plan_link` | Repo-relative doc paths, when the tier produced them. |
+| `pr_link` | PR or review URL, when one exists. |
+| `started_at`, `completed_at` | UTC ISO-8601. |
+| `actual_minutes` | Attributable working minutes inside the sessions that worked the task. Never calendar elapsed time between open and close. |
+| `rework_count` | Times a green slice went back to red, or a review sent the work back. |
+| `estimate_ratio` | `actual_minutes / estimate_minutes`, computed at close. |
+
+## Operation: open
+
+Run at the end of `task-start` Step 1, after the tier is announced and before setup.
+
+1. Skip entirely for the trivial tier unless the user asks for a ticket. A typo fix does not earn a work item.
+2. Require `title`, `tier`, `assist`, `estimate_minutes`, and `repo`. Any missing: name the missing field and stop.
+3. Search the tracker for an open ticket carrying this `branch` value. One hit: report the key and stop, no second ticket. Several hits: ask which is live, open nothing.
+4. Capture `started_at` as the R-503 start timestamp.
+5. Create the ticket in state `backlog`, or `in-progress` when work starts in the same turn. Write every known field. Sanitize the body first: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]` (R-104).
+6. Report the ticket key and URL. Write the key onto the spec's `**Ticket:**` line when a spec exists, and into the handoff doc.
+7. Add `Refs: <ticket-key>` as a trailer on every commit for this task.
+
+## Operation: advance
+
+Run at each event in the table above, in the same turn as the event.
+
+1. Resolve the ticket key from the spec, the user story, the handoff doc, or the last `Refs:` trailer on the branch. No key found: say so and offer `open`.
+2. Map the target canonical state through the config. Unmapped: stop and ask.
+3. Write the status change.
+4. Write a comment: `<from> -> <to> at <UTC ISO-8601>`, plus the reason on `blocked` and `dropped`.
+5. Increment `rework_count` when the transition is `in-review` back to `in-progress`.
+6. Status written and comment failed: report the ticket as advanced with the audit trail incomplete, naming the missed comment. Do not report plain success.
+
+## Operation: close
+
+Run inside `task-cleanup` Step 2, after the verification gate and the merge decision.
+
+1. Refuse while tests, build, or lint are not green (R-509). A `done` ticket asserts the work shipped.
+2. Compute `actual_minutes` from the R-503 start timestamp and the working time in any prior session recorded on the ticket. Exclude wall-clock gaps where nothing was running.
+3. Compute `estimate_ratio` as `actual_minutes / estimate_minutes`.
+4. Write `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `pr_link`, and the `done` status in one update. Never leave a `done` ticket with actuals missing.
+5. Report the ratio in the `task-cleanup` table, and state the recalibration R-906 asks for: which direction the tier's estimate moves next time.
+
+## Operation: report
+
+Invoked as `report <day|week|month> <range>`; "what did I ship this week" means `report day` over the current week.
+
+1. Query tickets whose `completed_at` falls in the range.
+2. Bucket by the requested granularity.
+3. Per bucket: ticket count, summed `actual_minutes`, count by tier, median `estimate_ratio`.
+4. Count tickets with no `completed_at` separately as open. Never fold them into a bucket.
+5. Output one table, newest bucket last, and one line naming the largest single contributor to the total.
+
+## Operation: estimate
+
+Invoked as `estimate <tier>`, and by `task-start` when it needs `estimate_minutes`.
+
+1. Query closed tickets matching `tier` and `assist`.
+2. Fewer than five samples: return no number from history. Say the sample is too small (`n=<count>`), fall back to the R-906 heuristic, and label it a heuristic.
+3. Five or more: return the median and the 80th percentile of `actual_minutes`, with `n`. Recommend the median for a task that resembles the sample and the 80th percentile for one with an unknown dependency.
+4. State the sample's date range. An estimate drawn from work older than a quarter is stale; say so.
+
+## Provider mapping
+
+The config carries the tool names. The capability each operation needs, per tracker:
+
+| Capability | Jira | Notion | Asana |
+|---|---|---|---|
+| Container | Project key | Data source ID of the ticket database | Project GID |
+| Create | Create-issue tool | `notion-create-pages` | Create-task tool |
+| Update fields and status | Update-issue tool (status via transition) | `notion-update-page` (status is a select property) | Update-task tool (status via section or `completed`) |
+| Comment | Add-comment tool | `notion-create-comment` | Add-comment or story tool |
+| Search by branch or field | JQL search tool | `notion-query-data-sources` | Search-tasks tool |
+| Read one ticket | Get-issue tool | `notion-fetch` | Get-task tool |
+
+Tracker missing a canonical field (a Notion database without an `estimate_minutes` property, for instance): name every missing field and the type each needs, write the fields that do exist, and stop. Creating properties in the user's database is a schema change and waits for them.
+
+## Confirmation posture
+
+Every write here is a `create`, `update`, `save`, `add`, or `comment` MCP call, so `hooks/mcp-action-guard.sh` asks on all of them (R-105). Expected. One call per confirmation: never batch several writes behind one prompt. A denial is a decision: do not re-ask for the same write in the same turn, and note in the close report that the ticket is behind the work. Never suppress the guard and never ask to bypass it (R-203).
+
+A tracker failure (server down, auth expired, denial) never blocks the engineering work. Report the failed call, record the intended field set in the handoff doc, retry at the next lifecycle event.
+
+## Common Mistakes
+
+- Opening a second ticket for a branch that already has one. Search first, always.
+- Writing `done` with the actuals missing. One update carries both.
+- Recording calendar elapsed time as `actual_minutes`. A ticket opened Monday and closed Friday is not four days of work, and one such row distorts every estimate drawn from that tier.
+- Estimating from a sample of two and reporting a number as if it came from history.
+- Mixing `assist` values in one sample. LLM-driven and hand-written work are not comparable.
+- Guessing a provider status name when the config has no mapping for the canonical state.
+- Putting a local filesystem path, a client name, or a secret in a ticket body.
+- Leaving the ticket in `in-progress` and the key nowhere in the repo. The handoff doc carries it, or the next session cannot find it.
+
+## Integration
+
+- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` to `in-progress`), task-cleanup (`close`), the user directly (`report`, `estimate`)
+- **Composes with:** tdd-gated-dispatch (a slice opening is the `in-progress` event), superpowers:finishing-a-development-branch (the merge is the `done` event)
+- **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write), R-106 (nothing client-identifying in this repo)
