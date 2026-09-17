@@ -130,7 +130,7 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Plan writing, plan review | Opus for complex/saga, Sonnet for standard |
 | Implementation (inline) | Sonnet |
 | Implementation (subagent) | Sonnet (implementer), Opus (test author, slice critic) |
-| Audit/review | Opus |
+| Audit/review | Per the role file: Opus for the standing roles (engineering, security, criticism) and the customer walkthrough, Sonnet for the rubric roles (design, UX, financial, legal, marketing); `all-hands` overrides every role to Sonnet for its weekly scan |
 | Doc edits, file moves, config | Haiku or Sonnet |
 
 ## Reclassification
