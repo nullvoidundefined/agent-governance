@@ -1,5 +1,8 @@
 # Claude config public hardening
 
+**Ticket:** IAN-76 (tranche 1 of four; the remaining tranches open their own tickets as each starts)
+**Plans:** `docs/superpowers/plans/2026-09-17-config-hardening-tranche-1-safety.md`
+
 ## Goal
 
 Prepare the Claude Code governance harness for public reuse by incorporating the highest-value ideas found in peer harnesses while preserving this repo's incident-driven rulebook, manifest-backed enforcement, and fixture-test discipline. The work should make the harness safer to run, easier to install, easier to verify, and clearer about what the Claude, Codex, and Cursor ports can actually enforce.
