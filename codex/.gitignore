@@ -54,6 +54,8 @@
 !/skills/documentation-create/SKILL.md
 !/skills/feature-create/
 !/skills/feature-create/SKILL.md
+!/skills/feature-create/scripts/
+!/skills/feature-create/scripts/scaffold.sh
 !/skills/gof/
 !/skills/gof/SKILL.md
 !/skills/known-issues/
