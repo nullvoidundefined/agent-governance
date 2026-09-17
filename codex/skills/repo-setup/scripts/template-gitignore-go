@@ -1,0 +1,17 @@
+# Build output
+bin/
+dist/
+*.test
+*.out
+coverage.txt
+
+# Secrets and local configuration (R-102)
+.env
+.env.*
+!.env.example
+
+# Tooling state
+.claude/tdd-lock.json
+.claude/task-tier.json
+*.log
+.DS_Store
