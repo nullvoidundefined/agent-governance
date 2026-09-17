@@ -17,6 +17,10 @@ ask  mcp__claude_ai_Linear__share_issue           # transmits outward, so it ask
 ask  mcp__claude_ai_Linear__submit_diff_review    # submits for review, so it asks despite the tracker exemption
 ask  mcp__claude_ai_Linear__create_attachment_from_upload  # carries a file out, so it asks
 ask  mcp__claude_ai_Linear__retire_issue_label    # retiring a label destroys state, so it asks
+ask  mcp__claude_ai_Linear__save_share_issue      # a write token first does not let a transmit token through
+ask  mcp__claude_ai_Linear__save_delete_comment   # a write token first does not let a destroy token through
+ask  mcp__claude_ai_Linear__create_and_share      # the strongest class an action names decides, not the first
+ask  mcp__claude_ai_Linear__apply_template        # apply is held back on the exempt server too
 ask  mcp__github__retire_thing                    # the destroy class covers retire on every server
 ask  mcp__claude_ai_Notion__notion-create-pages   # verb behind a server prefix
 ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix

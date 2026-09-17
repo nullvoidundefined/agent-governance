@@ -117,7 +117,7 @@ Legal entries into `in-progress` skip `specced` and `planned` for the trivial an
 ## Dependencies
 
 - An MCP server for the chosen tracker, already connected. The Notion and Linear servers are present in the maintainer's setup today; Jira and Asana are connected the same way when used.
-- `hooks/mcp-action-guard.sh`, which asks on every `create`, `update`, `save`, `add`, and `comment` call (R-105). This skill is a stream of exactly those verbs, so the confirmation traffic is real and intended. The remedy is the user's own per-tool "don't ask again", which is their pre-authorization to give; the skill never suppresses the guard and never asks to have it bypassed (R-203).
+- `hooks/mcp-action-guard.sh`, which asks on `create`, `update`, `save`, `add`, and `comment` calls (R-105), except on the Linear server, whose write class it stopped asking about on 2026-09-17 precisely because this skill is a stream of exactly those verbs. On Notion, Jira, or Asana the confirmation traffic is real and intended, and the remedy there is the user's own per-tool "don't ask again", which is their pre-authorization to give; the skill never suppresses the guard and never asks to have it bypassed (R-203). Even on Linear, a call that lands code, submits, uploads, or applies still asks, as does one naming a destroy or transmit verb anywhere in its name.
 - `hooks/commit-message-guard.sh`, unchanged: `Refs:` is already in its trailer allowlist.
 - `skills/task-start`, `skills/feature-create`, and `skills/task-cleanup`, each gaining the lifecycle step at the point where it already makes the matching decision.
 - R-906 in `rulebook/cost.md`, whose Spec gains the tracker history as the thing recalibration reads.
@@ -128,7 +128,7 @@ The tracker is the observability surface: the ticket list grouped by `completed_
 
 ## Security
 
-Tracker credentials live in the MCP server's own configuration and never in this repo or in a prompt (R-102). The instance config holds identifiers rather than secrets, and is gitignored anyway because a project key and a workspace ID identify a client (R-106). Ticket bodies are sanitized before writing (R-104): secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. Every write passes through the R-105 confirmation, which is the security property that matters most here, because a misdirected ticket write is content leaving the machine to an external system of record.
+Tracker credentials live in the MCP server's own configuration and never in this repo or in a prompt (R-102). The instance config holds identifiers rather than secrets, and is gitignored anyway because a project key and a workspace ID identify a client (R-106). Ticket bodies are sanitized before writing (R-104): secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. Every write on Notion, Jira, or Asana passes through the R-105 confirmation, because a misdirected ticket write is content leaving the machine to an external system of record. The Linear server's write class is exempt as of 2026-09-17, and what carries the security property there instead is the narrowness of the exemption: it covers reversible bookkeeping in the operator's own tracker and nothing else, so a Linear call that lands code, submits for review, uploads a file, or names a destroy or transmit verb still stops for confirmation.
 
 ## Domain vocabulary
 

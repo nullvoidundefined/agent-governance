@@ -64,7 +64,7 @@
     "skills/task-start/SKILL.md": "sha256:e06165cf390031fffb4415b27263a713e513eb5f1f4538fbecc609657de74dff",
     "skills/task-start/scripts/task-tier.sh": "sha256:9ab69338da21a8c9363803bca2e27489f343cd2cfca9ca8a7777f52cd0adf2ae",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:98b8ebf05c3d0910195c6e25af545a9c8818a7efee7dbd54b06e323ad7fce5af",
-    "skills/ticket-lifecycle/SKILL.md": "sha256:3858e70eff7e4d6b4604f4c97a9152cc947918be113739dd3c9e500c6e6b9197"
+    "skills/ticket-lifecycle/SKILL.md": "sha256:4e15f1c5c400897acd8f1abb8ec095cb4fe1961c528995ec7024bd5215b22fa1"
   },
   "hand_authored": [
     "hooks/codex-hook-adapter.sh",

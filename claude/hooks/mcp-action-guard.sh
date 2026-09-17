@@ -33,22 +33,41 @@ case "$SERVER" in claude-in-chrome) exit 0 ;; esac
 # case first would weld the verb to its object and match nothing.
 ACTION=$(printf '%s' "${TOOL##*__}" | sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr 'A-Z-' 'a-z_')
 
-REASON=""
+# Every token is classified, and the strongest class an action names decides.
+# Breaking on the first match instead let a leading write verb speak for the
+# whole call, so `save_share_issue` and `save_delete_comment` read as ordinary
+# writes; on a server whose write class is exempt below they then passed
+# silently, which is the opposite of what this hook is for. Order here is the
+# order of consequence: state destroyed cannot be undone by us, content already
+# transmitted cannot be recalled, a database statement reaches data R-101
+# governs, and a write is the mildest of the four.
+HAS_TRANSMIT=0 HAS_WRITE=0 HAS_DESTROY=0 HAS_DATABASE=0
 for token in $(printf '%s' "$ACTION" | tr '_' ' '); do
   case "$token" in
     send | post | reply | forward | publish | share | invite | notify | respond)
-      REASON="transmits content outside this machine"; break ;;
+      HAS_TRANSMIT=1 ;;
     create | save | update | edit | write | add | apply | upload | move | duplicate | rename | submit | merge | generate | mark | use)
-      REASON="writes to an external system of record"; break ;;
+      HAS_WRITE=1 ;;
     delete | remove | trash | drop | archive | revoke | rotate | cancel | unmark | unlabel | retire | retract)
-      REASON="destroys or retracts external state"; break ;;
+      HAS_DESTROY=1 ;;
     # Database MCP servers (neon, supabase) reach a managed Postgres that
     # R-101's Bash-only guard never sees. 'run' and 'query' stay out: too
     # generic to carry the meaning on their own.
     sql | migration | migrate | execute | ddl)
-      REASON="runs statements against a database (R-101 applies to the data they touch)"; break ;;
+      HAS_DATABASE=1 ;;
   esac
 done
+
+REASON=""
+if [ "$HAS_DESTROY" -eq 1 ]; then
+  REASON="destroys or retracts external state"
+elif [ "$HAS_TRANSMIT" -eq 1 ]; then
+  REASON="transmits content outside this machine"
+elif [ "$HAS_DATABASE" -eq 1 ]; then
+  REASON="runs statements against a database (R-101 applies to the data they touch)"
+elif [ "$HAS_WRITE" -eq 1 ]; then
+  REASON="writes to an external system of record"
+fi
 [ -z "$REASON" ] && exit 0
 
 # The operator narrowed R-105 for the Linear server on 2026-09-17: the
