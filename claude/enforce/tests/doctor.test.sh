@@ -183,7 +183,8 @@ sandboxTempAllowancePresent() { # settings-file
 }
 check "committed sandbox block carries temp-write allowances when enabled" sandboxTempAllowancePresent "$REPO_TOP/claude/settings.json"
 
-check "port freshness runs the translator" grep -qE "^(pass|fail) port-freshness:" <<<"$OUT"
+check "port freshness runs the codex translator" grep -qE "^(pass|fail) port-freshness-codex:" <<<"$OUT"
+check "port freshness runs the cursor translator" grep -qE "^(pass|fail) port-freshness-cursor:" <<<"$OUT"
 # statusline unconfigured in the sandbox tree: must be skipped, never pass.
 # HOME must point at a sandbox (the Task 3 HOME_SANDBOX, whose settings.json
 # has no statusLine key) rather than the ambient live HOME: reading the real

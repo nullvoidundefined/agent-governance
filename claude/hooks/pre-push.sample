@@ -50,6 +50,12 @@ if [ -f "$TOP/translate/codex.mjs" ]; then
   fi
 fi
 
+if [ -f "$TOP/translate/cursor.mjs" ]; then
+  if ! node "$TOP/translate/cursor.mjs" --check; then
+    fail=1
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "pre-push: fixture suite is red; push aborted (R-509)." >&2

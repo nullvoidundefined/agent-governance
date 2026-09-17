@@ -98,11 +98,14 @@ jobs:
       - name: Hook fixtures
         run: bash "$HOME/.claude/hooks/tests/run-tests.sh"
 
-      # Fails the moment codex/ drifts from claude/ (a source edit landed
-      # without --write, or a hand edit touched a generated file) instead of
-      # waiting for the next contributor to notice by hand.
-      - name: Translator port check
+      # Fails the moment codex/ or cursor/ drifts from claude/ (a source edit
+      # landed without --write, or a hand edit touched a generated file)
+      # instead of waiting for the next contributor to notice by hand.
+      - name: Translator port check (codex)
         run: node translate/codex.mjs --check
+
+      - name: Translator port check (cursor)
+        run: node translate/cursor.mjs --check
 
       # This repo carries no TypeScript, so the ratchet reports "nothing to
       # baseline" and exits 0. The step is here so a regression in the ratchet

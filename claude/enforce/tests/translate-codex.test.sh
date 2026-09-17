@@ -345,6 +345,17 @@ manifestHashesAgentsMd() { jq -e '.files["AGENTS.md"] | startswith("sha256:")' "
 check "manifest hashes AGENTS.md" manifestHashesAgentsMd
 manifestMarksHandAuthored() { jq -e '.hand_authored | index("hooks/codex-hook-adapter.sh") != null' "$MF" >/dev/null; }
 check "manifest marks hand-authored" manifestMarksHandAuthored
+# B-6 regression guard: hand_authored is copied from the port map verbatim,
+# order preserved, never sorted. make_source_tree's list above is
+# deliberately non-alphabetical (hooks/... before README.md before
+# .gitignore before the two skills/ paths), so an implementation that
+# alphabetizes hand_authored instead of preserving insertion order fails
+# this exact-array-equality check even though "marks hand-authored" above
+# still passes.
+manifestPreservesHandAuthoredOrder() {
+  jq -e '.hand_authored == ["hooks/codex-hook-adapter.sh","README.md","skills/session-start/SKILL.md","skills/session-handoff/SKILL.md"]' "$MF" >/dev/null
+}
+check "manifest preserves hand_authored insertion order" manifestPreservesHandAuthoredOrder
 handAuthoredNotHashed() { jq -e '.files | has("hooks/codex-hook-adapter.sh") | not' "$MF" >/dev/null; }
 check "hand-authored not hashed" handAuthoredNotHashed
 manifestBuilderNamesTranslator() { jq -e '.builder == "translate/codex.mjs"' "$MF" >/dev/null; }
