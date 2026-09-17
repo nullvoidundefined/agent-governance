@@ -16,7 +16,10 @@
 !/agents/audit-marketing.toml
 !/agents/audit-security.toml
 !/agents/audit-ux.toml
+!/agents/implementer.toml
+!/agents/slice-critic.toml
 !/agents/spec-conformance-review.toml
+!/agents/test-author.toml
 !/hooks.json
 !/hooks/
 !/hooks/codex-hook-adapter.sh

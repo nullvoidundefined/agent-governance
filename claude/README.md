@@ -126,6 +126,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── rules/                       # 9 custom ESLint rules (R-316/317, R-319, R-320, R-325, R-342, R-343, R-344, R-401 x2).
 │   └── tests/                       # fixture tests; run-tests.sh runs them all.
 ├── .github/workflows/enforce.yml    # CI: both fixture suites + the ratchet.
+├── ../translate/                    # Monorepo-root sibling, not synced here: codex.mjs regenerates codex/ from these claude/ sources.
 ├── rules/                           # Auto-load zone: session-types.md + path-scoped
 │   │                                # symlinks to the stack CLAUDE-*.md files.
 ├── rulebook/                        # Tier-2 rule files loaded by session type.

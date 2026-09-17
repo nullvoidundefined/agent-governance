@@ -41,6 +41,15 @@ for suite in enforce/tests/run-tests.sh hooks/tests/run-tests.sh; do
   fi
 done
 
+# translate/ lives beside claude/ in the monorepo layout only; a legacy or
+# live-copy checkout carries no translator, so this step is silently skipped
+# there rather than failing on a missing script.
+if [ -f "$TOP/translate/codex.mjs" ]; then
+  if ! node "$TOP/translate/codex.mjs" --check; then
+    fail=1
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "pre-push: fixture suite is red; push aborted (R-509)." >&2
