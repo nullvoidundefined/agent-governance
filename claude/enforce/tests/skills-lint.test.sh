@@ -61,6 +61,14 @@ lint_skills() {
   for skill in "$skills_dir"/*/SKILL.md; do
     [ -e "$skill" ] || continue
     dir=$(basename "$(dirname "$skill")")
+    # A live skills directory can also hold skills this repo does not ship
+    # (a marketplace or harness-installed skill lands in ~/.claude/skills too).
+    # Those are not user-authored content this repo governs, and linting them
+    # would make the verdict depend on the machine rather than the checkout,
+    # so skip any skill with no counterpart in the repo's own skills tree.
+    if [ -d "$repo_root/claude/skills" ] && [ ! -e "$repo_root/claude/skills/$dir/SKILL.md" ]; then
+      continue
+    fi
     # 1. frontmatter
     if [ "$(head -1 "$skill")" != "---" ]; then
       echo "FAIL: $dir: SKILL.md does not open with a frontmatter block"; failed=1; continue
@@ -205,4 +213,26 @@ if printf '%s\n' "$SB_OUT" | grep -q '^FAIL: clean:'; then
 fi
 [ "$fail" -eq 0 ] || exit 1
 
-echo "skills-lint.test.sh PASS ($(ls -d "$REAL_CLAUDE"/skills/*/ | wc -l | tr -d ' ') skills lint clean, $CURSOR_NOTE, 8 sandbox properties fire)"
+# 9. A skill that exists in the live skills directory but not in the repo's own
+#    skills tree is a foreign install (marketplace, harness), so the lint leaves
+#    it alone rather than letting the machine's contents decide the verdict.
+mkdir -p "$SB/live/skills/foreign" "$SB/live/rulebook"
+cp "$SB/claude/rulebook"/*.md "$SB/live/rulebook/"
+cp "$SB/claude/README.md" "$SB/claude/.gitignore" "$SB/live/"
+cat > "$SB/live/skills/foreign/SKILL.md" <<EOF
+---
+name: not-the-directory-name
+description: A foreign skill the repo does not ship, citing R-999 and superpowers:nonexistent.
+---
+# Foreign
+An em dash: $(printf '\xe2\x80\x94').
+EOF
+FOREIGN_OUT=$(lint_skills "$SB/live" "$SB" 2>&1) || {
+  echo "FAIL: a skill absent from the repo's skills tree was linted anyway:"; printf '%s\n' "$FOREIGN_OUT"; exit 1
+}
+if printf '%s\n' "$FOREIGN_OUT" | grep -q 'foreign'; then
+  echo "FAIL: the lint reported a foreign skill it should have skipped:"; printf '%s\n' "$FOREIGN_OUT"; exit 1
+fi
+
+
+echo "skills-lint.test.sh PASS ($(ls -d "$REAL_CLAUDE"/skills/*/ | wc -l | tr -d ' ') skills lint clean, $CURSOR_NOTE, 9 sandbox properties fire)"
