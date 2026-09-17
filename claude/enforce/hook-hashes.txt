@@ -59,7 +59,7 @@ fa7d596f506edc16e5def90969d1d45c1caf06271da6f26c3b510feab0c85dfb  enforce/tests/
 8a23dfd94e86885be655f13090667c271dbf8155b93ec4dd3acc3a031702a1e2  enforce/tests/lexicon-spec-sync.test.sh
 1069d98ff1eff81b9d3b961cbda0c191926ab9ef5b3d219c91cd1311b5513b9a  enforce/tests/llm-rule-judge.test.sh
 82fe5a35610f8035358badb35191d8b6840095d6582a6b7c6a487fd3d82e56f9  enforce/tests/manifest.test.sh
-2bd079179ad1804646470440983537b696ffc55ea9278aa721de5a48fe4b0abe  enforce/tests/mcp-action-guard.test.sh
+571c14a732bb59c349d1c5d87508bde1e1b96bfeb4b5391e5b513ac7043ab7c6  enforce/tests/mcp-action-guard.test.sh
 9de457f68d904cd0420beb0a0beae06af1640843ccc5ca1736f6ddc59bfde4cc  enforce/tests/model-switch-guard.test.sh
 548a65eaafcb3c1984891725982c26bfadb0af2cc1e8edc2694a20c4e0e1f041  enforce/tests/naming-lexicon.test.sh
 6fb58014307608d31c40cfb1e618353946d105d3e1b9f0f5e4669fe405aa14a2  enforce/tests/no-em-dash.test.sh

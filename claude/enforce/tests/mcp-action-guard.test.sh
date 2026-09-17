@@ -22,6 +22,7 @@ ask  mcp__claude_ai_Linear__save_delete_comment   # a write token first does not
 ask  mcp__claude_ai_Linear__create_and_share      # the strongest class an action names decides, not the first
 ask  mcp__claude_ai_Linear__apply_template        # apply is held back on the exempt server too
 ask  mcp__github__retire_thing                    # the destroy class covers retire on every server
+ask  mcp__claude_ai_Linear__retract_invite        # retract is a destroy verb too, on the exempt server
 ask  mcp__claude_ai_Notion__notion-create-pages   # verb behind a server prefix
 ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix
 ask  mcp__claude_ai_Google_Calendar__delete_event # destroys
