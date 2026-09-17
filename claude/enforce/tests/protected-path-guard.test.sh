@@ -5,7 +5,8 @@
 # per-role write boundaries keyed on agent_type (R-411). Every case feeds a
 # PreToolUse payload and asserts the decision; allow means silence.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/protected-path-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/protected-path-guard.sh"
 
 REPO=$(cd "$(mktemp -d)" && pwd -P)
 git -C "$REPO" init -q

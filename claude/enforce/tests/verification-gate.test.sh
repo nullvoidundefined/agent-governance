@@ -16,7 +16,8 @@
 #   11. A check failing twice in a row blocks, naming the retry in the reason.
 #   12. A hard timeout (124) never retries.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/verification-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/verification-gate.sh"
 export CLAUDE_VERIFY_MEMO_DIR CLAUDE_VERIFY_RETRY_DELAY
 CLAUDE_VERIFY_MEMO_DIR=$(mktemp -d)
 # Zero by default so tests 1-9 (which don't exercise retry behavior at all)

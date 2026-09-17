@@ -5,7 +5,8 @@
 # output. golangci-lint is stubbed via CLAUDE_GOLANGCI_CMD (canned JSON), so
 # the test exercises the gate's diff/filter/deny logic without a local install.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/push-golangci-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/push-golangci-gate.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main
@@ -58,7 +59,7 @@ printf '%s' "$ERR5" | grep -q "gate-trusted-repos" || { echo "FAIL: expected tru
 # an offline check; `linters --config` parses the file locally and lists what
 # it enables, which is the fact that matters.
 if command -v golangci-lint >/dev/null 2>&1; then
-  ENABLED=$(golangci-lint linters --config "$HOME/.claude/enforce/golangci-enforce.yml" 2>&1 \
+  ENABLED=$(golangci-lint linters --config "$CLAUDE_HARNESS_ROOT/enforce/golangci-enforce.yml" 2>&1 \
     | awk '/^Enabled by your configuration linters:/{on=1; next} /^Disabled by your configuration linters:/{on=0} on && /^[a-z0-9]+:/{sub(":.*",""); print}') \
     || { echo "FAIL: golangci-lint could not load enforce/golangci-enforce.yml ($(golangci-lint --version 2>/dev/null | head -1))"; exit 1; }
   for linter in errcheck errorlint mnd nolintlint; do

@@ -7,7 +7,8 @@
 # The exemption is scoped to the route module itself: a sibling helper under
 # app/api/ with multiple exports is still flagged.
 set -euo pipefail
-LINT="$HOME/.claude/enforce/lint.mjs"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+LINT="$CLAUDE_HARNESS_ROOT/enforce/lint.mjs"
 
 DIR=$(mktemp -d); cd "$DIR"; git init -q
 mkdir -p src/app/api/tools/batch src/services/api/batch

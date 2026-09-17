@@ -5,7 +5,8 @@
 # Linear-server writes, while still asking when a tracker call lands code,
 # destroys state, or transmits outward.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/mcp-action-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/mcp-action-guard.sh"
 ask() { printf '{"tool_name":"%s","tool_input":{}}' "$1" | "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null; }
 pass() { [ -z "$(printf '{"tool_name":"%s","tool_input":{}}' "$1" | "$HOOK")" ]; }
 

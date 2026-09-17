@@ -6,7 +6,8 @@
 # a usage error; a missing DATABASE_URL is exit 4; the host line never
 # carries the credentials.
 set -uo pipefail
-TOOL="$HOME/.claude/skills/resolve-user-feedback/scripts/feedback.mjs"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+TOOL="$CLAUDE_HARNESS_ROOT/skills/resolve-user-feedback/scripts/feedback.mjs"
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }

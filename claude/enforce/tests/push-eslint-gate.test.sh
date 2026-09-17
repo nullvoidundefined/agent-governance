@@ -2,7 +2,8 @@
 # Verifies push-eslint-gate.sh denies a git push whose outgoing diff has an ESLint
 # violation, and allows one whose diff is clean.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/push-eslint-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/push-eslint-gate.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main

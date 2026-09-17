@@ -4,7 +4,8 @@
 # punctuation, and exempts search-tool commands (R-207). The em dash is built at
 # runtime so this file stays em-dash-free.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/no-em-dash.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/no-em-dash.sh"
 DASH=$(printf '\xe2\x80\x94')
 
 deny() { printf '%s' "$1" | "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || { echo "FAIL: expected deny: $1"; exit 1; }; }

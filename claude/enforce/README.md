@@ -177,8 +177,27 @@ After refreshing, re-run `bash enforce/doctor.sh --root .` and read the `setting
 ## Running the tests
 
 ```
-bash ~/.claude/enforce/tests/run-tests.sh
+bash claude/enforce/tests/run-tests.sh
+bash claude/hooks/tests/run-tests.sh
 ```
+
+Run them from the checkout, not from `~/.claude`. Every fixture resolves the
+implementation it exercises through `enforce/harness-root.sh`, which derives
+the harness root from the fixture's own location, so either spelling exercises
+the same tree; invoking the checkout's copy simply makes it obvious which tree
+that is. Before the 2026-09-18 audit the fixtures opened their subject as
+`$HOME/.claude/hooks/<name>.sh`, which meant a local pre-push run verified
+whichever branch had most recently run `./sync.sh` while git pushed something
+else entirely. `CLAUDE_HARNESS_ROOT` overrides the resolution when a run should
+deliberately target another tree, which is how
+`tests/fixture-implementation-root.test.sh` proves the property holds. The one
+fixture still pinned to the live install is `tests/hook-latency.test.sh`, which
+times the hooks a session actually spawns and says so in its header.
+
+The six ESLint-backed fixtures and `tests/tdd-red-green.test.sh` need
+`enforce/node_modules`, which is gitignored. Install it into the checkout with
+`npm ci --prefix claude/enforce` (continuous integration runs the same command)
+or those fixtures fail on a missing ESLint rather than on a defect.
 
 ## Repo exemptions
 

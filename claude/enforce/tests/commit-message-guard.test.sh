@@ -3,7 +3,8 @@
 # Verifies commit-message-guard.sh: conventional subject and max-2 triage IDs (deny, R-505),
 # oversized body (ask, R-506), everything else untouched.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/commit-message-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/commit-message-guard.sh"
 
 decision() {
   OUT=$(jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | "$HOOK")

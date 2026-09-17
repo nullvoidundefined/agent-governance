@@ -5,7 +5,8 @@
 # an R-NNN prints every section mentioning it; heading words match
 # case-insensitively; no match lists the headings and exits 1.
 set -uo pipefail
-SECTION="$HOME/.claude/skills/protocol/scripts/section.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+SECTION="$CLAUDE_HARNESS_ROOT/skills/protocol/scripts/section.sh"
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }

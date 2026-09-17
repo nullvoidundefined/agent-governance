@@ -4,7 +4,8 @@
 # (R-405), and repo-escaping relative imports (R-302), and allows the legitimate
 # neighbours of each.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/content-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/content-gate.sh"
 payload() { jq -nc --arg f "$1" --arg c "$2" '{tool_name:"Write",tool_input:{file_path:$f,content:$c}}'; }
 deny() { payload "$1" "$2" | "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null; }
 allow() { [ -z "$(payload "$1" "$2" | "$HOOK")" ]; }

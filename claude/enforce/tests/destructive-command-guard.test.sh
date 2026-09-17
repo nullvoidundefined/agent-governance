@@ -4,7 +4,8 @@
 # variants that settings.json prefix globs miss, and stays silent on the
 # read-only and lookalike commands that must keep working.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/destructive-command-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/destructive-command-guard.sh"
 
 decision() {
   OUT=$(jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | "$HOOK")

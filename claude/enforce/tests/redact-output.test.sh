@@ -4,7 +4,8 @@
 # replacement when Bash output carries a secret pattern, and stays silent for
 # clean output (R-102). The fake token is built at runtime.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/redact-output.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/redact-output.sh"
 FAKE_TOKEN="ghp_$(printf 'A%.0s' $(seq 1 40))"
 
 OUT=$(jq -n --arg s "remote: $FAKE_TOKEN pushed" '{tool_name:"Bash",tool_response:{stdout:$s}}' | "$HOOK")

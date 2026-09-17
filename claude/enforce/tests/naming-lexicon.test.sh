@@ -21,7 +21,8 @@
 #      layer's read verb reports; list stays unrestricted.
 #  15. A layer-bound verb (insert, drop) outside its tree reports its fallback.
 set -euo pipefail
-E="$HOME/.claude/enforce"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
 
 TMP=$(mktemp -d)
 cd "$TMP"

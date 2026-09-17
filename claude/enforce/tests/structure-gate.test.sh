@@ -2,7 +2,8 @@
 # Covers: hook:structure-gate
 # Verifies structure-gate.sh denies banned/kebab source dirs and allows camelCase + app routes.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/structure-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/structure-gate.sh"
 deny() { printf '%s' "$1" | "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null; }
 allow() { [ -z "$(printf '%s' "$1" | "$HOOK")" ]; }
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user-preferences/index.ts"}}'   # kebab (R-312)

@@ -7,8 +7,13 @@
 #      on PreCompact or UserPromptSubmit (the retired sentinel pair).
 #   4. The sentinel pair is gone: no pre-compact.sh, no sentinel file written.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/post-compact-rules.sh"
-SETTINGS="${CLAUDE_SETTINGS_FILE:-$HOME/.claude/settings.json}"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/post-compact-rules.sh"
+SETTINGS="${CLAUDE_SETTINGS_FILE:-$CLAUDE_HARNESS_ROOT/settings.json}"
+# The sentinel is the one path here that stays on the live home on purpose:
+# it was runtime state the retired hook pair wrote into the install, never a
+# file the checkout carries, so the meaningful assertion is that nothing
+# writes it under the home directory a real session uses.
 SENTINEL="$HOME/.claude/.post-compact-pending"
 
 # 1. Compact source emits the rules.
@@ -46,7 +51,7 @@ for retired in PreCompact UserPromptSubmit; do
 done
 
 # 4. The sentinel pair is gone.
-[ ! -e "$HOME/.claude/hooks/pre-compact.sh" ] || { echo "FAIL: pre-compact.sh still exists"; exit 1; }
+[ ! -e "$CLAUDE_HARNESS_ROOT/hooks/pre-compact.sh" ] || { echo "FAIL: pre-compact.sh still exists"; exit 1; }
 [ ! -e "$SENTINEL" ] || { echo "FAIL: a sentinel file is present; nothing should write it now"; exit 1; }
 
 echo "post-compact-rules.test.sh PASS"

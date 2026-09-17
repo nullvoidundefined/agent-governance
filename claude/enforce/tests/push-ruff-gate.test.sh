@@ -4,7 +4,8 @@
 # AST-tier violation (R-324/R-326/R-329/R-342/R-344 analogs), allows clean
 # diffs, scopes to added lines only, and honors the per-file-ignores.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/push-ruff-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/push-ruff-gate.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main

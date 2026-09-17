@@ -5,9 +5,13 @@
 # control, so this exists to be named as a required status check under branch
 # protection (Settings > Branches > require status checks > "fixtures").
 #
-# The fixture suites resolve paths through $HOME/.claude, because that is where
-# this repo installs. The checkout's claude/ subdirectory is symlinked there
-# rather than copied, so the tests exercise the real tree.
+# The fixture suites resolve the implementation they exercise through
+# claude/enforce/harness-root.sh, which derives the harness root from each
+# fixture's own location, so they test the checkout wherever they are invoked
+# from. The symlink at $HOME/.claude below is still created because a handful
+# of hooks and one deliberate fixture (enforce/tests/hook-latency.test.sh, which
+# times the installed chain) read the install directly, and because it is how
+# this repo is meant to be deployed.
 name: enforce
 
 # push on every branch PLUS pull_request double-billed every PR branch: runs 5

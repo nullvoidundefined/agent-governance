@@ -3,7 +3,8 @@
 # Verifies lint.mjs enforces per-repo import-direction zones from a repo's .enforce.json
 # (R-303): a lower layer importing a higher one is flagged only when .enforce.json declares it.
 set -euo pipefail
-LINT="$HOME/.claude/enforce/lint.mjs"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+LINT="$CLAUDE_HARNESS_ROOT/enforce/lint.mjs"
 REPO=$(mktemp -d); cd "$REPO"
 mkdir -p src/services src/handlers
 printf 'export function handleAuth() {\n  return true;\n}\n' > src/handlers/authHandler.ts

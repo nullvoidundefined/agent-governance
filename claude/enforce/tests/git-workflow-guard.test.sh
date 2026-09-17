@@ -4,7 +4,8 @@
 # merge (R-514), denies a non-squash merge (R-512), and warns on a cross-cutting
 # commit to main (R-511) and a surface-adding commit with no README (R-508).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/git-workflow-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
 payload() { jq -nc --arg c "$1" --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}'; }
 decision() {
   local out

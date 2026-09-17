@@ -4,7 +4,8 @@
 # (R-001 step 5), labels an unverifiable handoff, and never injects dated
 # audit reports as handoffs (2026-07-31 audits: the hook read docs/audits/).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/session-start.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/session-start.sh"
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q
 git config user.email t@t && git config user.name t

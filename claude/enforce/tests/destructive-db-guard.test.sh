@@ -3,7 +3,8 @@
 # Verifies destructive-db-guard.sh tiers (R-101): deny destructive-vs-production,
 # ask destructive-vs-remote and remote writes, pass local and read-only commands.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/destructive-db-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/destructive-db-guard.sh"
 
 decision() {
   OUT=$(jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | "$HOOK")

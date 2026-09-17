@@ -4,7 +4,8 @@
 # test file denies; staged TS or Python test files allow. The tests/ tree and
 # pytest filename conventions (test_*.py, *_test.py) count as test files.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/fix-commit-requires-test.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/fix-commit-requires-test.sh"
 
 payload() { jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
 decision() {

@@ -4,7 +4,8 @@
 # spec passes, and each of the six definition-of-done conditions fails with a
 # line naming what is unmet.
 set -uo pipefail
-CHECK="$HOME/.claude/skills/spec-grounding/scripts/check.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+CHECK="$CLAUDE_HARNESS_ROOT/skills/spec-grounding/scripts/check.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

@@ -19,8 +19,9 @@
 #      to a layer rendered it as both the layer's read verb and a banned
 #      synonym, and nothing objected.
 set -euo pipefail
-E="$HOME/.claude/enforce"
-REFERENCE="$HOME/.claude/rulebook/reference.md"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
+REFERENCE="$CLAUDE_HARNESS_ROOT/rulebook/reference.md"
 
 # 1. Markers present.
 grep -q '<!-- lexicon:begin -->' "$REFERENCE" || { echo "FAIL: reference.md has no lexicon:begin marker"; exit 1; }

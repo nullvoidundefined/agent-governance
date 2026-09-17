@@ -5,7 +5,8 @@
 # refusal stops with its own exit code; a red baseline preserves the worktree
 # and scaffolds nothing; the default branch is detected when it is master.
 set -uo pipefail
-SCAFFOLD="$HOME/.claude/skills/feature-create/scripts/scaffold.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+SCAFFOLD="$CLAUDE_HARNESS_ROOT/skills/feature-create/scripts/scaffold.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 export FEATURE_CREATE_INSTALL_CMD=skip
 export FEATURE_CREATE_TEST_CMD=true

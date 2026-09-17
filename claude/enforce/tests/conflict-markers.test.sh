@@ -4,7 +4,8 @@
 # conflict markers and passes clean stages (R-507). Markers are constructed at
 # runtime so this test file never contains one.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/conflict-markers.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/conflict-markers.sh"
 LEFT=$(printf '<%.0s' 1 2 3 4 5 6 7)
 RIGHT=$(printf '>%.0s' 1 2 3 4 5 6 7)
 
