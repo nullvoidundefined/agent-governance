@@ -2,6 +2,7 @@
 # Verifies frontend convention scope using path strings without creating fixtures.
 # Checks shared core coverage, framework isolation, and that core carries no React rule tokens.
 # A2 covers React state hooks and providers while excluding every Nuxt fixture, including composables.
+# A3 covers Next and Vite fixtures while excluding every Nuxt fixture from both tracks.
 # A5 permits React framework names in dispatch and directory comparisons.
 # Optional Vue and Nuxt tracks are checked together once both files exist.
 # Prints one result per assertion and exits nonzero if any assertion fails.
@@ -127,7 +128,9 @@ check_paths 0 CLAUDE-FRONTEND-REACT.md "${react_tsx_paths[@]}" "${next_paths[0]}
   check_paths 1 CLAUDE-FRONTEND-REACT.md "${nuxt_paths[@]}"
 report_result "$?" A2 'React covers React TSX and Next pages while excluding Nuxt paths'
 
-check_paths 1 CLAUDE-FRONTEND-NEXT.md "${nuxt_paths[@]}" &&
+check_paths 0 CLAUDE-FRONTEND-NEXT.md "${next_paths[@]}" &&
+  check_paths 0 CLAUDE-FRONTEND-VITE.md "${vite_paths[@]}" &&
+  check_paths 1 CLAUDE-FRONTEND-NEXT.md "${nuxt_paths[@]}" &&
   check_paths 1 CLAUDE-FRONTEND-VITE.md "${nuxt_paths[@]}"
 report_result "$?" A3 'Next and Vite exclude every Nuxt path'
 

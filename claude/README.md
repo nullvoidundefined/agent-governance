@@ -72,7 +72,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 ├── PROTOCOL.md                      # The eleven-layer failure-mode catalog.
 ├── CLAUDE.md                        # Global rules loaded at every session start.
 ├── CLAUDE-BACKEND.md                # Read on demand: Express / TS API conventions.
-├── CLAUDE-FRONTEND.md               # Read on demand: shared React client conventions.
+├── CLAUDE-FRONTEND.md               # Read on demand: framework-agnostic frontend core.
+├── CLAUDE-FRONTEND-REACT.md         # Auto-loads on .tsx/.jsx: React component and state conventions.
 ├── CLAUDE-FRONTEND-NEXT.md          # Read on demand: Next.js App Router conventions.
 ├── CLAUDE-FRONTEND-VITE.md          # Read on demand: Vite + TanStack Router conventions.
 ├── CLAUDE-DATABASE.md               # Read on demand: Postgres / SQL conventions.

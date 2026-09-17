@@ -63,11 +63,13 @@ export default function ChatBox({ tripId, onSend }: ChatBoxProps) {  // 3. Compo
     }, []);
 
     return (                                         // 4. JSX
-        <div className={styles.chatBox}>
+        <div className={styles.chatBox} data-test-id="chat-box">
             {/* ... */}
         </div>
     );
 }
+
+ChatBox.displayName = 'ChatBox';                     // 5. displayName (see Rules)
 ```
 
 ### Rules

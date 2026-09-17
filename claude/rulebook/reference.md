@@ -633,7 +633,8 @@ Read on demand, not globally.
 |---|---|
 | `~/.claude/CLAUDE-BACKEND.md` | Express/TypeScript API, BullMQ, handlers, services, repositories, middleware |
 | `~/.claude/CLAUDE-PYTHON.md` | Python/FastAPI API, SQLAlchemy, Alembic, pytest, ruff/black/mypy |
-| `~/.claude/CLAUDE-FRONTEND.md` | Any web-client work: React components, client state, shared frontend structure |
+| `~/.claude/CLAUDE-FRONTEND.md` | Any web-client work: the framework-agnostic core (directory vocabulary, API wrappers, error handling, Prettier, E2E layout) |
+| `~/.claude/CLAUDE-FRONTEND-REACT.md` | React components, hooks, TanStack Query for React, Context, React ESLint rules; auto-loads on `.tsx`, `.jsx`, and `src/state/` |
 | `~/.claude/CLAUDE-FRONTEND-NEXT.md` | Next.js App Router structure, routing, metadata, `NEXT_PUBLIC_*` env vars |
 | `~/.claude/CLAUDE-FRONTEND-VITE.md` | Vite + TanStack Router SPA structure, entry files, `VITE_*` env vars |
 | `~/.claude/CLAUDE-DATABASE.md` | Postgres migrations, SQL queries, schema |
