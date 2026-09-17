@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh new-file-header-reminder flat-directory-reminder spec-glossary-check",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh new-file-header-reminder flat-directory-reminder spec-glossary-check handoff-check",
             "timeout": 60
           }
         ]

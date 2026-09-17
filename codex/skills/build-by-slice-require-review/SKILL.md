@@ -6,7 +6,7 @@ description: Use when running a feature build as user-reviewed slices and PRs, s
 
 # Build by Slice, Require Review
 
-Run the build as a sequence of user-approved slices, each slice as a sequence of reviewable PRs, each PR as a sequence of strict TDD tasks. The human owns the architecture (the spec and the slice plans); the agent executes; comprehension is preserved by review at the gates. This is how a developer reaches roughly 5x velocity with AI without skill atrophy or a codebase that escapes their understanding.
+Run the build as a sequence of user-approved slices, each slice as a sequence of reviewable PRs, each PR as a sequence of strict TDD tasks. The human owns the architecture (the spec and the slice plans); the agent executes; comprehension is preserved by review at the gates.
 
 **Announce at start:** "I'm using the build-by-slice-require-review skill to run this build slice by slice with review gates."
 
@@ -37,7 +37,7 @@ For a hard or risky PR, write a one-paragraph explain-back of what it does and w
 
 ## Slice plan document
 
-Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record.
+Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice under its own `### PR <n>: <title>` heading, each in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record. `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels or the plan has no PR block at all, so Gate 1 never sees a half-described PR.
 
 ## PR description format
 

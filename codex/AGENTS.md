@@ -22,6 +22,7 @@ R-104: Sanitize artifacts before writing them: secrets to `[REDACTED]`, PII to `
 R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn. [hook:mcp-action-guard]
 R-106: Every push of the agent-governance repo (public remote; the source that syncs into `~/.claude`) is publishing: `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
 R-107: Investigate any `core.hooksPath` resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal. [hook:hookspath-drift-check]
+R-108: Never write a credential-shaped literal into any file or command, fixtures and docs included, even a fake one (a `scheme://user:<password>@host` URI with a real-looking value in the placeholder's place, a `password=`/`secret=`/`token=` assignment with a literal value); secret scanners flag the shape, not the validity; build test values at run time from parts or write a placeholder (`<password>`, `${DB_PASSWORD}`, `changeme`). [hook:secret-scan]
 
 ## Conduct and output (R-2xx)
 
@@ -104,7 +105,7 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 ## Lifecycle and memory (R-6xx)
 
 R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work. [manual]
-R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [manual]
+R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [hook:handoff-check]
 R-603: Route learnings to per-project feedback memory (tags: `success`, `correction`, `fired: R-NNN`, `miss: R-NNN; gap:`). [manual]
 R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-identifying or project-specific content stays in the project repo. [manual]
 R-605: Open a tracker ticket (`/ticket-lifecycle`) for every task above the trivial tier at classification, carrying title, tier, assist, model, estimate, repo, and branch; search by branch before creating so one branch never gets two tickets; advance it at each state change with a timestamped transition comment; keep the key on the spec, the user story, the handoff, and every commit's `Refs:` trailer. [manual]

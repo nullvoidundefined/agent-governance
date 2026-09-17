@@ -2,7 +2,7 @@
 
 # Codex port status
 
-47 of 50 hook registrations port, across 6 Codex events.
+48 of 51 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -40,6 +40,7 @@
 | `new-file-header-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `flat-directory-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `spec-glossary-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
+| `handoff-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `clean-code-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `observability-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |

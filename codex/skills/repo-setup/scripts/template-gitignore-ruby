@@ -1,0 +1,19 @@
+# Bundler, caches, and build output
+/.bundle/
+/vendor/bundle/
+/tmp/
+/log/*.log
+/coverage/
+/public/assets/
+
+# Secrets and local configuration (R-102)
+.env
+.env.*
+!.env.example
+/config/master.key
+/config/credentials/*.key
+
+# Tooling state
+.claude/tdd-lock.json
+.claude/task-tier.json
+.DS_Store

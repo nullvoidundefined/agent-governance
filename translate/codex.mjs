@@ -14,7 +14,7 @@ import {
   hookNameFromCommand,
 } from "./parse-sources.mjs";
 import { renderAgentToml, renderAgentSkill, matchesAgentSkillList } from "./render-codex-agents.mjs";
-import { renderSkillCopy } from "./render-codex-skills.mjs";
+import { renderSkillCopy, renderSkillSupportFile } from "./render-codex-skills.mjs";
 import { renderRulesDoc } from "./render-codex-rules.mjs";
 import { renderHooksConfig, renderPortStatus } from "./render-codex-hooks.mjs";
 import { renderGitignore } from "./render-codex-gitignore.mjs";
@@ -81,16 +81,37 @@ function findOrphanFiles(rootDir, planned, portMap) {
     .filter((relPath) => !plannedPaths.has(relPath) && !handAuthoredPaths.has(relPath));
 }
 
-function listSkillFiles(dir) {
+function listSkillDirs(dir) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(dir, entry.name, "SKILL.md"))
+    .map((entry) => path.join(dir, entry.name))
     .sort();
 }
 
 function loadMarkdownSource(file) {
   return { file, ...splitFrontmatter(loadTextFile(file), file) };
+}
+
+// loadSkillSource(skillDir): the skill's SKILL.md as a markdown source plus
+// supportFiles, every other file under the directory (scripts/, reference
+// material) as { rel, content, mode }, rel forward-slash separated relative
+// to the skill directory, content a Buffer (a script is copied byte for
+// byte, never decoded), mode the source's permission bits so an executable
+// stays executable in the port.
+function loadSkillSource(skillDir) {
+  const source = loadMarkdownSource(path.join(skillDir, "SKILL.md"));
+  const supportFiles = listFilesRecursive(skillDir)
+    .filter((rel) => rel !== "SKILL.md")
+    .map((rel) => {
+      const fullPath = path.join(skillDir, rel);
+      return {
+        rel: rel.split(path.sep).join("/"),
+        content: fs.readFileSync(fullPath),
+        mode: fs.statSync(fullPath).mode & 0o777,
+      };
+    });
+  return { ...source, supportFiles };
 }
 
 // Loads and validates every translator input under the given root: settings
@@ -102,7 +123,7 @@ function loadSources(rootDir) {
   const claudeMdText = loadTextFile(path.join(rootDir, "claude/CLAUDE.md"));
   const sessionTypesText = loadTextFile(path.join(rootDir, "claude/rules/session-types.md"));
   const agents = listFilesWithExtension(path.join(rootDir, "claude/agents"), ".md").map(loadMarkdownSource);
-  const skills = listSkillFiles(path.join(rootDir, "claude/skills")).map(loadMarkdownSource);
+  const skills = listSkillDirs(path.join(rootDir, "claude/skills")).map(loadSkillSource);
   return { settingsHooks, portMap, claudeMdText, sessionTypesText, agents, skills };
 }
 
@@ -142,6 +163,14 @@ function renderPlannedTree(sources) {
     }
     planned.push(rendered);
     skillPaths.add(rendered.path);
+    for (const supportFile of skill.supportFiles) {
+      const copied = renderSkillSupportFile(skill, supportFile);
+      if (skillPaths.has(copied.path)) {
+        throw new SourceError(skill.file, `skill support file collides with a planned path at ${copied.path}`);
+      }
+      planned.push(copied);
+      skillPaths.add(copied.path);
+    }
   }
   // The allowlist names every path git must track, so it is rendered once
   // every other path is known, plus the manifest's own path (planned below,
@@ -178,6 +207,10 @@ function writePlannedTree(rootDir, planned, portMap) {
     const fullPath = path.join(rootDir, "codex", file.path);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, file.content);
+    // A support file carries its source mode so a bundled script stays
+    // executable; --check compares content only, so a mode-only drift is
+    // repaired by the next --write rather than reported.
+    if (file.mode !== undefined) fs.chmodSync(fullPath, file.mode);
   }
   const orphans = findOrphanFiles(rootDir, planned, portMap);
   for (const orphan of orphans) fs.unlinkSync(path.join(rootDir, "codex", orphan));

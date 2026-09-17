@@ -1,745 +1,761 @@
 {
-  "rules": [
-    {
-      "id": "R-323",
-      "tier": "ast",
-      "enforcer": "eslint:sort-keys",
-      "severity": "error",
-      "autofix": true
-    },
-    {
-      "id": "R-321",
-      "tier": "ast",
-      "enforcer": "eslint:member-ordering",
-      "severity": "error",
-      "autofix": true
-    },
-    {
-      "id": "R-319",
-      "tier": "ast",
-      "enforcer": "eslint:one-export-per-file",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-326",
-      "tier": "ast",
-      "enforcer": "eslint:no-restricted-syntax",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-327",
-      "tier": "ast",
-      "enforcer": "eslint:no-nested-ternary",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-303",
-      "tier": "ast",
-      "enforcer": "eslint:no-restricted-paths",
-      "severity": "error",
-      "autofix": false,
-      "note": "active only in repos declaring importZones in .enforce.json"
-    },
-    {
-      "id": "R-303",
-      "tier": "ast",
-      "enforcer": "eslint:no-cycle",
-      "severity": "error",
-      "autofix": false,
-      "note": "circular imports, every tree, maxDepth 8; needs the import-x parsers, extensions, and TS-aware resolver settings in eslint.config.mjs"
-    },
-    {
-      "id": "R-324",
-      "tier": "ast",
-      "enforcer": "eslint:no-magic-numbers",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-324",
-      "tier": "ast",
-      "enforcer": "ruff:PLR2004",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog via push-ruff-gate"
-    },
-    {
-      "id": "R-324",
-      "tier": "ast",
-      "enforcer": "golangci:mnd",
-      "severity": "error",
-      "autofix": false,
-      "note": "Go analog via push-golangci-gate"
-    },
-    {
-      "id": "R-326",
-      "tier": "ast",
-      "enforcer": "ruff:E731",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no lambda assigned to a name) via push-ruff-gate"
-    },
-    {
-      "id": "R-327",
-      "tier": "ast",
-      "enforcer": "rubocop:Style/NestedTernaryOperator",
-      "severity": "error",
-      "autofix": false,
-      "note": "Ruby analog via push-rubocop-gate"
-    },
-    {
-      "id": "R-329",
-      "tier": "ast",
-      "enforcer": "eslint:no-explicit-any",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-342",
-      "tier": "ast",
-      "enforcer": "eslint:no-console",
-      "severity": "error",
-      "autofix": false,
-      "note": "scoped to the server trees in eslint.config.mjs"
-    },
-    {
-      "id": "R-342",
-      "tier": "ast",
-      "enforcer": "eslint:structured-log-call",
-      "severity": "error",
-      "autofix": false,
-      "note": "interpolated message or context object after the message"
-    },
-    {
-      "id": "R-343",
-      "tier": "ast",
-      "enforcer": "eslint:analytics-event-name",
-      "severity": "error",
-      "autofix": false,
-      "note": "string literal as the event name at a track/capture call site"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "eslint:no-empty",
-      "severity": "error",
-      "autofix": false,
-      "note": "allowEmptyCatch: false"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "eslint:no-swallowed-catch",
-      "severity": "error",
-      "autofix": false,
-      "note": "unbound catch or a bound error never referenced; server trees plus every src/services and src/clients tree since 2026-09-06"
-    },
-    {
-      "id": "R-342",
-      "tier": "ast",
-      "enforcer": "ruff:T201",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no print in service code) via push-ruff-gate"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "ruff:E722",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no bare except) via push-ruff-gate"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "ruff:S110",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no try-except-pass) via push-ruff-gate"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "ruff:BLE001",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no blind except that does not re-raise) via push-ruff-gate"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "golangci:errcheck",
-      "severity": "error",
-      "autofix": false,
-      "note": "Go analog (every error return handled) via push-golangci-gate"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "golangci:errorlint",
-      "severity": "error",
-      "autofix": false,
-      "note": "Go analog (%w wrapping, errors.Is/As) via push-golangci-gate"
-    },
-    {
-      "id": "R-344",
-      "tier": "ast",
-      "enforcer": "rubocop:Lint/SuppressedException",
-      "severity": "error",
-      "autofix": false,
-      "note": "Ruby analog (no empty rescue) via push-rubocop-gate"
-    },
-    {
-      "id": "R-329",
-      "tier": "ast",
-      "enforcer": "eslint:ban-ts-comment",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-329",
-      "tier": "ast",
-      "enforcer": "ruff:ANN401",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no typing.Any) via push-ruff-gate"
-    },
-    {
-      "id": "R-329",
-      "tier": "ast",
-      "enforcer": "ruff:PGH003",
-      "severity": "error",
-      "autofix": false,
-      "note": "Python analog (no blanket type: ignore / noqa; PGH004 rides the same entry) via push-ruff-gate"
-    },
-    {
-      "id": "R-329",
-      "tier": "ast",
-      "enforcer": "golangci:nolintlint",
-      "severity": "error",
-      "autofix": false,
-      "note": "Go analog (every nolint names a linter and reason) via push-golangci-gate"
-    },
-    {
-      "id": "R-101",
-      "tier": "regex",
-      "enforcer": "hook:destructive-db-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "Bash commands and MCP database tools alike; MCP targets are classified from enforce/mcp-database-targets.txt, unlisted targets ask"
-    },
-    {
-      "id": "R-101",
-      "tier": "regex",
-      "enforcer": "hook:destructive-command-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "gh api DELETE and curl-to-interpreter forms that prefix globs cannot express"
-    },
-    {
-      "id": "R-102",
-      "tier": "regex",
-      "enforcer": "hook:secret-scan",
-      "severity": "error",
-      "autofix": false,
-      "note": "fixture: tests/secret-scan.test.sh (pattern-deny slice)"
-    },
-    {
-      "id": "R-102",
-      "tier": "regex",
-      "enforcer": "hook:redact-output",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-102",
-      "tier": "advisory",
-      "enforcer": "hook:redaction-guard-check",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-102",
-      "tier": "regex",
-      "enforcer": "hook:destructive-command-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "blocks gh auth token and keychain readout before the value reaches stdout"
-    },
-    {
-      "id": "R-103",
-      "tier": "regex",
-      "enforcer": "hook:secret-scan",
-      "severity": "error",
-      "autofix": false,
-      "note": "fixture: tests/credential-mutation-guard.test.sh (mutation slice of secret-scan.sh; no hook of that name exists)"
-    },
-    {
-      "id": "R-106",
-      "tier": "regex",
-      "enforcer": "hook:global-repo-push-guard",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-107",
-      "tier": "advisory",
-      "enforcer": "hook:hookspath-drift-check",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-107",
-      "tier": "regex",
-      "enforcer": "hook:destructive-command-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "blocks core.hooksPath writes; the drift check only reports after the fact"
-    },
-    {
-      "id": "R-203",
-      "tier": "advisory",
-      "enforcer": "hook:hook-integrity-check",
-      "severity": "warn",
-      "autofix": false,
-      "note": "hash manifest over hooks/, the two fixture suites, and enforce configs; regenerate with --update. hooks/tests/hook-integrity-check.test.sh covers the guard behaviour (drift, absent manifest, --update floors); enforce/tests/hook-hashes-closure.test.sh covers the committed manifest being closed in both directions, which is what CI fails on"
-    },
-    {
-      "id": "R-203",
-      "tier": "regex",
-      "enforcer": "hook:destructive-command-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "blocks hooks-directory tampering and gh alias rule evasion"
-    },
-    {
-      "id": "R-207",
-      "tier": "regex",
-      "enforcer": "hook:no-em-dash",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-328",
-      "tier": "regex",
-      "enforcer": "hook:migration-defaults-guard",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-403",
-      "tier": "regex",
-      "enforcer": "hook:fix-commit-requires-test",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-105",
-      "tier": "regex",
-      "enforcer": "hook:mcp-action-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt"
-    },
-    {
-      "id": "R-401",
-      "tier": "regex",
-      "enforcer": "hook:content-gate",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies writing a skipped or exclusive test (items 8 and 9)"
-    },
-    {
-      "id": "R-401",
-      "tier": "ast",
-      "enforcer": "eslint:no-self-mock",
-      "severity": "error",
-      "autofix": false,
-      "note": "items 1 and 5 in test trees: a mock of the module the test is named for, and a repository test mocking the pool"
-    },
-    {
-      "id": "R-401",
-      "tier": "ast",
-      "enforcer": "eslint:behavior-assertion-required",
-      "severity": "error",
-      "autofix": false,
-      "note": "item 3 in test trees: a test whose only expect() matchers are mock-call matchers; items 2, 4, 6, 7 stay with the slice critic and the judge"
-    },
-    {
-      "id": "R-405",
-      "tier": "regex",
-      "enforcer": "hook:content-gate",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies TLS, CORS, CSP, CSRF, and bcrypt-cost weakening outside test trees"
-    },
-    {
-      "id": "R-302",
-      "tier": "regex",
-      "enforcer": "hook:content-gate",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies a relative import whose ../ chain resolves above the git toplevel"
-    },
-    {
-      "id": "R-507",
-      "tier": "regex",
-      "enforcer": "hook:conflict-markers",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-514",
-      "tier": "regex",
-      "enforcer": "hook:git-workflow-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "asks before gh pr merge and before a push whose target branch resolves to main/master; ~/.claude exempt"
-    },
-    {
-      "id": "R-512",
-      "tier": "regex",
-      "enforcer": "hook:git-workflow-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies gh pr merge --merge and --rebase"
-    },
-    {
-      "id": "R-511",
-      "tier": "advisory",
-      "enforcer": "hook:git-workflow-guard",
-      "severity": "warn",
-      "autofix": false,
-      "note": "commit-time warning at 5+ files across 3+ directories on main"
-    },
-    {
-      "id": "R-508",
-      "tier": "advisory",
-      "enforcer": "hook:git-workflow-guard",
-      "severity": "warn",
-      "autofix": false,
-      "note": "commit-time warning when a commit adds a route, handler, page, feature slice, or setup file and stages no README"
-    },
-    {
-      "id": "R-501",
-      "tier": "advisory",
-      "enforcer": "hook:parallel-session-check",
-      "severity": "warn",
-      "autofix": false,
-      "note": "SessionStart warning when another live session holds the same working tree"
-    },
-    {
-      "id": "R-516",
-      "tier": "advisory",
-      "enforcer": "hook:enforcement-guard-check",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-516",
-      "tier": "regex",
-      "enforcer": "hook:settings-change-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "ConfigChange: refuses a user settings.json that drops a manifest-required hook or does not parse"
-    },
-    {
-      "id": "R-312",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-306",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-304",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies a new loose non-entry .ts module at an Express src/ root; scoped by the nearest package.json express dependency"
-    },
-    {
-      "id": "R-305",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies a new .tsx written straight into components/ instead of components/<Name>/<Name>.tsx; scoped by the nearest package.json react dependency"
-    },
-    {
-      "id": "R-311",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-313",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-314",
-      "tier": "regex",
-      "enforcer": "hook:structure-gate",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-309",
-      "tier": "advisory",
-      "enforcer": "hook:single-file-folder-reminder",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-310",
-      "tier": "advisory",
-      "enforcer": "hook:flat-directory-reminder",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-320",
-      "tier": "advisory",
-      "enforcer": "hook:new-file-header-reminder",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-320",
-      "tier": "ast",
-      "enforcer": "eslint:file-header-comment",
-      "severity": "error",
-      "autofix": false,
-      "note": "active only in repos setting fileHeaders:true in .enforce.json; adoption cost is repo-wide"
-    },
-    {
-      "id": "R-325",
-      "tier": "ast",
-      "enforcer": "eslint:destructure-object-reads",
-      "severity": "error",
-      "autofix": false,
-      "note": "the 2+ property read; \"never destructure a method\" is a type question and stays with the judge"
-    },
-    {
-      "id": "R-322",
-      "tier": "advisory",
-      "enforcer": "hook:clean-code-reminder",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-341",
-      "tier": "advisory",
-      "enforcer": "hook:observability-reminder",
-      "severity": "warn",
-      "autofix": false,
-      "note": "entry file registers middleware with no request-ID middleware"
-    },
-    {
-      "id": "R-345",
-      "tier": "advisory",
-      "enforcer": "hook:observability-reminder",
-      "severity": "warn",
-      "autofix": false,
-      "note": "entry file registers routes with no /health or /health/ready"
-    },
-    {
-      "id": "R-346",
-      "tier": "advisory",
-      "enforcer": "hook:observability-reminder",
-      "severity": "warn",
-      "autofix": false,
-      "note": "clients/ module makes an outbound call with no timeout"
-    },
-    {
-      "id": "R-351",
-      "tier": "advisory",
-      "enforcer": "hook:dockerfile-reminder",
-      "severity": "warn",
-      "autofix": false,
-      "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM"
-    },
-    {
-      "id": "R-908",
-      "tier": "advisory",
-      "enforcer": "hook:codex-billing-guard",
-      "severity": "warn",
-      "autofix": false,
-      "note": "codex CLI invocation with an OPENAI_API_KEY in scope, a --with-api-key/--with-access-token relogin, or a live login status that is not ChatGPT"
-    },
-    {
-      "id": "R-315",
-      "tier": "llm-judge",
-      "enforcer": "hook:llm-rule-judge",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-316",
-      "tier": "ast",
-      "enforcer": "eslint:naming-lexicon",
-      "severity": "error",
-      "autofix": false,
-      "note": "verb+noun against enforce/lexicon.json; active only in repos declaring a naming key in .enforce.json"
-    },
-    {
-      "id": "R-317",
-      "tier": "ast",
-      "enforcer": "eslint:naming-lexicon",
-      "severity": "error",
-      "autofix": false,
-      "note": "the decidable half only (plural collections, bare adjectives); same opt-in as R-316"
-    },
-    {
-      "id": "R-325",
-      "tier": "llm-judge",
-      "enforcer": "hook:llm-rule-judge",
-      "severity": "warn",
-      "autofix": false,
-      "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
-    },
-    {
-      "id": "R-316",
-      "tier": "llm-judge",
-      "enforcer": "hook:llm-rule-judge",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-317",
-      "tier": "llm-judge",
-      "enforcer": "hook:llm-rule-judge",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-505",
-      "tier": "regex",
-      "enforcer": "hook:commit-message-guard",
-      "severity": "error",
-      "autofix": false
-    },
-    {
-      "id": "R-504",
-      "tier": "advisory",
-      "enforcer": "hook:task-commit-reminder",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-513",
-      "tier": "advisory",
-      "enforcer": "hook:constant-change-guard",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-801",
-      "tier": "advisory",
-      "enforcer": "hook:audit-signal-check",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-903",
-      "tier": "advisory",
-      "enforcer": "hook:model-switch-guard",
-      "severity": "warn",
-      "autofix": false,
-      "note": "PreModelSwitch systemMessage on any switch up the price ladder; silent on lateral, downward, or unrankable model ids"
-    },
-    {
-      "id": "R-904",
-      "tier": "advisory",
-      "enforcer": "hook:audit-signal-check",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-506",
-      "tier": "advisory",
-      "enforcer": "hook:commit-message-guard",
-      "severity": "warn",
-      "autofix": false
-    },
-    {
-      "id": "R-330",
-      "tier": "advisory",
-      "enforcer": "hook:spec-glossary-check",
-      "severity": "warn",
-      "autofix": false,
-      "note": "design doc written without a Domain vocabulary glossary, an Acceptance criteria section, or a Non-goals section; template in prompts/spec-template.md"
-    },
-    {
-      "id": "R-331",
-      "tier": "regex",
-      "enforcer": "hook:dependency-add-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
-    },
-    {
-      "id": "R-509",
-      "tier": "regex",
-      "enforcer": "hook:verification-gate",
-      "severity": "error",
-      "autofix": false,
-      "note": "Stop and SubagentStop gate; runs the project's discovered test/typecheck commands when the tree is dirty, fails open when none is discoverable, skips non-writing subagent roles"
-    },
-    {
-      "id": "R-410",
-      "tier": "regex",
-      "enforcer": "hook:protected-path-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered via redirections, tee, and mutating-verb operands; runner configs and package.json test scripts ask"
-    },
-    {
-      "id": "R-411",
-      "tier": "regex",
-      "enforcer": "hook:protected-path-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "role boundaries by the agent_type hook field against enforce/role-policy.json; no restriction when the field is absent or the role is unlisted"
-    },
-    {
-      "id": "R-412",
-      "tier": "regex",
-      "enforcer": "hook:protected-path-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "phase from .claude/tdd-lock.json written by enforce/tdd.sh: open denies production writes, red and green deny test writes; opening the slice is the manual step"
-    },
-    {
-      "id": "R-705",
-      "tier": "regex",
-      "enforcer": "hook:protected-path-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "the dispatch half of R-412: everything after tdd.sh open is the same lock and guard; opening the slice and committing between RED and GREEN stay manual"
-    },
-    {
-      "id": "R-907",
-      "tier": "regex",
-      "enforcer": "hook:codex-test-author-guard",
-      "severity": "error",
-      "autofix": false,
-      "note": "asks when Claude Write/Edit targets a test file; codex authors tests as a separate process and never trips it; CODEX_TEST_GUARD=off silences"
-    }
-  ]
+    "rules": [
+        {
+            "id": "R-602",
+            "tier": "advisory",
+            "enforcer": "hook:handoff-check",
+            "severity": "warning",
+            "autofix": false,
+            "note": "PostToolUse Write on docs/session-handoff/session-handoff.md: size cap, section order, SHA resolution; content stays manual"
+        },
+        {
+            "id": "R-323",
+            "tier": "ast",
+            "enforcer": "eslint:sort-keys",
+            "severity": "error",
+            "autofix": true
+        },
+        {
+            "id": "R-321",
+            "tier": "ast",
+            "enforcer": "eslint:member-ordering",
+            "severity": "error",
+            "autofix": true
+        },
+        {
+            "id": "R-319",
+            "tier": "ast",
+            "enforcer": "eslint:one-export-per-file",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-326",
+            "tier": "ast",
+            "enforcer": "eslint:no-restricted-syntax",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-327",
+            "tier": "ast",
+            "enforcer": "eslint:no-nested-ternary",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-303",
+            "tier": "ast",
+            "enforcer": "eslint:no-restricted-paths",
+            "severity": "error",
+            "autofix": false,
+            "note": "active only in repos declaring importZones in .enforce.json"
+        },
+        {
+            "id": "R-303",
+            "tier": "ast",
+            "enforcer": "eslint:no-cycle",
+            "severity": "error",
+            "autofix": false,
+            "note": "circular imports, every tree, maxDepth 8; needs the import-x parsers, extensions, and TS-aware resolver settings in eslint.config.mjs"
+        },
+        {
+            "id": "R-324",
+            "tier": "ast",
+            "enforcer": "eslint:no-magic-numbers",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-324",
+            "tier": "ast",
+            "enforcer": "ruff:PLR2004",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog via push-ruff-gate"
+        },
+        {
+            "id": "R-324",
+            "tier": "ast",
+            "enforcer": "golangci:mnd",
+            "severity": "error",
+            "autofix": false,
+            "note": "Go analog via push-golangci-gate"
+        },
+        {
+            "id": "R-326",
+            "tier": "ast",
+            "enforcer": "ruff:E731",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no lambda assigned to a name) via push-ruff-gate"
+        },
+        {
+            "id": "R-327",
+            "tier": "ast",
+            "enforcer": "rubocop:Style/NestedTernaryOperator",
+            "severity": "error",
+            "autofix": false,
+            "note": "Ruby analog via push-rubocop-gate"
+        },
+        {
+            "id": "R-329",
+            "tier": "ast",
+            "enforcer": "eslint:no-explicit-any",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-342",
+            "tier": "ast",
+            "enforcer": "eslint:no-console",
+            "severity": "error",
+            "autofix": false,
+            "note": "scoped to the server trees in eslint.config.mjs"
+        },
+        {
+            "id": "R-342",
+            "tier": "ast",
+            "enforcer": "eslint:structured-log-call",
+            "severity": "error",
+            "autofix": false,
+            "note": "interpolated message or context object after the message"
+        },
+        {
+            "id": "R-343",
+            "tier": "ast",
+            "enforcer": "eslint:analytics-event-name",
+            "severity": "error",
+            "autofix": false,
+            "note": "string literal as the event name at a track/capture call site"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "eslint:no-empty",
+            "severity": "error",
+            "autofix": false,
+            "note": "allowEmptyCatch: false"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "eslint:no-swallowed-catch",
+            "severity": "error",
+            "autofix": false,
+            "note": "unbound catch or a bound error never referenced; server trees plus every src/services and src/clients tree since 2026-09-06"
+        },
+        {
+            "id": "R-342",
+            "tier": "ast",
+            "enforcer": "ruff:T201",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no print in service code) via push-ruff-gate"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "ruff:E722",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no bare except) via push-ruff-gate"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "ruff:S110",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no try-except-pass) via push-ruff-gate"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "ruff:BLE001",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no blind except that does not re-raise) via push-ruff-gate"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "golangci:errcheck",
+            "severity": "error",
+            "autofix": false,
+            "note": "Go analog (every error return handled) via push-golangci-gate"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "golangci:errorlint",
+            "severity": "error",
+            "autofix": false,
+            "note": "Go analog (%w wrapping, errors.Is/As) via push-golangci-gate"
+        },
+        {
+            "id": "R-344",
+            "tier": "ast",
+            "enforcer": "rubocop:Lint/SuppressedException",
+            "severity": "error",
+            "autofix": false,
+            "note": "Ruby analog (no empty rescue) via push-rubocop-gate"
+        },
+        {
+            "id": "R-329",
+            "tier": "ast",
+            "enforcer": "eslint:ban-ts-comment",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-329",
+            "tier": "ast",
+            "enforcer": "ruff:ANN401",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no typing.Any) via push-ruff-gate"
+        },
+        {
+            "id": "R-329",
+            "tier": "ast",
+            "enforcer": "ruff:PGH003",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (no blanket type: ignore / noqa; PGH004 rides the same entry) via push-ruff-gate"
+        },
+        {
+            "id": "R-329",
+            "tier": "ast",
+            "enforcer": "golangci:nolintlint",
+            "severity": "error",
+            "autofix": false,
+            "note": "Go analog (every nolint names a linter and reason) via push-golangci-gate"
+        },
+        {
+            "id": "R-101",
+            "tier": "regex",
+            "enforcer": "hook:destructive-db-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "Bash commands and MCP database tools alike; MCP targets are classified from enforce/mcp-database-targets.txt, unlisted targets ask"
+        },
+        {
+            "id": "R-101",
+            "tier": "regex",
+            "enforcer": "hook:destructive-command-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "gh api DELETE and curl-to-interpreter forms that prefix globs cannot express"
+        },
+        {
+            "id": "R-102",
+            "tier": "regex",
+            "enforcer": "hook:secret-scan",
+            "severity": "error",
+            "autofix": false,
+            "note": "fixture: tests/secret-scan.test.sh (pattern-deny slice)"
+        },
+        {
+            "id": "R-102",
+            "tier": "regex",
+            "enforcer": "hook:redact-output",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-102",
+            "tier": "advisory",
+            "enforcer": "hook:redaction-guard-check",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-102",
+            "tier": "regex",
+            "enforcer": "hook:destructive-command-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "blocks gh auth token and keychain readout before the value reaches stdout"
+        },
+        {
+            "id": "R-103",
+            "tier": "regex",
+            "enforcer": "hook:secret-scan",
+            "severity": "error",
+            "autofix": false,
+            "note": "fixture: tests/credential-mutation-guard.test.sh (mutation slice of secret-scan.sh; no hook of that name exists)"
+        },
+        {
+            "id": "R-108",
+            "tier": "regex",
+            "enforcer": "hook:secret-scan",
+            "severity": "error",
+            "autofix": false,
+            "note": "credential-shaped literals (URI userinfo password, password/secret/token assignment with a literal) in Bash argv, Write content, or Edit new_string; placeholder shapes pass; fixture: tests/secret-scan.test.sh; tree closure (every tracked file through the hook): tests/credential-shape-scan.test.sh"
+        },
+        {
+            "id": "R-106",
+            "tier": "regex",
+            "enforcer": "hook:global-repo-push-guard",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-107",
+            "tier": "advisory",
+            "enforcer": "hook:hookspath-drift-check",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-107",
+            "tier": "regex",
+            "enforcer": "hook:destructive-command-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "blocks core.hooksPath writes; the drift check only reports after the fact"
+        },
+        {
+            "id": "R-203",
+            "tier": "advisory",
+            "enforcer": "hook:hook-integrity-check",
+            "severity": "warn",
+            "autofix": false,
+            "note": "hash manifest over hooks/, the two fixture suites, and enforce configs; regenerate with --update. hooks/tests/hook-integrity-check.test.sh covers the guard behaviour (drift, absent manifest, --update floors); enforce/tests/hook-hashes-closure.test.sh covers the committed manifest being closed in both directions, which is what CI fails on"
+        },
+        {
+            "id": "R-203",
+            "tier": "regex",
+            "enforcer": "hook:destructive-command-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "blocks hooks-directory tampering and gh alias rule evasion"
+        },
+        {
+            "id": "R-207",
+            "tier": "regex",
+            "enforcer": "hook:no-em-dash",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-328",
+            "tier": "regex",
+            "enforcer": "hook:migration-defaults-guard",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-403",
+            "tier": "regex",
+            "enforcer": "hook:fix-commit-requires-test",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-105",
+            "tier": "regex",
+            "enforcer": "hook:mcp-action-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt"
+        },
+        {
+            "id": "R-401",
+            "tier": "regex",
+            "enforcer": "hook:content-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies writing a skipped or exclusive test (items 8 and 9)"
+        },
+        {
+            "id": "R-401",
+            "tier": "ast",
+            "enforcer": "eslint:no-self-mock",
+            "severity": "error",
+            "autofix": false,
+            "note": "items 1 and 5 in test trees: a mock of the module the test is named for, and a repository test mocking the pool"
+        },
+        {
+            "id": "R-401",
+            "tier": "ast",
+            "enforcer": "eslint:behavior-assertion-required",
+            "severity": "error",
+            "autofix": false,
+            "note": "item 3 in test trees: a test whose only expect() matchers are mock-call matchers; items 2, 4, 6, 7 stay with the slice critic and the judge"
+        },
+        {
+            "id": "R-405",
+            "tier": "regex",
+            "enforcer": "hook:content-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies TLS, CORS, CSP, CSRF, and bcrypt-cost weakening outside test trees"
+        },
+        {
+            "id": "R-302",
+            "tier": "regex",
+            "enforcer": "hook:content-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies a relative import whose ../ chain resolves above the git toplevel"
+        },
+        {
+            "id": "R-507",
+            "tier": "regex",
+            "enforcer": "hook:conflict-markers",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-514",
+            "tier": "regex",
+            "enforcer": "hook:git-workflow-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "asks before gh pr merge and before a push whose target branch resolves to main/master; ~/.claude exempt"
+        },
+        {
+            "id": "R-512",
+            "tier": "regex",
+            "enforcer": "hook:git-workflow-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies gh pr merge --merge and --rebase"
+        },
+        {
+            "id": "R-511",
+            "tier": "advisory",
+            "enforcer": "hook:git-workflow-guard",
+            "severity": "warn",
+            "autofix": false,
+            "note": "commit-time warning at 5+ files across 3+ directories on main"
+        },
+        {
+            "id": "R-508",
+            "tier": "advisory",
+            "enforcer": "hook:git-workflow-guard",
+            "severity": "warn",
+            "autofix": false,
+            "note": "commit-time warning when a commit adds a route, handler, page, feature slice, or setup file and stages no README"
+        },
+        {
+            "id": "R-501",
+            "tier": "advisory",
+            "enforcer": "hook:parallel-session-check",
+            "severity": "warn",
+            "autofix": false,
+            "note": "SessionStart warning when another live session holds the same working tree"
+        },
+        {
+            "id": "R-516",
+            "tier": "advisory",
+            "enforcer": "hook:enforcement-guard-check",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-516",
+            "tier": "regex",
+            "enforcer": "hook:settings-change-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "ConfigChange: refuses a user settings.json that drops a manifest-required hook or does not parse"
+        },
+        {
+            "id": "R-312",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-306",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-304",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies a new loose non-entry .ts module at an Express src/ root; scoped by the nearest package.json express dependency"
+        },
+        {
+            "id": "R-305",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies a new .tsx written straight into components/ instead of components/<Name>/<Name>.tsx; scoped by the nearest package.json react dependency"
+        },
+        {
+            "id": "R-311",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-313",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-314",
+            "tier": "regex",
+            "enforcer": "hook:structure-gate",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-309",
+            "tier": "advisory",
+            "enforcer": "hook:single-file-folder-reminder",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-310",
+            "tier": "advisory",
+            "enforcer": "hook:flat-directory-reminder",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-320",
+            "tier": "advisory",
+            "enforcer": "hook:new-file-header-reminder",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-320",
+            "tier": "ast",
+            "enforcer": "eslint:file-header-comment",
+            "severity": "error",
+            "autofix": false,
+            "note": "active only in repos setting fileHeaders:true in .enforce.json; adoption cost is repo-wide"
+        },
+        {
+            "id": "R-325",
+            "tier": "ast",
+            "enforcer": "eslint:destructure-object-reads",
+            "severity": "error",
+            "autofix": false,
+            "note": "the 2+ property read; \"never destructure a method\" is a type question and stays with the judge"
+        },
+        {
+            "id": "R-322",
+            "tier": "advisory",
+            "enforcer": "hook:clean-code-reminder",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-341",
+            "tier": "advisory",
+            "enforcer": "hook:observability-reminder",
+            "severity": "warn",
+            "autofix": false,
+            "note": "entry file registers middleware with no request-ID middleware"
+        },
+        {
+            "id": "R-345",
+            "tier": "advisory",
+            "enforcer": "hook:observability-reminder",
+            "severity": "warn",
+            "autofix": false,
+            "note": "entry file registers routes with no /health or /health/ready"
+        },
+        {
+            "id": "R-346",
+            "tier": "advisory",
+            "enforcer": "hook:observability-reminder",
+            "severity": "warn",
+            "autofix": false,
+            "note": "clients/ module makes an outbound call with no timeout"
+        },
+        {
+            "id": "R-351",
+            "tier": "advisory",
+            "enforcer": "hook:dockerfile-reminder",
+            "severity": "warn",
+            "autofix": false,
+            "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM"
+        },
+        {
+            "id": "R-908",
+            "tier": "advisory",
+            "enforcer": "hook:codex-billing-guard",
+            "severity": "warn",
+            "autofix": false,
+            "note": "codex CLI invocation with an OPENAI_API_KEY in scope, a --with-api-key/--with-access-token relogin, or a live login status that is not ChatGPT"
+        },
+        {
+            "id": "R-315",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-316",
+            "tier": "ast",
+            "enforcer": "eslint:naming-lexicon",
+            "severity": "error",
+            "autofix": false,
+            "note": "verb+noun against enforce/lexicon.json; active only in repos declaring a naming key in .enforce.json"
+        },
+        {
+            "id": "R-317",
+            "tier": "ast",
+            "enforcer": "eslint:naming-lexicon",
+            "severity": "error",
+            "autofix": false,
+            "note": "the decidable half only (plural collections, bare adjectives); same opt-in as R-316"
+        },
+        {
+            "id": "R-316",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-317",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-325",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
+        },
+        {
+            "id": "R-505",
+            "tier": "regex",
+            "enforcer": "hook:commit-message-guard",
+            "severity": "error",
+            "autofix": false
+        },
+        {
+            "id": "R-504",
+            "tier": "advisory",
+            "enforcer": "hook:task-commit-reminder",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-513",
+            "tier": "advisory",
+            "enforcer": "hook:constant-change-guard",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-801",
+            "tier": "advisory",
+            "enforcer": "hook:audit-signal-check",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-903",
+            "tier": "advisory",
+            "enforcer": "hook:model-switch-guard",
+            "severity": "warn",
+            "autofix": false,
+            "note": "PreModelSwitch systemMessage on any switch up the price ladder; silent on lateral, downward, or unrankable model ids"
+        },
+        {
+            "id": "R-904",
+            "tier": "advisory",
+            "enforcer": "hook:audit-signal-check",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-506",
+            "tier": "advisory",
+            "enforcer": "hook:commit-message-guard",
+            "severity": "warn",
+            "autofix": false
+        },
+        {
+            "id": "R-330",
+            "tier": "advisory",
+            "enforcer": "hook:spec-glossary-check",
+            "severity": "warn",
+            "autofix": false,
+            "note": "design doc written without a Domain vocabulary glossary, an Acceptance criteria section, or a Non-goals section; template in prompts/spec-template.md"
+        },
+        {
+            "id": "R-331",
+            "tier": "regex",
+            "enforcer": "hook:dependency-add-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
+        },
+        {
+            "id": "R-509",
+            "tier": "regex",
+            "enforcer": "hook:verification-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Stop and SubagentStop gate; runs the project's discovered test/typecheck commands when the tree is dirty, fails open when none is discoverable, skips non-writing subagent roles"
+        },
+        {
+            "id": "R-410",
+            "tier": "regex",
+            "enforcer": "hook:protected-path-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered via redirections, tee, and mutating-verb operands; runner configs and package.json test scripts ask"
+        },
+        {
+            "id": "R-411",
+            "tier": "regex",
+            "enforcer": "hook:protected-path-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "role boundaries by the agent_type hook field against enforce/role-policy.json; no restriction when the field is absent or the role is unlisted"
+        },
+        {
+            "id": "R-412",
+            "tier": "regex",
+            "enforcer": "hook:protected-path-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "phase from .claude/tdd-lock.json written by enforce/tdd.sh: open denies production writes, red and green deny test writes; opening the slice is the manual step"
+        },
+        {
+            "id": "R-705",
+            "tier": "regex",
+            "enforcer": "hook:protected-path-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "the dispatch half of R-412: everything after tdd.sh open is the same lock and guard; opening the slice and committing between RED and GREEN stay manual"
+        },
+        {
+            "id": "R-907",
+            "tier": "regex",
+            "enforcer": "hook:codex-test-author-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "asks when Claude Write/Edit targets a test file; codex authors tests as a separate process and never trips it; CODEX_TEST_GUARD=off silences"
+        }
+    ]
 }
