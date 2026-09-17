@@ -85,11 +85,13 @@
 !/skills/repo-setup/scripts/template-ci-node.yml
 !/skills/repo-setup/scripts/template-ci-python.yml
 !/skills/repo-setup/scripts/template-ci-ruby.yml
+!/skills/repo-setup/scripts/template-claude-settings.json
 !/skills/repo-setup/scripts/template-dependabot.yml
 !/skills/repo-setup/scripts/template-gitignore-go
 !/skills/repo-setup/scripts/template-gitignore-node
 !/skills/repo-setup/scripts/template-gitignore-python
 !/skills/repo-setup/scripts/template-gitignore-ruby
+!/skills/repo-setup/scripts/template-harness-bootstrap.sh
 !/skills/repo-setup/scripts/template-pull-request.md
 !/skills/resolve-user-feedback/
 !/skills/resolve-user-feedback/SKILL.md

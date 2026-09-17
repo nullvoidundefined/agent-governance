@@ -26,12 +26,21 @@
 #                 plan does not allow it)
 #   greptile      the Greptile GitHub App is installed for the owner
 #                 (cannot be installed by API; prints the install link)
+#   harness       .claude/hooks/harness-bootstrap.sh registered at SessionStart
+#                 in .claude/settings.json (merged with jq when the file
+#                 exists): in a remote session it clones the agent-governance
+#                 repository and syncs ~/.claude, so the session runs under
+#                 the harness (R-003); the repository URL comes from
+#                 --harness-repo or the origin of the ~/.claude/.sync-source
+#                 checkout
 #
 # Usage: setup.sh <owner/repo> [--check] [--stack node|python|go|ruby]
 #                 [--branches main,staging] [--required-reviews N]
 #                 [--ci-context <check name>]   (default ci; the name of the
 #                 status check protect-merge requires, for a repository whose
 #                 workflow already exists under another job name)
+#                 [--harness-repo <git url>]    (the agent-governance clone
+#                 URL for the bootstrap hook)
 # Run from the repository's checkout (local files are written there).
 # REPO_SETUP_GH_CMD overrides the gh binary (fixtures stub it).
 # Exit: 0 baseline met (or applied); 1 with --check when any item is missing;
@@ -40,7 +49,7 @@ set -uo pipefail
 
 GH="${REPO_SETUP_GH_CMD:-gh}"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"
+REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK=1; shift ;;
@@ -48,6 +57,7 @@ while [ $# -gt 0 ]; do
     --branches) BRANCHES="${2:-}"; shift 2 ;;
     --required-reviews) REVIEWS="${2:-0}"; shift 2 ;;
     --ci-context) CI_CONTEXT="${2:-ci}"; shift 2 ;;
+    --harness-repo) HARNESS_REPO="${2:-}"; shift 2 ;;
     --*) echo "repo-setup: unknown option $1" >&2; exit 2 ;;
     *) REPO="$1"; shift ;;
   esac
@@ -103,6 +113,46 @@ fi
 write_if_absent .github/dependabot.yml template-dependabot.yml "s/__ECOSYSTEM__/$ECOSYSTEM/" dependabot
 write_if_absent .github/pull_request_template.md template-pull-request.md "" pr-template
 write_if_absent .gitignore "template-gitignore-$STACK" "" gitignore
+
+# --- harness bootstrap (R-003) ------------------------------------------------
+# Every session runs under the synced harness. A cloud container starts with
+# no ~/.claude, so the repository itself carries a SessionStart hook that
+# clones the agent-governance repository and syncs it; the hook is written
+# from the template with the repository URL substituted, and the settings
+# entry is merged with jq so an existing .claude/settings.json keeps its
+# other hooks.
+if [ -z "$HARNESS_REPO" ] && [ -f "$HOME/.claude/.sync-source" ]; then
+  HARNESS_REPO=$(git -C "$(cat "$HOME/.claude/.sync-source")" remote get-url origin 2>/dev/null || true)
+fi
+HAS_BOOTSTRAP=0
+if [ -f .claude/settings.json ] && jq -e '[.hooks.SessionStart[]?.hooks[]?.command // "" | select(test("harness-bootstrap\\.sh"))] | length > 0' .claude/settings.json >/dev/null 2>&1 && [ -f .claude/hooks/harness-bootstrap.sh ]; then
+  HAS_BOOTSTRAP=1
+fi
+if [ "$HAS_BOOTSTRAP" -eq 1 ]; then
+  report harness OK ".claude/hooks/harness-bootstrap.sh registered at SessionStart"
+elif [ -z "$HARNESS_REPO" ]; then
+  report harness MISSING "no agent-governance repository URL: pass --harness-repo <url> (or sync ~/.claude first so .sync-source names the checkout)"
+elif apply; then
+  mkdir -p .claude/hooks
+  if [ ! -f .claude/hooks/harness-bootstrap.sh ]; then
+    sed -e "s#__HARNESS_REPO__#$HARNESS_REPO#" "$SCRIPT_DIR/template-harness-bootstrap.sh" > .claude/hooks/harness-bootstrap.sh
+    chmod +x .claude/hooks/harness-bootstrap.sh
+  fi
+  entry=$(jq -c '.hooks.SessionStart[0]' "$SCRIPT_DIR/template-claude-settings.json")
+  if [ -f .claude/settings.json ]; then
+    tmp=$(mktemp)
+    if jq --argjson e "$entry" '.hooks //= {} | .hooks.SessionStart = ((.hooks.SessionStart // []) + [$e])' .claude/settings.json > "$tmp" 2>/dev/null; then
+      mv "$tmp" .claude/settings.json
+    else
+      rm -f "$tmp"; report harness MISSING ".claude/settings.json is not valid JSON; fix it, then re-run"; HAS_BOOTSTRAP=2
+    fi
+  else
+    cp "$SCRIPT_DIR/template-claude-settings.json" .claude/settings.json
+  fi
+  [ "$HAS_BOOTSTRAP" -eq 2 ] || report harness OK "wrote .claude/hooks/harness-bootstrap.sh (clones $HARNESS_REPO in a remote session) and registered it at SessionStart"
+else
+  report harness MISSING "no SessionStart hook runs .claude/hooks/harness-bootstrap.sh (R-003)"
+fi
 
 # --- branches ----------------------------------------------------------------
 DEFAULT_BRANCH=$("$GH" api "repos/$REPO" --jq .default_branch 2>/dev/null || echo main)

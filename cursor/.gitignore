@@ -101,6 +101,8 @@
 !/skills/repo-setup/scripts/template-gitignore-python
 !/skills/repo-setup/scripts/template-gitignore-ruby
 !/skills/repo-setup/scripts/template-pull-request.md
+!/skills/repo-setup/scripts/template-claude-settings.json
+!/skills/repo-setup/scripts/template-harness-bootstrap.sh
 !/skills/resolve-user-feedback/
 !/skills/resolve-user-feedback/SKILL.md
 !/skills/resolve-user-feedback/scripts/

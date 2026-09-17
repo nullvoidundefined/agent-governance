@@ -58,18 +58,22 @@ git -C "$REPO" add -A; git -C "$REPO" commit -qm init
 # 1. --check on a bare repository: everything missing, exit 1, nothing written.
 OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --check 2>&1); ST=$?
 check "check exits 1 when items are missing" test "$ST" -eq 1
-for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan greptile; do
+for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan greptile harness; do
   check "check reports $item MISSING" row "$item" MISSING
 done
 check "check writes no files" test ! -e "$REPO/.github"
 check "check posts nothing" bash -c "! grep -q -- '-X POST' '$STUB_LOG'"
 
-# 2. Apply: files, branch, rulesets, policy, alerts, scanning; greptile remains.
-OUT=$(cd "$REPO" && bash "$SETUP" acme/widget 2>&1); ST=$?
+# 2. Apply: files, branch, rulesets, policy, alerts, scanning, harness bootstrap; greptile remains.
+OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1); ST=$?
 check "apply exits 1 while greptile is manual" test "$ST" -eq 1
-for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan; do
+for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan harness; do
   check "apply reports $item OK" row "$item" OK
 done
+check "bootstrap hook written" test -x "$REPO/.claude/hooks/harness-bootstrap.sh"
+check "bootstrap hook carries the repo url" grep -q 'HARNESS_REPO="https://github.com/acme/agent-governance"' "$REPO/.claude/hooks/harness-bootstrap.sh"
+check "bootstrap hook has no placeholder left" bash -c "! grep -q __HARNESS_REPO__ '$REPO/.claude/hooks/harness-bootstrap.sh'"
+check "settings register the bootstrap at SessionStart" jqe '[.hooks.SessionStart[].hooks[].command | select(test("harness-bootstrap.sh"))] | length == 1' "$REPO/.claude/settings.json"
 check "apply reports greptile with the install link" bash -c "printf '%s' \"\$0\" | grep -q 'https://github.com/apps/greptile/installations/new'" "$OUT"
 check "ci workflow written with the ci job" grep -q '^    name: ci$' "$REPO/.github/workflows/ci.yml"
 check "ci workflow uses pnpm for node" grep -q 'pnpm test' "$REPO/.github/workflows/ci.yml"
@@ -90,10 +94,11 @@ check "secret scanning enabled" test "$(cat "$STUB_STATE/scan")" = "enabled"
 # 3. Second apply is idempotent.
 posts_before=$(grep -c -- '-X POST' "$STUB_LOG")
 printf '# edited by hand\n' >> "$REPO/.github/workflows/ci.yml"
-OUT=$(cd "$REPO" && bash "$SETUP" acme/widget 2>&1)
+OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
 check "second apply posts nothing new" test "$(grep -c -- '-X POST' "$STUB_LOG")" -eq "$posts_before"
 check "existing workflow not overwritten" grep -q '# edited by hand' "$REPO/.github/workflows/ci.yml"
 check "second apply reports rulesets present" row protect-refs OK
+check "second apply does not duplicate the bootstrap entry" jqe '[.hooks.SessionStart[].hooks[].command | select(test("harness-bootstrap.sh"))] | length == 1' "$REPO/.claude/settings.json"
 
 # 4. Greptile installed: --check exits 0.
 export STUB_APPS=greptile
@@ -112,15 +117,20 @@ check "python stack: pip ecosystem" grep -q 'package-ecosystem: pip' "$REPO2/.gi
 check "required reviews honoured" jqe '.rules[] | select(.type=="pull_request") | .parameters.required_approving_review_count == 2' "$STUB_STATE/ruleset-protect-merge.json"
 
 # 5b. A repository with its own workflow under another name keeps it, and
-#     --ci-context names the check the ruleset requires.
-REPO3="$SB/existing"; mkdir -p "$REPO3/.github/workflows"; git -C "$REPO3" init -q -b main
+#     --ci-context names the check the ruleset requires; an existing
+#     .claude/settings.json keeps its hooks when the bootstrap entry is merged.
+REPO3="$SB/existing"; mkdir -p "$REPO3/.github/workflows" "$REPO3/.claude"; git -C "$REPO3" init -q -b main
 rm -f "$STUB_STATE/rulesets" "$STUB_STATE"/ruleset-*.json
 printf 'name: enforce\njobs:\n  fixtures:\n    runs-on: ubuntu-latest\n' > "$REPO3/.github/workflows/enforce.yml"
-OUT=$(cd "$REPO3" && bash "$SETUP" acme/widget --ci-context fixtures 2>&1)
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo pre"}]}]}}\n' > "$REPO3/.claude/settings.json"
+OUT=$(cd "$REPO3" && bash "$SETUP" acme/widget --ci-context fixtures --harness-repo https://github.com/acme/agent-governance 2>&1)
 check "existing workflow satisfies ci" row ci OK
 check "existing workflow named in the report" bash -c "printf '%s' \"\$0\" | grep -q 'workflow present: .github/workflows/enforce.yml'" "$OUT"
 check "no ci.yml written beside an existing workflow" test ! -e "$REPO3/.github/workflows/ci.yml"
 check "ci-context honoured in the ruleset" jqe '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[0].context == "fixtures"' "$STUB_STATE/ruleset-protect-merge.json"
+check "existing settings keep their hooks" jqe '.hooks.PreToolUse[0].hooks[0].command == "echo pre"' "$REPO3/.claude/settings.json"
+check "bootstrap merged into existing settings" jqe '[.hooks.SessionStart[].hooks[].command | select(test("harness-bootstrap.sh"))] | length == 1' "$REPO3/.claude/settings.json"
+check "harness reported OK after the merge" row harness OK
 
 # 6. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?
