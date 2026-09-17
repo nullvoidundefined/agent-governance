@@ -51,4 +51,32 @@ ACCEPT=$(mktemp)
 OUT7=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD CLAUDE_JUDGE_KEYCHAIN_SERVICE="claude-test-no-such-service" CLAUDE_JUDGE_ACCEPT_FILE="$ACCEPT" "$HOOK" < /dev/null)
 printf '%s' "$OUT7" | grep -q "llm-judge tier" && { echo "FAIL: acceptance marker should silence the warning"; exit 1; } || true
 
+# Case 7 (2026-09-17 audit P3-7): the key probe reads every supported secret
+# store, not the macOS keychain alone. A Linux host could not clear this
+# warning the way its own message described, because `security` does not exist
+# there. Each store is stubbed on PATH in turn; a stub that fails must leave
+# the warning standing, so the probe cannot be satisfied by mere presence.
+for store in secret-tool pass; do
+  STUB_DIR=$(mktemp -d)
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_DIR/$store"
+  chmod +x "$STUB_DIR/$store"
+  OUT8=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD PATH="$STUB_DIR:$PATH" \
+    CLAUDE_JUDGE_KEYCHAIN_SERVICE="claude-test-no-such-service" \
+    CLAUDE_JUDGE_ACCEPT_FILE="$NOACCEPT" "$HOOK" < /dev/null)
+  printf '%s' "$OUT8" | grep -q "llm-judge tier" \
+    && { echo "FAIL: a key found via $store must silence the inert-judge warning"; exit 1; } || true
+
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB_DIR/$store"
+  OUT9=$(env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD PATH="$STUB_DIR:$PATH" \
+    CLAUDE_JUDGE_KEYCHAIN_SERVICE="claude-test-no-such-service" \
+    CLAUDE_JUDGE_ACCEPT_FILE="$NOACCEPT" "$HOOK" < /dev/null)
+  printf '%s' "$OUT9" | grep -q "llm-judge tier" \
+    || { echo "FAIL: $store present but holding no key must still warn"; exit 1; }
+  rm -rf "$STUB_DIR"
+done
+
+# The warning names a command the host can actually run.
+printf '%s' "$OUT6" | grep -q "secret-tool store" \
+  || { echo "FAIL: the warning must name the Linux provisioning command too"; exit 1; }
+
 echo "enforcement-guard-check.test.sh PASS"

@@ -51,10 +51,25 @@ WARNING=""
 JUDGE_RULES=$(jq -r '[.rules[] | select(.tier=="llm-judge")] | length' "$MANIFEST" 2>/dev/null || echo 0)
 JUDGE_ACCEPT_FILE="${CLAUDE_JUDGE_ACCEPT_FILE:-$HOME/.claude/enforce/judge-accepted-honor-system}"
 JUDGE_KEYCHAIN_SERVICE="${CLAUDE_JUDGE_KEYCHAIN_SERVICE:-claude-judge-api-key}"
+# One probe per supported secret store, each guarded on its binary existing.
+# `security` is macOS-only, so on Linux the only satisfying path used to be an
+# env var and the warning could not be cleared the way the message described
+# (2026-09-17 audit P3-7). A host with none of these stores still warns exactly
+# as before.
 JUDGE_KEY_AVAILABLE=0
-{ [ -n "${ANTHROPIC_API_KEY:-}" ] || security find-generic-password -s "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1; } && JUDGE_KEY_AVAILABLE=1
+judge_key_in_a_store() {
+  [ -n "${ANTHROPIC_API_KEY:-}" ] && return 0
+  command -v security >/dev/null 2>&1 \
+    && security find-generic-password -s "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1 && return 0
+  command -v secret-tool >/dev/null 2>&1 \
+    && secret-tool lookup service "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1 && return 0
+  command -v pass >/dev/null 2>&1 \
+    && pass show "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1 && return 0
+  return 1
+}
+judge_key_in_a_store && JUDGE_KEY_AVAILABLE=1
 if [ "${JUDGE_RULES:-0}" -gt 0 ] && [ "$JUDGE_KEY_AVAILABLE" -eq 0 ] && [ -z "${CLAUDE_JUDGE_CMD:-}" ] && [ ! -f "$JUDGE_ACCEPT_FILE" ]; then
-  WARNING="$WARNING The llm-judge tier ($JUDGE_RULES manifest rules, including error-severity naming rules) CANNOT run: no ANTHROPIC_API_KEY in the hook environment and no keychain entry ($JUDGE_KEYCHAIN_SERVICE), so llm-rule-judge.sh fail-opens on every push. Provision it interactively with: security add-generic-password -a \"\$USER\" -s $JUDGE_KEYCHAIN_SERVICE -w   (egress disclosure in README Enforcement), or touch enforce/judge-accepted-honor-system to record the deliberate choice and silence this warning."
+  WARNING="$WARNING The llm-judge tier ($JUDGE_RULES manifest rules, including error-severity naming rules) CANNOT run: no ANTHROPIC_API_KEY in the hook environment and no keychain entry ($JUDGE_KEYCHAIN_SERVICE), so llm-rule-judge.sh fail-opens on every push. Provision it interactively, on macOS with: security add-generic-password -a \"\$USER\" -s $JUDGE_KEYCHAIN_SERVICE -w   or on Linux with: secret-tool store --label='claude judge' service $JUDGE_KEYCHAIN_SERVICE   (or \`pass insert $JUDGE_KEYCHAIN_SERVICE\`; egress disclosure in README Enforcement), or touch enforce/judge-accepted-honor-system to record the deliberate choice and silence this warning."
 fi
 
 if [ -n "$WARNING" ]; then
