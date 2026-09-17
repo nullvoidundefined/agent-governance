@@ -89,6 +89,8 @@
 !/skills/structure-conventions/SKILL.md
 !/skills/task-cleanup/
 !/skills/task-cleanup/SKILL.md
+!/skills/task-cleanup/scripts/
+!/skills/task-cleanup/scripts/scan.sh
 !/skills/task-start/
 !/skills/task-start/SKILL.md
 !/skills/task-start/scripts/

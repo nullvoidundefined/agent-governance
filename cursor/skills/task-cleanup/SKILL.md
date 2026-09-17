@@ -16,23 +16,23 @@ Every task has a tail: feature list updates, user stories, E2E tests, squash mer
 
 ## Step 1: Determine What Shipped
 
-Read the git log since the task started. Classify the changes:
+Run the scan; it answers six of the seven questions from the diff, names the files behind each answer, and prints the Step 4 table with N/A pre-filled where the answer is no:
 
 ```bash
-git log --oneline main..HEAD  # if on a feature branch
-git log --oneline -N           # if on main, where N = commits this task
-git diff main --stat           # files changed
+bash ~/.claude/skills/task-cleanup/scripts/scan.sh [--range <a>..<b>]
 ```
 
-Answer these questions (in writing, in the response):
+The range is the merge base with the default branch on a feature branch, the session-start SHA on the default branch, else the last five commits. Read the answers (in writing, in the response); do not re-derive them by eye:
 
-1. **Did this task ship user-facing behavior?** (new page, new flow, new UI, changed interaction)
-2. **Did this task create new components?** (in any client surface)
-3. **Did this task create or modify API endpoints?**
-4. **Did this task introduce new query parameters?**
-5. **Did this task create a spec or plan?** (that may now be shipped)
+1. **Did this task ship user-facing behavior?** (a new route, handler, page, feature slice, or deploy surface was added; the same list `git-workflow-guard` uses for R-508)
+2. **Did this task create new components?** (files added under a `components/` tree)
+3. **Did this task create or modify API endpoints?** (files under `routes/`, `handlers/`, `api/`, or a `route.ts`)
+4. **Did this task introduce new query parameters?** (added lines reading `searchParams`, `req.query`, or `useSearchParams`)
+5. **Did this task create a spec or plan?** (files under `docs/superpowers/`, or an existing one named for the branch slug)
 6. **Is this task on a feature branch?** (needs merge decision)
-7. **Is this a session-ending task?** (needs handoff)
+7. **Is this a session-ending task?** (needs handoff; the scan prints the task-start ledger beside it, the tier that scales Step 2)
+
+The scan surfaces the evidence; a surface it cannot see (a CLI flag, an extension-only flow) is still yours to name.
 
 ## Step 2: Run Required Actions
 
@@ -92,13 +92,15 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 ### If session is ending:
 
 **Session handoff:**
-Write `docs/session-handoff/session-handoff.md` per R-602:
+Write `docs/session-handoff/session-handoff.md` per R-602, in this order:
 1. Last commit SHA + subject
 2. Production state verified
-3. Session metrics (commits, files changed, rework count, velocity flag)
+3. Session metrics: paste the output of `bash ~/.claude/hooks/session-metrics.sh` (commits, files changed, rework count, velocity flag, computed live from the session-start SHA; the SessionEnd copy of the same block fires after the handoff is committed, so never read the temp file)
 4. What shipped (grouped by topic, traceable to commits)
 5. Pending work (by urgency, with rationale and effort estimate)
 6. Recommended next session (ordered task list with files to read first)
+
+`hooks/handoff-check.sh` reminds on the Write when the file is over 8 KB, a section is missing or out of order, or the recorded SHA does not resolve; fix what it names before the final commit.
 
 ### If files changed in a project-specific documented surface:
 
@@ -116,7 +118,7 @@ git commit -m "chore: task cleanup for <feature-slug>"
 
 ## Step 4: Report
 
-Output a summary table:
+Output the summary table the scan printed, with every TODO resolved to its outcome, then clear the task-start ledger (`bash ~/.claude/skills/task-start/scripts/task-tier.sh clear`) so the next task starts clean:
 
 ```
 | Action              | Status  | Notes                        |
@@ -135,7 +137,7 @@ Output a summary table:
 
 ## Scope-Dependent Behavior
 
-Cleanup intensity scales with the task tier (from task-start). Each tier adds to the one above it.
+Cleanup intensity scales with the task tier (from task-start, read off the ledger line the scan prints; `task-tier.sh get` when it is absent from context). Each tier adds to the one above it.
 
 | Tier | Adds |
 |---|---|
