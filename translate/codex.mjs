@@ -205,7 +205,11 @@ function findUnclassifiedHookNames(settingsHooks, portMap) {
     for (const group of groups) {
       for (const hook of group.hooks ?? []) {
         const name = hookNameFromCommand(hook.command);
-        if (name in overrides || name in portMap.unported_reasons) continue;
+        // hasOwnProperty, not `in`: `in` walks the prototype chain, so a hook
+        // literally named "constructor" or "toString" would read as already
+        // classified and vanish from the closure check (audit P3-1).
+        if (Object.prototype.hasOwnProperty.call(overrides, name)
+          || Object.prototype.hasOwnProperty.call(portMap.unported_reasons, name)) continue;
         names.add(name);
       }
     }

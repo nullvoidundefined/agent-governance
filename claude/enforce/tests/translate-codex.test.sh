@@ -243,6 +243,10 @@ check "non-audit agent does not" test ! -e "$SRC/codex/skills/helper-role"
 # the body region carries no unescaped double quote, and the tricky lines
 # round-trip through escaping exactly as TOML requires.
 BODY_REGION=$(awk '/^developer_instructions = """$/{flag=1; next} flag && /^"""$/{flag=0; next} flag' "$TOML")
+# A negative assertion over a fragile extraction passes when the extraction
+# yields nothing, so the non-emptiness precondition comes first and makes this
+# check and the three below it honest on their own (audit P3-2).
+check "toml body region extracted" test -n "$BODY_REGION"
 check "toml body has no unescaped double quote" not grep -qE '[^\\]"' <<<"$BODY_REGION"
 check "toml body keeps apostrophe run verbatim" grep -qF "Line with three apostrophes: '''" <<<"$BODY_REGION"
 check "toml body escapes the quote and backslash" grep -qF 'Line with a quote \" and a backslash \\ together.' <<<"$BODY_REGION"
@@ -513,7 +517,7 @@ GI="$SRC6/codex/.gitignore"
 # hand-authored file (the port map no longer claims it).
 OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
 check "stale gitignore fails check" test "$ST" -eq 1
-check "stale gitignore named" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "stale gitignore named" grep -qFx 'stale: .gitignore' <<<"$OUT"
 check "gitignore no longer claimed hand-authored" not grep -q "missing hand-authored file: .gitignore" <<<"$OUT"
 
 node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
@@ -553,7 +557,7 @@ the sandbox late-skill body line
 EOF
 OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1); ST=$?
 check "new skill makes gitignore stale" test "$ST" -eq 1
-check "new skill names gitignore stale" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "new skill names gitignore stale" grep -qFx 'stale: .gitignore' <<<"$OUT"
 node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
 check "new skill lands in the allowlist" grep -qx -- '!/skills/late-skill/SKILL.md' "$GI"
 check "new skill directory lands in the allowlist" grep -qx -- '!/skills/late-skill/' "$GI"
@@ -563,7 +567,7 @@ node "$TRANSLATOR" --check --root "$SRC6"; check "check clean after the new skil
 # never a missing hand-authored file.
 rm "$GI"
 OUT=$(node "$TRANSLATOR" --check --root "$SRC6" 2>&1)
-check "absent gitignore reports stale" grep -q "^stale: .gitignore$" <<<"$OUT"
+check "absent gitignore reports stale" grep -qFx 'stale: .gitignore' <<<"$OUT"
 check "absent gitignore is not an orphan" not grep -q "orphaned: .gitignore" <<<"$OUT"
 node "$TRANSLATOR" --write --root "$SRC6" >/dev/null 2>&1
 check "write restores the gitignore" test -f "$GI"

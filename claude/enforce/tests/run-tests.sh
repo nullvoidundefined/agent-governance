@@ -16,7 +16,6 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 fail=0
 for t in "$DIR"/*.test.sh; do
   name=$(basename "$t")
-  [ "$name" = "run-tests.sh" ] && continue
   # Require PASS and reject any FAIL line: a fixture printing per-case
   # "FAIL: ..." lines while exiting 0 was reported ok by the old grep
   # (2026-09-16 audit, Testing item 4).

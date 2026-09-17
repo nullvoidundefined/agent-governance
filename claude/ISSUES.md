@@ -36,12 +36,8 @@ Deferred P2/P3 work for the `~/.claude` rule system, per R-802/R-601. One line p
 - P2-8: `claude-md-lint.test.sh` and `hook-latency.test.sh` read the live copy while their siblings accept a `CLAUDE_*` override, so on a machine where the live tree differs from the checkout they measure something other than the code under review. The CI symlink hides this in CI.
 - P2 (integrity coverage, the part the extended globs cannot reach): `translate/*.mjs` sits outside the synced surface (`sync.sh` copies `claude/` only), so it cannot be hashed against a live install and is not in the manifest, even though CI gates on it and a behaviour-only edit would not change the translator's output. A separate repo-side hash list checked in CI is the candidate mechanism.
 - P2 (dynamic half of the `set` convention): no fixture asserts what a guard does when its own internals error. The 2026-09-16 P2-8 work mechanized the static half (the `set` line), and P1-4 is what the missing dynamic half cost: two blocking guards escaped the static check entirely and nothing else noticed.
-- P3-1: `translate/codex.mjs` uses `in` on a plain object, so an inherited prototype key would read as a classified hook.
-- P3-2: `enforce/tests/translate-codex.test.sh:230` carries a negative assertion that passes vacuously on empty input.
 - P3-3: `index-settings-sync.test.sh` fails on a legitimate configuration, turning a valid choice into a red suite.
 - P3-4: `claude-md-lint.test.sh` invariant 3 skips itself silently rather than failing when it cannot run.
-- P3-5: a dead branch in the enforcement suite runner.
-- P3-6: an unanchored regex in a staleness assertion matches more than it means to.
 - P3-7: the judge-liveness warning names a macOS keychain command, so it cannot be satisfied on Linux; the Linux path needs either an env var route or the documented honor-system file.
 - VERIFIED FALSE, not a finding (2026-09-17): the audit's doc-drift table claims `.github/dependabot.yml` is absent and `enforce.yml:37-40` therefore stale. The file exists (restored in `612551d`), so that row is dropped per R-804(a); the report carries a verifier's note at the row.
 
