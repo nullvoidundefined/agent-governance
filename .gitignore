@@ -1,3 +1,6 @@
 node_modules/
 *.log
 .DS_Store
+
+# Session state written by task-start/scripts/task-tier.sh (R-503 ledger), never source.
+.claude/task-tier.json

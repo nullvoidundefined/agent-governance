@@ -122,7 +122,7 @@ Tracker missing a canonical field (a Notion database without an `estimate_minute
 
 ## Confirmation posture
 
-Every write here is a `create`, `update`, `save`, `add`, or `comment` MCP call, so `hooks/mcp-action-guard.sh` asks on all of them (R-105). Expected. One call per confirmation: never batch several writes behind one prompt. A denial is a decision: do not re-ask for the same write in the same turn, and note in the close report that the ticket is behind the work. Never suppress the guard and never ask to bypass it (R-203).
+Every write here is a `create`, `update`, `save`, `add`, or `comment` MCP call. R-105 was narrowed on 2026-09-17 so the private tracker's write class passes without a prompt, which is what makes advancing a ticket at every state change affordable; `hooks/mcp-action-guard.sh` still asks on a tracker call that lands code, submits for review, uploads, or applies, on anything the destroy or transmit classes match (`delete_comment`, `retire_issue_label`, `share_issue`), and on every other server. When it does ask, one call per confirmation: never batch several writes behind one prompt. A denial is a decision: do not re-ask for the same write in the same turn, and note in the close report that the ticket is behind the work. Never suppress the guard and never ask to bypass it (R-203).
 
 A tracker failure (server down, auth expired, denial) never blocks the engineering work. Report the failed call, record the intended field set in the handoff doc, retry at the next lifecycle event.
 

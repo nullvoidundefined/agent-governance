@@ -359,7 +359,7 @@
             "enforcer": "hook:mcp-action-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt"
+            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt, and the private tracker exempt for the write class alone (merge, submit, upload, apply still ask, as do the destroy and transmit classes on every server)"
         },
         {
             "id": "R-401",

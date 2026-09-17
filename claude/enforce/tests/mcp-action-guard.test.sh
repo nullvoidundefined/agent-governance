@@ -14,6 +14,10 @@ ask  mcp__claude_ai_Gmail__trash_thread           # destroys
 ask  mcp__claude_ai_Linear__merge_diff            # lands code, so it asks despite the tracker exemption
 ask  mcp__claude_ai_Linear__delete_comment        # destroys, so it asks despite the tracker exemption
 ask  mcp__claude_ai_Linear__share_issue           # transmits outward, so it asks despite the tracker exemption
+ask  mcp__claude_ai_Linear__submit_diff_review    # submits for review, so it asks despite the tracker exemption
+ask  mcp__claude_ai_Linear__create_attachment_from_upload  # carries a file out, so it asks
+ask  mcp__claude_ai_Linear__retire_issue_label    # retiring a label destroys state, so it asks
+ask  mcp__github__retire_thing                    # the destroy class covers retire on every server
 ask  mcp__claude_ai_Notion__notion-create-pages   # verb behind a server prefix
 ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix
 ask  mcp__claude_ai_Google_Calendar__delete_event # destroys
