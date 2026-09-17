@@ -205,25 +205,83 @@ check_resume_drift() (
   return 0
 )
 
-# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.json
-# for the CURRENT project key (task-state-tracker.sh's live PostToolUse
-# output) for tasks left behind by a session other than this one. A file
-# whose session id differs from the current session and holds at least one
-# task with status != "completed" is reported as interrupted work; a file
-# whose tasks are ALL completed is pruned (deleted) unconditionally, so a
-# finished tracker never accumulates. Unlike check_resume_drift above, this
-# runs on every start reason, not gated to source == "resume": a fresh
-# startup after a crash is exactly the moment a prior session's tasks need
-# offering. The whole function runs in a `set +e` subshell (same posture as
-# check_resume_drift): a corrupt or unreadable state file is skipped with a
-# stderr note, never fails the hook. Cheap by construction: a directory
-# glob plus one or two small jq calls per file, and there are 0-3 files in
-# practice (task-state-tracker.sh writes at most one file per live
-# session).
+# fold_task_state_log reads a task-state-tracker.sh append-only event log
+# (one JSON object per line: ts, task_id, subject, status, cwd, branch) and
+# folds it into a single snapshot object: {cwd, branch, updated_at, tasks:
+# {<id>: {subject, status, created_at, updated_at}}}. Folding rules (fix
+# round 1, C1's read side): the LAST status recorded for a task id wins,
+# the FIRST line recorded for a task id supplies its subject (so a later
+# status-only TaskUpdate line never blanks out or overrides an earlier
+# real subject: fix round 1, M2 renders a placeholder only when that first
+# line's subject was itself empty), file-level cwd/branch come from the
+# last line that carries a non-empty value for each, and any task whose
+# last recorded status is "deleted" is dropped from the tasks map
+# entirely. Malformed lines are skipped rather than failing the fold (jq's
+# `try fromjson catch empty`, the same idiom session-end.sh's
+# write_session_snapshot uses for transcript parsing), so a log corrupted
+# by e.g. a truncated write degrades to whatever valid lines remain, down
+# to an empty tasks map for a fully corrupt file. Prints nothing on total
+# jq failure, which callers use as the unreadable-file signal.
+fold_task_state_log() {
+  local file="$1"
+  jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s '
+    def foldTasks:
+      reduce .[] as $e ({};
+        ($e.task_id // "") as $tid
+        | if $tid == "" then .
+          else
+            (has($tid)) as $seen
+            | (.[$tid] // {}) as $prior
+            | . + { ($tid): {
+                subject: (if $seen then $prior.subject else ($e.subject // "") end),
+                status: (if ($e.status // "") != "" then $e.status elif $seen then $prior.status else "created" end),
+                created_at: (if $seen then $prior.created_at else ($e.ts // "") end),
+                updated_at: ($e.ts // (if $seen then $prior.updated_at else "" end))
+              } }
+          end
+      );
+    {
+      cwd: (reduce .[] as $e (""; if ($e.cwd // "") != "" then $e.cwd else . end)),
+      branch: (reduce .[] as $e (""; if ($e.branch // "") != "" then $e.branch else . end)),
+      updated_at: (if length > 0 then (.[-1].ts // "") else "" end),
+      tasks: (foldTasks | with_entries(select(.value.status != "deleted")))
+    }
+  ' 2>/dev/null
+}
+
+# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.jsonl
+# for the CURRENT project key (task-state-tracker.sh's append-only event
+# log) for tasks left behind by a session other than this one. Fix round
+# 1 hardened this in three ways, applied in order per file:
+#   - I3 (unbounded growth): any file whose OWN mtime is older than 14
+#     days is deleted unconditionally, corrupt files included (this also
+#     settles the "corrupt files are never quarantined" concern, since a
+#     wedged file eventually ages out on the same clock). Of what survives,
+#     at most the 3 newest (by mtime) candidate sessions are injected, with
+#     a trailing "+N older interrupted sessions not shown" note when more
+#     than 3 exist.
+#   - I4 (live-session collision): before a file is offered OR pruned, its
+#     own session's transcript (~/.claude/projects/<key>/<session-id>.jsonl,
+#     same key as the state file's own location) is checked; a transcript
+#     modified within the last 60 minutes means that session is still
+#     running, and the file is skipped entirely (no injection, no
+#     deletion) rather than treated as abandoned.
+#   - M5: a file whose session id matches the CURRENT session is never
+#     offered (interrupting yourself makes no sense), though it may still
+#     be pruned once all its tasks are completed.
+# A file whose folded tasks are ALL completed is pruned (deleted); a
+# non-completed task's line carries its task id (M1) and a subject
+# placeholder when the log never recorded one (M2, via fold_task_state_log
+# above). The whole function runs in a `set +e` subshell (same posture as
+# check_resume_drift): an unreadable log folds to an empty task map rather
+# than failing the hook.
 check_interrupted_tasks() (
   set +e
   local transcript_path="$1" current_session_id="$2"
-  local key state_dir file all_completed sid branch cwd_val body out
+  local key state_dir file sid transcript_for_sid now_epoch file_epoch transcript_epoch
+  local folded all_completed branch cwd_val body
+  local candidate_mtimes candidate_blocks i pairs sorted_indices idx shown_count total_candidates
+  local out
 
   key=""
   case "$transcript_path" in
@@ -234,31 +292,82 @@ check_interrupted_tasks() (
   state_dir="$HOME/.claude/projects/$key"
   [ -d "$state_dir" ] || return 0
 
-  out=""
-  for file in "$state_dir"/task-state.*.json; do
+  now_epoch=$(date -u +%s)
+  candidate_mtimes=()
+  candidate_blocks=()
+
+  for file in "$state_dir"/task-state.*.jsonl; do
     [ -e "$file" ] || continue
-    if ! jq -e . "$file" >/dev/null 2>&1; then
+
+    file_epoch=$(date -r "$file" +%s 2>/dev/null) || continue
+    if [ $(( now_epoch - file_epoch )) -gt 1209600 ]; then
+      # I3: 14-day TTL, unconditional, corrupt files included.
+      rm -f "$file" 2>/dev/null
+      continue
+    fi
+
+    sid="${file##*/task-state.}"
+    sid="${sid%.jsonl}"
+    [ -n "$sid" ] || continue
+
+    # I4: a live sibling session is never touched, offered, or pruned.
+    transcript_for_sid="$state_dir/$sid.jsonl"
+    if [ -f "$transcript_for_sid" ]; then
+      transcript_epoch=$(date -r "$transcript_for_sid" +%s 2>/dev/null) || transcript_epoch=0
+      if [ $(( now_epoch - transcript_epoch )) -lt 3600 ]; then
+        continue
+      fi
+    fi
+
+    folded=$(fold_task_state_log "$file")
+    if [ -z "$folded" ]; then
       echo "session-start: skipping unreadable task-state file $file" >&2
       continue
     fi
 
-    all_completed=$(jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' "$file" 2>/dev/null)
+    all_completed=$(printf '%s' "$folded" | jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' 2>/dev/null)
     if [ "$all_completed" = "true" ]; then
       rm -f "$file" 2>/dev/null
       continue
     fi
 
-    sid=$(jq -r '.session_id // "unknown"' "$file" 2>/dev/null)
-    [ -n "$sid" ] || sid="unknown"
     [ "$sid" = "$current_session_id" ] && continue
 
-    branch=$(jq -r '.branch // ""' "$file" 2>/dev/null)
-    cwd_val=$(jq -r '.cwd // ""' "$file" 2>/dev/null)
-    body=$(jq -r '.tasks // {} | to_entries[] | select(.value.status != "completed") | "- [" + .value.status + "] " + .value.subject' "$file" 2>/dev/null)
+    branch=$(printf '%s' "$folded" | jq -r '.branch // ""' 2>/dev/null)
+    cwd_val=$(printf '%s' "$folded" | jq -r '.cwd // ""' 2>/dev/null)
+    body=$(printf '%s' "$folded" | jq -r '
+      .tasks // {}
+      | to_entries[]
+      | select(.value.status != "completed")
+      | "- [" + .value.status + "] " + (if (.value.subject // "") == "" then "(unknown subject: " + .key + ")" else .value.subject end) + " (task " + .key + ")"
+    ' 2>/dev/null)
 
-    out+="Interrupted tasks from a prior session ($sid, branch $branch, cwd $cwd_val):"$'\n'
-    out+="$body"$'\n'
+    candidate_mtimes+=("$file_epoch")
+    candidate_blocks+=("Interrupted tasks from a prior session ($sid, branch $branch, cwd $cwd_val):"$'\n'"$body")
   done
+
+  total_candidates=${#candidate_blocks[@]}
+  [ "$total_candidates" -gt 0 ] || return 0
+
+  # I3 cap: newest-first selection. Pairs mtime with array index, sorts
+  # descending on mtime, takes the first 3.
+  pairs=""
+  for i in "${!candidate_mtimes[@]}"; do
+    pairs+="${candidate_mtimes[$i]}"$'\t'"$i"$'\n'
+  done
+  sorted_indices=$(printf '%s' "$pairs" | sort -t"$(printf '\t')" -k1,1 -rn | cut -f2)
+
+  out=""
+  shown_count=0
+  for idx in $sorted_indices; do
+    [ "$shown_count" -ge 3 ] && break
+    out+="${candidate_blocks[$idx]}"$'\n'
+    shown_count=$((shown_count + 1))
+  done
+
+  if [ "$total_candidates" -gt 3 ]; then
+    out+="+$(( total_candidates - 3 )) older interrupted sessions not shown"$'\n'
+  fi
 
   [ -n "$out" ] && printf '%s' "$out"
   return 0

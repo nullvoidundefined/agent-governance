@@ -231,29 +231,74 @@ write_session_snapshot() (
 
 write_session_snapshot "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
 
+# fold_task_state_log mirrors session-start.sh's function of the same
+# name (duplicated rather than shared: standalone hook scripts in this
+# repo do not source one another). Reads a task-state-tracker.sh
+# append-only event log (one JSON object per line: ts, task_id, subject,
+# status, cwd, branch) and folds it into a single snapshot object: {cwd,
+# branch, updated_at, tasks: {<id>: {subject, status, created_at,
+# updated_at}}}. The LAST status recorded for a task id wins, the FIRST
+# line recorded for a task id supplies its subject (fix round 1, M2 falls
+# back to a placeholder only when even that first line's subject was
+# empty), file-level cwd/branch come from the last line that carries a
+# non-empty value for each, and a task whose last recorded status is
+# "deleted" is dropped from the tasks map entirely. Malformed lines are
+# skipped rather than failing the fold; prints nothing on total jq
+# failure, which the caller uses as the unreadable-file signal.
+fold_task_state_log() {
+  local file="$1"
+  jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s '
+    def foldTasks:
+      reduce .[] as $e ({};
+        ($e.task_id // "") as $tid
+        | if $tid == "" then .
+          else
+            (has($tid)) as $seen
+            | (.[$tid] // {}) as $prior
+            | . + { ($tid): {
+                subject: (if $seen then $prior.subject else ($e.subject // "") end),
+                status: (if ($e.status // "") != "" then $e.status elif $seen then $prior.status else "created" end),
+                created_at: (if $seen then $prior.created_at else ($e.ts // "") end),
+                updated_at: ($e.ts // (if $seen then $prior.updated_at else "" end))
+              } }
+          end
+      );
+    {
+      cwd: (reduce .[] as $e (""; if ($e.cwd // "") != "" then $e.cwd else . end)),
+      branch: (reduce .[] as $e (""; if ($e.branch // "") != "" then $e.branch else . end)),
+      updated_at: (if length > 0 then (.[-1].ts // "") else "" end),
+      tasks: (foldTasks | with_entries(select(.value.status != "deleted")))
+    }
+  ' 2>/dev/null
+}
+
 # render_task_state_section renders the CURRENT session's live task-state
-# tracker (task-state-tracker.sh's ~/.claude/projects/<key>/
-# task-state.<session-id>.json) into a "## Task state" section of
-# docs/session-handoff/session-handoff.md under the session cwd's repo, but
-# only when that handoff file already exists: the handoff is repo-owned,
-# and this hook must never create one on a repo that does not keep one. Any
-# pre-existing "## Task state" section (heading through the next "## "
-# heading, or EOF) is stripped before the fresh section is appended, so a
-# second render in the same session replaces rather than accumulates. Every
-# task is rendered, not only the incomplete ones: this section is a
-# session-end summary of everything the tracker recorded, unlike
-# session-start.sh's interrupted-task offering, which surfaces only
-# non-completed work from a DIFFERENT session. Once every task in the state
-# file is completed, the state file itself is deleted (independent of
-# whether a handoff file existed to render into); otherwise it is left for
-# the next session-start to offer as interrupted work. Runs in a `set +e`
-# subshell (same posture as write_session_snapshot): a corrupt or
-# unreadable state file, or any write failure, is skipped with a stderr
-# note and never fails session end.
+# tracker (task-state-tracker.sh's append-only
+# ~/.claude/projects/<key>/task-state.<session-id>.jsonl event log; fix
+# round 1, C1), folded via fold_task_state_log above, into a
+# marker-delimited "## Task state" section of
+# docs/session-handoff/session-handoff.md under the session cwd's repo,
+# but only when that handoff file already exists: the handoff is
+# repo-owned, and this hook must never create one on a repo that does not
+# keep one. The rendered section is wrapped in <!-- task-state:begin -->
+# / <!-- task-state:end --> marker lines (fix round 1, I2); any
+# pre-existing marked region is replaced by matching those literal marker
+# lines only, never a "## " heading, so a handoff that quotes an example
+# "## Task state" block inside a fenced code section is left
+# byte-identical. Every task is rendered, not only the incomplete ones,
+# each with its task id (fix round 1, M1): this section is a session-end
+# summary of everything the tracker recorded, unlike session-start.sh's
+# interrupted-task offering, which surfaces only non-completed work from a
+# DIFFERENT session. Once every task in the log is completed, the log
+# itself is deleted (independent of whether a handoff file existed to
+# render into); otherwise it is left for the next session-start to offer
+# as interrupted work. Runs in a `set +e` subshell (same posture as
+# write_session_snapshot): an unreadable log, or any write failure, is
+# skipped with a stderr note and never fails session end.
 render_task_state_section() (
   set +e
   local transcript_path="$1" session_cwd="$2"
-  local key session_id state_file handoff_file handoff_dir tmp_file body section all_completed
+  local key session_id log_file handoff_file handoff_dir tmp_file body section all_completed folded
 
   if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
     return 0
@@ -266,44 +311,48 @@ render_task_state_section() (
     return 0
   fi
 
-  state_file="$PROJECTS_DIR/$key/task-state.$session_id.json"
-  [ -f "$state_file" ] || return 0
+  log_file="$PROJECTS_DIR/$key/task-state.$session_id.jsonl"
+  [ -f "$log_file" ] || return 0
 
-  if ! jq -e . "$state_file" >/dev/null 2>&1; then
-    echo "session-end: task-state render skipped: unreadable state file $state_file" >&2
+  folded=$(fold_task_state_log "$log_file")
+  if [ -z "$folded" ]; then
+    echo "session-end: task-state render skipped: unreadable state file $log_file" >&2
     return 0
   fi
 
-  all_completed=$(jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' "$state_file" 2>/dev/null)
+  all_completed=$(printf '%s' "$folded" | jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' 2>/dev/null)
 
   if [ -n "$session_cwd" ]; then
     handoff_file="$session_cwd/docs/session-handoff/session-handoff.md"
     if [ -f "$handoff_file" ]; then
-      body=$(jq -r '
+      body=$(printf '%s' "$folded" | jq -r '
         .tasks // {}
         | to_entries
         | sort_by(.value.created_at // "")
         | .[]
-        | "- [" + .value.status + "] " + .value.subject + " (updated " + .value.updated_at + ")"
-      ' "$state_file" 2>/dev/null)
+        | "- [" + .value.status + "] " + (if (.value.subject // "") == "" then "(unknown subject: " + .key + ")" else .value.subject end) + " (task " + .key + ") (updated " + .value.updated_at + ")"
+      ' 2>/dev/null)
 
-      section=$'## Task state\n\n'
+      section=$'<!-- task-state:begin -->\n## Task state\n\n'
       if [ -n "$body" ]; then
         section+="$body"$'\n'
       else
         section+="(no tasks recorded)"$'\n'
       fi
+      section+=$'<!-- task-state:end -->\n'
 
       handoff_dir=$(dirname "$handoff_file")
       tmp_file=$(mktemp "$handoff_dir/.session-handoff.md.XXXXXX" 2>/dev/null)
       if [ -n "$tmp_file" ]; then
-        # Strip any pre-existing "## Task state" section (that heading
-        # through the next "## " heading, or EOF) before appending the
-        # fresh one, so a second render replaces rather than accumulates.
+        # Marker-delimited replace (fix round 1, I2): matches only the
+        # literal <!-- task-state:begin/end --> lines, so a fenced code
+        # block quoting an example "## Task state" heading is never
+        # touched. No markers present -> nothing is stripped, and the
+        # fresh marked block is simply appended.
         awk '
           BEGIN { skipping = 0 }
-          /^## Task state[[:space:]]*$/ { skipping = 1; next }
-          skipping && /^## / { skipping = 0 }
+          /^<!-- task-state:begin -->[[:space:]]*$/ { skipping = 1; next }
+          /^<!-- task-state:end -->[[:space:]]*$/ { if (skipping) { skipping = 0; next } }
           skipping { next }
           { print }
         ' "$handoff_file" > "$tmp_file"
@@ -315,7 +364,7 @@ render_task_state_section() (
   fi
 
   if [ "$all_completed" = "true" ]; then
-    rm -f "$state_file" 2>/dev/null
+    rm -f "$log_file" 2>/dev/null
   fi
   return 0
 )

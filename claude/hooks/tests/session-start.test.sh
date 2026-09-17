@@ -257,59 +257,155 @@ check "positive control: resume on the identical snapshot DOES drift" ctx_has "$
 
 # --- Interrupted task offering (task-state-tracker) ---
 #
-# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.json
-# for the CURRENT project key (same key session-start.sh's other checks
-# derive from transcript_path). A file from a DIFFERENT session id holding
-# at least one non-completed task is offered as interrupted work; a file
-# whose tasks are ALL completed is pruned (deleted) and never offered. Runs
-# on every start reason, not gated to source == "resume" (unlike the B-8
-# drift check above): a fresh startup after a crash is exactly when a prior
-# session's tasks need offering.
+# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.jsonl
+# for the CURRENT project key: task-state-tracker.sh's append-only event
+# log (fix round 1, C1). A file from a DIFFERENT, non-live session holding
+# at least one non-completed task is offered as interrupted work, task ids
+# included (fix round 1, M1); a file whose tasks are ALL completed is
+# pruned (deleted) and never offered. Runs on every start reason, not
+# gated to source == "resume" (unlike the B-8 drift check above): a fresh
+# startup after a crash is exactly when a prior session's tasks need
+# offering.
 
 TASK_KEY_DIR="$DRIFT_SANDBOX/.claude/projects/taskstate-current"
 mkdir -p "$TASK_KEY_DIR"
 CURRENT_TASK_TRANSCRIPT="$TASK_KEY_DIR/current-session.jsonl"
 printf '{}\n' > "$CURRENT_TASK_TRANSCRIPT"
 
-# Interrupted state file from another session id -> injection block naming
-# the subject and status; its completed sibling task is not offered; the
-# file itself is left in place for the next scan.
-INTERRUPTED_STATE="$TASK_KEY_DIR/task-state.other-session.json"
-jq -n '{
-  state_version: 1,
-  session_id: "other-session",
-  cwd: "/some/repo",
-  branch: "feature/x",
-  updated_at: "2026-09-17T00:00:00Z",
-  tasks: {
-    "1": {subject: "Finish the migration", status: "in_progress", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"},
-    "2": {subject: "Write the tests", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"}
-  }
-}' > "$INTERRUPTED_STATE"
+# append_task_line: appends one task-state-tracker.sh-shaped event line to
+# log file $1: ts=$2, task_id=$3, subject=$4, status=$5, cwd=$6, branch=$7.
+append_task_line() {
+  jq -nc --arg ts "$2" --arg tid "$3" --arg subj "$4" --arg st "$5" --arg cwd "$6" --arg br "$7" \
+    '{ts:$ts, task_id:$tid, subject:$subj, status:$st, cwd:$cwd, branch:$br}' >> "$1"
+}
+
+# set_mtime: sets file $1's mtime to epoch seconds $2, portably (python3's
+# os.utime; macOS `touch` has no `-d`, and BSD/GNU `touch -t` formats
+# disagree, so python3 is the one dependency already trusted for timing in
+# this suite, e.g. hook-latency.test.sh's now_ms).
+set_mtime() {
+  python3 -c "import os,sys; os.utime(sys.argv[1], (int(sys.argv[2]), int(sys.argv[2])))" "$1" "$2"
+}
+
+# Interrupted log from another session (no transcript file exists for it
+# here, which is the "absent transcript" -> non-live -> processed branch
+# of I4) -> injection block naming the subject, status, and task id (M1);
+# its completed sibling task is not offered; the log itself is left in
+# place for the next scan.
+INTERRUPTED_LOG="$TASK_KEY_DIR/task-state.other-session.jsonl"
+append_task_line "$INTERRUPTED_LOG" "2026-09-17T00:00:00Z" "1" "Finish the migration" "created" "/some/repo" "feature/x"
+append_task_line "$INTERRUPTED_LOG" "2026-09-17T00:01:00Z" "1" "" "in_progress" "/some/repo" "feature/x"
+append_task_line "$INTERRUPTED_LOG" "2026-09-17T00:00:00Z" "2" "Write the tests" "created" "/some/repo" "feature/x"
+append_task_line "$INTERRUPTED_LOG" "2026-09-17T00:02:00Z" "2" "" "completed" "/some/repo" "feature/x"
 
 CTX_TASKSTATE=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
 check "interrupted task names the status and subject" ctx_has "$CTX_TASKSTATE" "[in_progress] Finish the migration"
+check "interrupted task names its task id (M1)" ctx_has "$CTX_TASKSTATE" "(task 1)"
 check "interrupted block names the prior session id" ctx_has "$CTX_TASKSTATE" "other-session"
 check "interrupted block names the prior branch" ctx_has "$CTX_TASKSTATE" "feature/x"
 check "completed sibling task is not offered" ctx_lacks "$CTX_TASKSTATE" "Write the tests"
-check "interrupted state file is left in place" file_exists "$INTERRUPTED_STATE"
+check "interrupted log is left in place" file_exists "$INTERRUPTED_LOG"
 
-# All-completed file -> pruned (deleted), no injection block for it.
-ALLDONE_STATE="$TASK_KEY_DIR/task-state.alldone-session.json"
-jq -n '{
-  state_version: 1,
-  session_id: "alldone-session",
-  cwd: "/some/repo",
-  branch: "main",
-  updated_at: "2026-09-17T00:00:00Z",
-  tasks: {
-    "1": {subject: "Ship the release", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"}
-  }
-}' > "$ALLDONE_STATE"
+# All-completed log -> pruned (deleted), no injection block for it.
+ALLDONE_LOG="$TASK_KEY_DIR/task-state.alldone-session.jsonl"
+append_task_line "$ALLDONE_LOG" "2026-09-17T00:00:00Z" "1" "Ship the release" "created" "/some/repo" "main"
+append_task_line "$ALLDONE_LOG" "2026-09-17T00:03:00Z" "1" "" "completed" "/some/repo" "main"
 
 CTX_ALLDONE=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
-check "all-completed state file is pruned" no_file "$ALLDONE_STATE"
+check "all-completed log is pruned" no_file "$ALLDONE_LOG"
 check "all-completed file yields no injection block" ctx_lacks "$CTX_ALLDONE" "Ship the release"
+
+# --- M2: a folded task with no TaskCreate line renders a subject placeholder ---
+ORPHAN_LOG="$TASK_KEY_DIR/task-state.orphan-session.jsonl"
+append_task_line "$ORPHAN_LOG" "2026-09-17T00:00:00Z" "9" "" "in_progress" "/some/repo" "main"
+
+CTX_ORPHAN=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "task with no TaskCreate line renders the unknown-subject placeholder (M2)" ctx_has "$CTX_ORPHAN" "(unknown subject: 9)"
+rm -f "$ORPHAN_LOG"
+
+# --- M5: the CURRENT session's own incomplete log is never offered ---
+SELF_LOG="$TASK_KEY_DIR/task-state.current-session.jsonl"
+append_task_line "$SELF_LOG" "2026-09-17T00:00:00Z" "5" "My own in-flight task" "in_progress" "$DRIFT_REPO" "main"
+
+CTX_SELF=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "the current session's own task is never offered as interrupted (M5)" ctx_lacks "$CTX_SELF" "My own in-flight task"
+check "the current session's own incomplete log is not pruned" file_exists "$SELF_LOG"
+rm -f "$SELF_LOG"
+
+# --- I4: liveness. A sibling session whose transcript was modified within
+# the last 60 minutes is LIVE: skipped entirely, in both directions (not
+# offered when incomplete, not pruned when all-completed). A stale or
+# absent transcript (the default exercised above) is processed normally. ---
+NOW_EPOCH=$(date -u +%s)
+
+LIVE_INCOMPLETE_LOG="$TASK_KEY_DIR/task-state.live-incomplete-session.jsonl"
+append_task_line "$LIVE_INCOMPLETE_LOG" "2026-09-17T00:00:00Z" "1" "Live sibling's in-flight task" "in_progress" "/some/repo" "main"
+LIVE_INCOMPLETE_TRANSCRIPT="$TASK_KEY_DIR/live-incomplete-session.jsonl"
+printf '{}\n' > "$LIVE_INCOMPLETE_TRANSCRIPT"
+set_mtime "$LIVE_INCOMPLETE_TRANSCRIPT" "$NOW_EPOCH"
+
+LIVE_ALLDONE_LOG="$TASK_KEY_DIR/task-state.live-alldone-session.jsonl"
+append_task_line "$LIVE_ALLDONE_LOG" "2026-09-17T00:00:00Z" "1" "Live sibling's finished task" "completed" "/some/repo" "main"
+LIVE_ALLDONE_TRANSCRIPT="$TASK_KEY_DIR/live-alldone-session.jsonl"
+printf '{}\n' > "$LIVE_ALLDONE_TRANSCRIPT"
+set_mtime "$LIVE_ALLDONE_TRANSCRIPT" "$NOW_EPOCH"
+
+STALE_INCOMPLETE_LOG="$TASK_KEY_DIR/task-state.stale-incomplete-session.jsonl"
+append_task_line "$STALE_INCOMPLETE_LOG" "2026-09-17T00:00:00Z" "1" "Stale sibling's in-flight task" "in_progress" "/some/repo" "main"
+STALE_INCOMPLETE_TRANSCRIPT="$TASK_KEY_DIR/stale-incomplete-session.jsonl"
+printf '{}\n' > "$STALE_INCOMPLETE_TRANSCRIPT"
+set_mtime "$STALE_INCOMPLETE_TRANSCRIPT" "$(( NOW_EPOCH - 7200 ))"
+
+CTX_LIVENESS=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "a live sibling's incomplete task is not offered" ctx_lacks "$CTX_LIVENESS" "Live sibling's in-flight task"
+check "a live sibling's all-completed log is not pruned" file_exists "$LIVE_ALLDONE_LOG"
+check "a stale sibling's incomplete task IS offered" ctx_has "$CTX_LIVENESS" "Stale sibling's in-flight task"
+
+rm -f "$LIVE_INCOMPLETE_LOG" "$LIVE_INCOMPLETE_TRANSCRIPT" "$LIVE_ALLDONE_LOG" "$LIVE_ALLDONE_TRANSCRIPT" "$STALE_INCOMPLETE_LOG" "$STALE_INCOMPLETE_TRANSCRIPT"
+
+# --- I3: 14-day TTL garbage collection and the newest-3 injection cap ---
+CAP_KEY_DIR="$DRIFT_SANDBOX/.claude/projects/taskstate-cap"
+mkdir -p "$CAP_KEY_DIR"
+CAP_TRANSCRIPT="$CAP_KEY_DIR/cap-current-session.jsonl"
+printf '{}\n' > "$CAP_TRANSCRIPT"
+
+# One file older than the 14-day TTL floor -> garbage collected
+# unconditionally (this is also what settles the "corrupt files are never
+# quarantined" concern: a wedged file ages out on the same clock).
+OLD_LOG="$CAP_KEY_DIR/task-state.ancient-session.jsonl"
+append_task_line "$OLD_LOG" "2026-01-01T00:00:00Z" "1" "Ancient task" "in_progress" "/some/repo" "main"
+set_mtime "$OLD_LOG" "$(( NOW_EPOCH - (15 * 86400) ))"
+
+# 20 candidate sessions, all incomplete, all non-live (no matching
+# transcript file exists for any of them), mtimes spaced one minute apart
+# so "newest 3" is deterministic. Subjects are zero-padded ("task 01" ..
+# "task 20") so no candidate's label is a substring prefix of another's
+# (unpadded "task 1" is a substring of "task 10".."task 19", which would
+# make a ctx_lacks/ctx_has assertion on candidate 1 vacuous).
+i=1
+while [ "$i" -le 20 ]; do
+  PADDED=$(printf '%02d' "$i")
+  CAND_LOG="$CAP_KEY_DIR/task-state.cand-$i-session.jsonl"
+  append_task_line "$CAND_LOG" "2026-09-17T00:00:00Z" "1" "Candidate task $PADDED" "in_progress" "/some/repo" "main"
+  set_mtime "$CAND_LOG" "$(( NOW_EPOCH - (20 - i) * 60 ))"
+  i=$((i + 1))
+done
+
+CAP_START_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
+CTX_CAP=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CAP_TRANSCRIPT" "$DRIFT_REPO")")
+CAP_END_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
+CAP_ELAPSED_MS=$(( CAP_END_MS - CAP_START_MS ))
+
+check "the 14-day-old file is garbage collected" no_file "$OLD_LOG"
+check "newest candidate (20) is injected" ctx_has "$CTX_CAP" "Candidate task 20"
+check "2nd-newest candidate (19) is injected" ctx_has "$CTX_CAP" "Candidate task 19"
+check "3rd-newest candidate (18) is injected" ctx_has "$CTX_CAP" "Candidate task 18"
+check "4th-newest candidate (17) is NOT injected" ctx_lacks "$CTX_CAP" "Candidate task 17"
+check "the oldest candidate (01) is NOT injected" ctx_lacks "$CTX_CAP" "Candidate task 01"
+check "a not-shown count names the remaining 17 sessions" ctx_has "$CTX_CAP" "+17 older interrupted sessions not shown"
+check "the 20-file scan completes well within budget" [ "$CAP_ELAPSED_MS" -lt 5000 ]
+
+rm -rf "$CAP_KEY_DIR"
 
 rm -rf "$DRIFT_SANDBOX"
 

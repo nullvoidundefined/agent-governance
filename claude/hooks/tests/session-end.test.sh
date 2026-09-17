@@ -151,15 +151,28 @@ check "no snapshot written for a corrupt transcript" no_file "$CORRUPT_SNAPSHOT"
 # --- Task state render into the handoff doc ---
 #
 # render_task_state_section reads the CURRENT session's
-# task-state.<session-id>.json (task-state-tracker.sh's live output) and
-# renders it into a "## Task state" section of docs/session-handoff/
-# session-handoff.md under the session cwd's repo, but only when that
-# handoff file already exists (the handoff is repo-owned). Then deletes the
-# session's task-state file when every task is completed; otherwise leaves
-# it in place for the next session-start to offer as interrupted work.
+# task-state.<session-id>.jsonl (task-state-tracker.sh's append-only event
+# log; fix round 1, C1) and renders it into a marker-delimited "## Task
+# state" section (<!-- task-state:begin/end -->; fix round 1, I2) of
+# docs/session-handoff/session-handoff.md under the session cwd's repo, but
+# only when that handoff file already exists (the handoff is repo-owned).
+# Then deletes the session's task-state log when every task is completed;
+# otherwise leaves it in place for the next session-start to offer as
+# interrupted work.
+
+# append_task_line: appends one task-state-tracker.sh-shaped event line to
+# log file $1: ts=$2, task_id=$3, subject=$4, status=$5, cwd=$6, branch=$7.
+append_task_line() {
+  jq -nc --arg ts "$2" --arg tid "$3" --arg subj "$4" --arg st "$5" --arg cwd "$6" --arg br "$7" \
+    '{ts:$ts, task_id:$tid, subject:$subj, status:$st, cwd:$cwd, branch:$br}' >> "$1"
+}
+
+handoff_has()      { grep -qF -- "$2" "$1"; }
+handoff_count()    { [ "$(grep -c -- "$2" "$1")" -eq "$3" ]; }
+ctx_lacks_file()   { ! grep -qF -- "$2" "$1"; }
 
 # Case A: some tasks incomplete -> section rendered with all tasks (not
-# just the incomplete ones), state file left in place.
+# just the incomplete ones), log left in place.
 TS_REPO="$SANDBOX/task-state-repo"
 mkdir -p "$TS_REPO/docs/session-handoff"
 git -C "$TS_REPO" init -q
@@ -181,49 +194,42 @@ TS_KEY_DIR="$SANDBOX/.claude/projects/task-state-render-key"
 mkdir -p "$TS_KEY_DIR"
 TS_TRANSCRIPT="$TS_KEY_DIR/render-session.jsonl"
 printf '{}\n' > "$TS_TRANSCRIPT"
-TS_STATE_FILE="$TS_KEY_DIR/task-state.render-session.json"
-jq -n '{
-  state_version: 1,
-  session_id: "render-session",
-  cwd: "'"$TS_REPO"'",
-  branch: "main",
-  updated_at: "2026-09-17T00:10:00Z",
-  tasks: {
-    "1": {subject: "Ship the render", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:05:00Z"},
-    "2": {subject: "Write the docs", status: "in_progress", created_at: "2026-09-17T00:01:00Z", updated_at: "2026-09-17T00:10:00Z"}
-  }
-}' > "$TS_STATE_FILE"
+TS_LOG="$TS_KEY_DIR/task-state.render-session.jsonl"
+append_task_line "$TS_LOG" "2026-09-17T00:00:00Z" "1" "Ship the render" "created" "$TS_REPO" "main"
+append_task_line "$TS_LOG" "2026-09-17T00:05:00Z" "1" "" "completed" "$TS_REPO" "main"
+append_task_line "$TS_LOG" "2026-09-17T00:01:00Z" "2" "Write the docs" "created" "$TS_REPO" "main"
+append_task_line "$TS_LOG" "2026-09-17T00:10:00Z" "2" "" "in_progress" "$TS_REPO" "main"
 
 TS_PAYLOAD=$(jq -n --arg t "$TS_TRANSCRIPT" --arg c "$TS_REPO" '{transcript_path:$t, cwd:$c}')
 printf '%s' "$TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
 
 TS_HANDOFF="$TS_REPO/docs/session-handoff/session-handoff.md"
-handoff_has()      { grep -qF -- "$2" "$1"; }
-handoff_count()    { [ "$(grep -c -- "$2" "$1")" -eq "$3" ]; }
-ctx_lacks_file()   { ! grep -qF -- "$2" "$1"; }
 
 check "handoff gains a Task state heading" handoff_has "$TS_HANDOFF" "## Task state"
-check "handoff renders the completed task" handoff_has "$TS_HANDOFF" "- [completed] Ship the render (updated 2026-09-17T00:05:00Z)"
-check "handoff renders the in-progress task" handoff_has "$TS_HANDOFF" "- [in_progress] Write the docs (updated 2026-09-17T00:10:00Z)"
+check "handoff is wrapped in begin/end markers (I2)" handoff_has "$TS_HANDOFF" "<!-- task-state:begin -->"
+check "handoff renders the completed task with its id (M1)" handoff_has "$TS_HANDOFF" "- [completed] Ship the render (task 1) (updated 2026-09-17T00:05:00Z)"
+check "handoff renders the in-progress task with its id (M1)" handoff_has "$TS_HANDOFF" "- [in_progress] Write the docs (task 2) (updated 2026-09-17T00:10:00Z)"
 check "prior handoff content (Pending section) is preserved" handoff_has "$TS_HANDOFF" "## Pending"
 check "Task state heading appears exactly once" handoff_count "$TS_HANDOFF" "## Task state" 1
-check "state file left in place (not all completed)" file_exists "$TS_STATE_FILE"
+check "begin marker appears exactly once" handoff_count "$TS_HANDOFF" "<!-- task-state:begin -->" 1
+check "log left in place (not all completed)" file_exists "$TS_LOG"
 
 # Re-run to prove replace, not accumulate: the heading still appears once
-# and stale content from a prior render is gone.
-jq '.tasks["2"].status = "completed" | .tasks["2"].updated_at = "2026-09-17T00:20:00Z" | .updated_at = "2026-09-17T00:20:00Z"' \
-  "$TS_STATE_FILE" > "$TS_STATE_FILE.tmp" && mv "$TS_STATE_FILE.tmp" "$TS_STATE_FILE"
+# and stale content from a prior render is gone. A second event line is
+# appended (the log is append-only; nothing ever rewrites an old line).
+append_task_line "$TS_LOG" "2026-09-17T00:20:00Z" "2" "" "completed" "$TS_REPO" "main"
 printf '%s' "$TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
 check "Task state heading still appears exactly once after a second render" handoff_count "$TS_HANDOFF" "## Task state" 1
-check "second render reflects the updated status" handoff_has "$TS_HANDOFF" "- [completed] Write the docs (updated 2026-09-17T00:20:00Z)"
+check "begin marker still appears exactly once after a second render" handoff_count "$TS_HANDOFF" "<!-- task-state:begin -->" 1
+check "second render reflects the updated status" handoff_has "$TS_HANDOFF" "- [completed] Write the docs (task 2) (updated 2026-09-17T00:20:00Z)"
 check "second render drops the stale in_progress line" ctx_lacks_file "$TS_HANDOFF" "- [in_progress] Write the docs"
 
-# Case B: all tasks completed -> state file deleted after render.
-check "all-completed state file is deleted after render" no_file "$TS_STATE_FILE"
+# Case B: all tasks completed -> log deleted after render.
+check "all-completed log is deleted after render" no_file "$TS_LOG"
 
 # Case C: no handoff file in the session cwd's repo -> render is skipped
 # entirely (the handoff is repo-owned), but the hook still exits 0 and a
-# fully-completed state file is still pruned.
+# fully-completed log is still pruned.
 NOHANDOFF_REPO="$SANDBOX/no-handoff-repo"
 mkdir -p "$NOHANDOFF_REPO"
 git -C "$NOHANDOFF_REPO" init -q
@@ -235,22 +241,107 @@ NOHANDOFF_KEY_DIR="$SANDBOX/.claude/projects/no-handoff-key"
 mkdir -p "$NOHANDOFF_KEY_DIR"
 NOHANDOFF_TRANSCRIPT="$NOHANDOFF_KEY_DIR/nohandoff-session.jsonl"
 printf '{}\n' > "$NOHANDOFF_TRANSCRIPT"
-NOHANDOFF_STATE="$NOHANDOFF_KEY_DIR/task-state.nohandoff-session.json"
-jq -n '{
-  state_version: 1,
-  session_id: "nohandoff-session",
-  cwd: "'"$NOHANDOFF_REPO"'",
-  branch: "main",
-  updated_at: "2026-09-17T00:00:00Z",
-  tasks: {"1": {subject: "Solo task", status: "completed", created_at: "2026-09-17T00:00:00Z", updated_at: "2026-09-17T00:00:00Z"}}
-}' > "$NOHANDOFF_STATE"
+NOHANDOFF_LOG="$NOHANDOFF_KEY_DIR/task-state.nohandoff-session.jsonl"
+append_task_line "$NOHANDOFF_LOG" "2026-09-17T00:00:00Z" "1" "Solo task" "created" "$NOHANDOFF_REPO" "main"
+append_task_line "$NOHANDOFF_LOG" "2026-09-17T00:00:30Z" "1" "" "completed" "$NOHANDOFF_REPO" "main"
 
 NOHANDOFF_PAYLOAD=$(jq -n --arg t "$NOHANDOFF_TRANSCRIPT" --arg c "$NOHANDOFF_REPO" '{transcript_path:$t, cwd:$c}')
 NOHANDOFF_EXIT=0
 printf '%s' "$NOHANDOFF_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" || NOHANDOFF_EXIT=$?
 check "hook exits 0 with no handoff file present" exit_code_is "$NOHANDOFF_EXIT" 0
 check "no handoff file was created" no_file "$NOHANDOFF_REPO/docs/session-handoff/session-handoff.md"
-check "state file is still pruned once all tasks are completed" no_file "$NOHANDOFF_STATE"
+check "log is still pruned once all tasks are completed" no_file "$NOHANDOFF_LOG"
+
+# --- M2: a folded task with no TaskCreate line renders a subject
+# placeholder in the handoff section too ---
+ORPHAN_REPO="$SANDBOX/orphan-render-repo"
+mkdir -p "$ORPHAN_REPO/docs/session-handoff"
+git -C "$ORPHAN_REPO" init -q
+git -C "$ORPHAN_REPO" config user.email t@t
+git -C "$ORPHAN_REPO" config user.name t
+printf '# Handoff\n' > "$ORPHAN_REPO/docs/session-handoff/session-handoff.md"
+git -C "$ORPHAN_REPO" add -A
+git -C "$ORPHAN_REPO" commit -qm seed
+
+ORPHAN_KEY_DIR="$SANDBOX/.claude/projects/orphan-render-key"
+mkdir -p "$ORPHAN_KEY_DIR"
+ORPHAN_TRANSCRIPT="$ORPHAN_KEY_DIR/orphan-session.jsonl"
+printf '{}\n' > "$ORPHAN_TRANSCRIPT"
+ORPHAN_LOG="$ORPHAN_KEY_DIR/task-state.orphan-session.jsonl"
+append_task_line "$ORPHAN_LOG" "2026-09-17T00:00:00Z" "9" "" "in_progress" "$ORPHAN_REPO" "main"
+
+ORPHAN_PAYLOAD=$(jq -n --arg t "$ORPHAN_TRANSCRIPT" --arg c "$ORPHAN_REPO" '{transcript_path:$t, cwd:$c}')
+printf '%s' "$ORPHAN_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+ORPHAN_HANDOFF="$ORPHAN_REPO/docs/session-handoff/session-handoff.md"
+
+check "handoff renders the unknown-subject placeholder (M2)" handoff_has "$ORPHAN_HANDOFF" "(unknown subject: 9)"
+check "handoff renders the orphan task's id (M1)" handoff_has "$ORPHAN_HANDOFF" "(task 9)"
+
+# --- I2: a handoff whose fenced code block quotes an example "## Task
+# state" heading (no markers inside the fence) must survive the render
+# byte-identical outside the <!-- task-state:begin/end --> markers. The
+# old heading-based stripper destroyed the fence and everything after it
+# up to the next "##" heading; the marker-delimited replacer never matches
+# inside a fence because it only ever matches the literal marker lines,
+# never a "## " heading. ---
+FENCE_REPO="$SANDBOX/fence-repo"
+mkdir -p "$FENCE_REPO/docs/session-handoff"
+git -C "$FENCE_REPO" init -q
+git -C "$FENCE_REPO" config user.email t@t
+git -C "$FENCE_REPO" config user.name t
+FENCE_HANDOFF="$FENCE_REPO/docs/session-handoff/session-handoff.md"
+cat > "$FENCE_HANDOFF" <<'EOF'
+# Handoff
+
+## Notes
+
+Example of the generated block:
+
+```markdown
+## Next
+
+- real next step, no trailing newline
+
+## Task state
+
+- [in_progress] T (updated a)
+```
+
+## Pending
+
+- something pending
+EOF
+git -C "$FENCE_REPO" add -A
+git -C "$FENCE_REPO" commit -qm seed
+
+FENCE_ORIGINAL_CONTENT=$(cat "$FENCE_HANDOFF")
+
+FENCE_KEY_DIR="$SANDBOX/.claude/projects/fence-render-key"
+mkdir -p "$FENCE_KEY_DIR"
+FENCE_TRANSCRIPT="$FENCE_KEY_DIR/fence-session.jsonl"
+printf '{}\n' > "$FENCE_TRANSCRIPT"
+FENCE_LOG="$FENCE_KEY_DIR/task-state.fence-session.jsonl"
+append_task_line "$FENCE_LOG" "2026-09-17T00:00:00Z" "1" "Real live task" "in_progress" "$FENCE_REPO" "main"
+
+FENCE_PAYLOAD=$(jq -n --arg t "$FENCE_TRANSCRIPT" --arg c "$FENCE_REPO" '{transcript_path:$t, cwd:$c}')
+printf '%s' "$FENCE_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+
+# fence_prefix_matches: true if the handoff's content, up to (not
+# including) the first begin-marker line, still equals the original
+# content (both compared with trailing newlines stripped, since command
+# substitution strips them from both sides identically).
+fence_prefix_matches() {
+  local handoff="$1" original="$2" marker_line prefix
+  marker_line=$(grep -n -F -- '<!-- task-state:begin -->' "$handoff" | head -1 | cut -d: -f1)
+  [ -n "$marker_line" ] || return 1
+  prefix=$(sed -n "1,$(( marker_line - 1 ))p" "$handoff")
+  [ "$prefix" = "$original" ]
+}
+
+check "the fenced example survives byte-identical outside the markers (I2)" fence_prefix_matches "$FENCE_HANDOFF" "$FENCE_ORIGINAL_CONTENT"
+check "the fence's closing delimiter is intact" handoff_has "$FENCE_HANDOFF" '```'
+check "the real Pending section after the fence is intact" handoff_has "$FENCE_HANDOFF" "## Pending"
+check "the newly rendered task is present after the markers" handoff_has "$FENCE_HANDOFF" "Real live task"
 
 if [ "$fail" -eq 0 ]; then
     echo "ALL PASS"
