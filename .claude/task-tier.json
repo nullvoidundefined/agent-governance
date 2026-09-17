@@ -1,7 +1,0 @@
-{
-  "tier": "saga",
-  "reason": "Fourteen acceptance criteria across settings/sandbox, status line, doctor, installer, resume drift, public docs, and a three-port capability matrix, which must be coherent to reach the spec's publishable state.",
-  "branch": "claude/ticket-lifecycle-skill-ourn3y",
-  "startedAt": 1789656447,
-  "startedAtIso": "2026-09-17T14:47:27Z"
-}
