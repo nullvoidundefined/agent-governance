@@ -18,7 +18,7 @@
     "agents/spec-conformance-review.toml": "sha256:1d5b1cb324078a5753bcb5cf9f9d0d973499e52e1b6e26b74ddb95b255b5f567",
     "agents/test-author.toml": "sha256:4e8e3fb616479238d64465d83068f1a4c5bf3906d23470fdd0eb87e04ec83374",
     "hooks.json": "sha256:2778f8dc6ddd86e082626e2d17397d2718dbccc49f117cc7765eb4f68ff4e2be",
-    "skills/add-stack-track/SKILL.md": "sha256:35d9e4208cc45f0dc06ec44cea28753dd589f3af4d211cb4798c4b0b31f19b80",
+    "skills/add-stack-track/SKILL.md": "sha256:96edf68881576a235d2560d1eb80b6585481568d4ea13895a13725e72289b864",
     "skills/all-hands/SKILL.md": "sha256:5d75f91ba0e9bb7c09b6a1a862f34566848255be279b0819aeae240931a04543",
     "skills/audit-criticism/SKILL.md": "sha256:345d45c383cd6d7d4c6cc03c4f777b153bde4ff0c6158122726e2603822b17a3",
     "skills/audit-customer/SKILL.md": "sha256:634a67f27666b2fcb13fece90c804057ac34b9817bf030a529441e6c3e528853",

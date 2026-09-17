@@ -6,10 +6,11 @@ description: Use when adding a new stack or framework track to the convention fi
 
 # Add Stack Track
 
-Adds one stack or framework track to the convention stack so it auto-loads, is
-detected at session start, and is enforced mechanically, in one pass. Every
-step is a file the harness or the invariant test reads; skipping one leaves the
-track loaded by recall only.
+Wire one stack or framework track into the convention stack in one pass:
+convention file, rules symlink, detection rows, enforcer analogs, structure
+gate, repo docs, verification, ports and hash manifest, publish. Complete every
+step; the invariant test in step 7 rejects a track with any of the first three
+missing.
 
 **Announce at start:** "I'm using the add-stack-track skill to wire the <track> track end to end."
 

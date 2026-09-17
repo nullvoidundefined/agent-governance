@@ -5,6 +5,8 @@
 set -uo pipefail
 
 # Checks convention frontmatter, resolving rules links, and loading references.
+# Loading references must appear in rules/session-types.md or the Framework Files
+# section of CLAUDE-FRONTEND.md, ending before the next level-two heading.
 # Argument: root ($1) is the convention tree directory to inspect.
 # Prints an unwired diagnostic for each missing requirement, or nothing on success.
 # Returns 0 when all requirements pass, or 1 when any requirement fails.
@@ -38,7 +40,11 @@ check_tree() {
       failed=1
     fi
 
-    if ! grep -Fq "$basename" "$root/rules/session-types.md" "$root/CLAUDE-FRONTEND.md"; then
+    if ! grep -Fq "$basename" "$root/rules/session-types.md" && ! awk '
+      /^## Framework Files$/ { in_section = 1; print; next }
+      in_section && /^## / { exit }
+      in_section { print }
+    ' "$root/CLAUDE-FRONTEND.md" | grep -Fq "$basename"; then
       printf 'unwired: %s missing loading reference\n' "$basename"
       failed=1
     fi
@@ -81,6 +87,7 @@ else
 fi
 
 # Checks that each missing wiring requirement is rejected in a fresh sandbox.
+# C3 removes every mention of CLAUDE-RUBY.md from both detection files so the missing-mention check must name it.
 for case_id in C1 C2 C3; do
   if ! create_sandbox; then
     echo 'FAIL: sandbox setup failed'
