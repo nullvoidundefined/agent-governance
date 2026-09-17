@@ -1,9 +1,10 @@
-# Session Handoff: 2026-09-17 R-003 synced harness, harness-sync hook, repo-setup bootstrap
+# Session Handoff: 2026-09-17 R-003 synced harness, then the local-main reconciliation
 
 ## 1. Last commit
 
-- Branch `claude/intelligent-wozniak-gvgw7m`, restarted from `3138809` (the squash of PR #3, the skills audit) after that PR merged. Six commits follow it: `6436141` fix(sync) checksum copy, `b9fcb4a` feat(hooks) harness-sync, `d2a746c` docs(rules) R-003, `a0ba085` feat(repo-setup) harness item, then a fix so the harness repository itself reports `harness OK`, and this handoff. PR #5 is open against `main`; squash merge per R-512 once the `enforce` check is green and the user authorizes it (R-514).
-- The branch was force-pushed with lease once, because its pre-merge history diverged from the remote after the restart; nothing unmerged was dropped.
+- PR #5 (R-003, `harness-sync.sh`, the repo-setup harness item, checksum copy in `sync.sh`) squash-merged to `main` as `7b489d1`.
+- Branch `claude/intelligent-wozniak-gvgw7m`, restarted from `7b489d1`, carries one merge commit: `origin/reconcile/local-main` (the maintainer's 15 local `main` commits that never reached GitHub: `doctor.sh`, the session-safety hardening with the status-line HUD and resume drift detection, R-907, the parked cross-model and source-neutral sync specs, issue entries) merged onto the merged `main`. Three conflicts resolved: `claude/ISSUES.md` (union, cursor item combined), `claude/README.md` (counts refreshed, both hook descriptions kept), `hook-hashes.txt` (regenerated). Squash merge per R-512 once green and authorized (R-514).
+- The maintainer's old local `main` is preserved as `backup/local-main-2026-09-17` on their machine and as `origin/reconcile/local-main`.
 
 ## 2. Production state
 
@@ -34,7 +35,10 @@
 - **User, then**: `bash ~/.claude/skills/repo-setup/scripts/setup.sh nullvoidundefined/agent-governance --check --ci-context fixtures`, and apply what it reports; the `harness` row reports `OK` here because the repo-level settings run `harness-sync.sh` directly. Needs an admin `gh` token.
 - **User, one command**: delete the four renamed leftovers from the live tree (`~/.claude/enforce/eslintOptions.mjs`, `renderLexiconSpec.mjs`, `resolveOutgoingBase.sh`, `~/.claude/hooks/single-file-folder-gate.sh`); `sync.sh` never deletes.
 - **User, before the ticket skill can do anything**: pick a tracker and copy `claude/TICKET-TRACKER.template.json` to `~/.claude/TICKET-TRACKER.json` (no ticket key exists for this session's work; the degraded path of R-605).
-- **P2**: the rest of the cursor port item in `claude/ISSUES.md` (rules, agents, commands, `PORT-STATUS.md`); the skills half is done.
+- **Next session, once a tracker exists**: dry-run `open` on a real task and check the field mapping against the live database before it writes for real; the first few tasks fall back to the R-906 heuristic because `estimate <tier>` quotes no number from history below five comparable closed tickets.
+- **Audit residue, all in `claude/ISSUES.md`**: the 2026-09-17 engineering audit's P2 and P3 items, none blocking; read P2-1 first (a positional argument to `translate/codex.mjs` is silently ignored and `--write` then prunes the real tree), then the note that `translate/*.mjs` cannot be hashed, since it sits outside the surface `sync.sh` copies.
+- **Deferred by design**: the mechanical tier for R-605 and R-606; a hook can only read a local signal, and the only candidate is a per-branch link file whose shape depends on the tracker chosen (recorded in the spec's Non-goals).
+- **P2**: the rest of the cursor port item in `claude/ISSUES.md` (rules, agents, commands, `PORT-STATUS.md`); the skills half is done, and the decision is recorded there: a one-directional `translate/cursor.mjs` exporter harvested from the parked source-neutral sync spec.
 - **P3**: audit X-4 (which skills announce at start) is undecided; `/skill-doctor` has not been run; `$ARGUMENTS` substitution inside the protocol skill's `` ! `` block is unverified on the real build.
 
 ## 6. Next session: read first
