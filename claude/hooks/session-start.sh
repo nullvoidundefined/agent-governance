@@ -205,6 +205,226 @@ check_resume_drift() (
   return 0
 )
 
+# fold_task_state_log reads a task-state-tracker.sh append-only event log
+# (one JSON object per line: ts, task_id, subject, status, cwd, branch) and
+# folds it into a single snapshot object: {cwd, branch, updated_at, tasks:
+# {<id>: {subject, status, created_at, updated_at}}}. Folding rules (fix
+# round 1, C1's read side): the LAST status recorded for a task id wins,
+# the FIRST line recorded for a task id supplies its subject (so a later
+# status-only TaskUpdate line never blanks out or overrides an earlier
+# real subject: fix round 1, M2 renders a placeholder only when that first
+# line's subject was itself empty), file-level cwd/branch come from the
+# last line that carries a non-empty value for each, and any task whose
+# last recorded status is "deleted" is dropped from the tasks map
+# entirely. Malformed lines are skipped rather than failing the fold (jq's
+# `try fromjson catch empty`, the same idiom session-end.sh's
+# write_session_snapshot uses for transcript parsing), so a log corrupted
+# by e.g. a truncated write degrades to whatever valid lines remain, down
+# to an empty tasks map for a fully corrupt file. Prints nothing on total
+# jq failure, which callers use as the unreadable-file signal.
+#
+# fold_task_state_log answers "what did this log record"; it deliberately
+# does NOT answer "could this log be read at all". A file whose every line
+# is malformed folds to an empty tasks map, which is indistinguishable from
+# an honestly empty log, and every caller answers an empty tasks map by
+# deleting the file. task_state_log_is_parseable below is the guard that
+# keeps those two cases apart, and callers must consult it first.
+fold_task_state_log() {
+  local file="$1"
+  jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s '
+    def foldTasks:
+      reduce .[] as $e ({};
+        ($e.task_id // "") as $tid
+        | if $tid == "" then .
+          else
+            (has($tid)) as $seen
+            | (.[$tid] // {}) as $prior
+            | . + { ($tid): {
+                subject: (if $seen then $prior.subject else ($e.subject // "") end),
+                status: (if ($e.status // "") != "" then $e.status elif $seen then $prior.status else "created" end),
+                created_at: (if $seen then $prior.created_at else ($e.ts // "") end),
+                updated_at: ($e.ts // (if $seen then $prior.updated_at else "" end))
+              } }
+          end
+      );
+    {
+      cwd: (reduce .[] as $e (""; if ($e.cwd // "") != "" then $e.cwd else . end)),
+      branch: (reduce .[] as $e (""; if ($e.branch // "") != "" then $e.branch else . end)),
+      updated_at: (if length > 0 then (.[-1].ts // "") else "" end),
+      tasks: (foldTasks | with_entries(select(.value.status != "deleted")))
+    }
+  ' 2>/dev/null
+}
+
+# task_state_log_is_parseable reports whether a folded reading of task-state
+# log $1 can be trusted as a complete account of what the tracker recorded,
+# which is the question a caller must answer before it is entitled to treat
+# an empty tasks map as "this session finished everything" and delete the
+# file. A file holding no non-blank line at all is parseable: an empty log
+# honestly records zero events. A file holding at least one non-blank line
+# from which jq recovers no JSON value whatsoever is NOT parseable, and
+# neither is a file that cannot be read; both are reported false so the
+# caller skips the file and leaves it on disk. Without this distinction a
+# log corrupted by a truncated write folded to zero tasks, read as
+# all-completed, and was deleted, destroying the only durable record of the
+# session's interrupted work (PR #14 review). A partially corrupt file, one
+# with at least one recoverable line, stays parseable and degrades to
+# whatever those lines say, which is the documented behaviour of the fold.
+task_state_log_is_parseable() {
+  local file="$1" content_lines parsed_values
+  [ -r "$file" ] || return 1
+  content_lines=$(grep -c '[^[:space:]]' "$file" 2>/dev/null || true)
+  [ -n "$content_lines" ] || content_lines=0
+  [ "$content_lines" -gt 0 ] || return 0
+  parsed_values=$(jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s 'length' 2>/dev/null)
+  [ -n "$parsed_values" ] || return 1
+  [ "$parsed_values" -gt 0 ]
+}
+
+# check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.jsonl
+# for the CURRENT project key (task-state-tracker.sh's append-only event
+# log) for tasks left behind by a session other than this one. Fix round
+# 1 hardened this in three ways, applied in this order per file:
+#   - I4 (live-session collision), first of all: before a file is offered,
+#     pruned, or garbage collected, its own session's transcript
+#     (~/.claude/projects/<key>/<session-id>.jsonl, same key as the state
+#     file's own location) is checked; a transcript modified within the
+#     last 60 minutes means that session is still running, and the file is
+#     skipped entirely (no injection, no deletion) rather than treated as
+#     abandoned. This runs before the TTL below, not after it (PR #14
+#     review): a session alive for longer than 14 days is still alive, and
+#     ordering the TTL first deleted its state out from under it.
+#   - I3 (unbounded growth): of the files that are NOT live, any whose OWN
+#     mtime is older than 14 days is deleted, corrupt files included (this
+#     also settles the "corrupt files are never quarantined" concern, since
+#     a wedged file eventually ages out on the same clock). Of what
+#     survives, at most the 3 newest (by mtime) candidate sessions are
+#     injected, with a trailing "+N older interrupted sessions not shown"
+#     note when more than 3 exist.
+#   - M5: a file whose session id matches the CURRENT session is never
+#     offered (interrupting yourself makes no sense), though it may still
+#     be pruned once all its tasks are completed.
+# A file whose folded tasks are ALL completed is pruned (deleted); a
+# non-completed task's line carries its task id (M1) and a subject
+# placeholder when the log never recorded one (M2, via fold_task_state_log
+# above). The whole function runs in a `set +e` subshell (same posture as
+# check_resume_drift): an unreadable log folds to an empty task map rather
+# than failing the hook.
+check_interrupted_tasks() (
+  set +e
+  local transcript_path="$1" current_session_id="$2"
+  local key state_dir file sid transcript_for_sid now_epoch file_epoch transcript_epoch
+  local folded all_completed branch cwd_val body
+  local candidate_mtimes candidate_blocks i pairs sorted_indices idx shown_count total_candidates
+  local out
+
+  key=""
+  case "$transcript_path" in
+    */*) key="${transcript_path%/*}"; key="${key##*/}" ;;
+  esac
+  [ -n "$key" ] && [ "$key" != "." ] && [ "$key" != "/" ] || return 0
+
+  state_dir="$HOME/.claude/projects/$key"
+  [ -d "$state_dir" ] || return 0
+
+  now_epoch=$(date -u +%s)
+  candidate_mtimes=()
+  candidate_blocks=()
+
+  for file in "$state_dir"/task-state.*.jsonl; do
+    [ -e "$file" ] || continue
+
+    file_epoch=$(date -r "$file" +%s 2>/dev/null) || continue
+
+    sid="${file##*/task-state.}"
+    sid="${sid%.jsonl}"
+
+    # I4 is checked BEFORE I3's TTL, and outranks it (PR #14 review). A
+    # session that has been running longer than 14 days is still a live
+    # session, and the TTL running first deleted its state file before
+    # liveness was ever consulted, which is precisely the loss I4 exists to
+    # prevent. Liveness is the transcript's own mtime: a transcript touched
+    # within the last 60 minutes means that session is still going, so its
+    # file is skipped entirely, neither offered nor pruned nor collected.
+    if [ -n "$sid" ]; then
+      transcript_for_sid="$state_dir/$sid.jsonl"
+      if [ -f "$transcript_for_sid" ]; then
+        transcript_epoch=$(date -r "$transcript_for_sid" +%s 2>/dev/null) || transcript_epoch=0
+        if [ $(( now_epoch - transcript_epoch )) -lt 3600 ]; then
+          continue
+        fi
+      fi
+    fi
+
+    if [ $(( now_epoch - file_epoch )) -gt 1209600 ]; then
+      # I3: 14-day TTL over what is NOT live, corrupt files included.
+      rm -f "$file" 2>/dev/null
+      continue
+    fi
+
+    [ -n "$sid" ] || continue
+
+    # A non-empty log nothing can be parsed out of is corrupt, not finished:
+    # skipped and left on disk, never pruned (PR #14 review).
+    if ! task_state_log_is_parseable "$file"; then
+      echo "session-start: skipping unparseable task-state file $file" >&2
+      continue
+    fi
+
+    folded=$(fold_task_state_log "$file")
+    if [ -z "$folded" ]; then
+      echo "session-start: skipping unreadable task-state file $file" >&2
+      continue
+    fi
+
+    all_completed=$(printf '%s' "$folded" | jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' 2>/dev/null)
+    if [ "$all_completed" = "true" ]; then
+      rm -f "$file" 2>/dev/null
+      continue
+    fi
+
+    [ "$sid" = "$current_session_id" ] && continue
+
+    branch=$(printf '%s' "$folded" | jq -r '.branch // ""' 2>/dev/null)
+    cwd_val=$(printf '%s' "$folded" | jq -r '.cwd // ""' 2>/dev/null)
+    body=$(printf '%s' "$folded" | jq -r '
+      .tasks // {}
+      | to_entries[]
+      | select(.value.status != "completed")
+      | "- [" + .value.status + "] " + (if (.value.subject // "") == "" then "(unknown subject: " + .key + ")" else .value.subject end) + " (task " + .key + ")"
+    ' 2>/dev/null)
+
+    candidate_mtimes+=("$file_epoch")
+    candidate_blocks+=("Interrupted tasks from a prior session ($sid, branch $branch, cwd $cwd_val):"$'\n'"$body")
+  done
+
+  total_candidates=${#candidate_blocks[@]}
+  [ "$total_candidates" -gt 0 ] || return 0
+
+  # I3 cap: newest-first selection. Pairs mtime with array index, sorts
+  # descending on mtime, takes the first 3.
+  pairs=""
+  for i in "${!candidate_mtimes[@]}"; do
+    pairs+="${candidate_mtimes[$i]}"$'\t'"$i"$'\n'
+  done
+  sorted_indices=$(printf '%s' "$pairs" | sort -t"$(printf '\t')" -k1,1 -rn | cut -f2)
+
+  out=""
+  shown_count=0
+  for idx in $sorted_indices; do
+    [ "$shown_count" -ge 3 ] && break
+    out+="${candidate_blocks[$idx]}"$'\n'
+    shown_count=$((shown_count + 1))
+  done
+
+  if [ "$total_candidates" -gt 3 ]; then
+    out+="+$(( total_candidates - 3 )) older interrupted sessions not shown"$'\n'
+  fi
+
+  [ -n "$out" ] && printf '%s' "$out"
+  return 0
+)
+
 if [ "$SOURCE" = "resume" ]; then
   DRIFT_OUTPUT=$(check_resume_drift "$SOURCE" "$TRANSCRIPT_PATH" "$SESSION_CWD" 2>/dev/null || true)
   if [ -n "$DRIFT_OUTPUT" ]; then
@@ -212,6 +432,17 @@ if [ "$SOURCE" = "resume" ]; then
     CTX+="$DRIFT_OUTPUT"
     CTX+=$'\n\n'
   fi
+fi
+
+CURRENT_SESSION_ID=""
+case "$TRANSCRIPT_PATH" in
+  */*) CURRENT_SESSION_ID="${TRANSCRIPT_PATH##*/}"; CURRENT_SESSION_ID="${CURRENT_SESSION_ID%.jsonl}" ;;
+esac
+INTERRUPTED_OUTPUT=$(check_interrupted_tasks "$TRANSCRIPT_PATH" "$CURRENT_SESSION_ID" 2>/dev/null || true)
+if [ -n "$INTERRUPTED_OUTPUT" ]; then
+  CTX+=$'## Interrupted tasks (task-state-tracker)\n\n'
+  CTX+="$INTERRUPTED_OUTPUT"
+  CTX+=$'\n'
 fi
 
 if [ -f "$GLOBAL_MEMORY_INDEX" ]; then

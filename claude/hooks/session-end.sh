@@ -231,4 +231,194 @@ write_session_snapshot() (
 
 write_session_snapshot "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
 
+# fold_task_state_log mirrors session-start.sh's function of the same
+# name (duplicated rather than shared: standalone hook scripts in this
+# repo do not source one another). Reads a task-state-tracker.sh
+# append-only event log (one JSON object per line: ts, task_id, subject,
+# status, cwd, branch) and folds it into a single snapshot object: {cwd,
+# branch, updated_at, tasks: {<id>: {subject, status, created_at,
+# updated_at}}}. The LAST status recorded for a task id wins, the FIRST
+# line recorded for a task id supplies its subject (fix round 1, M2 falls
+# back to a placeholder only when even that first line's subject was
+# empty), file-level cwd/branch come from the last line that carries a
+# non-empty value for each, and a task whose last recorded status is
+# "deleted" is dropped from the tasks map entirely. Malformed lines are
+# skipped rather than failing the fold; prints nothing on total jq
+# failure, which the caller uses as the unreadable-file signal.
+#
+# As in session-start.sh, this answers "what did the log record" and not
+# "could the log be read at all": a wholly malformed file folds to an empty
+# tasks map that is indistinguishable from an honestly empty one, so the
+# caller must consult task_state_log_is_parseable below first.
+fold_task_state_log() {
+  local file="$1"
+  jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s '
+    def foldTasks:
+      reduce .[] as $e ({};
+        ($e.task_id // "") as $tid
+        | if $tid == "" then .
+          else
+            (has($tid)) as $seen
+            | (.[$tid] // {}) as $prior
+            | . + { ($tid): {
+                subject: (if $seen then $prior.subject else ($e.subject // "") end),
+                status: (if ($e.status // "") != "" then $e.status elif $seen then $prior.status else "created" end),
+                created_at: (if $seen then $prior.created_at else ($e.ts // "") end),
+                updated_at: ($e.ts // (if $seen then $prior.updated_at else "" end))
+              } }
+          end
+      );
+    {
+      cwd: (reduce .[] as $e (""; if ($e.cwd // "") != "" then $e.cwd else . end)),
+      branch: (reduce .[] as $e (""; if ($e.branch // "") != "" then $e.branch else . end)),
+      updated_at: (if length > 0 then (.[-1].ts // "") else "" end),
+      tasks: (foldTasks | with_entries(select(.value.status != "deleted")))
+    }
+  ' 2>/dev/null
+}
+
+# task_state_log_is_parseable mirrors session-start.sh's function of the
+# same name (duplicated for the same reason the fold is: standalone hook
+# scripts in this repo do not source one another). It reports whether a
+# folded reading of task-state log $1 can be trusted as a complete account
+# of what the tracker recorded, which is the question render_task_state_section
+# must answer before it is entitled to treat an empty tasks map as "this
+# session finished everything" and delete the log. A file holding no
+# non-blank line is parseable, since an empty log honestly records zero
+# events. A file holding at least one non-blank line from which jq recovers
+# no JSON value at all is not, and neither is an unreadable file; both are
+# reported false so the caller skips the file and leaves it on disk. The
+# log is the session's ONLY durable task state, so deleting it on the
+# strength of a reading that failed is the worst available outcome (PR #14
+# review).
+task_state_log_is_parseable() {
+  local file="$1" content_lines parsed_values
+  [ -r "$file" ] || return 1
+  content_lines=$(grep -c '[^[:space:]]' "$file" 2>/dev/null || true)
+  [ -n "$content_lines" ] || content_lines=0
+  [ "$content_lines" -gt 0 ] || return 0
+  parsed_values=$(jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s 'length' 2>/dev/null)
+  [ -n "$parsed_values" ] || return 1
+  [ "$parsed_values" -gt 0 ]
+}
+
+# render_task_state_section renders the CURRENT session's live task-state
+# tracker (task-state-tracker.sh's append-only
+# ~/.claude/projects/<key>/task-state.<session-id>.jsonl event log; fix
+# round 1, C1), folded via fold_task_state_log above, into a
+# marker-delimited "## Task state" section of
+# docs/session-handoff/session-handoff.md under the session cwd's repo,
+# but only when that handoff file already exists: the handoff is
+# repo-owned, and this hook must never create one on a repo that does not
+# keep one. The rendered section is wrapped in <!-- task-state:begin -->
+# / <!-- task-state:end --> marker lines (fix round 1, I2); any
+# pre-existing marked region is replaced by matching those literal marker
+# lines only, never a "## " heading, so a handoff that quotes an example
+# "## Task state" block inside a fenced code section is left
+# byte-identical. Every task is rendered, not only the incomplete ones,
+# each with its task id (fix round 1, M1): this section is a session-end
+# summary of everything the tracker recorded, unlike session-start.sh's
+# interrupted-task offering, which surfaces only non-completed work from a
+# DIFFERENT session. Once every task in the log is completed, the log
+# itself is deleted (independent of whether a handoff file existed to
+# render into); otherwise it is left for the next session-start to offer
+# as interrupted work. Runs in a `set +e` subshell (same posture as
+# write_session_snapshot): an unreadable log, or any write failure, is
+# skipped with a stderr note and never fails session end.
+render_task_state_section() (
+  set +e
+  local transcript_path="$1" session_cwd="$2"
+  local key session_id log_file handoff_file handoff_dir tmp_file body section all_completed folded
+
+  if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
+    return 0
+  fi
+
+  key=$(basename "$(dirname "$transcript_path")" 2>/dev/null)
+  session_id=$(basename "$transcript_path" 2>/dev/null)
+  session_id="${session_id%.jsonl}"
+  if [ -z "$key" ] || [ "$key" = "." ] || [ "$key" = "/" ] || [ -z "$session_id" ]; then
+    return 0
+  fi
+
+  log_file="$PROJECTS_DIR/$key/task-state.$session_id.jsonl"
+  [ -f "$log_file" ] || return 0
+
+  # A non-empty log nothing can be parsed out of is corrupt, not finished:
+  # nothing is rendered and, crucially, nothing is deleted (PR #14 review).
+  if ! task_state_log_is_parseable "$log_file"; then
+    echo "session-end: task-state render skipped: unparseable state file $log_file" >&2
+    return 0
+  fi
+
+  folded=$(fold_task_state_log "$log_file")
+  if [ -z "$folded" ]; then
+    echo "session-end: task-state render skipped: unreadable state file $log_file" >&2
+    return 0
+  fi
+
+  all_completed=$(printf '%s' "$folded" | jq -r '[.tasks // {} | to_entries[] | select(.value.status != "completed")] | length == 0' 2>/dev/null)
+
+  # render_succeeded tracks whether the completed state actually reached a
+  # durable artifact. Pruning the log is only safe once it has: a failed
+  # mktemp or a failed mv leaves the handoff untouched, and deleting the log
+  # anyway would destroy the session's only record of the work (PR #14
+  # review). A repo with no handoff file has no artifact to reach and never
+  # will, so that case prunes as before rather than accumulating logs forever.
+  render_succeeded="true"
+
+  if [ -n "$session_cwd" ]; then
+    handoff_file="$session_cwd/docs/session-handoff/session-handoff.md"
+    if [ -f "$handoff_file" ]; then
+      render_succeeded="false"
+      body=$(printf '%s' "$folded" | jq -r '
+        .tasks // {}
+        | to_entries
+        | sort_by(.value.created_at // "")
+        | .[]
+        | "- [" + .value.status + "] " + (if (.value.subject // "") == "" then "(unknown subject: " + .key + ")" else .value.subject end) + " (task " + .key + ") (updated " + .value.updated_at + ")"
+      ' 2>/dev/null)
+
+      section=$'<!-- task-state:begin -->\n## Task state\n\n'
+      if [ -n "$body" ]; then
+        section+="$body"$'\n'
+      else
+        section+="(no tasks recorded)"$'\n'
+      fi
+      section+=$'<!-- task-state:end -->\n'
+
+      handoff_dir=$(dirname "$handoff_file")
+      tmp_file=$(mktemp "$handoff_dir/.session-handoff.md.XXXXXX" 2>/dev/null)
+      if [ -n "$tmp_file" ]; then
+        # Marker-delimited replace (fix round 1, I2): matches only the
+        # literal <!-- task-state:begin/end --> lines, so a fenced code
+        # block quoting an example "## Task state" heading is never
+        # touched. No markers present -> nothing is stripped, and the
+        # fresh marked block is simply appended.
+        awk '
+          BEGIN { skipping = 0 }
+          /^<!-- task-state:begin -->[[:space:]]*$/ { skipping = 1; next }
+          /^<!-- task-state:end -->[[:space:]]*$/ { if (skipping) { skipping = 0; next } }
+          skipping { next }
+          { print }
+        ' "$handoff_file" > "$tmp_file"
+
+        printf '\n%s' "$section" >> "$tmp_file"
+        if mv -f "$tmp_file" "$handoff_file" 2>/dev/null; then
+          render_succeeded="true"
+        else
+          rm -f "$tmp_file" 2>/dev/null
+        fi
+      fi
+    fi
+  fi
+
+  if [ "$all_completed" = "true" ] && [ "$render_succeeded" = "true" ]; then
+    rm -f "$log_file" 2>/dev/null
+  fi
+  return 0
+)
+
+render_task_state_section "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
+
 exit 0

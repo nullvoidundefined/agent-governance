@@ -105,8 +105,8 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 
 ## Lifecycle and memory (R-6xx)
 
-R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work. [manual]
-R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [hook:handoff-check]
+R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work. [manual, hook:task-state-tracker in Claude Code; manual in Codex]
+R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit; the task-state section is generated from the live tracker and may lag one session. [hook:handoff-check]
 R-603: Route learnings to per-project feedback memory (tags: `success`, `correction`, `fired: R-NNN`, `miss: R-NNN; gap:`). [manual]
 R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-identifying or project-specific content stays in the project repo. [manual]
 R-605: Open a tracker ticket (`/ticket-lifecycle`) for every task above the trivial tier at classification, carrying title, tier, assist, model, estimate, repo, and branch; search by branch before creating so one branch never gets two tickets; advance it at each state change with a timestamped transition comment; keep the key on the spec, the user story, the handoff, and every commit's `Refs:` trailer. [manual]

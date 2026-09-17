@@ -666,6 +666,14 @@
             "autofix": false
         },
         {
+            "id": "R-601",
+            "tier": "advisory",
+            "enforcer": "hook:task-state-tracker",
+            "severity": "warn",
+            "autofix": false,
+            "note": "crash-safe live task-state tracking on TaskCreate/TaskUpdate; the generated handoff Task state section is rendered by session-end.sh from this hook's output"
+        },
+        {
             "id": "R-513",
             "tier": "advisory",
             "enforcer": "hook:constant-change-guard",

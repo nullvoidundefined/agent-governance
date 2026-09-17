@@ -61,6 +61,16 @@ OUT=$("$CHECK" "$SPEC" 2>&1); ST=$?
 check "grounded spec passes" test "$ST" -eq 0
 check "pass line printed" reports "meets the definition of done"
 
+# Regression pin for the macOS /var-vs-/private/var mismatch: the spec path
+# is handed over in whichever symlink form the sandbox came in, while git
+# reports the physical toplevel; condition 6 must still recognize the spec
+# as itself. Passing the PHYSICAL form here exercises the opposite pairing
+# on every platform, so a revert of the canonicalization fails somewhere
+# regardless of what mktemp returned.
+SPEC_PHYSICAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SPEC")
+OUT=$("$CHECK" "$SPEC_PHYSICAL" 2>&1); ST=$?
+check "grounded spec passes via its physical path" test "$ST" -eq 0
+
 # A path that does not exist in the grounding table.
 good_spec | sed 's|src/services/sendUserNotification.ts` \| `sendUserNotification`|src/services/missing.ts` \| `sendUserNotification`|' > "$SPEC"
 OUT=$("$CHECK" "$SPEC" 2>&1); ST=$?

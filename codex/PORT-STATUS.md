@@ -2,7 +2,7 @@
 
 # Codex port status
 
-49 of 52 hook registrations port, across 6 Codex events.
+49 of 53 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -45,6 +45,7 @@
 | `observability-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `task-commit-reminder` | PostToolUse (TaskUpdate) | not ported: fires on Claude Code's TaskUpdate tool, which Codex lacks; R-504 depends on recall under Codex. |
+| `task-state-tracker` | PostToolUse (TaskCreate|TaskUpdate) | not ported: fires on Claude Code's TaskCreate and TaskUpdate tools, which Codex lacks; a registration on that matcher would never receive an event, so R-601's crash-safe task state depends on recall under Codex. |
 | `harness-sync` | SessionStart | ported: `SessionStart` |
 | `session-start` | SessionStart | ported: `SessionStart` |
 | `hookspath-drift-check` | SessionStart | ported: `SessionStart` |

@@ -354,6 +354,15 @@
                         "command": "~/.claude/hooks/task-commit-reminder.sh"
                     }
                 ]
+            },
+            {
+                "matcher": "TaskCreate|TaskUpdate",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/task-state-tracker.sh"
+                    }
+                ]
             }
         ],
         "SessionStart": [

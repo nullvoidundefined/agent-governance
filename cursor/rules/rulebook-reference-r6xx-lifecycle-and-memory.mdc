@@ -10,10 +10,15 @@ Source: `~/.claude/rulebook/reference.md`, section "Lifecycle and memory (R-6xx)
 ## Lifecycle and memory (R-6xx)
 
 R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work.
-  Enforcement: manual
+  Spec:
+  - The handoff's `## Task state` section is generated mechanically by the `session-end.sh` hook from the live append-only `task-state.<session-id>.jsonl` event log (`task-state-tracker.sh`), never written by hand; do not duplicate task status into prose elsewhere in the doc.
+  - The manual duty this rule governs is narrative context only: decisions made, blockers hit, and pointers for the next session. It is not task-state recall, which the tracker already covers without depending on memory.
+  Enforcement: hook:task-state-tracker (advisory)
 
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets.
   Spec, in order: (1) last commit SHA + subject; (2) production state; (3) session metrics (commits, files changed, rework count, velocity flag; `hooks/session-end.sh` computes the same four from the SHA `session-start.sh` stamps at session start, so the numbers in the handoff and in the hook's `## Session metrics` block agree); (4) what shipped (grouped, traceable); (5) pending (by urgency, with effort estimate); (6) next-session tasks with files to read. Bundle into the final commit.
+  - A `## Task state` section, delimited by `<!-- task-state:begin -->` / `<!-- task-state:end -->` markers, is generated and kept current by the `session-end.sh` hook from the live append-only `task-state.<session-id>.jsonl` event log (`task-state-tracker.sh`), appended after the six sections above. It is machine-rendered and is never written or edited by hand, and its content sits outside the under-8KB narrative budget.
+  - The `SessionEnd` hook runs after the session's final commit by construction, so this section is written into the working tree after that commit and cannot be part of it. The append-only event log is the authoritative live state at all times; the rendered section may therefore lag by one session, and the next session's first commit sweeps up whatever the render left uncommitted. This is expected, not a violation of "bundle into the final commit," which governs the six narrative sections above and not this generated one.
   Enforcement: hook:handoff-check (PostToolUse Write on the handoff path, advisory: the 8 KB cap, the six sections in order, and a recorded SHA that resolves; session-start.sh re-verifies the SHA when the next session loads the file); manual for the content of each section
 
 R-603: Route learnings to per-project feedback memory.

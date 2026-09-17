@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-47 of 52 hook registrations port, across 9 Cursor events.
+47 of 53 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -45,6 +45,7 @@
 | `observability-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
 | `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
 | `task-commit-reminder` | PostToolUse (TaskUpdate) | not ported: fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor. |
+| `task-state-tracker` | PostToolUse (TaskCreate|TaskUpdate) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `harness-sync` | SessionStart | ported: `sessionStart` |
 | `session-start` | SessionStart | ported: `sessionStart` |
 | `hookspath-drift-check` | SessionStart | ported: `sessionStart` |
