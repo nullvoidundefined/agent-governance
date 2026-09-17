@@ -71,6 +71,15 @@ fi
 # every one of those commits. `-F <file>` stays out of reach, because the
 # message is on disk and not in the command. Perl is used because grep is
 # line-oriented and cannot see through a multi-line heredoc.
+#
+# Two properties this extractor has to hold, both reported on PR #8. It reads
+# only from the `git commit` token onward and only as far as the first command
+# separator, so a `-m` or a heredoc belonging to some other command in the same
+# Bash call is neither mistaken for this commit's message (a false deny) nor
+# accepted in place of it (a silent R-403 bypass). And it returns the first
+# non-empty line for every form, not just the heredoc ones: the `-m` branch used
+# to return the whole message, so a body line or trailer starting with `fix:`
+# made a docs: commit deny.
 SUBJECT=$(printf '%s' "$CMD" | perl -0777 -ne '
   sub first_line {
     my ($text) = @_;
@@ -79,14 +88,16 @@ SUBJECT=$(printf '%s' "$CMD" | perl -0777 -ne '
     }
     return "";
   }
-  if (/-m\s+(["'\''])((?:(?!\1).)*)\1/s) {
+  exit unless /(git\s+commit\b.*)/s;
+  my $tail = $1;
+  if ($tail =~ /\Agit\s+commit\b[^\n;&|]*?-m\s+(["'\''])((?:(?!\1).)*)\1/s) {
     my $body = $2;
-    if ($body =~ /\$\(\s*cat\s+<<-?\s*['\''"]?(\w+)['\''"]?\s*\n(.*?)\n\s*\1\s*\)/s) {
+    if ($body =~ /\$\(\s*cat\s+<<-?\s*['\''"]?(\w+)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*\)/s) {
       print first_line($2);
     } else {
-      print $body;
+      print first_line($body);
     }
-  } elsif (/-F\s+-\s*(?:[^\n]*?)<<-?\s*['\''"]?(\w+)['\''"]?\s*\n(.*?)\n\s*\1\s*$/ms) {
+  } elsif ($tail =~ /\Agit\s+commit\b[^\n;&|]*?-F\s+-[^\n;&|]*?<<-?\s*['\''"]?(\w+)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*$/ms) {
     print first_line($2);
   }
 ')
