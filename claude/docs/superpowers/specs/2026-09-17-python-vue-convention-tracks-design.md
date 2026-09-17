@@ -22,7 +22,7 @@ This spec covers four deliverables in the agent-governance repo: a four-file spl
 | Parity target | The TypeScript-track section a Python or Vue section must match in depth and specificity. |
 | Enforcer | The hook, ESLint rule, or ruff rule registered in `enforce/manifest.json` that fires mechanically on a rule (R-516). |
 | Fixture test | The shell test under `enforce/tests/` or `hooks/tests/` that proves an enforcer fires on a violating input and stays silent on a compliant one. |
-| Stack track procedure | The ordered steps that add a new track: convention file, rules symlink, session-types row, `CLAUDE.md` read-on-demand row, enforcer analogs, manifest entries, fixture tests, sync. |
+| Stack track procedure | The ordered steps that add a new track: convention file, rules symlink, session-types row, `CLAUDE.md` read-on-demand row, enforcer analogs, manifest entries for rule enforcers, fixture tests, codex port, hash manifest, sync. |
 | SFC | A Vue single-file component, a `.vue` file with `<template>`, `<script setup lang="ts">`, and optional `<style>` blocks. |
 | Composable | A Vue function named `useX` that encapsulates reactive state or behavior. The Vue analog of a React hook. |
 | Nitro | Nuxt's server engine. `server/api/` and `server/middleware/` files run in Nitro, not in the browser. |
@@ -172,14 +172,14 @@ The `structure-conventions` skill gains the Nuxt vocabulary in R-305 and the Pyt
 5. Extend `structure-gate.sh` and the `structure-conventions` skill with the track's directory vocabulary.
 6. Run `sync.sh`, then `hook-integrity-check.sh --update`, then `git diff origin/main` before pushing (R-106).
 
-`enforce/tests/convention-track-invariants.test.sh` asserts, for every `claude/CLAUDE-*.md` other than `CLAUDE.md`: a `paths:` frontmatter block exists, a `claude/rules/*.md` symlink resolves to it, and `session-types.md` or the core's Framework Files table names it. The test runs in the existing enforce test suite.
+`enforce/tests/convention-track-invariants.test.sh` asserts, for every `claude/CLAUDE-*.md` other than `CLAUDE.md`: a `paths:` frontmatter block exists, a `claude/rules/*.md` symlink resolves to it, and `session-types.md` or the core's Framework Files table (that section only, not prose elsewhere in the core) names it. The test runs in the existing enforce test suite. It carries no `enforce/manifest.json` entry: the manifest registers enforcers of numbered rules, and this is a repo-level test with no rule ID, the same standing as `manifest.test.sh` and `doctor.sh`'s suite. `claude/enforce/README.md` names it under Components instead.
 
 ### 5. Wiring changes
 
 - `claude/rules/`: new symlinks `frontend-react.md`, `frontend-vue.md`, `frontend-nuxt.md`.
 - `claude/rules/session-types.md`: the `package.json` row's Read cell lists the Vue and Nuxt files as the alternative to Next or Vite.
 - `claude/CLAUDE.md`: the Convention files table's stack-detection sentence names the Vue track.
-- `enforce/manifest.json`: entries for E1 through E7 and the invariant test.
+- `enforce/manifest.json`: entries for E1 through E7. The invariant test has none (section 4).
 - `enforce/hook-hashes.txt`: regenerated in the PR that changes any hook.
 
 ## Acceptance criteria
@@ -203,7 +203,7 @@ One slice, seven PRs, each independently mergeable. Order matters: the skill and
 
 | PR | Concern | Size |
 |---|---|---|
-| 1 | `add-stack-track` skill, invariant test, manifest entry | ~4 files, ~200 lines |
+| 1 | `add-stack-track` skill, invariant test, README Components line | ~4 files, ~200 lines |
 | 2 | Frontend core refactor: agnostic `CLAUDE-FRONTEND.md`, new `CLAUDE-FRONTEND-REACT.md`, cross-reference edits in NEXT and VITE, symlink | ~5 files, ~350 lines moved |
 | 3 | `CLAUDE-FRONTEND-VUE.md`, `CLAUDE-FRONTEND-NUXT.md`, STYLING subsections, symlinks, session-types and CLAUDE.md rows | ~6 files, ~350 lines |
 | 4 | `CLAUDE-PYTHON.md` rewrite | 1 file, ~900 lines |
