@@ -28,6 +28,16 @@
 # surface entirely (sync.sh copies claude/ only), so it cannot be hashed
 # against a live install; enforce/gate-trusted-repos.txt, which is gitignored
 # (client-identifying, R-106); and enforce/node_modules, which is not tracked.
+# skills/*/scripts/* joined 2026-09-17 (skills audit): a script bundled beside a
+# SKILL.md decides whether that skill's requirement is met, so an unnoticed
+# edit to one weakens the skill the way an edited hook weakens a gate.
+# enforce/*.txt joined the same day (PR #17 review): secret-patterns.txt
+# decides what the secret hook detects and doctor-accepted-keys.txt decides
+# which settings-schema failures are downgraded, so an edit to either weakens
+# a gate exactly the way an edited hook does. Both are named explicitly
+# rather than swept with enforce/*.txt, which would also pull in this
+# manifest itself (a file cannot hash itself stably) and the gitignored,
+# client-identifying enforce/gate-trusted-repos.txt.
 set -euo pipefail
 
 CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$HOME/.claude}"
@@ -43,7 +53,7 @@ compute_hashes() {
     # --update would then write that one bogus line over a real manifest and
     # report success (2026-09-17 audit P1-1).
     local files
-    files=$({ ls hooks/*.sh hooks/*.mjs hooks/*.py hooks/tests/*.sh enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/tests/*.sh enforce/manifest.json enforce/lexicon.json enforce/role-policy.json enforce/judge-prompt.md enforce/package.json enforce/package-lock.json 2>/dev/null || true; } | sort)
+    files=$({ ls hooks/*.sh hooks/*.mjs hooks/*.py hooks/tests/*.sh enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/tests/*.sh enforce/manifest.json enforce/lexicon.json enforce/role-policy.json enforce/judge-prompt.md enforce/package.json enforce/package-lock.json enforce/secret-patterns.txt enforce/doctor-accepted-keys.txt skills/*/scripts/* 2>/dev/null || true; } | sort)
     [ -n "$files" ] || return 0
     printf '%s\n' "$files" | { xargs shasum -a 256 2>/dev/null || true; }
   )

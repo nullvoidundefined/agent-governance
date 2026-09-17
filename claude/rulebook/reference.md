@@ -25,6 +25,16 @@ R-001: Run the session-start procedure before any other work.
 R-002: Load the shared context files mandated by R-001 at session start; run steps in parallel where possible.
   Enforcement: manual
 
+R-003: Run every session under the synced harness; no session runs bare.
+  Scope: every Claude Code session, local or remote (Claude Code on the web), in every project; the Cursor and Codex ports through their adapters.
+  Spec:
+  - At SessionStart, `hooks/harness-sync.sh` finds the agent-governance checkout (its argument, then the `~/.claude/.sync-source` stamp `sync.sh` writes, then `$CLAUDE_PROJECT_DIR` when that is the harness repo) and compares every tracked `claude/` file against the live `~/.claude`; any missing or different file runs `./sync.sh`, and `enforce/node_modules` is installed with npm when absent so the ESLint push gates can run.
+  - `rsync` is installed with apt when absent in a remote session; a laptop without it is told to install it and run `./sync.sh` by hand.
+  - Bootstrap in a remote session: a cloud container starts with no `~/.claude` at all, so the user-level registration cannot fire. The agent-governance repository carries a repo-level `.claude/settings.json` that runs `harness-sync.sh` with `$CLAUDE_PROJECT_DIR`; every other repository carries `.claude/hooks/harness-bootstrap.sh`, written by the `repo-setup` skill, which clones the agent-governance repository into the container and runs the same hook.
+  - A session that reaches no checkout says so once (remote only; silent locally, where the harness is already installed) and treats every rule as manual for that session. Tracking degrades loudly, never silently.
+  - The sync never deletes (sync.sh's own rule); hooks registered by the synced `settings.json` apply from the next tool call, the rules apply at once.
+  Enforcement: hook:harness-sync (SessionStart, first in the chain, advisory: syncs or reports; fixture `hooks/tests/harness-sync.test.sh`); the repo-level bootstrap is installed by `repo-setup` (its `harness` item, `--check` reports a repository without it)
+
 ## Secrets and trust (R-1xx)
 
 R-101: Never run destructive data-loss actions against production; a human must run them manually.
@@ -53,12 +63,13 @@ R-104: Sanitize artifacts before writing them.
   Spec: tokens/keys/cookies -> `[REDACTED]`; PII -> `[PII]`; internal URLs -> `[INTERNAL_URL]`.
   Enforcement: manual
 
-R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn.
+R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn; Linear-tracker writes are exempt unless they land code, submit, upload, or apply.
   Scope: production-DB data-loss actions follow R-101 (hard block), not this rule.
   Spec:
   - The gate matches the action verb in the tool name (send, post, reply, forward, share, create, save, update, upload, merge, delete, trash, revoke, rotate, and their kin) and asks; read-only verbs pass silently. Names are split on both `_` and the camelCase boundary, so `createIssue` and `create_issue` match alike.
   - Database servers (neon, supabase) are matched on `sql`, `migration`, `execute`, and `ddl`: their write primitives reach a managed Postgres that R-101's Bash-only guard never sees. That ask is a stopgap, not R-101 enforcement; the production hard block for MCP-issued SQL is still open (`ISSUES.md`).
   - The browser server is exempt: tab and click actions carry their own site permission model and are not external systems of record.
+  - The Linear server alone (with or without the `claude_ai_` prefix) is exempt for the write class only, and the exemption is that server's, not the tracker role's: the skill also supports Notion, Jira, and Asana, and a write to any of those still asks. It was narrowed by the operator on 2026-09-17: the ticket-lifecycle skill writes at every state change, a confirmation landed every few minutes, and each one bought little, because the tracker is the operator's own and a wrong field is editable in place. The exemption stops where a tracker write stops being bookkeeping: `merge`, `submit`, `upload`, and `apply` still ask, because they land code or carry a file out, and anything the destroy or transmit classes matched (`delete_comment`, `share_issue`) still asks whatever server it came from. Extending this to a tracker that other people read, or to the GitHub server, would be a different decision: a pull request or an issue comment on a public repository is a publication, and R-106 already treats publication as needing a look first.
   Enforcement: hook:mcp-action-guard (asks; "don't ask again" on a specific tool is the user's own pre-authorization)
 
 R-106: Treat every push of the agent-governance repo as publishing; its remote is public, and it is the source that syncs into `~/.claude`, `~/.codex`, and `~/.cursor`.
@@ -67,6 +78,16 @@ R-106: Treat every push of the agent-governance repo as publishing; its remote i
 
 R-107: Investigate any `core.hooksPath` value resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal.
   Enforcement: hook:hookspath-drift-check (SessionStart warning)
+
+R-108: Never write a credential-shaped literal into any file or command, even a fake one.
+  Scope: every tracked file (fixtures, docs, templates, specs) and every Bash command; real secrets are R-102's, this rule is about values that only look like one.
+  Spec:
+  - Secret scanners (GitGuardian runs on every PR of this public repository) match the shape, not the validity: a fixture's fake `postgres://user:<password>@db.example.invalid` URI, with a made-up word where the placeholder is here, went red on 2026-09-17 exactly as a real credential would, and because the scanner reads every commit of the PR the branch had to be rewritten, not just fixed. This Spec's own first draft repeated the literal as its example and was flagged the same way.
+  - Two shapes are denied: a URI whose userinfo carries a password (`scheme://user:<password>@host` with a real-looking value where the placeholder is), and a `password`, `passwd`, `secret`, `api_key`, `access_token`, `auth_token`, or `token` assignment (`=` or `:`) whose value is a literal of six or more characters.
+  - Placeholder shapes pass: a value starting with `$`, `<`, `%`, or `{` (an env reference, an angle-bracket placeholder, a printf slot, a template), or one of the words scanners already discount (`password`, `changeme`, `placeholder`, `example`, `redacted`, `dummy`, `fake`, `xxx`, `...`).
+  - The fix is never a different-looking fake. A fixture builds the value at run time from parts (`printf '%s://%s:%s@%s' postgres user "$FAKE_PW" host`), and a document writes the placeholder; the committed text then never carries the shape.
+  - A literal that slipped into history is a rewrite (the branch is the author's own and unmerged) or a scanner-side false-positive mark, never a follow-up commit alone: the scanner keeps reporting the old commit.
+  Enforcement: hook:secret-scan (PreToolUse Bash, Write, and Edit: denies the two shapes in the command, the Write content, and the Edit new_string; fixture `tests/secret-scan.test.sh`)
 
 ## Conduct and output (R-2xx)
 
@@ -583,16 +604,22 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
   - Tiers: `regex` | `ast` | `llm-judge` | `advisory`. A rule with no manifest entry is unenforced and depends on memory.
   - Deterministic checks run per edit (cheap, no Node/network); ESLint and the semantic judge run at the push boundary.
   - Session start verifies every manifest hook stays registered. See `~/.claude/enforce/README.md`.
+  Spec, second clause ("ship a fixture test"), mechanized 2026-09-17 (audit P2-3): every fixture declares the enforcers it proves in a `# Covers: <enforcer>[, ...]` header line, and `enforce/tests/manifest-fixture-closure.test.sh` compares those declarations against the manifest in both directions, so a manifest enforcer with no declaration and a declaration naming no manifest enforcer both fail. The declaration sits beside the assertions that justify it rather than in a second manifest column, because several enforcers are proven behaviourally without ever being named (`eslint:no-cycle` and `eslint:no-restricted-paths` are proven by `import-direction.test.sh`), which makes a name grep report gaps that are not real. The closure is over the enumeration, not over the proof: a dishonest `# Covers:` line passes, and no check can read intent.
   Enforcement: hook:enforcement-guard-check
 
 ## Lifecycle and memory (R-6xx)
 
 R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work.
-  Enforcement: manual
+  Spec:
+  - The handoff's `## Task state` section is generated mechanically by the `session-end.sh` hook from the live append-only `task-state.<session-id>.jsonl` event log (`task-state-tracker.sh`), never written by hand; do not duplicate task status into prose elsewhere in the doc.
+  - The manual duty this rule governs is narrative context only: decisions made, blockers hit, and pointers for the next session. It is not task-state recall, which the tracker already covers without depending on memory.
+  Enforcement: hook:task-state-tracker (advisory)
 
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets.
-  Spec, in order: (1) last commit SHA + subject; (2) production state; (3) what shipped (grouped, traceable); (4) pending (by urgency, with effort estimate); (5) next-session tasks with files to read. Bundle into the final commit.
-  Enforcement: manual
+  Spec, in order: (1) last commit SHA + subject; (2) production state; (3) session metrics (commits, files changed, rework count, velocity flag; `hooks/session-end.sh` computes the same four from the SHA `session-start.sh` stamps at session start, so the numbers in the handoff and in the hook's `## Session metrics` block agree); (4) what shipped (grouped, traceable); (5) pending (by urgency, with effort estimate); (6) next-session tasks with files to read. Bundle into the final commit.
+  - A `## Task state` section, delimited by `<!-- task-state:begin -->` / `<!-- task-state:end -->` markers, is generated and kept current by the `session-end.sh` hook from the live append-only `task-state.<session-id>.jsonl` event log (`task-state-tracker.sh`), appended after the six sections above. It is machine-rendered and is never written or edited by hand, and its content sits outside the under-8KB narrative budget.
+  - The `SessionEnd` hook runs after the session's final commit by construction, so this section is written into the working tree after that commit and cannot be part of it. The append-only event log is the authoritative live state at all times; the rendered section may therefore lag by one session, and the next session's first commit sweeps up whatever the render left uncommitted. This is expected, not a violation of "bundle into the final commit," which governs the six narrative sections above and not this generated one.
+  Enforcement: hook:handoff-check (PostToolUse Write on the handoff path, advisory: the 8 KB cap, the six sections in order, and a recorded SHA that resolves; session-start.sh re-verifies the SHA when the next session loads the file); manual for the content of each section
 
 R-603: Route learnings to per-project feedback memory.
   Spec: tags: `success`, `correction`, `fired: R-NNN <context>`, `miss: R-NNN <context>; gap: <what would catch this>`.
@@ -611,7 +638,7 @@ R-605: Open a tracker ticket for every task above the trivial tier, at classific
   - The key is discoverable from inside the repo without querying the tracker: the spec's and user story's `**Ticket:**` line, the handoff doc beside the pending item, and a `Refs: <key>` trailer on every commit (already an accepted trailer in `hooks/commit-message-guard.sh`).
   - Trivial tier: no ticket unless the user asks for one.
   - No tracker configured (`~/.claude/TICKET-TRACKER.json` absent): say so once in the turn, record the same field set in the handoff doc, and continue the work. Tracking degrades loudly, never silently.
-  - Every write is one MCP call confirmed under R-105, never batched behind a single prompt; a denial is a decision and is not re-asked in the same turn.
+  - Every write is one MCP call, never batched behind a single prompt; a denial is a decision and is not re-asked in the same turn. R-105 confirms each one except on the Linear server, whose write class it stopped asking about on 2026-09-17; a Notion, Jira, or Asana write still prompts, as does a Linear call that lands code, submits, uploads, applies, destroys, or transmits.
   Enforcement: manual. A hook can only read a local signal, and the local signal would be a per-branch link file whose shape depends on which tracker the maintainer settles on; the mechanical tier is revisited once one tracker holds real history. Recorded in the spec's Non-goals so an audit reads a decision rather than an R-516 gap.
 
 R-606: Close the ticket with measured actuals, after the verification gate and never before.

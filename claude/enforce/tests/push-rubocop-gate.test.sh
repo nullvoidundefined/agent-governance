@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: rubocop:Lint/SuppressedException, rubocop:Style/NestedTernaryOperator
 # Verifies push-rubocop-gate.sh denies a push whose outgoing diff adds a Ruby
 # AST-tier violation, scopes to added lines, and fails open on unparseable
 # output. RuboCop is stubbed via CLAUDE_RUBOCOP_CMD (canned JSON), so the test
@@ -32,6 +33,21 @@ OUT2=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_RUBOCOP_CMD="$
 S3=$(mkstub '{"files":[{"path":"app/models/job.rb","offenses":[]}]}')
 OUT3=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_RUBOCOP_CMD="$S3" "$HOOK")
 [ -z "$OUT3" ]
+
+# P2-3 (2026-09-17 audit): rubocop:Lint/SuppressedException is in the manifest
+# as the R-344 analog and no case drove it, so only one of the two Ruby cops
+# this gate claims was ever exercised. The stub is how this fixture works at
+# all (no local RuboCop), so what is proven here is the gate's handling of the
+# cop, not the cop itself: a swallowed exception on an added line denies, and
+# the denial names the cop so a reader can tell which rule fired.
+printf "# frozen_string_literal: true\nclass Job\n  def status_label\n    a ? (b ? 1 : 2) : 3\n  end\n\n  def fresh_label\n    'ok'\n  end\n\n  def load_note\n    read_note\n  rescue StandardError\n    nil\n  end\nend\n" > app/models/job.rb
+git add .; git commit -q -m "chore: swallowed"
+S4=$(mkstub '{"files":[{"path":"app/models/job.rb","offenses":[{"severity":"warning","message":"Do not suppress exceptions.","cop_name":"Lint/SuppressedException","location":{"start_line":13,"line":13}}]}]}')
+OUT4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_RUBOCOP_CMD="$S4" "$HOOK")
+printf '%s' "$OUT4" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
+  || { echo "FAIL: a suppressed exception on an added line must deny; got: $OUT4"; exit 1; }
+printf '%s' "$OUT4" | grep -q "Lint/SuppressedException" \
+  || { echo "FAIL: the denial must name the cop that fired; got: $OUT4"; exit 1; }
 
 # Unparseable output -> fail open (allow).
 S4=$(mkstub 'rubocop exploded')

@@ -49,28 +49,40 @@ SCAN_TEXT=$(printf '%s' "$INPUT" | jq -r '(.tool_input.command // "") + "\n" + (
 # Patterns use basic POSIX ERE (grep -E), no PCRE features.
 # Each subpattern requires enough trailing characters to exclude placeholders
 # and discussion references like "sk-ant-api03-..." or "whsec_REDACTED".
-PATTERN='sk-ant-api03-[A-Za-z0-9_-]{50,}'
-PATTERN+='|whsec_[A-Za-z0-9]{20,}'
-PATTERN+='|sk_live_[A-Za-z0-9]{20,}'
-PATTERN+='|sk_test_[A-Za-z0-9]{20,}'
-PATTERN+='|rk_live_[A-Za-z0-9]{20,}'
-PATTERN+='|rk_test_[A-Za-z0-9]{20,}'
-PATTERN+='|ghp_[A-Za-z0-9]{30,}'
-PATTERN+='|gho_[A-Za-z0-9]{30,}'
-PATTERN+='|ghs_[A-Za-z0-9]{30,}'
-PATTERN+='|ghu_[A-Za-z0-9]{30,}'
-PATTERN+='|vcp_[A-Za-z0-9]{20,}'
-PATTERN+='|\bre_[A-Za-z0-9_-]{30,}'
-PATTERN+='|rnd_[A-Za-z0-9]{20,}'
-PATTERN+='|xoxb-[A-Za-z0-9-]{40,}'
-PATTERN+='|xoxp-[A-Za-z0-9-]{40,}'
-PATTERN+='|xoxa-[A-Za-z0-9-]{40,}'
-PATTERN+='|xoxs-[A-Za-z0-9-]{40,}'
-PATTERN+='|AKIA[0-9A-Z]{16}'
-PATTERN+='|ASIA[0-9A-Z]{16}'
-PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
-PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
-PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
+#
+# The pattern set lives in enforce/secret-patterns.txt (one alternative per
+# line, `#` comments) so doctor.sh --release can reuse the same list for its
+# tracked-file scan. A guard fails closed, never open: if the shared data
+# file is missing or unreadable, fall back to this hardcoded minimal set
+# rather than scanning nothing (2026-09-17, B-4 pattern extraction).
+PATTERNS_FILE="$(dirname "${BASH_SOURCE[0]}")/../enforce/secret-patterns.txt"
+if [ -f "$PATTERNS_FILE" ]; then
+  PATTERN=$(grep -v '^#' "$PATTERNS_FILE" | grep -v '^$' | paste -sd'|' -)
+fi
+if [ -z "${PATTERN:-}" ]; then
+  PATTERN='sk-ant-api03-[A-Za-z0-9_-]{50,}'
+  PATTERN+='|whsec_[A-Za-z0-9]{20,}'
+  PATTERN+='|sk_live_[A-Za-z0-9]{20,}'
+  PATTERN+='|sk_test_[A-Za-z0-9]{20,}'
+  PATTERN+='|rk_live_[A-Za-z0-9]{20,}'
+  PATTERN+='|rk_test_[A-Za-z0-9]{20,}'
+  PATTERN+='|ghp_[A-Za-z0-9]{30,}'
+  PATTERN+='|gho_[A-Za-z0-9]{30,}'
+  PATTERN+='|ghs_[A-Za-z0-9]{30,}'
+  PATTERN+='|ghu_[A-Za-z0-9]{30,}'
+  PATTERN+='|vcp_[A-Za-z0-9]{20,}'
+  PATTERN+='|\bre_[A-Za-z0-9_-]{30,}'
+  PATTERN+='|rnd_[A-Za-z0-9]{20,}'
+  PATTERN+='|xoxb-[A-Za-z0-9-]{40,}'
+  PATTERN+='|xoxp-[A-Za-z0-9-]{40,}'
+  PATTERN+='|xoxa-[A-Za-z0-9-]{40,}'
+  PATTERN+='|xoxs-[A-Za-z0-9-]{40,}'
+  PATTERN+='|AKIA[0-9A-Z]{16}'
+  PATTERN+='|ASIA[0-9A-Z]{16}'
+  PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
+  PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+  PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
+fi
 
 if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
   jq -n '{
@@ -78,6 +90,53 @@ if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: "secret-scan hook BLOCKED this tool call: the command or file payload contains a string matching a known secret pattern (API key, webhook secret, AWS access key, SendGrid key, GitHub token, SSH private key, or similar). Never pass secrets as command-line arguments. The argv is persisted to shell history, Claude Code transcripts, the permission-prompt UI, and process argument space. Correct patterns: (1) set the value via the vendor dashboard yourself, no CLI involvement; (2) load the value from a file outside the repo via an env var that is resolved at execution time so the plaintext never appears in the command string; (3) use a stdin-fed CLI mode if the vendor supports it."
+    }
+  }'
+  exit 0
+fi
+
+# R-108: a credential-shaped literal is a finding even when it is fake.
+# Secret scanners (GitGuardian on every PR of a public repository) flag the
+# shape, not the validity: a fixture's fake `postgres://user:<password>@host`
+# URI, with a made-up word in the placeholder's place, went red on 2026-09-17
+# exactly as a real one would, and the branch had to be rewritten. Two shapes are denied in any Write or Edit payload and on
+# argv: a URI whose userinfo carries a password, and a password/secret/token
+# assignment carrying a literal value. A placeholder shape passes: a value
+# that starts with `$`, `<`, `%`, or `{` (an env reference, an angle-bracket
+# placeholder, a printf slot, a template), or that is one of the words
+# scanners already discount (password, changeme, placeholder, example,
+# redacted, dummy, xxx...). The fix is never a different fake: build the
+# value at run time from parts (`printf '%s://%s:%s@%s'`), or write the
+# placeholder.
+PLACEHOLDER_VALUE='^([$<%{]|(password|passwd|changeme|placeholder|example|redacted|dummy|fake|secret|x+|\*+|\.\.\.)$)'
+URI_WITH_PASSWORD='[a-z][a-z0-9+.-]*://[^/[:space:]:@"'"'"']+:[^@[:space:]"'"'"']+@'
+credential_shape_hit() {
+  local text="$1" match value
+  # URI userinfo passwords: keep the password segment and test it for a
+  # placeholder shape.
+  while IFS= read -r match; do
+    [ -n "$match" ] || continue
+    value=${match#*://}; value=${value#*:}; value=${value%@}
+    printf '%s' "$value" | grep -qiE "$PLACEHOLDER_VALUE" || { printf 'a URI carrying a password (%s)' "${match%%:*}://user:...@"; return 0; }
+  done < <(printf '%s' "$text" | grep -oE "$URI_WITH_PASSWORD" || true)
+  # password/secret/token assignments with a literal value of six or more
+  # characters: quoted, or a bare token of literal-looking characters that
+  # ends at a delimiter (so `os.environ["DB_PASSWORD"]`, `getToken()`, and
+  # `process.env.SESSION_SECRET!`, which continue into `[`, `(`, or `.`, are
+  # code, not literals).
+  while IFS= read -r match; do
+    [ -n "$match" ] || continue
+    value=$(printf '%s' "$match" | sed -E 's/^[^=:]*[=:][[:space:]]*//; s/[[:space:],;)}]$//; s/^["'"'"']//; s/["'"'"']$//')
+    printf '%s' "$value" | grep -qiE "$PLACEHOLDER_VALUE" || { printf 'a %s assignment with a literal value' "$(printf '%s' "$match" | grep -oiE '^[a-z_-]+')"; return 0; }
+  done < <(printf '%s' "$text" | grep -oiE '(^|[^a-z_])(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)[[:space:]]*[=:][[:space:]]*("[^"[:space:]]{6,}"|'"'"'[^'"'"'[:space:]]{6,}'"'"'|[A-Za-z0-9_+/=!#-]{6,})([[:space:],;)}]|$)' | sed -E 's/^[^a-zA-Z_]//' || true)
+  return 1
+}
+if HIT=$(credential_shape_hit "$SCAN_TEXT"); then
+  jq -n --arg hit "$HIT" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: ("secret-scan hook BLOCKED this tool call (R-108): it writes " + $hit + ", a credential-shaped literal. Secret scanners flag the shape whether or not the value is real, so a fake one still turns the PR red and forces a history rewrite. Build the value at run time from parts (printf with %s slots, a variable assembled in the fixture) or write a placeholder (<password>, ${DB_PASSWORD}, changeme); never a different-looking fake.")
     }
   }'
   exit 0

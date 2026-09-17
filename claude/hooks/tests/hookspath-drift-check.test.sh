@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:hookspath-drift-check
 # Test harness for hookspath-drift-check.sh (backs R-107).
 #
 # R-107: a git core.hooksPath that points outside the repo tree is a

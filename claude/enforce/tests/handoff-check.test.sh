@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Covers: hook:handoff-check
+# handoff-check.test.sh: verifies hooks/handoff-check.sh (R-602 reminder,
+# 2026-09-17 skills audit S-5): silent on a handoff that meets the Spec and on
+# any other path; reminds naming the miss on an oversized file, a missing
+# section, sections out of order, a missing SHA, and a SHA that does not
+# resolve; exits 0 on malformed input.
+set -uo pipefail
+HOOK="$HOME/.claude/hooks/handoff-check.sh"
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+
+fail=0
+check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
+reports() { printf '%s' "$OUT" | grep -qF "$1"; }
+silent() { [ -z "$OUT" ]; }
+
+SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
+REPO="$SB/repo"; mkdir -p "$REPO/docs/session-handoff"
+git -C "$REPO" init -q -b main
+git -C "$REPO" config user.email t@example.invalid; git -C "$REPO" config user.name t
+printf 'a\n' > "$REPO/a.txt"; git -C "$REPO" add -A; git -C "$REPO" commit -qm "init"
+SHA=$(git -C "$REPO" rev-parse --short HEAD)
+FILE="$REPO/docs/session-handoff/session-handoff.md"
+
+good() {
+cat <<EOF
+# Session Handoff: test
+
+## 1. Last commit
+- \`$SHA\` init
+
+## 2. Production state
+- fine
+
+## 3. Session metrics
+- Commits this session: 1
+
+## 4. What shipped
+- a.txt
+
+## 5. Pending
+- nothing
+
+## 6. Next session: read first
+- README
+EOF
+}
+run() { jq -n --arg p "$1" --rawfile c "$2" '{tool_name:"Write",tool_input:{file_path:$p,content:$c}}' | bash "$HOOK" 2>&1; }
+
+good > "$SB/good.md"
+OUT=$(run "$FILE" "$SB/good.md")
+check "compliant handoff is silent" silent
+
+OUT=$(run "$REPO/docs/other.md" "$SB/good.md")
+check "other path is silent" silent
+
+good | sed 's/^## 3. Session metrics/## 3. Timings/' > "$SB/nometrics.md"
+OUT=$(run "$FILE" "$SB/nometrics.md")
+check "missing section named" reports "no section for: session metrics"
+check "reminder is PostToolUse json" bash -c "printf '%s' \"\$0\" | jq -e '.hookSpecificOutput.hookEventName == \"PostToolUse\"' >/dev/null" "$OUT"
+
+good | awk '/^## 4\. What shipped/{buf=$0; getline; buf=buf"\n"$0; getline; buf=buf"\n"$0; hold=buf; next} /^## 5\. Pending/{print; getline; print; getline; print; print hold; next} {print}' > "$SB/disordered.md"
+OUT=$(run "$FILE" "$SB/disordered.md")
+check "out-of-order section named" reports "out of order: pending"
+
+good | sed "s/\`$SHA\`/\`deadbeef0\`/" > "$SB/badsha.md"
+OUT=$(run "$FILE" "$SB/badsha.md")
+check "unresolvable sha named" reports "deadbeef0 does not resolve"
+
+good | sed "s/\`$SHA\` init/no sha here/" > "$SB/nosha.md"
+OUT=$(run "$FILE" "$SB/nosha.md")
+check "missing sha named" reports "no commit SHA in backticks"
+
+{ good; printf 'x%.0s' $(seq 1 8200); printf '\n'; } > "$SB/big.md"
+OUT=$(run "$FILE" "$SB/big.md")
+check "oversized handoff named" reports "over the 8 KB cap"
+
+# --- The generated task-state block sits outside the narrative budget
+# (PR #14 review). R-602 caps the narrative at 8 KB; session-end.sh's
+# render_task_state_section appends a marker-delimited "## Task state"
+# section it generates itself, whose size nobody writing the handoff
+# controls. Measuring the whole file therefore reported a cap violation
+# against a compliant narrative as soon as the generated block grew, and
+# the only way to silence it was to cut real narrative. The block is
+# excluded from the measurement, and only from the measurement: narrative
+# that is genuinely over the cap is still named. ---
+{
+  good
+  printf '\n<!-- task-state:begin -->\n## Task state\n\n'
+  i=1
+  while [ "$i" -le 220 ]; do
+    printf -- '- [in_progress] A generated task line long enough to matter here (task %s) (updated 2026-09-17T00:00:00Z)\n' "$i"
+    i=$((i + 1))
+  done
+  printf '<!-- task-state:end -->\n'
+} > "$SB/withtaskstate.md"
+BIG_BLOCK_BYTES=$(wc -c < "$SB/withtaskstate.md" | tr -d ' ')
+check "the task-state fixture really is over the raw 8 KB cap" test "$BIG_BLOCK_BYTES" -gt 8192
+OUT=$(run "$FILE" "$SB/withtaskstate.md")
+check "a compliant narrative plus a large generated task-state block is silent" silent
+
+# Negative control: narrative genuinely over the cap is still named, even
+# with a generated block present.
+{
+  good
+  printf 'x%.0s' $(seq 1 8200)
+  printf '\n<!-- task-state:begin -->\n## Task state\n\n- [in_progress] T (task 1)\n<!-- task-state:end -->\n'
+} > "$SB/bignarrative.md"
+OUT=$(run "$FILE" "$SB/bignarrative.md")
+check "an oversized narrative is still named when a task-state block is present" reports "over the 8 KB cap"
+
+OUT=$(printf 'not json' | bash "$HOOK" 2>&1); ST=$?
+check "malformed input exits 0" test "$ST" -eq 0
+check "malformed input is silent" silent
+
+[ "$fail" -eq 0 ] && echo "handoff-check.test.sh PASS"
+exit "$fail"

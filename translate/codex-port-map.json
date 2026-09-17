@@ -1,5 +1,4 @@
 {
-  "builder": "translate/codex.mjs",
   "events": {
     "PreToolUse": "PreToolUse",
     "PostToolUse": "PostToolUse",
@@ -12,6 +11,7 @@
   },
   "unported_reasons": {
     "task-commit-reminder": "fires on Claude Code's TaskUpdate tool, which Codex lacks; R-504 depends on recall under Codex.",
+    "task-state-tracker": "fires on Claude Code's TaskCreate and TaskUpdate tools, which Codex lacks; a registration on that matcher would never receive an event, so R-601's crash-safe task state depends on recall under Codex.",
     "settings-change-guard": "ConfigChange is a Claude Code event and guards settings.json, which Codex does not read.",
     "model-switch-guard": "PreModelSwitch is a Claude Code event; Codex selects models through config.toml and /model."
   },

@@ -55,6 +55,13 @@ The log lines, request-ID propagation (R-341), analytics events from the registr
 
 Who may call it, what is validated at the boundary, what is never logged (R-104).
 
+## Assumption ledger (optional)
+
+For specs grounded on external research or another session's claims: one row per load-bearing assumption, so verification is work someone owns rather than a hope. Delete the section when the spec rests only on code in this repo.
+
+| Claim | Source | Verification command or check | Status (unverified/confirmed/refuted) | Owner | Next action |
+|---|---|---|---|---|---|
+
 ## Domain vocabulary
 
 - <term> - <meaning in this domain> - chosen over: <alternatives> because <reason>.

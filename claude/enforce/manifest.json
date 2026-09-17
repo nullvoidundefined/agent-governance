@@ -1,6 +1,22 @@
 {
     "rules": [
         {
+            "id": "R-003",
+            "tier": "advisory",
+            "enforcer": "hook:harness-sync",
+            "severity": "warning",
+            "autofix": false,
+            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
+        },
+        {
+            "id": "R-602",
+            "tier": "advisory",
+            "enforcer": "hook:handoff-check",
+            "severity": "warning",
+            "autofix": false,
+            "note": "PostToolUse Write on docs/session-handoff/session-handoff.md: size cap, section order, SHA resolution; content stays manual"
+        },
+        {
             "id": "R-323",
             "tier": "ast",
             "enforcer": "eslint:sort-keys",
@@ -279,6 +295,14 @@
             "note": "fixture: tests/credential-mutation-guard.test.sh (mutation slice of secret-scan.sh; no hook of that name exists)"
         },
         {
+            "id": "R-108",
+            "tier": "regex",
+            "enforcer": "hook:secret-scan",
+            "severity": "error",
+            "autofix": false,
+            "note": "credential-shaped literals (URI userinfo password, password/secret/token assignment with a literal) in Bash argv, Write content, or Edit new_string; placeholder shapes pass; fixture: tests/secret-scan.test.sh; tree closure (every tracked file through the hook): tests/credential-shape-scan.test.sh"
+        },
+        {
             "id": "R-106",
             "tier": "regex",
             "enforcer": "hook:global-repo-push-guard",
@@ -343,7 +367,7 @@
             "enforcer": "hook:mcp-action-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt"
+            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt, and the Linear server exempt for the write class alone (that server only, not every tracker the ticket skill supports) (merge, submit, upload, apply still ask, as do the destroy and transmit classes on every server)"
         },
         {
             "id": "R-401",
@@ -620,6 +644,14 @@
             "autofix": false
         },
         {
+            "id": "R-325",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
+        },
+        {
             "id": "R-505",
             "tier": "regex",
             "enforcer": "hook:commit-message-guard",
@@ -632,6 +664,14 @@
             "enforcer": "hook:task-commit-reminder",
             "severity": "warn",
             "autofix": false
+        },
+        {
+            "id": "R-601",
+            "tier": "advisory",
+            "enforcer": "hook:task-state-tracker",
+            "severity": "warn",
+            "autofix": false,
+            "note": "crash-safe live task-state tracking on TaskCreate/TaskUpdate; the generated handoff Task state section is rendered by session-end.sh from this hook's output"
         },
         {
             "id": "R-513",

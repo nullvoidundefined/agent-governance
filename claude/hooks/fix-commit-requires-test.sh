@@ -63,23 +63,42 @@ if ! printf '%s' "$CMD" | grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[
   exit 0
 fi
 
-# Extract the subject from `-m "..."` or `-m '...'`. If the body is a
-# heredoc invocation like `$(cat <<'EOF' ... EOF)`, the first non-empty
-# line of the heredoc body is treated as the subject. Perl is used
-# because grep is line-oriented and cannot see through multi-line
-# heredocs. If no -m is present, the commit is editor-driven and this
-# hook does not inspect it.
+# Extract the subject from `-m "..."` or `-m '...'`, from a `-m "$(cat <<'EOF'
+# ... EOF)"` body, or from `-F -` fed by a heredoc. The last form was invisible
+# until 2026-09-17 (audit P2-7): it carries the subject in the command text
+# exactly like the others, it is the form the agents working in this repo
+# actually use, and while the extractor keyed on -m alone R-403 was inert for
+# every one of those commits. `-F <file>` stays out of reach, because the
+# message is on disk and not in the command. Perl is used because grep is
+# line-oriented and cannot see through a multi-line heredoc.
+#
+# Two properties this extractor has to hold, both reported on PR #8. It reads
+# only from the `git commit` token onward and only as far as the first command
+# separator, so a `-m` or a heredoc belonging to some other command in the same
+# Bash call is neither mistaken for this commit's message (a false deny) nor
+# accepted in place of it (a silent R-403 bypass). And it returns the first
+# non-empty line for every form, not just the heredoc ones: the `-m` branch used
+# to return the whole message, so a body line or trailer starting with `fix:`
+# made a docs: commit deny.
 SUBJECT=$(printf '%s' "$CMD" | perl -0777 -ne '
-  if (/-m\s+(["'\''])((?:(?!\1).)*)\1/s) {
-    my $body = $2;
-    if ($body =~ /\$\(\s*cat\s+<<-?\s*['\''"]?(\w+)['\''"]?\s*\n(.*?)\n\s*\1\s*\)/s) {
-      my $heredoc = $2;
-      for my $line (split /\n/, $heredoc) {
-        if ($line !~ /^\s*$/) { print $line; last; }
-      }
-    } else {
-      print $body;
+  sub first_line {
+    my ($text) = @_;
+    for my $line (split /\n/, $text) {
+      return $line if $line !~ /^\s*$/;
     }
+    return "";
+  }
+  exit unless /(git\s+commit\b.*)/s;
+  my $tail = $1;
+  if ($tail =~ /\Agit\s+commit\b[^\n;&|]*?-m\s+(["'\''])((?:(?!\1).)*)\1/s) {
+    my $body = $2;
+    if ($body =~ /\$\(\s*cat\s+<<-?\s*['\''"]?(\w+)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*\)/s) {
+      print first_line($2);
+    } else {
+      print first_line($body);
+    }
+  } elsif ($tail =~ /\Agit\s+commit\b[^\n;&|]*?-F\s+-[^\n;&|]*?<<-?\s*['\''"]?(\w+)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*$/ms) {
+    print first_line($2);
   }
 ')
 if [ -z "$SUBJECT" ]; then
