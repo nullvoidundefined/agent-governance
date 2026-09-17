@@ -15,13 +15,16 @@
 # silently weakens it exactly the way an edited hook would.
 # tdd.sh and role-policy.json joined 2026-09-06: the script decides what a RED
 # and a GREEN are, and the policy decides what each role may write.
+# skills/*/scripts/* joined 2026-09-17 (skills audit): a script bundled beside a
+# SKILL.md decides whether that skill's requirement is met, so an unnoticed
+# edit to one weakens the skill the way an edited hook weakens a gate.
 set -euo pipefail
 
 CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$HOME/.claude}"
 HASH_FILE="$CLAUDE_DIR/enforce/hook-hashes.txt"
 
 compute_hashes() {
-  (cd "$CLAUDE_DIR" && { ls hooks/*.sh hooks/*.mjs hooks/*.py enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/manifest.json enforce/lexicon.json enforce/role-policy.json 2>/dev/null || true; } \
+  (cd "$CLAUDE_DIR" && { ls hooks/*.sh hooks/*.mjs hooks/*.py enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/manifest.json enforce/lexicon.json enforce/role-policy.json skills/*/scripts/* 2>/dev/null || true; } \
     | sort | { xargs shasum -a 256 2>/dev/null || true; })
 }
 
