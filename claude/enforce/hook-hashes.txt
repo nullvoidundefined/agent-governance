@@ -154,7 +154,7 @@ f2b7609e6e3255c40e5fe72a4f2ff3ac731d941d1fd5abce1c5e95de9097c9f5  hooks/task-com
 4f66f5210ee2f4ccb628818bb1e019c861b0af40c586e6f6795407f066edeec2  hooks/tests/fix-commit-requires-test.test.sh
 7ca5fa29322581b291073e12cf4e5e4a31072dbb1e4cb11bdce990304c6aa1a7  hooks/tests/git-global-option-bypass.test.sh
 e67617ca1ff537d1f284c983ccccf2c01423ecf5e43671dac3bc08fbee7ff2d0  hooks/tests/global-repo-push-guard.test.sh
-45975ff34f925103bc686d914aa1e71d555854daa08a8dceacdf88a2d1e7955d  hooks/tests/harness-sync.test.sh
+fbf42769933c8b7e8add1ba94c623024eda36e7477d59f8c454a1b086238e8c2  hooks/tests/harness-sync.test.sh
 e7839a3730d02afdbc9b3ecb074a0f12b8466d885dfc0943862f06a5adc70f1e  hooks/tests/hook-integrity-check.test.sh
 1adf94ee4678ab18bd841102d173b9d7d95ed8fdb6630cd6cea2b7f79dcb1d73  hooks/tests/hookspath-drift-check.test.sh
 ad72148586219a7fdcfe79fc49cb2f6482287063e6292f612785887b77c4d906  hooks/tests/install-git-hooks.test.sh
