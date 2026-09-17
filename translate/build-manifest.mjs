@@ -5,7 +5,10 @@
 // to move independently of the generator).
 import { createHash } from "node:crypto";
 
-const MANIFEST_PATH = ".claude-port.json";
+// Exported: render-codex-gitignore.mjs must name the manifest in the
+// allowlist, and the manifest is planned after the gitignore (it hashes it),
+// so the path cannot come from the planned list.
+export const MANIFEST_PATH = ".claude-port.json";
 const BUILDER_NAME = "translate/codex.mjs";
 
 // sha256Hex(content): the manifest's digest format for one generated file's

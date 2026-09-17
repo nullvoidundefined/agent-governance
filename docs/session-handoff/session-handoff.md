@@ -1,42 +1,54 @@
-# Session Handoff: 2026-09-17 Claude config audit handoff
+# Session Handoff: 2026-09-17 ticket-lifecycle skill, translator allowlist, enforce audit
 
 ## 1. Last commit
 
-- Current branch: `claude/codex-translator`. Run `git log -1 --oneline` first; the tip commit is the docs-only commit `docs: add Claude config audit handoff`, which adds the 2026-09-17 current-practice Claude Code config audit findings to the handoff so Claude Code can pick up the remediation work. NOT merged, NOT pushed.
-- Prior handoff context below still describes the unmerged `claude/hygiene-audit-2026-09-17` workstream and should be treated as inherited state, not as the current branch tip.
+- `c247a3f fix(hooks): R-103 covers the suffixed, long-form, and perl in-place edit spellings (audit P2-6)`, on branch `claude/ticket-lifecycle-skill-ourn3y`. Fifteen commits ahead of `origin/main` (`2cd9219`), 41 files, NOT merged, no PR opened.
+- Local `main` is stale at `be7b5f0`; `origin/main` already carries the hygiene-audit and codex-translator workstreams the prior handoff called unmerged. Run `git fetch origin main` first.
+- No ticket key for this session's work: no tracker is configured yet (`~/.claude/TICKET-TRACKER.json` is absent), which is exactly the degraded path R-605 describes.
 
 ## 2. Production state
 
-- Both fixture suites fully green post-remediation: 53 enforce + 15 hooks = 68 fixtures (two added this session). `~/.claude` synced from the branch tip via `./sync.sh`, so the live harness runs the branch's hooks; if the branch is discarded instead of merged, re-run `./sync.sh` from `main`.
-- `model-switch-guard.sh` is LIVE for the first time: registered under `PreModelSwitch` (a real event, verified against the current hooks docs; the repo's prior "not a real event" claim was wrong), warning via `systemMessage` on up-ladder switches.
-- `codex-test-author-guard.sh` now exempts `agent_type` test-author; R-907 is scoped to inline authoring (user decision this session).
+- Both fixture suites fully green (`claude/enforce/tests/run-tests.sh`, `claude/hooks/tests/run-tests.sh`), and `node translate/codex.mjs --check` exits 0, so the codex port matches its `claude/` sources.
+- The translator fixture's six failures are fixed and were never a renderer defect: an escaped backtick is GNU grep's buffer-start anchor, so they matched nothing on `ubuntu-latest` while passing on the BSD grep they were written against.
+- `./sync.sh` could NOT run in this container (no `rsync`), so the tracked `claude/` files were hand-copied into `~/.claude` and `claude/enforce/node_modules` installed and symlinked there to make the suites runnable. Re-run `./sync.sh` on a real machine before trusting the live harness.
 
-## 3. What shipped (one commit per finding)
+## 3. Session metrics
 
-- **Audit**: 5 subagents reviewed dead code, layer necessity, naming, README/setup drift, and current-docs best practices; ~30 findings, all P0-P2 fixed this session. No dangling references existed; layers all judged load-bearing.
-- **Contradictions**: R-907 scoped to inline with guard exemption + fixture (RED then GREEN); PreModelSwitch activation (settings.json, manifest R-903 entry, cost.md, ISSUES.md); task-start made canonical for the R-901/R-903 tables (cost.md now points, its 3-tier table with nonexistent role names removed); pre-monorepo `~/.claude`-as-repo phrasing retired from R-001/R-106/R-511/R-514/R-601 in reference.md and CLAUDE.md (R-001 step 4 now checks `git -C "$(cat ~/.claude/.sync-source)" status -s`).
-- **Dead code**: nested `claude/.github/` deleted; 5 shipped specs deleted per cleanup-specs-plans (2026-09-12 monorepo spec kept, it is referenced by sync.sh and root README); codex/cursor READMEs rewritten off the retired `build.mjs` pipeline.
-- **Docs**: claude/README counts corrected (9 eslint rules, 72 rules/119 lines, 68 fixtures, 50 hook registrations across 8 events), `audits/` consistently described as pointer stubs with `agents/audit-*.md` canonical (README + rulebook/audits.md), docs/ tree and bootstrap and the already-shipped consolidation section rewritten to monorepo reality; structure-conventions "what stayed" list replaced by its generating rule; build-cheatsheets got a fixture + tooling-hook convention note in enforce/README.
-- **Naming**: `single-file-folder-gate` renamed `-reminder` (only non-blocking -gate; codex/cursor hooks.json adapters updated, they invoke hooks by name); `eslint:lexicon-naming` tag aligned to `naming-lexicon` file with the tag convention documented in enforce/README; `secret-scan.test.sh` added for the R-102 pattern-deny path with manifest notes naming which fixture covers which slice; three camelCase enforce/ files kebab-cased with all imports/callers swept.
+- Commits: 15 (one more with this handoff). Specs written 1, amended 1. Skills added 1. Rules added 3. Audits run 1. Harness defects fixed 10 (4 found by verification, 4 audit P1, 1 audit P2, 1 phantom-manifest).
+- Rework: 1 (the `feature-create` ticket step was first placed under a heading that reads as refusal conditions, and was moved).
+- Velocity: normal. Both suites green at the end (55 enforcement fixtures, 15 hook fixtures), no reverts. Every fix was driven by a failing assertion written first, and each audit P1 was reproduced independently before being acted on (R-804d).
 
-## 4. Pending (by urgency)
+## 4. What shipped
 
-- **User, now (P0-2, unchanged from 2026-09-16)**: rotate the GitHub PAT and purge the transcripts listed in `claude/ISSUES.md` PENDING USER ACTION. ~10 minutes.
-- **Claude Code handoff from 2026-09-17 current-practice config audit**: review and implement the following as a new discrete workstream, with the web-research basis in the user's Codex thread. Priority order:
-  - P1: add Claude Code sandboxing to `claude/settings.json` so Bash subprocesses inherit filesystem and network boundaries. Current config blocks secret reads through `Read(...)` deny rules but has broad Bash allows (`npm`, `pnpm`, `gh`, `git`, `find`, `sed`) and no `sandbox` block; official docs and security-heavy community configs treat permissions plus sandboxing as defense in depth.
-  - P1: keep the existing PAT rotation/transcript purge as the first remediation. It is already tracked in `claude/ISSUES.md`; do not let lower-risk harness work displace known leaked credential cleanup.
-  - P2: add settings schema validation. `claude/settings.json` lacks `$schema`, and `claude/ISSUES.md` already tracks the missing full key-level lint. Use the published Claude Code settings schema, then add a fixture or documented `claude doctor` verification path that tolerates newly documented keys when the schema lags.
-  - P2: add a `statusLine` so sessions show context usage, model, branch, dirty state, elapsed time, and cost. Claude's current best-practices docs name context saturation as the main performance constraint; this config currently has no visible context/cost HUD.
-  - P2: prune or demote always-loaded root instructions. `claude/CLAUDE.md` is disciplined and under the cap, but it is still dense; move repeatable procedures into skills, path-scoped rules, or hooks where possible, leaving the root file as an index plus non-negotiables.
-  - P3: make modern hardening defaults explicit where they match this operator's threat model: `enableAllProjectMcpServers: false`, subagent depth/concurrency bounds, telemetry preferences, cleanup retention, and any plugin marketplace trust decisions. Add only keys supported by the installed Claude Code version and record deliberate omissions.
-- **User decision**: merge `claude/hygiene-audit-2026-09-17` (squash per R-512, or merge preserving the 16 per-finding commits; the user chooses), then push.
-- New ISSUES.md P2: decide resurrect-versus-retire for the codex/cursor port pipeline (~60 stale "GENERATED by build.mjs" headers, PORT-STATUS at 42 hooks vs the current 49, frozen `.claude-port.json` hashes).
-- P3 findings deliberately not fixed: `-guard` suffix does not distinguish ask-only from deny-capable hooks; "guard" used generically in enforce/README prose; `audits/` stub layer removable only after grepping downstream repos for `claude/audits/` path references; optional modernizations from the best-practices review (@-file imports in CLAUDE.md, `paths:` frontmatter on stack-scoped skills, `effort`/`permissionMode` on audit agents).
-- Unexplained once (second anomaly of this class in this repo): a python heredoc write to `skills/structure-conventions/SKILL.md` printed success but left the file untouched (mtime unmoved); the identical retry worked. Writes were read-back-verified afterward. If it recurs, suspect the same parallel-session interference logged 2026-09-16.
+Each item below has a durable home in the repo, so this section names the work and points at it rather than restating it.
 
-## 5. Next session: read first
+**Ticket lifecycle** (`50072fa`): the `ticket-lifecycle` skill (five operations, eight canonical states, and the field set that makes day/week/month rollups and tier estimates possible), provider-neutral through a gitignored instance config with `claude/TICKET-TRACKER.template.json` tracked, specced in `claude/docs/superpowers/specs/2026-09-17-ticket-lifecycle-design.md`, ruled by R-605 and R-606, and wired into `task-start`, `feature-create`, `task-cleanup` and `cleanup-specs-plans`. R-906's Spec now names the ticket history as what recalibration reads.
 
-- `git log --oneline main..claude/hygiene-audit-2026-09-17` (the 16 per-finding commits).
-- `claude/ISSUES.md` Open section (PAT rotation, port-pipeline decision).
-- `claude/settings.json`, `claude/CLAUDE.md`, `claude/enforce/README.md`, and the official Claude Code docs for sandboxing, settings, hooks, and best practices before starting the current-practice config-audit workstream.
-- `claude/rulebook/cost.md` R-907 and `claude/hooks/codex-test-author-guard.sh` (the new inline-only scoping) if doing TDD slice work.
+**R-211** (`64da708`): every judgment call is asked as its own option-tile question. Canonical detail in `claude/global-memory/feedback_ask_judgment_calls.md`, bounded against `feedback_be_proactive.md` so an obvious call is not turned into a prompt.
+
+**Four defects found by verifying each other** (`90b6996`, `c8b0555`, `a5b4ff1`, `7eb41b5`): six `translate-codex.test.sh` assertions matched nothing under GNU grep, so CI had accepted a red translator fixture since the translator landed; `codex/.gitignore` is now generated from the planned tree, closing the hole that nearly lost this session's own new skill from the port; `--write` removes the directories its orphan deletions empty; and the four phantom hash entries from the kebab-casing rename are gone.
+
+**Engineering audit of `claude/enforce`** (`cfe62fe`): 0 P0, 4 P1, 8 P2, 7 P3. Read the report for the findings; its executive summary names the one shape behind four of them. Every P1 was reproduced independently before being acted on (R-804d) and one doc-drift row was dropped as verified false. Remediation, one commit per finding: `024dfd5` P1-3 (a credential file in a subdirectory was writable through a redirect), `0dd342f` P1-4 (a fixture passing on zero hooks, and a blocking guard outside the convention), `aff6d75` P1-1 (an absent manifest was silent, and `--update` had no floor), `857a374` P1-2 (the manifest now covers both fixture suites, 73 entries to 148, with a closure fixture that fails CI), `c247a3f` P2-6 (three in-place-edit spellings, fixed on your call rather than filed).
+
+## 5. Pending (by urgency)
+
+Deferred findings live in `claude/ISSUES.md`; this section carries what needs a decision or an action.
+
+- **User, now (P0-2, unchanged since 2026-09-16)**: rotate the GitHub PAT and purge the transcripts named under PENDING USER ACTION in `claude/ISSUES.md`. About 10 minutes, and no lower-risk work should displace a known leaked credential.
+- **User, workflow change now live**: editing any fixture under `claude/enforce/tests/` or `claude/hooks/tests/` now needs `hooks/hook-integrity-check.sh --update` and the manifest in the same commit, or session start warns and `hook-hashes-closure.test.sh` fails CI. You chose this cost when the P1-2 options were put to you; hook edits already had it.
+- **User, before the ticket skill can do anything**: pick a tracker, copy `claude/TICKET-TRACKER.template.json` to `~/.claude/TICKET-TRACKER.json`, and fill in the container plus that server's real tool names. The tracker also needs the canonical fields as properties; the skill names what is missing rather than creating them. About 20 minutes.
+- **User decision**: merge this branch (squash per R-512) or open a PR. R-514 needs explicit authorization in the turn, so nothing was merged. The squash will carry a feature, six harness fixes, an audit report and its remediation in one commit, which you accepted when you chose this branch over a dedicated one.
+- **User, one command**: delete the four renamed leftovers from the live tree (`~/.claude/enforce/eslintOptions.mjs`, `renderLexiconSpec.mjs`, `resolveOutgoingBase.sh`, `~/.claude/hooks/single-file-folder-gate.sh`). `sync.sh` never deletes, so the kebab-casing left them behind.
+- **Next session, once a tracker exists**: dry-run `open` on a real task and check the field mapping against the live database before it writes for real. About 15 minutes. The first few tasks fall back to the R-906 heuristic, because `estimate <tier>` quotes no number from history below five comparable closed tickets.
+- **Audit residue, all in `claude/ISSUES.md`**: seven P2 and seven P3, none blocking. Read P2-1 first (a positional argument to `translate/codex.mjs` is silently ignored and `--write` then prunes the real tree), then the note that `translate/*.mjs` cannot be hashed at all, since it sits outside the surface `sync.sh` copies.
+- **Deferred by design**: the mechanical tier for R-605 and R-606. A hook can only read a local signal, and the only candidate is a per-branch link file whose shape depends on the tracker chosen. Recorded in the spec's Non-goals so an audit reads a decision, not an R-516 gap.
+- **Inherited workstream, unchanged**: the Claude config public hardening work lives in `claude/docs/superpowers/specs/2026-09-17-claude-config-public-hardening-design.md` plus the open P2 items in `claude/ISSUES.md`.
+- **Inherited P2, unchanged**: decide resurrect-versus-retire for the `cursor/` port pipeline. The codex half is resolved; roughly 60 `cursor/` files still name a builder retired in the monorepo migration.
+
+## 6. Next session: read first
+
+- `docs/audits/2026-09-17-engineering.md`, whose executive summary names the one pattern behind four of its findings: a mechanism that enumerates what it protects with nothing checking the enumeration.
+- `claude/ISSUES.md` Open section, for the PAT rotation and the audit residue.
+- `claude/hooks/hook-integrity-check.sh` and `claude/enforce/tests/hook-hashes-closure.test.sh`, before editing any hook or fixture, because the manifest contract changed this session.
+- `claude/skills/ticket-lifecycle/SKILL.md` and its spec, before touching anything the lifecycle names.
+- `claude/rulebook/reference.md` R-211, R-605 and R-606, and `claude/TICKET-TRACKER.template.json` beside the chosen tracker's tool list.

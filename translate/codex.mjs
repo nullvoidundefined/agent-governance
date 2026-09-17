@@ -17,7 +17,8 @@ import { renderAgentToml, renderAgentSkill, matchesAgentSkillList } from "./rend
 import { renderSkillCopy } from "./render-codex-skills.mjs";
 import { renderRulesDoc } from "./render-codex-rules.mjs";
 import { renderHooksConfig, renderPortStatus } from "./render-codex-hooks.mjs";
-import { buildManifest } from "./build-manifest.mjs";
+import { renderGitignore } from "./render-codex-gitignore.mjs";
+import { buildManifest, MANIFEST_PATH } from "./build-manifest.mjs";
 
 function parseCliMode(argv) {
   const flags = argv.filter((a) => a.startsWith("--"));
@@ -135,17 +136,36 @@ function renderPlannedTree(sources) {
     planned.push(rendered);
     skillPaths.add(rendered.path);
   }
+  // The allowlist names every path git must track, so it is rendered once
+  // every other path is known, plus the manifest's own path (planned below,
+  // after this file, because the manifest hashes it).
+  planned.push(renderGitignore([...planned.map((file) => file.path), MANIFEST_PATH], sources.portMap));
   // The manifest hashes every other planned file, so it is computed last,
   // over exactly this list; it never hashes itself.
   planned.push(buildManifest(planned, sources.portMap));
   return planned;
 }
 
+// removeEmptyDirectories(dir): deletes every directory under dir that holds
+// no files, deepest first, leaving dir itself in place. Unlinking an orphan
+// is only half of removing it: deleting a skill on the claude/ side orphans
+// codex/skills/<name>/SKILL.md, and the emptied directory it leaves behind is
+// invisible to git (which stores no empty directories) and to --check (which
+// compares files), so it would survive every later run unnoticed.
+function removeEmptyDirectories(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) removeEmptyDirectories(path.join(dir, entry.name));
+  }
+  if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+}
+
 // Writes every planned file under <rootDir>/codex/. Renders the full tree
 // before writing the first file, so a render failure never leaves a partial
-// write on disk. Afterward it deletes every orphan (R-306/single-owner: this
-// script owns generated content wholesale, so a stale leftover from a
-// deleted claude/ source is never left for a human to notice by hand).
+// write on disk. Afterward it deletes every orphan and every directory the
+// deletions emptied (R-306/single-owner: this script owns generated content
+// wholesale, so a stale leftover from a deleted claude/ source is never left
+// for a human to notice by hand).
 function writePlannedTree(rootDir, planned, portMap) {
   for (const file of planned) {
     const fullPath = path.join(rootDir, "codex", file.path);
@@ -154,6 +174,9 @@ function writePlannedTree(rootDir, planned, portMap) {
   }
   const orphans = findOrphanFiles(rootDir, planned, portMap);
   for (const orphan of orphans) fs.unlinkSync(path.join(rootDir, "codex", orphan));
+  for (const entry of fs.readdirSync(path.join(rootDir, "codex"), { withFileTypes: true })) {
+    if (entry.isDirectory()) removeEmptyDirectories(path.join(rootDir, "codex", entry.name));
+  }
   const removedClause = orphans.length > 0 ? `, removed ${orphans.length} orphans` : "";
   console.log(`wrote ${planned.length} files${removedClause}`);
 }

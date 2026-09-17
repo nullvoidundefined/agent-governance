@@ -1,0 +1,122 @@
+{
+  "_README": [
+    "Template for ~/.claude/TICKET-TRACKER.json, the per-machine instance config the",
+    "/ticket-lifecycle skill reads. Copy it to TICKET-TRACKER.json and fill it in.",
+    "The real file is gitignored: a project key, a workspace ID, and a data source ID",
+    "identify a client, and this repo is published (R-106). No token belongs in here",
+    "either; the MCP server holds the auth (R-102).",
+    "Set 'active' to one of the keys under 'trackers'. Tool names are whatever the MCP",
+    "server on this machine actually exposes: read them from the tool list rather than",
+    "assuming the placeholders below are right. The 'states' map is the only authority",
+    "on provider status values; the skill never types one that is not in it."
+  ],
+  "active": "notion",
+  "defaults": {
+    "assist": "llm",
+    "estimate_stale_after_days": 90,
+    "estimate_min_sample": 5
+  },
+  "trackers": {
+    "asana": {
+      "container": {
+        "project_gid": "<GID of the project holding tickets>",
+        "workspace_gid": "<GID of the workspace>"
+      },
+      "fields": {
+        "actual_minutes": "<custom field GID>",
+        "assist": "<custom field GID>",
+        "branch": "<custom field GID>",
+        "estimate_minutes": "<custom field GID>",
+        "estimate_ratio": "<custom field GID>",
+        "model": "<custom field GID>",
+        "repo": "<custom field GID>",
+        "rework_count": "<custom field GID>",
+        "tier": "<custom field GID>"
+      },
+      "states": {
+        "backlog": "Backlog",
+        "blocked": "Blocked",
+        "done": "Done",
+        "dropped": "Dropped",
+        "in-progress": "In Progress",
+        "in-review": "In Review",
+        "planned": "Planned",
+        "specced": "Specced"
+      },
+      "tools": {
+        "comment": "<add-comment tool name>",
+        "create": "<create-task tool name>",
+        "read": "<get-task tool name>",
+        "search": "<search-tasks tool name>",
+        "update": "<update-task tool name>"
+      }
+    },
+    "jira": {
+      "container": {
+        "issue_type": "Task",
+        "project_key": "<PROJECT>"
+      },
+      "fields": {
+        "actual_minutes": "customfield_<id>",
+        "assist": "customfield_<id>",
+        "branch": "customfield_<id>",
+        "estimate_minutes": "customfield_<id>",
+        "estimate_ratio": "customfield_<id>",
+        "model": "customfield_<id>",
+        "repo": "customfield_<id>",
+        "rework_count": "customfield_<id>",
+        "tier": "customfield_<id>"
+      },
+      "states": {
+        "backlog": "Backlog",
+        "blocked": "Blocked",
+        "done": "Done",
+        "dropped": "Won't Do",
+        "in-progress": "In Progress",
+        "in-review": "In Review",
+        "planned": "Ready for Development",
+        "specced": "Specced"
+      },
+      "tools": {
+        "comment": "<add-comment tool name>",
+        "create": "<create-issue tool name>",
+        "read": "<get-issue tool name>",
+        "search": "<JQL search tool name>",
+        "update": "<update-issue tool name>"
+      }
+    },
+    "notion": {
+      "container": {
+        "data_source_id": "<data source ID of the ticket database>"
+      },
+      "fields": {
+        "actual_minutes": "Actual minutes",
+        "assist": "Assist",
+        "branch": "Branch",
+        "estimate_minutes": "Estimate minutes",
+        "estimate_ratio": "Estimate ratio",
+        "model": "Model",
+        "repo": "Repo",
+        "rework_count": "Rework count",
+        "tier": "Tier"
+      },
+      "states": {
+        "backlog": "Backlog",
+        "blocked": "Blocked",
+        "done": "Done",
+        "dropped": "Dropped",
+        "in-progress": "In progress",
+        "in-review": "In review",
+        "planned": "Planned",
+        "specced": "Specced"
+      },
+      "tools": {
+        "comment": "mcp__Notion__notion-create-comment",
+        "create": "mcp__Notion__notion-create-pages",
+        "read": "mcp__Notion__notion-fetch",
+        "search": "mcp__Notion__notion-query-data-sources",
+        "update": "mcp__Notion__notion-update-page"
+      }
+    }
+  }
+}

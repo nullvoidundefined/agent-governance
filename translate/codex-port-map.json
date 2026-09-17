@@ -20,7 +20,6 @@
   "hand_authored": [
     "hooks/codex-hook-adapter.sh",
     "README.md",
-    ".gitignore",
     "skills/session-start/SKILL.md",
     "skills/session-handoff/SKILL.md"
   ],

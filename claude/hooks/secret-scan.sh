@@ -95,9 +95,26 @@ PROT="$HOMEDIRS/\.(aws|ssh|gnupg)(/[^[:space:]\"';|&]*)?"
 PROT+="|$HOMEDIRS/\.config/gh/hosts\.yml"
 PROT+="|(^|[[:space:]\"'=/])\.env(\.[A-Za-z0-9_-]+)?([[:space:]\"';|&]|$)"
 
-MUTATE_VERBS='(rm|mv|cp|tee|shred|truncate|unlink|sed[[:space:]]+-[a-zA-Z]*i[a-zA-Z]*)'
+# In-place editors are spelled several ways and the pattern used to match only
+# one of them: `sed -i` as a bare token. That missed `sed -i.bak` (the portable
+# spelling this repo's own fixtures use, which is how the gap stayed invisible),
+# `sed --in-place`, and perl's `-i`/`-pi` entirely (2026-09-17 audit P2-6).
+# `-[a-zA-Z]*i[a-zA-Z.]*` now also admits a suffix, `--in-place` is named, and
+# perl is only a mutation when an in-place flag is present, so `perl -ne` stays
+# a read.
+SED_IN_PLACE='sed[[:space:]]+(-[a-zA-Z]*i[a-zA-Z.]*|--in-place(=[^[:space:]]*)?)'
+PERL_IN_PLACE='perl[[:space:]]+([^[:space:]]+[[:space:]]+)*-[a-zA-Z]*i[a-zA-Z.]*'
+MUTATE_VERBS="(rm|mv|cp|tee|shred|truncate|unlink|$SED_IN_PLACE|$PERL_IN_PLACE)"
 MUTATION="(^|[;&|][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?$MUTATE_VERBS([[:space:]]+-[^[:space:]]+)*([[:space:]][^;|&]*)?($PROT)"
-REDIRECT=">>?[[:space:]]*($PROT)"
+# The redirect target may carry a directory prefix: `> server/.env` is the same
+# mutation as `> .env`, and PROT's .env branch opens with a single character
+# class (which does include `/`), so without somewhere for the prefix to go the
+# pattern could only ever match a credential file at the top level. The prefix
+# run stops at whitespace, another redirect, and the command separators, so it
+# cannot reach across into the next command (2026-09-17 audit P1-3; the
+# Write/Edit branch below always handled nesting, which is what made the Bash
+# branch's gap a discrepancy rather than a policy).
+REDIRECT=">>?[[:space:]]*[^[:space:]>;|&]*($PROT)"
 
 if printf '%s' "$SAFE_CMD" | grep -qE "$MUTATION" || printf '%s' "$SAFE_CMD" | grep -qE "$REDIRECT"; then
   jq -n '{

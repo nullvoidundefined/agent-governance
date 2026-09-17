@@ -31,6 +31,7 @@ R-207: Never use U+2014 (em dash). [hook:no-em-dash]
 R-208: Never praise without falsifiable reasoning; no softening, no compliment sandwich. [manual]
 R-209: Delete filler before sending: action announcements, question echoes, transitions, hedge words, sign-offs, apologies, trailing summaries, sentences starting with "I". [manual]
 R-210: Write human-facing prose (documents, PR bodies, explanations, code comments) in complete sentences with full context: not terse, not verbose, leaning toward verbose; never strip particles or grammatical structure for punchiness; prefer the longer sentence that carries full context over the shorter one that does not. [manual]
+R-211: When a task carries two or more judgment calls, ask them through option tiles, one question per turn; never batch forks into one prompt and never decide silently and report afterward. [manual]
 
 ## Architecture and naming (R-3xx), ordered macro to micro
 
@@ -102,6 +103,8 @@ R-601: Offer a handoff doc at session end; commit a dirty agent-governance check
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets, in the fixed section order (reference.md); bundle into the final commit. [manual]
 R-603: Route learnings to per-project feedback memory (tags: `success`, `correction`, `fired: R-NNN`, `miss: R-NNN; gap:`). [manual]
 R-604: Keep `~/.claude/global-memory/` for cross-project content only; client-identifying or project-specific content stays in the project repo. [manual]
+R-605: Open a tracker ticket (`/ticket-lifecycle`) for every task above the trivial tier at classification, carrying title, tier, assist, model, estimate, repo, and branch; search by branch before creating so one branch never gets two tickets; advance it at each state change with a timestamped transition comment; keep the key on the spec, the user story, the handoff, and every commit's `Refs:` trailer. [manual]
+R-606: Close the ticket only after the verification gate passes, writing `completed_at`, attributable `actual_minutes` (working time, never the calendar gap), `rework_count`, and `estimate_ratio` in one update, then state the R-906 recalibration in one line; abandoned work closes as `dropped` with the reason. [manual]
 
 ## Convention files
 
@@ -117,3 +120,4 @@ Read on demand:
 | `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Cloudflare, environment variables |
 | `/known-issues` (skill) | Before production deploy or debugging prior-incident-like failure |
 | `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |
+| `/ticket-lifecycle` (skill) | Opening, advancing, or closing a task's tracker ticket, and reading the history back for rollups or estimates (R-605, R-606) |

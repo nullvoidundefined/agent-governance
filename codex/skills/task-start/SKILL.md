@@ -33,6 +33,13 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 
 If uncertain between two tiers, choose the higher one. Downgrading mid-task wastes less time than upgrading.
 
+Then estimate and open the ticket, in that order (R-605, R-606):
+
+1. Ask `/ticket-lifecycle` for `estimate <tier>`. Five or more comparable closed tickets: take the median for a task that resembles them, the 80th percentile for one with an unknown dependency. Fewer than five: use the R-906 heuristic and say it is a heuristic.
+2. Announce the estimate in minutes with its basis: "Estimate: N minutes (median of n=M closed [tier] tickets)" or "Estimate: N minutes (heuristic, n=M is too small a sample)".
+3. Open the ticket through `/ticket-lifecycle` with `title`, `tier`, `assist`, `model`, `estimate_minutes`, `repo`, and the branch once it exists. Skip for the trivial tier unless the user asks for one.
+4. Capture the R-503 start timestamp as `started_at`. Announce the ticket key, and carry it in a `Refs: <key>` trailer on every commit for this task.
+
 ## Step 2: Determine Process Requirements
 
 Each tier has a fixed process. No negotiation.
@@ -42,6 +49,7 @@ Each tier has a fixed process. No negotiation.
 ```
 Spec:           No
 Plan:           No
+Ticket:         No (only when the user asks)
 TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
 Branch:         Optional (commit directly to current branch if clean)
@@ -58,6 +66,7 @@ Execute the change directly. Commit. Done.
 ```
 Spec:           No (unless the user asks for one)
 Plan:           No (inline mental model is sufficient)
+Ticket:         Yes. Opened at classification, closed with actuals (R-605).
 TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh red, implement, tdd.sh green, close (R-412).
 Model:          Sonnet
 Branch:         Yes (feature branch off main)
@@ -74,6 +83,7 @@ Create a feature branch. One slice per behavior: open, RED, commit, GREEN, commi
 ```
 Spec:           Yes. One spec. Written inline or via brainstorming skill.
 Plan:           Yes. One plan. Written via writing-plans skill.
+Ticket:         Yes. Advanced through specced and planned as each lands (R-605).
 TDD:            Yes, slices; tdd-gated-dispatch with the three role agents when using subagents.
 Model:          Opus for planning, the test author, and the critic. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
@@ -90,6 +100,7 @@ One spec. One plan. One branch. Never split a complex task into multiple plans.
 ```
 Spec:           Yes. ONE spec covering all subsystems.
 Plan:           Yes. ONE plan with staged sections (not multiple plan files).
+Ticket:         Yes. One ticket for the saga; one per stage when a stage ships alone.
 TDD:            Yes, slices; tdd-gated-dispatch with the three role agents for every slice.
 Model:          Opus for planning, the test author, and the critic. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
@@ -109,9 +120,11 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 | Tier | Setup sequence |
 |---|---|
 | **Trivial** | Do the work. Skip to implementation. |
-| **Standard** | `git checkout -b feat/<slug> main`, then tdd-gated-dispatch's single-session loop |
-| **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, then feature-create for the worktree, then the chosen execution skill |
+| **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, then tdd-gated-dispatch's single-session loop |
+| **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
 | **Saga** | As Complex, plus: Opus for all planning and review, tdd-gated-dispatch for every subagent, and a review checkpoint after each stage. No stage starts until the prior stage's tests are green. |
+
+The ticket moves to `in-progress` at the first `tdd.sh open`, which `feature-create` does when it hands off to the execution skill.
 
 ## The One-Spec-One-Plan Rule
 
@@ -140,6 +153,7 @@ If you discover mid-task that the scope is larger than classified:
 2. Announce: "This is bigger than I thought. Reclassifying from [old] to [new] because [reason]."
 3. Set up the process requirements for the new tier
 4. Do not lose work already done; commit it to the branch first
+5. Update the ticket's `tier` and re-estimate for the new tier, recording the original estimate in a transition comment. A reclassified ticket whose estimate still names the old tier corrupts both tiers' samples.
 
 If you discover the scope is smaller:
 1. Announce the downgrade
@@ -149,4 +163,5 @@ If you discover the scope is smaller:
 
 - **Replaces:** ad-hoc decisions about brainstorming, planning, and execution
 - **Composes with:** all superpowers skills (brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, feature-create, tdd-gated-dispatch)
+- **Calls:** ticket-lifecycle (`estimate <tier>` for the number, then `open` for the ticket)
 - **Paired with:** task-cleanup (run at the end of every task)

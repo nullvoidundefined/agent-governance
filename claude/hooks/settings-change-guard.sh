@@ -18,7 +18,16 @@
 # Manual test:
 #   jq -n '{hook_event_name:"ConfigChange",source:"user_settings",file_path:"'"$HOME"'/.claude/settings.json"}' | ~/.claude/hooks/settings-change-guard.sh
 # Should print nothing while every manifest-required hook stays registered.
-set -euo pipefail
+#
+# set -uo, no -e: this hook blocks, so it belongs to the same convention as
+# every other blocking guard (enforce/README.md, "Hook set convention"). Under
+# -e an unexpected internal error kills it before it can emit its block, and a
+# guard that dies silently has allowed the write; a guard fails closed by
+# structure, never open by accident. It was outside that convention until
+# 2026-09-17 only because the fixture keyed on the `permissionDecision`
+# spelling and this hook blocks with the top-level `decision` shape that
+# ConfigChange takes (audit P1-4).
+set -uo pipefail
 
 INPUT=$(cat 2>/dev/null || true)
 SOURCE=$(printf '%s' "$INPUT" | jq -r '.source // ""' 2>/dev/null || true)

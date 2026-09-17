@@ -41,7 +41,7 @@ Take the most recent match (first result from date-sorted listing). If zero matc
 
 ### Step 2: Check refusal conditions
 
-All three checks must pass before proceeding:
+All three refusal checks must pass before proceeding, and the ticket must be resolved:
 
 ```bash
 git branch --list "feat/<slug>"
@@ -56,6 +56,8 @@ test -d ../<project>-worktrees/<slug>
 If the directory exists, refuse: "Worktree directory already exists at <path>. Remove it or use a different slug."
 
 Verify the plan file was resolved in Step 1. If not, refuse: "No plan file found for '<slug>'. Provide the path explicitly."
+
+Resolve the ticket key from the plan's or spec's `**Ticket:**` line. If neither carries one, open the ticket now through `/ticket-lifecycle` before creating the worktree (R-605); a feature whose ticket is opened after the fact has no usable `started_at`.
 
 ### Step 3: Create worktree
 
@@ -111,6 +113,7 @@ Create `docs/user-stories/<slug>.md`:
 2. <!-- One criterion per testable behavior -->
 
 **E2E test:** `e2e/<slug>.spec.ts`
+**Ticket:** <ticket-key>
 ```
 
 Populate the acceptance criteria by reading the plan file. Each task that produces user-visible behavior becomes a criterion.
@@ -130,10 +133,12 @@ If yes, tell the user to add entries to `docs/query-params.md` and wait for conf
 ```bash
 cd ../<project>-worktrees/<slug>
 git add docs/feature-list/features.md docs/user-stories/<slug>.md
-git commit -m "chore: scaffold docs for feat/<slug>"
+git commit -m "chore: scaffold docs for feat/<slug>
+
+Refs: <ticket-key>"
 ```
 
-Verify the commit succeeded with `git log --oneline -1`.
+Verify the commit succeeded with `git log --oneline -1`. `Refs:` is an accepted trailer in `hooks/commit-message-guard.sh` and carries the ticket key on every commit for this feature.
 
 ### Step 7: Transition to implementation
 
@@ -144,11 +149,12 @@ Present the recommendation:
 - If 5+ independent tasks: "This plan has N tasks (M independent). I recommend **subagent-driven-development** for parallel execution. Want to go with that, or use **executing-plans** (step-by-step)?"
 - If mostly sequential or <5 independent: "This plan has N tasks, mostly sequential. I recommend **executing-plans** for step-by-step execution. Want to go with that, or use **subagent-driven-development** (parallel)?"
 
-If the user says "not yet" or "later": "Workspace is ready at `<path>` on branch `feat/<slug>`. Pick it up anytime."
+If the user says "not yet" or "later": "Workspace is ready at `<path>` on branch `feat/<slug>`. Pick it up anytime." Leave the ticket where it is; the work has not started.
 
-Otherwise, invoke the chosen skill with:
+Otherwise, advance the ticket through `/ticket-lifecycle` to `in-progress` and write `branch` and `plan_link` onto it, recording the workspace as the branch name and never as a local filesystem path (R-106). Then invoke the chosen skill with:
 - Plan file path
 - Worktree path (so the execution skill knows where to work)
+- Ticket key (so every commit carries the `Refs:` trailer)
 
 ## Common Mistakes
 
@@ -156,9 +162,11 @@ Otherwise, invoke the chosen skill with:
 - Creating the worktree off the current branch instead of main. Always branch from main.
 - Forgetting to cd into the worktree before scaffolding. All file creation happens inside the worktree.
 - Hardcoding a project name instead of deriving it from the directory.
+- Creating the worktree before the ticket exists, which leaves `started_at` later than the work it is supposed to bound.
+- Writing the worktree's absolute path onto the ticket. The branch name is the join key; the path is local and unpublishable (R-106).
 
 ## Integration Points
 
 - **Called after:** brainstorming, writing-plans
-- **Calls:** executing-plans OR subagent-driven-development
+- **Calls:** executing-plans OR subagent-driven-development, ticket-lifecycle (`advance` to `in-progress`)
 - **Paired with:** task-cleanup (teardown, merge decision, worktree removal)

@@ -33,6 +33,7 @@ Answer these questions (in writing, in the response):
 5. **Did this task create a spec or plan?** (that may now be shipped)
 6. **Is this task on a feature branch?** (needs merge decision)
 7. **Is this a session-ending task?** (needs handoff)
+8. **Does this task have a tracker ticket?** (needs closing with actuals)
 
 ## Step 2: Run Required Actions
 
@@ -88,6 +89,22 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 - Delete the feature branch after merge: `git branch -d feat/<slug>`
 - If worktree was used: `git worktree remove <path>`
 
+### If a tracker ticket exists:
+
+**Close the ticket:**
+
+Run `/ticket-lifecycle` `close` after the verification gate and the merge decision, never before: a `done` ticket asserts the work shipped (R-606). Resolve the key from the spec's or user story's `**Ticket:**` line, the handoff doc, or the last `Refs:` trailer on the branch.
+
+One update carries all of it: `done`, `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, and `pr_link`.
+
+`actual_minutes` is attributable working time inside the sessions that worked the task, measured from the R-503 start timestamp. It is not the calendar gap between open and close; a ticket opened Monday and closed Friday is not four days of work, and recording it that way distorts every future estimate for that tier.
+
+`rework_count` is the number of times a green slice went back to red or a review sent the work back. Count it from the git log and the session's own history, not from memory.
+
+Then state the recalibration R-906 asks for, in one line: the ratio, and which direction the tier's next estimate moves. That line is the only reason the estimate was stored in the first place.
+
+Work abandoned rather than shipped closes as `dropped` with the reason in the comment, never as `done` and never left open.
+
 ### If session is ending:
 
 **Session handoff:**
@@ -98,6 +115,8 @@ Write `docs/session-handoff/session-handoff.md` per R-602:
 4. What shipped (grouped by topic, traceable to commits)
 5. Pending work (by urgency, with rationale and effort estimate)
 6. Recommended next session (ordered task list with files to read first)
+
+Carry the key of any ticket still open beside the pending item it belongs to (R-605), so the next session advances that ticket instead of opening a second one for the same work.
 
 ### If files changed in a project-specific documented surface:
 
@@ -129,6 +148,7 @@ Output a summary table:
 | Tests               | Pass    | 412 passing, 0 failing       |
 | Build               | Pass    | Exit 0                       |
 | Squash merge        | Done    | feat/<slug> merged to main   |
+| Ticket              | Closed  | PROJ-123, 94m actual vs 120m estimate (0.78) |
 | Session handoff     | Written | docs/session-handoff/...     |
 ```
 
@@ -138,10 +158,10 @@ Cleanup intensity scales with the task tier (from task-start). Each tier adds to
 
 | Tier | Adds |
 |---|---|
-| **Trivial** | Commit the change; verify tests still pass. Nothing else. |
-| **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch |
-| **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; handoff if the session is ending |
-| **Saga** | Every surface tested; handoff is mandatory; consider whether enough shipped to warrant an engineering audit |
+| **Trivial** | Commit the change; verify tests still pass. Close the ticket only if one was opened. |
+| **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch; ticket closed with actuals |
+| **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; ticket closed with actuals and the recalibration line; handoff if the session is ending |
+| **Saga** | Every surface tested; handoff is mandatory; ticket closed with actuals per stage that shipped; consider whether enough shipped to warrant an engineering audit |
 
 ## Common Mistakes
 
@@ -151,9 +171,13 @@ Cleanup intensity scales with the task tier (from task-start). Each tier adds to
 - Deferring the E2E test without a line in the user story saying why and when
 - Updating the feature list but not the user story (or vice versa)
 - Forgetting to delete the feature branch after squash merge
+- Closing the ticket as `done` before the verification gate passes
+- Writing the calendar gap between open and close as `actual_minutes`
+- Closing with the actuals missing, which leaves a `done` row that no estimate can ever be drawn from
 
 ## Integration
 
 - **Paired with:** task-start (run at the beginning of every task)
+- **Calls:** ticket-lifecycle (`close`, or `advance` to `dropped` for abandoned work)
 - **Composes with:** cleanup-specs-plans (bulk cleanup), superpowers:finishing-a-development-branch (merge decisions), and the project's own surface-doc refresh command where one is defined
 - **Replaces:** the manual feature-completion checklist
