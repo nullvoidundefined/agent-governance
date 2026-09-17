@@ -35,11 +35,17 @@ Pair specs with plans by name: `YYYY-MM-DD-feature-name-design.md` pairs with `Y
 
 ### Step 2: Classify each file
 
-**Do NOT trust checkbox status.** Checkboxes go stale. Instead, for each file:
+**Do NOT trust checkbox status.** Checkboxes go stale. Gather the evidence mechanically first:
+
+```bash
+bash ~/.claude/skills/cleanup-specs-plans/scripts/inventory.sh [<specs dir>] [<plans dir>]
+```
+
+It prints one row per file with its pair (by the naming rule below), the date and subject of the last commit touching it, how many commits anywhere mention its slug words, and how many of the paths it names exist on disk, then lists every named artifact that is absent. Then, for each file:
 
 1. Read the file to understand what it specifies
-2. Check `git log --oneline --all` for commits that implement the described work
-3. Grep for key artifacts named in the spec (migrations, handlers, components, routes, tests)
+2. Read the commits the inventory counted (`git log --all --grep="<keyword>"`) for the ones that implement the described work
+3. Treat each absent artifact as unshipped until a commit explains it (renamed, dropped by design)
 4. Check the most recent session handoff doc for "what shipped" lists
 
 Classify as:
