@@ -60,7 +60,7 @@
     "rules/rulebook-cost.mdc": "sha256:5508a2e6d0b86ca603227eaf52c35413c86238cb7902aca3e5370f4d0d00b442",
     "rules/rulebook-reference-convention-files.mdc": "sha256:b444bf0af3e1fd29e8f1bfc4db30216fefa6e7df7424a287ab11f4c2c7eaafe2",
     "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:de2d30c4157153f0c9c79c3e13087e07724c174527d5fb9e0371c44f59180107",
-    "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:4df3a766e5c57a6c66bf43a758017f1990baf9966f525b0c9eb1fee4232c2d8f",
+    "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:b8cfca2ce3f15a2c9b4f1251b77432f4228b49aed5e4ac3b3e451f61eb957b40",
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:42c8270ebcb1510dd654af638e0cb8ea7e88a1e6aaff2d7d0d9667bd0c4a9ea1",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:7604b095a06b22c9c03d8937347312ac1767a32de15a92e53a07073971412d90",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:e3cd93813d6d30b4226b0ddf7b4de5f9411423d0b846f43235d9bdc5c246c878",

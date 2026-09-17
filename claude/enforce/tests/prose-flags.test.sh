@@ -5,7 +5,8 @@
 # its list does not, headings and list items are skipped, and the script
 # exits 0 with the count on the last line.
 set -uo pipefail
-PF="$HOME/.claude/skills/documentation-create/scripts/prose-flags.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+PF="$CLAUDE_HARNESS_ROOT/skills/documentation-create/scripts/prose-flags.sh"
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }

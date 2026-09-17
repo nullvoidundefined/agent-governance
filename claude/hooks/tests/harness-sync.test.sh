@@ -8,10 +8,16 @@
 # a sync.sh refusal (invalid JSON) leaves the live tree unchanged and is
 # reported. Needs rsync, which sync.sh needs too.
 set -uo pipefail
-HOOK="$HOME/.claude/hooks/harness-sync.sh"
-REAL_SYNC="$(cd "$(dirname "$(readlink -f "$HOME/.claude")")" && pwd)/sync.sh"
-[ -f "$REAL_SYNC" ] || REAL_SYNC="$(cat "$HOME/.claude/.sync-source" 2>/dev/null)/sync.sh"
-[ -f "$REAL_SYNC" ] || { echo "FAIL: cannot locate the checkout's sync.sh from $HOME/.claude"; exit 1; }
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/harness-sync.sh"
+# sync.sh sits beside claude/ at the repository root, so the harness root
+# locates it directly. The two fallbacks remain for a run whose root is an
+# installed copy rather than a checkout: a symlinked install resolves to its
+# checkout, and a copied one carries the .sync-source stamp that names it.
+REAL_SYNC="$(cd "$CLAUDE_HARNESS_ROOT/.." && pwd)/sync.sh"
+[ -f "$REAL_SYNC" ] || REAL_SYNC="$(cd "$(dirname "$(readlink -f "$CLAUDE_HARNESS_ROOT")")" && pwd)/sync.sh"
+[ -f "$REAL_SYNC" ] || REAL_SYNC="$(cat "$CLAUDE_HARNESS_ROOT/.sync-source" 2>/dev/null)/sync.sh"
+[ -f "$REAL_SYNC" ] || { echo "FAIL: cannot locate the checkout's sync.sh from $CLAUDE_HARNESS_ROOT"; exit 1; }
 command -v rsync >/dev/null 2>&1 || { echo "FAIL: rsync is required by sync.sh and this fixture"; exit 1; }
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 # The session running this fixture may itself be an agent-governance checkout

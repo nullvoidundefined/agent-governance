@@ -6,7 +6,8 @@
 # section, sections out of order, a missing SHA, and a SHA that does not
 # resolve; exits 0 on malformed input.
 set -uo pipefail
-HOOK="$HOME/.claude/hooks/handoff-check.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/handoff-check.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

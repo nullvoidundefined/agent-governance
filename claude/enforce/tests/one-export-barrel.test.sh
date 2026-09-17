@@ -5,7 +5,8 @@
 # multi-re-export file NOT named index still fails. Fixtures live under a
 # services/ tree because the rule is path-scoped to services|api|clients.
 set -euo pipefail
-LINT="$HOME/.claude/enforce/lint.mjs"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+LINT="$CLAUDE_HARNESS_ROOT/enforce/lint.mjs"
 
 DIR=$(mktemp -d); cd "$DIR"; git init -q
 mkdir -p services/voiceContext services/mixed

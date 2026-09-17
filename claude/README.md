@@ -51,7 +51,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (50 registrations across 8 events) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
 | 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs, the resume snapshot/drift check (B-8) |
-| 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
+| 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse, prevents the write or the command), `hooks/redact-output.sh` (PostToolUse, detects an exposure that already happened and warns), R-102..R-107 |
 | 10. Git hygiene | mixed | History rewritten in ways that lose evidence; force-pushes to main; missing test pairs | `CLAUDE.md` R-5xx; `git-workflow-guard.sh`, `commit-message-guard.sh`, `conflict-markers.sh`, `fix-commit-requires-test.sh` |
 | 11. Destructive-action guards | mechanical | Irreversible data loss against production or remote databases | `hooks/destructive-db-guard.sh`, R-101 |
 
@@ -104,7 +104,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── no-em-dash.sh                # PreToolUse Write|Edit|Bash. Blocks U+2014.
 │   ├── fix-commit-requires-test.sh  # PreToolUse Bash. Blocks fix: commits with no test.
 │   ├── conflict-markers.sh          # PreToolUse Bash. Blocks commits with conflict markers.
-│   ├── redact-output.sh             # PostToolUse Bash. Redacts secrets from output.
+│   ├── redact-output.sh             # PostToolUse Bash. Detects a secret that already reached the output and warns; cannot unsend it.
 │   ├── post-compact-rules.sh        # SessionStart(compact). Re-injects the critical rules after compaction.
 │   ├── harness-sync.sh              # SessionStart. Re-syncs ~/.claude from the checkout when they differ (R-003).
 │   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc; on resume, reports drift against the last resume snapshot (B-8).

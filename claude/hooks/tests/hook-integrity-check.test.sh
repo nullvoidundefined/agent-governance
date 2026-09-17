@@ -3,7 +3,8 @@
 # Verifies hook-integrity-check.sh: silent when disk matches the hash manifest,
 # warns naming the file when a hook is tampered with, and --update regenerates.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/hook-integrity-check.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/hook-integrity-check.sh"
 
 FIX=$(mktemp -d)
 mkdir -p "$FIX/hooks" "$FIX/enforce"

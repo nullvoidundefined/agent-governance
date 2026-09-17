@@ -4,7 +4,8 @@
 # from --since; zeros with a note when nothing is recorded; rework and the
 # velocity flag counted from real commits.
 set -uo pipefail
-METRICS="$HOME/.claude/hooks/session-metrics.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+METRICS="$CLAUDE_HARNESS_ROOT/hooks/session-metrics.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

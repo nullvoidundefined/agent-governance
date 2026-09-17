@@ -21,7 +21,8 @@
 #  10. Reads in separate function scopes do not accumulate.
 #  11. Property writes are not reads.
 set -euo pipefail
-E="$HOME/.claude/enforce"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
 
 TMP=$(mktemp -d)
 cd "$TMP"

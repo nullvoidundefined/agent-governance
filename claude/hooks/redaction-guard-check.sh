@@ -2,11 +2,15 @@
 # redaction-guard-check.sh
 #
 # SessionStart hook. Enforces R-102: the secret-handling hooks must be active.
-# A session that runs WITHOUT redact-output.sh (PostToolUse) leaks raw tool
-# output into the persisted transcript, and without secret-scan.sh (PreToolUse)
-# loses the pre-execution block. The failure is silent by nature, so this hook
-# makes a missing redaction hook LOUD. It WARNS via additionalContext plus a
-# systemMessage; it never blocks. The session continues either way.
+# Without secret-scan.sh (PreToolUse) a session loses the pre-execution block,
+# which is the half that actually prevents a secret from reaching argv, a file,
+# or the transcript. Without redact-output.sh (PostToolUse) it loses the
+# exposure warning: raw tool output reaches the transcript in either case,
+# because a PostToolUse hook cannot rewrite or remove a result, but with the
+# hook registered the model is at least told that a credential leaked and that
+# it needs rotating. Both failures are silent by nature, so this hook makes a
+# missing one LOUD. It WARNS via additionalContext plus a systemMessage; it
+# never blocks. The session continues either way.
 #
 # Silent when both hooks are registered in ~/.claude/settings.json and present
 # on disk.
@@ -42,12 +46,12 @@ done
 [ -n "$missing" ] || exit 0
 
 CTX="## Secret-redaction guard (R-102)"$'\n\n'
-CTX+="The secret-handling hooks are not all active this session, so tool output may NOT be redacted and secrets could persist in the transcript:"$'\n\n'
+CTX+="The secret-handling hooks are not all active this session. Without secret-scan.sh nothing blocks a command or a write that carries a credential; without redact-output.sh nothing tells you when one has already reached the output and the transcript:"$'\n\n'
 CTX+="$missing"$'\n'
 CTX+="Do not run commands that could print secrets until this is fixed. Restore the missing hook(s) in ~/.claude/settings.json, confirm the script exists in ~/.claude/hooks/, then reload via /hooks or restart."
 
 jq -n --arg ctx "$CTX" '{
-  systemMessage: "Secret-redaction hook(s) not active this session (R-102); output may not be redacted.",
+  systemMessage: "Secret-handling hook(s) not active this session (R-102); a leaked credential may go unblocked and unreported.",
   hookSpecificOutput: {
     hookEventName: "SessionStart",
     additionalContext: $ctx

@@ -3,7 +3,8 @@
 # Verifies clean-code-reminder.sh flags a function body over the ~25-line
 # ceiling and stays silent for short functions (R-322).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/clean-code-reminder.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/clean-code-reminder.sh"
 TMP=$(mktemp -d)
 
 {

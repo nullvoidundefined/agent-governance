@@ -4,7 +4,8 @@
 # violation, and allows below-threshold or empty verdicts. Uses CLAUDE_JUDGE_CMD to
 # stub the model, so no live API call.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/llm-rule-judge.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/llm-rule-judge.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main

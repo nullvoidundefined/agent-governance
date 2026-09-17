@@ -5,7 +5,8 @@
 # Gemfile asks, naming the packages; a version change, a script change, or an
 # unrelated file is silent; an unparsable result fails open.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/dependency-add-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/dependency-add-guard.sh"
 REPO=$(cd "$(mktemp -d)" && pwd -P)
 git -C "$REPO" init -q
 

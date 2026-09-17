@@ -2,7 +2,8 @@
 # Verifies secret-scan.sh blocks mutation of protected credential files (R-103)
 # while allowing reads and throwaway /tmp fixtures, and still blocks raw secrets (R-102).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/secret-scan.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/secret-scan.sh"
 
 deny() {
   jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | "$HOOK" \

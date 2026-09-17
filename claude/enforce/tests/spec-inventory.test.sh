@@ -4,7 +4,8 @@
 # last commit, the count of commits mentioning its slug, and the named
 # artifacts present versus absent, plus the absent-artifact list.
 set -uo pipefail
-INV="$HOME/.claude/skills/cleanup-specs-plans/scripts/inventory.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+INV="$CLAUDE_HARNESS_ROOT/skills/cleanup-specs-plans/scripts/inventory.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

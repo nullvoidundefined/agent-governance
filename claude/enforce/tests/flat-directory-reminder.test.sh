@@ -3,7 +3,8 @@
 # Verifies flat-directory-reminder.sh nudges when a directory exceeds 20 source
 # modules and stays silent below the threshold (R-310).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/flat-directory-reminder.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/flat-directory-reminder.sh"
 TMP=$(mktemp -d)
 
 mkdir -p "$TMP/over"

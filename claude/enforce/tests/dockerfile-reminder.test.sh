@@ -13,7 +13,8 @@
 #   8. A stage alias (FROM builder) and a digest-pinned image are not unpinned.
 #   9. Test files, node_modules, and an index.ts outside a server tree are silent.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/dockerfile-reminder.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/dockerfile-reminder.sh"
 TMP=$(mktemp -d)
 
 run() { jq -n --arg f "$1" '{hook_event_name:"PostToolUse",tool_name:"Write",tool_input:{file_path:$f}}' | "$HOOK"; }

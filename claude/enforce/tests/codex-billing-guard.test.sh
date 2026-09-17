@@ -6,7 +6,8 @@
 # ChatGPT auth. codex login status is stubbed via CLAUDE_CODEX_CMD so the
 # test does not depend on this machine's live login state.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/codex-billing-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/codex-billing-guard.sh"
 
 mkstub() {
   local f

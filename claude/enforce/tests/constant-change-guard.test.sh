@@ -3,7 +3,8 @@
 # Verifies constant-change-guard.sh: a push whose outgoing diff removes a constant
 # value that still appears in test files triggers ask (R-513); clean pushes pass.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/constant-change-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/constant-change-guard.sh"
 
 decision() {
   OUT=$(jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | "$HOOK")

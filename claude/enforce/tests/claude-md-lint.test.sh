@@ -14,13 +14,14 @@
 #      so only session-types.md may live there without a paths: header.
 set -euo pipefail
 
-CLAUDE_MD="${CLAUDE_MD_FILE:-$HOME/.claude/CLAUDE.md}"
-REFERENCE_MD="${CLAUDE_REFERENCE_FILE:-$HOME/.claude/rulebook/reference.md}"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+CLAUDE_MD="${CLAUDE_MD_FILE:-$CLAUDE_HARNESS_ROOT/CLAUDE.md}"
+REFERENCE_MD="${CLAUDE_REFERENCE_FILE:-$CLAUDE_HARNESS_ROOT/rulebook/reference.md}"
 # Overridable like the two inputs above it: with CLAUDE_MD_FILE and
 # CLAUDE_REFERENCE_FILE pointed at a checkout and this one hardwired to the live
 # copy, the fixture linted two different trees at once and a rules/ defect in
 # the repo went unlinted until it was synced (2026-09-17 audit P2-8).
-RULES_DIR="${CLAUDE_RULES_DIR:-$HOME/.claude/rules}"
+RULES_DIR="${CLAUDE_RULES_DIR:-$CLAUDE_HARNESS_ROOT/rules}"
 MAX_LINES=200
 
 LINE_COUNT=$(wc -l < "$CLAUDE_MD" | tr -d ' ')
@@ -29,7 +30,7 @@ if [ "$LINE_COUNT" -gt "$MAX_LINES" ]; then
   exit 1
 fi
 
-SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$CLAUDE_HARNESS_ROOT/skills}"
 CLAUDE_MD_IDS=$(grep -oE '^R-[0-9]{3}' "$CLAUDE_MD" | sort -u)
 SKILL_IDS=$(cat "$SKILLS_DIR"/*/SKILL.md 2>/dev/null | grep -oE '^R-[0-9]{3}' | sort -u)
 NORM_IDS=$(printf '%s\n%s\n' "$CLAUDE_MD_IDS" "$SKILL_IDS" | grep -E '^R-[0-9]{3}$' | sort -u)

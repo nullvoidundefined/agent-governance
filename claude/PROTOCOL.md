@@ -135,7 +135,7 @@ Hooks are mechanical enforcement that runs before Claude's behavioral rules have
 - **Pre-push hook**: runs format + lint + build + test on the full repo. This is the last local gate before code leaves the machine.
 - **Commit-msg hook (fix-commit-gate)**: enforces the rule that `fix:` commits include at least one test file. Commits that violate this rule are blocked with an explanation.
 - **PreToolUse em-dash block** (`no-em-dash.sh`): blocks any tool call that would write a U+2014 em dash (R-207), the single most recognizable AI writing tell.
-- **PostToolUse output redaction** (`redact-output.sh`): redacts tokens, keys, cookies to `[REDACTED]` and PII to `[PII]` in tool output before it reaches the transcript (R-102, R-104).
+- **PostToolUse exposure detection** (`redact-output.sh`): scans Bash output for tokens, keys, cookies and PII, and on a match injects a redacted copy plus an exposure warning (R-102, R-104). This is detection after the fact, not prevention, and the distinction matters. A PostToolUse hook cannot rewrite or remove the tool result it is reacting to: the raw output has already reached the model's context and has already been written verbatim to the session transcript on disk by the time this hook runs. What the hook buys is that the model is told a credential just leaked, so it can treat the value as exposed, refuse to repeat it, and recommend rotation, and that the operator has a signal to rotate rather than a silent leak. Prevention of a secret reaching output at all is the PreToolUse side of the pair (`secret-scan.sh` and the permission lists), which blocks the command before it runs.
 - **Conflict-marker block** (`conflict-markers.sh`): blocks commits containing unresolved merge-conflict markers (R-507).
 - **Migration-defaults guard** (`migration-defaults-guard.sh`): enforces migration default conventions (bare strings for constants, `pgm.func()` for SQL expressions, no nested quotes) (R-328).
 - **Destructive-DB guard** (`destructive-db-guard.sh`): PreToolUse deny/ask on destructive and remote-write database operations. See Layer 11.
@@ -295,7 +295,7 @@ The protocol will keep growing. Every new layer earned its place the hard way.
 
 Rationale and incident history removed from rule text during the 2026-07-03 restructure. Rules state norms; this appendix states why they exist. New IDs, old IDs in parentheses.
 
-- **R-102 (old R-101):** The redaction hook must fail loud because a session that runs without it leaks raw secrets into the transcript.
+- **R-102 (old R-101):** The pair of secret hooks must fail loud rather than quietly go missing. `secret-scan.sh` is the half that prevents, blocking the command before it runs, and a session without it loses that block entirely. `redact-output.sh` is the half that detects, and a session without it loses the warning that tells the model and the operator a credential just leaked into the transcript. Neither absence announces itself, which is why `redaction-guard-check.sh` checks both at session start and warns loudly when either is missing.
 - **R-106 (old R-108):** The `~/.claude` remote is public, so every push is publishing.
 - **R-204 (old R-010):** Added after repeated expedient patches masked root causes; a patch that masks a symptom reads as a fix but re-fails later.
 - **R-207 (old R-001):** The em dash is the single most recognizable AI writing tell; the user treats any em dash as a violation of trust.

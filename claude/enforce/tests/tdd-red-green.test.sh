@@ -8,8 +8,18 @@
 # a throwaway project, so the JSON-reporter parsing is exercised against live
 # output rather than a stub.
 set -euo pipefail
-TDD="$HOME/.claude/enforce/tdd.sh"
-VITEST_PKG="$HOME/.claude/enforce/node_modules/vitest"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"
+
+# tdd.sh is the implementation under test and comes from the checkout, but
+# enforce/node_modules is gitignored machine state that `npm ci --prefix
+# enforce` writes wherever it was run, so it is looked for in the checkout
+# first and in the live install second rather than demanded from either. CI
+# symlinks the checkout at ~/.claude and installs into it, so both paths are
+# the same tree there; on a developer's machine the install usually sits in
+# the synced copy alone.
+VITEST_PKG="$CLAUDE_HARNESS_ROOT/enforce/node_modules/vitest"
+[ -d "$VITEST_PKG" ] || VITEST_PKG="$HOME/.claude/enforce/node_modules/vitest"
 [ -d "$VITEST_PKG" ] || { echo "FAIL: vitest is not installed under enforce/node_modules; run npm ci --prefix enforce"; exit 1; }
 
 new_project() {

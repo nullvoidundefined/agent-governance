@@ -4,7 +4,8 @@
 # carry (security/react/react-hooks) must not error as "Definition for rule
 # not found", while the gate's own rules still fire on the same file.
 set -euo pipefail
-LINT="$HOME/.claude/enforce/lint.mjs"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+LINT="$CLAUDE_HARNESS_ROOT/enforce/lint.mjs"
 
 DIR=$(mktemp -d); cd "$DIR"; git init -q
 

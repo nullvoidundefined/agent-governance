@@ -15,7 +15,8 @@
 # Floor: the manifest is not empty or truncated, so this fixture cannot pass
 # by inspecting nothing (the failure mode P1-4 found in another fixture).
 set -uo pipefail
-CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$HOME/.claude}"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$CLAUDE_HARNESS_ROOT}"
 HASH_FILE="$CLAUDE_DIR/enforce/hook-hashes.txt"
 HOOK="$CLAUDE_DIR/hooks/hook-integrity-check.sh"
 MIN_ENTRIES=60

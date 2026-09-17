@@ -4,7 +4,8 @@
 # and passes clean code. R-319 is scoped to the function-module trees (services/api/clients);
 # constants and types modules group multiple exports per R-307 and are exempt.
 set -euo pipefail
-E="$HOME/.claude/enforce"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
 # Captures the report so a failure can show what ESLint actually said. The
 # original helper discarded it, which is why the 2026-09-04 flake (one run of
 # the import-order case reporting clean) left nothing to diagnose: the only

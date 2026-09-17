@@ -3,7 +3,8 @@
 # Verifies single-file-folder-reminder warns (advisory, stderr) when a changed source folder holds
 # exactly one source module (R-309), and that .enforce.json exemptions suppress the warning.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/single-file-folder-reminder.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/single-file-folder-reminder.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main

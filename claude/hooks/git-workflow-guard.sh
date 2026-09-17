@@ -32,20 +32,35 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 # `git -C <path> push` and `git --no-pager commit` are the same actions with a
 # global option in front, and matching on adjacency alone lets them through.
 # Strip the whole option class via git-invocation.sh (2026-09-16 audit P2-1),
-# and let -C redirect the repository the rest of this hook inspects.
-GIT_DIRECTORY=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}' || true)
-if [ -n "$GIT_DIRECTORY" ]; then
-  case "$GIT_DIRECTORY" in /*) CWD="$GIT_DIRECTORY" ;; *) CWD="$CWD/$GIT_DIRECTORY" ;; esac
-fi
+# and let the repository-selecting options redirect the repository the rest of
+# this hook inspects.
+#
+# The redirect used to be a regex that read `-C` alone, from the first git
+# invocation in the command, with an unquoted path. `--work-tree`, a quoted
+# path, and a `git -C /a fetch && git -C /b push` pairing all slipped past it
+# and left the hook judging the ambient repository (2026-09-18 audit, defect
+# 4). The shared parser in git-invocation.sh covers all of those shapes, so
+# the extraction here is now one call against the UNSTRIPPED command.
 # -f guard, not `source ... || true`: a failed source aborts the shell under
 # set -e regardless of the || (observed 2026-09-16), a silent fail-open.
+RAW_CMD="$CMD"
 GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 if [ -f "$GIT_INVOCATION_HELPER" ]; then
   source "$GIT_INVOCATION_HELPER"
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
+  GIT_DIRECTORY=""
+  for subcommand in push commit; do
+    parse_git_target_options "$RAW_CMD" "$subcommand"
+    GIT_DIRECTORY=$(read_git_target_directory)
+    [ -n "$GIT_DIRECTORY" ] && break
+  done
 else
   # Fallback keeps the pre-helper coverage rather than none.
   CMD=$(printf '%s' "$CMD" | sed -E 's/git([[:space:]]+(-C|-c)[[:space:]]+[^[:space:];&|]+)+/git/g')
+  GIT_DIRECTORY=$(printf '%s' "$RAW_CMD" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}' || true)
+fi
+if [ -n "$GIT_DIRECTORY" ]; then
+  case "$GIT_DIRECTORY" in /*) CWD="$GIT_DIRECTORY" ;; *) CWD="$CWD/$GIT_DIRECTORY" ;; esac
 fi
 
 printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || exit 0

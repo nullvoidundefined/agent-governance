@@ -9,7 +9,8 @@
 #   5. The same client with AbortSignal.timeout is silent.
 #   6. A test file and a file outside any server tree are silent whatever they contain.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/observability-reminder.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/observability-reminder.sh"
 TMP=$(mktemp -d)
 mkdir -p "$TMP/apps/server/src/clients/stripe" "$TMP/apps/client/src"
 

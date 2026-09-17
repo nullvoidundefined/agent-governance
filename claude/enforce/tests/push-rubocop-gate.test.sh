@@ -5,7 +5,8 @@
 # output. RuboCop is stubbed via CLAUDE_RUBOCOP_CMD (canned JSON), so the test
 # exercises the gate's diff/filter/deny logic without a local RuboCop.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/push-rubocop-gate.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/push-rubocop-gate.sh"
 PAYLOAD='{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q; git switch -q -c main 2>/dev/null || git checkout -q -b main

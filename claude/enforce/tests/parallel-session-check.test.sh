@@ -4,7 +4,8 @@
 # same working tree (R-501), stays silent when it is alone or when the other
 # registration is a dead process, and keys on the tree rather than the session.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/parallel-session-check.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/parallel-session-check.sh"
 LOCK_DIR=$(cd "$(mktemp -d)" && pwd -P)
 export CLAUDE_SESSION_LOCK_DIR="$LOCK_DIR"
 TREE_A=$(cd "$(mktemp -d)" && pwd -P)

@@ -10,7 +10,8 @@
 #   4. An unrankable target is silent (fail open on gateway or custom IDs).
 #   5. The warn path never exits 2 (a warn must not block the switch).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/model-switch-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/model-switch-guard.sh"
 run() { jq -n --arg f "$1" --arg t "$2" '{hook_event_name:"PreModelSwitch",from_model:$f,to_model:$t}' | CLAUDE_FIRE_LOG=/dev/null "$HOOK"; }
 
 OUT=$(run claude-sonnet-5 claude-opus-5) || { echo "FAIL: the warn path must exit 0, a nonzero exit would block the switch"; exit 1; }

@@ -9,7 +9,8 @@
 #   6. --strict fails on an improvement the baseline has not locked in.
 #   7. Two --update runs on one tree are byte-identical (no timestamp churn).
 set -euo pipefail
-E="$HOME/.claude/enforce"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
 
 new_repo() {
   local dir

@@ -4,7 +4,8 @@
 # working tree emits an R-504 commit-now reminder; clean trees, non-completed
 # updates, and non-repo directories stay silent.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/task-commit-reminder.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/task-commit-reminder.sh"
 
 advisory() {
   OUT=$(jq -n --arg s "$1" '{tool_name:"TaskUpdate",tool_input:{taskId:"1",status:$s}}' | "$HOOK")

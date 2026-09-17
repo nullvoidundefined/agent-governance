@@ -12,8 +12,9 @@
 # CI; the sync.sh stamp on a synced install); a synced tree with no
 # reachable checkout scans ~/.claude itself, which is the same content.
 set -uo pipefail
-HOOK="$HOME/.claude/hooks/secret-scan.sh"
-CLAUDE_DIR="${CLAUDE_SHAPE_SCAN_ROOT:-$HOME/.claude}"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/secret-scan.sh"
+CLAUDE_DIR="${CLAUDE_SHAPE_SCAN_ROOT:-$CLAUDE_HARNESS_ROOT}"
 
 if [ -f "$CLAUDE_DIR/.sync-source" ] && [ -d "$(cat "$CLAUDE_DIR/.sync-source")/.git" ]; then
   ROOT=$(cat "$CLAUDE_DIR/.sync-source")

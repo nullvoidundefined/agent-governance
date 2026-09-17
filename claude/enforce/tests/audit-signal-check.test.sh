@@ -5,7 +5,8 @@
 # additionalContext, names only the surfaces over threshold, never blocks, and
 # stays silent after a fresh audit or for non-push commands.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/audit-signal-check.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/audit-signal-check.sh"
 
 advisory() {
   OUT=$(jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | "$HOOK")

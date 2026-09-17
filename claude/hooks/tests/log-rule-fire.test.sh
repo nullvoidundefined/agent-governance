@@ -2,8 +2,9 @@
 # Verifies log-rule-fire.sh appends pipe-delimited fire lines, honors the
 # /dev/null silencer, and that a wired hook (no-em-dash) logs its deny.
 set -euo pipefail
-HELPER="$HOME/.claude/hooks/log-rule-fire.sh"
-HOOK="$HOME/.claude/hooks/no-em-dash.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HELPER="$CLAUDE_HARNESS_ROOT/hooks/log-rule-fire.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/no-em-dash.sh"
 
 LOG=$(mktemp)
 # Direct helper call appends one well-formed line.

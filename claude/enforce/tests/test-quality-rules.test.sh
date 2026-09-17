@@ -12,7 +12,8 @@
 #   R-344         no-swallowed-catch and no-empty now cover services/ and clients/ under
 #                 any src/, not only the server trees; no-console stays server-scoped.
 set -euo pipefail
-E="$HOME/.claude/enforce"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
 # Canonicalize: macOS mktemp returns a path under /var/folders, itself a
 # symlink to /private/var/folders. import-x/no-cycle tracks visited files by
 # exact path string, so linting the symlinked path makes a file's own path

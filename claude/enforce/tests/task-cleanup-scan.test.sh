@@ -6,8 +6,9 @@
 # is no and the rows are N/A; --range is honoured; the ledger line reads the
 # task-start tier from disk.
 set -uo pipefail
-SCAN="$HOME/.claude/skills/task-cleanup/scripts/scan.sh"
-TIER="$HOME/.claude/skills/task-start/scripts/task-tier.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+SCAN="$CLAUDE_HARNESS_ROOT/skills/task-cleanup/scripts/scan.sh"
+TIER="$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

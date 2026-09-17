@@ -5,7 +5,14 @@
 # per-role write boundaries keyed on agent_type (R-411). Every case feeds a
 # PreToolUse payload and asserts the decision; allow means silence.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/protected-path-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/protected-path-guard.sh"
+# The sweep that bound HOOK to this checkout left the DATA the hook reads at
+# runtime still resolving to the installed tree: role-policy.json comes from
+# $HOME/.claude unless this override names another copy, so the fixture would
+# exercise checkout code against whatever policy the last sync happened to
+# write. Pin it to the checkout for the same reason HOOK is pinned.
+export CLAUDE_ROLE_POLICY_FILE="$CLAUDE_HARNESS_ROOT/enforce/role-policy.json"
 
 REPO=$(cd "$(mktemp -d)" && pwd -P)
 git -C "$REPO" init -q

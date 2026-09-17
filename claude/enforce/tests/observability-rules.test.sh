@@ -19,7 +19,8 @@
 #  10. An unbound catch with a body reports.
 #  11. Log-with-err then rethrow passes.
 set -euo pipefail
-E="$HOME/.claude/enforce"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+E="$CLAUDE_HARNESS_ROOT/enforce"
 
 TMP=$(mktemp -d)
 mkdir -p "$TMP/apps/server/src/services" "$TMP/apps/server/src/handlers" "$TMP/apps/client/src/services"

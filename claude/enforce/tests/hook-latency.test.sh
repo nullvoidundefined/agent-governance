@@ -17,6 +17,17 @@ set -euo pipefail
 # looked like the live-versus-repo drift class and was filed as such (2026-09-17
 # audit P2-8); it is a deliberate choice, and its sibling claude-md-lint.test.sh
 # was the half that really was inconsistent.
+#
+# THE DELIBERATE EXCEPTION. The 2026-09-18 sweep moved every other fixture in
+# both trees onto enforce/harness-root.sh, so that each one resolves the
+# implementation it exercises from the checkout it was read from rather than
+# from whatever ./sync.sh last installed. This file stays on $HOME because the
+# question it answers is a question about the installed chain: a hook that has
+# grown a Node or network dependency costs a session real wall-clock only once
+# it is installed, and timing the checkout's copy would answer a question
+# nobody asked. enforce/tests/fixture-implementation-root.test.sh carries the
+# allowlist that records this exception alongside the sweep it is excepted
+# from, so the two cannot drift apart silently.
 HOOKS_DIR="$HOME/.claude/hooks"
 BUDGET_MULTIPLIER=6
 BUDGET_FLOOR_MS=250

@@ -269,7 +269,8 @@
             "tier": "regex",
             "enforcer": "hook:redact-output",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "detection, not prevention: a PostToolUse hook cannot rewrite or remove the result it reacts to, so the raw output has already reached the context and the transcript. This enforcer reports the exposure and warns; hook:secret-scan is the entry that prevents. Fixture: tests/redact-output.test.sh"
         },
         {
             "id": "R-102",

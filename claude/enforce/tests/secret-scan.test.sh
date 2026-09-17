@@ -9,7 +9,8 @@
 # carries a literal that the scan itself, or the publish guard, would flag
 # (same convention as global-repo-push-guard.test.sh).
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/secret-scan.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/secret-scan.sh"
 
 decision() { # json payload on stdin -> deny|none
   local out

@@ -5,7 +5,8 @@
 # a test file in any supported naming convention, silent for other tools, and
 # silenced entirely by CODEX_TEST_GUARD=off.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/codex-test-author-guard.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/codex-test-author-guard.sh"
 
 decision() {
   local tool="$1" path="$2" guard="${3:-on}" agent="${4:-}"

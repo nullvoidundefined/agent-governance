@@ -4,7 +4,8 @@
 # from settings and stays silent when both are registered (R-102). Uses the
 # REDACTION_GUARD_SETTINGS override with throwaway settings files.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/redaction-guard-check.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/redaction-guard-check.sh"
 TMP=$(mktemp -d)
 
 cat > "$TMP/missing.json" <<'EOF'

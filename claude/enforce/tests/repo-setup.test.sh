@@ -9,7 +9,8 @@
 # --required-reviews shape the templates and the ruleset; an existing file
 # is never overwritten.
 set -uo pipefail
-SETUP="$HOME/.claude/skills/repo-setup/scripts/setup.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+SETUP="$CLAUDE_HARNESS_ROOT/skills/repo-setup/scripts/setup.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

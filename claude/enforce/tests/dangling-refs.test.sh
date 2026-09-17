@@ -5,7 +5,8 @@
 # module still imported is reported with the importing file and line; a
 # rename is reported the same way; a clean range reports nothing dangling.
 set -uo pipefail
-DR="$HOME/.claude/skills/bug-hunt/scripts/dangling-refs.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+DR="$CLAUDE_HARNESS_ROOT/skills/bug-hunt/scripts/dangling-refs.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0

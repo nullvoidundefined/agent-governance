@@ -25,7 +25,8 @@
 #      its source with the provenance comment line removed (audit X-1).
 set -uo pipefail
 
-REAL_CLAUDE="${CLAUDE_SKILLS_CLAUDE_DIR:-$HOME/.claude}"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+REAL_CLAUDE="${CLAUDE_SKILLS_CLAUDE_DIR:-$CLAUDE_HARNESS_ROOT}"
 # The cursor tree sits beside claude/ in the monorepo. CI symlinks the
 # checkout's claude/ at ~/.claude, so the symlink's parent is the repo root;
 # a synced (copied) ~/.claude carries the stamp sync.sh writes instead.

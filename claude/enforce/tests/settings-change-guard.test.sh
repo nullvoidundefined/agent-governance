@@ -9,8 +9,9 @@
 #      auto-approval, checked against the repo checkout rather than $HOME so a
 #      local edit cannot decide the verdict.
 set -euo pipefail
-HOOK="$HOME/.claude/hooks/settings-change-guard.sh"
-LIVE="$HOME/.claude/settings.json"
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+HOOK="$CLAUDE_HARNESS_ROOT/hooks/settings-change-guard.sh"
+LIVE="$CLAUDE_HARNESS_ROOT/settings.json"
 TMP=$(mktemp -d)
 
 run() { jq -n --arg s "$1" --arg f "$2" '{hook_event_name:"ConfigChange",source:$s,file_path:$f}' | CLAUDE_FIRE_LOG=/dev/null "$HOOK" 2>/dev/null; }
