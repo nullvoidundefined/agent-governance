@@ -9,9 +9,11 @@ project config, not payload: they are how a session opened HERE reaches the harn
 this repository defines. `.claude/settings.json` registers a `SessionStart` hook that
 runs `claude/hooks/harness-sync.sh`, which syncs automatically. Cursor has no
 equivalent automatic entry point, so `.cursor/rules/000-harness-bootstrap.mdc` states
-the same contract as an always-on rule and asks for one `./sync.sh` run. Codex reads
-`~/.codex/AGENTS.md` only and carries no project-local hook surface, so a Codex session
-in this checkout depends on a prior sync from any tool.
+the same contract as an always-on rule and asks for one `./sync.sh` run. Codex merges a
+project-level `AGENTS.md` at this root with its own `~/.codex/AGENTS.md`, so the root
+`AGENTS.md` carries the same contract there. Neither tool offers a project-local hook
+surface, so in both the sync is a step the session takes rather than one the harness
+takes for it.
 
 The payload directories (`claude/`, `cursor/`, `codex/`, no dot) are what `sync.sh`
 installs. `cursor/` and `codex/` are generated from `claude/` by `translate/cursor.mjs`
