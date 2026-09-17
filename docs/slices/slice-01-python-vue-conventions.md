@@ -1,6 +1,6 @@
 # Slice 01: Python and Vue Convention Tracks
 
-Spec: `docs/superpowers/specs/2026-09-17-python-vue-convention-tracks-design.md`
+Spec: `claude/docs/superpowers/specs/2026-09-17-python-vue-convention-tracks-design.md`
 Branch: `feat/python-vue-conventions` (the slice branch; each PR branches from it and squash-merges back, and the slice branch squash-merges to `main` when PR 7 lands)
 Status: awaiting Gate 1 approval
 Started: 2026-09-17
