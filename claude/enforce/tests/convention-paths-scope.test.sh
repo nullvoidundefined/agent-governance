@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Verifies frontend convention scope using path strings without creating fixtures.
 # Checks shared core coverage, framework isolation, and that core carries no React rule tokens.
+# A2 covers React state hooks and providers while excluding every Nuxt fixture, including composables.
 # A5 permits React framework names in dispatch and directory comparisons.
 # Optional Vue and Nuxt tracks are checked together once both files exist.
 # Prints one result per assertion and exits nonzero if any assertion fails.
@@ -122,6 +123,7 @@ for candidate in "${react_paths[@]}"; do
   case "$candidate" in *.tsx) react_tsx_paths+=("$candidate") ;; esac
 done
 check_paths 0 CLAUDE-FRONTEND-REACT.md "${react_tsx_paths[@]}" "${next_paths[0]}" &&
+  check_paths 0 CLAUDE-FRONTEND-REACT.md "${react_paths[1]}" 'apps/client/web/src/state/AuthProvider.tsx' &&
   check_paths 1 CLAUDE-FRONTEND-REACT.md "${nuxt_paths[@]}"
 report_result "$?" A2 'React covers React TSX and Next pages while excluding Nuxt paths'
 

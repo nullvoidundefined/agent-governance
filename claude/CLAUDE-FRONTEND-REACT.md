@@ -2,6 +2,7 @@
 paths:
   - "**/*.tsx"
   - "**/*.jsx"
+  - "**/src/state/**"
 ---
 
 # React Frontend Conventions
