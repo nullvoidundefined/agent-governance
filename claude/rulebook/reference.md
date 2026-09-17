@@ -609,10 +609,14 @@ R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` wit
 ## Lifecycle and memory (R-6xx)
 
 R-601: Offer a handoff doc at session end; commit a dirty agent-governance checkout and re-run `./sync.sh`; update `TODO.md`/`ISSUES.md` with deferred work.
+  Spec:
+  - The handoff's `## Task state` section is generated mechanically by the `session-end.sh` hook from the live task-state tracker (`task-state-tracker.sh`), never written by hand; do not duplicate task status into prose elsewhere in the doc.
+  - The manual duty this rule governs is narrative context only: decisions made, blockers hit, and pointers for the next session. It is not task-state recall, which the tracker already covers without depending on memory.
   Enforcement: manual
 
 R-602: Write handoffs to `docs/session-handoff/session-handoff.md` (overwrite), under 8KB, bullets.
   Spec, in order: (1) last commit SHA + subject; (2) production state; (3) session metrics (commits, files changed, rework count, velocity flag; `hooks/session-end.sh` computes the same four from the SHA `session-start.sh` stamps at session start, so the numbers in the handoff and in the hook's `## Session metrics` block agree); (4) what shipped (grouped, traceable); (5) pending (by urgency, with effort estimate); (6) next-session tasks with files to read. Bundle into the final commit.
+  - A `## Task state` section is generated and kept current by the `session-end.sh` hook from the live task-state tracker (`task-state-tracker.sh`), appended after the six sections above. It is machine-rendered from the tracker's per-session state file and is never written or edited by hand, and its content sits outside the under-8KB narrative budget.
   Enforcement: hook:handoff-check (PostToolUse Write on the handoff path, advisory: the 8 KB cap, the six sections in order, and a recorded SHA that resolves; session-start.sh re-verifies the SHA when the next session loads the file); manual for the content of each section
 
 R-603: Route learnings to per-project feedback memory.
