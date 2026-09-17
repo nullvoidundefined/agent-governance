@@ -367,7 +367,7 @@
             "enforcer": "hook:mcp-action-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt"
+            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt, and a private-tracker bookkeeping write is exempt unless it lands code, submits, uploads, or applies"
         },
         {
             "id": "R-401",
