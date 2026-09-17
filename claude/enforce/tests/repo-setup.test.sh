@@ -132,7 +132,16 @@ check "existing settings keep their hooks" jqe '.hooks.PreToolUse[0].hooks[0].co
 check "bootstrap merged into existing settings" jqe '[.hooks.SessionStart[].hooks[].command | select(test("harness-bootstrap.sh"))] | length == 1' "$REPO3/.claude/settings.json"
 check "harness reported OK after the merge" row harness OK
 
-# 6. Usage.
+# 6. The harness repository itself: its settings run harness-sync.sh directly,
+#    so the item is satisfied without a bootstrap hook.
+REPO4="$SB/harness-repo"; mkdir -p "$REPO4/.claude" "$REPO4/claude/hooks"; git -C "$REPO4" init -q -b main
+printf '#!/usr/bin/env bash\nexit 0\n' > "$REPO4/claude/hooks/harness-sync.sh"
+printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/claude/hooks/harness-sync.sh\\" \\"$CLAUDE_PROJECT_DIR\\""}]}]}}\n' > "$REPO4/.claude/settings.json"
+OUT=$(cd "$REPO4" && bash "$SETUP" acme/agent-governance --check 2>&1)
+check "harness repository reports harness OK from its own hook" row harness OK
+check "harness repository gets no bootstrap hook" test ! -e "$REPO4/.claude/hooks/harness-bootstrap.sh"
+
+# 7. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?
 check "bad repo name is a usage error" test "$ST" -eq 2
 

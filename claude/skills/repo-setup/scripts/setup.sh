@@ -128,8 +128,15 @@ HAS_BOOTSTRAP=0
 if [ -f .claude/settings.json ] && jq -e '[.hooks.SessionStart[]?.hooks[]?.command // "" | select(test("harness-bootstrap\\.sh"))] | length > 0' .claude/settings.json >/dev/null 2>&1 && [ -f .claude/hooks/harness-bootstrap.sh ]; then
   HAS_BOOTSTRAP=1
 fi
+# The harness repository itself runs its own harness-sync.sh directly (no
+# clone needed: the checkout is the project), which satisfies the item.
+if [ "$HAS_BOOTSTRAP" -eq 0 ] && [ -f claude/hooks/harness-sync.sh ] && [ -f .claude/settings.json ] && jq -e '[.hooks.SessionStart[]?.hooks[]?.command // "" | select(test("harness-sync\\.sh"))] | length > 0' .claude/settings.json >/dev/null 2>&1; then
+  HAS_BOOTSTRAP=3
+fi
 if [ "$HAS_BOOTSTRAP" -eq 1 ]; then
   report harness OK ".claude/hooks/harness-bootstrap.sh registered at SessionStart"
+elif [ "$HAS_BOOTSTRAP" -eq 3 ]; then
+  report harness OK "this is the harness repository: .claude/settings.json runs claude/hooks/harness-sync.sh at SessionStart"
 elif [ -z "$HARNESS_REPO" ]; then
   report harness MISSING "no agent-governance repository URL: pass --harness-repo <url> (or sync ~/.claude first so .sync-source names the checkout)"
 elif apply; then
