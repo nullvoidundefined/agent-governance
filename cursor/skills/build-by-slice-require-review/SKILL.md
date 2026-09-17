@@ -37,7 +37,7 @@ For a hard or risky PR, write a one-paragraph explain-back of what it does and w
 
 ## Slice plan document
 
-Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record.
+Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice under its own `### PR <n>: <title>` heading, each in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record. `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels or the plan has no PR block at all, so Gate 1 never sees a half-described PR.
 
 ## PR description format
 
