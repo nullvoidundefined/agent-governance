@@ -7,7 +7,7 @@ alwaysApply: false
 
 # Vite Frontend Conventions
 
-Framework-specific rules for Vite React single-page apps. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core); everything not covered here follows the core.
+Framework-specific rules for Vite React single-page apps. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core) and `~/.claude/CLAUDE-FRONTEND-REACT.md` (the React rules); everything not covered here follows those two.
 
 ---
 
