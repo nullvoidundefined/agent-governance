@@ -331,6 +331,11 @@
                 "hooks": [
                     {
                         "type": "command",
+                        "command": "~/.claude/hooks/harness-sync.sh",
+                        "timeout": 300
+                    },
+                    {
+                        "type": "command",
                         "command": "~/.claude/hooks/session-start.sh"
                     },
                     {
