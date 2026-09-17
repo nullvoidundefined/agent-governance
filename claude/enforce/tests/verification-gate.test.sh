@@ -170,4 +170,30 @@ printf 'exit 0\n' > "$REPO/claude/hooks/tests/run-tests.sh"
 GOT=$(gate "$REPO")
 printf '%s' "$GOT" | grep -q 'MONOREPO_SUITE_MARKER' || { echo "FAIL: monorepo claude/ suites must be discovered and block on red, got: $GOT"; exit 1; }
 
+# 14. P2-5 (2026-09-17 audit): the turn-end gate ran two checks in this repo
+# while pre-push and CI ran three, so a turn could end green on a tree whose
+# codex port was stale. The translator check joins the monorepo branch, and
+# only there: a checkout with no translate/ must not gain a failing check.
+REPO=$(new_repo)
+mkdir -p "$REPO/claude/enforce/tests" "$REPO/claude/hooks/tests" "$REPO/translate"
+touch "$REPO/claude/CLAUDE.md"
+printf 'exit 0
+' > "$REPO/claude/enforce/tests/run-tests.sh"
+printf 'exit 0
+' > "$REPO/claude/hooks/tests/run-tests.sh"
+printf 'console.log("TRANSLATOR_MARKER"); process.exit(1);
+' > "$REPO/translate/codex.mjs"
+GOT=$(gate "$REPO")
+printf '%s' "$GOT" | grep -q 'TRANSLATOR_MARKER' || { echo "FAIL: a stale codex port must block the turn, got: $GOT"; exit 1; }
+
+REPO=$(new_repo)
+mkdir -p "$REPO/claude/enforce/tests" "$REPO/claude/hooks/tests"
+touch "$REPO/claude/CLAUDE.md"
+printf 'exit 0
+' > "$REPO/claude/enforce/tests/run-tests.sh"
+printf 'exit 0
+' > "$REPO/claude/hooks/tests/run-tests.sh"
+GOT=$(gate "$REPO")
+[ "$GOT" = "none" ] || { echo "FAIL: a checkout with no translate/ must stay green, got: $GOT"; exit 1; }
+
 echo "verification-gate.test.sh PASS"
