@@ -1,13 +1,13 @@
 ---
 paths:
-  - "**/app/**/*.ts"
-  - "**/app/**/*.tsx"
+  - "**/src/app/**/*.ts"
+  - "**/src/app/**/*.tsx"
   - "**/next.config.*"
 ---
 
 # Next.js Frontend Conventions
 
-Framework-specific rules for Next.js App Router clients. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core); everything not covered here follows the core.
+Framework-specific rules for Next.js App Router clients. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core) and `~/.claude/CLAUDE-FRONTEND-REACT.md` (the React rules); everything not covered here follows those two.
 
 ---
 
@@ -37,7 +37,7 @@ src/
 ├── api/                      # Own-backend fetch wrappers (see core)
 ├── clients/                  # Third-party SDK wrappers (see core)
 ├── services/                 # Domain logic (see core)
-├── state/                    # Stores, hooks, context providers (see core)
+├── state/                    # Stores, hooks, context providers (see the React file)
 ├── config/                   # queryClient.ts, env parsing
 ├── constants/
 ├── data/
@@ -82,7 +82,7 @@ Projects built against the old single-file conventions use `lib/` and a flat `ho
   };
   ```
 - Font system via `next/font/google` with CSS variable injection
-- Import ordering group 1 (see core) is React plus `next/*` imports (`next/link`, `next/font`, `next` types)
+- Import ordering group 1 (see the React file) is React plus `next/*` imports (`next/link`, `next/font`, `next` types)
 
 ---
 
