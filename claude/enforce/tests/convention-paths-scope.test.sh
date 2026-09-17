@@ -128,6 +128,12 @@ check_paths 0 CLAUDE-FRONTEND-REACT.md "${react_tsx_paths[@]}" "${next_paths[0]}
   check_paths 1 CLAUDE-FRONTEND-REACT.md "${nuxt_paths[@]}"
 report_result "$?" A2 'React covers React TSX and Next pages while excluding Nuxt paths'
 
+# A2b: a legacy hook file living directly under src/hooks/ (not *.tsx, not
+# under src/state/) must still reach the React file, or it loads only the
+# framework-agnostic core and misses the hooks/state migration guidance.
+check_paths 0 CLAUDE-FRONTEND-REACT.md 'apps/client/web/src/hooks/useAuth.ts'
+report_result "$?" A2b 'React covers a legacy src/hooks/ file, not only *.tsx and src/state/'
+
 check_paths 0 CLAUDE-FRONTEND-NEXT.md "${next_paths[@]}" &&
   check_paths 0 CLAUDE-FRONTEND-VITE.md "${vite_paths[@]}" &&
   check_paths 1 CLAUDE-FRONTEND-NEXT.md "${nuxt_paths[@]}" &&

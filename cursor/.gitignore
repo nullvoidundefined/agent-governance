@@ -40,6 +40,7 @@
 !/rules/cloud-deployment.mdc
 !/rules/database.mdc
 !/rules/frontend-next.mdc
+!/rules/frontend-react.mdc
 !/rules/frontend-vite.mdc
 !/rules/frontend.mdc
 !/rules/go.mdc
