@@ -70,6 +70,8 @@
 !/skills/spec-conformance-review/SKILL.md
 !/skills/spec-grounding/
 !/skills/spec-grounding/SKILL.md
+!/skills/spec-grounding/scripts/
+!/skills/spec-grounding/scripts/check.sh
 !/skills/structure-conventions/
 !/skills/structure-conventions/SKILL.md
 !/skills/task-cleanup/

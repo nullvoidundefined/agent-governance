@@ -135,6 +135,9 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── audits.md                    # Audit scheduling and role rules.
 │   └── cost.md                      # Cost discipline and model routing.
 ├── skills/                          # User-authored skills.
+│   ├── <name>/scripts/              # A skill's deterministic half, where one exists: decides or surfaces
+│   │                                # the skill's own requirements; hashed by hook-integrity-check,
+│   │                                # ported verbatim by translate/codex.mjs, checked by skills-lint.
 │   ├── task-start/                  # Scope classification and workflow dispatch.
 │   ├── tdd-gated-dispatch/          # The slice loop: open, RED, GREEN, REFACTOR, REVIEW, close.
 │   ├── all-hands/                   # Weekly priorities scan across all audit roles.

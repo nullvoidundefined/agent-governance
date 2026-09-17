@@ -101,7 +101,11 @@ Concepts with no match in the repo, which this spec therefore creates: ...
 ```
 
 Then **populate the spec's existing `## Domain vocabulary` glossary** (R-330,
-enforced by `hooks/spec-glossary-check.sh`) from the real exported names
+enforced by `hooks/spec-glossary-check.sh` for a spec under
+`docs/superpowers/specs/*-design.md`; a spec handed over at any other path
+never triggers that hook, so either move it there before editing or rely on
+the check script in step 4, which runs the same three-section test on any
+path) from the real exported names
 Subagent A found. Do not create a competing vocabulary section; the glossary
 already has a home and a gate. If the spec has no glossary section yet, add
 one, since the gate requires it.
@@ -112,7 +116,16 @@ Rewrite the spec's prose to use the real names in place of the vague ones. A
 spec that says "the notification service" after grounding has failed to be
 grounded.
 
-### 4. Report and stop
+### 4. Check, report, and stop
+
+Run the definition of done rather than recalling it:
+
+```bash
+bash ~/.claude/skills/spec-grounding/scripts/check.sh <spec path>
+```
+
+It exits 0 only when every condition below holds and otherwise names each
+unmet one; fix the spec and run it again before reporting.
 
 Report to the user:
 - How many concepts resolved to real paths and how many did not.
@@ -125,8 +138,11 @@ and per R-705 it starts with failing tests.
 
 ## Definition of done
 
-- Every concept in the spec either maps to a real path or is explicitly listed as new.
-- Every already-shipped behavior is named with the `file:line` that proves it.
-- Every conflict names both sides and the governing rule.
-- The `## Domain vocabulary` glossary is populated from real exported names.
+Each line is one condition `scripts/check.sh` decides.
+
+- Every concept in the spec either maps to a real path or is explicitly listed as new; every path in the `## Codebase grounding` table exists.
+- Every already-shipped behavior is named with the `file:line` that proves it, and the file has at least that many lines.
+- Every conflict names both sides and the governing rule, with a `file:line` that resolves.
+- The `## Domain vocabulary` glossary is populated from real exported names, with at least one `chosen over:` entry.
+- `## Acceptance criteria` carries at least `B-1` and `## Non-goals` exists.
 - No file other than the spec was modified.
