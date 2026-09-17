@@ -17,7 +17,12 @@
 #        allow           the call proceeds and the reason is injected as
 #                        additionalContext telling the model to confirm first
 #   3. The Bash(...) deny and ask rules of ~/.claude/settings.json are
-#      evaluated on PreToolUse Bash, since Codex does not read that file.
+#      evaluated on PreToolUse Bash, since Codex does not read that file. The
+#      matching lives in ~/.claude/enforce/settings-permission-rules.sh, which
+#      this adapter sources; if that helper cannot be loaded the permission
+#      layer FAILS CLOSED, denying the call and saying so, because a mirror
+#      that stops mirroring is indistinguishable from an allow and the port
+#      status page still claims the rules are enforced.
 #
 # Usage (from ~/.codex/hooks.json, one entry per hook group; this file is
 # copied to ~/.codex/hooks/ by openai/build.mjs):
@@ -26,7 +31,10 @@
 # the Codex hook payload; stdout is the merged decision in Claude Code's
 # hookSpecificOutput / decision shape, which Codex parses as is.
 #
-# Fail open: any adapter fault answers nothing (the call proceeds).
+# Fail open: any adapter fault answers nothing (the call proceeds). The one
+# deliberate exception is the permission layer above, which fails closed: an
+# adapter that cannot evaluate the deny rules has not decided that the command
+# is safe, it has only lost the ability to say otherwise.
 # Debug: CLAUDE_CODEX_HOOK_DEBUG=1 logs every payload and hook output to
 # ~/.claude/.codex-hook-state/debug.log.
 
@@ -39,8 +47,25 @@ CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$CLAUDE_HOME/hooks}"
 STATE_DIR="${CLAUDE_CODEX_STATE_DIR:-$CLAUDE_HOME/.codex-hook-state}"
 ASK_POLICY="${CLAUDE_CODEX_ASK_POLICY:-deny}"
-# shellcheck source=../../enforce/settingsPermissionRules.sh
-source "$CLAUDE_HOME/enforce/settingsPermissionRules.sh" 2>/dev/null || true
+CLAUDE_ENFORCE_DIR="${CLAUDE_ENFORCE_DIR:-$CLAUDE_HOME/enforce}"
+SETTINGS_FILE="${CLAUDE_SETTINGS_FILE:-$CLAUDE_HOME/settings.json}"
+PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/settings-permission-rules.sh}"
+
+# The permission helper is resolved deterministically and its absence is
+# recorded rather than swallowed. PERMISSION_RULES_ERROR non-empty means the
+# Bash(...) rules cannot be evaluated at all, and every Bash call is denied
+# with that text until the install is repaired.
+PERMISSION_RULES_ERROR=""
+if [ -r "$PERMISSION_RULES_FILE" ]; then
+  # shellcheck source=../../claude/enforce/settings-permission-rules.sh
+  source "$PERMISSION_RULES_FILE" \
+    || PERMISSION_RULES_ERROR="The settings.json permission rules could not be loaded from $PERMISSION_RULES_FILE (the file is there but failed to source), so the Bash(...) deny and ask rules mirrored from Claude Code cannot be evaluated."
+else
+  PERMISSION_RULES_ERROR="The settings.json permission rules are missing: no readable settings-permission-rules.sh at $PERMISSION_RULES_FILE, so the Bash(...) deny and ask rules mirrored from Claude Code cannot be evaluated. Reinstall the harness (sync.sh) or set CLAUDE_HOME to the Claude Code configuration this port was built from."
+fi
+if [ -z "$PERMISSION_RULES_ERROR" ] && ! type matching_bash_rule >/dev/null 2>&1; then
+  PERMISSION_RULES_ERROR="$PERMISSION_RULES_FILE loaded but defines no matching_bash_rule, so the Bash(...) deny and ask rules mirrored from Claude Code cannot be evaluated."
+fi
 
 INPUT=$(cat 2>/dev/null || true)
 [ -n "$INPUT" ] || exit 0
@@ -129,6 +154,46 @@ run_all() {
     run_hook "$name" "$1"
     absorb_decision
   done
+}
+
+# --- the Bash(...) rules of settings.json -------------------------------------
+
+# The permission layer's own failure mode. Denying here is the whole point: an
+# adapter that cannot read the deny rules has not established that the command
+# is permitted, and the old `|| true` turned exactly this state into an allow
+# that nothing reported (2026-09-18 port audit).
+permission_layer_failed() {
+  WORST="deny"
+  REASONS=$(append_text "$REASONS" "This command is denied because the mirrored Claude Code permission rules could not be evaluated, and an unreadable deny list is not permission to proceed. $1")
+}
+
+apply_bash_permission_rules() {
+  local cmd="$1" rule status
+  [ -n "$cmd" ] || return 0
+  if [ -n "$PERMISSION_RULES_ERROR" ]; then
+    permission_layer_failed "$PERMISSION_RULES_ERROR"
+    return 0
+  fi
+  rule=$(matching_bash_rule deny "$cmd")
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    WORST="deny"
+    REASONS=$(append_text "$REASONS" "settings.json denies \`Bash($rule)\` (Claude Code permissions.deny, mirrored under Codex). A human runs this manually if it is genuinely required.")
+    return 0
+  fi
+  if [ "$status" -ge 2 ]; then
+    permission_layer_failed "$SETTINGS_FILE is missing, unreadable, or not JSON, so no Bash(...) rule could be matched."
+    return 0
+  fi
+  rule=$(matching_bash_rule ask "$cmd")
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    if [ "$(rank ask)" -gt "$(rank "$WORST")" ]; then WORST="ask"; fi
+    REASONS=$(append_text "$REASONS" "settings.json asks before \`Bash($rule)\` (Claude Code permissions.ask, mirrored under Codex).")
+    return 0
+  fi
+  [ "$status" -ge 2 ] && permission_layer_failed "$SETTINGS_FILE is missing, unreadable, or not JSON, so no Bash(...) rule could be matched."
+  return 0
 }
 
 # --- apply_patch: replay each file as the Write or Edit call the hooks read ---
@@ -243,16 +308,7 @@ case "$EVENT" in
       replay_patch PreToolUse "$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')"
     else
       if [ "$TOOL" = "Bash" ]; then
-        CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
-        if type matching_bash_rule >/dev/null 2>&1; then
-          if RULE=$(matching_bash_rule deny "$CMD"); then
-            WORST="deny"
-            REASONS="settings.json denies \`Bash($RULE)\` (Claude Code permissions.deny, mirrored under Codex). A human runs this manually if it is genuinely required."
-          elif RULE=$(matching_bash_rule ask "$CMD"); then
-            WORST="ask"
-            REASONS="settings.json asks before \`Bash($RULE)\` (Claude Code permissions.ask, mirrored under Codex)."
-          fi
-        fi
+        apply_bash_permission_rules "$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')"
       fi
       run_all "$INPUT"
     fi
