@@ -306,7 +306,7 @@
             "enforcer": "hook:hook-integrity-check",
             "severity": "warn",
             "autofix": false,
-            "note": "hash manifest over hooks/ and enforce configs; regenerate with --update"
+            "note": "hash manifest over hooks/, the two fixture suites, and enforce configs; regenerate with --update. hooks/tests/hook-integrity-check.test.sh covers the guard behaviour (drift, absent manifest, --update floors); enforce/tests/hook-hashes-closure.test.sh covers the committed manifest being closed in both directions, which is what CI fails on"
         },
         {
             "id": "R-203",

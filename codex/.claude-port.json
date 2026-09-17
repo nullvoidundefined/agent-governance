@@ -1,7 +1,8 @@
 {
   "builder": "translate/codex.mjs",
   "files": {
-    "AGENTS.md": "sha256:c243cb27d3eba4853ee9386ed6fda1c325ffc339b5e93b34f969308f1cab3077",
+    ".gitignore": "sha256:ccce1b01fe470b99484acc077df618543abcc51884c42e47c130706d4ff11bbf",
+    "AGENTS.md": "sha256:92d917d448ac355eab92877b0d1b5aa0535910423c0cf432e91708b27c03235d",
     "PORT-STATUS.md": "sha256:00e86ef838e399b4aea53ed945f10995f60395978672960697ed5da9b296316a",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
@@ -29,9 +30,9 @@
     "skills/audit-ux/SKILL.md": "sha256:58a8e3b1748b87bcd4c21933d801b284bc0625accb7b38cb3a7e0e10aef8fd9c",
     "skills/bug-hunt/SKILL.md": "sha256:6dc911f44a330adc4b01704ac8404de10cc871b059bfcee25c196b97bd859cd8",
     "skills/build-by-slice-require-review/SKILL.md": "sha256:ddf1865d9373ef76235609da07c120049f911bd7459dde7b3b55ac7be6b766c0",
-    "skills/cleanup-specs-plans/SKILL.md": "sha256:0f1b7a444e6663e296f95430f28da1df00e2332ca6d7e10d0b1f81a2148c93a9",
+    "skills/cleanup-specs-plans/SKILL.md": "sha256:a39b94e1f03acde0204ccc95cf4b172111748cfa7426b9bc90487ec26856789f",
     "skills/documentation-create/SKILL.md": "sha256:ef7d2c02469e90aac5250f7e625208b07c13db4634cbf6262af5aa38c26e71b7",
-    "skills/feature-create/SKILL.md": "sha256:ae6f94b609dfa2765f4d7818d0ab522e7ff4073fff55dc19acf99520b8cc4843",
+    "skills/feature-create/SKILL.md": "sha256:2b0b087efef0a61514aa6563fa3f9d06db1cf6dc43912b49a2f13500f1128139",
     "skills/gof/SKILL.md": "sha256:f394571b78a804ab908cdb972d7b3bf2f6c6842998b7951950687771845d505b",
     "skills/known-issues/SKILL.md": "sha256:080a57b26741b336d552d236cd2ec534cd07126789afe85af91f52f734d7f032",
     "skills/protocol/SKILL.md": "sha256:6e9afa473efec6915d806614cb1ba7933e20681dc143b932b41602dcfceaa68d",
@@ -39,14 +40,14 @@
     "skills/spec-conformance-review/SKILL.md": "sha256:19eedcc9a2c90fce8bafbd472a1ca5e21c3701b98d911953a01ecd42d19ac0f2",
     "skills/spec-grounding/SKILL.md": "sha256:1a14760485f30565a6b794bb8192c6b545cb810bb8871311ed8da3b31270fae3",
     "skills/structure-conventions/SKILL.md": "sha256:bab12655c787e52cb10d940c8a99c028a7220f933f02c8f1559f47b06fc90e70",
-    "skills/task-cleanup/SKILL.md": "sha256:922a129f59f07aa57adcef02397e64382e774fcbfbc40ae95eaad8fa6e71d9dd",
-    "skills/task-start/SKILL.md": "sha256:f9b662942dad610772e965e6f1c46d5fb5d3a5ee60a78ea93339087c8d8ee259",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:22f70d7185fc27233d735238e905d70fa35c7eb06fe89334d35717dae73fa4e7"
+    "skills/task-cleanup/SKILL.md": "sha256:5ca561823ed944af172f447411fb2cc25dd35f38cc4773cafd5f6590a518daa2",
+    "skills/task-start/SKILL.md": "sha256:44cf2a719538881880029944eec3bf6899ce85d7c91ee770b8efeb0092cb4f45",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:22f70d7185fc27233d735238e905d70fa35c7eb06fe89334d35717dae73fa4e7",
+    "skills/ticket-lifecycle/SKILL.md": "sha256:d38d466b5e05337d3ac36ad0927a1bea04d1e222d78b8bcd92df6aa62a207193"
   },
   "hand_authored": [
     "hooks/codex-hook-adapter.sh",
     "README.md",
-    ".gitignore",
     "skills/session-start/SKILL.md",
     "skills/session-handoff/SKILL.md"
   ]

@@ -25,6 +25,32 @@ deny "cp $ENVFILE.example $ENVFILE"
 deny "echo x > ~/.aws/credentials"
 deny "tee ~/.config/gh/hosts.yml < payload.yml"
 deny "sed -i '' 's/a/b/' server/$ENVFILE"
+# P1-3 (2026-09-17 engineering audit): a redirect into a credential file in a
+# SUBDIRECTORY was allowed, because the redirect pattern anchored the protected
+# path immediately after the operator and the .env branch opens with a single
+# character class, so nothing could skip a directory prefix. Every spelling of
+# the same mutation belongs here, not just the bare one.
+deny "printf x > server/$ENVFILE"
+deny "echo y >> apps/api/$ENVFILE"
+deny "cat payload > config/$ENVFILE.production"
+deny "echo z >./server/$ENVFILE"
+# Still allowed: a path that merely contains the letters env, and a read of a
+# nested credential file (reads were never the thing R-103 blocks).
+allow "printf x > notes/myenv.txt"
+allow "printf x > config/.environment"
+allow "cat server/$ENVFILE"
+# P2-6 (same audit, same guard): MUTATE_VERBS matches sed only when the flag is
+# a separate token starting with a dash, so a suffixed flag, the long form, and
+# perl's in-place mode all got past it. The suffixed form is the portable one
+# this repo itself uses, which is how it stayed invisible.
+deny "sed -i.bak 's/a/b/' $ENVFILE"
+deny "sed -i.bak 's/a/b/' server/$ENVFILE"
+deny "sed --in-place 's/a/b/' $ENVFILE"
+deny "perl -pi -e 's/a/b/' $ENVFILE"
+deny "perl -i.bak -pe 's/a/b/' server/$ENVFILE"
+# Reads through the same tools stay allowed: -n and -p without -i write nothing.
+allow "sed -n '1,5p' $ENVFILE"
+allow "perl -ne 'print' $ENVFILE"
 deny "truncate -s 0 ~/.gnupg/trustdb.gpg"
 # Reads and unrelated commands: allow
 allow "cat $ENVFILE"

@@ -33,7 +33,7 @@ One enabled plugin is **third-party**, from a separate marketplace declared in `
 
 - `i-have-adhd@i-have-adhd` ([ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd), MIT): an output-style skill that shapes responses for an ADHD reader (action first, numbered steps, state restated each turn, no preamble or recap). It sets `disable-model-invocation: true`, so nothing applies until `/i-have-adhd` is invoked. Its one `SessionStart` hook reads a flag file and `SKILL.md`, writes to stdout, and exits 0 on any failure; it stays inert unless `~/.claude/.i-have-adhd-always` exists, which is not created by installing. Being third-party, it sits outside `enforce/hook-hashes.txt`, which covers this repo's own `hooks/` and `enforce/` only, not `plugins/`.
 
-Everything **inside this tracked repo** is the maintainer's: the 49 hook scripts under `hooks/` (including `install-git-hooks.sh`, plus the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, nine custom ESLint rules, the full-tree ratchet, the standalone install verifier `doctor.sh`, and 55 fixture tests, 70 counting the hook suite), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 15 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 31 global-memory files, the R-001..R-604 rule formalization in `CLAUDE.md` (extended through R-908 in `rulebook/`), the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 49 hook scripts under `hooks/` (including `install-git-hooks.sh`, plus the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, nine custom ESLint rules, the full-tree ratchet, the standalone install verifier `doctor.sh`, and 55 fixture tests, 70 counting the hook suite), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 16 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 32 global-memory files, the R-001..R-606 rule formalization in `CLAUDE.md` (extended through R-908 in `rulebook/`), the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `agents/audit-<role>.md` (the `audits/` files are forwarding pointers). The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
@@ -81,6 +81,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 ├── CLAUDE-RUBY.md                   # Auto-loads on .rb: Rails API / RSpec conventions.
 ├── CLAUDE-GO.md                     # Auto-loads on .go: net/http + chi conventions.
 ├── CLOUD-DEPLOYMENT.md              # Read on demand: Railway / Cloudflare deploy guide.
+├── TICKET-TRACKER.template.json     # Template for the gitignored tracker instance config (R-605).
 ├── settings.json                    # Claude Code settings including hook wiring.
 ├── agents/                          # Agent definitions (audit roles + review).
 │   ├── audit-engineering.md         # CTO persona agent.
@@ -145,6 +146,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── gof/                         # Gang of Four review (PE, Security, Critic, Designer).
 │   ├── spec-grounding/              # Grounds an externally written spec in the codebase.
 │   ├── structure-conventions/       # The conditional R-3xx rules, off the always-loaded path.
+│   ├── ticket-lifecycle/            # Opens, advances, and closes the external tracker ticket.
 │   └── ...                          # bug-hunt, feature-create, task-cleanup, etc.
 ├── prompts/
 │   ├── subagent-branch-setup.md     # Reusable worktree snippet for agent dispatches.

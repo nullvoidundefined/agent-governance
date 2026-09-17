@@ -18,6 +18,7 @@ R-905: Hold retrospectives only after real incidents (recovery > 30 min or a pat
   Enforcement: manual
 
 R-906: Divide time estimates by 3-5x; pad only for external dependencies, first-of-a-kind work, or research tasks; recalibrate after every task.
+  Spec: the division is the fallback, not the method. Recalibration reads the tracker history R-605 and R-606 accumulate: `/ticket-lifecycle` `estimate <tier>` returns the median and 80th percentile of `actual_minutes` over closed tickets matching that `tier` and `assist`, with the sample size stated. Five or more samples: take the median for a task resembling the sample and the 80th percentile for one carrying an unknown dependency, and say which. Fewer than five, or a sample whose date range is older than a quarter: fall back to the 3-5x division, label it a heuristic, and say `n` so the number is not mistaken for evidence. At close, R-606 reports `estimate_ratio` and the direction the tier's next estimate moves; that report is the recalibration this rule asks for, and before the ticket history existed there was nothing to recalibrate against.
   Enforcement: manual
 
 R-907: Write implementation code and the tests that verify it with a different author than the one that wrote the code; never let the author of the implementation also write its own tests.

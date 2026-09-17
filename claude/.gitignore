@@ -40,6 +40,10 @@ projects/
 # Private operational logs (contain infrastructure-specific deployment details)
 KNOWN-ISSUES.md
 
+# Ticket tracker instance config (project keys, workspace and data source IDs
+# identify a client; R-106). TICKET-TRACKER.template.json is the tracked template.
+TICKET-TRACKER.json
+
 # Plans are ephemeral session artifacts
 plans/
 

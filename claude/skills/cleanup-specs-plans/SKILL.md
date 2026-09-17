@@ -61,6 +61,8 @@ Classify as:
 | UNSTARTED | Keep if still relevant; move to STALE if direction changed |
 | STALE | Delete after confirming with user |
 
+Before deleting any file, read its `**Ticket:**` line. A deleted spec takes the only in-repo record of that ticket key with it, so carry the key forward: onto the backlog item for PARTIAL and UNSTARTED work, and into the closing note for SHIPPED work whose ticket is not yet `done`. A SHIPPED spec whose ticket is still open means `task-cleanup` never closed it; close it through `/ticket-lifecycle` now, or mark it `dropped` with the reason, before the file goes.
+
 ### Step 4: Build or update the backlog
 
 Create or update `docs/superpowers/backlog.md` with extracted incomplete items. Structure:
@@ -74,6 +76,7 @@ Items extracted from completed/partial specs during cleanup on YYYY-MM-DD.
 
 ### Item title
 - **From:** original-spec-filename.md
+- **Ticket:** <ticket-key, or "none">
 - **Priority:** P1/P2/P3
 - **Description:** One-line summary of remaining work
 - **Key artifacts needed:** migration, handler, component, test (list what's missing)
@@ -126,3 +129,4 @@ To keep specs/plans from going stale in the first place:
 - Keeping superseded specs because they have "incomplete" checkboxes for work that was redesigned
 - Classifying PARTIAL files as SHIPPED because the core feature works (remaining edge cases still matter)
 - Not pairing specs with plans (deleting one but leaving the other as an orphan)
+- Deleting a spec without carrying its ticket key forward, which orphans an open ticket that nothing in the repo now points at
