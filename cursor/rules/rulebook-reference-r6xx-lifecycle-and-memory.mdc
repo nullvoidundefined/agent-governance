@@ -38,7 +38,7 @@ R-605: Open a tracker ticket for every task above the trivial tier, at classific
   - The key is discoverable from inside the repo without querying the tracker: the spec's and user story's `**Ticket:**` line, the handoff doc beside the pending item, and a `Refs: <key>` trailer on every commit (already an accepted trailer in `hooks/commit-message-guard.sh`).
   - Trivial tier: no ticket unless the user asks for one.
   - No tracker configured (`~/.claude/TICKET-TRACKER.json` absent): say so once in the turn, record the same field set in the handoff doc, and continue the work. Tracking degrades loudly, never silently.
-  - Every write is one MCP call confirmed under R-105, never batched behind a single prompt; a denial is a decision and is not re-asked in the same turn.
+  - Every write is one MCP call, never batched behind a single prompt; a denial is a decision and is not re-asked in the same turn. R-105 confirms each one except on the Linear server, whose write class it stopped asking about on 2026-09-17; a Notion, Jira, or Asana write still prompts, as does a Linear call that lands code, submits, uploads, applies, destroys, or transmits.
   Enforcement: manual. A hook can only read a local signal, and the local signal would be a per-branch link file whose shape depends on which tracker the maintainer settles on; the mechanical tier is revisited once one tracker holds real history. Recorded in the spec's Non-goals so an audit reads a decision rather than an R-516 gap.
 
 R-606: Close the ticket with measured actuals, after the verification gate and never before.
