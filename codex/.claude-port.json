@@ -42,7 +42,8 @@
     "skills/spec-grounding/scripts/check.sh": "sha256:b5f7ee956d5c4acb6c97e9fac718c52734d6a92c0c859c3dcbe3b4108ee41a0c",
     "skills/structure-conventions/SKILL.md": "sha256:bab12655c787e52cb10d940c8a99c028a7220f933f02c8f1559f47b06fc90e70",
     "skills/task-cleanup/SKILL.md": "sha256:cd22e8b2a6f1f519d7fd6705c50825623693b7980ed7fec76fa091360e233fb6",
-    "skills/task-start/SKILL.md": "sha256:6165c13753277880ff98b54dac4641bec628738a687620479b5650ab7c1ed6d9",
+    "skills/task-start/SKILL.md": "sha256:ecc8de96f13521d26d65f46652628ee9d8a71310bc9fcf139c25b9e384bc852f",
+    "skills/task-start/scripts/task-tier.sh": "sha256:9ab69338da21a8c9363803bca2e27489f343cd2cfca9ca8a7777f52cd0adf2ae",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:98b8ebf05c3d0910195c6e25af545a9c8818a7efee7dbd54b06e323ad7fce5af"
   },
   "hand_authored": [

@@ -20,6 +20,18 @@ CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext')
 printf '%s' "$CTX" | grep -q 'R-504' || { echo "FAIL: rules missing from additionalContext"; exit 1; }
 printf '%s' "$OUT" | grep -q 'PreCompact\|UserPromptSubmit' && { echo "FAIL: emits a retired event name"; exit 1; } || true
 
+# 5. The task-start ledger (2026-09-17 skills audit S-8) is re-injected when
+#    the working tree carries .claude/task-tier.json, and absent otherwise.
+printf '%s' "$CTX" | grep -q 'Task ledger' && { echo "FAIL: ledger section emitted with no ledger on disk"; exit 1; } || true
+LEDGER_REPO=$(mktemp -d)
+git -C "$LEDGER_REPO" init -q
+mkdir -p "$LEDGER_REPO/.claude"
+printf '{"tier":"complex","reason":"touches auth across packages","branch":"feat/x","startedAt":1,"startedAtIso":"2026-09-17T00:00:00Z"}\n' > "$LEDGER_REPO/.claude/task-tier.json"
+LEDGER_CTX=$(cd "$LEDGER_REPO" && echo '{"hook_event_name":"SessionStart","source":"compact"}' | "$HOOK" | jq -r '.hookSpecificOutput.additionalContext')
+printf '%s' "$LEDGER_CTX" | grep -q 'Task ledger' || { echo "FAIL: ledger section missing when .claude/task-tier.json exists"; exit 1; }
+printf '%s' "$LEDGER_CTX" | grep -q 'Tier: complex. Reason: touches auth across packages' || { echo "FAIL: ledger tier and reason not re-injected"; exit 1; }
+rm -rf "$LEDGER_REPO"
+
 # 2. Other sources stay silent.
 for source in startup resume clear fork; do
   OUT=$(printf '{"hook_event_name":"SessionStart","source":"%s"}' "$source" | "$HOOK")

@@ -46,6 +46,16 @@ CTX=$(cat <<'RULES'
 RULES
 )
 
+# The task-start ledger (skills/task-start/scripts/task-tier.sh, 2026-09-17
+# skills audit S-8) is exactly the state a summary drops: the tier that
+# scales task-cleanup, the reason, and the R-503 start time. Re-inject it
+# when the working directory carries one.
+LEDGER="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.claude/task-tier.json"
+if [ -f "$LEDGER" ] && jq -e . "$LEDGER" >/dev/null 2>&1; then
+  CTX+=$'\n\n## Task ledger (re-injected from .claude/task-tier.json)\n\n'
+  CTX+="Tier: $(jq -r '.tier' "$LEDGER"). Reason: $(jq -r '.reason' "$LEDGER"). Started: $(jq -r '.startedAtIso' "$LEDGER") on branch $(jq -r '.branch // "?"' "$LEDGER"). task-cleanup scales its work by this tier; \`task-tier.sh summary\` prints the elapsed time."
+fi
+
 jq -n --arg ctx "$CTX" '{
   hookSpecificOutput: {
     hookEventName: "SessionStart",

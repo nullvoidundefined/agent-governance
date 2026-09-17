@@ -80,5 +80,7 @@
 !/skills/task-cleanup/SKILL.md
 !/skills/task-start/
 !/skills/task-start/SKILL.md
+!/skills/task-start/scripts/
+!/skills/task-start/scripts/task-tier.sh
 !/skills/tdd-gated-dispatch/
 !/skills/tdd-gated-dispatch/SKILL.md
