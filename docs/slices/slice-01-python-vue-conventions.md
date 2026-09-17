@@ -15,7 +15,7 @@ This slice brings the Python convention track to the depth of the TypeScript tra
 | PR | Concern | Share | PR number | Merged | Scope change |
 |---|---|---|---|---|---|
 | 1 | `add-stack-track` skill and invariant test | 8% | IAN-73, PR #2 | 2026-09-17 | No manifest entry: the invariant test is a repo-level test like `manifest.test.sh`, which carries none; the manifest models rule enforcers. |
-| 2 | Frontend core refactor and `CLAUDE-FRONTEND-REACT.md` | 15% | IAN-75 | | AC-1 and AC-2 live in a new fixture `convention-paths-scope.test.sh` (codex-authored) rather than inside the invariant test. The fixture caught the Next file's `**/app/**/*.ts` glob matching Nuxt's `app/` tree; narrowed to `**/src/app/**` in this PR. |
+| 2 | Frontend core refactor and `CLAUDE-FRONTEND-REACT.md` | 15% | IAN-75, PR #4 | | AC-1 and AC-2 live in a new fixture `convention-paths-scope.test.sh` (codex-authored) rather than inside the invariant test. The fixture caught the Next file's `**/app/**/*.ts` glob matching Nuxt's `app/` tree; narrowed to `**/src/app/**` in this PR. |
 | 3 | `CLAUDE-FRONTEND-VUE.md` and `CLAUDE-FRONTEND-NUXT.md` | 20% | | | |
 | 4 | `CLAUDE-PYTHON.md` rewrite | 25% | | | |
 | 5 | Enforcement E1 to E6 | 15% | | | |
