@@ -363,6 +363,52 @@ check "a stale sibling's incomplete task IS offered" ctx_has "$CTX_LIVENESS" "St
 
 rm -f "$LIVE_INCOMPLETE_LOG" "$LIVE_INCOMPLETE_TRANSCRIPT" "$LIVE_ALLDONE_LOG" "$LIVE_ALLDONE_TRANSCRIPT" "$STALE_INCOMPLETE_LOG" "$STALE_INCOMPLETE_TRANSCRIPT"
 
+# --- I4 outranks I3 (PR #14 review): a session that has been running for
+# longer than the 14-day TTL, and whose transcript was touched within the
+# last 60 minutes, is LIVE. Its state file must survive the scan untouched.
+# With the TTL deletion ordered ahead of the liveness check, the file was
+# removed before liveness was ever consulted, which deleted an active
+# session's only durable task record and contradicted the I4 guarantee that
+# a live file is never deleted. ---
+LONGLIVED_LOG="$TASK_KEY_DIR/task-state.longlived-session.jsonl"
+append_task_line "$LONGLIVED_LOG" "2026-09-01T00:00:00Z" "1" "Long-running live task" "in_progress" "/some/repo" "main"
+set_mtime "$LONGLIVED_LOG" "$(( NOW_EPOCH - (15 * 86400) ))"
+LONGLIVED_TRANSCRIPT="$TASK_KEY_DIR/longlived-session.jsonl"
+printf '{}\n' > "$LONGLIVED_TRANSCRIPT"
+set_mtime "$LONGLIVED_TRANSCRIPT" "$NOW_EPOCH"
+
+CTX_LONGLIVED=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "a live session's state file survives the 14-day TTL (I4 before I3)" file_exists "$LONGLIVED_LOG"
+check "a live session's long-lived task is still not offered" ctx_lacks "$CTX_LONGLIVED" "Long-running live task"
+
+rm -f "$LONGLIVED_LOG" "$LONGLIVED_TRANSCRIPT"
+
+# --- Corrupt log is skipped, never pruned (PR #14 review): a recent log
+# whose every line is malformed folds to zero tasks, which the all-completed
+# test read as "this session finished everything" and answered by deleting
+# the file, destroying the only durable record of its interrupted work. A
+# non-empty log from which no JSON value can be recovered must be skipped
+# and left on disk instead. ---
+CORRUPT_LOG="$TASK_KEY_DIR/task-state.corrupt-session.jsonl"
+printf 'not json at all {{{\n<<< truncated write\n' > "$CORRUPT_LOG"
+set_mtime "$CORRUPT_LOG" "$NOW_EPOCH"
+
+CTX_CORRUPT=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "a corrupt task-state log is not pruned" file_exists "$CORRUPT_LOG"
+check "a corrupt task-state log yields no injection block" ctx_lacks "$CTX_CORRUPT" "corrupt-session"
+
+rm -f "$CORRUPT_LOG"
+
+# --- Positive control for the same code path: a genuinely EMPTY log holds
+# no events at all, is valid rather than corrupt, and is still pruned. ---
+EMPTY_LOG="$TASK_KEY_DIR/task-state.empty-session.jsonl"
+: > "$EMPTY_LOG"
+set_mtime "$EMPTY_LOG" "$NOW_EPOCH"
+
+CTX_EMPTY=$(get_ctx "$DRIFT_SANDBOX" "$(startup_payload "$CURRENT_TASK_TRANSCRIPT" "$DRIFT_REPO")")
+check "an empty-but-valid task-state log is still pruned" no_file "$EMPTY_LOG"
+check "an empty log yields no injection block" ctx_lacks "$CTX_EMPTY" "empty-session"
+
 # --- I3: 14-day TTL garbage collection and the newest-3 injection cap ---
 CAP_KEY_DIR="$DRIFT_SANDBOX/.claude/projects/taskstate-cap"
 mkdir -p "$CAP_KEY_DIR"

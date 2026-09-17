@@ -222,6 +222,13 @@ check_resume_drift() (
 # by e.g. a truncated write degrades to whatever valid lines remain, down
 # to an empty tasks map for a fully corrupt file. Prints nothing on total
 # jq failure, which callers use as the unreadable-file signal.
+#
+# fold_task_state_log answers "what did this log record"; it deliberately
+# does NOT answer "could this log be read at all". A file whose every line
+# is malformed folds to an empty tasks map, which is indistinguishable from
+# an honestly empty log, and every caller answers an empty tasks map by
+# deleting the file. task_state_log_is_parseable below is the guard that
+# keeps those two cases apart, and callers must consult it first.
 fold_task_state_log() {
   local file="$1"
   jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s '
@@ -249,23 +256,51 @@ fold_task_state_log() {
   ' 2>/dev/null
 }
 
+# task_state_log_is_parseable reports whether a folded reading of task-state
+# log $1 can be trusted as a complete account of what the tracker recorded,
+# which is the question a caller must answer before it is entitled to treat
+# an empty tasks map as "this session finished everything" and delete the
+# file. A file holding no non-blank line at all is parseable: an empty log
+# honestly records zero events. A file holding at least one non-blank line
+# from which jq recovers no JSON value whatsoever is NOT parseable, and
+# neither is a file that cannot be read; both are reported false so the
+# caller skips the file and leaves it on disk. Without this distinction a
+# log corrupted by a truncated write folded to zero tasks, read as
+# all-completed, and was deleted, destroying the only durable record of the
+# session's interrupted work (PR #14 review). A partially corrupt file, one
+# with at least one recoverable line, stays parseable and degrades to
+# whatever those lines say, which is the documented behaviour of the fold.
+task_state_log_is_parseable() {
+  local file="$1" content_lines parsed_values
+  [ -r "$file" ] || return 1
+  content_lines=$(grep -c '[^[:space:]]' "$file" 2>/dev/null || true)
+  [ -n "$content_lines" ] || content_lines=0
+  [ "$content_lines" -gt 0 ] || return 0
+  parsed_values=$(jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s 'length' 2>/dev/null)
+  [ -n "$parsed_values" ] || return 1
+  [ "$parsed_values" -gt 0 ]
+}
+
 # check_interrupted_tasks scans ~/.claude/projects/<key>/task-state.*.jsonl
 # for the CURRENT project key (task-state-tracker.sh's append-only event
 # log) for tasks left behind by a session other than this one. Fix round
-# 1 hardened this in three ways, applied in order per file:
-#   - I3 (unbounded growth): any file whose OWN mtime is older than 14
-#     days is deleted unconditionally, corrupt files included (this also
-#     settles the "corrupt files are never quarantined" concern, since a
-#     wedged file eventually ages out on the same clock). Of what survives,
-#     at most the 3 newest (by mtime) candidate sessions are injected, with
-#     a trailing "+N older interrupted sessions not shown" note when more
-#     than 3 exist.
-#   - I4 (live-session collision): before a file is offered OR pruned, its
-#     own session's transcript (~/.claude/projects/<key>/<session-id>.jsonl,
-#     same key as the state file's own location) is checked; a transcript
-#     modified within the last 60 minutes means that session is still
-#     running, and the file is skipped entirely (no injection, no
-#     deletion) rather than treated as abandoned.
+# 1 hardened this in three ways, applied in this order per file:
+#   - I4 (live-session collision), first of all: before a file is offered,
+#     pruned, or garbage collected, its own session's transcript
+#     (~/.claude/projects/<key>/<session-id>.jsonl, same key as the state
+#     file's own location) is checked; a transcript modified within the
+#     last 60 minutes means that session is still running, and the file is
+#     skipped entirely (no injection, no deletion) rather than treated as
+#     abandoned. This runs before the TTL below, not after it (PR #14
+#     review): a session alive for longer than 14 days is still alive, and
+#     ordering the TTL first deleted its state out from under it.
+#   - I3 (unbounded growth): of the files that are NOT live, any whose OWN
+#     mtime is older than 14 days is deleted, corrupt files included (this
+#     also settles the "corrupt files are never quarantined" concern, since
+#     a wedged file eventually ages out on the same clock). Of what
+#     survives, at most the 3 newest (by mtime) candidate sessions are
+#     injected, with a trailing "+N older interrupted sessions not shown"
+#     note when more than 3 exist.
 #   - M5: a file whose session id matches the CURRENT session is never
 #     offered (interrupting yourself makes no sense), though it may still
 #     be pruned once all its tasks are completed.
@@ -300,23 +335,40 @@ check_interrupted_tasks() (
     [ -e "$file" ] || continue
 
     file_epoch=$(date -r "$file" +%s 2>/dev/null) || continue
+
+    sid="${file##*/task-state.}"
+    sid="${sid%.jsonl}"
+
+    # I4 is checked BEFORE I3's TTL, and outranks it (PR #14 review). A
+    # session that has been running longer than 14 days is still a live
+    # session, and the TTL running first deleted its state file before
+    # liveness was ever consulted, which is precisely the loss I4 exists to
+    # prevent. Liveness is the transcript's own mtime: a transcript touched
+    # within the last 60 minutes means that session is still going, so its
+    # file is skipped entirely, neither offered nor pruned nor collected.
+    if [ -n "$sid" ]; then
+      transcript_for_sid="$state_dir/$sid.jsonl"
+      if [ -f "$transcript_for_sid" ]; then
+        transcript_epoch=$(date -r "$transcript_for_sid" +%s 2>/dev/null) || transcript_epoch=0
+        if [ $(( now_epoch - transcript_epoch )) -lt 3600 ]; then
+          continue
+        fi
+      fi
+    fi
+
     if [ $(( now_epoch - file_epoch )) -gt 1209600 ]; then
-      # I3: 14-day TTL, unconditional, corrupt files included.
+      # I3: 14-day TTL over what is NOT live, corrupt files included.
       rm -f "$file" 2>/dev/null
       continue
     fi
 
-    sid="${file##*/task-state.}"
-    sid="${sid%.jsonl}"
     [ -n "$sid" ] || continue
 
-    # I4: a live sibling session is never touched, offered, or pruned.
-    transcript_for_sid="$state_dir/$sid.jsonl"
-    if [ -f "$transcript_for_sid" ]; then
-      transcript_epoch=$(date -r "$transcript_for_sid" +%s 2>/dev/null) || transcript_epoch=0
-      if [ $(( now_epoch - transcript_epoch )) -lt 3600 ]; then
-        continue
-      fi
+    # A non-empty log nothing can be parsed out of is corrupt, not finished:
+    # skipped and left on disk, never pruned (PR #14 review).
+    if ! task_state_log_is_parseable "$file"; then
+      echo "session-start: skipping unparseable task-state file $file" >&2
+      continue
     fi
 
     folded=$(fold_task_state_log "$file")
