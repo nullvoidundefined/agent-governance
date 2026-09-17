@@ -2,7 +2,11 @@
 # spec-grounding-check.test.sh: verifies skills/spec-grounding/scripts/check.sh
 # (2026-09-17 skills audit, S-2) against a sandboxed repo: a fully grounded
 # spec passes, and each of the six definition-of-done conditions fails with a
-# line naming what is unmet.
+# line naming what is unmet. The "grounded spec passes" case also covers a
+# macOS-only regression (check.sh compared an unresolved spec path against
+# git's fully symlink-resolved root, so a spec under /tmp/... failed the
+# only-the-spec check on every run); it stayed silent under the Linux CI this
+# fixture normally runs on, and only failed once run against a macOS sandbox.
 set -uo pipefail
 CHECK="$HOME/.claude/skills/spec-grounding/scripts/check.sh"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
