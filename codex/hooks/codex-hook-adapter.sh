@@ -8,8 +8,15 @@
 #
 #   1. File edits arrive as one apply_patch call whose tool_input.command is
 #      the whole patch, not as Write/Edit calls with file_path and content.
-#      The adapter parses the patch and replays each file as the Write (Add
-#      File) or Edit (Update File) payload the edit gates and reminders read.
+#      The adapter parses the patch and replays each operation as the call the
+#      gates already read: Add File as Write, Update File as Edit, Delete File
+#      as the Bash `rm` a Claude Code session would have run (Claude Code has
+#      no delete tool, so `rm` is the shape its guards are written against),
+#      and Move to as the Bash `mv`, which puts both the source and the
+#      destination in front of the guard. Before 2026-09-18 a Delete File
+#      dispatched no event at all and a Move destination was discarded, so a
+#      locked test could be deleted, or a file renamed into a protected tree,
+#      with protected-path-guard never seeing it.
 #   2. Codex rejects permissionDecision "ask" (and "allow"). A hook that asks
 #      for confirmation is translated per CLAUDE_CODEX_ASK_POLICY:
 #        deny  (default) the call is denied with the hook's reason and a note
@@ -199,17 +206,20 @@ apply_bash_permission_rules() {
 # --- apply_patch: replay each file as the Write or Edit call the hooks read ---
 
 # Streams the patch as tagged lines the loop below accumulates per file:
-#   F<TAB><add|update><TAB><path>   starts a file
-#   O<TAB><text>                    a line of the old text (Update File only)
-#   N<TAB><text>                    a line of the new text
-# Deleted and moved files carry no content the gates read and are skipped.
+#   F<TAB><add|update|delete><TAB><path>   starts a file
+#   M<TAB><path>                           the current file's move destination
+#   O<TAB><text>                           a line of the old text (update only)
+#   N<TAB><text>                           a line of the new text
+# A Delete File section carries no content, so it opens no content stream; the
+# operation itself is still reported, because the path being deleted is exactly
+# what the protected-path rules need to see.
 patch_lines() {
   printf '%s\n' "$1" | awk '
     /^\*\*\* Add File: / { active = 1; printf "F\tadd\t%s\n", substr($0, 15); next }
     /^\*\*\* Update File: / { active = 1; printf "F\tupdate\t%s\n", substr($0, 18); next }
-    /^\*\*\* Delete File: / { active = 0; next }
+    /^\*\*\* Delete File: / { active = 0; printf "F\tdelete\t%s\n", substr($0, 18); next }
+    /^\*\*\* Move to: / { printf "M\t%s\n", substr($0, 14); next }
     /^\*\*\* (Begin|End) Patch/ { active = 0; next }
-    /^\*\*\* Move to: / { next }
     /^@@/ { next }
     active && /^\+/ { printf "N\t%s\n", substr($0, 2); next }
     active && /^-/ { printf "O\t%s\n", substr($0, 2); next }
@@ -217,10 +227,15 @@ patch_lines() {
   '
 }
 
+# Patch paths are relative to the call's cwd; the gates read absolute ones.
+absolute_patch_path() {
+  case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$CWD" "$1" ;; esac
+}
+
 replay_file() {
   # $1 = Claude event, $2 = kind, $3 = path, $4 = old text, $5 = new text
   local file payload
-  case "$3" in /*) file="$3" ;; *) file="$CWD/$3" ;; esac
+  file=$(absolute_patch_path "$3")
   if [ "$2" = "add" ]; then
     payload=$(printf '%s' "$INPUT" | jq --arg e "$1" --arg f "$file" --arg c "$5" \
       '. + {hook_event_name:$e, tool_name:"Write", tool_input:{file_path:$f, content:$c}}')
@@ -231,23 +246,49 @@ replay_file() {
   run_all "$payload"
 }
 
+# A deletion and a rename have no Write or Edit equivalent: under Claude Code
+# they are shell commands, and the guards that govern them (protected-path-guard
+# above all) read them out of tool_input.command. Replaying them in that shape
+# is what lets a guard deny the deletion of a locked test, or a rename whose
+# destination lands inside a protected tree.
+replay_shell_operation() {
+  # $1 = Claude event, $2 = the command text the gates should see
+  local payload
+  payload=$(printf '%s' "$INPUT" | jq --arg e "$1" --arg c "$2" \
+    '. + {hook_event_name:$e, tool_name:"Bash", tool_input:{command:$c}}')
+  run_all "$payload"
+}
+
+replay_operation() {
+  # $1 = Claude event, $2 = kind, $3 = path, $4 = old, $5 = new, $6 = move destination
+  if [ "$2" = "delete" ]; then
+    replay_shell_operation "$1" "rm -- '$(absolute_patch_path "$3")'"
+  else
+    replay_file "$1" "$2" "$3" "$4" "$5"
+  fi
+  [ -n "$6" ] || return 0
+  replay_shell_operation "$1" "mv -- '$(absolute_patch_path "$3")' '$(absolute_patch_path "$6")'"
+}
+
 replay_patch() {
-  # $1 = Claude event name, $2 = patch text. Runs the hooks once per file.
-  local tag rest kind="" path="" old="" new=""
+  # $1 = Claude event name, $2 = patch text. Runs the hooks once per operation.
+  local tag rest kind="" path="" old="" new="" dest=""
   while IFS=$'\t' read -r tag rest; do
     case "$tag" in
       F)
-        [ -n "$path" ] && replay_file "$1" "$kind" "$path" "$old" "$new"
+        [ -n "$path" ] && replay_operation "$1" "$kind" "$path" "$old" "$new" "$dest"
         kind="${rest%%$'\t'*}"
         path="${rest#*$'\t'}"
         old=""
         new=""
+        dest=""
         ;;
+      M) dest="$rest" ;;
       O) old="$old$rest"$'\n' ;;
       N) new="$new$rest"$'\n' ;;
     esac
   done < <(patch_lines "$2")
-  [ -n "$path" ] && replay_file "$1" "$kind" "$path" "$old" "$new"
+  [ -n "$path" ] && replay_operation "$1" "$kind" "$path" "$old" "$new" "$dest"
   return 0
 }
 
