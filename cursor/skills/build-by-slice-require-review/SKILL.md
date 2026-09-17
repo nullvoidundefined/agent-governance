@@ -2,7 +2,7 @@
 name: build-by-slice-require-review
 description: Use when running a feature build as user-reviewed slices and PRs, starting a slice, or executing any multi-PR build where the user must review and approve the work as it lands. Triggers on "start the slice", "next slice", "build this slice by slice", or "implement with review gates". For the in-harness TDD slice mechanics under the R-412 lock, tdd-gated-dispatch owns the trigger.
 ---
-<!-- Cloned from claude/skills/build-by-slice-require-review/SKILL.md. Do not edit here; change the source and re-copy. -->
+<!-- Cloned from claude/skills/build-by-slice-require-review/SKILL.md. Do not edit here; change the source and re-copy; enforce/tests/skills-lint.test.sh fails when this copy drifts. -->
 
 # Build by Slice, Require Review
 
