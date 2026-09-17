@@ -18,17 +18,17 @@ SINCE=""
 if [ "${1:-}" = "--since" ]; then SINCE="${2:-}"; fi
 
 print_block() {
-  local commits="$1" files="$2" rework="$3" flag="$4" note="${5:-}"
+  local commits="$1" files="$2" revisited="$3" flag="$4" note="${5:-}"
   cat <<METRICS_EOF
 ## Session metrics
 - Commits this session: $commits
 - Files changed: $files
-- Rework commits (file touched by 2+ commits): $rework
+- Files revisited (touched by 2+ commits): $revisited
 - Velocity flag: $flag
 METRICS_EOF
   [ -z "$note" ] || printf -- '- Note: %s\n' "$note"
   if [ "$flag" = "HIGH" ] || [ "$flag" = "REVIEW" ]; then
-    printf '\n**Action required:** Review prior session for rework patterns before starting new work.\n'
+    printf '\n**Action required:** Review the prior session before starting new work: a high commit count with many revisited files can mean rework, and can equally mean planned incremental work, so read the log rather than trusting the count.\n'
   fi
 }
 
@@ -57,14 +57,14 @@ fi
 
 COMMIT_COUNT=$(git rev-list --count "$SINCE..HEAD" 2>/dev/null || echo 0)
 FILES_CHANGED=$(git diff --name-only "$SINCE..HEAD" 2>/dev/null | sort -u | wc -l | tr -d ' ')
-REWORK_COUNT=0
+REVISITED_COUNT=0
 if [ "$COMMIT_COUNT" -gt 1 ]; then
-  REWORK_COUNT=$(git log --format="" --name-only "$SINCE..HEAD" 2>/dev/null \
+  REVISITED_COUNT=$(git log --format="" --name-only "$SINCE..HEAD" 2>/dev/null \
     | grep -v '^$' | sort | uniq -c | awk '$1 > 1 { count++ } END { print count+0 }')
 fi
 if [ "$COMMIT_COUNT" -gt 80 ]; then FLAG="REVIEW"
 elif [ "$COMMIT_COUNT" -gt 40 ]; then FLAG="HIGH"
 else FLAG="NORMAL"; fi
 
-print_block "$COMMIT_COUNT" "$FILES_CHANGED" "$REWORK_COUNT" "$FLAG"
+print_block "$COMMIT_COUNT" "$FILES_CHANGED" "$REVISITED_COUNT" "$FLAG"
 exit 0

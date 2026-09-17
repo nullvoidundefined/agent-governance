@@ -132,12 +132,22 @@ elif [ -f claude/enforce/tests/run-tests.sh ] && [ -f claude/hooks/tests/run-tes
   # under claude/ (2026-09-16 audit P1-1).
   add_check "bash claude/enforce/tests/run-tests.sh"
   add_check "bash claude/hooks/tests/run-tests.sh"
-  # The same third check pre-push and CI run, so the turn-end gate and the
+  # The same port checks pre-push and CI run, so the turn-end gate and the
   # push gate stop disagreeing about what verifies this repo: a stale codex
-  # port used to survive until push time (2026-09-17 audit P2-5). Guarded on
-  # the file, because translate/ exists in the monorepo layout only and a
-  # legacy or live-copy checkout must not gain a check it cannot pass.
-  [ -f translate/codex.mjs ] && add_check "node translate/codex.mjs --check"
+  # port used to survive until push time (2026-09-17 audit P2-5), and the
+  # cursor port then drifted the same way because this list was maintained
+  # separately from the other two (2026-09-18 external audit, finding 7).
+  # enforce/port-checks.sh is now the single inventory; it emits nothing when
+  # translate/ is absent, so a legacy or live-copy checkout gains no check it
+  # cannot pass.
+  PORT_CHECKS_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)/port-checks.sh"
+  if [ -f "$PORT_CHECKS_HELPER" ]; then
+    # shellcheck source=/dev/null
+    . "$PORT_CHECKS_HELPER"
+    while IFS= read -r port_check; do
+      [ -n "$port_check" ] && add_check "$port_check"
+    done <<< "$(listPortChecks .)"
+  fi
 elif [ -f package.json ]; then
   PM=$(package_manager)
   has_npm_script test && add_check "$PM test"

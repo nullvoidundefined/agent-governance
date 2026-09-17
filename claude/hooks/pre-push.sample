@@ -41,19 +41,24 @@ for suite in enforce/tests/run-tests.sh hooks/tests/run-tests.sh; do
   fi
 done
 
-# translate/ lives beside claude/ in the monorepo layout only; a legacy or
-# live-copy checkout carries no translator, so this step is silently skipped
-# there rather than failing on a missing script.
-if [ -f "$TOP/translate/codex.mjs" ]; then
-  if ! node "$TOP/translate/codex.mjs" --check; then
-    fail=1
-  fi
-fi
-
-if [ -f "$TOP/translate/cursor.mjs" ]; then
-  if ! node "$TOP/translate/cursor.mjs" --check; then
-    fail=1
-  fi
+# The port checks come from enforce/port-checks.sh, the one inventory the
+# turn-end gate and CI also read, so a port added to the repository is checked
+# everywhere at once instead of in whichever caller someone remembered
+# (2026-09-18 external audit, finding 7). translate/ lives beside claude/ in
+# the monorepo layout only; a legacy or live-copy checkout carries no
+# translator, the inventory emits nothing there, and this step is silently
+# skipped rather than failing on a missing script.
+PORT_CHECKS_HELPER="$TOP/claude/enforce/port-checks.sh"
+[ -f "$PORT_CHECKS_HELPER" ] || PORT_CHECKS_HELPER="$TOP/enforce/port-checks.sh"
+if [ -f "$PORT_CHECKS_HELPER" ]; then
+  # shellcheck source=/dev/null
+  . "$PORT_CHECKS_HELPER"
+  while IFS= read -r port_check; do
+    [ -n "$port_check" ] || continue
+    if ! ( cd "$TOP" && eval "$port_check" ); then
+      fail=1
+    fi
+  done <<< "$(listPortChecks "$TOP")"
 fi
 
 if [ "$fail" -ne 0 ]; then

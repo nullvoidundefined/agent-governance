@@ -59,6 +59,21 @@ BASE=$(resolve_outgoing_base)
 DIFF=$(run_git_on_target diff --diff-filter=ACMR "$BASE"..HEAD -- '*.ts' '*.tsx' '*.py' '*.rb' '*.go' 2>/dev/null || true)
 [ -z "$DIFF" ] && exit 0
 
+# Input budget. max_tokens caps what the model writes, never what it reads, so
+# an unbounded outgoing diff was an unbounded paid request and an unbounded
+# wait at push time (2026-09-18 external audit, finding 9). A diff over the cap
+# is truncated and the truncation is stated in the payload, so the judge knows
+# it is reasoning about a prefix rather than silently treating it as the whole
+# change. Raise the cap deliberately; do not remove it.
+JUDGE_DIFF_MAX_BYTES="${CLAUDE_JUDGE_DIFF_MAX_BYTES:-200000}"
+DIFF_BYTES=$(printf '%s' "$DIFF" | wc -c | tr -d ' ')
+DIFF_TRUNCATED="false"
+if [ "$DIFF_BYTES" -gt "$JUDGE_DIFF_MAX_BYTES" ]; then
+  DIFF=$(printf '%s' "$DIFF" | head -c "$JUDGE_DIFF_MAX_BYTES")
+  DIFF_TRUNCATED="true"
+  echo "llm-rule-judge: diff is ${DIFF_BYTES} bytes, over the ${JUDGE_DIFF_MAX_BYTES}-byte input budget; judging the first ${JUDGE_DIFF_MAX_BYTES} bytes" >&2
+fi
+
 THRESH=0.8
 MANIFEST="${CLAUDE_MANIFEST_FILE:-$HOME/.claude/enforce/manifest.json}"
 
@@ -115,11 +130,29 @@ else
     ' "$CLAUDE_DIR/rulebook/reference.md" || true
   done)
   SYS=$(cat "$ENFORCE_DIR/judge-prompt.md")
-  USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" '{rules:$rt, diff:$d} | tostring')
+  USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" --arg tr "$DIFF_TRUNCATED" \
+    '{rules:$rt, diff:$d, diff_truncated:($tr == "true")} | tostring')
   BODY=$(jq -n --arg s "$SYS" --arg u "$USERMSG" '{model:"claude-haiku-4-5-20251001",max_tokens:1024,temperature:0,system:$s,messages:[{role:"user",content:$u}]}')
-  RAW=$(curl -sS https://api.anthropic.com/v1/messages \
+  # A push-time gate must not be able to hang a push indefinitely: the request
+  # carries its own connect and total timeouts rather than relying on whatever
+  # outer bound the calling framework happens to impose (external audit,
+  # finding 9). A timeout lands on the same path as any other request failure,
+  # which this hook's documented policy already covers.
+  JUDGE_TIMEOUT_SECONDS="${CLAUDE_JUDGE_TIMEOUT_SECONDS:-60}"
+  JUDGE_START_MS=$(date +%s000)
+  RAW=$(curl -sS --connect-timeout 10 --max-time "$JUDGE_TIMEOUT_SECONDS" https://api.anthropic.com/v1/messages \
     -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
     -d "$BODY" 2>/dev/null || true)
+  # Usage and latency are recorded so the cost of this tier is measurable
+  # rather than assumed; the log carries no diff content, only counts.
+  JUDGE_USAGE=$(printf '%s' "$RAW" | jq -c '.usage // {}' 2>/dev/null || printf '{}')
+  JUDGE_ELAPSED_MS=$(( $(date +%s000) - JUDGE_START_MS ))
+  JUDGE_USAGE_LOG="${CLAUDE_JUDGE_USAGE_LOG:-$HOME/.claude/global-memory/judge_usage.log}"
+  if [ -d "$(dirname "$JUDGE_USAGE_LOG")" ]; then
+    printf '%s\tusage=%s\telapsed_ms=%s\tdiff_bytes=%s\ttruncated=%s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JUDGE_USAGE" "$JUDGE_ELAPSED_MS" "$DIFF_BYTES" "$DIFF_TRUNCATED" \
+      >> "$JUDGE_USAGE_LOG" 2>/dev/null || true
+  fi
   TEXT=$(printf '%s' "$RAW" | jq -r '.content[0].text // ""' 2>/dev/null || true)
   # Extract the first balanced-brace JSON object; Haiku may append trailing prose after the
   # closing fence, which would survive a simple sed strip and break jq.
@@ -145,7 +178,7 @@ fi
 # Only "error"-severity rules produce a deny; "warn"-severity rules print to stderr.
 ALL_HITS=$(printf '%s' "$RESP" | jq -c --argjson t "$THRESH" '[.violations[]? | select(.confidence >= $t)]' 2>/dev/null || echo '[]')
 
-DENY_HITS='[]'
+ASK_HITS='[]'
 while IFS= read -r violation; do
   rule_id=$(printf '%s' "$violation" | jq -r '.rule // ""')
   # A rule id can carry several manifest rows across tiers (R-324/R-329 have
@@ -159,22 +192,22 @@ while IFS= read -r violation; do
     | .severity // "error"' "$MANIFEST" 2>/dev/null || echo "error")
   [ -z "$severity" ] && severity="error"
   if [ "$severity" = "error" ]; then
-    DENY_HITS=$(printf '%s\n%s' "$DENY_HITS" "$violation" | jq -cs '.[0] + [.[1:][]]' 2>/dev/null || echo "$DENY_HITS")
+    ASK_HITS=$(printf '%s\n%s' "$ASK_HITS" "$violation" | jq -cs '.[0] + [.[1:][]]' 2>/dev/null || echo "$ASK_HITS")
   else
     why=$(printf '%s' "$violation" | jq -r '"[warn] \(.rule) [\(.file)]: \(.why)"')
     echo "llm-rule-judge: $why" >&2
   fi
 done < <(printf '%s' "$ALL_HITS" | jq -c '.[]?' 2>/dev/null || true)
 
-COUNT=$(printf '%s' "$DENY_HITS" | jq 'length' 2>/dev/null || echo 0)
+COUNT=$(printf '%s' "$ASK_HITS" | jq 'length' 2>/dev/null || echo 0)
 if [ "${COUNT:-0}" -gt 0 ]; then
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
   [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   while IFS= read -r fired_rule; do
     [ -n "$fired_rule" ] && log_rule_fire "$fired_rule" "llm-rule-judge" "ask"
-  done < <(printf '%s' "$DENY_HITS" | jq -r '.[].rule' 2>/dev/null || true)
-  REASON=$(printf '%s' "$DENY_HITS" | jq -r '.[] | "\(.rule) [\(.file)]: \(.why)"')
+  done < <(printf '%s' "$ASK_HITS" | jq -r '.[].rule' 2>/dev/null || true)
+  REASON=$(printf '%s' "$ASK_HITS" | jq -r '.[] | "\(.rule) [\(.file)]: \(.why)"')
   jq -n --arg r "Rule-judge findings on the outgoing diff (confidence >= $THRESH); approve the push only if each is a false positive:
 $REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
 fi
