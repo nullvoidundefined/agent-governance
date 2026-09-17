@@ -28,6 +28,18 @@ check "invalid tier refused" test "$ST" -eq 1
 check "invalid tier named" reports "gigantic"
 check "invalid tier writes nothing" test ! -e "$REPO/.claude/task-tier.json"
 
+# The investigation tier (2026-09-18 external audit): a task whose deliverable
+# is an answer rather than a change is classified by what it produces, so the
+# ledger has to accept it the way it accepts the four size tiers.
+OUT=$(cd "$REPO" && bash "$TIER" set investigation "audit the enforcement surface" 2>&1); ST=$?
+check "investigation tier accepted" test "$ST" -eq 0
+check "investigation tier announced" reports "task-tier: investigation: audit the enforcement surface"
+investigationTierRecorded() {
+  jq -e '.tier == "investigation"' "$REPO/.claude/task-tier.json" >/dev/null
+}
+check "investigation tier recorded in the ledger" investigationTierRecorded
+rm -f "$REPO/.claude/task-tier.json"
+
 OUT=$(cd "$REPO" && bash "$TIER" set standard "multi-file change with tests" --share 40 2>&1); ST=$?
 check "set exits 0" test "$ST" -eq 0
 check "set announces the tier" reports "task-tier: standard: multi-file change with tests"

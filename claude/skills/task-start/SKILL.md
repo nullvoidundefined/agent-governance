@@ -27,6 +27,7 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 | **Standard** | Multi-file change, real logic, new function or component with tests | Add a new API endpoint, create a React component, fix a multi-file bug |
 | **Complex** | Cross-cutting refactor, new subsystem, security-sensitive, auth-sensitive, 10+ files | New auth flow, design token overhaul, new service layer, database migration with data backfill |
 | **Saga** | Multi-surface, multi-package, multiple independent subsystems that must ship together | Extension + web + server feature, full feature with spec + plan + E2E + docs |
+| **Investigation** | The deliverable is an answer, not a change: audit, research, debugging a cause, reading code to explain it, evaluating an approach | Run a security audit, find why a hook fires, compare two libraries, answer "how does X work here" |
 
 **Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then record it, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, and the task's share of the work when it is one of several):
 
@@ -36,7 +37,9 @@ bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence 
 
 `task-tier.sh summary` prints the tier and the elapsed time at any point; `post-compact-rules.sh` re-injects the ledger after a compaction; task-cleanup clears it at the end. The ledger is `.claude/task-tier.json`, session state like the slice lock: gitignore it in the project.
 
-If uncertain between two tiers, choose the higher one. Downgrading mid-task wastes less time than upgrading.
+Investigation is orthogonal to the other four, not a step below Trivial: it is chosen by what the task PRODUCES, not by how large it is. A week-long audit and a five-minute "why does this fire" are both Investigations. When an investigation concludes and the user asks for the fix it identified, that fix is a new task, classified on its own by size; do not carry the Investigation tier into it.
+
+If uncertain between the other four tiers, choose the higher one. Downgrading mid-task wastes less time than upgrading.
 
 Then estimate and open the ticket, in that order (R-605, R-606):
 
@@ -73,6 +76,11 @@ Spec:           No (unless the user asks for one)
 Plan:           No (inline mental model is sufficient)
 Ticket:         Yes. Opened at classification, closed with actuals (R-605).
 TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh red, implement, tdd.sh green, close (R-412).
+                Open the slice WITHOUT --spec: that flag is optional in tdd.sh, and this tier has no spec by
+                design. The behavior named in the slice title and the ticket is the requirement the test
+                argues from. tdd-gated-dispatch's spec-driven flow (its step 1 shows --spec, and its role
+                briefs cite a B-n entry) applies to Complex and Saga; in Standard the same loop runs with the
+                slice title standing in for the B-n line, and nothing is locked as a spec path.
 Model:          Sonnet
 Branch:         Yes (feature branch off main)
 Worktree:       No (unless parallel work is active)
@@ -82,6 +90,32 @@ Skills invoked: tdd-gated-dispatch (single-session loop), superpowers:test-drive
 ```
 
 Create a feature branch. One slice per behavior: open, RED, commit, GREEN, commit, close. Squash merge when done.
+
+### Investigation
+
+```
+Spec:           No. The deliverable is the report, not an implementation artifact.
+Plan:           No. A scope line (what is in, what is out, what evidence counts) replaces it.
+Ticket:         Yes for anything above a few minutes; the report is the closing artifact (R-605).
+TDD:            Not applicable: no production code changes. If the investigation writes a probe or a
+                throwaway script, label it throwaway and delete it, or promote it to a real fixture as its
+                own Standard task afterwards.
+Model:          Opus for audits and ambiguous causes; Sonnet for bounded lookups.
+Branch:         Only if the investigation writes files (a report under docs/audits/). A read-only
+                investigation needs no branch.
+Worktree:       No, unless the investigation must check out another ref to compare.
+Subagents:      Yes for breadth: parallel readers over independent surfaces, each returning findings rather
+                than file dumps.
+Execution:      Read, probe, verify, report. Every finding carries evidence, a severity, and a falsification:
+                what would have to be true for the finding to be wrong.
+Skills invoked: the matching audit role under agents/ when one exists; superpowers:systematic-debugging when
+                the question is "why does this happen"; none otherwise.
+```
+
+Report unknowns as unknowns. An unchecked surface is named as unchecked with the reason, never silently
+omitted and never reported as clean. A finding you could not reproduce is labelled as such, with what you did
+observe. The audit's value is that its confident claims can be trusted, which costs nothing except saying
+plainly where the confidence stops.
 
 ### Complex
 
@@ -125,6 +159,7 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 | Tier | Setup sequence |
 |---|---|
 | **Trivial** | Do the work. Skip to implementation. |
+| **Investigation** | Write the scope line, gather evidence, report. No branch unless the report is a file. |
 | **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, then tdd-gated-dispatch's single-session loop |
 | **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
 | **Saga** | As Complex, plus: Opus for all planning and review, tdd-gated-dispatch for every subagent, and a review checkpoint after each stage. No stage starts until the prior stage's tests are green. |
