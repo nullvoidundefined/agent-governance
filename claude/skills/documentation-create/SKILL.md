@@ -7,7 +7,7 @@ description: Use when writing or revising any explanatory document - technical e
 
 ## Overview
 
-A reader must never have to infer what a sentence means, and must never be asked to take a factual claim on trust.
+A reader must never have to infer what a sentence means, and must never be asked to take a factual claim on trust. This skill is the long form of R-210 (complete sentences with full context, leaning toward verbose).
 
 Two obligations follow from that. **Every explanation carries its context**, so the reader is not reconstructing what you meant. **Every fact carries its support**, so the reader can check you rather than believe you.
 
