@@ -71,6 +71,12 @@ For a decision, record the alternative that was rejected and what would reverse 
 
 ## Red flags
 
+Four of these are detectable by pattern; run the advisory pass over the finished draft and read every line it prints as a place to look, not a verdict:
+
+```bash
+bash ~/.claude/skills/documentation-create/scripts/prose-flags.sh <file>
+```
+
 Stop and fix when you notice yourself writing:
 
 - A number followed by a plural noun, with no list.
