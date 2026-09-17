@@ -1,0 +1,4 @@
+# Settings keys the vendored schema lags on; each line is a deliberate
+# acceptance, reviewed when the schema is refreshed (hardening spec B-1).
+skipWorkflowUsageWarning
+skipDangerousModePermissionPrompt

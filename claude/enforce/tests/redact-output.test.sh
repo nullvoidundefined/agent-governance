@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:redact-output
 # Verifies redact-output.sh suppresses raw output and injects a [REDACTED]
 # replacement when Bash output carries a secret pattern, and stays silent for
 # clean output (R-102). The fake token is built at runtime.

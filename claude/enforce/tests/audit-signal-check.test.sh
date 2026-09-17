@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:audit-signal-check
 # Verifies audit-signal-check.sh: a push from a repo where a surface has 5+
 # commits since the last engineering audit emits an R-801/R-904 advisory via
 # additionalContext, names only the surfaces over threshold, never blocks, and

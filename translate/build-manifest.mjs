@@ -1,41 +1,20 @@
-// build-manifest.mjs: renders codex/.claude-port.json, the manifest that
-// hashes every generated file so a later --check can detect drift, and
-// lists the hand-authored files the port map carries verbatim (those are
-// never hashed: a human edits them directly, so their content is expected
-// to move independently of the generator).
-import { createHash } from "node:crypto";
+// build-manifest.mjs: codex's manifest builder. Adapts the port map's flat
+// hand_authored list into exporter-core's B-9 classifications map, then
+// delegates to the shared target-agnostic buildManifest. Kept as its own
+// module (rather than inlined into codex.mjs) so codex.mjs's existing call
+// site, buildManifest(plannedFiles, portMap), stays valid unchanged.
+import { buildManifest as buildManifestFor } from "./exporter-core.mjs";
 
-// Exported: render-codex-gitignore.mjs must name the manifest in the
-// allowlist, and the manifest is planned after the gitignore (it hashes it),
-// so the path cannot come from the planned list.
-export const MANIFEST_PATH = ".claude-port.json";
 const BUILDER_NAME = "translate/codex.mjs";
 
-// sha256Hex(content): the manifest's digest format for one generated file's
-// content, "sha256:<hex>".
-function sha256Hex(content) {
-  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
-}
-
 // buildManifest(plannedFiles, portMap) -> { path: ".claude-port.json",
-// content }: one hash per planned file, keyed by its codex-relative path,
-// keys sorted lexicographically so the output is deterministic regardless
-// of render order. The manifest cannot hash itself, so it is never in
-// plannedFiles when this runs (the caller computes it last, over the
-// non-manifest planned list) and never appears in its own files map.
-// hand_authored is copied from the port map verbatim, order preserved.
+// content }: classifies every planned file "generated" and every
+// portMap.hand_authored path "hand-authored-mapped" (codex's port map
+// carries no finer B-9 distinction than the flat hand_authored list), then
+// hands both to exporter-core's buildManifest.
 export function buildManifest(plannedFiles, portMap) {
-  const files = {};
-  for (const file of plannedFiles) {
-    files[file.path] = sha256Hex(file.content);
-  }
-  const sorted = {};
-  for (const key of Object.keys(files).sort()) sorted[key] = files[key];
-  const manifest = {
-    builder: BUILDER_NAME,
-    files: sorted,
-    hand_authored: [...portMap.hand_authored],
-  };
-  const content = `${JSON.stringify(manifest, null, 2)}\n`;
-  return { path: MANIFEST_PATH, content };
+  const classifications = {};
+  for (const file of plannedFiles) classifications[file.path] = "generated";
+  for (const handAuthoredPath of portMap.hand_authored) classifications[handAuthoredPath] = "hand-authored-mapped";
+  return buildManifestFor(BUILDER_NAME, plannedFiles, classifications);
 }

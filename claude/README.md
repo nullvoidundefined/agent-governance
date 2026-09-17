@@ -33,7 +33,7 @@ One enabled plugin is **third-party**, from a separate marketplace declared in `
 
 - `i-have-adhd@i-have-adhd` ([ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd), MIT): an output-style skill that shapes responses for an ADHD reader (action first, numbered steps, state restated each turn, no preamble or recap). It sets `disable-model-invocation: true`, so nothing applies until `/i-have-adhd` is invoked. Its one `SessionStart` hook reads a flag file and `SKILL.md`, writes to stdout, and exits 0 on any failure; it stays inert unless `~/.claude/.i-have-adhd-always` exists, which is not created by installing. Being third-party, it sits outside `enforce/hook-hashes.txt`, which covers this repo's own `hooks/` and `enforce/` only, not `plugins/`.
 
-Everything **inside this tracked repo** is the maintainer's: the 51 hook scripts under `hooks/` (including `install-git-hooks.sh`, plus the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, nine custom ESLint rules, the full-tree ratchet, and 67 fixture tests, 83 counting the hook suite), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 17 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 31 global-memory files, the R-001..R-604 rule formalization in `CLAUDE.md` (extended through R-908 in `rulebook/`), the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
+Everything **inside this tracked repo** is the maintainer's: the 52 hook scripts under `hooks/` (including `install-git-hooks.sh`, plus the tracked `pre-push.sample` it installs), the enforcement surface under `enforce/` (the rule manifest, the naming registry, nine custom ESLint rules, the full-tree ratchet, the standalone install verifier `doctor.sh`, and 69 fixture tests, 87 counting the hook suite), the 10 convention files (`CLAUDE-*.md`, `CLOUD-DEPLOYMENT.md`), the audit role definitions under `agents/` and `audits/`, the 17 custom skills under `skills/` (separate from the plugin-shipped Superpowers skills), the 32 global-memory files, the R-001..R-606 rule formalization in `CLAUDE.md` (extended through R-908 in `rulebook/`), the eleven-layer synthesis in `PROTOCOL.md`, the promotion/retirement ladders, the fire/miss log convention, and the lifecycle wiring in `settings.json`. The synthesis (which Anthropic-shipped pieces to enable, how to wire them, what rules to codify around them) is also the maintainer's.
 
 **Audit reports in `docs/audits/` are framework outputs, not authored prose.** Each report was produced by Claude playing the audit-role persona defined in `agents/audit-<role>.md` (the `audits/` files are forwarding pointers). The framework audits itself; the dated files in `docs/audits/` are the outputs of running it. The maintainer wrote the role definitions and the audit cadence rules; Claude wrote the report text from those definitions.
 
@@ -50,7 +50,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 5. Tests | mechanical | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke), run at turn end by `hooks/verification-gate.sh` (R-509) |
 | 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (50 registrations across 8 events) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
-| 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs |
+| 8. Session lifecycle | mechanical | Cross-session drift, dirty state, lost context | `SessionStart` and `SessionEnd` hooks, handoff docs, the resume snapshot/drift check (B-8) |
 | 9. Secret handling | mechanical | Plaintext credentials on argv, in chat, in commits, in transcripts | `hooks/secret-scan.sh` (PreToolUse), `hooks/redact-output.sh` (PostToolUse), R-102..R-107 |
 | 10. Git hygiene | mixed | History rewritten in ways that lose evidence; force-pushes to main; missing test pairs | `CLAUDE.md` R-5xx; `git-workflow-guard.sh`, `commit-message-guard.sh`, `conflict-markers.sh`, `fix-commit-requires-test.sh` |
 | 11. Destructive-action guards | mechanical | Irreversible data loss against production or remote databases | `hooks/destructive-db-guard.sh`, R-101 |
@@ -82,7 +82,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 ├── CLAUDE-GO.md                     # Auto-loads on .go: net/http + chi conventions.
 ├── CLOUD-DEPLOYMENT.md              # Read on demand: Railway / Cloudflare deploy guide.
 ├── TICKET-TRACKER.template.json     # Template for the gitignored tracker instance config (R-605).
-├── settings.json                    # Claude Code settings including hook wiring.
+├── settings.json                    # Claude Code settings including hook wiring and the sandbox block (configured but disabled by default; see enforce/README.md's "Containment boundaries" section).
+├── status-line.sh                   # statusLine command (B-5): per-field-degrading session HUD, exits 0 on any input.
 ├── agents/                          # Agent definitions (audit roles + review).
 │   ├── audit-engineering.md         # CTO persona agent.
 │   ├── audit-security.md            # CISO persona agent.
@@ -104,15 +105,16 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── conflict-markers.sh          # PreToolUse Bash. Blocks commits with conflict markers.
 │   ├── redact-output.sh             # PostToolUse Bash. Redacts secrets from output.
 │   ├── post-compact-rules.sh        # SessionStart(compact). Re-injects the critical rules after compaction.
-│   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc.
-│   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs.
+│   ├── harness-sync.sh              # SessionStart. Re-syncs ~/.claude from the checkout when they differ (R-003).
+│   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc; on resume, reports drift against the last resume snapshot (B-8).
+│   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs; writes the resume snapshot the next resume diffs against (B-8).
 │   ├── verification-gate.sh         # Stop, SubagentStop. Blocks the turn on a red test/typecheck run.
 │   ├── protected-path-guard.sh      # PreToolUse. Locks tests, fixtures, specs, and gate inputs per slice and role.
 │   ├── dependency-add-guard.sh      # PreToolUse. Asks when a manifest gains a new dependency (R-331).
 │   ├── install-git-hooks.sh         # Installs pre-push.sample into .git/hooks.
 │   ├── pre-push.sample              # Tracked pre-push: a red suite aborts the push.
-│   ├── tests/                       # 16 fixture tests for the lifecycle hooks.
-│   └── ...                          # 37 more hooks and helpers; each self-documenting in its header.
+│   ├── tests/                       # 18 fixture tests for the lifecycle hooks.
+│   └── ...                          # 39 more hooks and helpers; each self-documenting in its header.
 ├── enforce/                         # The mechanical enforcement surface.
 │   ├── manifest.json                # Rule id -> tier + enforcer. Single source of truth.
 │   ├── lexicon.json                 # Naming registry backing R-316 and half of R-317.
@@ -124,10 +126,14 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── role-policy.json             # Subagent write boundaries by agent_type (R-411).
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
+│   ├── doctor.sh                    # Standalone install verifier; see "Doctor" in enforce/README.md.
+│   ├── claude-code-settings.schema.json # Vendored SchemaStore schema doctor.sh checks settings.json against.
+│   ├── doctor-accepted-keys.txt     # Settings keys the vendored schema lags on; doctor.sh warns instead of failing.
+│   ├── secret-patterns.txt          # R-102 pattern set shared by secret-scan.sh and doctor.sh --release.
 │   ├── rules/                       # 9 custom ESLint rules (R-316/317, R-319, R-320, R-325, R-342, R-343, R-344, R-401 x2).
 │   └── tests/                       # fixture tests; run-tests.sh runs them all.
 ├── .github/workflows/enforce.yml    # CI: both fixture suites + the ratchet.
-├── ../translate/                    # Monorepo-root sibling, not synced here: codex.mjs regenerates codex/ from these claude/ sources.
+├── ../translate/                    # Monorepo-root sibling, not synced here: codex.mjs and cursor.mjs each regenerate their target from these claude/ sources.
 ├── rules/                           # Auto-load zone: session-types.md + path-scoped
 │   │                                # symlinks to the stack CLAUDE-*.md files.
 ├── rulebook/                        # Tier-2 rule files loaded by session type.
@@ -167,8 +173,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 
 ## How a session uses this repo
 
-1. **Session start.** Claude Code loads `~/.claude/settings.json`, which wires the `SessionStart` hooks. `session-start.sh` reads `global-memory/INDEX.md` and the project's `docs/session-handoff/session-handoff.md` (SHA-verified against git log before it is trusted) and emits both as additional context. `hook-integrity-check.sh` verifies the enforcement scripts against the committed hash manifest; `enforcement-guard-check.sh` verifies the manifest/settings/rulebook closure and warns if the llm-judge tier cannot run.
-2. **Rules load.** `CLAUDE.md` is loaded into the session: one norm line per rule with its enforcer named inline, currently 72 rules in 119 lines. The 200-line cap is not a convention but a test: `enforce/tests/claude-md-lint.test.sh` fails the suite above it, and also fails on any rule id that has a Spec in `rulebook/reference.md` but no norm line in either `CLAUDE.md` or a skill (and vice versa), so the two cannot drift apart. The full Spec for every rule lives in `rulebook/reference.md`, read on demand and consumed mechanically by the enforcement guard and the push-time LLM judge.
+1. **Session start.** Claude Code loads `~/.claude/settings.json`, which wires the `SessionStart` hooks. `harness-sync.sh` runs first (R-003): it compares the live `~/.claude` against the checkout named in `.sync-source` (or the project directory when that is itself an agent-governance clone) and runs `./sync.sh` when any tracked file differs, installing `rsync` in a cloud container when it is missing; this repository's own `.claude/settings.json` registers the same hook so a cloud session on this repo bootstraps its harness before anything else loads, and the `repo-setup` skill installs a bootstrap hook that clones and syncs the checkout into any other repository. `session-start.sh` reads `global-memory/INDEX.md` and the project's `docs/session-handoff/session-handoff.md` (SHA-verified against git log before it is trusted) and emits both as additional context. `hook-integrity-check.sh` verifies the enforcement scripts against the committed hash manifest; `enforcement-guard-check.sh` verifies the manifest/settings/rulebook closure and warns if the llm-judge tier cannot run.
+2. **Rules load.** `CLAUDE.md` is loaded into the session: one norm line per rule with its enforcer named inline, currently 77 rules in 125 lines. The 200-line cap is not a convention but a test: `enforce/tests/claude-md-lint.test.sh` fails the suite above it, and also fails on any rule id that has a Spec in `rulebook/reference.md` but no norm line in either `CLAUDE.md` or a skill (and vice versa), so the two cannot drift apart. The full Spec for every rule lives in `rulebook/reference.md`, read on demand and consumed mechanically by the enforcement guard and the push-time LLM judge.
 3. **Work happens.** Every tool call passes through the relevant `PreToolUse` hooks. Bash commands are scanned for secrets and em dashes before execution. Write and Edit calls are scanned for em dashes. `git commit -m "fix: ..."` calls are inspected to confirm a test file is staged.
 4. **Convention files load by path.** The stack `CLAUDE-*.md` files carry `paths:` frontmatter and are symlinked into `~/.claude/rules/`, so Claude Code loads each one mechanically when work touches matching files (a `.py` file pulls in the Python conventions, a `migrations/` file pulls in the database conventions). Only `CLOUD-DEPLOYMENT.md` remains a purely manual read.
 5. **Audits run on schedule or on signal.** The standing three roles (Engineering, Security, Criticism) run pre-launch or when a specific risk signal surfaces. The five on-request roles run only when a specific situation calls for that lens.
@@ -237,7 +243,7 @@ This directory is the `claude/` section of the agent-governance monorepo; `./syn
 3. Verify `jq`, `node`, and `python3` are available (`brew install jq node` on macOS); the hooks depend on all three. Then `npm install --prefix enforce`: `enforce/node_modules` is gitignored, so a fresh clone has none and the six ESLint-backed fixtures fail on a missing ESLint rather than on a real defect.
 4. Verify `settings.json` hook paths resolve on your system. The hooks use `~/.claude/hooks/...` which assumes the repo is at `~/.claude/`.
 5. Install the git hook: `bash hooks/install-git-hooks.sh`, which writes `.git/hooks/pre-push` from the tracked `hooks/pre-push.sample` and refuses to clobber a pre-push it did not write, naming the exact `mv` to run if you want it replaced. The one hook it replaces without asking is its own superseded predecessor, identified by that hook's header and backed up to `pre-push.legacy.bak` first. Regenerate the integrity manifest after any intentional change to a hook, a custom ESLint rule, or the lexicon: `hooks/hook-integrity-check.sh --update`.
-6. Run a dry test: `bash enforce/tests/run-tests.sh && bash hooks/tests/run-tests.sh` (83 fixture tests), then start a session and confirm the `SessionStart` hook emits the global memory INDEX. Try a Write call containing U+2014 and confirm it blocks.
+6. Run a dry test: `bash enforce/doctor.sh --full` (wraps both fixture suites, 87 fixture tests total, plus the install checks: settings parse, schema keys, hook registration, hook integrity, hook executability, deps, sandbox availability, statusline, port freshness; see `enforce/README.md`), then start a session and confirm the `SessionStart` hook emits the global memory INDEX. Try a Write call containing U+2014 and confirm it blocks.
 7. Recalibrate to yourself: R-906 (estimation) lives in `rulebook/cost.md`, R-903 (model routing) beside it, and the collaboration preferences are the `global-memory/feedback_*.md` files. `SETUP.md` covers which of those to keep, edit, or truncate on a fresh install.
 
 The runtime directories (`sessions/`, `cache/`, `history.jsonl`, `paste-cache/`, `shell-snapshots/`) are gitignored and populated by Claude Code as you work.

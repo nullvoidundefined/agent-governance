@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:destructive-command-guard
 # Verifies destructive-command-guard.sh catches the flag-syntax and word-boundary
 # variants that settings.json prefix globs miss, and stays silent on the
 # read-only and lookalike commands that must keep working.

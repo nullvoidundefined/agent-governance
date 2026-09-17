@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:codex-test-author-guard
 # Verifies codex-test-author-guard.sh (PreToolUse Write/Edit, R-907): silent
 # on non-test files and fixture data, asks when Claude's Write or Edit targets
 # a test file in any supported naming convention, silent for other tools, and

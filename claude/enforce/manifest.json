@@ -1,6 +1,14 @@
 {
     "rules": [
         {
+            "id": "R-003",
+            "tier": "advisory",
+            "enforcer": "hook:harness-sync",
+            "severity": "warning",
+            "autofix": false,
+            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
+        },
+        {
             "id": "R-602",
             "tier": "advisory",
             "enforcer": "hook:handoff-check",
@@ -359,7 +367,7 @@
             "enforcer": "hook:mcp-action-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt"
+            "note": "asks before any MCP call whose action names a mutating or transmitting verb; browser server exempt, and the Linear server exempt for the write class alone (that server only, not every tracker the ticket skill supports) (merge, submit, upload, apply still ask, as do the destroy and transmit classes on every server)"
         },
         {
             "id": "R-401",
@@ -634,6 +642,14 @@
             "enforcer": "hook:llm-rule-judge",
             "severity": "error",
             "autofix": false
+        },
+        {
+            "id": "R-325",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
         },
         {
             "id": "R-505",

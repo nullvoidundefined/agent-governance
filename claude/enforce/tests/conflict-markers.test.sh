@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:conflict-markers
 # Verifies conflict-markers.sh blocks `git commit` when staged content carries
 # conflict markers and passes clean stages (R-507). Markers are constructed at
 # runtime so this test file never contains one.

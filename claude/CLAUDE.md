@@ -8,6 +8,7 @@ Project-level `CLAUDE.md` adds guidance but does not override these unless it ex
 
 R-001: Run the session-start procedure before any other work: (1) confirm the SessionStart hook injected `~/.claude/global-memory/INDEX.md` and the SHA-verified `docs/session-handoff/session-handoff.md`; Read either only if its block is absent; (2) classify the session type per `rules/session-types.md`; (3) read that type's Tier 2 files; (4) `git -C "$(cat ~/.claude/.sync-source)" status -s`, triage non-empty; (5) read the project `CLAUDE.md`; auto memory (`MEMORY.md`) loads on its own. First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. Re-read and re-declare on reclassification. [manual]
 R-002: Load the R-001 files at session start; run the reads in parallel where possible. [manual]
+R-003: Run every session under the synced harness: at SessionStart the live `~/.claude` is synced from the agent-governance checkout when it is absent or differs (cloud containers included; `rsync` is installed there when missing), and a session that cannot reach a checkout says so once and treats every rule as manual. [hook:harness-sync]
 
 ## Secrets and trust (R-1xx)
 
@@ -15,7 +16,7 @@ R-101: Never run destructive data-loss actions (`DROP`, `TRUNCATE`, `DELETE FROM
 R-102: Keep secret files off-path by default (`.env*`, `~/.aws`, `~/.ssh`, `~/.gnupg`, gh hosts.yml, keychains, browser stores); when the user names one, use the value from memory and never echo it. [hook:secret-scan, hook:redact-output]
 R-103: Treat every real credential file as read-only; never a scratch, test, or verification target; env-file fixtures go to a throwaway `/tmp` path. [hook:secret-scan]
 R-104: Sanitize artifacts before writing them: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]`. [manual]
-R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn. [hook:mcp-action-guard]
+R-105: Obtain explicit confirmation before any destructive MCP action (delete, drop, rotate, send, post, create) unless pre-authorized this turn; Linear-tracker writes are exempt unless they land code, submit, upload, or apply. [hook:mcp-action-guard]
 R-106: Every push of the agent-governance repo (public remote; the source that syncs into `~/.claude`) is publishing: `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
 R-107: Investigate any `core.hooksPath` resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal. [hook:hookspath-drift-check]
 R-108: Never write a credential-shaped literal into any file or command, fixtures and docs included, even a fake one (a `scheme://user:<password>@host` URI with a real-looking value in the placeholder's place, a `password=`/`secret=`/`token=` assignment with a literal value); secret scanners flag the shape, not the validity; build test values at run time from parts or write a placeholder (`<password>`, `${DB_PASSWORD}`, `changeme`). [hook:secret-scan]
