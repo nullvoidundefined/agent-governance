@@ -18,6 +18,12 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/verification-gate.sh"
+# The sweep that bound HOOK to this checkout left the DATA the hook reads at
+# runtime still resolving to the installed tree: role-policy.json comes from
+# $HOME/.claude unless this override names another copy, so the fixture would
+# exercise checkout code against whatever policy the last sync happened to
+# write. Pin it to the checkout for the same reason HOOK is pinned.
+export CLAUDE_ROLE_POLICY_FILE="$CLAUDE_HARNESS_ROOT/enforce/role-policy.json"
 export CLAUDE_VERIFY_MEMO_DIR CLAUDE_VERIFY_RETRY_DELAY
 CLAUDE_VERIFY_MEMO_DIR=$(mktemp -d)
 # Zero by default so tests 1-9 (which don't exercise retry behavior at all)
