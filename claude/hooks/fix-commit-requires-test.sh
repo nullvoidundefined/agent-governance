@@ -63,23 +63,31 @@ if ! printf '%s' "$CMD" | grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[
   exit 0
 fi
 
-# Extract the subject from `-m "..."` or `-m '...'`. If the body is a
-# heredoc invocation like `$(cat <<'EOF' ... EOF)`, the first non-empty
-# line of the heredoc body is treated as the subject. Perl is used
-# because grep is line-oriented and cannot see through multi-line
-# heredocs. If no -m is present, the commit is editor-driven and this
-# hook does not inspect it.
+# Extract the subject from `-m "..."` or `-m '...'`, from a `-m "$(cat <<'EOF'
+# ... EOF)"` body, or from `-F -` fed by a heredoc. The last form was invisible
+# until 2026-09-17 (audit P2-7): it carries the subject in the command text
+# exactly like the others, it is the form the agents working in this repo
+# actually use, and while the extractor keyed on -m alone R-403 was inert for
+# every one of those commits. `-F <file>` stays out of reach, because the
+# message is on disk and not in the command. Perl is used because grep is
+# line-oriented and cannot see through a multi-line heredoc.
 SUBJECT=$(printf '%s' "$CMD" | perl -0777 -ne '
+  sub first_line {
+    my ($text) = @_;
+    for my $line (split /\n/, $text) {
+      return $line if $line !~ /^\s*$/;
+    }
+    return "";
+  }
   if (/-m\s+(["'\''])((?:(?!\1).)*)\1/s) {
     my $body = $2;
     if ($body =~ /\$\(\s*cat\s+<<-?\s*['\''"]?(\w+)['\''"]?\s*\n(.*?)\n\s*\1\s*\)/s) {
-      my $heredoc = $2;
-      for my $line (split /\n/, $heredoc) {
-        if ($line !~ /^\s*$/) { print $line; last; }
-      }
+      print first_line($2);
     } else {
       print $body;
     }
+  } elsif (/-F\s+-\s*(?:[^\n]*?)<<-?\s*['\''"]?(\w+)['\''"]?\s*\n(.*?)\n\s*\1\s*$/ms) {
+    print first_line($2);
   }
 ')
 if [ -z "$SUBJECT" ]; then

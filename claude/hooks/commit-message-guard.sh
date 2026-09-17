@@ -13,7 +13,10 @@ INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' || exit 0
-printf '%s' "$CMD" | grep -qE '(^|[[:space:]])-m([[:space:]]|$)' || exit 0
+# Either message-bearing form: `-m` or `-F -` fed by a heredoc. `-F <file>`
+# keeps the message on disk rather than in the command, so it stays out of
+# reach and out of this gate (2026-09-17 audit P2-7).
+printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-m|-F[[:space:]]+-)([[:space:]]|$)' || exit 0
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
@@ -32,8 +35,17 @@ ask() {
 
 # Extract the first -m argument. Handles "..."/'...' spanning newlines and the
 # heredoc form -m "$(cat <<'EOF' ... EOF)". Anything else fails open.
-if printf '%s' "$CMD" | grep -q "<<'EOF'"; then
-  MSG=$(printf '%s\n' "$CMD" | sed -n "/<<'EOF'/,/^EOF/p" | sed '1d;$d')
+# Any heredoc delimiter word, not the literal EOF alone: `<<MSG` and `<<'ANY'`
+# fell through to the -m extractor and out, which is how every heredoc commit
+# in this repo escaped both R-505 and R-506 (audit P2-7). The delimiter must
+# sit on the `git commit` line itself, because a command that first runs an
+# unrelated heredoc (a python or jq payload, which is common in this tree) would
+# otherwise have that payload read as the commit message: the first version of
+# this fix did exactly that and blocked its own commit over a line of python.
+if printf '%s' "$CMD" | perl -0777 -ne 'exit(/git\s+commit\b[^\n]*<<-?\s*['\''"]?[A-Za-z_][A-Za-z0-9_]*/ms ? 0 : 1)'; then
+  MSG=$(printf '%s' "$CMD" | perl -0777 -ne '
+    if (/git\s+commit\b[^\n]*?<<-?\s*['\''"]?([A-Za-z_][A-Za-z0-9_]*)['\''"]?\s*\n(.*?)\n\s*\1\s*(?:\)|"|$)/ms) { print $2; }
+  ')
 else
   MSG=$(printf '%s' "$CMD" | awk '
     BEGIN { RS = "\x01" }

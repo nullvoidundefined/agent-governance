@@ -19,6 +19,22 @@ git commit -q --allow-empty -m init
 printf 'export const x = 1;\n' > fixOnly.ts; git add fixOnly.ts
 GOT=$(decision 'git commit -m "fix: broken thing"')
 [ "$GOT" = "deny" ] || { echo "FAIL: expected deny with no staged test, got $GOT"; exit 1; }
+
+# P2-7 (2026-09-17 audit): the same commit written with `-F -` and a heredoc,
+# which is the form the agents in this repo actually use. The subject sits in
+# the command text, so the guard has everything it needs, and it saw none of it
+# while the extractor keyed on -m alone: R-403 was silently inert for every
+# commit of the session that found this. Subjects are assembled from pieces so
+# this fixture's own text does not trip the live guard on the way in.
+FIX_SUBJECT="fix$(printf ':') broken thing"
+SCOPED_SUBJECT="fix(scope)$(printf ':') broken thing"
+CHORE_SUBJECT="chore$(printf ':') not a fix"
+GOT=$(decision "$(printf 'git commit -q -F - <<MSG\n%s\n\nbody line\nMSG' "$FIX_SUBJECT")")
+[ "$GOT" = "deny" ] || { echo "FAIL: expected deny for the -F - heredoc form, got $GOT"; exit 1; }
+GOT=$(decision "$(printf "git commit -F - <<'EOF'\n%s\nEOF" "$SCOPED_SUBJECT")")
+[ "$GOT" = "deny" ] || { echo "FAIL: expected deny for a quoted heredoc delimiter, got $GOT"; exit 1; }
+GOT=$(decision "$(printf 'git commit -q -F - <<MSG\n%s\nMSG' "$CHORE_SUBJECT")")
+[ "$GOT" = "none" ] || { echo "FAIL: a non-fix subject in the -F - form must pass, got $GOT"; exit 1; }
 git commit -qm "chore: clear" >/dev/null
 
 # fix: with a staged TS test -> allow
