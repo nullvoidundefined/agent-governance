@@ -343,6 +343,49 @@ check "the fence's closing delimiter is intact" handoff_has "$FENCE_HANDOFF" '``
 check "the real Pending section after the fence is intact" handoff_has "$FENCE_HANDOFF" "## Pending"
 check "the newly rendered task is present after the markers" handoff_has "$FENCE_HANDOFF" "Real live task"
 
+# --- Corrupt current-session log is skipped, never deleted (PR #14 review):
+# a log whose every line is malformed folds to zero tasks, which the
+# all-completed test read as "this session finished everything" and answered
+# by deleting the file. That file is the session's only durable task state,
+# so the corrupt case must be skipped and left on disk instead, with nothing
+# rendered into the handoff. A genuinely empty log is a different thing (no
+# events were ever recorded) and is still pruned. ---
+CORRUPT_TS_REPO="$SANDBOX/corrupt-taskstate-repo"
+mkdir -p "$CORRUPT_TS_REPO/docs/session-handoff"
+git -C "$CORRUPT_TS_REPO" init -q
+git -C "$CORRUPT_TS_REPO" config user.email t@t
+git -C "$CORRUPT_TS_REPO" config user.name t
+CORRUPT_TS_HANDOFF="$CORRUPT_TS_REPO/docs/session-handoff/session-handoff.md"
+printf '# Handoff\n\n## Pending\n\n- something pending\n' > "$CORRUPT_TS_HANDOFF"
+git -C "$CORRUPT_TS_REPO" add -A
+git -C "$CORRUPT_TS_REPO" commit -qm seed
+
+CORRUPT_TS_KEY_DIR="$SANDBOX/.claude/projects/corrupt-taskstate-key"
+mkdir -p "$CORRUPT_TS_KEY_DIR"
+CORRUPT_TS_TRANSCRIPT="$CORRUPT_TS_KEY_DIR/corrupt-taskstate-session.jsonl"
+printf '{}\n' > "$CORRUPT_TS_TRANSCRIPT"
+CORRUPT_TS_LOG="$CORRUPT_TS_KEY_DIR/task-state.corrupt-taskstate-session.jsonl"
+printf 'not json at all {{{\n<<< truncated write\n' > "$CORRUPT_TS_LOG"
+
+CORRUPT_TS_PAYLOAD=$(jq -n --arg t "$CORRUPT_TS_TRANSCRIPT" --arg c "$CORRUPT_TS_REPO" '{transcript_path:$t, cwd:$c}')
+printf '%s' "$CORRUPT_TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+
+check "a corrupt current-session log is not deleted" file_exists "$CORRUPT_TS_LOG"
+check "a corrupt log renders no task-state section" ctx_lacks_file "$CORRUPT_TS_HANDOFF" "<!-- task-state:begin -->"
+check "the handoff narrative is untouched by the corrupt log" handoff_has "$CORRUPT_TS_HANDOFF" "## Pending"
+
+# Positive control on the same code path: an empty-but-valid log records no
+# events at all and is still pruned.
+EMPTY_TS_LOG="$CORRUPT_TS_KEY_DIR/task-state.empty-taskstate-session.jsonl"
+EMPTY_TS_TRANSCRIPT="$CORRUPT_TS_KEY_DIR/empty-taskstate-session.jsonl"
+printf '{}\n' > "$EMPTY_TS_TRANSCRIPT"
+: > "$EMPTY_TS_LOG"
+
+EMPTY_TS_PAYLOAD=$(jq -n --arg t "$EMPTY_TS_TRANSCRIPT" --arg c "$CORRUPT_TS_REPO" '{transcript_path:$t, cwd:$c}')
+printf '%s' "$EMPTY_TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
+
+check "an empty-but-valid log is still pruned" no_file "$EMPTY_TS_LOG"
+
 if [ "$fail" -eq 0 ]; then
     echo "ALL PASS"
     exit 0

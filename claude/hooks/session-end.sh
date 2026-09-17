@@ -245,6 +245,11 @@ write_session_snapshot "$TRANSCRIPT_PATH" "$SESSION_CWD" || true
 # "deleted" is dropped from the tasks map entirely. Malformed lines are
 # skipped rather than failing the fold; prints nothing on total jq
 # failure, which the caller uses as the unreadable-file signal.
+#
+# As in session-start.sh, this answers "what did the log record" and not
+# "could the log be read at all": a wholly malformed file folds to an empty
+# tasks map that is indistinguishable from an honestly empty one, so the
+# caller must consult task_state_log_is_parseable below first.
 fold_task_state_log() {
   local file="$1"
   jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s '
@@ -270,6 +275,31 @@ fold_task_state_log() {
       tasks: (foldTasks | with_entries(select(.value.status != "deleted")))
     }
   ' 2>/dev/null
+}
+
+# task_state_log_is_parseable mirrors session-start.sh's function of the
+# same name (duplicated for the same reason the fold is: standalone hook
+# scripts in this repo do not source one another). It reports whether a
+# folded reading of task-state log $1 can be trusted as a complete account
+# of what the tracker recorded, which is the question render_task_state_section
+# must answer before it is entitled to treat an empty tasks map as "this
+# session finished everything" and delete the log. A file holding no
+# non-blank line is parseable, since an empty log honestly records zero
+# events. A file holding at least one non-blank line from which jq recovers
+# no JSON value at all is not, and neither is an unreadable file; both are
+# reported false so the caller skips the file and leaves it on disk. The
+# log is the session's ONLY durable task state, so deleting it on the
+# strength of a reading that failed is the worst available outcome (PR #14
+# review).
+task_state_log_is_parseable() {
+  local file="$1" content_lines parsed_values
+  [ -r "$file" ] || return 1
+  content_lines=$(grep -c '[^[:space:]]' "$file" 2>/dev/null || true)
+  [ -n "$content_lines" ] || content_lines=0
+  [ "$content_lines" -gt 0 ] || return 0
+  parsed_values=$(jq -R 'try fromjson catch empty' "$file" 2>/dev/null | jq -s 'length' 2>/dev/null)
+  [ -n "$parsed_values" ] || return 1
+  [ "$parsed_values" -gt 0 ]
 }
 
 # render_task_state_section renders the CURRENT session's live task-state
@@ -313,6 +343,13 @@ render_task_state_section() (
 
   log_file="$PROJECTS_DIR/$key/task-state.$session_id.jsonl"
   [ -f "$log_file" ] || return 0
+
+  # A non-empty log nothing can be parsed out of is corrupt, not finished:
+  # nothing is rendered and, crucially, nothing is deleted (PR #14 review).
+  if ! task_state_log_is_parseable "$log_file"; then
+    echo "session-end: task-state render skipped: unparseable state file $log_file" >&2
+    return 0
+  fi
 
   folded=$(fold_task_state_log "$log_file")
   if [ -z "$folded" ]; then
