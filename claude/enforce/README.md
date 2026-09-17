@@ -80,7 +80,7 @@ The table states, for each way a secret can leave this harness, which layer cove
 - `lexicon.json` -- the naming registry backing R-316 and half of R-317.
 - `ratchet.mjs` -- full-tree violation baseline (see below).
 - `judge-prompt.md` -- instructions for the semantic-rule judge.
-- `tests/` -- one fixture test per enforcer; `run-tests.sh` runs them all.
+- `tests/` -- one fixture test per enforcer; `run-tests.sh` runs them all. Two tests check the repository itself rather than an enforcer and carry no manifest entry: `manifest.test.sh` (manifest closure) and `convention-track-invariants.test.sh` (every `CLAUDE-*.md` has a `paths:` block, a resolving `rules/` symlink, and a detection-table mention).
 - Hooks live in `~/.claude/hooks/` and are registered in `~/.claude/settings.json`.
 - `enforcement-guard-check.sh` verifies at session start that every manifest hook is still registered.
 - One registered hook is tooling rather than a rule enforcer and so carries no manifest entry: `build-cheatsheets.sh` regenerates docs on trusted-repo pushes and enforces no invariant. It still ships a fixture test (`hooks/tests/build-cheatsheets.test.sh`); any other tooling hook follows the same convention.

@@ -41,6 +41,7 @@
         "frontend-next.mdc": "Next.js App Router conventions. Auto-attached to app/ routes and next.config.",
         "frontend-vite.mdc": "Vite and TanStack Router SPA conventions. Auto-attached to vite.config, src/main.tsx, and src/routes.",
         "frontend.mdc": "Shared React client conventions - components, features, state, hooks, api wrappers. Auto-attached to .tsx files and client source trees.",
+        "frontend-react.mdc": "React-specific frontend conventions: hooks, component and provider patterns, state management. Auto-attached to .tsx and .jsx files and to src/state and src/hooks trees; read together with frontend.mdc, the framework-agnostic core.",
         "go.mdc": "Go net/http and chi track - layout, pgx, golangci-lint, analogs of the [ts] rules. Auto-attached to .go files and go.mod.",
         "python.mdc": "Python and FastAPI track - layout, SQLAlchemy, Alembic, pytest, ruff and mypy, analogs of the [ts] rules. Auto-attached to .py files.",
         "ruby.mdc": "Ruby on Rails API track - layout, RSpec, RuboCop, analogs of the [ts] rules. Auto-attached to .rb files and the Gemfile.",

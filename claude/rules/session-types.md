@@ -19,7 +19,7 @@ Session type is orthogonal to stack. Stack convention files auto-load through pa
 
 | Marker in project root | Stack | Read |
 |---|---|---|
-| `package.json` | TypeScript/Node | `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md` per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md` (whichever the work touches) |
+| `package.json` | TypeScript/Node | `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-REACT.md` with `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md`, or `CLAUDE-FRONTEND-VUE.md` with `CLAUDE-FRONTEND-NUXT.md`, per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md` (whichever the work touches) |
 | `pyproject.toml`, `requirements.txt`, or `setup.py` | Python | `CLAUDE-PYTHON.md` |
 | `Gemfile` | Ruby on Rails | `CLAUDE-RUBY.md` |
 | `go.mod` | Go | `CLAUDE-GO.md` |
