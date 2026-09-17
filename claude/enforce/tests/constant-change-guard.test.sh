@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:constant-change-guard
 # Verifies constant-change-guard.sh: a push whose outgoing diff removes a constant
 # value that still appears in test files triggers ask (R-513); clean pushes pass.
 set -euo pipefail

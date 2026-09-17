@@ -13,7 +13,10 @@ INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' || exit 0
-printf '%s' "$CMD" | grep -qE '(^|[[:space:]])-m([[:space:]]|$)' || exit 0
+# Either message-bearing form: `-m` or `-F -` fed by a heredoc. `-F <file>`
+# keeps the message on disk rather than in the command, so it stays out of
+# reach and out of this gate (2026-09-17 audit P2-7).
+printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-m|-F[[:space:]]+-)([[:space:]]|$)' || exit 0
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
@@ -30,12 +33,31 @@ ask() {
   exit 0
 }
 
+# Narrow the command to the `git commit` invocation before reading a message
+# out of it. Everything before the `git commit` token belongs to some other
+# command in the same Bash call (a `git add`, a python or jq heredoc payload),
+# and reading a message out of that text is how the guard came to deny its own
+# well-formed commit over a line of someone else's heredoc body (2026-09-17,
+# reported on PR #8). An empty tail means no `git commit` token survived the
+# earlier grep, which fails open exactly as an unparseable command does.
+COMMIT_TAIL=$(printf '%s' "$CMD" | perl -0777 -ne 'if (/(git\s+commit\b.*)/s) { print $1; }')
+[ -z "$COMMIT_TAIL" ] && exit 0
+
 # Extract the first -m argument. Handles "..."/'...' spanning newlines and the
 # heredoc form -m "$(cat <<'EOF' ... EOF)". Anything else fails open.
-if printf '%s' "$CMD" | grep -q "<<'EOF'"; then
-  MSG=$(printf '%s\n' "$CMD" | sed -n "/<<'EOF'/,/^EOF/p" | sed '1d;$d')
+# Any heredoc delimiter word, not the literal EOF alone: `<<MSG` and `<<'ANY'`
+# fell through to the -m extractor and out, which is how every heredoc commit
+# in this repo escaped both R-505 and R-506 (audit P2-7). The delimiter search
+# runs from the `git commit` token to the first command separator, so a heredoc
+# opened by a later command on the same line (`git commit -m "..." && cat >
+# file <<EOF`) is not mistaken for this commit's message, and the closing
+# delimiter ends the message at its own line so further commands may follow it.
+if printf '%s' "$COMMIT_TAIL" | perl -0777 -ne 'exit(/\Agit\s+commit\b[^\n;&|]*<<-?\s*['\''"]?[A-Za-z_][A-Za-z0-9_]*/ms ? 0 : 1)'; then
+  MSG=$(printf '%s' "$COMMIT_TAIL" | perl -0777 -ne '
+    if (/\Agit\s+commit\b[^\n;&|]*?<<-?\s*['\''"]?([A-Za-z_][A-Za-z0-9_]*)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*(?:\)|"|$)/ms) { print $2; }
+  ')
 else
-  MSG=$(printf '%s' "$CMD" | awk '
+  MSG=$(printf '%s' "$COMMIT_TAIL" | awk '
     BEGIN { RS = "\x01" }
     {
       s = $0

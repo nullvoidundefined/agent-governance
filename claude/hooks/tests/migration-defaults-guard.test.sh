@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:migration-defaults-guard
 # Test harness for migration-defaults-guard.sh (backs R-328).
 #
 # R-328: migration defaults use bare strings for constants

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:destructive-db-guard
 # Verifies destructive-db-guard.sh tiers (R-101): deny destructive-vs-production,
 # ask destructive-vs-remote and remote writes, pass local and read-only commands.
 set -euo pipefail

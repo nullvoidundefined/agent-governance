@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:harness-sync
 # harness-sync.test.sh: verifies hooks/harness-sync.sh (R-003) against a
 # sandbox checkout and a fake HOME: the first run syncs the checkout's tracked
 # claude/ files into ~/.claude and says so; a second run finds no drift and

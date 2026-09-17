@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:global-repo-push-guard
 # Test harness for global-repo-push-guard.sh (backs R-106).
 #
 # R-106: before pushing the public agent-governance repo, verify the

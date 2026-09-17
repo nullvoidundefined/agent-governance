@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:codex-billing-guard
 # Verifies codex-billing-guard.sh (PreToolUse Bash, R-908): silent on
 # non-codex commands, asks on every path that flips codex CLI billing from
 # the ChatGPT subscription to the metered API, and silent when codex reports

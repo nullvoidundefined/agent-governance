@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:model-switch-guard
 # Verifies model-switch-guard.sh (PreModelSwitch, R-903). PreModelSwitch has
 # no permissionDecision channel (that is a tool-event concept; this event
 # blocks only via exit 2), so the guard warns through systemMessage and always

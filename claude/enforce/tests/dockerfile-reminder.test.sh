@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:dockerfile-reminder
 # Verifies dockerfile-reminder.sh (advisory PostToolUse for R-351). Nine invariants:
 #   1. A server entry file in a repo with no Dockerfile reminds R-351.
 #   2. The same file with a root Dockerfile and .dockerignore is silent.

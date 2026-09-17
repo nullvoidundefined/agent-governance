@@ -1,7 +1,17 @@
 {
   "builder": "translate/codex.mjs",
+  "builder_files": {
+    "translate/build-manifest.mjs": "sha256:6b38dc505ed6a47906b1e2b6c12849ec2b5e76089046944dc0790346d8841ec1",
+    "translate/codex.mjs": "sha256:a5a0a9cb52fc4f4a86377681ac33cd30135df76dfbe7c9f4d7541aeea1bcf274",
+    "translate/parse-sources.mjs": "sha256:72b7d0e208b227e505198000da9edc6df151e51546bb0afcdf9a2671705e882c",
+    "translate/render-codex-agents.mjs": "sha256:ccdfb05be84581ba395c5eeea553e31d1654d38f458e6b7027d88fa54c737e2f",
+    "translate/render-codex-gitignore.mjs": "sha256:d0f1a0d030fff0536981ce1cac8f15be1b479de2b8f8a2453fecf031c1159c6e",
+    "translate/render-codex-hooks.mjs": "sha256:d4013cbc11c6b9347fa1bc6af0887c16ab22ef341f11d3c118c365db779bcce1",
+    "translate/render-codex-rules.mjs": "sha256:45e5facea13844c4f7043e6d9d9e805448630a63501344968ec0c7bf9ebbd7fd",
+    "translate/render-codex-skills.mjs": "sha256:c77f22f2935798fec756d985a072a6919a018be4587285511b7124b6c5f581e6"
+  },
   "files": {
-    ".gitignore": "sha256:bcd04226b8efc95f5ca23545e30ad2a73309f20cd641a99b175af7d61e35c016",
+    ".gitignore": "sha256:fac6c7896232969faccc2b1d6ebfe9adce35ab049fcd0e269c45c8ac94061326",
     "AGENTS.md": "sha256:3afc6f62cc3d2ce57edc6aef7deded791b1f651b8ffb07f782f0b8f6a069b8ff",
     "PORT-STATUS.md": "sha256:2176644617668c1fd3147d3ad5c1dc04c9e2955075d5e09375002a7bb24d5d43",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",

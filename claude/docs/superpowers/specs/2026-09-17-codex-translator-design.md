@@ -15,7 +15,7 @@ Resurrect the port pipeline the 2026-09-12 monorepo migration deferred: a checke
 
 ## Outputs
 
-- `--write` regenerates in place: `codex/AGENTS.md`, `codex/agents/*.toml`, `codex/skills/*/SKILL.md`, `codex/hooks.json`, `codex/PORT-STATUS.md`, `codex/.gitignore` (the allowlist of tracked paths), and `codex/.claude-port.json` (manifest: builder name, per-file sha256, source path or `hand-authored`). Every generated file opens with a header naming `translate/codex.mjs` and its source path. Exit 0.
+- `--write` regenerates in place: `codex/AGENTS.md`, `codex/agents/*.toml`, `codex/skills/*/SKILL.md`, `codex/hooks.json`, `codex/PORT-STATUS.md`, `codex/.gitignore` (the allowlist of tracked paths), and `codex/.claude-port.json` (manifest: builder name, a sha256 per generator module under `builder_files`, per-file sha256, source path or `hand-authored`). Every generated file opens with a header naming `translate/codex.mjs` and its source path. Exit 0.
 - `--check` writes nothing; exit 0 when every generated file matches what `--write` would produce and every registered hook is classified in the port map; otherwise exit 1 listing each stale or unclassified item, one per line.
 
 ## Acceptance criteria
