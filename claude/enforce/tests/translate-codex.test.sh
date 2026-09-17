@@ -98,6 +98,11 @@ description: sandbox skill
 
 the sandbox skill body line
 EOF
+  # A support file bundled beside SKILL.md (skills audit 2026-09-17): copied
+  # byte for byte, no header, executable bit kept.
+  mkdir -p "$dir/claude/skills/sample-skill/scripts"
+  printf '#!/usr/bin/env bash\necho "the sandbox support script line"\n' >"$dir/claude/skills/sample-skill/scripts/helper.sh"
+  chmod +x "$dir/claude/skills/sample-skill/scripts/helper.sh"
 
   cat >"$dir/claude/settings.json" <<'EOF'
 {
@@ -239,6 +244,20 @@ check "skill copy exists" test -f "$COPIED"
 check "header sits after frontmatter" skillHeaderAfterFrontmatter "$COPIED"
 check "body is verbatim" grep -qF "the sandbox skill body line" "$COPIED"
 check "frontmatter is verbatim" grep -q "^description: sandbox skill$" "$COPIED"
+
+# Skill support files (skills audit 2026-09-17): every file beside SKILL.md
+# ports verbatim with its mode, appears in the manifest, and drifts like any
+# generated file.
+SUPPORT="$SRC/codex/skills/sample-skill/scripts/helper.sh"
+check "support file copied" test -f "$SUPPORT"
+check "support file verbatim" cmp -s "$SRC/claude/skills/sample-skill/scripts/helper.sh" "$SUPPORT"
+check "support file executable" test -x "$SUPPORT"
+check "support file in manifest" grep -q '"skills/sample-skill/scripts/helper.sh"' "$SRC/codex/.claude-port.json"
+printf '# edited in the port\n' >>"$SUPPORT"
+OUT=$(node "$TRANSLATOR" --check --root "$SRC" 2>&1); ST=$?
+check "edited support file fails check" test "$ST" -eq 1
+check "edited support file named stale" grep -q "stale: skills/sample-skill/scripts/helper.sh" <<<"$OUT"
+node "$TRANSLATOR" --write --root "$SRC" >/dev/null 2>&1
 
 # Task 5: AGENTS.md with port-aware tag rewrites (B-1).
 # alpha-guard is registered under PreToolUse, which the map's events

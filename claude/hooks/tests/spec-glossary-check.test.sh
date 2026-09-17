@@ -92,4 +92,80 @@ check "non-design md under specs silent"              silent "docs/superpowers/s
 check "design md outside specs silent"                silent "docs/other/x-design.md" "$NOTHING"
 check "source file silent"                            silent "apps/server/src/services/foo.ts" "export const x = 1;"
 
+# Slice plans (2026-09-17 skills audit, S-10): every "### PR" block carries
+# the seven bold labels of build-by-slice-require-review's PR format.
+SLICE="docs/slices/slice-01-auth.md"
+SLICE_COMPLETE="# Slice 01: auth
+
+### PR 1: session table
+
+**Context:** nothing exists yet.
+
+**Problem:** no sessions.
+
+**Approach:** a table and a repository.
+
+**Contents:** migration, repository.
+
+**Tests:** repository round-trip.
+
+**Review focus:** the migration.
+
+**Size:** 3 files, 120 lines.
+
+### PR 2: login handler
+
+**Context:** PR 1 merged.
+
+**Problem:** no way in.
+
+**Approach:** a handler over the repository.
+
+**Contents:** handler, route.
+
+**Tests:** handler happy and negative paths.
+
+**Review focus:** the negative-input test.
+
+**Size:** 4 files, 200 lines.
+"
+SLICE_PARTIAL="# Slice 01: auth
+
+### PR 1: session table
+
+**Context:** nothing exists yet.
+
+**Problem:** no sessions.
+
+**Approach:** a table.
+
+**Contents:** migration.
+
+### PR 2: login handler
+
+**Context:** PR 1 merged.
+
+**Problem:** no way in.
+
+**Approach:** a handler.
+
+**Contents:** handler.
+
+**Tests:** handler tests.
+
+**Review focus:** the negative-input test.
+
+**Size:** 4 files.
+"
+SLICE_EMPTY="# Slice 01: auth
+
+Some prose and no PR blocks.
+"
+check "complete slice plan silent"                    silent "$SLICE" "$SLICE_COMPLETE"
+check "slice plan missing labels nudges"              nudges "$SLICE" "$SLICE_PARTIAL"
+check "missing labels named per PR"                   names 'PR 1: session table lacks Tests, Review focus, Size' "$SLICE" "$SLICE_PARTIAL"
+check "complete PR not named"                         omits 'PR 2: login handler lacks' "$SLICE" "$SLICE_PARTIAL"
+check "slice plan with no PR block nudges"            names 'no "### PR' "$SLICE" "$SLICE_EMPTY"
+check "other file under docs/slices silent"           silent "docs/slices/README.md" "$SLICE_EMPTY"
+
 exit $fail

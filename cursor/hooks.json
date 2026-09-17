@@ -33,7 +33,7 @@
     ],
     "afterFileEdit": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate new-file-header-reminder flat-directory-reminder spec-glossary-check clean-code-reminder observability-reminder dockerfile-reminder",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate new-file-header-reminder flat-directory-reminder spec-glossary-check handoff-check clean-code-reminder observability-reminder dockerfile-reminder",
         "timeout": 60
       }
     ],

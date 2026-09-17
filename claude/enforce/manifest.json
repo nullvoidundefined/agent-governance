@@ -1,6 +1,14 @@
 {
     "rules": [
         {
+            "id": "R-602",
+            "tier": "advisory",
+            "enforcer": "hook:handoff-check",
+            "severity": "warning",
+            "autofix": false,
+            "note": "PostToolUse Write on docs/session-handoff/session-handoff.md: size cap, section order, SHA resolution; content stays manual"
+        },
+        {
             "id": "R-323",
             "tier": "ast",
             "enforcer": "eslint:sort-keys",
@@ -277,6 +285,14 @@
             "severity": "error",
             "autofix": false,
             "note": "fixture: tests/credential-mutation-guard.test.sh (mutation slice of secret-scan.sh; no hook of that name exists)"
+        },
+        {
+            "id": "R-108",
+            "tier": "regex",
+            "enforcer": "hook:secret-scan",
+            "severity": "error",
+            "autofix": false,
+            "note": "credential-shaped literals (URI userinfo password, password/secret/token assignment with a literal) in Bash argv, Write content, or Edit new_string; placeholder shapes pass; fixture: tests/secret-scan.test.sh; tree closure (every tracked file through the hook): tests/credential-shape-scan.test.sh"
         },
         {
             "id": "R-106",

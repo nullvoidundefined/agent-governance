@@ -24,6 +24,19 @@ CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK" --update >/dev/null
 OUT3=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
 [ -z "$OUT3" ] || { echo "FAIL: expected silence after --update; got: $OUT3"; exit 1; }
 
+# A script bundled beside a SKILL.md is part of the enforcement surface
+# (2026-09-17 skills audit): tampering with one warns naming it.
+mkdir -p "$FIX/skills/sample-skill/scripts"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FIX/skills/sample-skill/scripts/check.sh"
+CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK" --update >/dev/null
+printf '#!/usr/bin/env bash\n# tampered\nexit 0\n' > "$FIX/skills/sample-skill/scripts/check.sh"
+OUT_SKILL=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
+printf '%s' "$OUT_SKILL" | grep -q 'skills/sample-skill/scripts/check.sh' || { echo "FAIL: expected drift warning naming skills/sample-skill/scripts/check.sh"; exit 1; }
+# Leave the fixture as the live-vs-repo section below expects it (hooks/ and
+# enforce/ only), with the manifest regenerated to match.
+rm -rf "$FIX/skills"
+CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK" --update >/dev/null
+
 # Live-vs-repo mode (2026-09-16 audit P2-11): with a .sync-source stamp, the
 # check also compares the live tree against the repo checkout it syncs from.
 REPO_FIX=$(mktemp -d)

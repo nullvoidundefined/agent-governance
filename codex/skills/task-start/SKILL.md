@@ -29,7 +29,13 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 | **Complex** | Cross-cutting refactor, new subsystem, security-sensitive, auth-sensitive, 10+ files | New auth flow, design token overhaul, new service layer, database migration with data backfill |
 | **Saga** | Multi-surface, multi-package, multiple independent subsystems that must ship together | Extension + web + server feature, full feature with spec + plan + E2E + docs |
 
-**Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]."
+**Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then record it, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, and the task's share of the work when it is one of several):
+
+```bash
+bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--share <percent>]
+```
+
+`task-tier.sh summary` prints the tier and the elapsed time at any point; `post-compact-rules.sh` re-injects the ledger after a compaction; task-cleanup clears it at the end. The ledger is `.claude/task-tier.json`, session state like the slice lock: gitignore it in the project.
 
 If uncertain between two tiers, choose the higher one. Downgrading mid-task wastes less time than upgrading.
 
@@ -143,7 +149,7 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Plan writing, plan review | Opus for complex/saga, Sonnet for standard |
 | Implementation (inline) | Sonnet |
 | Implementation (subagent) | Sonnet (implementer), Opus (test author, slice critic) |
-| Audit/review | Opus |
+| Audit/review | Per the role file: Opus for the standing roles (engineering, security, criticism) and the customer walkthrough, Sonnet for the rubric roles (design, UX, financial, legal, marketing); `all-hands` overrides every role to Sonnet for its weekly scan |
 | Doc edits, file moves, config | Haiku or Sonnet |
 
 ## Reclassification
@@ -151,12 +157,13 @@ This is the most important rule in this skill. Splitting one feature across seve
 If you discover mid-task that the scope is larger than classified:
 1. Stop implementation
 2. Announce: "This is bigger than I thought. Reclassifying from [old] to [new] because [reason]."
-3. Set up the process requirements for the new tier
-4. Do not lose work already done; commit it to the branch first
-5. Update the ticket's `tier` and re-estimate for the new tier, recording the original estimate in a transition comment. A reclassified ticket whose estimate still names the old tier corrupts both tiers' samples.
+3. Record it: `task-tier.sh set <new tier> "<reason>"` (the ledger keeps the previous tier as `reclassifiedFrom`)
+4. Set up the process requirements for the new tier
+5. Do not lose work already done; commit it to the branch first
+6. Update the ticket's `tier` and re-estimate for the new tier, recording the original estimate in a transition comment. A reclassified ticket whose estimate still names the old tier corrupts both tiers' samples.
 
 If you discover the scope is smaller:
-1. Announce the downgrade
+1. Announce the downgrade and record it the same way
 2. Continue with simpler process (no need to add ceremony)
 
 ## Integration

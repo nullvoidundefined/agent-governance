@@ -116,64 +116,14 @@ if [ -f "$FIRE_LOG" ]; then
 fi
 
 # Velocity metrics (R-602)
-# Compute session commit stats and write to a temp file.
-# The handoff doc author reads this file for the "Session metrics" section.
-
-# Keyed per repo toplevel to match session-start.sh (2026-09-16 audit P3-4);
-# the unkeyed filename is read as a fallback for a session whose start
-# predates the keying.
-REPO_KEY=$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null)" | shasum | awk '{print $1}')
-START_SHA_FILE="${TMPDIR:-/tmp}/claude-session-start-sha-$REPO_KEY"
-[ -f "$START_SHA_FILE" ] || START_SHA_FILE="${TMPDIR:-/tmp}/claude-session-start-sha"
+# The four numbers are computed by hooks/session-metrics.sh (2026-09-17 skills
+# audit, S-12), which the task-cleanup handoff step also calls on demand so the
+# handoff carries live numbers rather than the previous session's; this hook
+# still writes the block to a temp file for anything that read it before.
 METRICS_FILE="${TMPDIR:-/tmp}/claude-session-metrics.md"
-
-if [ -f "$START_SHA_FILE" ] && command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-  START_SHA=$(cat "$START_SHA_FILE")
-  CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
-
-  if [ -n "$START_SHA" ] && [ -n "$CURRENT_SHA" ] && [ "$START_SHA" != "$CURRENT_SHA" ]; then
-    COMMIT_COUNT=$(git rev-list --count "$START_SHA..HEAD" 2>/dev/null || echo "0")
-    FILES_CHANGED=$(git diff --name-only "$START_SHA..HEAD" 2>/dev/null | sort -u | wc -l | tr -d ' ')
-
-    # Rework commits: files changed by more than one commit in this session.
-    REWORK_COUNT=0
-    if [ "$COMMIT_COUNT" -gt 1 ]; then
-      REWORK_COUNT=$(git log --format="" --name-only "$START_SHA..HEAD" 2>/dev/null \
-        | sort | uniq -c | sort -rn \
-        | awk '$1 > 1 { count++ } END { print count+0 }')
-    fi
-
-    # Velocity flag.
-    if [ "$COMMIT_COUNT" -gt 80 ]; then
-      FLAG="REVIEW"
-    elif [ "$COMMIT_COUNT" -gt 40 ]; then
-      FLAG="HIGH"
-    else
-      FLAG="NORMAL"
-    fi
-
-    cat > "$METRICS_FILE" <<METRICS_EOF
-## Session metrics
-- Commits this session: $COMMIT_COUNT
-- Files changed: $FILES_CHANGED
-- Rework commits (file touched by 2+ commits): $REWORK_COUNT
-- Velocity flag: $FLAG
-METRICS_EOF
-
-    if [ "$FLAG" = "HIGH" ] || [ "$FLAG" = "REVIEW" ]; then
-      echo "" >> "$METRICS_FILE"
-      echo "**Action required:** Review prior session for rework patterns before starting new work." >> "$METRICS_FILE"
-    fi
-  else
-    # No commits this session.
-    cat > "$METRICS_FILE" <<METRICS_EOF
-## Session metrics
-- Commits this session: 0
-- Files changed: 0
-- Rework commits (file touched by 2+ commits): 0
-- Velocity flag: NORMAL
-METRICS_EOF
-  fi
+METRICS_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/session-metrics.sh"
+if [ -f "$METRICS_SCRIPT" ] && command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+  bash "$METRICS_SCRIPT" > "$METRICS_FILE" 2>/dev/null || true
 fi
 
 exit 0

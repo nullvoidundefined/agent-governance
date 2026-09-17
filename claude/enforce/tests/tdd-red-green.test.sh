@@ -79,6 +79,15 @@ bash "$TDD" red src/__tests__/score.test.ts >/dev/null
 [ "$(lock_field . '.baseline.passed')" = "1" ] || { echo "FAIL: baseline must count the passing tests outside the RED files, got $(lock_field . '.baseline.passed')"; exit 1; }
 [ "$(lock_field . '.tests[0].sha256' | wc -c | tr -d ' ')" = "65" ] || { echo "FAIL: red must record a sha256"; exit 1; }
 
+# validate (skills audit S-9): the test author's return is red with only
+# test-tree writes; a production write or the wrong phase is refused.
+bash "$TDD" validate test-author | grep -q 'VALID: test-author' || { echo "FAIL: validate test-author must accept a red return with only test writes"; exit 1; }
+expect_fail "validate implementer while red" bash "$TDD" validate implementer | grep -q 'expected green' || { echo "FAIL: validate implementer while red must name the expected phase"; exit 1; }
+mkdir -p src/services && printf 'export const stray = 1;\n' > src/services/stray.ts
+expect_fail "validate test-author with a production write" bash "$TDD" validate test-author | grep -q 'R-411' || { echo "FAIL: a production write by the test author must cite R-411"; exit 1; }
+rm src/services/stray.ts
+expect_fail "validate an unknown role" bash "$TDD" validate nobody | grep -q 'unknown role' || { echo "FAIL: an unknown role must be refused by name"; exit 1; }
+
 # red: re-running red in phase red with an assertion failure reclassifies.
 impl src/services/score.ts 1 2>/dev/null || { mkdir -p src/services; impl src/services/score.ts 1; }
 bash "$TDD" red src/__tests__/score.test.ts >/dev/null
@@ -93,6 +102,20 @@ git add -A && git commit -qm "test(score): B-1 score returns 2"
 impl src/services/score.ts 2
 bash "$TDD" green >/dev/null
 [ "$(lock_field . .phase)" = "green" ] || { echo "FAIL: green must move the phase to green"; exit 1; }
+
+# validate (skills audit S-9): the implementer's return is green with no
+# test, spec, or lock writes, and its GREEN is re-run; a test write is
+# refused; after the GREEN commit the read-only critic's return is a clean
+# tree, and any write at all is refused.
+bash "$TDD" validate implementer | grep -q 'VALID: implementer' || { echo "FAIL: validate implementer must accept a green return with production writes only"; exit 1; }
+printf '// touched\n' >> src/__tests__/baseline.test.ts
+expect_fail "validate implementer after a test write" bash "$TDD" validate implementer | grep -q 'R-411' || { echo "FAIL: a test write by the implementer must cite R-411"; exit 1; }
+git checkout -q -- src/__tests__/baseline.test.ts
+git add src/services/score.ts && git commit -qm "feat(score): B-1 score returns 2"
+bash "$TDD" validate slice-critic | grep -q 'VALID: slice-critic' || { echo "FAIL: validate slice-critic must accept a clean tree"; exit 1; }
+printf 'note\n' > docs/notes.md
+expect_fail "validate slice-critic after any write" bash "$TDD" validate slice-critic | grep -q 'docs/notes.md' || { echo "FAIL: a critic write must be named"; exit 1; }
+rm docs/notes.md
 
 # green: a tampered RED test is refused by the hash against the lock and the RED commit.
 printf 'import { it, expect } from "vitest";\nimport { score } from "../services/score";\nit("scores a job at 2", () => { expect(score()).toBe(score()); });\n' > src/__tests__/score.test.ts

@@ -28,6 +28,9 @@
 # surface entirely (sync.sh copies claude/ only), so it cannot be hashed
 # against a live install; enforce/gate-trusted-repos.txt, which is gitignored
 # (client-identifying, R-106); and enforce/node_modules, which is not tracked.
+# skills/*/scripts/* joined 2026-09-17 (skills audit): a script bundled beside a
+# SKILL.md decides whether that skill's requirement is met, so an unnoticed
+# edit to one weakens the skill the way an edited hook weakens a gate.
 set -euo pipefail
 
 CLAUDE_DIR="${CLAUDE_INTEGRITY_ROOT:-$HOME/.claude}"
@@ -43,7 +46,7 @@ compute_hashes() {
     # --update would then write that one bogus line over a real manifest and
     # report success (2026-09-17 audit P1-1).
     local files
-    files=$({ ls hooks/*.sh hooks/*.mjs hooks/*.py hooks/tests/*.sh enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/tests/*.sh enforce/manifest.json enforce/lexicon.json enforce/role-policy.json enforce/judge-prompt.md enforce/package.json enforce/package-lock.json 2>/dev/null || true; } | sort)
+    files=$({ ls hooks/*.sh hooks/*.mjs hooks/*.py hooks/tests/*.sh enforce/*.sh enforce/*.yml enforce/*.toml enforce/*.mjs enforce/rules/*.mjs enforce/tests/*.sh enforce/manifest.json enforce/lexicon.json enforce/role-policy.json enforce/judge-prompt.md enforce/package.json enforce/package-lock.json skills/*/scripts/* 2>/dev/null || true; } | sort)
     [ -n "$files" ] || return 0
     printf '%s\n' "$files" | { xargs shasum -a 256 2>/dev/null || true; }
   )

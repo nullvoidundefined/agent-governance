@@ -29,6 +29,11 @@
 #       removes the lock; refused unless the phase is green.
 #   tdd.sh status
 #       prints the lock.
+#   tdd.sh validate <role>
+#       the orchestrator's check on a dispatched role's return: phase red
+#       after test-author, green after implementer; every modified or
+#       untracked path inside the role's role-policy.json boundary (R-411);
+#       the implementer's GREEN re-run rather than trusted.
 #
 # Runner: Vitest or Jest resolved from the project's node_modules/.bin, then
 # the copy bundled under ~/.claude/enforce/node_modules (with a warning). Both
@@ -301,11 +306,53 @@ cmd_status() {
   if [ -f "$LOCK" ]; then jq . "$LOCK"; else say "no slice open"; fi
 }
 
+# validate <role>: the orchestrator's check on a dispatched role's return
+# (2026-09-17 skills audit, S-9), decided here instead of read off porcelain
+# output by hand. The lock phase is the one the role leaves behind (red after
+# the test author, green after the implementer; a read-only role leaves it
+# untouched and is not judged on it), every modified or untracked path lies
+# inside the role's write boundary from role-policy.json (R-411; the lock
+# itself is excepted because this script writes it), and for the implementer
+# the GREEN is re-run rather than taken from the report.
+cmd_validate() {
+  local role="${1:-}"
+  [ -n "$role" ] || die "usage: tdd.sh validate <role>"
+  jq -e --arg r "$role" '.roles[$r]' "$POLICY" >/dev/null 2>&1 \
+    || die "unknown role '$role'; role-policy.json knows $(jq -r '.roles | keys | join(", ")' "$POLICY")"
+  require_lock
+  local expected=""
+  case "$role" in
+    test-author) expected=red ;;
+    implementer) expected=green ;;
+  esac
+  if [ -n "$expected" ] && [ "$(phase)" != "$expected" ]; then
+    die "phase is $(phase) after $role; expected $expected (the role did not finish: test-author runs 'tdd.sh red', implementer runs 'tdd.sh green')"
+  fi
+  local mode pattern violations changed
+  mode=$(jq -r --arg r "$role" '.roles[$r] | if .allow then "allow" else "deny" end' "$POLICY")
+  pattern=$(jq -r --arg r "$role" --arg m "$mode" '.roles[$r][$m][] as $n | .patterns[$n]' "$POLICY" | paste -sd'|' -)
+  changed=$(git status --porcelain --untracked-files=all | sed -E 's/^.{3}//; s/^.* -> //; s/^"(.*)"$/\1/' | grep -vx "$LOCK_RELATIVE" || true)
+  violations=$(printf '%s\n' "$changed" | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ "$mode" = allow ]; then
+      printf '%s' "$p" | grep -qE "$pattern" || printf '%s\n' "$p"
+    else
+      printf '%s' "$p" | grep -qE "$pattern" && printf '%s\n' "$p"
+    fi
+  done)
+  [ -z "$violations" ] || die "$role wrote outside its boundary (R-411): $(printf '%s' "$violations" | tr '\n' ' '). Discard those writes (git checkout/rm) and re-dispatch; the role file states the boundary, protected-path-guard enforces it in subagent context."
+  if [ "$role" = implementer ]; then cmd_green; fi
+  local count
+  count=$(printf '%s\n' "$changed" | grep -c . || true)
+  say "VALID: $role return; phase $(phase); $count changed path(s), all inside the $role boundary"
+}
+
 case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   red) shift; cmd_red "$@" ;;
   green) cmd_green ;;
   close) cmd_close ;;
   status) cmd_status ;;
-  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | close | status" ;;
+  validate) shift; cmd_validate "$@" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | close | status | validate <role>" ;;
 esac
