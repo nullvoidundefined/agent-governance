@@ -57,4 +57,24 @@ printf '%s\n' '{not json' >"$TRACKER_CONFIG"
 export TICKET_TRACKER_CONFIG="$TRACKER_CONFIG"
 ask mcp__claude_ai_Linear__save_issue
 
+# An array of tool names cannot pre-authorize tracker writes.
+printf '%s\n' '{"active":"linear","trackers":{"linear":{"tools":["mcp__claude_ai_Linear__save_issue"]}}}' >"$TRACKER_CONFIG"
+ask mcp__claude_ai_Linear__save_issue
+
+# A string tool name cannot pre-authorize tracker writes.
+printf '%s\n' '{"active":"linear","trackers":{"linear":{"tools":"mcp__claude_ai_Linear__save_issue"}}}' >"$TRACKER_CONFIG"
+ask mcp__claude_ai_Linear__save_issue
+
+# A matching object followed by another JSON value is not a valid config.
+printf '%s\n' '{"active":"linear","trackers":{"linear":{"tools":{"create":"mcp__claude_ai_Linear__save_issue"}}}}' '"second"' >"$TRACKER_CONFIG"
+ask mcp__claude_ai_Linear__save_issue
+
+# An array wrapping a matching object cannot pre-authorize tracker writes.
+printf '%s\n' '[{"active":"linear","trackers":{"linear":{"tools":{"create":"mcp__claude_ai_Linear__save_issue"}}}}]' >"$TRACKER_CONFIG"
+ask mcp__claude_ai_Linear__save_issue
+
+# An absent active tracker cannot use tools listed under another tracker.
+printf '%s\n' '{"active":"missing","trackers":{"linear":{"tools":{"create":"mcp__claude_ai_Linear__save_issue"}}}}' >"$TRACKER_CONFIG"
+ask mcp__claude_ai_Linear__save_issue
+
 echo "mcp-action-guard.test.sh PASS"

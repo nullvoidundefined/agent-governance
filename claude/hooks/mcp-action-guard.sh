@@ -61,15 +61,20 @@ type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 TRACKER_CONFIG="${TICKET_TRACKER_CONFIG:-$HOME/.claude/TICKET-TRACKER.json}"
 
 # is_tracker_tool <tool name>
-# Returns 0 when the tracker config exists, parses, and lists the tool name as
-# one of the active tracker's `tools` values; returns 1 otherwise (absent or
-# malformed config included, so a broken config never widens the exemption).
-# Prints nothing.
+# Returns 0 only when the tracker config exists, is exactly one JSON object,
+# names an active tracker whose `tools` value is an object, and one of that
+# object's values equals the tool name; returns 1 for every other shape
+# (absent file, parse error, several top-level values, `tools` as an array or
+# string), so a malformed config never widens the exemption. Prints nothing.
 is_tracker_tool() {
   [ -f "$TRACKER_CONFIG" ] || return 1
-  jq -e --arg t "$1" \
-    '(.trackers[.active].tools // {}) | to_entries | map(.value) | index($t) != null' \
-    "$TRACKER_CONFIG" >/dev/null 2>&1
+  jq -es --arg t "$1" '
+    length == 1
+    and (.[0] | type) == "object"
+    and (.[0].active | type) == "string"
+    and ((.[0].trackers[.[0].active].tools? // null) | type) == "object"
+    and (.[0].trackers[.[0].active].tools | to_entries | map(.value) | index($t) != null)
+  ' "$TRACKER_CONFIG" >/dev/null 2>&1
 }
 
 if is_tracker_tool "$TOOL"; then
