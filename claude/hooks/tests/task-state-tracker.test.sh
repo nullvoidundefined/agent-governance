@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:task-state-tracker
 # Verifies task-state-tracker.sh: TaskCreate/TaskUpdate events each append
 # one line to ~/.claude/projects/<key>/task-state.<session-id>.jsonl
 # (crash-safe, append-only live task-state tracking; fix round 1, C1),
