@@ -44,12 +44,18 @@ printf '%s' "$OUT" | jq -e '.decision == "block"' >/dev/null || { echo "FAIL: ex
 # list. Neither property is visible in a diff that only removes an ask line,
 # which is exactly how both were reopened on 2026-09-17.
 REPO_SETTINGS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/settings.json"
+INTERPRETER_ASK_PATTERNS=("Bash(bash -c *)" "Bash(sh -c *)" "Bash(bash -lc *)" "Bash(sh -lc *)")
 assert_interpreter_guarded() {
-  local file="$1" label="$2" blanket asks
+  local file="$1" label="$2" blanket pattern present
   blanket=$(jq -r '[.permissions.allow[]? | select(. == "Bash")] | length' "$file")
   [ "$blanket" -eq 0 ] || { echo "FAIL: $label carries a blanket \"Bash\" allow entry, which makes auto mode skip its classifier for every Bash command (ISSUES.md:69)"; return 1; }
-  asks=$(jq -r '[.permissions.ask[]? | select(test("^Bash\\((bash|sh) -l?c "))] | length' "$file")
-  [ "$asks" -gt 0 ] || { echo "FAIL: $label has no ask entry on the inline interpreter form, so bash -c can carry a denied command past the deny list (ISSUES.md:11)"; return 1; }
+  # Each of the four inline forms needs its own entry: a length check that
+  # only asks "is at least one present" still passes with three of the four
+  # deleted, silently widening the exemption one interpreter flag at a time.
+  for pattern in "${INTERPRETER_ASK_PATTERNS[@]}"; do
+    present=$(jq --arg p "$pattern" '[.permissions.ask[]? | select(. == $p)] | length' "$file")
+    [ "$present" -gt 0 ] || { echo "FAIL: $label has no ask entry for '$pattern', so that inline interpreter form can carry a denied command past the deny list (ISSUES.md:11)"; return 1; }
+  done
   return 0
 }
 
@@ -61,6 +67,14 @@ jq '.permissions.allow = ["Bash"] | .permissions.ask = [.permissions.ask[] | sel
   "$REPO_SETTINGS" > "$TMP/lenient.json"
 if assert_interpreter_guarded "$TMP/lenient.json" "the lenient shape" >/dev/null 2>&1; then
   echo "FAIL: invariant 5 accepted a blanket Bash allow with no interpreter ask, so it proves nothing"; exit 1
+fi
+
+# Dropping just one of the four forms (bash -lc *, say) must also fail, or a
+# length-of-the-union check would pass with three of four silently deleted.
+jq '.permissions.ask = [.permissions.ask[] | select(. != "Bash(bash -lc *)")]' \
+  "$REPO_SETTINGS" > "$TMP/partial.json"
+if assert_interpreter_guarded "$TMP/partial.json" "the partially-covered shape" >/dev/null 2>&1; then
+  echo "FAIL: invariant 5 accepted a shape missing the bash -lc * ask entry, so it does not prove each form individually"; exit 1
 fi
 
 echo "settings-change-guard.test.sh PASS (5 invariants, interpreter shape checked against the checkout)"
