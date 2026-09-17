@@ -21,12 +21,19 @@ import { renderGitignore } from "./render-codex-gitignore.mjs";
 import { buildManifest, MANIFEST_PATH } from "./build-manifest.mjs";
 
 function parseCliMode(argv) {
-  const flags = argv.filter((a) => a.startsWith("--"));
   const known = new Set(["--write", "--check", "--root"]);
-  const modes = flags.filter((f) => f === "--write" || f === "--check");
-  const unknown = flags.find((f) => !known.has(f));
-  if (unknown || modes.length !== 1) return null;
   const rootIndex = argv.indexOf("--root");
+  // Every token is accounted for, not just the `--`-prefixed ones. Filtering
+  // to `--` tokens meant a bare positional or a single-dash flag was silently
+  // discarded and rootDir fell back to this script's own repository, so
+  // `--check /some/other/tree` reported on the wrong tree and `--write` pruned
+  // orphans and emptied directories in the wrong one (2026-09-17 audit P2-1).
+  const rootValueIndex = rootIndex === -1 ? -1 : rootIndex + 1;
+  const unexpected = argv.find((token, index) =>
+    index !== rootValueIndex && !known.has(token));
+  if (unexpected !== undefined) return null;
+  const modes = argv.filter((f) => f === "--write" || f === "--check");
+  if (modes.length !== 1) return null;
   if (rootIndex === -1) {
     return { mode: modes[0].slice(2), rootDir: path.resolve(fileURLToPath(import.meta.url), "../..") };
   }

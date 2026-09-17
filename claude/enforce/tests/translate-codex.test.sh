@@ -187,6 +187,22 @@ OUT=$(node "$TRANSLATOR" --frobnicate --root "$SANDBOX" 2>&1); ST=$?
 check "unknown flag exits 2" test "$ST" -eq 2
 check "usage errors touch nothing" test -z "$(ls -A "$SANDBOX")"
 
+# P2-1 (2026-09-17 audit): a bare positional argument and a single-dash flag
+# were both discarded, because only `--`-prefixed tokens were inspected, and
+# rootDir then fell back to the script's own repository. `--check` against the
+# wrong tree is merely wrong; `--write` prunes orphans and removes emptied
+# directories, so it is destructive. Both spellings must be usage errors.
+OUT=$(node "$TRANSLATOR" --check "$SANDBOX" 2>&1); ST=$?
+check "positional root exits 2" test "$ST" -eq 2
+check "positional root prints usage" grep -q -- "--write" <<<"$OUT"
+OUT=$(node "$TRANSLATOR" --check -root "$SANDBOX" 2>&1); ST=$?
+check "single-dash flag exits 2" test "$ST" -eq 2
+OUT=$(node "$TRANSLATOR" --check --root "$SANDBOX" extra 2>&1); ST=$?
+check "trailing positional after --root exits 2" test "$ST" -eq 2
+# An empty root also exits 2 through SourceError, so the usage line is what
+# distinguishes a parse refusal from a load failure here.
+check "trailing positional prints usage" grep -q -- "usage:" <<<"$OUT"
+
 # Final review finding 2: bare --root with no following value is a usage
 # error (exit 2), not a crash. Run outside any sandbox root so a regression
 # to the old TypeError behavior cannot leave stray writes on disk anywhere.
