@@ -134,21 +134,36 @@ check "sandbox availability reports" grep -qE "^(pass|warn) sandbox-availability
 
 # Task 2: sandbox settings reporting (B-2). Each case builds its own
 # --root tree with a minimal claude/settings.json so the check combines the
-# OS-availability probe with settings.sandbox.enabled; macOS is always
-# available here, so these three cases exercise the available+enabled and
-# available+not-enabled arms. The unavailable+enabled/unavailable+not-enabled
-# arms need a Linux host without bwrap/socat and are exercised by inspection
-# of the doctor.sh branch, noted in the report.
+# OS-availability probe with settings.sandbox.enabled. macOS is always
+# available; on Linux the probe looks for bwrap and socat on PATH, so the
+# "available" cases prepend a stub bin carrying both (a CI runner has
+# neither) and the "unavailable" case runs with an empty PATH prefix and
+# both stubs absent, which exercises the Linux branch on a Linux host and is
+# skipped on macOS where the OS arm is unconditional.
+STUB_BIN=$(mktemp -d); trap 'rm -rf "$SANDBOX" "$HOME_SANDBOX" "$STUB_WARN" "$STUB_PASS" "$STUB_FAIL" "$STUB_BIN"' EXIT
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_BIN/bwrap"; printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_BIN/socat"
+chmod +x "$STUB_BIN/bwrap" "$STUB_BIN/socat"
 sandboxReport() { # settings-json, expected-grep
   local dir; dir=$(mktemp -d); mkdir -p "$dir/claude"
   printf '%s\n' "$1" >"$dir/claude/settings.json"
-  local out; out=$(bash "$DOCTOR" --root "$dir" 2>&1); local rc=0
+  local out; out=$(PATH="$STUB_BIN:$PATH" bash "$DOCTOR" --root "$dir" 2>&1); local rc=0
   grep -qE "$2" <<<"$out" || rc=1
   rm -rf "$dir"; return $rc
 }
 check "sandbox enabled reports pass" sandboxReport '{"sandbox":{"enabled":true}}' '^pass sandbox-availability: .*enabled'
 check "sandbox absent reports warn not-enabled" sandboxReport '{"model":"opusplan"}' '^warn sandbox-availability: .*not enabled'
 check "sandbox disabled with block present reports warn configured-but-disabled" sandboxReport '{"sandbox":{"enabled":false}}' '^warn sandbox-availability: .*configured but disabled'
+if [ "$(uname -s)" = Linux ] && ! command -v bwrap >/dev/null 2>&1; then
+  sandboxUnavailable() { # settings-json, expected-grep
+    local dir; dir=$(mktemp -d); mkdir -p "$dir/claude"
+    printf '%s\n' "$1" >"$dir/claude/settings.json"
+    local out; out=$(bash "$DOCTOR" --root "$dir" 2>&1); local rc=0
+    grep -qE "$2" <<<"$out" || rc=1
+    rm -rf "$dir"; return $rc
+  }
+  check "sandbox enabled but host lacks bwrap reports warn unavailable" sandboxUnavailable '{"sandbox":{"enabled":true}}' '^warn sandbox-availability: enabled in settings but unavailable on this host'
+  check "sandbox absent on a host without bwrap reports warn missing" sandboxUnavailable '{"model":"opusplan"}' '^warn sandbox-availability: bwrap/socat missing'
+fi
 
 # Task 2 fix round 1: temp-write allowance regression guard. The harness
 # outage this round fixes (sandbox.enabled:true synced live with no

@@ -77,7 +77,7 @@ CTX=""
 # half: the transcript path's parent directory name.
 #
 # Two house rules applied to every reported path (matching doctor.sh's
-# ${VAR/#$HOME/~} convention): PATHS ONLY, no hash values or other
+# ${VAR/#$HOME/\~} convention): PATHS ONLY, no hash values or other
 # snapshot content leaks into the output; and the home directory prefix
 # is always rendered as ~ rather than the real absolute path.
 check_resume_drift() (
@@ -163,7 +163,7 @@ check_resume_drift() (
       existing_recorded+=("$recorded")
     else
       [ "$recorded" = "missing" ] && continue
-      display_path="${fp/#$HOME/~}"
+      display_path="${fp/#$HOME/\~}"
       lines+="missing $display_path"$'\n'
     fi
   done <<< "$entries"
@@ -182,7 +182,7 @@ check_resume_drift() (
       fp="${existing_paths[$idx]}"
       idx=$((idx + 1))
       [ "$current" = "$recorded" ] && continue
-      display_path="${fp/#$HOME/~}"
+      display_path="${fp/#$HOME/\~}"
       lines+="changed $display_path"$'\n'
     done <<< "$hash_output"
   fi
