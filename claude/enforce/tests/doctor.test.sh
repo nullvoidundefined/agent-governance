@@ -131,6 +131,43 @@ check "verifier nonzero exit fails as hook-registration" grep -q "^fail hook-reg
 OUT=$(HOME="$HOME_SANDBOX" bash "$DOCTOR" --root "$REPO_TOP" 2>&1)
 check "deps check reports" grep -qE "^(pass|fail) deps:" <<<"$OUT"
 check "sandbox availability reports" grep -qE "^(pass|warn) sandbox-availability:" <<<"$OUT"
+
+# Task 2: sandbox settings reporting (B-2). Each case builds its own
+# --root tree with a minimal claude/settings.json so the check combines the
+# OS-availability probe with settings.sandbox.enabled; macOS is always
+# available here, so these three cases exercise the available+enabled and
+# available+not-enabled arms. The unavailable+enabled/unavailable+not-enabled
+# arms need a Linux host without bwrap/socat and are exercised by inspection
+# of the doctor.sh branch, noted in the report.
+sandboxReport() { # settings-json, expected-grep
+  local dir; dir=$(mktemp -d); mkdir -p "$dir/claude"
+  printf '%s\n' "$1" >"$dir/claude/settings.json"
+  local out; out=$(bash "$DOCTOR" --root "$dir" 2>&1); local rc=0
+  grep -qE "$2" <<<"$out" || rc=1
+  rm -rf "$dir"; return $rc
+}
+check "sandbox enabled reports pass" sandboxReport '{"sandbox":{"enabled":true}}' '^pass sandbox-availability: .*enabled'
+check "sandbox absent reports warn not-enabled" sandboxReport '{"model":"opusplan"}' '^warn sandbox-availability: .*not enabled'
+check "sandbox disabled with block present reports warn configured-but-disabled" sandboxReport '{"sandbox":{"enabled":false}}' '^warn sandbox-availability: .*configured but disabled'
+
+# Task 2 fix round 1: temp-write allowance regression guard. The harness
+# outage this round fixes (sandbox.enabled:true synced live with no
+# filesystem.allowWrite for the macOS system temp root broke every bare
+# `mktemp` call, including this very suite's own sandbox-tree helpers) is a
+# schema-shape drift: someone re-enables the sandbox later without carrying
+# the allowance forward. Asserts the checked-in claude/settings.json still
+# pairs sandbox.enabled:true with filesystem.allowWrite entries covering both
+# the macOS system temp root (var/folders) and /tmp whenever the sandbox is
+# on, so a future edit that drops the allowance fails here instead of at the
+# next live session.
+sandboxTempAllowancePresent() { # settings-file
+  local enabled; enabled=$(jq -r '.sandbox.enabled // false' "$1")
+  [ "$enabled" = "true" ] || return 0
+  local allow; allow=$(jq -r '(.sandbox.filesystem.allowWrite // [])[]?' "$1")
+  grep -qF 'var/folders' <<<"$allow" && grep -qF 'tmp' <<<"$allow"
+}
+check "committed sandbox block carries temp-write allowances when enabled" sandboxTempAllowancePresent "$REPO_TOP/claude/settings.json"
+
 check "port freshness runs the translator" grep -qE "^(pass|fail) port-freshness:" <<<"$OUT"
 # statusline unconfigured in the sandbox tree: must be skipped, never pass.
 # HOME must point at a sandbox (the Task 3 HOME_SANDBOX, whose settings.json

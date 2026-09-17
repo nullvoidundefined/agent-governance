@@ -118,13 +118,46 @@ MISSING_DEPS=""
 for dep in jq node git; do command -v "$dep" >/dev/null 2>&1 || MISSING_DEPS="$MISSING_DEPS $dep"; done
 if [ -n "$MISSING_DEPS" ]; then report fail deps "missing:$MISSING_DEPS"; else report pass deps "jq, node, git present"; fi
 
+# The OS probe alone answers "can the primitive run here"; the settings read
+# below answers "did this checkout turn it on" (B-2). Combined: pass only
+# when both hold, since an available-but-off sandbox leaves Bash subprocesses
+# unconfined despite the primitive being installed, and an enabled-but-
+# unavailable sandbox (Linux without bwrap/socat) leaves the same subprocess
+# unconfined despite settings intent, in both cases a warn naming which half
+# is missing rather than a silent pass. Never a fail: sessions must keep
+# working on hosts without the primitive (failIfUnavailable: false). Ships
+# with sandbox.enabled: false by default (review round 1, second pass): two
+# live incidents (temp-dir denial, then an exclusive filesystem allowlist
+# that left the whole working tree unwritable once the temp-only allowance
+# was added) showed enabling by default breaks ordinary harness tooling
+# faster than it can be scoped safely; see enforce/README.md's containment
+# section for the manual rollout procedure. A present-but-disabled block
+# gets its own warn ("configured but disabled") distinct from no block at
+# all ("not enabled in settings"), so a doctor run tells the operator
+# whether the bootstrap path is documented and ready or missing outright.
 case "$(uname -s)" in
-  Darwin) report pass sandbox-availability "macOS Seatbelt built in" ;;
+  Darwin) SANDBOX_OS_AVAILABLE=1; SANDBOX_OS_DETAIL="macOS Seatbelt built in" ;;
   Linux)
-    if command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1; then report pass sandbox-availability "bwrap and socat present"
-    else report warn sandbox-availability "bwrap/socat missing; Bash sandboxing unavailable until installed"; fi ;;
-  *) report warn sandbox-availability "unsupported OS for Bash sandboxing: $(uname -s)" ;;
+    if command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1; then
+      SANDBOX_OS_AVAILABLE=1; SANDBOX_OS_DETAIL="bwrap and socat present"
+    else
+      SANDBOX_OS_AVAILABLE=0; SANDBOX_OS_DETAIL="bwrap/socat missing; Bash sandboxing unavailable until installed"
+    fi ;;
+  *) SANDBOX_OS_AVAILABLE=0; SANDBOX_OS_DETAIL="unsupported OS for Bash sandboxing: $(uname -s)" ;;
 esac
+SANDBOX_ENABLED=$(jq -r '.sandbox.enabled // false' "$SETTINGS_FILE" 2>/dev/null)
+SANDBOX_PRESENT=$(jq -r 'has("sandbox")' "$SETTINGS_FILE" 2>/dev/null)
+if [ "$SANDBOX_OS_AVAILABLE" -eq 1 ] && [ "$SANDBOX_ENABLED" = "true" ]; then
+  report pass sandbox-availability "$SANDBOX_OS_DETAIL, enabled in settings"
+elif [ "$SANDBOX_OS_AVAILABLE" -eq 1 ] && [ "$SANDBOX_PRESENT" = "true" ]; then
+  report warn sandbox-availability "configured but disabled (see containment docs for the rollout procedure)"
+elif [ "$SANDBOX_OS_AVAILABLE" -eq 1 ]; then
+  report warn sandbox-availability "$SANDBOX_OS_DETAIL, but not enabled in settings (set sandbox.enabled: true)"
+elif [ "$SANDBOX_ENABLED" = "true" ]; then
+  report warn sandbox-availability "enabled in settings but unavailable on this host: $SANDBOX_OS_DETAIL"
+else
+  report warn sandbox-availability "$SANDBOX_OS_DETAIL"
+fi
 
 SL_CMD=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
 if [ -z "$SL_CMD" ]; then

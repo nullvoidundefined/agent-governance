@@ -20,7 +20,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
    - `bash ~/.claude/hooks/install-git-hooks.sh` writes `.git/hooks/pre-push` from the tracked `hooks/pre-push.sample`, so a red suite aborts any push. It refuses to clobber a pre-push it did not write, printing the exact `mv` to run if you want it replaced; its own superseded predecessor is the one hook it upgrades in place, backed up to `pre-push.legacy.bak` first. This step used to be "write a bash script that does X", and the script it described was simply absent from the checkout; the sample is tracked now so the description cannot drift from it.
    - `.git/info/exclude`: local-only exclusions for anything client-identifying that must never be tracked (versioned `.gitignore` covers the standard runtime dirs).
 4. Regenerate the hook-integrity manifest so it matches your checkout: `hooks/hook-integrity-check.sh --update`, then commit `enforce/hook-hashes.txt` if it changed.
-5. Start a Claude Code session. The SessionStart hooks load the global memory index, verify hook integrity, report enforcement closure (including whether the llm-judge tier can run; see the egress disclosure in README.md), and warn on a `core.hooksPath` that points outside the repo (R-107).
+5. Start a Claude Code session. The SessionStart hooks load the global memory index, verify hook integrity, report enforcement closure (including whether the llm-judge tier can run; see the egress disclosure in README.md), and warn on a `core.hooksPath` that points outside the repo (R-107). The same session starts rendering the `statusLine` HUD (`status-line.sh`: model, branch, context, cost, elapsed, rate limit) with no separate setup step; each field degrades to `-` rather than failing the line. The `sandbox` block ships `enabled: false` (configured but inactive); see "Containment boundaries" below and `enforce/README.md`'s "Sandbox configuration (B-2)" section for the manual enablement procedure.
 
 ## What does not ship (gitignored) and must be recreated
 
@@ -39,6 +39,10 @@ The framework files (`CLAUDE.md`, `PROTOCOL.md`, rules, hooks, agents, skills, c
 - `global-memory/feedback_*.md` and `global-memory/lesson_*.md` are reusable collaboration and efficiency defaults. Keep, edit, or delete them to taste.
 - `global-memory/rule_fires.md` and `global-memory/rule_misses.md` are incident logs from the previous owner's sessions. Truncate each to its header so you accumulate your own.
 - `global-memory/INDEX.md` indexes the above; update it after editing.
+
+## Containment boundaries
+
+Hooks and permission deny rules catch mistakes at the Claude Code tool-call boundary; they do not confine a spawned subprocess, and a determined actor working outside that boundary can bypass them. The one layer that would confine a Bash subprocess at the OS level, the sandbox, ships in this repo's `settings.json` configured but disabled by default (`sandbox.enabled: false`). See `enforce/README.md`'s "Containment boundaries" section for the full secret-vector coverage table (which layer catches which kind of leak, and the one vector, an interpreter reading a secret file directly, that no layer covers until the sandbox is both enabled and given a `sandbox.credentials` block) and the "Sandbox configuration (B-2)" subsection for the manual enablement procedure and the two live incidents that led to shipping it disabled.
 
 ## Stacks
 

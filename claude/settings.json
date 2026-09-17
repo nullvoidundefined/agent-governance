@@ -131,7 +131,22 @@
         ],
         "defaultMode": "auto"
     },
+    "sandbox": {
+        "enabled": false,
+        "failIfUnavailable": false,
+        "network": {
+            "allowedDomains": ["github.com", "*.github.com", "api.anthropic.com", "registry.npmjs.org"]
+        },
+        "excludedCommands": ["git push", "git fetch", "git pull"],
+        "filesystem": {
+            "allowWrite": ["//var/folders/**", "//private/tmp/**", "//tmp/**"]
+        }
+    },
     "model": "opusplan",
+    "statusLine": {
+        "type": "command",
+        "command": "~/.claude/status-line.sh"
+    },
     "hooks": {
         "PreToolUse": [
             {
