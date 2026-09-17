@@ -1,6 +1,7 @@
 ---
 name: cleanup-specs-plans
 description: Use when specs and plans folders contain stale files from completed work, at session end after shipping features, or when starting a new development phase. Also use when the user says "clean up specs", "audit plans", or "what's stale in docs"
+disable-model-invocation: true
 ---
 
 # Cleanup Specs and Plans
@@ -84,7 +85,7 @@ Group by feature area, not by original spec file. Multiple specs may contribute 
 ### Step 5: Commit and report
 
 1. `git rm` the deleted files
-2. Commit with subject: `chore: clean up shipped specs and plans`
+2. Commit with subject: `chore(docs): clean up shipped specs and plans` (R-505 wants a scope; every other skill's commit carries one)
 3. Output a summary table:
 
 ```
@@ -116,7 +117,7 @@ Return a table with columns: File, Classification, Evidence, Incomplete Items (i
 To keep specs/plans from going stale in the first place:
 
 1. **Mark checkboxes during execution.** When a plan task is completed and committed, update the checkbox in the same commit or the next one.
-2. **Delete the spec in the session that ships the last task.** The session handoff doc captures what shipped; the spec's job is done.
+2. **Delete the spec in the session that ships the last task.** That is `task-cleanup`'s "Shipped spec/plan cleanup" action; run it there rather than waiting for this bulk pass. The session handoff doc captures what shipped; the spec's job is done.
 3. **Run this cleanup at the start of every new development phase.** It takes 5 minutes and prevents 30+ stale files from accumulating.
 
 ## Common Mistakes
