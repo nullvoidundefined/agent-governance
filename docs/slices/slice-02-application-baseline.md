@@ -16,7 +16,7 @@ Every application build must carry four test levels, tracing on top of the exist
 |---|---|---|---|---|---|
 | 1 | Rulebook and norm lines: R-347, R-413, R-421 to R-426, plus the R-907 model-line fix | 36% | | | |
 | 2 | Spec template headings and `spec-glossary-check.sh` extension | 31% | | | |
-| 3 | Skill pointers, ticket-lifecycle Linear row, repo-setup skill, README, sync, hashes, handoff | 23% | | | Adds the Linear provider row, the project-per-repository rule, and a new `repo-setup` skill (repo creation, branch protection with required checks and squash-only, the Copilot auto-review ruleset, Dependabot, CI and Docker scaffolds, the Linear project), raised 2026-09-17 during slice 01 |
+| 3 | Skill pointers, ticket-lifecycle Linear row, repo-setup skill, Copilot review loop, README, sync, hashes, handoff | 23% | | | Adds the Linear provider row, the project-per-repository rule, a new `repo-setup` skill (repo creation, branch protection with required checks and squash-only, the Copilot auto-review ruleset, Dependabot, CI and Docker scaffolds, the Linear project), and the Copilot review-loop rule in build-by-slice (poll for the review after opening a PR, verify each comment, fix the valid ones, reply to the rest, resolve threads with the SHA, re-request at most once; stop after two rounds or a round with no valid finding), all raised 2026-09-17 during slice 01 |
 | 4 | R-333 function comment blocks: rule, shell-side hook, fixture | 10% | | | Added 2026-09-17: every function carries a comment block, mandatory in shell |
 
 Later list (deferred, not in this slice): judge calibration tooling; `observability-reminder.sh` span detection; the reference `evals/` runner (template workstream).
@@ -64,6 +64,8 @@ The hook's jq program gains two checks in the same advisory shape. Testing is re
 **Problem:** A session that starts from a build skill never reaches the baseline unless the skill points at it. A session that opens a ticket on Linear has no provider row to follow and no rule saying a new repository gets a Linear project.
 
 **Approach:** One pointer sentence per build skill, no rationale: task-start's Complex and Saga process blocks name the three spec sections and their rules; feature-create gains a scaffold step creating `evals/datasets/` with a `.gitkeep` when the plan names an agent or LLM call; build-by-slice's hard first step names the Testing, Observability, and Evals sections and requires an agentic slice plan to include the evals PR.
+
+The build-by-slice skill's step 5 gains the Copilot review loop: after opening the PR, poll `pulls/{n}/reviews` for `copilot-pull-request-reviewer[bot]` for up to ten minutes, verify each inline comment against the code, fix the valid ones and reply in-thread with reasoning to the rest, push, reply to each addressed thread with the fix SHA and resolve it (R-515), then re-request Copilot once; stop after two rounds or when a round yields no valid finding, and say so in the PR.
 
 The ticket-lifecycle skill gains a Linear column in its provider mapping table (create and update through `save_issue`, comment through `save_comment`, search through `list_issues`, read through `get_issue`, labels through `save_issue_label`, project through `save_project`), a `state_labels` config key for canonical states the provider's workflow lacks, and a rule under Operation open: one tracker project per repository, created when the repository is created. The template config gains a `linear` block mirroring `~/.claude/TICKET-TRACKER.json` with identifiers blanked.
 
