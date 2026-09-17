@@ -1,7 +1,12 @@
 {
     "permissions": {
         "allow": [
+            "Bash(./sync.sh)",
             "Bash(awk *)",
+            "Bash(bash claude/enforce/tests/*)",
+            "Bash(bash claude/hooks/tests/*)",
+            "Bash(bash enforce/tests/*)",
+            "Bash(bash hooks/tests/*)",
             "Bash(cat *)",
             "Bash(cd *)",
             "Bash(chmod +x *)",
@@ -24,10 +29,18 @@
             "Bash(lsof *)",
             "Bash(mkdir *)",
             "Bash(mv *)",
+            "Bash(node translate/*)",
             "Bash(npm *)",
+            "Bash(npx eslint *)",
+            "Bash(npx prettier *)",
+            "Bash(npx tsc *)",
+            "Bash(npx vitest *)",
             "Bash(pnpm *)",
             "Bash(printf *)",
             "Bash(ps *)",
+            "Bash(python3 - *)",
+            "Bash(python3 -c *)",
+            "Bash(railway logs *)",
             "Bash(rg *)",
             "Bash(sed *)",
             "Bash(tail *)",
@@ -112,8 +125,8 @@
             "Bash(fly deploy*)",
             "Bash(flyctl deploy*)",
             "Bash(gh pr create*)",
-            "Bash(bash *)",
-            "Bash(sh *)"
+            "Bash(bash -c *)",
+            "Bash(sh -c *)"
         ],
         "defaultMode": "auto"
     },
