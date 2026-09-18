@@ -30,6 +30,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 | `settings.local.json` | Machine-specific permissions/overrides | Recreate as needed |
 | `KNOWN-ISSUES.md` | Production incident log | Copy from `KNOWN-ISSUES.template.md`, then populate |
 | `projects/` | Per-project session memory | Auto-created per project; starts empty |
+| `global-memory/rule_fires.md`, `global-memory/rule_misses.md` | Rule fire and miss logs, appended at every session end | Created with a header by `hooks/session-end.sh` on the first session end |
 | `plugins/`, caches, `sessions/`, `uploads/`, `history.jsonl` | Ephemeral Claude Code state | Auto-managed |
 
 ## Reset for a clean handoff
@@ -37,7 +38,8 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 The framework files (`CLAUDE.md`, `PROTOCOL.md`, rules, hooks, agents, skills, convention tracks) are already free of personal and single-project identifiers. The one tracked personal store is `global-memory/`:
 
 - `global-memory/feedback_*.md` and `global-memory/lesson_*.md` are reusable collaboration and efficiency defaults. Keep, edit, or delete them to taste.
-- `global-memory/rule_fires.md` and `global-memory/rule_misses.md` are incident logs from the previous owner's sessions. Truncate each to its header so you accumulate your own.
+- `global-memory/rule_fires.md` and `global-memory/rule_misses.md` are not tracked: `hooks/session-end.sh` creates each live copy with its header on the first session end and appends to it after that, so every install accumulates its own logs.
+- Upgrading an install that is itself a git checkout (the clone-in-place layout in "Install" above) across the commit that stopped tracking the two logs: `git pull` deletes a file that stops being tracked, and `.gitignore` does not protect it, so copy both logs aside first and put them back afterwards, pulling only once the backup succeeded: `backup=$(mktemp -d "${TMPDIR:-/tmp}/rule-logs.XXXXXX") && cp global-memory/rule_fires.md global-memory/rule_misses.md "$backup"/ && git pull && cp "$backup"/rule_fires.md "$backup"/rule_misses.md global-memory/`. If the pull fails, the logs are still in `$backup`. An install populated by `./sync.sh` needs nothing, because sync.sh never deletes a live file.
 - `global-memory/INDEX.md` indexes the above; update it after editing.
 
 ## Containment boundaries

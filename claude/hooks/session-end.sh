@@ -30,7 +30,11 @@
 #
 # The hook never reads or writes secret material. It reads only the
 # memory files and writes only to rule_fires.md and rule_misses.md.
-# If ~/.claude/global-memory/ does not exist, it creates it.
+# If ~/.claude/global-memory/ does not exist, it creates it, and it creates
+# each log with its header when the log is absent. Both logs are live-only
+# and gitignored in the checkout (IAN-114): a tracked copy never matched the
+# live one this hook appends to, so harness-sync.sh saw drift at every
+# SessionStart and each sync overwrote the live logs.
 #
 # To test manually (after writing a fired: line into any memory file):
 #   ~/.claude/hooks/session-end.sh
