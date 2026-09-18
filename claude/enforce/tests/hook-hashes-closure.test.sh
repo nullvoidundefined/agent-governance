@@ -69,7 +69,10 @@ fi
 
 while IFS= read -r path; do
   [ -n "$path" ] || continue
-  printf '%s\n' "$MANIFEST_PATHS" | grep -qxF "$path" || {
+  # A here-string, not a pipe: under pipefail, grep -q exiting at its first
+  # match while printf still writes this ~10KB list fails the pipeline and
+  # reports a present path as absent (PR #42 CI, 2026-09-18).
+  grep -qxF "$path" <<< "$MANIFEST_PATHS" || {
     echo "FAIL: $path is covered by the R-203 guard but absent from the manifest (new file without a --update)"
     fail=1
   }

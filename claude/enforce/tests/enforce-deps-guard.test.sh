@@ -24,6 +24,9 @@ check() {
 SANDBOX=$(mktemp -d)
 mkdir -p "$SANDBOX/enforce/tests"
 cp "$RUNNER" "$SANDBOX/enforce/tests/run-tests.sh"
+# run-tests.sh delegates to its sibling shard runner (IAN-94), so the sandbox
+# carries that runner too; the guard under test still runs before it.
+cp "$CLAUDE_HARNESS_ROOT/enforce/run-fixture-shards.sh" "$SANDBOX/enforce/run-fixture-shards.sh"
 printf '{"name":"sandbox-enforce","private":true}\n' > "$SANDBOX/enforce/package.json"
 # One trivially passing fixture, so a run that gets past the guard succeeds and
 # the two cases below differ only by the guard, never by fixture content.

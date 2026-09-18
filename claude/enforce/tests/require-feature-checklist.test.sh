@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # require-feature-checklist.test.sh: verifies enforce/require-feature-checklist.sh
 # (R-607, spec docs/superpowers/specs/2026-09-18-product-docs-design.md B-1 to
 # B-11) against sandboxed repositories: each stack's trigger paths, the three

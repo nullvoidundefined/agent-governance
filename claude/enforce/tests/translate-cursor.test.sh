@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Shard: slow
+# Watches: translate/* cursor/*
 # Verifies translate/cursor.mjs: the cursor port generator. Hermetic: builds
 # a miniature claude/-plus-translate/ source tree in a sandbox and never
 # reads the real trees, so the fixture survives repo moves (2026-09-17

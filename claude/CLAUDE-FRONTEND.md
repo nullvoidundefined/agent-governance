@@ -206,6 +206,12 @@ e2e/
     └── failure-path.spec.ts  ; documented error flows only (no invented stories)
 ```
 
+### Running (R-509)
+
+- `fullyParallel: true` in `playwright.config.ts`; a spec that cannot run in parallel is fixed (isolated user, isolated data), not serialized with `workers: 1`.
+- Turn ends, commits, and branch-level merges run `npx playwright test --only-changed=origin/main`, which runs changed spec files and specs importing changed files. Component tests under Vitest follow the Test Runs rules in `CLAUDE-BACKEND.md`.
+- Pre-push and CI run the full suite, sharded in CI across a matrix with `--shard=<i>/<n>` when one job is too slow. The full suite is the required check before any merge to `main`.
+
 ### Test naming
 
 Each `test()` name starts with the user story ID:

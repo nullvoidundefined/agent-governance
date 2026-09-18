@@ -970,6 +970,7 @@ Path parameters are `snake_case` and named for the resource (`trip_id`, never `i
 - `pytest-asyncio` in `asyncio_mode = "auto"`; fixtures live in `conftest.py`; tests mirror `app/` under `tests/unit` and `tests/integration` (R-313)
 - `@pytest.mark.skip` never suppresses a failing test; a test that cannot pass yet is deleted and re-added with the capability (R-401)
 - Coverage floor: 60 percent on `app/`, measured with `pytest-cov`
+- Test runs (R-509): run in parallel with `pytest -n auto` (`pytest-xdist`), adding `--dist loadfile` when tests in one file share an expensive fixture, and give each worker its own database named from the `worker_id` fixture so the rolled-back transactions of two workers never meet; turn ends, commits, and branch-level merges run only the affected tests (the changed test files plus the tests mirroring changed `app/` modules, or `pytest-testmon` once the project adopts it), and the full `pytest -n auto` runs at pre-push and as the required CI check before any merge to `main`; either plugin is a new dependency and needs its R-331 justification
 
 ---
 
