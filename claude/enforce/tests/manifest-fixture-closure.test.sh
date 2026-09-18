@@ -57,7 +57,7 @@ fi
 
 while IFS= read -r enforcer; do
   [ -n "$enforcer" ] || continue
-  printf '%s\n' "$DECLARED" | grep -qxF "$enforcer" || {
+  grep -qxF "$enforcer" <<< "$DECLARED" || {
     echo "FAIL: $enforcer is in the manifest with no fixture declaring it (R-516: a rule whose enforcer ships no fixture depends on recall). Add the case, then declare it in that fixture's '# Covers:' header."
     fail=1
   }
@@ -65,7 +65,7 @@ done <<< "$MANIFEST_ENFORCERS"
 
 while IFS= read -r enforcer; do
   [ -n "$enforcer" ] || continue
-  printf '%s\n' "$MANIFEST_ENFORCERS" | grep -qxF "$enforcer" || {
+  grep -qxF "$enforcer" <<< "$MANIFEST_ENFORCERS" || {
     echo "FAIL: a fixture declares '$enforcer', which no manifest rule names; the enforcer was renamed or retired and the declaration is now a false claim of coverage"
     fail=1
   }

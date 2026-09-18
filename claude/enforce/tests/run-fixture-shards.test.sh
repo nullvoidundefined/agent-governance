@@ -127,6 +127,12 @@ check "a fixture exiting non-zero fails the run despite PASS" [ "$STATUS" -ne 0 
 printf '#!/usr/bin/env bash\necho "nothing to say"\n' > "$TESTS/fast-e.test.sh"
 run_runner --all
 check "a fixture printing no PASS fails the run" [ "$STATUS" -ne 0 ]
+# Output far past the 64KB pipe buffer with PASS on the first line: a verdict
+# piped into `grep -q` under pipefail sees the writer die of SIGPIPE once grep
+# exits early, and reports a passing fixture as failed (PR #42 CI, 2026-09-18).
+printf '#!/usr/bin/env bash\necho PASS\nfor _ in $(seq 20000); do echo "line of ordinary fixture output"; done\n' > "$TESTS/fast-e.test.sh"
+run_runner --all
+check "a passing fixture with very long output passes" [ "$STATUS" -eq 0 ]
 rm -f "$TESTS/fast-e.test.sh"
 
 # --- the parallel batch really runs concurrently ---

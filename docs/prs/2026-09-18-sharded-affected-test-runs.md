@@ -78,4 +78,9 @@ The decisions behind the design were the maintainer's, taken one at a time:
 - **A shell bug found on the way:** the watch globs were word-split with filename expansion on, so `hooks/*.sh` expanded against the working directory before matching. Filename expansion is now off while the globs are read.
 - **The top-level README** line now describes the fast tier, the watch globs, and the serial fixtures accurately.
 
+## CI failure after round 2
+
+- The `fixtures` job failed on `hook-hashes-closure.test.sh`, which reported `enforce/tests/flat-directory-reminder.test.sh` absent from a manifest that lists it. The log carried `printf: write error: Broken pipe`. The check piped a ~10KB path list into `grep -qxF` under `pipefail`. When `grep` exits at its first match while `printf` is still writing, the pipeline takes `printf`'s failure, so a present path reads as absent. Whether that happens depends on timing, and the parallel load on the CI runner made it happen.
+- The runner's own verdict had the same shape: each fixture's whole output was piped into `grep -q PASS`. A new case, a passing fixture whose output runs far past the 64KB pipe buffer, failed three runs out of three and now passes. The runner, `hook-hashes-closure.test.sh`, and `manifest-fixture-closure.test.sh` use here-strings now. The remaining uses of the pattern across the fixtures pipe inputs small enough to go in one write, and a sweep of them is filed as a follow-up.
+
 Ticket: IAN-94.

@@ -49,7 +49,10 @@ run_one_fixture() {
   name=$(basename "$fixture")
   output=$(bash "$fixture" </dev/null 2>&1); status=$?
   printf '%s\n' "$output" > "$result_dir/$name.out"
-  if [ "$status" -eq 0 ] && printf '%s' "$output" | grep -q PASS && ! printf '%s' "$output" | grep -q FAIL; then
+  # Here-strings, not pipes: under pipefail, `printf | grep -q` fails when grep
+  # exits at its first match while printf is still writing, which turned
+  # long-output passes into failures (PR #42 CI, 2026-09-18).
+  if [ "$status" -eq 0 ] && grep -q PASS <<< "$output" && ! grep -q FAIL <<< "$output"; then
     echo ok > "$result_dir/$name.verdict"
   else
     echo FAIL > "$result_dir/$name.verdict"
