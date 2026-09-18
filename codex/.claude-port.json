@@ -84,7 +84,7 @@
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
     "skills/task-start/SKILL.md": "sha256:037b8887254b2fa81214cb5525af61a035c5170b9c95ed6e0458923056de7cc4",
     "skills/task-start/scripts/task-tier.sh": "sha256:b1c452692dcc750ee3accf9f48b4a56125ce324e66cdf6fd69379122e66908cb",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:dc856d481c1a55853b3ce824644a7343082e2c76329183fd6c23db937d16fddc",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:775c15aa8de126fd032179e20c97fb8af90c75d474e1b236f767e67558e81725",
     "skills/ticket-lifecycle/SKILL.md": "sha256:e08ac0b3d58465c360b41f83795cc196bcc7ff6c9bac7dbadf0d1bd4ebefae51"
   },
   "classes": {

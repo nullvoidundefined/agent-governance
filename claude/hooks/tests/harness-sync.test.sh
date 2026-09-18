@@ -6,7 +6,9 @@
 # stays silent locally; a drifted live file is re-synced; with no reachable
 # checkout the hook is silent locally and reports once in a remote session;
 # a sync.sh refusal (invalid JSON) leaves the live tree unchanged and is
-# reported. Needs rsync, which sync.sh needs too.
+# reported; a live enforce node_modules missing a locked package is repaired
+# with or without drift, and an unavailable npm is reported. Needs rsync,
+# which sync.sh needs too.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/harness-sync.sh"
@@ -85,6 +87,37 @@ printf '# stale codex guidance\n' > "$SB/home/.codex/README.md"
 OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "codex drift re-synced" cmp -s "$CO/codex/README.md" "$SB/home/.codex/README.md"
 check "codex drift reported" reports "synced 1 changed or missing file(s)"
+
+# 3c. Enforce dependencies (2026-09-18). A lockfile synced without an install
+# left lint.mjs crashing on ERR_MODULE_NOT_FOUND, and the old install step ran
+# only when node_modules was absent altogether, so a stale-but-present tree was
+# never repaired. The hook must repair a live node_modules missing a locked
+# package even when no tracked file drifted, and must say so when it cannot.
+STUB_NPM="$SB/stub-npm"
+cat > "$STUB_NPM" <<'STUB'
+#!/usr/bin/env bash
+prefix=""
+while [ $# -gt 0 ]; do [ "$1" = "--prefix" ] && prefix="$2"; shift; done
+jq -r '.packages | to_entries[] | select(.key != "" and (.value.optional | not)) | .key' "$prefix/package-lock.json" |
+  while IFS= read -r pkg; do mkdir -p "$prefix/$pkg"; done
+STUB
+chmod +x "$STUB_NPM"
+mkdir -p "$CO/claude/enforce"
+cp "$CLAUDE_HARNESS_ROOT/enforce/install-enforce-dependencies.sh" "$CO/claude/enforce/"
+printf '{"name":"enforce","private":true}\n' > "$CO/claude/enforce/package.json"
+printf '{"name":"enforce","lockfileVersion":3,"packages":{"":{"name":"enforce"},"node_modules/eslint":{"version":"1.0.0"}}}\n' > "$CO/claude/enforce/package-lock.json"
+git -C "$CO" add -A; git -C "$CO" commit -qm "enforce lock"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+check "drift sync installs the locked enforce dependencies" test -d "$FAKE/.claude/enforce/node_modules/eslint"
+
+rm -rf "$FAKE/.claude/enforce/node_modules/eslint"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+check "no-drift run repairs a missing locked package" test -d "$FAKE/.claude/enforce/node_modules/eslint"
+check "no-drift repair is reported" reports "enforce dependencies installed"
+
+rm -rf "$FAKE/.claude/enforce/node_modules/eslint"
+OUT=$(printf '{}' | SYNC_NPM="$SB/no-such-npm" bash "$HOOK" 2>/dev/null)
+check "unavailable npm is reported with the fix" reports "npm ci --prefix $FAKE/.claude/enforce"
 
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"

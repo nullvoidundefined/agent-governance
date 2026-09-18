@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # sync.sh: copies each tool folder's tracked content from this monorepo into
-# its live config directory. Pure copy, no build or translate step; see
+# its live config directory. A copy with no build or translate step; see
 # docs/superpowers/specs/2026-09-12-agent-governance-monorepo-design.md
-# (Dependencies, Non-goals) for why none exists yet.
+# (Dependencies, Non-goals) for why none exists yet. The one step beyond the
+# copy is a locked `npm ci` of the live enforce/ dependencies when the synced
+# lockfile no longer matches what is installed (see the end of this file).
 #
 # Only files tracked by git in each source folder are ever synced. Untracked
 # or gitignored working-directory state (build artifacts, installed
@@ -72,3 +74,12 @@ sync_one codex "$TARGET_CODEX"
 # against this checkout (2026-09-16 audit P2-11: after the migration nothing
 # verified live == repo, a property `git status` used to provide for free).
 printf '%s\n' "$REPO_ROOT" > "$TARGET_CLAUDE/.sync-source"
+
+# The copy ships enforce/package-lock.json but never node_modules, so a lockfile
+# that gained a dependency used to leave lint.mjs crashing on the live side
+# (2026-09-18). This runs after the stamp so the files stay synced even when the
+# install fails; set -e then turns that failure into a nonzero exit, and the
+# script's FAILED line on stderr names the command to run by hand.
+if [ -f "$TARGET_CLAUDE/enforce/package-lock.json" ]; then
+  bash "$REPO_ROOT/claude/enforce/install-enforce-dependencies.sh" "$TARGET_CLAUDE/enforce" >/dev/null
+fi
