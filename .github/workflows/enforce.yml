@@ -116,6 +116,12 @@ jobs:
       - name: Hook fixtures
         run: bash "$HOME/.claude/hooks/tests/run-tests.sh"
 
+      # sync.sh sits outside claude/, so neither runner above reaches its
+      # fixture; it carries the enforce-dependency install check that keeps a
+      # synced lockfile from leaving the live linter crashing (2026-09-18).
+      - name: Sync fixture
+        run: bash sync-tests/sync.test.sh
+
       # Fails the moment a generated port tree drifts from claude/ (a source
       # edit landed without --write, or a hand edit touched a generated file)
       # instead of waiting for the next contributor to notice by hand. The

@@ -179,5 +179,26 @@ git -C "$TARGET" update-ref refs/remotes/origin/main HEAD~1
 check "the outgoing base is resolved in the target repository" \
   denies_resolving_base "$AMBIENT_CLEAN" "git -C $TARGET push origin main"
 
+# --- A broken enforce bundle (2026-09-18) --------------------------------------
+# A lockfile synced without an install left lint.mjs dying on
+# ERR_MODULE_NOT_FOUND. The gate denied, since the crash text filled REPORT, but
+# told the pusher to fix ESLint violations that do not exist. A harness copy
+# with no node_modules must still deny, and must name the broken bundle and the
+# locked install that repairs it rather than blaming the diff.
+BROKEN="$SANDBOX/broken-harness"
+mkdir -p "$BROKEN"
+rsync -a --exclude node_modules "$CLAUDE_HARNESS_ROOT/hooks" "$CLAUDE_HARNESS_ROOT/enforce" "$BROKEN/"
+broken_reason() {
+  (cd "$TARGET" && jq -n '{tool_name:"Bash",tool_input:{command:"git push origin main"}}' |
+    CLAUDE_ENFORCE_BASE=HEAD~1 bash "$BROKEN/hooks/push-eslint-gate.sh") |
+    jq -r 'select(.hookSpecificOutput.permissionDecision == "deny") | .hookSpecificOutput.permissionDecisionReason'
+}
+BROKEN_REASON=$(broken_reason)
+check "a crashed linter still denies the push" test -n "$BROKEN_REASON"
+check "a crashed linter names the locked install that repairs it" \
+  grep -qF "npm ci --prefix $BROKEN/enforce" <<<"$BROKEN_REASON"
+check "a crashed linter is not reported as ESLint violations" \
+  bash -c '! grep -qF "Fix the violations" <<<"$1"' _ "$BROKEN_REASON"
+
 [ "$fail" -eq 0 ] || exit 1
 echo "push-eslint-gate.test.sh PASS"

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# install-enforce-dependencies.sh: brings an enforce/node_modules tree in line
+# with the enforce/package-lock.json beside it, through a locked `npm ci`.
+#
+# sync.sh copies only git-tracked files, so a lockfile that gains a dependency
+# reaches the live ~/.claude/enforce while node_modules keeps the old set. That
+# happened on 2026-09-18: slice 01 PR 5 added vue-eslint-parser and
+# eslint-plugin-vue, lint.mjs crashed with ERR_MODULE_NOT_FOUND, and the ESLint
+# push gate could lint nothing until someone ran npm ci by hand. sync.sh and
+# the harness-sync SessionStart hook both call this script after a sync, so the
+# check lives in one place.
+#
+# The install is current when the stamp written after the last successful
+# install matches the lockfile byte for byte AND every non-optional locked
+# package directory exists. The stamp catches version bumps; the directory
+# check catches a package deleted from under an otherwise current install.
+#
+# Usage: install-enforce-dependencies.sh <enforce-dir>
+# Exit 0 with no output when there is nothing to do (no lockfile, or current),
+# exit 0 printing "installed" when npm ci ran and succeeded, exit 1 with a
+# FAILED line on stderr naming the command to run when npm is missing or fails.
+# SYNC_NPM overrides the npm executable (fixtures).
+set -uo pipefail
+
+ENFORCE_DIR="${1:?usage: install-enforce-dependencies.sh <enforce-dir>}"
+NPM_BIN="${SYNC_NPM:-npm}"
+LOCK="$ENFORCE_DIR/package-lock.json"
+STAMP="$ENFORCE_DIR/node_modules/.enforce-installed-lock"
+
+# hasEveryLockedPackage(): true when every non-optional package the lockfile
+# names has its directory under the enforce dir. Optional packages are skipped
+# because npm leaves out the ones built for other platforms.
+hasEveryLockedPackage() {
+  local pkg
+  while IFS= read -r pkg; do
+    [ -d "$ENFORCE_DIR/$pkg" ] || return 1
+  done < <(jq -r '.packages // {} | to_entries[] | select(.key != "" and (.value.optional | not)) | .key' "$LOCK")
+}
+
+# isInstallCurrent(): true when the last successful install was of this exact
+# lockfile and nothing it installed has since gone missing.
+isInstallCurrent() {
+  cmp -s "$LOCK" "$STAMP" && hasEveryLockedPackage
+}
+
+# runLockedInstall(): runs npm ci against the enforce dir and stamps the
+# lockfile it installed; on failure prints a FAILED line and npm's last output.
+runLockedInstall() {
+  local log status
+  if ! command -v "$NPM_BIN" >/dev/null 2>&1; then
+    echo "FAILED: npm is not installed, so the enforce dependencies locked in $LOCK are not installed and the ESLint push gates cannot lint. Install Node.js and npm, then run: npm ci --prefix $ENFORCE_DIR" >&2
+    return 1
+  fi
+  log=$(mktemp)
+  "$NPM_BIN" ci --prefix "$ENFORCE_DIR" --no-audit --no-fund >"$log" 2>&1
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "FAILED: npm ci --prefix $ENFORCE_DIR exited $status, so the ESLint push gates cannot lint until it succeeds. Last npm output:" >&2
+    tail -n 15 "$log" >&2
+    rm -f "$log"
+    return 1
+  fi
+  rm -f "$log"
+  cp "$LOCK" "$STAMP"
+  echo "installed"
+}
+
+[ -f "$LOCK" ] || exit 0
+isInstallCurrent && exit 0
+runLockedInstall
