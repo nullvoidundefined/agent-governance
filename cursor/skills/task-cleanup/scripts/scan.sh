@@ -82,7 +82,14 @@ yn() { [ -n "$1" ] && printf 'yes' || printf 'no'; }
 listing() { [ -n "$1" ] && printf ' (%s)' "$(printf '%s' "$1" | tr '\n' ' ' | sed 's/ $//')"; }
 
 LEDGER_LINE="no ledger (task-start did not record a tier)"
-TIER_SCRIPT="$HOME/.claude/skills/task-start/scripts/task-tier.sh"
+# The task-start ledger reader is a sibling script inside this same skills
+# tree, so it resolves from this file's own location instead of from the
+# installed copy under $HOME/.claude. Reading it out of the install made the
+# ledger line depend on whichever checkout last ran ./sync.sh, which is the
+# binding defect PR #20 closed for the fixture suites and this line reopened
+# for the skill (2026-09-18).
+SCAN_SCRIPTS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TIER_SCRIPT="$SCAN_SCRIPTS_DIR/../../task-start/scripts/task-tier.sh"
 if [ -f "$ROOT/.claude/task-tier.json" ] && [ -f "$TIER_SCRIPT" ]; then
   LEDGER_LINE=$(bash "$TIER_SCRIPT" summary 2>/dev/null | sed 's/^task-tier: //' || echo "$LEDGER_LINE")
 fi
