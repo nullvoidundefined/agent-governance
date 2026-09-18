@@ -44,3 +44,8 @@ The Cursor `sessionStart` line runs seven hooks. Each was checked for how it tre
 The first contract run surprised me: cases that should have failed before the adapter change passed. I had assumed that a missing `transcript_path` meant an empty one, and that is how the PR #36 comment described Cursor. Running the adapter by hand showed a record keyed on the sandbox's parent directory, which led to the tab-folding behaviour of `read`. The existing fixture could not see it because its no-`transcript_path` case had no `cwd` either. What I understand now is that a hook fed by an adapter needs its fixtures to use the adapter's real payload shape, not the smallest payload that omits the field under test.
 
 The implementation commit landed at 2026-09-18T10:49:15Z, and this document was written about two minutes later. This branch is based on PR #36's head and will be rebased onto `main` once #36 merges.
+
+## Why this is a separate PR
+
+- This work was merged into the `feat/session-start-timestamp` branch after #36 had already been squash-merged from an earlier head, so it never reached `main`. It is re-landed here as the two original commits cherry-picked onto `main`.
+- #36 also merged before the R-503 Spec line and the manifest note were updated for the narrowed clock fallback in `17652f1` (the clock is used only on a `startup` or `clear` start whose transcript file does not exist yet). This PR carries that wording fix, which also describes the Cursor path correctly: the synthetic transcript never exists on disk, so a Cursor conversation records the clock once and re-reads that record afterwards.
