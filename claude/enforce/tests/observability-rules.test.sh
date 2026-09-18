@@ -24,6 +24,7 @@ set -euo pipefail
 E="$CLAUDE_HARNESS_ROOT/enforce"
 
 TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/apps/server/src/services" "$TMP/apps/server/src/handlers" "$TMP/apps/client/src/services"
 
 reports() {
@@ -34,9 +35,8 @@ reports() {
 passes() { node "$E/lint.mjs" "$TMP/$1" >/dev/null 2>&1; }
 
 # 1. Scope.
-printf 'export function getNote() {\n  console.log("x");\n}\n' > apps-console.ts
-cp apps-console.ts "$TMP/apps/server/src/services/getNote.ts"
-cp apps-console.ts "$TMP/apps/client/src/services/getNote.ts"
+printf 'export function getNote() {\n  console.log("x");\n}\n' > "$TMP/apps/server/src/services/getNote.ts"
+cp "$TMP/apps/server/src/services/getNote.ts" "$TMP/apps/client/src/services/getNote.ts"
 reports apps/server/src/services/getNote.ts "no-console" || { echo "FAIL: console.log under apps/server must report (R-342)"; exit 1; }
 passes apps/client/src/services/getNote.ts || { echo "FAIL: console.log under apps/client must not be in the server-scoped block"; exit 1; }
 
@@ -82,5 +82,4 @@ reports apps/server/src/services/unboundCatch.ts "bind the error" || { echo "FAI
 printf 'declare const logger: { error: (...args: unknown[]) => void };\nexport async function getNote(load: () => Promise<string>) {\n  try {\n    return await load();\n  } catch (err) {\n    logger.error({ err }, "note load failed");\n    throw err;\n  }\n}\n' > "$TMP/apps/server/src/services/handledCatch.ts"
 passes apps/server/src/services/handledCatch.ts || { echo "FAIL: log-and-rethrow must pass"; node "$E/lint.mjs" "$TMP/apps/server/src/services/handledCatch.ts" || true; exit 1; }
 
-rm -f apps-console.ts
 echo "observability-rules.test.sh PASS"
