@@ -56,6 +56,19 @@ TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 # Ian-approved). Pre-existing debt elsewhere in a touched file no longer blocks.
 REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$ENFORCE_DIR/lint.mjs" --added-only "$BASE" 2>&1 || true)
 
+# A linter that cannot load its own dependencies is a broken gate, not a
+# violating diff. The crash text used to fill REPORT, so the push was denied
+# (closed, as it should be) with advice to fix ESLint violations that did not
+# exist (2026-09-18: a synced lockfile never installed). Name the bundle and
+# the locked install that repairs it instead, on stderr and in the reason.
+if printf '%s' "$REPORT" | grep -Eq 'ERR_MODULE_NOT_FOUND|Cannot find (package|module)'; then
+  BROKEN="The enforcement ESLint bundle at $ENFORCE_DIR is broken, not your diff: lint.mjs could not load one of its dependencies, so the push is denied until the bundle is repaired. Run: npm ci --prefix $ENFORCE_DIR (./sync.sh from the agent-governance checkout does this). Error:
+$(printf '%s\n' "$REPORT" | grep -E 'ERR_MODULE_NOT_FOUND|Cannot find' | head -n 3)"
+  printf 'push-eslint-gate: %s\n' "$BROKEN" >&2
+  jq -n --arg r "$BROKEN" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
+fi
+
 if [ -n "$REPORT" ]; then
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
   [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"

@@ -16,10 +16,13 @@
 #
 # rsync is installed with apt when absent and the session is remote
 # (CLAUDE_CODE_REMOTE=true, root in the container); a laptop without rsync
-# is told instead. enforce/node_modules is installed with npm when absent
-# so the ESLint push gates can run; best effort, since a container may have
-# no network. Advisory: emits additionalContext, never blocks, exits 0 on
-# every path (no set -e; enforce/README hook set convention).
+# is told instead. enforce/node_modules is brought in line with the synced
+# lockfile by enforce/install-enforce-dependencies.sh (a locked npm ci), which
+# ./sync.sh runs after a sync and this hook runs itself when nothing drifted,
+# so a stale install is repaired either way; when npm is missing or fails the
+# context says so and names the command. Advisory: emits additionalContext,
+# never blocks, exits 0 on every path (no set -e; enforce/README hook set
+# convention).
 #
 # HARNESS_SYNC_HOME overrides the live directory's parent (fixtures).
 set -uo pipefail
@@ -89,26 +92,31 @@ if [ "$drifted" -gt 0 ]; then
     fi
     notes+=("rsync installed")
   fi
-  if (cd "$CHECKOUT" && SYNC_CLAUDE_HOME="$LIVE" SYNC_CURSOR_HOME="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}" SYNC_CODEX_HOME="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}" ./sync.sh >/dev/null 2>&1); then
+  if sync_err=$(cd "$CHECKOUT" && SYNC_CLAUDE_HOME="$LIVE" SYNC_CURSOR_HOME="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}" SYNC_CODEX_HOME="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}" ./sync.sh 2>&1 >/dev/null); then
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT")
-  else
+  elif printf '%s' "$sync_err" | grep -q '^REFUSED'; then
     say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses the whole sync); the live ~/.claude is unchanged and $drifted tracked file(s) differ. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
     exit 0
+  else
+    # The files synced; the failure came after the copy (the enforce install).
+    notes+=("synced $drifted changed or missing file(s) from $CHECKOUT, but ./sync.sh then failed: $sync_err")
   fi
 else
   notes+=("live ~/.claude matches $CHECKOUT")
-fi
-
-# The ESLint push gates need the enforce dependencies beside the live tree.
-if [ -f "$LIVE/enforce/package.json" ] && [ ! -d "$LIVE/enforce/node_modules" ] && command -v npm >/dev/null 2>&1; then
-  if npm install --prefix "$LIVE/enforce" --silent --no-audit --no-fund >/dev/null 2>&1; then
-    notes+=("enforce dependencies installed")
-  else
-    notes+=("enforce dependencies NOT installed (npm install failed; the ESLint push gates will refuse until it succeeds)")
+  # Nothing drifted, so ./sync.sh did not run its own install check; a live
+  # node_modules can still lag its lockfile (a sync from before this check
+  # existed, or a package deleted by hand), and the ESLint push gates need it.
+  if [ -f "$LIVE/enforce/package-lock.json" ] && [ -f "$CHECKOUT/claude/enforce/install-enforce-dependencies.sh" ]; then
+    if install_out=$(bash "$CHECKOUT/claude/enforce/install-enforce-dependencies.sh" "$LIVE/enforce" 2>&1); then
+      [ -n "$install_out" ] && { notes+=("enforce dependencies installed"); deps_reported=1; }
+    else
+      notes+=("enforce dependencies NOT installed: $install_out")
+      deps_reported=1
+    fi
   fi
 fi
 
-if [ "$drifted" -gt 0 ] || [ "$REMOTE" = "true" ]; then
+if [ "$drifted" -gt 0 ] || [ "$REMOTE" = "true" ] || [ -n "${deps_reported:-}" ]; then
   say_context "harness-sync (R-003): $(IFS='; '; echo "${notes[*]}"). Hooks registered in the synced settings.json apply from the next tool call; the rules in CLAUDE.md apply now."
 fi
 exit 0
