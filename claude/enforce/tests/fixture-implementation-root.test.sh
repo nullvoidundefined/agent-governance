@@ -103,6 +103,11 @@ no_unlisted_home_reference() {
 #                                 harness root
 #   fixture-implementation-root.test.sh  this file, which builds the sabotaged
 #                                 install the proof depends on
+#   settings-permission-rules.test.sh  exercises tilde expansion in permission
+#                                 rules, so $HOME is the DATA under test (the
+#                                 fixture overrides HOME to a sandbox first);
+#                                 the helper it drives comes from the harness
+#                                 root like every other subject
 HOME_REFERENCE_ALLOWLIST=(
   "hook-latency.test.sh"
   "build-cheatsheets.test.sh"
@@ -113,6 +118,7 @@ HOME_REFERENCE_ALLOWLIST=(
   "install-git-hooks.test.sh"
   "tdd-red-green.test.sh"
   "fixture-implementation-root.test.sh"
+  "settings-permission-rules.test.sh"
 )
 
 mkdir -p "$SANDBOX/.claude"
