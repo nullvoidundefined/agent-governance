@@ -107,7 +107,8 @@ bash "$TDD" red src/__tests__/score.test.ts >/dev/null
 [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: expected assertion class, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
 
 # green: still failing is refused; the phase stays red.
-expect_fail "green while the test still fails" bash "$TDD" green >/dev/null
+# The refusal names the failing test, not an empty "failed to run" (PR #49 review).
+expect_fail "green while the test still fails" bash "$TDD" green | grep -q 'scores a job at 2' || { echo "FAIL: a still-failing green must name the failing test"; exit 1; }
 [ "$(lock_field . .phase)" = "red" ] || { echo "FAIL: a refused green must leave the phase red"; exit 1; }
 
 # green: implemented, everything passes, phase becomes green.
@@ -191,6 +192,41 @@ bash "$TDD" status | grep -qi 'no slice' || { echo "FAIL: status without a lock 
 
 cd / && rm -rf "$P"
 
+# --- a file-level failure with every assertion passed -------------------------
+# Vitest and Jest mark a file failed for a suite-level error (a throwing
+# afterAll, for instance) while each assertion in it passed. Green must refuse
+# that and carry the file's message (PR #57 review). Real Vitest cannot be made
+# to emit it without editing the locked test, which the hash check refuses, so
+# a stub runner writes the report shape for each step from a mode file.
+T=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$T" init -q
+git -C "$T" config user.email t@t; git -C "$T" config user.name t
+mkdir -p "$T/src/__tests__" "$T/node_modules/.bin"
+printf 'it("scores", () => {});\n' > "$T/src/__tests__/score.test.ts"
+cat > "$T/node_modules/.bin/vitest" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do case "$arg" in --outputFile=*) report="${arg#--outputFile=}" ;; esac; done
+name="$PWD/src/__tests__/score.test.ts"
+case "$(cat "$PWD/.stub-mode")" in
+  red) jq -n --arg n "$name" '{testResults:[{name:$n, status:"failed", message:"", assertionResults:[{title:"scores", status:"failed", failureMessages:["AssertionError: expected 1 to be 2"]}]}]}' ;;
+  teardown) jq -n --arg n "$name" '{testResults:[{name:$n, status:"failed", message:"Error: teardown broke", assertionResults:[{title:"scores", status:"passed", failureMessages:[]}]}]}' ;;
+  green) jq -n --arg n "$name" '{testResults:[{name:$n, status:"passed", message:"", assertionResults:[{title:"scores", status:"passed", failureMessages:[]}]}]}' ;;
+esac > "$report"
+STUB
+chmod +x "$T/node_modules/.bin/vitest"
+printf 'node_modules\n.stub-mode\n' > "$T/.gitignore"
+git -C "$T" add -A && git -C "$T" commit -qm "chore: init"
+cd "$T"
+echo red > .stub-mode
+bash "$TDD" open "T-1 teardown" >/dev/null
+bash "$TDD" red src/__tests__/score.test.ts >/dev/null || { echo "FAIL: the stub RED must be accepted"; exit 1; }
+echo teardown > .stub-mode
+expect_fail "green with a file-level failure" bash "$TDD" green | grep -q 'teardown broke' || { echo "FAIL: green must refuse a failed file whose assertions all passed, naming the file's message"; exit 1; }
+[ "$(lock_field . .phase)" = "red" ] || { echo "FAIL: a refused green must leave the phase red"; exit 1; }
+echo green > .stub-mode
+bash "$TDD" green >/dev/null || { echo "FAIL: the stub GREEN must be accepted once the file passes"; exit 1; }
+cd / && rm -rf "$T"
+
 # --- shell fixtures: a *.test.sh path runs with bash --------------------------
 # The verdict is the fixture suite's own (enforce/run-fixture-shards.sh): exit
 # 0 with a PASS line and no FAIL line passes. The suite is every *.test.sh in
@@ -251,7 +287,7 @@ bash "$TDD" red tests/score.test.sh >/dev/null
 [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: expected assertion for a FAIL line, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
 
 # green: still wrong is refused; right is green; a dropped sibling is refused.
-expect_fail "shell green while failing" bash "$TDD" green >/dev/null
+expect_fail "shell green while failing" bash "$TDD" green | grep -q 'expected 2, got 1' || { echo "FAIL: a still-failing shell green must carry the fixture's FAIL line"; exit 1; }
 git add -A && git commit -qm "test(score): S-1 score.sh prints 2"
 shell_impl 2
 bash "$TDD" green >/dev/null || { echo "FAIL: shell green must pass once score.sh prints 2"; exit 1; }
@@ -270,6 +306,16 @@ bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
 bash "$TDD" open --refactor "S-2 tidy score.sh" --lock tests/score.test.sh >/dev/null || { echo "FAIL: open --refactor on a shell fixture must succeed"; exit 1; }
 [ "$(lock_field . '.baseline.runner')" = "shell" ] || { echo "FAIL: a shell refactor must record the shell runner"; exit 1; }
 bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
+
+# A fixture that writes a relative path writes it outside the project: the
+# suite runs from a scratch directory, so nothing lands in the slice's tree
+# (PR #49 review).
+printf '#!/usr/bin/env bash\ntouch leaked-by-fixture.txt\necho "writer PASS"\n' > tests/writer.test.sh
+git add tests/writer.test.sh && git commit -qm "test: a fixture that writes a relative path"
+bash "$TDD" open --refactor "S-4 containment" --lock tests/score.test.sh >/dev/null || { echo "FAIL: open --refactor with a writing sibling must succeed"; exit 1; }
+[ ! -e leaked-by-fixture.txt ] || { echo "FAIL: a fixture's relative write must not land in the project root"; exit 1; }
+bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
+[ ! -e leaked-by-fixture.txt ] || { echo "FAIL: a fixture's relative write must not land in the project root during green"; exit 1; }
 
 # close from open: with no test ever locked nothing was written under the
 # lock, so an abandoned slice can close; once a test is locked it cannot.

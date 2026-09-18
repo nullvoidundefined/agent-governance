@@ -16,7 +16,7 @@
 # installed ~/.claude.
 set -uo pipefail
 
-REPO_TOP=$(git rev-parse --show-toplevel)
+REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 HELPER="$REPO_TOP/claude/enforce/settings-permission-rules.sh"
 
 fail=0

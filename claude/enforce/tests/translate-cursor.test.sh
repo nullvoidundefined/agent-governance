@@ -10,7 +10,7 @@
 # PORT-STATUS.md, the derived .gitignore, the manifest), and --write/--check
 # divergence and parity.
 set -uo pipefail
-REPO_TOP=$(git rev-parse --show-toplevel)
+REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 TRANSLATOR="$REPO_TOP/translate/cursor.mjs"
 
 fail=0
