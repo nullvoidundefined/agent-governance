@@ -357,10 +357,13 @@ cmd_green() {
     record=$(file_record "$rel")
     [ -n "$record" ] || die "$rel was not run"
     # A file with no test results failed to load; one with results failed a
-    # test, and the refusal names it with the first line of its failure.
+    # test, and the refusal names it with the first line of its failure; one
+    # whose tests all passed but is still marked failed hit a suite-level
+    # error (a throwing afterAll), and the refusal carries the file message.
     printf '%s' "$record" | jq -e '.status == "failed" and (.assertionResults | length) == 0' >/dev/null && die "$rel failed to run: $(printf '%s' "$record" | jq -r '.message' | head -1)"
     printf '%s' "$record" | jq -e '[.assertionResults[] | select(.status != "passed")] | length == 0' >/dev/null \
       || die "$rel is not green: $(printf '%s' "$record" | jq -r '[.assertionResults[] | select(.status != "passed") | "\(.title) (\(.status))" + (((.failureMessages // [])[0] // "") | split("\n") | map(select(test("\\S"))) | if length > 0 then ": " + .[0] else "" end)] | join(", ")')"
+    printf '%s' "$record" | jq -e '.status == "failed"' >/dev/null && die "$rel failed outside its tests: $(printf '%s' "$record" | jq -r '.message' | head -1)"
     local expected
     expected=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .tests' "$LOCK")
     [ "$(printf '%s' "$record" | jq '.assertionResults | length')" -ge "$expected" ] || die "$rel ran fewer tests than RED recorded ($expected)"

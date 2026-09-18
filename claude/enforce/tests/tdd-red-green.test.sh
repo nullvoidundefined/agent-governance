@@ -192,6 +192,41 @@ bash "$TDD" status | grep -qi 'no slice' || { echo "FAIL: status without a lock 
 
 cd / && rm -rf "$P"
 
+# --- a file-level failure with every assertion passed -------------------------
+# Vitest and Jest mark a file failed for a suite-level error (a throwing
+# afterAll, for instance) while each assertion in it passed. Green must refuse
+# that and carry the file's message (PR #57 review). Real Vitest cannot be made
+# to emit it without editing the locked test, which the hash check refuses, so
+# a stub runner writes the report shape for each step from a mode file.
+T=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$T" init -q
+git -C "$T" config user.email t@t; git -C "$T" config user.name t
+mkdir -p "$T/src/__tests__" "$T/node_modules/.bin"
+printf 'it("scores", () => {});\n' > "$T/src/__tests__/score.test.ts"
+cat > "$T/node_modules/.bin/vitest" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do case "$arg" in --outputFile=*) report="${arg#--outputFile=}" ;; esac; done
+name="$PWD/src/__tests__/score.test.ts"
+case "$(cat "$PWD/.stub-mode")" in
+  red) jq -n --arg n "$name" '{testResults:[{name:$n, status:"failed", message:"", assertionResults:[{title:"scores", status:"failed", failureMessages:["AssertionError: expected 1 to be 2"]}]}]}' ;;
+  teardown) jq -n --arg n "$name" '{testResults:[{name:$n, status:"failed", message:"Error: teardown broke", assertionResults:[{title:"scores", status:"passed", failureMessages:[]}]}]}' ;;
+  green) jq -n --arg n "$name" '{testResults:[{name:$n, status:"passed", message:"", assertionResults:[{title:"scores", status:"passed", failureMessages:[]}]}]}' ;;
+esac > "$report"
+STUB
+chmod +x "$T/node_modules/.bin/vitest"
+printf 'node_modules\n.stub-mode\n' > "$T/.gitignore"
+git -C "$T" add -A && git -C "$T" commit -qm "chore: init"
+cd "$T"
+echo red > .stub-mode
+bash "$TDD" open "T-1 teardown" >/dev/null
+bash "$TDD" red src/__tests__/score.test.ts >/dev/null || { echo "FAIL: the stub RED must be accepted"; exit 1; }
+echo teardown > .stub-mode
+expect_fail "green with a file-level failure" bash "$TDD" green | grep -q 'teardown broke' || { echo "FAIL: green must refuse a failed file whose assertions all passed, naming the file's message"; exit 1; }
+[ "$(lock_field . .phase)" = "red" ] || { echo "FAIL: a refused green must leave the phase red"; exit 1; }
+echo green > .stub-mode
+bash "$TDD" green >/dev/null || { echo "FAIL: the stub GREEN must be accepted once the file passes"; exit 1; }
+cd / && rm -rf "$T"
+
 # --- shell fixtures: a *.test.sh path runs with bash --------------------------
 # The verdict is the fixture suite's own (enforce/run-fixture-shards.sh): exit
 # 0 with a PASS line and no FAIL line passes. The suite is every *.test.sh in

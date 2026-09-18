@@ -33,3 +33,7 @@ This PR follows up on #49, which added the bash `*.test.sh` runner to `claude/en
 
 - #49's end-to-end run already showed that a fixture could leave a file in the repository root. That was treated as a separate fixture bug and handed off, and #51 fixed it. The review pointed out that the problem was also in `tdd.sh`, which had inherited the fixture's working directory. The same evidence supported both conclusions, and only one of them was drawn at the time.
 - The review fixes were pushed to #49's branch after #49 had merged. The push output said `[new branch]`, which showed that the remote branch was already gone. The fix commit was then moved onto this branch from `main`.
+
+## Review round 1 (Copilot)
+
+- **Green accepted a file marked failed whose assertions all passed.** Vitest and Jest report a suite-level error, such as a throwing `afterAll`, as a failed file whose individual tests passed. The first version of this PR reported "failed to run" only for a file with no test results, so that case slipped through and green advanced the lock. Green now refuses any file still marked failed after its tests pass, and the refusal carries the file's message. Real Vitest cannot produce that report without editing the locked test, which the hash check refuses, so the new case in `tdd-red-green.test.sh` drives `tdd.sh` with a stub runner that writes the exact report shapes for RED, the suite-level failure, and GREEN. The case failed before the fix and passes after it.
