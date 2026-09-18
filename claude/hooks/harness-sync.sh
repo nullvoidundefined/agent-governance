@@ -72,7 +72,7 @@ CODEX_LIVE="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}"
 # more than the rest of the SessionStart chain together, and even batched, one
 # pass per payload tripled the fixed process cost (IAN-115).
 countDriftedFiles() {
-  local rel live tracked count=0 pairs=0 checkout_list="" live_list=""
+  local rel live tracked count=0 pairs=0 pair_list=""
   tracked=$(git -C "$CHECKOUT" ls-files -- claude cursor codex 2>/dev/null)
   while IFS= read -r rel; do
     case "$rel" in
@@ -82,37 +82,45 @@ countDriftedFiles() {
       *) continue ;;
     esac
     if [ -f "$live" ] && [ -f "$CHECKOUT/$rel" ]; then
-      checkout_list+="$CHECKOUT/$rel"$'\n'; live_list+="$live"$'\n'; pairs=$((pairs + 1))
+      pair_list+="$rel"$'\n'; pairs=$((pairs + 1))
     else
       count=$((count + 1))
     fi
   done <<< "$tracked"
   if [ "$pairs" -gt 0 ]; then
-    count=$((count + $(countDifferingPairs "$pairs" "$checkout_list" "$live_list")))
+    count=$((count + $(countDifferingPairs "$pairs" "$pair_list")))
   fi
   printf '%s' "$count"
 }
 
-# countDifferingPairs(pairCount, leftList, rightList): how many line-aligned
-# path pairs of two newline-terminated lists differ in content. Two
-# `git hash-object --stdin-paths` processes hash every file on each side;
-# --no-filters hashes the raw bytes, which is what sync.sh copies and what cmp
-# compared. When either batch fails or comes back short (a file unreadable or
-# removed mid-run), it falls back to one cmp per pair, so an error can cost
-# time but never hide drift. Plain strings rather than arrays: macOS runs
-# hooks under bash 3.2, which has no namerefs.
+# countDifferingPairs(pairCount, relList): how many of the newline-terminated
+# checkout-relative paths differ between the checkout and the live trees. Both
+# sides are hashed from relative paths, so a checkout or home path containing a
+# newline cannot split an entry (Copilot review on #67): the checkout side runs
+# in the checkout, and the live side runs in a temporary directory whose
+# claude, cursor, and codex entries are symlinks to the three live trees. Two
+# `git hash-object --stdin-paths` processes hash every file; --no-filters
+# hashes the raw bytes, which is what sync.sh copies and what cmp compared.
+# When either batch fails or comes back short (a file unreadable or removed
+# mid-run), it falls back to one cmp per pair, so an error can cost time but
+# never hide drift. `git ls-files` quotes any tracked name containing a
+# newline, so an entry of relList is always one line.
 countDifferingPairs() {
-  local pair_count="$1" left_list="$2" right_list="$3" left_hashes right_hashes left right differing=0
-  if left_hashes=$(printf '%s' "$left_list" | git -C "$CHECKOUT" hash-object --no-filters --stdin-paths 2>/dev/null) \
-    && right_hashes=$(printf '%s' "$right_list" | git -C "$CHECKOUT" hash-object --no-filters --stdin-paths 2>/dev/null) \
+  local pair_count="$1" rel_list="$2" live_view left_hashes right_hashes rel differing=0
+  live_view=$(mktemp -d 2>/dev/null) || { printf '%s' "$pair_count"; return; }
+  ln -s "$LIVE" "$live_view/claude"; ln -s "$CURSOR_LIVE" "$live_view/cursor"; ln -s "$CODEX_LIVE" "$live_view/codex"
+  if left_hashes=$(printf '%s' "$rel_list" | git -C "$CHECKOUT" hash-object --no-filters --stdin-paths 2>/dev/null) \
+    && right_hashes=$(printf '%s' "$rel_list" | (cd "$live_view" && git hash-object --no-filters --stdin-paths) 2>/dev/null) \
     && [ "$(grep -c . <<< "$left_hashes")" -eq "$pair_count" ] \
     && [ "$(grep -c . <<< "$right_hashes")" -eq "$pair_count" ]; then
-    paste -d ' ' <(printf '%s\n' "$left_hashes") <(printf '%s\n' "$right_hashes") | awk '$1 != $2 { n++ } END { print n + 0 }'
-    return
+    differing=$(paste -d ' ' <(printf '%s\n' "$left_hashes") <(printf '%s\n' "$right_hashes") | awk '$1 != $2 { n++ } END { print n + 0 }')
+  else
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      cmp -s "$CHECKOUT/$rel" "$live_view/$rel" || differing=$((differing + 1))
+    done <<< "$rel_list"
   fi
-  while IFS= read -r left && IFS= read -r right <&3; do
-    cmp -s "$left" "$right" || differing=$((differing + 1))
-  done < <(printf '%s' "$left_list") 3< <(printf '%s' "$right_list")
+  rm -f "$live_view/claude" "$live_view/cursor" "$live_view/codex"; rmdir "$live_view" 2>/dev/null
   printf '%s' "$differing"
 }
 
