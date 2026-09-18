@@ -62,6 +62,24 @@ run src/services/single.ts || { echo "FAIL: a single-constant module must be exe
 printf 'export declare function getNote(): number;\n' > src/types/ambient.d.ts
 run src/types/ambient.d.ts || { echo "FAIL: a .d.ts must be exempt from R-320"; exit 1; }
 
+# Vue (slice 01 PR 5): the header is a comment on the first line inside
+# <script setup>; an HTML comment above the script is not one, matching
+# new-file-header-reminder.sh. Stories and test components are exempt, as their
+# .tsx counterparts are. Each fixture has two statements so the single-constant
+# exemption cannot be what passes it.
+mkdir -p app/components/TripCard
+vue_body='import { ref } from "vue";\n\nconst isOpen = ref(false);\nfunction toggleTripCard() {\n  isOpen.value = !isOpen.value;\n}\n</script>\n<template><button @click="toggleTripCard" /></template>\n'
+printf "<script setup lang=\"ts\">\n$vue_body" > app/components/TripCard/TripCard.vue
+run app/components/TripCard/TripCard.vue && { echo "FAIL: expected an R-320 report for a headerless .vue"; exit 1; } || true
+printf "<!-- Shows a trip. -->\n<script setup lang=\"ts\">\n$vue_body" > app/components/TripCard/TripCard.vue
+run app/components/TripCard/TripCard.vue && { echo "FAIL: an HTML comment above the script is not an R-320 header"; exit 1; } || true
+printf "<script setup lang=\"ts\">\n/** Shows one trip as a card because the list and map both need it. */\n$vue_body" > app/components/TripCard/TripCard.vue
+run app/components/TripCard/TripCard.vue || { echo "FAIL: a script-leading header must pass in a .vue"; exit 1; }
+for exempt_name in TripCard.stories.vue TripCard.test.vue TripCard.spec.vue; do
+  printf "<script setup lang=\"ts\">\n$vue_body" > "app/components/TripCard/$exempt_name"
+  run "app/components/TripCard/$exempt_name" || { echo "FAIL: $exempt_name must be exempt from R-320"; exit 1; }
+done
+
 # --- R-325 ---------------------------------------------------------------
 HEADER='/** Header. */'
 

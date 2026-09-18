@@ -67,6 +67,15 @@ TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$TOP" ] || exit 0
 CONFIG="$ENFORCE_DIR/ruff-enforce.toml"
 
+# R-320's Python analog (D100 module docstring, D103 public-function docstring)
+# shares the ESLint header rule's opt-in switch, .enforce.json fileHeaders, so a
+# repo turns file headers on for both languages at once and minimal fixtures
+# elsewhere never need a docstring.
+EXTRA_SELECT=""
+if [ -f "$TOP/.enforce.json" ] && jq -e '.fileHeaders == true' "$TOP/.enforce.json" >/dev/null 2>&1; then
+  EXTRA_SELECT="--extend-select D100,D103"
+fi
+
 # The set of file:line pairs the outgoing diff adds; only these can deny.
 ADDED=$(run_git_on_target diff -U0 --diff-filter=ACMR "$BASE"..HEAD -- '*.py' 2>/dev/null | awk '
   /^\+\+\+ b\// { file = substr($0, 7); next }
@@ -78,7 +87,7 @@ ADDED=$(run_git_on_target diff -U0 --diff-filter=ACMR "$BASE"..HEAD -- '*.py' 2>
   }')
 [ -z "$ADDED" ] && exit 0
 
-RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs $RUFF check --config "$CONFIG" --output-format json --no-cache 2>/dev/null || true)
+RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs $RUFF check --config "$CONFIG" $EXTRA_SELECT --output-format json --no-cache 2>/dev/null || true)
 printf '%s' "$RESULTS" | jq -e 'type == "array"' >/dev/null 2>&1 || {
   echo "push-ruff-gate: ruff produced no parseable output, skipping (fails open)" >&2
   exit 0

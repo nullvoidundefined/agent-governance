@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Covers: ruff:ANN401, ruff:BLE001, ruff:E722, ruff:E731, ruff:PGH003, ruff:PLR2004, ruff:S110, ruff:T201
+# Covers: ruff:ANN401, ruff:BLE001, ruff:D100, ruff:D103, ruff:E722, ruff:E731, ruff:PGH003, ruff:PLR2004, ruff:S110, ruff:T201
 # Verifies push-ruff-gate.sh denies a git push whose outgoing diff adds a Python
 # AST-tier violation (R-324/R-326/R-329/R-342/R-344 analogs), allows clean
 # diffs, scopes to added lines only, and honors the per-file-ignores.
@@ -120,5 +120,27 @@ git rm -q show.py; mkdir -p scripts; printf 'print("cli output")\n' > scripts/sh
 git add scripts/show.py; git commit -q -m cli-print
 OUT10=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 [ -z "$OUT10" ]
+
+# E6 (slice 01 PR 5, AC-7): D100/D103 are the R-320 analog and share the ESLint
+# header rule's opt-in switch. Without .enforce.json fileHeaders the docstring-less
+# module passes; with fileHeaders true a new docstring-less module is denied on
+# D100 and D103; a documented module passes under the switch. The opted-in module
+# is a new file because the gate judges added lines only, and D100 reports line 1.
+printf 'def fetch_trip(trip_id):\n    return trip_id\n' > trips.py
+git add trips.py; git commit -q -m "test: module without docstrings"
+OUT11=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+[ -z "$OUT11" ]
+printf '{"fileHeaders": true}\n' > .enforce.json
+printf 'def fetch_leg(leg_id):\n    return leg_id\n' > legs.py
+git add .enforce.json legs.py; git commit -q -m "test: opt into file headers"
+OUT12=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUT12" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+printf '%s' "$OUT12" | grep -q 'D100' || { echo "FAIL: expected D100 in the opted-in denial"; exit 1; }
+printf '%s' "$OUT12" | grep -q 'D103' || { echo "FAIL: expected D103 in the opted-in denial"; exit 1; }
+git rm -q legs.py
+printf '"""Loads legs by id."""\n\n\ndef fetch_leg(leg_id):\n    """Return the leg id unchanged."""\n    return leg_id\n' > leg_lookup.py
+git add leg_lookup.py; git commit -q -m "test: documented module"
+OUT13=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+[ -z "$OUT13" ]
 
 echo "push-ruff-gate.test.sh PASS"

@@ -117,4 +117,32 @@ printf '// @ts-nocheck\nexport const b = 1;\n' > "$TMP/ts-nocheck.ts"
 run "$TMP/ts-nocheck.ts" && { echo "FAIL: expected ban-ts-comment violation for @ts-nocheck"; diagnose; exit 1; } || true
 printf '// @ts-expect-error vendor types lag the runtime shape\nexport const c = 1;\n' > "$TMP/ts-expect-error.ts"
 run "$TMP/ts-expect-error.ts" || { echo "FAIL: expected described @ts-expect-error to pass"; diagnose; exit 1; }
+# E1 (slice 01 PR 5, AC-5): a Vue single-file component's <script setup lang="ts">
+# is parsed with the TypeScript parser, so the same rules fire inside it; each
+# violation gets its own fixture so a rule that silently stops firing is named.
+mkdir -p "$TMP/vue"
+printf '<script setup lang="ts">\nconst raw: any = JSON.parse("1");\nexport { raw };\n</script>\n<template><div /></template>\n' > "$TMP/vue/AnyValue.vue"
+run "$TMP/vue/AnyValue.vue" && { echo "FAIL: expected no-explicit-any violation in a .vue script"; diagnose; exit 1; } || true
+printf '<script setup lang="ts">\ndeclare const size: number;\nconst label = size > 3 ? (size > 7 ? "large" : "medium") : "small";\n</script>\n<template><div>{{ label }}</div></template>\n' > "$TMP/vue/NestedLabel.vue"
+run "$TMP/vue/NestedLabel.vue" && { echo "FAIL: expected no-nested-ternary violation in a .vue script"; diagnose; exit 1; } || true
+printf '<script setup lang="ts">\ndeclare const seconds: number;\nconst timeoutMs = seconds * 5000;\n</script>\n<template><div>{{ timeoutMs }}</div></template>\n' > "$TMP/vue/MagicDelay.vue"
+run "$TMP/vue/MagicDelay.vue" && { echo "FAIL: expected no-magic-numbers violation in a .vue script"; diagnose; exit 1; } || true
+# A compliant SFC passes, including a disable comment for an eslint-plugin-vue
+# rule the gate does not enforce (the Vue track requires one beside v-html).
+printf '<script setup lang="ts">\nconst isOpen = false;\n// eslint-disable-next-line vue/require-default-prop\nconst panelTitle = "Trips";\n</script>\n<template><section v-if="isOpen">{{ panelTitle }}</section></template>\n' > "$TMP/vue/TripPanel.vue"
+run "$TMP/vue/TripPanel.vue" || { echo "FAIL: expected a compliant .vue file to pass"; diagnose; exit 1; }
+# E2 (R-303): import-x parses .vue neighbours, so a cycle through an SFC is found.
+# The realpath matters: no-cycle compares exact path strings, and macOS mktemp
+# returns a symlinked /var path that hides every cycle (test-quality-rules.test.sh).
+mkdir -p "$TMP/vuecycle"
+VUE_CYCLE=$(cd "$TMP/vuecycle" && pwd -P)
+printf 'import TripCard from "./TripCard.vue";\n\nexport const tripCard = TripCard;\n' > "$VUE_CYCLE/tripCardHost.ts"
+printf '<script setup lang="ts">\nimport { tripCard } from "./tripCardHost";\n\nconst host = tripCard;\n</script>\n<template><div>{{ host }}</div></template>\n' > "$VUE_CYCLE/TripCard.vue"
+run "$VUE_CYCLE/tripCardHost.ts" && { echo "FAIL: expected import-x/no-cycle through a .vue file"; diagnose; exit 1; } || true
+# E3 (R-342): Nitro server routes are server code, so console is denied there.
+mkdir -p "$TMP/web/server/api" "$TMP/web/server/middleware"
+printf 'export function logTrip(tripId: string): void {\n  console.log(tripId);\n}\n' > "$TMP/web/server/api/trips.get.ts"
+run "$TMP/web/server/api/trips.get.ts" && { echo "FAIL: expected no-console in a Nitro server/api route"; diagnose; exit 1; } || true
+cp "$TMP/web/server/api/trips.get.ts" "$TMP/web/server/middleware/sessionCookieGate.ts"
+run "$TMP/web/server/middleware/sessionCookieGate.ts" && { echo "FAIL: expected no-console in Nitro server/middleware"; diagnose; exit 1; } || true
 echo "eslint.test.sh PASS"

@@ -2,7 +2,7 @@
 
 Spec: `claude/docs/superpowers/specs/2026-09-17-python-vue-convention-tracks-design.md`
 Branch: `feat/python-vue-conventions` (the slice branch; each PR branches from it and squash-merges back, and the slice branch squash-merges to `main` when PR 7 lands)
-Status: Gate 1 approved 2026-09-17; PRs 1 to 3 on `main`; PR 4 in review
+Status: Gate 1 approved 2026-09-17; PRs 1 to 4 on `main`; PR 5 in review
 Tracker: Linear project Agent Governance, slice ticket IAN-72, one child ticket per PR
 Started: 2026-09-17
 
@@ -17,8 +17,8 @@ This slice brings the Python convention track to the depth of the TypeScript tra
 | 1 | `add-stack-track` skill and invariant test | 8% | IAN-73, PR #2 | 2026-09-17 | No manifest entry: the invariant test is a repo-level test like `manifest.test.sh`, which carries none; the manifest models rule enforcers. |
 | 2 | Frontend core refactor and `CLAUDE-FRONTEND-REACT.md` | 15% | IAN-75, PR #4 | 2026-09-17 (reached `main` through PR #19) | AC-1 and AC-2 live in a new fixture `convention-paths-scope.test.sh` (codex-authored) rather than inside the invariant test. The fixture caught the Next file's `**/app/**/*.ts` glob matching Nuxt's `app/` tree; narrowed to `**/src/app/**` in this PR. |
 | 3 | `CLAUDE-FRONTEND-VUE.md` and `CLAUDE-FRONTEND-NUXT.md` | 20% | IAN-90, PR #34 | 2026-09-18 | Branched off `main`, not the slice branch: PR #19 moved PRs 1 and 2 to `main` and left the slice branch stale, so PRs 3 to 7 each branch off `main` and squash-merge there. The Nuxt globs name Nitro's `server/api`, `server/middleware`, `server/routes`, and `server/plugins` instead of the spec's `**/server/**/*.ts`, which also matched an Express `apps/server/src/` tree; fixture A10 holds the line. The `CLAUDE.md` convention-files sentence was left unchanged, because the Vue track is already named in `rules/session-types.md` and the `CLAUDE.md` sentence names no track. |
-| 4 | `CLAUDE-PYTHON.md` rewrite | 25% | IAN-92 | | Table names follow R-334, merged after the spec: `user_sessions`, `request_idempotency_keys`, and `billing_webhook_events` replace the spec's `sessions`, `idempotency_keys`, and `stripe_events`. The AC-3 and AC-4 assertions are P1 to P3 in the invariant test. The connection dependency is declared with `scope="function"` so the commit lands before the response. |
-| 5 | Enforcement E1 to E6 | 15% | | | |
+| 4 | `CLAUDE-PYTHON.md` rewrite | 25% | IAN-92, PR #40 | 2026-09-18 | Table names follow R-334, merged after the spec: `user_sessions`, `request_idempotency_keys`, and `billing_webhook_events` replace the spec's `sessions`, `idempotency_keys`, and `stripe_events`. The AC-3 and AC-4 assertions are P1 to P3 in the invariant test. The connection dependency is declared with `scope="function"` so the commit lands before the response. |
+| 5 | Enforcement E1 to E6 | 15% | IAN-95 | | E6 is opt-in (owner decision): D100 and D103 fire only when `.enforce.json` sets `fileHeaders`, the ESLint header rule's switch, because always-on docstrings broke unrelated fixtures when the TypeScript rule tried it. E1 also widens `push-eslint-gate.sh` and `ratchet.mjs`, whose `.tsx?` filters would have kept every `.vue` file from the linter. `**/*.vue` joins only the main rule block, not the server, services, or test blocks, so no server-only rule reaches browser files. |
 | 6 | Enforcement E7: structure-gate Vue branch | 12% | | | |
 | 7 | Sync, hashes, README, handoff | 5% | | | |
 

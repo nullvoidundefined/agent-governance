@@ -32,6 +32,13 @@ printf 'export const a = { a: 1, b: 2 };\n' > bad.ts; git add bad.ts; git commit
 OUT2=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 [ -z "$OUT2" ]
 
+# E1 (slice 01 PR 5): a .vue file in the outgoing diff reaches the linter; the
+# gate used to keep only .ts/.tsx paths, so an SFC violation pushed silently.
+printf '<script setup lang="ts">\nexport const a = { b: 2, a: 1 };\n</script>\n<template><div /></template>\n' > Bad.vue
+git add Bad.vue; git commit -q -m "test: unsorted keys in an SFC"
+OUTV=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+printf '%s' "$OUTV" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+git rm -q Bad.vue; git commit -q -m "test: drop the SFC fixture"
 # Changed-line scoping (2026-07-10): pre-existing violation on an UNTOUCHED line
 # plus a clean added line -> allow; the same file gaining a violating added
 # line -> deny.
