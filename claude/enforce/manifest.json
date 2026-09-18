@@ -732,7 +732,7 @@
             "enforcer": "hook:llm-rule-judge",
             "severity": "error",
             "autofix": false,
-            "note": "compound naming: base noun first, secondary nouns after; a deterministic gate awaits the per-project aggregate-root list the domain-lexicon skill produces"
+            "note": "compound naming: base noun first; judged against the project Domain vocabulary glossary, and dropped from the judged set when a repository has none"
         },
         {
             "id": "R-509",
