@@ -140,12 +140,19 @@ grep -q 'R-509' <<< "$GOT" || { echo "FAIL: expected an R-509 block after two fa
 grep -q 'automatic retry' <<< "$GOT" || { echo "FAIL: block reason must note the automatic retry, got: $GOT"; exit 1; }
 
 # 12. A hard timeout (124) never retries: runs exactly once.
+# The check is a .claude/verify.sh whose first statement logs the run, not an
+# npm script: on 2026-09-18, at a load average near 150, npm did not reach the
+# script body inside a 1s timeout, the log stayed empty, and the case failed
+# with "got 0" although the gate never retried. A plain bash script starts
+# well inside the 5s timeout even under that load, so each attempt the gate
+# makes is logged, and a gate that retried after a timeout still shows 2 runs.
+# `exec sleep` makes the sleep the process the gate kills, so no orphaned
+# sleep outlives the case.
 REPO=$(new_repo)
 RUN_LOG=$(mktemp)
-cat > "$REPO/package.json" <<EOF
-{ "name": "fixture", "version": "1.0.0", "scripts": { "test": "echo run >> $RUN_LOG; sleep 2" } }
-EOF
-GOT=$(CLAUDE_VERIFY_TIMEOUT=1 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
+mkdir -p "$REPO/.claude"
+printf 'echo run >> %s\nexec sleep 30\n' "$RUN_LOG" > "$REPO/.claude/verify.sh"
+GOT=$(CLAUDE_VERIFY_TIMEOUT=5 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
 grep -q 'CLAUDE_VERIFY_TIMEOUT' <<< "$GOT" || { echo "FAIL: expected a timeout block, got: $GOT"; exit 1; }
 ! grep -q 'automatic retry' <<< "$GOT" || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
 RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
