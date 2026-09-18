@@ -55,6 +55,9 @@ is_nuxt=0
 nuxt_root=""
 NUXT_PACKAGE_FILE=$(find_package_file "$(dirname "$FILE")" || true)
 [ -n "$NUXT_PACKAGE_FILE" ] && package_depends_on "$NUXT_PACKAGE_FILE" nuxt && is_nuxt=1
+# Only the package's own app/ and server/ are roots; an ancestor directory that
+# happens to be named app or server must not start the walk early.
+NUXT_PACKAGE_ROOT=$(dirname "${NUXT_PACKAGE_FILE:-/}")
 
 BANNED='^(lib|utils|helpers|common|core|misc|shared)$'
 ABBREV='^(db|di|svc|ctrl|mw|cfg)$'
@@ -93,7 +96,7 @@ for seg in "${PARTS[@]}"; do
   if [ "$is_go" -eq 1 ] && [ "$in_src" -eq 0 ]; then
     case "$seg" in internal|cmd|pkg) in_src=1; continue ;; esac
   fi
-  if [ "$is_nuxt" -eq 1 ] && [ "$in_src" -eq 0 ]; then
+  if [ "$is_nuxt" -eq 1 ] && [ "$in_src" -eq 0 ] && [ "$prefix" = "${NUXT_PACKAGE_ROOT%/}/$seg" ]; then
     case "$seg" in app|server) in_src=1; nuxt_root="$seg"; continue ;; esac
   fi
   [ "$in_src" -eq 0 ] && continue
