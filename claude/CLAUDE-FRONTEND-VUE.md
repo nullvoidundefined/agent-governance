@@ -8,7 +8,7 @@ paths:
 
 # Vue Frontend Conventions
 
-The Vue half of the frontend track. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the framework-agnostic core) and `~/.claude/CLAUDE-FRONTEND-NUXT.md` (the SSR framework file the core's dispatch table names). Everything not covered here follows the core. Nothing in `CLAUDE-FRONTEND-REACT.md` applies to a Vue project.
+The Vue half of the frontend track. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the framework-agnostic core) and the framework file the core's dispatch table names (`CLAUDE-FRONTEND-NUXT.md` for Nuxt projects). Everything not covered here follows the core. Nothing in `CLAUDE-FRONTEND-REACT.md` applies to a Vue project.
 
 ---
 
@@ -142,7 +142,7 @@ import styles from './TripList.module.scss';
 
 - **TanStack Query for Vue** for all server state (fetching, caching, mutations); the `QueryClient` config lives in `config/queryClient.ts` and is installed once by a Nuxt plugin
 - Every query is wrapped in a composable (`composables/useTripsQuery.ts`) that owns the query key and calls the `api/` function; components never build query keys inline
-- **Pinia** setup stores (`defineStore('theme', () => { ... })`) for app state: theme, the signed-in user snapshot, UI state shared across routes. Never copy query data into a store; the query cache is the only copy of server state
+- **Pinia** setup stores (`defineStore('theme', () => { ... })`) for app state: theme, UI state shared across routes. Never copy query data into a store; the query cache is the only copy of server state
 - Reading several store fields destructures through `storeToRefs(store)` so the fields stay reactive (R-325); actions are called on the store, never destructured off it
 - **`ref` and `computed`** for component-local state (form inputs, open panels, toggles)
 - Template refs through `useTemplateRef('name')`; timers and `EventSource` handles in a plain `let` cleared in `onBeforeUnmount`

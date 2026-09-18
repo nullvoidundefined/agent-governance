@@ -52,7 +52,7 @@
     "rules/frontend-nuxt.mdc": "sha256:6a599b35c2f80442927fc132246293c05cd37837909b790dea71dafd040f8871",
     "rules/frontend-react.mdc": "sha256:91cfe2b8866769814cb8bd57730a96d9a573579e5623a659e7b15a38e8c7f62f",
     "rules/frontend-vite.mdc": "sha256:31244b5efecba885a22d511cf31af24825538a32938ab3d21f127c51770ac7f9",
-    "rules/frontend-vue.mdc": "sha256:0d5a05ff588564c1aa0889b90fee7cd7a0ea6e6271d1aae192f6f6269a52de62",
+    "rules/frontend-vue.mdc": "sha256:1766bfe3f853f7ab44902ce07cb75dcc275fcab0dfc88204aee24c28feb4890f",
     "rules/frontend.mdc": "sha256:bd3717423c9dd1f2b2775f4f9048675a17410447c138558a9bb9398ee2298c97",
     "rules/go.mdc": "sha256:84fb302b3b1aa7cb2424d40c557fe061868adfaccb81770d170a4ad26b29149b",
     "rules/python.mdc": "sha256:2e90301cd4ee1d771f5cea198c18742fd5ae6531a1adf93133a3b80a2282f2a4",

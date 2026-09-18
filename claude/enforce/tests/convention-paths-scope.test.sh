@@ -222,9 +222,16 @@ has_headings CLAUDE-FRONTEND-NUXT.md 'Framework' 'Directory Structure' 'Route Gr
   'File Naming (framework-specific rows)' 'Containers (R-351)'
 report_result "$?" A9 'Nuxt file carries the spec section outline'
 
-# A10: the Nuxt file's Nitro globs never reach an Express server tree, whose
-# package directory is also named server.
-check_paths 0 CLAUDE-FRONTEND-NUXT.md 'apps/client/web/server/middleware/authCookie.ts' &&
+# A10: the Nuxt file's app/ and Nitro globs cover each intended path class while
+# never reaching an Express server tree, whose package directory is also named server.
+check_paths 0 CLAUDE-FRONTEND-NUXT.md \
+  'apps/client/web/app/layouts/protected.vue' \
+  'apps/client/web/app/middleware/requireSession.ts' \
+  'apps/client/web/app/plugins/queryClient.ts' \
+  'apps/client/web/app/app.vue' \
+  'apps/client/web/server/routes/auth/session.get.ts' \
+  'apps/client/web/server/plugins/sentry.ts' \
+  'apps/client/web/server/middleware/authCookie.ts' &&
   check_paths 1 CLAUDE-FRONTEND-NUXT.md 'apps/server/src/app.ts' \
     'apps/server/src/middleware/requestId.ts' 'apps/server/src/handlers/trips/createTrip.ts'
 report_result "$?" A10 'Nuxt covers Nitro trees while excluding an Express server tree'
