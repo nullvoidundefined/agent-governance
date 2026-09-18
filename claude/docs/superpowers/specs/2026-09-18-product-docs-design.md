@@ -1,6 +1,6 @@
 # Product docs: features list and user stories in every application repo (R-607)
 
-**Ticket:** none opened (the Linear MCP server was not authenticated in the session that wrote this spec; the ticket fields are recorded in the handoff per `skills/ticket-lifecycle/SKILL.md`)
+**Ticket:** IAN-96 (opened after classification, once the Linear MCP server authenticated mid-session; `started_at` is the recorded session start)
 **Branch:** `feat/product-docs-rule`
 **Requested:** 2026-09-18, by the owner, from the Voyager 2.0 session.
 

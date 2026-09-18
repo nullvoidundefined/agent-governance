@@ -1,6 +1,6 @@
 # PR: R-607, a features list and user stories in every application repository
 
-Ticket: none opened; the Linear MCP server was not authenticated in the session that did this work, so the ticket fields are recorded in the handoff instead. Branch: `feat/product-docs-rule`. Spec: `claude/docs/superpowers/specs/2026-09-18-product-docs-design.md` (B-1 to B-24).
+Ticket: IAN-96, opened mid-session once the Linear MCP server authenticated. Branch: `feat/product-docs-rule`. Spec: `claude/docs/superpowers/specs/2026-09-18-product-docs-design.md` (B-1 to B-24).
 
 ## Summary
 
