@@ -200,11 +200,20 @@ insert_feature_row() {
         if (!last && i == start) { print ""; print "| Feature | Status | Notes |"; print "| ------- | ------ | ----- |"; print row }
       }
     }' "$FEATURES" > "$tmp" && mv "$tmp" "$FEATURES"
-  sed -i.bak -e "s#^Last updated: .*#Last updated: $TODAY ($SLUG planned)#" "$FEATURES" && rm -f "$FEATURES.bak"
+  if grep -q '^Last updated: ' "$FEATURES"; then
+    sed -i.bak -e "s#^Last updated: .*#Last updated: $TODAY ($SLUG planned)#" "$FEATURES" && rm -f "$FEATURES.bak"
+  else
+    # R-607 requires the line on every change; a list that never had one
+    # gains it under the title.
+    tmp=$(mktemp)
+    awk -v line="Last updated: $TODAY ($SLUG planned)" 'NR == 1 { print; print ""; print line; next } { print }' "$FEATURES" > "$tmp" && mv "$tmp" "$FEATURES"
+  fi
 }
 
 scaffolded=()
-[ -f "$PROMPTS_DIR/user-story-area-template.md" ] || die "product-doc templates not found under $PROMPTS_DIR; sync the harness (~/.claude) and re-run" 8
+for template in feature-list-template.md user-stories-readme-template.md user-story-area-template.md; do
+  [ -f "$PROMPTS_DIR/$template" ] || die "product-doc templates not found under $PROMPTS_DIR (missing $template); sync the harness (~/.claude) and re-run" 8
+done
 mkdir -p docs/feature-list docs/user-stories
 STORY_ID=$(next_story_id)
 if [ ! -f "$FEATURES" ]; then

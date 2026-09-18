@@ -144,5 +144,20 @@ OUT=$(cd "$REPO3" && HOME="$SB/empty-home" bash "$PORT/scaffold.sh" voice-clonin
 check "port without templates exits 8" test "$ST" -eq 8
 check "port without templates says why" reports "templates not found"
 
+# PR #44 review: a features list with no Last updated line gains one; a
+# partial template set stops the scaffold before any doc is written.
+REPO4="$SB/no-date"; make_repo "$REPO4" main
+sed -i.bak '/^Last updated:/d' "$REPO4/docs/feature-list/features.md" && rm -f "$REPO4/docs/feature-list/features.md.bak"
+git -C "$REPO4" commit -qam "drop the date line"
+OUT=$(cd "$REPO4" && "$SCAFFOLD" voice-presets --area voice --worktree-parent "$SB/worktrees4" --no-fetch 2>&1); ST=$?
+check "missing Last updated line exits 0" test "$ST" -eq 0
+check "missing Last updated line is added" grep -q "^Last updated: $TODAY (voice-presets planned)$" "$SB/worktrees4/voice-presets/docs/feature-list/features.md"
+mkdir -p "$SB/partial-home/.claude/prompts"; cp "$CLAUDE_HARNESS_ROOT/prompts/user-story-area-template.md" "$SB/partial-home/.claude/prompts/"
+REPO5="$SB/partial"; make_repo "$REPO5" main
+git -C "$REPO5" rm -rq docs/feature-list docs/user-stories; git -C "$REPO5" commit -qm "drop product docs"
+OUT=$(cd "$REPO5" && HOME="$SB/partial-home" bash "$PORT/scaffold.sh" voice-presets --area voice --worktree-parent "$SB/worktrees5" --no-fetch 2>&1); ST=$?
+check "partial templates exit 8" test "$ST" -eq 8
+check "partial templates write no empty features list" test ! -e "$SB/worktrees5/voice-presets/docs/feature-list/features.md"
+
 [ "$fail" -eq 0 ] && echo "feature-create-scaffold.test.sh PASS"
 exit "$fail"

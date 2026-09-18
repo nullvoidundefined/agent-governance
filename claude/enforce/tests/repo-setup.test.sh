@@ -185,6 +185,17 @@ OUT=$(cd "$REPO6" && bash "$SETUP" acme/widget --check 2>&1)
 check "B-18 check reports SKIPPED" row product-docs SKIPPED
 check "B-18 SKIPPED is not counted missing" bash -c "! printf '%s' \"\$0\" | grep -q '^product-docs .*MISSING'" "$OUT"
 
+# 10. PR #44 review: a ported setup.sh whose harness tree lacks one template
+#     reports product-docs MISSING and writes no empty README.
+PORT="$SB/port/skills/repo-setup/scripts"; mkdir -p "$PORT"; cp "$SETUP" "$PORT/setup.sh"
+mkdir -p "$SB/partial-home/.claude/prompts" "$SB/partial-home/.claude/enforce"
+cp "$CLAUDE_HARNESS_ROOT/prompts/feature-list-template.md" "$SB/partial-home/.claude/prompts/"
+cp "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$SB/partial-home/.claude/enforce/"
+REPO7="$SB/partial-app"; mkdir -p "$REPO7"; git -C "$REPO7" init -q -b main
+OUT=$(cd "$REPO7" && HOME="$SB/partial-home" bash "$PORT/setup.sh" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "partial templates report product-docs MISSING" row product-docs MISSING
+check "partial templates write no README" test ! -e "$REPO7/docs/user-stories/README.md"
+
 # 7. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?
 check "bad repo name is a usage error" test "$ST" -eq 2

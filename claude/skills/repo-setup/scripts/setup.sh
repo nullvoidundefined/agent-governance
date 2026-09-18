@@ -232,7 +232,7 @@ elif [ "$PRODUCT_DOCS" -eq 0 ]; then
   fi
 elif [ -z "$absent_docs" ]; then
   report product-docs OK "features list, user stories index, and feature checklist present"
-elif [ ! -f "$HARNESS_ROOT/prompts/feature-list-template.md" ] || [ ! -f "$HARNESS_ROOT/enforce/require-feature-checklist.sh" ]; then
+elif [ ! -f "$HARNESS_ROOT/prompts/feature-list-template.md" ] || [ ! -f "$HARNESS_ROOT/prompts/user-stories-readme-template.md" ] || [ ! -f "$HARNESS_ROOT/enforce/require-feature-checklist.sh" ]; then
   report product-docs MISSING "absent:${absent_docs}; harness templates not found under $HARNESS_ROOT (sync ~/.claude)"
 elif apply; then
   write_product_docs
