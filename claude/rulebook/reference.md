@@ -676,6 +676,8 @@ Read on demand, not globally.
 | `~/.claude/CLAUDE-FRONTEND-REACT.md` | React components, hooks, TanStack Query for React, Context, React ESLint rules; auto-loads on `.tsx`, `.jsx`, and `src/state/` |
 | `~/.claude/CLAUDE-FRONTEND-NEXT.md` | Next.js App Router structure, routing, metadata, `NEXT_PUBLIC_*` env vars |
 | `~/.claude/CLAUDE-FRONTEND-VITE.md` | Vite + TanStack Router SPA structure, entry files, `VITE_*` env vars |
+| `~/.claude/CLAUDE-FRONTEND-VUE.md` | Vue 3 `<script setup>` components, composables, Pinia, TanStack Query for Vue, Reka UI, Vue ESLint rules; auto-loads on `.vue`, `app/components/`, `app/composables/`, and `app/stores/` |
+| `~/.claude/CLAUDE-FRONTEND-NUXT.md` | Nuxt 4 structure, layouts, Nitro auth gating and proxies, `NUXT_PUBLIC_*` runtime config, containers |
 | `~/.claude/CLAUDE-DATABASE.md` | Postgres migrations, SQL queries, schema |
 | `~/.claude/CLAUDE-STYLING.md` | SCSS modules, CSS custom properties |
 | `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Cloudflare, environment variables |

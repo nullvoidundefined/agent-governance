@@ -1,5 +1,5 @@
 ---
-description: Shared React client conventions - components, features, state, hooks, api wrappers. Auto-attached to .tsx files and client source trees.
+description: Framework-agnostic frontend core - directory vocabulary, api wrappers, error handling, Prettier, ESLint shared rules, E2E layout. Auto-attached to client source trees for React and Vue alike; read with the framework file its dispatch table names.
 globs: **/src/components/**,**/src/features/**,**/src/state/**,**/src/hooks/**,**/src/api/**,**/app/components/**,**/app/composables/**,**/app/stores/**
 alwaysApply: false
 ---
