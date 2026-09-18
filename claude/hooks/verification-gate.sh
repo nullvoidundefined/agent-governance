@@ -20,9 +20,9 @@
 #     the slow fixtures its changes name (enforce/run-fixture-shards.sh): 30
 #     to 37 seconds measured for a one-hook edit, against about 85 for the full
 #     sharded run and the 4.6 minutes the sequential runner took. The full
-#     sharded suite runs at pre-push and in CI, the required check before any
-#     merge to main, and --affected itself falls back to it for any change it
-#     cannot place.
+#     sharded suite runs in CI, the required check before any merge to main
+#     (not at pre-push since IAN-98), and --affected itself falls back to it
+#     for any change it cannot place.
 #   - Related tests only in application repos (IAN-98, 2026-09-18): the
 #     vitest, jest, pytest, and Go branches run the tests enforce/related-tests.sh
 #     maps the changed files to, and the full suite when it cannot map a
