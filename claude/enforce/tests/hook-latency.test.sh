@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: serial
 # hook-latency.test.sh: fail if a per-event hook chain does heavy work. The
 # guarded invariant: per-edit hooks stay bash+jq cheap (no Node startup, no
 # network). Absolute wall-clock is load-dependent (a busy dev server inflates

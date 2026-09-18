@@ -182,6 +182,7 @@ Structured logging (structlog or stdlib `logging` with a JSON formatter). No sec
 - `pytest-asyncio` for async paths. Fixtures in `conftest.py`; test files in `tests/` mirroring `app/` (R-313), never co-located.
 - No `@pytest.mark.skip` to suppress a failing test; a test that cannot pass is deleted and re-added when the capability exists (R-401 item 9).
 
+- Test runs (R-509): run in parallel with `pytest -n auto` (`pytest-xdist`), using `--dist loadfile` when tests in one file share expensive fixtures; give each worker its own database via the `worker_id` fixture. Turn ends, commits, and branch-level merges run only the affected tests (the changed test files plus the tests mirroring changed `app/` modules, or `pytest-testmon` when the project has adopted it); the full `pytest -n auto` runs at pre-push and as the required CI check before any merge to `main`. Adding either plugin is a new dependency and needs its R-331 justification.
 ## Tooling (analog of Prettier/ESLint)
 
 - `ruff` for lint and import sorting, `black` for formatting, `mypy --strict` for types. Pre-commit runs these on staged files only (R-408); full sweep in pre-push/CI (R-509).

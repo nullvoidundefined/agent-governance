@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # credential-shape-scan.test.sh: every tracked text file of the checkout,
 # pushed through hooks/secret-scan.sh as a Write payload, must not deny
 # (R-102 full-length secrets, R-108 credential-shaped literals). The hook

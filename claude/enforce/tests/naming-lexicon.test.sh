@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: eslint:naming-lexicon
 # Verifies the lexicon/naming rule (R-316 plus the decidable half of R-317).
 # The point of the rule is determinism, so every case here asserts a fixed

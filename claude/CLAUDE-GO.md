@@ -114,6 +114,7 @@ Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'acti
 - LLM consumers include one fixture test against a real captured response (`testdata/`).
 - No `t.Skip` to suppress a failing test; fix it or delete it (R-401 item 9).
 
+- Test runs (R-509): `go test` already runs packages in parallel; mark independent tests `t.Parallel()` and keep them free of shared globals so they can. Turn ends, commits, and branch-level merges test only the packages containing changed files and the packages that import them (select with `go list -f '{{.ImportPath}} {{join .Deps " "}}' ./...`); the full `go test ./...` runs at pre-push and as the required CI check before any merge to `main`.
 ## Tooling (analog of Prettier/ESLint)
 
 - `gofmt` + `goimports` on staged files pre-commit (R-408); `go vet` and the full test suite pre-push (R-509).

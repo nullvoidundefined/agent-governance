@@ -95,7 +95,7 @@ R-505: Conventional commit subjects (`type(scope): summary`); one commit per tri
 R-506: One-sentence commit bodies; multi-line only for business-logic bugs, architectural refactors, security changes. [hook:commit-message-guard]
 R-507: Never commit unresolved conflict markers. [hook:conflict-markers]
 R-508: Update `README.md` in the same commit when adding a user-facing feature or changing structure or setup. [hook:git-workflow-guard]
-R-509: Target changed files in per-commit test runs; run the full suite at pre-push; neither a turn nor a writing subagent ends on a red suite. [hook:verification-gate]
+R-509: Default to sharded (parallel) test runs; turn ends, commits, and branch-level merges run only the tests the changed files affect, and the full sharded suite when a change cannot be mapped or touches shared test setup; the full suite runs at pre-push and as the required CI check before any merge to main; neither a turn nor a writing subagent ends on a red suite. [hook:verification-gate]
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run their format/lint/build steps. [manual]
 R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch, one at a time. [hook:git-workflow-guard]
 R-512: Squash-merge feature branches; one commit per feature on `main`. [hook:git-workflow-guard]

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: eslint:ban-ts-comment, eslint:member-ordering, eslint:no-explicit-any, eslint:no-magic-numbers, eslint:no-nested-ternary, eslint:no-restricted-syntax, eslint:sort-keys
 # Verifies the bundled ESLint config flags R-323 (sort-keys) and R-319 (one export per file)
 # and passes clean code. R-319 is scoped to the function-module trees (services/api/clients);
