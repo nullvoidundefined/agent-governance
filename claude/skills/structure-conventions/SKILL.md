@@ -1,6 +1,6 @@
 ---
 name: structure-conventions
-description: The stack-specific structural and syntax rules (R-304, R-305, R-309 to R-314, R-319, R-321, R-323, R-324, R-326 to R-329, R-407). Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a TypeScript server or web client, before writing a pg migration default, and when planning a package layout. Each rule here is also enforced mechanically at the tool call, so this skill is the pre-emptive read, not the backstop.
+description: The stack-specific structural and syntax rules (R-304, R-305, R-309 to R-314, R-319, R-321, R-323, R-324, R-326 to R-329, R-407). Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a server or web client (TypeScript, Python, Vue, or Nuxt), before writing a pg migration or Alembic default, and when planning a package layout. Each rule here is also enforced mechanically at the tool call, so this skill is the pre-emptive read, not the backstop.
 ---
 
 # Structure Conventions
@@ -15,8 +15,8 @@ Full Spec, Scope, and Enforcement for each: `~/.claude/rulebook/reference.md`.
 
 ## Directory vocabulary
 
-R-304: Use the fixed top-level vocabulary in the Express server's `src/` (`config`, `constants`, `types`, `schemas`, `middleware`, `routes`, `handlers`, `services`, `repositories`, `clients`, `database`, `dependencyInjection`, `prompts`, `workers`); extra dirs only for a real domain responsibility; the root holds directories, not loose modules (entry point and `.d.ts` excepted). [hook:structure-gate]
-R-305: Use the fixed vocabulary in the web client's `src/` (`app`, `components`, `features`, `services`, `api`, `clients`, `state`, `config`, `constants`, `data`, `styles`); context providers live in `state/`; one component per folder (`components/Header/Header.tsx`). [hook:structure-gate]
+R-304: Use the fixed top-level vocabulary in the Express server's `src/` (`config`, `constants`, `types`, `schemas`, `middleware`, `routes`, `handlers`, `services`, `repositories`, `clients`, `database`, `dependencyInjection`, `prompts`, `workers`); extra dirs only for a real domain responsibility; the root holds directories, not loose modules (entry point and `.d.ts` excepted). A FastAPI service's `app/` uses the Python vocabulary instead (`core`, `db`, `middleware`, `dependencies`, `routers`, `schemas`, `services`, `repositories`, `clients`, `constants`, `analytics`, `prompts`, `tools`, `workers`), with `snake_case` package directories (CLAUDE-PYTHON.md). [hook:structure-gate]
+R-305: Use the fixed vocabulary in the web client's `src/` (`app`, `components`, `features`, `services`, `api`, `clients`, `state`, `config`, `constants`, `data`, `styles`); context providers live in `state/`; one component per folder (`components/Header/Header.tsx`). A Nuxt client roots at `app/` (`pages`, `layouts`, `middleware`, `plugins`, `components`, `features`, `composables`, `stores`, `api`, `clients`, `services`, `config`, `constants`, `data`, `styles`, `types`) and `server/` (`api`, `middleware`, `plugins`); `composables/` and `stores/` replace `state/`; page and Nitro route directories are kebab-case URL segments; `.vue` components pair in folders the same way (`components/TripCard/TripCard.vue`) (CLAUDE-FRONTEND-VUE.md, CLAUDE-FRONTEND-NUXT.md). [hook:structure-gate]
 R-311: Full-word directory names, never abbreviations: `database/` not `db/`. [hook:structure-gate]
 R-312: Multi-word directories are camelCase in every source tree; exceptions: Next.js URL route segments keep kebab-case, Python and Ruby trees use snake_case, Go is waived (lowercase packages, kebab cmd/ binaries). [hook:structure-gate]
 
