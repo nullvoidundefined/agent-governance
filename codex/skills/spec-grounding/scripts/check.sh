@@ -73,7 +73,10 @@ if has_section "Already exists"; then check_cites "Already exists"; else fail 'm
 # 3. Conflicts cites and governing rules.
 if has_section "Conflicts with current patterns"; then
   check_cites "Conflicts with current patterns"
-  section "Conflicts with current patterns" | grep -E '^- ' | grep -vqE 'R-[0-9]{3}' \
+  # Process substitution, not a pipe, for each grep -q over a section: under
+  # pipefail, grep -q exiting at an early match kills the writer with SIGPIPE
+  # on a section over 64KB, and the match reads as a miss (IAN-120).
+  grep -vqE 'R-[0-9]{3}' < <(section "Conflicts with current patterns" | grep -E '^- ') \
     && fail 'a bullet under "## Conflicts with current patterns" names no governing R-NNN rule'
 else
   fail 'missing "## Conflicts with current patterns" section'
@@ -81,14 +84,14 @@ fi
 
 # 4. Glossary.
 if has_section "Domain vocabulary"; then
-  section "Domain vocabulary" | grep -q 'chosen over:' || fail '"## Domain vocabulary" has no "chosen over:" entry (R-330)'
+  grep -q 'chosen over:' < <(section "Domain vocabulary") || fail '"## Domain vocabulary" has no "chosen over:" entry (R-330)'
 else
   fail 'missing "## Domain vocabulary" section (R-330)'
 fi
 
 # 5. Acceptance criteria and non-goals.
 if has_section "Acceptance criteria"; then
-  section "Acceptance criteria" | grep -qE '\bB-1\b' || fail '"## Acceptance criteria" has no B-1 line (R-412 slices)'
+  grep -qE '\bB-1\b' < <(section "Acceptance criteria") || fail '"## Acceptance criteria" has no B-1 line (R-412 slices)'
 else
   fail 'missing "## Acceptance criteria" section'
 fi

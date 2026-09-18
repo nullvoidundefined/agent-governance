@@ -102,7 +102,7 @@
     "skills/resolve-user-feedback/SKILL.md": "sha256:5dab8b50fd38e65ccbe9ce2fe723cc1ad323a0108848085c08d8ce613632f1de",
     "skills/resolve-user-feedback/scripts/feedback.mjs": "sha256:64223f545e8a46a9c8d948e660632c0bed5d693cbf1bb24f1d05c348ea9d8d39",
     "skills/spec-grounding/SKILL.md": "sha256:1defe3069f25bf142b2ac810ac04a6d59429992e79faddade64c463ee011a1a8",
-    "skills/spec-grounding/scripts/check.sh": "sha256:c2ff49a0aa760123b42abeb148ff21122b3082d58174a08135864d69f2f24b12",
+    "skills/spec-grounding/scripts/check.sh": "sha256:cba4fbe2e6a64e553b557c65d79233523414ec78e7abe77c924fca84dd8c3ddb",
     "skills/structure-conventions/SKILL.md": "sha256:5f3cf394d9ef20b1bc4e05ad005c3e7e07b9910441295b5d2ae64720d714a8b6",
     "skills/task-cleanup/SKILL.md": "sha256:366b1ac05c7b5df0961407a377d589981d2589cfeb74e9934ddef5c68a5c4f78",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",

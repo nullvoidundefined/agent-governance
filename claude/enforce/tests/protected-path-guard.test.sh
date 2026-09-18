@@ -53,6 +53,13 @@ write "$REPO/vitest.config.ts" 'export default {}' | expect ask "Write to a test
 write "$REPO/package.json" '{ "name": "fixture", "scripts": { "test": "echo ok", "build": "tsc" }, "dependencies": {} }' | expect ask "package.json test script change asks"
 write "$REPO/package.json" '{ "name": "fixture", "scripts": { "test": "vitest run", "build": "tsc" }, "dependencies": { "zod": "^3" } }' | expect allow "package.json dependency add with the same test script"
 edit "$REPO/package.json" '"test": "vitest run"' '"test": "vitest run --passWithNoTests"' | expect ask "package.json Edit touching the test script asks"
+# Regression (IAN-120): the Edit check piped jq straight into `grep -qE`. When
+# the edited strings run past the pipe buffer, grep exits at the early match,
+# jq dies of SIGPIPE writing the rest, and under pipefail the match read as a
+# miss, so a large Edit that also changed the test script passed silently.
+jq -nc --arg f "$REPO/package.json" --arg d "$REPO" \
+  '{tool_name:"Edit",cwd:$d,tool_input:{file_path:$f,old_string:"\"test\": \"vitest run\"",new_string:("\"test\": \"echo ok\",\n" + ("    \"filler\": \"ordinary package.json content\",\n" * 4096))}}' \
+  | expect ask "package.json Edit over 64KB touching the test script asks"
 write "$REPO/src/services/score.ts" 'export function score() { return 2; }' | expect allow "production write with no lock"
 write "$REPO/src/__tests__/score.test.ts" 'it("x", () => {});' | expect allow "test write with no lock"
 jq -nc '{tool_name:"Read",tool_input:{file_path:"/x/.claude/verify.sh"}}' | expect allow "Read is never gated"

@@ -11,6 +11,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
 reports() { grep -qF "$1" <<< "$OUT"; }
+# omits <text>: true when the check output does not contain the text.
+omits() { ! grep -qF "$1" <<< "$OUT"; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
 git -C "$SB" init -q -b main
@@ -71,6 +73,43 @@ check "pass line printed" reports "meets the definition of done"
 SPEC_PHYSICAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SPEC")
 OUT=$("$CHECK" "$SPEC_PHYSICAL" 2>&1); ST=$?
 check "grounded spec passes via its physical path" test "$ST" -eq 0
+
+# Regression (IAN-120): each section check piped the awk section extract into
+# `grep -q`. On a section larger than the pipe buffer, grep exits at an early
+# match while awk is still writing, awk dies of SIGPIPE, and under pipefail
+# the match read as a miss: a present B-1 line or chosen-over entry was
+# reported missing, and an uncited conflict bullet went unreported.
+# spec_with_large_sections: the grounded spec with 4096 extra lines after the
+# B-1 line and after the chosen-over entry, pushing both sections past 64KB.
+spec_with_large_sections() {
+  good_spec | awk '
+    { print }
+    /^- B-1: / { for (i = 2; i < 4098; i++) print "- B-" i ": an ordinary acceptance criterion kept for size" }
+    /chosen over:/ { for (i = 0; i < 4096; i++) print "- term" i " - an ordinary glossary entry kept for size - chosen over: other" i "." }
+  '
+}
+spec_with_large_sections > "$SPEC"
+# spec_exceeds_pipe_buffer: true when the spec is over 128KB, so the cases
+# below cannot pass merely because a section fit in the pipe buffer.
+spec_exceeds_pipe_buffer() { [ "$(wc -c < "$SPEC" | tr -d ' ')" -gt 131072 ]; }
+check "large-section spec exceeds two pipe buffers" spec_exceeds_pipe_buffer
+OUT=$("$CHECK" "$SPEC" --no-git 2>&1); ST=$?
+check "grounded spec with sections over 64KB passes" test "$ST" -eq 0
+check "B-1 found in an Acceptance criteria section over 64KB" omits "has no B-1 line"
+check "chosen-over found in a Domain vocabulary section over 64KB" omits "has no \"chosen over:\" entry"
+
+# spec_with_large_uncited_conflicts: the first conflict bullet loses its rule
+# citation and 4096 cited bullets follow it, pushing the section past 64KB.
+spec_with_large_uncited_conflicts() {
+  good_spec | sed 's| (R-306)\.|.|' | awk '
+    { print }
+    /^- Spec says a `utils\/` helper/ { for (i = 0; i < 4096; i++) print "- an ordinary conflict bullet kept for size " i " (R-306)." }
+  '
+}
+spec_with_large_uncited_conflicts > "$SPEC"
+OUT=$("$CHECK" "$SPEC" --no-git 2>&1); ST=$?
+check "uncited conflict in a section over 64KB fails" test "$ST" -eq 1
+check "uncited conflict in a section over 64KB named" reports "names no governing R-NNN rule"
 
 # A path that does not exist in the grounding table.
 good_spec | sed 's|src/services/sendUserNotification.ts` \| `sendUserNotification`|src/services/missing.ts` \| `sendUserNotification`|' > "$SPEC"

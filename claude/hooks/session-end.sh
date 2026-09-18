@@ -87,7 +87,10 @@ find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_D
       SIG="$RULE $CTX"
       # Dedupe by content, ignoring the leading date, so the same
       # fired: line is not re-appended with a fresh date each session.
-      if ! sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} //' "$FIRES_LOG" | grep -qFx "$SIG"; then
+      # Process substitution, not a pipe: under pipefail, grep -q exiting at
+      # an early match kills sed with SIGPIPE once the log passes 64KB, and
+      # the match would read as a miss and re-append the line (IAN-120).
+      if ! grep -qFx "$SIG" < <(sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} //' "$FIRES_LOG"); then
         printf '%s %s\n' "$TODAY" "$SIG" >> "$FIRES_LOG"
       fi
     done
@@ -100,7 +103,7 @@ find "$PROJECTS_DIR" -type d -name memory 2>/dev/null | while IFS= read -r MEM_D
       CTX="${CONTENT#* }"
       SIG="$RULE MISS $CTX"
       # Dedupe by content, ignoring the leading date (see fires block).
-      if ! sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} //' "$MISSES_LOG" | grep -qFx "$SIG"; then
+      if ! grep -qFx "$SIG" < <(sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} //' "$MISSES_LOG"); then
         printf '%s %s\n' "$TODAY" "$SIG" >> "$MISSES_LOG"
       fi
     done
