@@ -188,6 +188,27 @@ check "a later quoted Refs line is not the body" is_deny
 run_gate "$R" "$(printf '%s --body "$(cat <<'"'"'EOF'"'"'\nSays "a && b"; then | c.\n\nRefs: IAN-119\nEOF\n)" && echo done' "$CREATE")"
 check "a heredoc body holding quotes and separators still allows" is_silent
 
+# The command is read as shell: newlines separate commands, quoted text is
+# never an invocation or a flag, and each flag belongs to its own command.
+R=$(make_repo shell "feat: add the service" src/service.ts)
+D=$(make_repo shelldocs "docs: explain it" docs/guide.md)
+run_gate "$R" "$(printf "printf 'gh pr create --body \"x\nRefs: IAN-119\"'; gh pr create --body 'No ref.'")"
+check "an earlier quoted gh pr create is not the invocation" is_deny
+run_gate "$R" "$(printf "gh pr create --title \"note --body\nRefs: IAN-119\" --body 'No ref.'")"
+check "a --body inside the quoted title is not the body" is_deny
+run_gate "$R" "gh pr create --title 'see -F $SB/body-with-ref.md' --body 'No ref.'"
+check "a -F inside the quoted title is not the body file" is_deny
+OUT=$(cd "$SB" && payload_for "$(printf 'cd %s\ncd %s\ngh pr create --body %s' "$D" "$R" "'No ref.'")" | HOME="$TRACKED_HOME" CLAUDE_ENFORCE_BASE=main "$HOOK" 2>/dev/null)
+check "newline-separated cd chain ends in the code repository and denies" is_deny
+run_gate "$R" "$(printf "git status\ngh pr create --body 'No ref.'")"
+check "an invocation on its own line is found" is_deny
+run_gate "$R" "echo \"; gh pr create --body 'No ref.'\""
+check "a separator inside quotes does not start an invocation" is_silent
+run_gate "$R" "$(printf "gh pr create -F - <<'EOF'\n## Summary\n\nRefs: IAN-119\nEOF")"
+check "-F - with a heredoc on stdin allows silently" is_silent
+run_gate "$R" "$(printf "gh pr create -F - <<'EOF'\n## Summary\nEOF")"
+check "-F - with a heredoc lacking Refs denies" is_deny
+
 # The registration reaches compound commands: no prefix `if` filter.
 check "settings registers the gate without an if filter" jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("/pr-ticket-ref-gate.sh"))] | length == 1 and (.[0].if == null)' "$CLAUDE_HARNESS_ROOT/settings.json"
 

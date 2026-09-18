@@ -30,7 +30,12 @@ set -uo pipefail
 
 KEY_PATTERN='[A-Z][A-Z0-9]+-[0-9]+'
 REFS_LINE_PATTERN="^[[:space:]\"']*Refs:[[:space:]]*${KEY_PATTERN}([^A-Za-z0-9-]|\$)"
-CREATE_PATTERN='(^|[;&|(])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*gh[[:space:]]+pr[[:space:]]+(create|new)([[:space:]]|$)'
+# A cheap prefilter only: a command that mentions the words reaches the
+# shell-aware scan below, which decides whether gh pr create really runs.
+PREFILTER_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)'
+SEPARATOR_TOKEN=$'\001separator'
+HEREDOC_TOKEN=$'\001heredoc'
+HEREDOC_PATTERN="^<<-?[[:space:]]*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"
 
 # has_refs_line <text>: true when some line of the text is a Refs trailer
 # naming a ticket key, optionally preceded by an opening quote.
@@ -38,103 +43,172 @@ has_refs_line() {
   grep -Eq -- "$REFS_LINE_PATTERN" <<< "$1"
 }
 
-# resolve_target_dir <prefix> <session-cwd>: prints the directory the pull
-# request is created from by replaying every `cd <dir>` in the text before the
-# gh invocation, each relative to the one before, starting from the session's
-# working directory. A cd whose target does not exist leaves the directory
-# unchanged, as the shell would after the failed cd.
-resolve_target_dir() {
-  local remaining="$1" dir="$2" cd_pattern cd_dir
-  cd_pattern="(^|[;&|(])[[:space:]]*cd[[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)"
-  while [[ "$remaining" =~ $cd_pattern ]]; do
-    remaining="${remaining#*"${BASH_REMATCH[0]}"}"
-    cd_dir="${BASH_REMATCH[2]}"
-    cd_dir="${cd_dir#[\"\']}"; cd_dir="${cd_dir%[\"\']}"
-    case "$cd_dir" in "~") cd_dir="$HOME" ;; "~"/*) cd_dir="$HOME/${cd_dir#\~/}" ;; /*) ;; *) cd_dir="$dir/$cd_dir" ;; esac
-    [ -d "$cd_dir" ] && dir="$cd_dir"
-  done
-  printf '%s' "$dir"
-}
-
-# heredoc_end_offset <text> <delimiter>: the text starts at a `<<` heredoc
-# operator; prints the offset of the newline that ends the heredoc's
-# terminator line, or the text's length when the terminator never appears.
-heredoc_end_offset() {
-  local text="$1" delimiter="$2" offset=0 line is_first=1
+# capture_heredoc <text> <delimiter>: the text starts on the line that
+# introduces a heredoc; sets HEREDOC_BODY to the lines after that one up to
+# the terminator line, and HEREDOC_END to the offset of the newline that ends
+# the terminator line (the text's length when it never appears).
+capture_heredoc() {
+  local text="$1" delimiter="$2" offset=0 line stripped is_first=1
+  HEREDOC_BODY=''
   while IFS= read -r line || [ -n "$line" ]; do
     offset=$((offset + ${#line} + 1))
     if [ "$is_first" -eq 1 ]; then is_first=0; continue; fi
-    line="${line#"${line%%[!$'\t']*}"}"
-    [ "$line" = "$delimiter" ] && { printf '%s' "$((offset - 1))"; return; }
+    stripped="${line#"${line%%[!$'\t']*}"}"
+    if [ "$stripped" = "$delimiter" ]; then HEREDOC_END=$((offset - 1)); return; fi
+    HEREDOC_BODY="$HEREDOC_BODY$line"$'\n'
   done <<< "$text"
-  printf '%s' "${#text}"
+  HEREDOC_END=${#text}
 }
 
-# gh_invocation_text <text>: the text starts at `gh pr create`; prints it up
-# to the first unquoted command separator (; & | or a newline), so a later
-# command in the chain cannot supply the body or its flags. Quotes are
-# tracked and a heredoc is skipped whole, so a body holding quotes or
-# separators stays inside the invocation.
-gh_invocation_text() {
-  local text="$1" index=0 length=${#1} char quote='' heredoc_pattern end
-  heredoc_pattern="^<<-?[[:space:]]*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"
+# flush_word: moves the word being built, if any, onto TOKENS.
+flush_word() {
+  [ "$HAS_WORD" -eq 1 ] && TOKENS+=("$WORD")
+  WORD=''; HAS_WORD=0
+}
+
+# push_separator: ends the current simple command on TOKENS, collapsing runs
+# of separators (&&, ;;, a blank line) into one.
+push_separator() {
+  flush_word
+  local count=${#TOKENS[@]}
+  [ "$count" -gt 0 ] && [ "${TOKENS[count - 1]}" = "$SEPARATOR_TOKEN" ] && return
+  TOKENS+=("$SEPARATOR_TOKEN")
+}
+
+# scan_command_tokens <command>: splits a Bash tool command into shell words
+# on TOKENS, with SEPARATOR_TOKEN between simple commands (at an unquoted ;
+# & | ( ) or newline) and HEREDOC_TOKEN plus the body for a heredoc fed to a
+# command. Quotes are honored and removed, and a heredoc inside a quoted word
+# (--body "$(cat <<'EOF' ...)") stays part of that word. Nothing is expanded
+# or evaluated: the input is an untrusted tool-call string.
+scan_command_tokens() {
+  local text="$1" index=0 length=${#1} char quote='' pending=''
+  TOKENS=(); WORD=''; HAS_WORD=0
   while [ "$index" -lt "$length" ]; do
     char="${text:index:1}"
     if [ "$quote" = "'" ]; then
-      [ "$char" = "'" ] && quote=''
-    elif [ "$char" = '\' ]; then
-      index=$((index + 1))
-    elif [ "$char" = '<' ] && [[ "${text:index}" =~ $heredoc_pattern ]]; then
-      end=$(heredoc_end_offset "${text:index}" "${BASH_REMATCH[1]}")
-      index=$((index + end))
-      continue
+      if [ "$char" = "'" ]; then quote=''; else WORD="$WORD$char"; fi
+    elif [ "$char" = '<' ] && [[ "${text:index:80}" =~ $HEREDOC_PATTERN ]]; then
+      if [ -n "$quote" ]; then
+        capture_heredoc "${text:index}" "${BASH_REMATCH[1]}"
+        WORD="$WORD${text:index:HEREDOC_END}"; index=$((index + HEREDOC_END)); continue
+      fi
+      flush_word; pending="${BASH_REMATCH[1]}"; index=$((index + ${#BASH_REMATCH[0]})); continue
+    elif [ "$char" = "\\" ]; then
+      index=$((index + 1)); [ "${text:index:1}" = $'\n' ] || { WORD="$WORD${text:index:1}"; HAS_WORD=1; }
     elif [ "$char" = '"' ]; then
-      if [ "$quote" = '"' ]; then quote=''; else quote='"'; fi
-    elif [ -z "$quote" ]; then
-      case "$char" in ';'|'&'|'|'|$'\n') break ;; "'") quote="'" ;; esac
+      if [ "$quote" = '"' ]; then quote=''; else quote='"'; HAS_WORD=1; fi
+    elif [ -n "$quote" ]; then
+      WORD="$WORD$char"
+    elif [ "$char" = $'\n' ] && [ -n "$pending" ]; then
+      flush_word; capture_heredoc "${text:index}" "$pending"
+      TOKENS+=("$HEREDOC_TOKEN" "$HEREDOC_BODY"); push_separator
+      pending=''; index=$((index + HEREDOC_END)); continue
+    else
+      case "$char" in
+        ' '|$'\t') flush_word ;;
+        $'\n'|';'|'&'|'|'|'('|')') push_separator ;;
+        "'") quote="'"; HAS_WORD=1 ;;
+        *) WORD="$WORD$char"; HAS_WORD=1 ;;
+      esac
     fi
     index=$((index + 1))
   done
-  printf '%s' "${text:0:index}"
+  push_separator
 }
 
-# body_flag_text <command>: prints everything after the first --body/-b flag,
-# so that a heredoc body keeps its line structure; empty when there is none.
-body_flag_text() {
-  local command="$1" body_pattern='(^|[[:space:]])(--body|-b)([[:space:]]+|=)(.*)'
-  [[ "$command" =~ $body_pattern ]] && printf '%s' "${BASH_REMATCH[4]}"
+# apply_cd <word>...: replays one cd onto TARGET_DIR, skipping its options;
+# a target that does not exist leaves the directory unchanged, as the shell
+# would after the failed cd, and `cd -` is not followed.
+apply_cd() {
+  local target=""
+  while [ "$#" -gt 0 ]; do case "$1" in -?*) shift ;; *) target="$1"; break ;; esac; done
+  case "$target" in
+    ""|"~") target="$HOME" ;;
+    "~"/*) target="$HOME/${target#\~/}" ;;
+    -) return 0 ;;
+    /*) ;;
+    *) target="$TARGET_DIR/$target" ;;
+  esac
+  [ -d "$target" ] && TARGET_DIR="$target"
+  return 0
 }
 
-# body_file_path <command> <target-dir>: prints the path passed with
-# --body-file/-F, resolved against the target directory; empty for none or
-# for `-` (standard input, which a hook cannot read).
-body_file_path() {
-  local command="$1" dir="$2" path file_pattern
-  file_pattern="(^|[[:space:]])(--body-file|-F)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)"
-  [[ "$command" =~ $file_pattern ]] || return 0
-  path="${BASH_REMATCH[4]}"
-  path="${path#[\"\']}"; path="${path%[\"\']}"
-  [ "$path" = "-" ] && return 0
-  case "$path" in "~"/*) path="$HOME/${path#\~/}" ;; /*) ;; *) path="$dir/$path" ;; esac
-  printf '%s' "$path"
+# inspect_simple_command <stdin> <word>...: for a cd, moves TARGET_DIR; for
+# gh pr create (or its alias new), records its arguments in INVOCATION_ARGS
+# and its heredoc in INVOCATION_STDIN and returns 0. Leading VAR=value
+# assignments are skipped.
+inspect_simple_command() {
+  local stdin="$1"; shift
+  while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do shift; done
+  [ "$#" -gt 0 ] || return 1
+  if [ "$1" = "cd" ]; then shift; apply_cd "$@"; return 1; fi
+  [ "$1" = "gh" ] && [ "${2:-}" = "pr" ] || return 1
+  case "${3:-}" in create|new) ;; *) return 1 ;; esac
+  shift 3
+  INVOCATION_ARGS=("$@"); INVOCATION_STDIN="$stdin"
+  return 0
 }
 
-# body_has_reference <command> <target-dir>: true when the body given by
-# --body or by a readable --body-file carries a Refs line.
+# find_pr_invocation <session-dir>: walks TOKENS one simple command at a
+# time from the session's directory, replaying each cd, and stops at the
+# first gh pr create; returns 1 when the command never runs one.
+find_pr_invocation() {
+  local token stdin='' is_heredoc_next=0
+  local -a words=()
+  TARGET_DIR="$1"
+  for token in ${TOKENS[@]+"${TOKENS[@]}"}; do
+    if [ "$is_heredoc_next" -eq 1 ]; then stdin="$token"; is_heredoc_next=0; continue; fi
+    case "$token" in
+      "$HEREDOC_TOKEN") is_heredoc_next=1 ;;
+      "$SEPARATOR_TOKEN")
+        inspect_simple_command "$stdin" ${words[@]+"${words[@]}"} && return 0
+        words=(); stdin='' ;;
+      *) words+=("$token") ;;
+    esac
+  done
+  return 1
+}
+
+# parse_invocation_flags: reads the body, body file, and base out of
+# INVOCATION_ARGS word by word, so a flag spelled inside another argument's
+# quoted value (a title mentioning --body) is never taken for the flag.
+parse_invocation_flags() {
+  local arg expected=''
+  BODY_TEXT=''; BODY_FILE=''; BASE_NAME=''
+  for arg in ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}; do
+    case "$expected" in
+      body) BODY_TEXT="$arg"; expected=''; continue ;;
+      file) BODY_FILE="$arg"; expected=''; continue ;;
+      base) BASE_NAME="$arg"; expected=''; continue ;;
+    esac
+    case "$arg" in
+      --body|-b) expected='body' ;;
+      --body=*) BODY_TEXT="${arg#--body=}" ;;
+      --body-file|-F) expected='file' ;;
+      --body-file=*) BODY_FILE="${arg#--body-file=}" ;;
+      --base|-B) expected='base' ;;
+      --base=*) BASE_NAME="${arg#--base=}" ;;
+    esac
+  done
+}
+
+# body_has_reference: true when --body, a readable --body-file, or the
+# heredoc behind `--body-file -` carries a Refs line.
 body_has_reference() {
-  local command="$1" dir="$2" file
-  has_refs_line "$(body_flag_text "$command")" && return 0
-  file=$(body_file_path "$command" "$dir")
-  [ -n "$file" ] && [ -f "$file" ] && has_refs_line "$(cat "$file" 2>/dev/null)"
+  local file="$BODY_FILE"
+  has_refs_line "$BODY_TEXT" && return 0
+  if [ "$file" = "-" ]; then has_refs_line "$INVOCATION_STDIN"; return; fi
+  [ -n "$file" ] || return 1
+  case "$file" in "~"/*) file="$HOME/${file#\~/}" ;; /*) ;; *) file="$TARGET_DIR/$file" ;; esac
+  [ -f "$file" ] && has_refs_line "$(cat "$file" 2>/dev/null)"
 }
 
-# resolve_pr_base <invocation> <repo-top>: prints the merge base of HEAD with
+# resolve_pr_base <base-name> <repo-top>: prints the merge base of HEAD with
 # the pull request's base branch; empty when none of the candidates exist.
 resolve_pr_base() {
-  local command="$1" dir="$2" base_pattern named="" default="" candidate merge_base
+  local named="$1" dir="$2" default="" candidate merge_base
   if [ -n "${CLAUDE_ENFORCE_BASE:-}" ]; then printf '%s' "$CLAUDE_ENFORCE_BASE"; return; fi
-  base_pattern="(^|[[:space:]])(--base|-B)([[:space:]]+|=)[\"']?([^[:space:]\"';&|]+)"
-  [[ "$command" =~ $base_pattern ]] && named="${BASH_REMATCH[4]}"
   default=$(git -C "$dir" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)
   for candidate in ${named:+"origin/$named" "$named"} ${default:+"$default"} origin/main main origin/master master; do
     git -C "$dir" rev-parse --verify -q "$candidate" >/dev/null 2>&1 || continue
@@ -202,28 +276,26 @@ emit_deny() {
 
 INPUT=$(cat)
 CMD=$(jq -r '.tool_input.command // "" | strings' 2>/dev/null <<< "$INPUT" || true)
-grep -Eq -- "$CREATE_PATTERN" <<< "$CMD" || exit 0
+grep -Eq -- "$PREFILTER_PATTERN" <<< "$CMD" || exit 0
 
 SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 [ -n "$SESSION_DIR" ] && [ -d "$SESSION_DIR" ] || SESSION_DIR="$PWD"
-# Split the command at the gh invocation: the text before it decides the
-# directory (its cd chain), and only the invocation itself supplies the body
-# and the flags, so neither an earlier `-b` (git checkout -b) nor a later
-# command's heredoc or `-F` is taken for the pull request's.
-GH_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)'
-PREFIX=""
-[[ "$CMD" =~ $GH_PATTERN ]] && PREFIX="${CMD%%"${BASH_REMATCH[0]}"*}"
-GH_TEXT=$(gh_invocation_text "${CMD#"$PREFIX"}")
-TARGET_DIR=$(resolve_target_dir "$PREFIX" "$SESSION_DIR")
+# Read the command as shell: the cds before the invocation decide the
+# directory, and only the invocation's own words supply the body and flags,
+# so quoted text, an earlier `-b`, or a later command's heredoc or `-F` is
+# never taken for the pull request's.
+scan_command_tokens "$CMD"
+find_pr_invocation "$SESSION_DIR" || exit 0
+parse_invocation_flags
 
-body_has_reference "$GH_TEXT" "$TARGET_DIR" && exit 0
+body_has_reference && exit 0
 # Outside a repository (gh pr create -R owner/repo --head branch) there are
 # no commits or ledger to read; the body was the only source, so the call
 # falls through to the tracker check and the deny rather than exiting open.
 TOP=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || true)
 BASE=""
 if [ -n "$TOP" ]; then
-  BASE=$(resolve_pr_base "$GH_TEXT" "$TOP")
+  BASE=$(resolve_pr_base "$BASE_NAME" "$TOP")
   commits_have_reference "$TOP" "$BASE" && exit 0
   is_docs_only_range "$TOP" "$BASE" && exit 0
   is_trivial_tier "$TOP" && exit 0
