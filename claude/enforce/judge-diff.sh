@@ -1,57 +1,31 @@
 #!/usr/bin/env bash
-# llm-rule-judge.sh: on git push, ask a fast model to judge the outgoing diff
-# against the semantic-tier rules in the manifest (those a linter cannot express).
-# ASK (2026-09-05, human-in-the-loop) on a violation whose rule has severity
-# "error" in the manifest AND confidence >= threshold: the human adjudicates a
-# naming finding at push time instead of the model losing the push to a judge. Warn-severity rule violations are printed to stderr
-# but do not block the push. Fails OPEN (allows the push, logs to stderr) if the
-# key is unset or the judge errors / returns unparseable output: the deterministic
-# gates remain the hard guarantee, and a flaky model must not block legitimate work.
-# set -uo, no -e: an unexpected internal error under -e kills the hook before
-# it can emit a decision, and a PreToolUse hook that emits nothing is an
-# allow; a guard fails closed by structure, never open by accident
-# (2026-09-16 audit P2-8; convention documented in enforce/README.md).
+# judge-diff.sh: the CI rule judge for the llm-judge tier rules in
+# manifest.json (R-315, R-316, R-317, R-325, R-334), the semantic rules no
+# linter can express. Asks a fast model to judge the diff between two refs.
+# Exit 1 on an error-severity finding at or above the confidence threshold,
+# printing one "<rule> [<file>]: <why>" line each on stdout; warn-severity
+# findings go to stderr (as ::warning:: annotations under GitHub Actions).
+# Fails open, exit 0 with a notice, when no API key is available or the model
+# reply does not parse: the deterministic gates remain the hard guarantee.
+# Moved off the local push path into .github/workflows/rule-judge.yml on
+# 2026-09-18 (IAN-98), because the push-time hook averaged 171 s per push.
+# EGRESS: sends the diff to api.anthropic.com under ANTHROPIC_API_KEY.
+#
+# Usage: judge-diff.sh <base-ref> [<head-ref>], run inside the target repo.
+# set -uo, no -e, as in every guard here: an unexpected internal error must
+# reach a decision rather than kill the script (enforce/README.md).
 set -uo pipefail
+ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$(cd "$ENFORCE_DIR/.." && pwd)"
+BASE="${1:-}"
+HEAD_REF="${2:-HEAD}"
+[ -n "$BASE" ] || { echo "usage: judge-diff.sh <base-ref> [<head-ref>]" >&2; exit 2; }
 
-# The rule text, the judge prompt and the manifest are files this repo ships,
-# so they are resolved beside the hook rather than through the live install: a
-# hook run out of a checkout must judge against that checkout's rules.
-CLAUDE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENFORCE_DIR="$CLAUDE_DIR/enforce"
-# shellcheck source=../enforce/resolve-outgoing-base.sh
-source "$ENFORCE_DIR/resolve-outgoing-base.sh"
+# run_git_on_target <git arguments...>
+# Runs git in the current repository. Kept under the push hook's name so the
+# moved vocabulary collector and diff read unchanged.
+run_git_on_target() { git "$@"; }
 
-INPUT=$(cat)
-RAW_CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
-CMD="$RAW_CMD"
-# Strip git global options so `git --no-pager push` matches like `git push`
-# (2026-09-16 audit P2-1; the normalizer lives once in git-invocation.sh),
-# then recover which repository the push names so that every query below
-# runs against THAT repository (2026-09-18 audit, defect 4).
-# -f guard, not `source ... || true`: a failed source aborts the shell under
-# set -e regardless of the || (observed 2026-09-16), which is a silent
-# fail-open for a guard.
-GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
-if [ -f "$GIT_INVOCATION_HELPER" ]; then
-  source "$GIT_INVOCATION_HELPER"
-  CMD=$(printf '%s' "$CMD" | strip_git_global_options)
-  # The target is read from the UNSTRIPPED command, because stripping is
-  # exactly what throws it away (2026-09-18 audit, defect 4).
-  parse_git_target_options "$RAW_CMD" push
-fi
-grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
-
-# EGRESS NOTE (2026-07-31 security audit P1): when live, this hook sends the
-# outgoing diff to api.anthropic.com under ANTHROPIC_API_KEY. Repos listed in
-# exempt-repos.txt are excluded, same as the linter gates; the judge previously
-# carried no exemption at all. Disclosure lives in README.md (Enforcement).
-EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"
-if [ -f "$EXEMPT_FILE" ]; then
-  ORIGIN_URL=$(run_git_on_target remote get-url origin 2>/dev/null || true)
-  if [ -n "$ORIGIN_URL" ] && grep -qxF "$ORIGIN_URL" "$EXEMPT_FILE"; then
-    exit 0
-  fi
-fi
 
 # collect_project_vocabulary
 # Prints the `## Domain vocabulary` sections of the target repository's design
@@ -74,9 +48,6 @@ collect_project_vocabulary() {
   printf '%s' "$collected" | head -c "${CLAUDE_JUDGE_VOCAB_MAX_BYTES:-20000}"
 }
 
-BASE=$(resolve_outgoing_base)
-[ -z "$BASE" ] && exit 0
-
 # Source extensions the naming and structure rules actually govern. `.js`,
 # The exclusions carry `glob` magic deliberately. Without it, `**/dist/**`
 # matches a nested `apps/web/dist/x.ts` and NOT a top-level `dist/x.ts`, so
@@ -95,7 +66,7 @@ BASE=$(resolve_outgoing_base)
 # about, were bypassing this gate entirely. Generated trees are excluded
 # because a judge reporting a naming defect in build output wastes the push
 # it interrupts.
-DIFF=$(run_git_on_target diff --diff-filter=ACMR "$BASE"..HEAD -- \
+DIFF=$(run_git_on_target diff --diff-filter=ACMR "$BASE".."$HEAD_REF" -- \
   '*.ts' '*.tsx' '*.js' '*.mjs' '*.vue' '*.py' '*.rb' '*.go' \
   ':(exclude,glob)**/node_modules/**' ':(exclude,glob)**/dist/**' ':(exclude,glob)**/build/**' \
   ':(exclude,glob)**/.output/**' ':(exclude,glob)**/*.gen.*' ':(exclude,glob)**/*.min.js' 2>/dev/null || true)
@@ -117,7 +88,7 @@ if [ "$DIFF_BYTES" -gt "$JUDGE_DIFF_MAX_BYTES" ]; then
 fi
 
 THRESH=0.8
-MANIFEST="${CLAUDE_MANIFEST_FILE:-$HOME/.claude/enforce/manifest.json}"
+MANIFEST="${CLAUDE_MANIFEST_FILE:-$ENFORCE_DIR/manifest.json}"
 
 if [ -n "${CLAUDE_JUDGE_CMD:-}" ]; then
   RESP=$("$CLAUDE_JUDGE_CMD")
@@ -158,7 +129,9 @@ else
     ANTHROPIC_API_KEY=$(read_judge_key_from_stores || true)
   fi
   if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    echo "llm-rule-judge: no API key in env, the macOS keychain, secret-tool, or pass ($JUDGE_KEYCHAIN_SERVICE), skipping semantic gate" >&2
+    NOTICE_PREFIX=""
+    [ "${GITHUB_ACTIONS:-}" = "true" ] && NOTICE_PREFIX="::notice::"
+    echo "${NOTICE_PREFIX}llm-rule-judge: no API key in env, the macOS keychain, secret-tool, or pass ($JUDGE_KEYCHAIN_SERVICE), skipping semantic gate" >&2
     exit 0
   fi
   RULE_IDS=$(jq -r '.rules[] | select(.tier=="llm-judge") | .id' "$MANIFEST")
@@ -248,20 +221,18 @@ while IFS= read -r violation; do
     ASK_HITS=$(printf '%s\n%s' "$ASK_HITS" "$violation" | jq -cs '.[0] + [.[1:][]]' 2>/dev/null || echo "$ASK_HITS")
   else
     why=$(printf '%s' "$violation" | jq -r '"[warn] \(.rule) [\(.file)]: \(.why)"')
-    echo "llm-rule-judge: $why" >&2
+    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+      echo "::warning::llm-rule-judge: $why" >&2
+    else
+      echo "llm-rule-judge: $why" >&2
+    fi
   fi
 done < <(printf '%s' "$ALL_HITS" | jq -c '.[]?' 2>/dev/null || true)
 
+
 COUNT=$(printf '%s' "$ASK_HITS" | jq 'length' 2>/dev/null || echo 0)
 if [ "${COUNT:-0}" -gt 0 ]; then
-  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
-  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
-  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
-  while IFS= read -r fired_rule; do
-    [ -n "$fired_rule" ] && log_rule_fire "$fired_rule" "llm-rule-judge" "ask"
-  done < <(printf '%s' "$ASK_HITS" | jq -r '.[].rule' 2>/dev/null || true)
-  REASON=$(printf '%s' "$ASK_HITS" | jq -r '.[] | "\(.rule) [\(.file)]: \(.why)"')
-  jq -n --arg r "Rule-judge findings on the outgoing diff (confidence >= $THRESH); approve the push only if each is a false positive:
-$REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  printf '%s' "$ASK_HITS" | jq -r '.[] | "\(.rule) [\(.file)]: \(.why)"'
+  exit 1
 fi
 exit 0
