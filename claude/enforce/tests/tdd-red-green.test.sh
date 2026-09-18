@@ -7,7 +7,9 @@
 # commit, close removes the lock only from green. Drives the REAL Vitest
 # bundled in enforce/node_modules (pinned in enforce/package.json), linked into
 # a throwaway project, so the JSON-reporter parsing is exercised against live
-# output rather than a stub.
+# output rather than a stub. A second throwaway project drives the bash
+# *.test.sh runner through the real run-fixture-shards.sh, and close from open
+# before any test is locked.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"
