@@ -3,6 +3,8 @@
 # banned catch-all directory names (R-306/R-304), test-file placement
 # (R-313 no co-location; R-314 one top-level __tests__ tree per package src/),
 # and loose modules at an Express server's src/ root (R-304 layer vocabulary).
+# Nuxt packages root the walk at app/ and server/, and .vue components get the
+# same folder-pairing check as .tsx ones (R-305).
 # Per-edit, no Node spawn.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
@@ -23,6 +25,36 @@ deny() {
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 }
+
+# The two vocabulary checks below both ask "what kind of package is this file in".
+# Walk up to the nearest package.json (six levels covers a pnpm monorepo surface
+# plus slack) and read one dependency name out of it.
+find_package_file() {
+  local candidate="$1" parent
+  for _ in 1 2 3 4 5 6; do
+    [ -f "$candidate/package.json" ] && { printf '%s' "$candidate/package.json"; return 0; }
+    parent=$(dirname "$candidate")
+    [ "$parent" = "$candidate" ] && return 1
+    candidate="$parent"
+  done
+  return 1
+}
+
+package_depends_on() {
+  jq -e --arg dep "$2" \
+    '(.dependencies[$dep] // .devDependencies[$dep] // .peerDependencies[$dep]) != null' \
+    "$1" >/dev/null 2>&1
+}
+
+# Nuxt (slice 01 PR 6): a Nuxt package has no src/; its code roots at app/
+# (the Vue app) and server/ (Nitro). The package is recognised by a nuxt
+# dependency in the nearest package.json, so an Express server's app/ or
+# server/ segments never become roots. Page and Nitro route directories are URL
+# segments and take kebab-case, the Nuxt form of the Next app/ route exemption.
+is_nuxt=0
+nuxt_root=""
+NUXT_PACKAGE_FILE=$(find_package_file "$(dirname "$FILE")" || true)
+[ -n "$NUXT_PACKAGE_FILE" ] && package_depends_on "$NUXT_PACKAGE_FILE" nuxt && is_nuxt=1
 
 BANNED='^(lib|utils|helpers|common|core|misc|shared)$'
 ABBREV='^(db|di|svc|ctrl|mw|cfg)$'
@@ -61,11 +93,18 @@ for seg in "${PARTS[@]}"; do
   if [ "$is_go" -eq 1 ] && [ "$in_src" -eq 0 ]; then
     case "$seg" in internal|cmd|pkg) in_src=1; continue ;; esac
   fi
+  if [ "$is_nuxt" -eq 1 ] && [ "$in_src" -eq 0 ]; then
+    case "$seg" in app|server) in_src=1; nuxt_root="$seg"; continue ;; esac
+  fi
   [ "$in_src" -eq 0 ] && continue
   [[ "$seg" == *.* ]] && continue
   [[ "$seg" =~ ^__.*__$ ]] && continue
   [[ "$seg" =~ ^\(.*\)$ ]] && continue
   [ "$seg" = "app" ] && in_app=1 && continue
+  if [ "$is_nuxt" -eq 1 ]; then
+    [ "$seg" = "pages" ] && in_app=1 && continue
+    [ "$nuxt_root" = "server" ] && { [ "$seg" = "api" ] || [ "$seg" = "routes" ]; } && in_app=1 && continue
+  fi
   if [[ "$seg" =~ $BANNED ]]; then
     # CLAUDE-PYTHON.md blesses core/ (config, logging, security primitives).
     [ "$is_python" -eq 1 ] && [ "$seg" = "core" ] && continue
@@ -125,26 +164,6 @@ if [ "$skip_colocation_check" -eq 0 ] && { [[ "$BASE" =~ \.(test|spec)\.(ts|tsx|
   esac
 fi
 
-# The two vocabulary checks below both ask "what kind of package is this file in".
-# Walk up to the nearest package.json (six levels covers a pnpm monorepo surface
-# plus slack) and read one dependency name out of it.
-find_package_file() {
-  local candidate="$1" parent
-  for _ in 1 2 3 4 5 6; do
-    [ -f "$candidate/package.json" ] && { printf '%s' "$candidate/package.json"; return 0; }
-    parent=$(dirname "$candidate")
-    [ "$parent" = "$candidate" ] && return 1
-    candidate="$parent"
-  done
-  return 1
-}
-
-package_depends_on() {
-  jq -e --arg dep "$2" \
-    '(.dependencies[$dep] // .devDependencies[$dep] // .peerDependencies[$dep]) != null' \
-    "$1" >/dev/null 2>&1
-}
-
 # Both checks fire on creation only: an already-loose module is a fact to work
 # within, matching the pre-existing-directory carve-out above. Scoping by the
 # nearest package.json keeps each deny inside the stack whose convention it
@@ -178,6 +197,15 @@ fi
 if [ -n "$PACKAGE_FILE" ] && [[ "$FILE" == *.tsx ]] && [ "$(basename "$PARENT_DIR")" = "components" ]; then
   if package_depends_on "$PACKAGE_FILE" react; then
     COMPONENT_NAME="${BASE%.tsx}"
+    deny "'$BASE' would sit loose in components/ (R-305). Each component owns a folder: components/$COMPONENT_NAME/$BASE alongside $COMPONENT_NAME.module.scss. Write it at that path instead."
+  fi
+fi
+
+# R-305 for Vue (slice 01 PR 6): the same folder pairing for single-file
+# components, in any package that depends on vue or nuxt.
+if [ -n "$PACKAGE_FILE" ] && [[ "$FILE" == *.vue ]] && [ "$(basename "$PARENT_DIR")" = "components" ]; then
+  if package_depends_on "$PACKAGE_FILE" vue || package_depends_on "$PACKAGE_FILE" nuxt; then
+    COMPONENT_NAME="${BASE%.vue}"
     deny "'$BASE' would sit loose in components/ (R-305). Each component owns a folder: components/$COMPONENT_NAME/$BASE alongside $COMPONENT_NAME.module.scss. Write it at that path instead."
   fi
 fi

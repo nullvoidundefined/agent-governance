@@ -477,7 +477,8 @@
             "tier": "regex",
             "enforcer": "hook:structure-gate",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/; page and Nitro route directories are exempt as URL segments"
         },
         {
             "id": "R-306",
@@ -500,14 +501,15 @@
             "enforcer": "hook:structure-gate",
             "severity": "error",
             "autofix": false,
-            "note": "denies a new .tsx written straight into components/ instead of components/<Name>/<Name>.tsx; scoped by the nearest package.json react dependency"
+            "note": "denies a new .tsx written straight into components/ instead of components/<Name>/<Name>.tsx; scoped by the nearest package.json react dependency; the same check covers a .vue in any package depending on vue or nuxt (components/<Name>/<Name>.vue)"
         },
         {
             "id": "R-311",
             "tier": "regex",
             "enforcer": "hook:structure-gate",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/, so abbreviations there are denied too"
         },
         {
             "id": "R-313",

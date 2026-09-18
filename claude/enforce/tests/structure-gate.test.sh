@@ -116,6 +116,36 @@ allow "$(write_json Write "$VOCAB_FIXTURE/apps/client/web/src/components/types.t
 allow "$(write_json Edit  "$VOCAB_FIXTURE/apps/client/web/src/components/LegacyBanner.tsx")"    # pre-existing loose file
 allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/components/Report.tsx")"              # non-react package untouched
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/components/Card.tsx"}}'            # no package.json, no deny
+
+# E7 (slice 01 PR 6, AC-6): a Nuxt package roots the walk at app/ and server/,
+# because Nuxt has no src/; without that root every Nuxt path bypassed the gate.
+# The Nuxt package is detected by a nuxt dependency in the nearest package.json.
+NUXT="$VOCAB_FIXTURE/apps/client/nuxt"
+mkdir -p "$NUXT/app/components/TripCard" "$NUXT/server/api"
+printf '%s\n' '{"dependencies":{"nuxt":"^4.1.0","vue":"^3.5.0"}}' >"$NUXT/package.json"
+: >"$NUXT/app/components/LegacyTile.vue"
+deny  "$(write_json Write "$NUXT/app/components/TripCard.vue")"                  # loose component (R-305)
+allow "$(write_json Write "$NUXT/app/components/TripCard/TripCard.vue")"         # paired folder ok
+allow "$(write_json Edit  "$NUXT/app/components/LegacyTile.vue")"                # pre-existing loose file
+deny  "$(write_json Write "$NUXT/app/utils/formatPrice.ts")"                     # catch-all under the Nuxt app/ root (R-306)
+deny  "$(write_json Write "$NUXT/server/utils/readSession.ts")"                  # catch-all under the Nitro server/ root (R-306)
+deny  "$(write_json Write "$NUXT/app/trip-legs/reorderTripLegs.ts")"             # kebab directory (R-312)
+deny  "$(write_json Write "$NUXT/app/trip_legs/reorderTripLegs.ts")"             # snake directory (R-312)
+deny  "$(write_json Write "$NUXT/app/svc/fetchTrips.ts")"                        # abbreviation (R-311)
+allow "$(write_json Write "$NUXT/app/composables/useTripsQuery.ts")"             # Vue vocabulary ok
+allow "$(write_json Write "$NUXT/server/api/health.get.ts")"                     # Nitro route file ok
+allow "$(write_json Write "$NUXT/app/pages/coming-soon/index.vue")"              # page directories are URL segments (R-312 exception)
+allow "$(write_json Write "$NUXT/server/api/trip-legs/index.get.ts")"            # Nitro route directories are URL segments too
+# A plain Vue package (Vite, src/ root) gets the component-folder rule through its vue dependency.
+VITE_VUE="$VOCAB_FIXTURE/apps/client/vitevue"
+mkdir -p "$VITE_VUE/src/components"
+printf '%s\n' '{"dependencies":{"vue":"^3.5.0"}}' >"$VITE_VUE/package.json"
+deny  "$(write_json Write "$VITE_VUE/src/components/TripCard.vue")"              # loose component in a Vite Vue app (R-305)
+# Non-Nuxt trees keep their behavior: an Express server's app/ and server/
+# segments are not roots, and a React package ignores .vue.
+allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/services/email/app-mailer.d.ts")"      # unchanged: files are skipped
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/format.ts"}}'                # no Nuxt package, TypeScript app/ is not a root
+allow '{"tool_name":"Write","tool_input":{"file_path":"/x/server/utils/format.ts"}}'             # no Nuxt package, server/ is not a root
 rm -rf "$VOCAB_FIXTURE"
 
 echo "structure-gate.test.sh PASS"
