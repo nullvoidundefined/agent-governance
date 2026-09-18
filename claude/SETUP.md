@@ -37,7 +37,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 The framework files (`CLAUDE.md`, `PROTOCOL.md`, rules, hooks, agents, skills, convention tracks) are already free of personal and single-project identifiers. The one tracked personal store is `global-memory/`:
 
 - `global-memory/feedback_*.md` and `global-memory/lesson_*.md` are reusable collaboration and efficiency defaults. Keep, edit, or delete them to taste.
-- `global-memory/rule_fires.md` and `global-memory/rule_misses.md` are incident logs from the previous owner's sessions. Truncate each to its header so you accumulate your own.
+- `global-memory/rule_fires.md` and `global-memory/rule_misses.md` are not tracked: `hooks/session-end.sh` creates each live copy with its header on the first session end and appends to it after that, so every install accumulates its own logs.
 - `global-memory/INDEX.md` indexes the above; update it after editing.
 
 ## Containment boundaries

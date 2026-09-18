@@ -7,7 +7,8 @@
 # checkout the hook is silent locally and reports once in a remote session;
 # a sync.sh refusal (invalid JSON) leaves the live tree unchanged and is
 # reported; a live enforce node_modules missing a locked package is repaired
-# with or without drift, and an unavailable npm is reported. Needs rsync,
+# with or without drift, and an unavailable npm is reported; the logs
+# session-end.sh writes live are neither drift nor overwritten. Needs rsync,
 # which sync.sh needs too.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -128,6 +129,31 @@ OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
 rm -f "$SB/home/.codex"; mv "$SB/home/.codex.saved" "$SB/home/.codex"
 check "a failed copy is not reported as synced" bash -c '! grep -qF "but ./sync.sh then failed" <<<"$1"' _ "$(context)"
 check "a failed copy is reported as a failed copy" reports "failed before its copy completed"
+
+# 3e. Files a hook writes into the live tree must not be tracked (IAN-114).
+# session-end.sh rolls rule fires into the live global-memory/rule_fires.md, and
+# that path used to be tracked too, so the live copy never matched the checkout:
+# every SessionStart saw drift, ran a full ./sync.sh, and the sync overwrote the
+# roll-up, discarding every fire recorded since the last commit; rule_misses.md
+# had the same shape for miss: lines. The sandbox
+# checkout carries exactly what the real checkout tracks under global-memory/,
+# then the real session-end.sh writes a roll-up into the synced live tree.
+REAL_CHECKOUT=$(dirname "$REAL_SYNC")
+while IFS= read -r tracked; do
+  mkdir -p "$CO/$(dirname "$tracked")"; cp "$REAL_CHECKOUT/$tracked" "$CO/$tracked"
+done < <(git -C "$REAL_CHECKOUT" ls-files -- claude/global-memory)
+git -C "$CO" add -A; git -C "$CO" commit -qm "global memory"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+mkdir -p "$FAKE/.claude/projects/fixture/memory" "$FAKE/.claude/telemetry"
+printf 'miss: R-998 fixture miss; gap: none\n' > "$FAKE/.claude/projects/fixture/memory/feedback_fixture.md"
+printf '2026-09-18T00:00:00Z|R-999|fixture-hook|deny\n' > "$FAKE/.claude/telemetry/rule-fires.log"
+(cd "$SB" && printf '' | HOME="$FAKE" bash "$CLAUDE_HARNESS_ROOT/hooks/session-end.sh" >/dev/null 2>&1)
+check "session-end wrote the live roll-up" grep -qF "R-999" "$FAKE/.claude/global-memory/rule_fires.md"
+check "session-end wrote the live miss log" grep -qF "R-998" "$FAKE/.claude/global-memory/rule_misses.md"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+check "a live-written roll-up is not drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
+check "a live-written roll-up survives the next SessionStart" grep -qF "R-999" "$FAKE/.claude/global-memory/rule_fires.md"
+check "a live-written miss log survives the next SessionStart" grep -qF "R-998" "$FAKE/.claude/global-memory/rule_misses.md"
 
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"

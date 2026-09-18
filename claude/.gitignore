@@ -22,6 +22,13 @@ stats-cache.json
 tasks/
 telemetry/
 todos/
+# Rule fire and miss logs: hooks/session-end.sh appends to the live copies at
+# every session end, so a tracked copy never matched the live tree, harness-sync
+# saw drift at every SessionStart, and each sync overwrote the live logs
+# (IAN-114). session-end.sh creates each one with its header when absent.
+global-memory/rule_fires.md
+global-memory/rule_misses.md
+
 # Per-session user uploads: arbitrary user-supplied files (photos, documents,
 # screenshots) keyed by session id. Never publishable (R-106).
 uploads/

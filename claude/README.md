@@ -166,8 +166,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── INDEX.md                     # Entry point. Auto-loaded by SessionStart.
 │   ├── feedback_*.md                # Calibration memories: how to collaborate.
 │   ├── lesson_*.md                  # Incident-driven efficiency lessons.
-│   ├── rule_fires.md                # Append-only log of when CLAUDE.md rules fired.
-│   └── rule_misses.md               # Append-only log of rules that should have fired.
+│   ├── rule_fires.md                # Live only (gitignored): when CLAUDE.md rules fired.
+│   └── rule_misses.md               # Live only (gitignored): rules that should have fired.
 ├── docs/
 │   └── superpowers/specs/           # Design specs for framework changes. (Dated audit
 │                                    # reports and the session handoff live at the monorepo
