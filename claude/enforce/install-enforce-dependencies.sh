@@ -25,8 +25,11 @@
 # because sync.sh and a parallel session's SessionStart can both find the
 # install stale, and npm ci deletes and rebuilds the shared tree. A caller that
 # finds the lock held waits up to ENFORCE_INSTALL_LOCK_WAIT seconds (default
-# 300), then re-checks, since the holder has usually just installed. A lock
-# older than ten minutes is treated as abandoned by a killed install.
+# 300), then re-checks, since the holder has usually just installed. The lock
+# records its holder's PID and is reclaimed only when that process no longer
+# exists, never by age: a slow but live npm ci must keep it (Copilot review on
+# #60). A lock with no PID file is treated as held, and the wait then fails
+# naming the directory to remove.
 set -uo pipefail
 
 ENFORCE_DIR="${1:?usage: install-enforce-dependencies.sh <enforce-dir>}"
@@ -77,13 +80,22 @@ runLockedInstall() {
   echo "installed"
 }
 
-# acquireInstallLock(): takes the install lock, clearing one abandoned for more
-# than ten minutes; fails naming the lock when it stays held past LOCK_WAIT.
+# isLockHolderGone(): true when the lock names a PID and no such process runs,
+# which is the only case where another caller may reclaim it.
+isLockHolderGone() {
+  local holder
+  holder=$(cat "$LOCK_DIR/pid" 2>/dev/null) || return 1
+  [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null
+}
+
+# acquireInstallLock(): takes the install lock and records this PID in it,
+# reclaiming a lock whose holder has exited; fails naming the lock when a live
+# or unidentified holder keeps it past LOCK_WAIT.
 acquireInstallLock() {
   local waited=0
   until mkdir "$LOCK_DIR" 2>/dev/null; do
-    if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
-      rmdir "$LOCK_DIR" 2>/dev/null
+    if isLockHolderGone; then
+      rm -rf "$LOCK_DIR"
       continue
     fi
     if [ "$waited" -ge "$LOCK_WAIT" ]; then
@@ -93,7 +105,8 @@ acquireInstallLock() {
     sleep 1
     waited=$((waited + 1))
   done
-  trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+  echo "$$" > "$LOCK_DIR/pid"
+  trap 'rm -rf "$LOCK_DIR"' EXIT
 }
 
 [ -f "$LOCK" ] || exit 0

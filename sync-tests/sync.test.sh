@@ -180,5 +180,19 @@ SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync did not inst
 [ ! -e "$TMP/live/claude/enforce/.enforce-install-lock" ] || { echo "FAIL: the install left its lock behind"; exit 1; }
 [ -d "$TMP/live/claude/enforce/node_modules/typescript" ] || { echo "FAIL: install after the lock release did not complete"; exit 1; }
 
+# Copilot review on #60: an age-based expiry let a second caller clear the lock
+# under a slow but live npm ci. The lock now records its holder's PID and is
+# reclaimed only when that process is gone, never because it is old. A live
+# holder (this shell) is waited on; a dead one is reclaimed at once.
+writeEnforceLock eslint vue-eslint-parser eslint-plugin-vue typescript zod
+LIVE_LOCK="$TMP/live/claude/enforce/.enforce-install-lock"
+mkdir "$LIVE_LOCK"; echo "$$" > "$LIVE_LOCK/pid"; touch -t 200001010000 "$LIVE_LOCK"
+if ENFORCE_INSTALL_LOCK_WAIT=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1; then echo "FAIL: an old lock held by a live process was reclaimed"; exit 1; fi
+sleep 0 & dead_pid=$!; wait "$dead_pid"
+echo "$dead_pid" > "$LIVE_LOCK/pid"
+ENFORCE_INSTALL_LOCK_WAIT=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/dead.err" || { echo "FAIL: a lock left by a dead process was not reclaimed"; cat "$TMP/dead.err"; exit 1; }
+[ -d "$TMP/live/claude/enforce/node_modules/zod" ] || { echo "FAIL: install after reclaiming a dead lock did not complete"; exit 1; }
+[ ! -e "$LIVE_LOCK" ] || { echo "FAIL: the install left its lock behind"; exit 1; }
+
 rm -rf "$TMP"
 echo "sync.test.sh PASS"
