@@ -147,6 +147,15 @@ check "no transcript_path injects no start block" ctx_lacks "$CTX_NONE" "started
 check "no transcript_path writes no projects tree" no_file "$EMPTY_HOME/.claude/projects"
 rm -rf "$EMPTY_HOME"
 
+# --- No transcript_path but a cwd: the empty field must not shift the cwd ---
+# --- into transcript_path. Tab is IFS whitespace, so `IFS=$'\t' read` folds ---
+# --- "startup<TAB><TAB>/a/b/work" into two fields and keyed a record on "b". ---
+CWD_HOME=$(mktemp -d)
+CTX_CWD=$(get_ctx "$CWD_HOME" '{"source":"startup","cwd":"/a/b/work"}')
+check "a cwd with no transcript_path injects no start block" ctx_lacks "$CTX_CWD" "started_at:"
+check "a cwd with no transcript_path writes no projects tree" no_file "$CWD_HOME/.claude/projects"
+rm -rf "$CWD_HOME"
+
 # --- A stale record from another session is pruned ---
 STALE="$KEY_DIR/session-start.99999999-aaaa-bbbb-cccc-000000000009"
 printf '2026-08-01T00:00:00Z\n' > "$STALE"
