@@ -245,7 +245,7 @@ for stack in node python go ruby; do
   check "IAN-117 $stack step runs scripts/require-feature-checklist.sh" grep -qF 'bash scripts/require-feature-checklist.sh' <<<"$RUN_BLOCK"
   check "IAN-117 $stack checkout fetches full history" grep -qE '^          fetch-depth: 0$' "$tpl"
   check "IAN-117 $stack step runs on pull requests only" grep -qF "if: github.event_name == 'pull_request'" "$tpl"
-  check "IAN-117 $stack step diffs against the PR base" grep -qF 'FEATURE_CHECKLIST_BASE: origin/${{ github.base_ref }}' "$tpl"
+  check "IAN-117 $stack step diffs against the PR base commit" grep -qF 'FEATURE_CHECKLIST_BASE: ${{ github.event.pull_request.base.sha }}' "$tpl"
   STEP="$SB/checklist-step-$stack.sh"; printf '%s\n' "$RUN_BLOCK" > "$STEP"
 
   R="$SB/ci-$stack-route"; make_route_branch "$R"
@@ -261,6 +261,13 @@ for stack in node python go ruby; do
   R="$SB/ci-$stack-missing"; make_route_branch "$R"
   (cd "$R" && FEATURE_CHECKLIST_BASE=origin/main bash "$STEP" >/dev/null 2>&1); ST=$?
   check "IAN-117 $stack step fails closed when the script is missing" test "$ST" -eq 1
+
+  # PR #63 review: the script exits 0 on a base it cannot resolve, so the step
+  # must fail rather than let the check no-op.
+  R="$SB/ci-$stack-nobase"; make_route_branch "$R"
+  mkdir -p "$R/scripts"; cp "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$R/scripts/"
+  (cd "$R" && FEATURE_CHECKLIST_BASE=0000000000000000000000000000000000000000 bash "$STEP" >/dev/null 2>&1); ST=$?
+  check "IAN-117 $stack step fails when the base does not resolve" test "$ST" -eq 1
 done
 
 # 7. Usage.
