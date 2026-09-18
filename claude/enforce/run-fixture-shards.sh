@@ -131,7 +131,9 @@ fallback_reason() {
     relative="${path#claude/}"
     case " $SHARED_FILES " in *" $relative "*) echo "shared: $path"; return ;; esac
     placed=no
-    for fixture in $corpus; do names_file "$fixture" "$path" && { placed=yes; break; }; done
+    while IFS= read -r fixture; do
+      [ -n "$fixture" ] && names_file "$fixture" "$path" && { placed=yes; break; }
+    done <<< "$corpus"
     [ "$placed" = yes ] || { echo "unmapped: $path"; return; }
   done <<< "$changed"
 }
@@ -140,12 +142,13 @@ fallback_reason() {
 # serial fixture that names a changed file.
 select_affected() {
   local fixtures="$1" changed="$2" fixture path
-  for fixture in $fixtures; do
+  while IFS= read -r fixture; do
+    [ -n "$fixture" ] || continue
     if [ "$(shard_of "$fixture")" = fast ]; then echo "$fixture"; continue; fi
     while IFS= read -r path; do
       [ -n "$path" ] && names_file "$fixture" "$path" && { echo "$fixture"; break; }
     done <<< "$changed"
-  done
+  done <<< "$fixtures"
 }
 
 # run_selected <fixtures> <jobs> <result dir>: the parallel batch, then a
@@ -154,33 +157,41 @@ select_affected() {
 # leftover load: on 2026-09-18 hook-latency failed by 2ms straight after the
 # batch and passed three times out of three when run alone. The pause changes
 # when the measurement is taken, not what it must meet.
+#
+# Fixture paths travel one per line and reach xargs NUL-delimited, so a space
+# in the checkout path never splits one fixture into several arguments (PR #42
+# review round 4).
 run_selected() {
   local fixtures="$1" jobs="$2" result_dir="$3" fixture serial="" batch=""
-  for fixture in $fixtures; do
-    if [ "$(shard_of "$fixture")" = serial ]; then serial="$serial $fixture"; else batch="$batch $fixture"; fi
-  done
+  while IFS= read -r fixture; do
+    [ -n "$fixture" ] || continue
+    if [ "$(shard_of "$fixture")" = serial ]; then serial+="$fixture"$'\n'; else batch+="$fixture"$'\n'; fi
+  done <<< "$fixtures"
   # Guarded because GNU xargs starts the child once even on empty input, with
   # no fixture argument, which a serial-only tree would report as a failure.
   if [ -n "$batch" ]; then
-    for fixture in $batch; do echo "$fixture"; done \
-      | xargs -P "$jobs" -n 1 bash "$0" --run-one "$result_dir" 2>/dev/null
+    printf '%s' "$batch" | tr '\n' '\0' \
+      | xargs -0 -P "$jobs" -n 1 bash "$0" --run-one "$result_dir" 2>/dev/null
   fi
   [ -n "$batch" ] && [ -n "$serial" ] && sleep "${FIXTURE_SERIAL_SETTLE_SECONDS:-$SERIAL_SETTLE_DEFAULT_SECONDS}"
-  for fixture in $serial; do bash "$0" --run-one "$result_dir" "$fixture"; done
+  while IFS= read -r fixture; do
+    [ -n "$fixture" ] && bash "$0" --run-one "$result_dir" "$fixture"
+  done <<< "$serial"
 }
 
 # report_results <fixtures> <result dir>: ok/FAIL lines in name order; true
 # when all passed.
 report_results() {
   local fixtures="$1" result_dir="$2" fixture name all_passed=0
-  for fixture in $fixtures; do
+  while IFS= read -r fixture; do
+    [ -n "$fixture" ] || continue
     name=$(basename "$fixture")
     if [ "$(cat "$result_dir/$name.verdict" 2>/dev/null)" = ok ]; then
       echo "ok   $name"
     else
       echo "FAIL $name"; tail -3 "$result_dir/$name.out" 2>/dev/null; all_passed=1
     fi
-  done
+  done <<< "$fixtures"
   return "$all_passed"
 }
 
@@ -220,6 +231,10 @@ main() {
       *) usage_error "unknown option '$1'" ;;
     esac
   done
+  # Cleared before any git query, not only before the fixtures run: an
+  # inherited GIT_DIR (a linked-worktree hook exports one) would otherwise
+  # make change detection read another repository (PR #42 review round 4).
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
   tests_dir=$(cd "$tests_dir" && pwd)
   fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
   [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
@@ -227,7 +242,7 @@ main() {
   SELECTED="$fixtures"; REASON=""
   [ "$mode" = --affected ] && affected_selection "$tests_dir" "$fixtures" "$changed_from"
   if [ -n "$list_only" ]; then
-    for fixture in $SELECTED; do basename "$fixture"; done
+    while IFS= read -r fixture; do [ -n "$fixture" ] && basename "$fixture"; done <<< "$SELECTED"
     exit 0
   fi
   count=$(grep -c . <<< "$SELECTED")
@@ -235,7 +250,6 @@ main() {
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
   result_dir=$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")
   export CLAUDE_FIRE_LOG=/dev/null
-  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
   run_selected "$SELECTED" "$jobs" "$result_dir"
   report_results "$SELECTED" "$result_dir"; status=$?
   rm -rf "$result_dir"

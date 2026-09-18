@@ -269,6 +269,35 @@ OUT=$(bash "$RUNNER" "$EMPTY_TREE" --all </dev/null 2>&1); STATUS=$?
 check "a tree with no fixtures fails the run" [ "$STATUS" -ne 0 ]
 check "the empty tree is named" out_has "no fixtures"
 
+# --- a checkout path containing spaces ---
+# Fixture paths are carried one per line and handed to xargs NUL-delimited,
+# so a space in the checkout path never splits one fixture into several
+# arguments (PR #42 review round 4).
+SPACED="$SANDBOX/with space/claude/enforce/tests"
+mkdir -p "$SPACED"
+printf '#!/usr/bin/env bash\ntouch "$MARKS/spaced-fast"\n# exercises hooks/alpha.sh\necho PASS\n' > "$SPACED/fast.test.sh"
+printf '#!/usr/bin/env bash\n# Shard: slow\n# exercises hooks/gamma.sh\ntouch "$MARKS/spaced-slow"\necho PASS\n' > "$SPACED/slow.test.sh"
+printf '#!/usr/bin/env bash\n# Shard: serial\ntouch "$MARKS/spaced-serial"\necho PASS\n' > "$SPACED/serial.test.sh"
+reset
+OUT=$(bash "$RUNNER" "$SPACED" --all </dev/null 2>&1); STATUS=$?
+check "a spaced checkout path passes in full mode" [ "$STATUS" -eq 0 ]
+check "every fixture under a spaced path ran" ran spaced-serial
+reset
+OUT=$(bash "$RUNNER" "$SPACED" --affected --changed-from "$(changes_file 'claude/hooks/gamma.sh')" </dev/null 2>&1); STATUS=$?
+check "affected mode under a spaced path selects the named slow fixture" ran spaced-slow
+
+# --- inherited git context is cleared before selection ---
+# A caller exporting GIT_DIR (a linked-worktree hook does) must not make the
+# runner read another repository's changes (PR #42 review round 4).
+DECOY_REPO="$SANDBOX/decoy"
+git init -q "$DECOY_REPO"
+git -C "$DECOY_REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m seed
+printf 'changed\n' > "$REPO/claude/hooks/gamma.sh"
+reset
+OUT=$(cd "$REPO" && GIT_DIR="$DECOY_REPO/.git" GIT_WORK_TREE="$DECOY_REPO" bash "$RUNNER" "$TESTS" --affected </dev/null 2>&1); STATUS=$?
+git -C "$REPO" checkout -q -- claude/hooks/gamma.sh
+check "an inherited GIT_DIR does not redirect change detection" ran slow-c
+
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?
 check "an unknown mode is refused" [ "$STATUS" -eq 2 ]

@@ -92,4 +92,10 @@ The decisions behind the design were the maintainer's, taken one at a time:
 - Against the previous runner, the three new scenarios reproduced as false greens: the empty tree exited 0, and the inherited variables and the unreadable index each skipped the slow fixture.
 - **The first test run for this round recursed.** The real-tree selection cases called a runner that did not yet parse `--list`, so each ran this checkout's real suite, this fixture included, until the run was killed. The fixture now proves on its sandbox tree that list mode runs nothing before any real-tree case, and exits otherwise.
 
+## Review round 4 (Copilot)
+
+- **Checkout paths containing spaces.** Fixture paths were carried as one space-separated string, so a checkout under a directory such as `Alice Smith` split each path into broken arguments and reported a green suite red. Paths now travel one per line through every loop and reach `xargs` NUL-delimited. A spaced sandbox checkout is exercised in full mode, including its serial fixture, and in affected mode.
+- **Inherited git context.** The runner cleared `GIT_DIR` and its siblings only before running fixtures, after change detection had already used them, so a caller exporting `GIT_DIR` could make affected mode read another repository. They are now cleared at the top of `main`, and a case points `GIT_DIR` at a decoy repository around a real change and asserts the slow fixture still runs.
+- All four new cases failed before the change and pass after it. `main` gained #43 meanwhile; only generated files conflicted, and they were regenerated.
+
 Ticket: IAN-94.
