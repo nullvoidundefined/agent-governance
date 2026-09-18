@@ -40,6 +40,8 @@ This PR applied the new process to itself: `/code-review` at medium effort ran o
 3. The `gh pr view` call had no timeout, and a hook killed by the harness timeout allows the command. The call now runs under a polled deadline.
 4. Commits all naming the same ticket passed the trailer check. Keys must now be distinct.
 
+Copilot was requested on this PR but did not review it, because the account's Copilot review quota is exhausted (PR #68 received a quota notice and PR #69 received no review). The local `/code-review` pass above stood in for the Copilot round, and the PR merged on green CI without a Copilot review.
+
 ## Reflection
 
 The first version treated "every commit has a `Refs:` trailer" as the whole bundle condition, and it took the review to point out that R-605 already makes that true of almost every branch, so the check proved nothing on its own. The more useful lesson is that the local review earned its place on the first PR it ran on: all four findings would otherwise have arrived as Copilot comments, each costing a round.
