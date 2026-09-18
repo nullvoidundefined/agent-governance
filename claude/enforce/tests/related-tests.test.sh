@@ -101,4 +101,39 @@ for manifest in requirements.txt requirements-dev.txt Pipfile.lock poetry.lock u
   [ "$OUT" = "exit=1" ] || { echo "FAIL M9: a changed $manifest must fall back, got: $OUT"; exit 1; }
 done
 
+# M10. No commit to diff against: the change set is unknowable, so fall back
+# (PR #54 re-review).
+N=$(mktemp -d); git -C "$N" init -q; echo 'X = 1' > "$N/mod.py"
+OUT=$(map_in "$N" pytest)
+[ "$OUT" = "exit=1" ] || { echo "FAIL M10: no base commit must fall back, got: $OUT"; exit 1; }
+
+# M11. A changed file the stack's mapper cannot place falls back, even when it
+# is not source code (a template the tests render).
+T=$(new_sandbox); mkdir -p "$T/templates"
+echo 'X = 1' > "$T/mod.py"; echo '<p>hi</p>' > "$T/templates/page.html"; commit_sandbox "$T"
+echo '<p>changed</p>' > "$T/templates/page.html"
+OUT=$(map_in "$T" pytest)
+[ "$OUT" = "exit=1" ] || { echo "FAIL M11: an unmapped template must fall back, got: $OUT"; exit 1; }
+
+# M12. A docs-only change still runs nothing: prose cannot break a test.
+W=$(new_sandbox); mkdir -p "$W/docs"
+echo 'X = 1' > "$W/mod.py"; echo '# Readme' > "$W/README.md"; echo 'notes' > "$W/docs/notes.md"; commit_sandbox "$W"
+echo 'more' >> "$W/README.md"; echo 'more' >> "$W/docs/notes.md"
+OUT=$(map_in "$W" pytest)
+[ "$OUT" = "exit=0" ] || { echo "FAIL M12: a docs-only change must run nothing, got: $OUT"; exit 1; }
+
+# M13. vitest receives non-script files too, so its import graph decides.
+C=$(new_sandbox); mkdir -p "$C/src"
+echo '{"devDependencies":{"vitest":"^3.0.0"}}' > "$C/package.json"
+echo '.a { color: red; }' > "$C/src/a.css"; commit_sandbox "$C"
+echo '.b { color: blue; }' >> "$C/src/a.css"
+OUT=$(map_in "$C" vitest)
+[ "$OUT" = "npx --no-install vitest related --run --passWithNoTests src/a.css
+exit=0" ] || { echo "FAIL M13: a changed stylesheet must reach vitest related, got: $OUT"; exit 1; }
+
+# M14. Deleting a doc is still docs-only: it runs nothing.
+rm "$W/docs/notes.md"
+OUT=$(map_in "$W" pytest)
+[ "$OUT" = "exit=0" ] || { echo "FAIL M14: a deleted doc must run nothing, got: $OUT"; exit 1; }
+
 echo "PASS"

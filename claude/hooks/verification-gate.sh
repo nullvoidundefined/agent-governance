@@ -130,7 +130,9 @@ add_check() { CHECKS="${CHECKS}${1}"$'\n'; }
 RELATED_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)/related-tests.sh"
 # shellcheck source=/dev/null
 [ -f "$RELATED_HELPER" ] && . "$RELATED_HELPER"
-RELATED_NOTE=""
+# The mapped commands, one per line, so a failure note can say "related tests
+# only" for exactly those commands and never for a typecheck beside them.
+RELATED_CHECKS=""
 
 # add_test_check <stack> <full-suite commands, one per line>
 # Adds the related-test commands for the stack when the mapping answers, and
@@ -138,8 +140,11 @@ RELATED_NOTE=""
 add_test_check() {
   local related line
   if type buildRelatedTestCommands >/dev/null 2>&1 && related=$(buildRelatedTestCommands "$1"); then
-    RELATED_NOTE=" (related tests only; the full suite runs in CI)"
-    while IFS= read -r line; do [ -n "$line" ] && add_check "$line"; done <<< "$related"
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      add_check "$line"
+      RELATED_CHECKS="${RELATED_CHECKS}${line}"$'\n'
+    done <<< "$related"
     return 0
   fi
   while IFS= read -r line; do [ -n "$line" ] && add_check "$line"; done <<< "$2"
@@ -292,6 +297,8 @@ while IFS= read -r check; do
     TAIL="Command exceeded CLAUDE_VERIFY_TIMEOUT (${TIMEOUT_SECONDS}s) and was killed."$'\n\n'"$TAIL"
   fi
   RETRY_NOTE=""
+  RELATED_NOTE=""
+  grep -qxF -- "$check" <<< "$RELATED_CHECKS" && RELATED_NOTE=" (related tests only; the full suite runs in CI)"
   [ "$RETRIED" -eq 1 ] && RETRY_NOTE=" (failed again on an automatic retry after ${RETRY_DELAY_SECONDS}s, so this is not transient contention)"
   block "R-509 verification gate: \`${check}\` failed (exit ${STATUS}) in ${ROOT}${RETRY_NOTE}${RELATED_NOTE}.
 

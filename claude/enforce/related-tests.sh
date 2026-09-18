@@ -13,12 +13,13 @@
 # Prints each path that differs from the branch's fork point (upstream, else
 # origin/HEAD, else HEAD), committed or not, plus untracked files, one path
 # per line relative to the repository root. Deleted paths are included: the
-# caller treats them as unmappable (PR #54 review).
+# caller treats them as unmappable (PR #54 review). Returns 1 when there is no
+# commit to diff against, because the change set is then unknowable.
 listChangedFiles() {
   local base
   base=$(git merge-base HEAD '@{u}' 2>/dev/null \
     || git merge-base HEAD origin/HEAD 2>/dev/null \
-    || git rev-parse HEAD 2>/dev/null) || return 0
+    || git rev-parse --verify -q HEAD 2>/dev/null) || return 1
   { git diff --name-only -z "$base" -- 2>/dev/null; git ls-files -o -z --exclude-standard 2>/dev/null; } \
     | tr '\0' '\n' | sort -u
 }
@@ -32,6 +33,17 @@ isHarnessFile() {
     vitest.config.*|vite.config.*|jest.config.*|tsconfig*.json) return 0 ;;
     conftest.py|pytest.ini|pyproject.toml|setup.cfg|setup.py|tox.ini|go.mod|go.sum) return 0 ;;
     requirements*.txt|Pipfile|Pipfile.lock|poetry.lock|uv.lock) return 0 ;;
+  esac
+  return 1
+}
+
+# isInertFile <path>
+# Succeeds when the path is prose or repository metadata that no test reads,
+# so a change to it needs no test run: this is what lets a docs-only commit
+# end its turn without a suite (IAN-98).
+isInertFile() {
+  case "$1" in
+    docs/*|*/docs/*|*.md|*.mdx|*.rst|LICENSE*|CHANGELOG*|.gitignore|.github/*) return 0 ;;
   esac
   return 1
 }
@@ -63,7 +75,9 @@ printNodeExecPrefix() {
 }
 
 # buildNodeCommands <vitest|jest> <changed files...>
-# Sends the changed script sources to the runner's own related-test mode. An
+# Sends every changed file to the runner's own related-test mode, stylesheets
+# and assets included, so the runner's import graph decides what is related
+# (PR #54 re-review: an unmapped non-script file must not pass untested). An
 # empty related set passes (--passWithNoTests): the runner resolves the import
 # graph at run time, so emptiness is not knowable here, and CI's full suite
 # covers it.
@@ -73,7 +87,7 @@ buildNodeCommands() {
   for changed_file in "$@"; do
     case "$changed_file" in
       node_modules/*|*/node_modules/*|dist/*|*/dist/*) ;;
-      *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.vue) sources+=("$changed_file") ;;
+      *) sources+=("$changed_file") ;;
     esac
   done
   [ "${#sources[@]}" -gt 0 ] || return 0
@@ -89,11 +103,12 @@ buildNodeCommands() {
 
 # buildPytestCommands <changed files...>
 # A changed test file runs itself; a changed module runs test_<module>.py or
-# <module>_test.py wherever they live. A module with neither returns 1.
+# <module>_test.py wherever they live. A module with neither, or a changed
+# non-Python file (a template or data fixture a test may read), returns 1.
 buildPytestCommands() {
   local changed_file module found test_files="" test_file list=()
   for changed_file in "$@"; do
-    case "$changed_file" in *.py) ;; *) continue ;; esac
+    case "$changed_file" in *.py) ;; *) return 1 ;; esac
     module=$(basename "$changed_file" .py)
     case "$module" in
       test_*|*_test) found="$changed_file" ;;
@@ -109,11 +124,15 @@ buildPytestCommands() {
 }
 
 # buildGoCommands <changed files...>
-# Tests and vets only the packages that contain a changed .go file.
+# Tests and vets only the packages that contain a changed .go file. A changed
+# non-Go file (an embedded asset, a .proto) returns 1.
 buildGoCommands() {
   local changed_file packages="" package list=()
   for changed_file in "$@"; do
-    case "$changed_file" in *.go) packages="$packages"$'\n'"./$(dirname "$changed_file")" ;; esac
+    case "$changed_file" in
+      *.go) packages="$packages"$'\n'"./$(dirname "$changed_file")" ;;
+      *) return 1 ;;
+    esac
   done
   packages=$(printf '%s\n' "$packages" | sed '/^$/d; s#^\./\.$#.#' | sort -u)
   [ -n "$packages" ] || return 0
@@ -125,16 +144,20 @@ buildGoCommands() {
 # buildRelatedTestCommands <vitest|jest|pytest|go>
 # Prints the related-test commands for the files changed on this branch.
 # Exit 1 is the full-suite fallback: an unknown stack, a changed harness file,
-# a deleted file (whose dependents no mapper can find), or a changed source
-# file the mapping cannot place.
+# a deleted file (whose dependents no mapper can find), a change set that
+# cannot be determined, or a changed file the mapping cannot place. Prose and
+# repository metadata (isInertFile) are skipped, so a docs-only change runs
+# nothing.
 buildRelatedTestCommands() {
-  local stack="$1" changed_file changed_files=()
+  local stack="$1" changed_file changed_listing changed_files=()
+  changed_listing=$(listChangedFiles) || return 1
   while IFS= read -r changed_file; do
     [ -n "$changed_file" ] || continue
     isHarnessFile "$changed_file" && return 1
+    isInertFile "$changed_file" && continue
     [ -e "$changed_file" ] || return 1
     changed_files+=("$changed_file")
-  done < <(listChangedFiles)
+  done <<< "$changed_listing"
   [ "${#changed_files[@]}" -gt 0 ] || return 0
   case "$stack" in
     vitest|jest) buildNodeCommands "$stack" "${changed_files[@]}" ;;
