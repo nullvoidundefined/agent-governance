@@ -29,7 +29,7 @@ R-403: Follow the bug-fix path in order; fix bugs test-first.
   Spec:
   1. Write the failing test; confirm it FAILS.
   2. Apply the smallest root-cause fix; confirm the test PASSES.
-  3. Run verification per R-509 scope: changed files at commit, full suite at pre-push.
+  3. Run verification per R-509 scope: affected tests at commit, full suite in CI.
   4. Commit test and fix together.
   5. Deploy.
   Enforcement: hook:fix-commit-requires-test

@@ -162,7 +162,7 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 
 | Tier | Adds |
 |---|---|
-| **Trivial** | Commit the change; verify tests still pass. Close the ticket only if one was opened. |
+| **Trivial** | Commit, open the PR, merge on green CI: no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
 | **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch; ticket closed with actuals |
 | **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; ticket closed with actuals and the recalibration line; handoff if the session is ending |
 | **Saga** | Every surface tested; handoff is mandatory; ticket closed with actuals per stage that shipped; consider whether enough shipped to warrant an engineering audit |

@@ -61,14 +61,15 @@ Plan:           No
 Ticket:         No (only when the user asks)
 TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
-Branch:         Optional (commit directly to current branch if clean)
+Branch:         Yes, its own branch and PR (never a direct push to main)
+PR ceremony:    None: no ticket, no PR document, no Copilot review request
 Worktree:       No
 Subagents:      No
 Execution:      Inline, immediate
 Skills invoked: None (just do it)
 ```
 
-Execute the change directly. Commit. Done.
+Execute the change on its own branch, open the PR, and merge once CI is green (the trivial fast path, R-514). Done.
 
 ### Standard
 
@@ -159,7 +160,7 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 
 | Tier | Setup sequence |
 |---|---|
-| **Trivial** | Do the work. Skip to implementation. |
+| **Trivial** | Branch, do the work, open the PR, merge on green CI. |
 | **Investigation** | Write the scope line, gather evidence, report. No branch unless the report is a file. |
 | **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, add the product docs when the task adds user-facing behavior (below), then tdd-gated-dispatch's single-session loop |
 | **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
