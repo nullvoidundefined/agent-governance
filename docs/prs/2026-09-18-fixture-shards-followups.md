@@ -46,4 +46,13 @@
 - `main` meanwhile gained `--results-dir` in the runner for `tdd.sh`. The merge keeps it alongside this branch's options, and `tdd.sh`'s call is unchanged.
 - Both full suites passed after the merge in 187 seconds, with the runner choosing 4 and 3 jobs while the machine's load was still settling.
 
+## Review round 1 (Copilot)
+
+- **Settle limits.** `--settle-max-seconds` below `--settle-seconds` was accepted, and then the wait always ran the full minimum, so the maximum was not honoured. The runner now refuses the combination as a usage error.
+- **Failure-line filter.** The report printed lines starting with `FAIL`, while the verdict counts the marker anywhere in a line, so a line such as `assertion failed: FAIL: ...` failed the fixture but was left out of its report. The report now uses the verdict's own test.
+- **A slow case in the fixture.** The saturated-load job-count case inherited the 60-second settle cap and waited it out on every run. It now passes a zero cap.
+- **`enforce/README.md`** now says that editing a slow or serial fixture selects it.
+- The two behaviour cases failed before the fix and pass after it.
+- CI's `pull_request` run of the `enforce` workflow never started for this PR, so the required `fixtures` check had no run. It was started by `workflow_dispatch` on the branch, which attaches its result to the same commit.
+
 Ticket: IAN-94.

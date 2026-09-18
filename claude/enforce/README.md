@@ -188,7 +188,7 @@ one-minute load falls below the CPU count, for at most 60 seconds. On a quiet
 machine a full run of both trees takes about 85 seconds. Add `--affected` to run only
 what the working tree's changes need, which is what the R-509 Stop gate does:
 the fast tier always, a `# Shard: slow` or `# Shard: serial` fixture only when
-it names or watches a changed file, and everything when a change is named by no fixture or touches the
+it names or watches a changed file or is itself the file that changed, and everything when a change is named by no fixture or touches the
 runner's shared files. Mark a fixture `# Shard: slow` when it takes more than
 about five seconds, and `# Shard: serial` when it measures timing. A slow or
 serial fixture that scans a whole tree, rather than naming the files it reads,

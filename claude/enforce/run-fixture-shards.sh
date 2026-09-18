@@ -241,7 +241,8 @@ run_selected() {
 }
 
 # report_results <fixtures> <result dir>: ok/FAIL lines in name order, each
-# failing fixture followed by its failure lines and last three lines; true
+# failing fixture followed by every line carrying the failure marker and its
+# last three lines; true
 # when all passed.
 report_results() {
   local fixtures="$1" result_dir="$2" fixture name all_passed=0
@@ -255,7 +256,9 @@ report_results() {
       # all passing cases when fixture-implementation-root failed on main
       # after #42, which left the failure unreadable from the CI log.
       echo "FAIL $name"
-      grep -E '^FAIL' "$result_dir/$name.out" 2>/dev/null
+      # The verdict's own marker test, so every line that failed the fixture is
+      # shown, including ones with the marker mid-line (PR #59 review).
+      grep -F 'FAIL' "$result_dir/$name.out" 2>/dev/null
       tail -3 "$result_dir/$name.out" 2>/dev/null
       all_passed=1
     fi
@@ -308,6 +311,7 @@ main() {
   # inherited GIT_DIR (a linked-worktree hook exports one) would otherwise
   # make change detection read another repository (PR #42 review round 4).
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+  [ "$settle_max_seconds" -ge "$settle_seconds" ] || usage_error "--settle-max-seconds ($settle_max_seconds) is below --settle-seconds ($settle_seconds)"
   tests_dir=$(cd "$tests_dir" && pwd)
   fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
   [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }

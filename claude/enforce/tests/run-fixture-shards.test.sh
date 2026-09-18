@@ -225,6 +225,7 @@ if [ "$IDLE" -le 8 ] && [ "$IDLE" -lt "$CPUS" ]; then
   check "the default job count is the idle CPUs" out_has "with $IDLE jobs"
 fi
 echo 999 > "$LOAD_FILE"
+RUN_OPTS=(--settle-seconds 0 --settle-max-seconds 0 --load-from "$LOAD_FILE")
 run_runner --all
 check "a saturated machine still gets a quarter of its CPUs" out_has "with $FLOOR jobs"
 echo 0 > "$LOAD_FILE"
@@ -366,6 +367,11 @@ check "an inherited GIT_DIR does not redirect change detection" ran slow-c
 printf '#!/usr/bin/env bash\necho "FAIL: the early case"\nfor n in 1 2 3 4 5 6; do echo "PASS: later case $n"; done\n' > "$TESTS/fast-e.test.sh"
 run_runner --all
 check "the report names a failure line buried before the tail" out_has "FAIL: the early case"
+# The report keeps every line the verdict counts as a failure, which is any
+# line containing the marker, not only lines starting with it (PR #59 review).
+printf '#!/usr/bin/env bash\necho "assertion failed: FAIL: mid-line marker"\nfor n in 1 2 3 4 5 6; do echo "PASS: later case $n"; done\n' > "$TESTS/fast-e.test.sh"
+run_runner --all
+check "the report keeps a failure line whose marker is mid-line" out_has "assertion failed: FAIL: mid-line marker"
 rm -f "$TESTS/fast-e.test.sh"
 
 # --- change detection against an upstream and against origin/main ---
@@ -440,6 +446,8 @@ OUT=$(bash "$RUNNER" "$TESTS" --all --results-dir "$SANDBOX/absent" --settle-sec
 check "a results dir that does not exist is a usage error" [ "$STATUS" -eq 2 ]
 
 # --- usage ---
+OUT=$(bash "$RUNNER" "$TESTS" --all --settle-seconds 5 --settle-max-seconds 2 --load-from "$LOAD_FILE" </dev/null 2>&1); STATUS=$?
+check "a settle maximum below its minimum is refused" [ "$STATUS" -eq 2 ]
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?
 check "an unknown mode is refused" [ "$STATUS" -eq 2 ]
 
