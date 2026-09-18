@@ -23,6 +23,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # R-607 product-docs check: a pull request that adds a user-facing route
+      # must also change the features list, a user story, and an e2e spec.
+      # It needs the full history to diff against the base commit, and a base
+      # that does not resolve fails the step, because the script itself exits
+      # 0 on an unresolved base and the check would silently no-op. A library
+      # or tooling repository opted out with productDocs false in .enforce.json
+      # has no script and skips; a missing script without that opt-out fails.
+      - name: R-607 feature checklist
+        if: github.event_name == 'pull_request'
+        env:
+          FEATURE_CHECKLIST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git rev-parse --verify --quiet "$FEATURE_CHECKLIST_BASE^{commit}" >/dev/null; then
+            echo "R-607 feature checklist: base commit $FEATURE_CHECKLIST_BASE is not in the checkout." >&2
+            exit 1
+          elif [ -f scripts/require-feature-checklist.sh ]; then
+            bash scripts/require-feature-checklist.sh
+          elif jq -e '.productDocs == false' .enforce.json >/dev/null 2>&1; then
+            echo "R-607 feature checklist skipped: .enforce.json sets productDocs to false."
+          else
+            echo "scripts/require-feature-checklist.sh is missing: restore it with the repo-setup skill, or set productDocs to false in .enforce.json." >&2
+            exit 1
+          fi
       - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-python@v5
         with:
