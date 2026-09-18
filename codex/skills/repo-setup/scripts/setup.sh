@@ -61,8 +61,17 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # The product-doc templates and the canonical checklist sit beside skills/ in
 # the harness tree; a Codex or Cursor port of this script lives under ~/.codex
 # or ~/.cursor, which carry neither, so it falls back to the synced ~/.claude.
+# The sibling tree is used only when it carries every file this path needs,
+# so a partial tree never shadows a complete synced copy.
+PRODUCT_DOC_SOURCES=(prompts/feature-list-template.md prompts/user-stories-readme-template.md enforce/require-feature-checklist.sh)
+
+# has_product_doc_sources <dir>: true when the harness tree holds every source.
+has_product_doc_sources() {
+  local source
+  for source in "${PRODUCT_DOC_SOURCES[@]}"; do [ -f "$1/$source" ] || return 1; done
+}
 HARNESS_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-[ -f "$HARNESS_ROOT/enforce/require-feature-checklist.sh" ] || HARNESS_ROOT="$HOME/.claude"
+has_product_doc_sources "$HARNESS_ROOT" || HARNESS_ROOT="$HOME/.claude"
 REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""; PRODUCT_DOCS=1
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -203,8 +212,10 @@ record_product_docs_opt_out() {
 # render_product_doc_template <template> <path>: writes a prompts/ template to
 # the path with the project name and today's date substituted.
 render_product_doc_template() {
+  local project_escaped
+  project_escaped=$(printf '%s' "$PROJECT_NAME" | sed -e 's/[\\#&]/\\&/g')
   mkdir -p "$(dirname "$2")"
-  sed -e "s#{{PROJECT}}#$PROJECT_NAME#g" -e "s#{{DATE}}#$TODAY#g" "$HARNESS_ROOT/prompts/$1" > "$2"
+  sed -e "s#{{PROJECT}}#$project_escaped#g" -e "s#{{DATE}}#$TODAY#g" "$HARNESS_ROOT/prompts/$1" > "$2"
 }
 
 # write_product_docs: writes each absent product doc; never overwrites.
@@ -232,7 +243,7 @@ elif [ "$PRODUCT_DOCS" -eq 0 ]; then
   fi
 elif [ -z "$absent_docs" ]; then
   report product-docs OK "features list, user stories index, and feature checklist present"
-elif [ ! -f "$HARNESS_ROOT/prompts/feature-list-template.md" ] || [ ! -f "$HARNESS_ROOT/prompts/user-stories-readme-template.md" ] || [ ! -f "$HARNESS_ROOT/enforce/require-feature-checklist.sh" ]; then
+elif ! has_product_doc_sources "$HARNESS_ROOT"; then
   report product-docs MISSING "absent:${absent_docs}; harness templates not found under $HARNESS_ROOT (sync ~/.claude)"
 elif apply; then
   write_product_docs

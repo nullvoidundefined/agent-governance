@@ -196,6 +196,16 @@ OUT=$(cd "$REPO7" && HOME="$SB/partial-home" bash "$PORT/setup.sh" acme/widget -
 check "partial templates report product-docs MISSING" row product-docs MISSING
 check "partial templates write no README" test ! -e "$REPO7/docs/user-stories/README.md"
 
+# 11. PR #44 review round 2: a partial sibling tree falls back to a complete
+#     ~/.claude, and a project name with sed metacharacters renders literally.
+PORT2="$SB/partial-port/skills/repo-setup/scripts"; mkdir -p "$PORT2" "$SB/partial-port/enforce"
+cp "$SETUP" "$PORT2/setup.sh"; cp "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$SB/partial-port/enforce/"
+mkdir -p "$SB/full-home/.claude"; cp -R "$CLAUDE_HARNESS_ROOT/prompts" "$SB/full-home/.claude/prompts"; cp -R "$SB/partial-port/enforce" "$SB/full-home/.claude/enforce"
+REPO8="$SB/r&d#app"; mkdir -p "$REPO8"; git -C "$REPO8" init -q -b main
+OUT=$(cd "$REPO8" && HOME="$SB/full-home" bash "$PORT2/setup.sh" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "partial sibling tree falls back and reports OK" row product-docs OK
+check "project name with & and # renders literally" grep -qxF '# r&d#app Feature List' "$REPO8/docs/feature-list/features.md"
+
 # 7. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?
 check "bad repo name is a usage error" test "$ST" -eq 2

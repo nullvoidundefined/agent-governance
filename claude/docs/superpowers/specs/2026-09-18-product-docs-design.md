@@ -182,7 +182,7 @@ None. The feature list's **Planned**, **Partial**, and **Complete** statuses are
 
 ## Observability
 
-The gate logs a deny through `log_rule_fire "feature-docs" "push-feature-docs-gate" "deny"`, the same channel the other gates use. Request IDs, analytics, and health checks do not apply to a local hook.
+The gate logs a deny through `log_rule_fire "R-607" "push-feature-docs-gate" "deny"`, the same channel the other gates use. Request IDs, analytics, and health checks do not apply to a local hook.
 
 ## Security
 

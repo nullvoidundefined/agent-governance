@@ -21,7 +21,7 @@ The user provides a slug and optionally a plan path:
 - `/feature-create <slug> --area <area>` -- auto-discovers the plan
 - `/feature-create <slug> --area <area> <plan-path>` -- uses the explicit plan path
 
-The area is the product area the feature belongs to (R-607): one `## ` section of `docs/feature-list/features.md` and one story file `docs/user-stories/<area>.md`. Choose it from the existing sections, slugified (`## Authentication & Account` is `authentication-account`); run the script without `--area` to have it list the known areas. Ask the user when the feature fits no existing area rather than inventing a near-duplicate one.
+The area is the product area the feature belongs to (R-607): one `## ` section of `docs/feature-list/features.md` and one story file `docs/user-stories/<area>.md`. Choose it from the existing sections, slugified (`## Authentication & Account` is `authentication-account`); run the script without `--area` to have it list the known areas. Ask the user when the feature fits no existing area rather than inventing a near-duplicate one. In a repository whose `.enforce.json` sets `"productDocs": false` (a library or tooling repository opted out through `repo-setup --no-product-docs`), the script skips the product docs and says so; `--area` is still required so that one invocation works in every repository.
 
 The slug determines:
 - Branch name: `feat/<slug>`

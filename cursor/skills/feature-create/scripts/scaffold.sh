@@ -34,8 +34,17 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # The templates sit beside skills/ in the harness tree. A Codex or Cursor port
 # of this script lives under ~/.codex or ~/.cursor, which carry no prompts/,
 # so it falls back to the synced ~/.claude.
+# The sibling tree is used only when it carries every template, so a partial
+# tree never shadows a complete synced copy.
+PRODUCT_DOC_TEMPLATES=(feature-list-template.md user-stories-readme-template.md user-story-area-template.md)
+
+# has_all_templates <dir>: true when the directory holds every template.
+has_all_templates() {
+  local template
+  for template in "${PRODUCT_DOC_TEMPLATES[@]}"; do [ -f "$1/$template" ] || return 1; done
+}
 PROMPTS_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)/prompts
-[ -f "$PROMPTS_DIR/feature-list-template.md" ] || PROMPTS_DIR="$HOME/.claude/prompts"
+has_all_templates "$PROMPTS_DIR" || PROMPTS_DIR="$HOME/.claude/prompts"
 SLUG=""; PLAN=""; WORKTREE_PARENT=""; BASE=""; FETCH=1; TICKET=""; AREA=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -159,12 +168,17 @@ STORY_FILE="docs/user-stories/$AREA.md"
 E2E_PATH="e2e/$SLUG.spec.ts"
 TODAY=$(date +%Y-%m-%d)
 
+# escape_sed_replacement <value>: prints the value with the characters a sed
+# replacement interprets (backslash, the # delimiter, &) escaped, so a
+# directory or ticket name renders literally.
+escape_sed_replacement() { printf '%s' "$1" | sed -e 's/[\\#&]/\\&/g'; }
+
 # render_template <template>: prints a prompts/ template with every
 # placeholder this scaffold knows substituted.
 render_template() {
-  sed -e "s#{{PROJECT}}#$PROJECT#g" -e "s#{{DATE}}#$TODAY#g" -e "s#{{AREA_TITLE}}#$AREA_TITLE#g" \
-      -e "s#{{STORY_ID}}#$STORY_ID#g" -e "s#{{STORY_TITLE}}#$TITLE#g" -e "s#{{E2E_PATH}}#$E2E_PATH#g" \
-      -e "s#{{TICKET}}#${TICKET:-<ticket-key>}#g" "$PROMPTS_DIR/$1"
+  sed -e "s#{{PROJECT}}#$(escape_sed_replacement "$PROJECT")#g" -e "s#{{DATE}}#$TODAY#g" \
+      -e "s#{{AREA_TITLE}}#$AREA_TITLE#g" -e "s#{{STORY_ID}}#$STORY_ID#g" -e "s#{{STORY_TITLE}}#$TITLE#g" \
+      -e "s#{{E2E_PATH}}#$E2E_PATH#g" -e "s#{{TICKET}}#$(escape_sed_replacement "${TICKET:-<ticket-key>}")#g" "$PROMPTS_DIR/$1"
 }
 
 # next_story_id: prints US-<AREA>-NNN, one past the highest number the area
@@ -211,28 +225,33 @@ insert_feature_row() {
 }
 
 scaffolded=()
-for template in feature-list-template.md user-stories-readme-template.md user-story-area-template.md; do
-  [ -f "$PROMPTS_DIR/$template" ] || die "product-doc templates not found under $PROMPTS_DIR (missing $template); sync the harness (~/.claude) and re-run" 8
-done
-mkdir -p docs/feature-list docs/user-stories
-STORY_ID=$(next_story_id)
-if [ ! -f "$FEATURES" ]; then
-  render_template feature-list-template.md > "$FEATURES"
-  say "seeded $FEATURES from the harness template"
-fi
-if [ ! -f "$STORIES_README" ]; then
-  render_template user-stories-readme-template.md > "$STORIES_README"
-  say "seeded $STORIES_README from the harness template"
-fi
-if [ -f "$STORY_FILE" ]; then
-  { printf '\n'; render_template user-story-area-template.md | awk '/^## /{on=1} on'; } >> "$STORY_FILE"
+if [ -f .enforce.json ] && jq -e '.productDocs == false' .enforce.json >/dev/null 2>&1; then
+  say "product docs skipped: .enforce.json sets productDocs false (R-607 opt-out)"
 else
-  render_template user-story-area-template.md > "$STORY_FILE"
-  printf '| `%s.md` | %s |\n' "$AREA" "$AREA_TITLE" >> "$STORIES_README"
+  for template in "${PRODUCT_DOC_TEMPLATES[@]}"; do
+    [ -f "$PROMPTS_DIR/$template" ] || die "product-doc templates not found under $PROMPTS_DIR (missing $template); sync the harness (~/.claude) and re-run" 8
+  done
+  mkdir -p docs/feature-list docs/user-stories
+  STORY_ID=$(next_story_id)
+  if [ ! -f "$FEATURES" ]; then
+    render_template feature-list-template.md > "$FEATURES"
+    say "seeded $FEATURES from the harness template"
+  fi
+  if [ ! -f "$STORIES_README" ]; then
+    render_template user-stories-readme-template.md > "$STORIES_README"
+    say "seeded $STORIES_README from the harness template"
+  fi
+  if [ -f "$STORY_FILE" ]; then
+    { printf '\n'; render_template user-story-area-template.md | awk '/^## /{on=1} on'; } >> "$STORY_FILE"
+  else
+    render_template user-story-area-template.md > "$STORY_FILE"
+  fi
+  # The README indexes every area file, including one that predates the README.
+  grep -qF "| \`$AREA.md\` |" "$STORIES_README" || printf '| `%s.md` | %s |\n' "$AREA" "$AREA_TITLE" >> "$STORIES_README"
+  insert_feature_row "| $TITLE | **Planned** | $STORY_ID |"
+  scaffolded+=("$FEATURES" "$STORIES_README" "$STORY_FILE")
+  say "appended $STORY_ID to $STORY_FILE and a Planned row to the $AREA_TITLE section of $FEATURES; fill the acceptance criteria from $PLAN"
 fi
-insert_feature_row "| $TITLE | **Planned** | $STORY_ID |"
-scaffolded+=("$FEATURES" "$STORIES_README" "$STORY_FILE")
-say "appended $STORY_ID to $STORY_FILE and a Planned row to the $AREA_TITLE section of $FEATURES; fill the acceptance criteria from $PLAN"
 
 # --- Step 6: commit ----------------------------------------------------------
 COMMIT=""

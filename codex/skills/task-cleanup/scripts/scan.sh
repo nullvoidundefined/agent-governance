@@ -59,7 +59,7 @@ ADDED_LINES=$(git diff "$RANGE" 2>/dev/null | grep '^+' | grep -v '^+++' || true
 COMMITS=$(git rev-list --count "$RANGE" 2>/dev/null || echo 0)
 FILE_COUNT=$(printf '%s\n' "$CHANGED" | grep -c . || true)
 
-SURFACE_RE='(^|/)(routes|handlers)/|(^|/)page\.tsx$|(^|/)route\.ts$|(^|/)features/|(^|/)\.env\.example$|(^|/)docker-compose[^/]*\.ya?ml$|(^|/)Dockerfile$'
+SURFACE_RE='(^|/)(routes|handlers)/|(^|/)page\.tsx$|(^|/)route\.ts$|(^|/)app/pages/.+\.vue$|(^|/)server/(api|routes)/|(^|/)app/routers/[^/]+\.py$|(^|/)features/|(^|/)\.env\.example$|(^|/)docker-compose[^/]*\.ya?ml$|(^|/)Dockerfile$'
 COMPONENT_RE='(^|/)components/([^/]+/)?[^/]+\.(tsx|jsx|vue|svelte)$'
 ENDPOINT_RE='(^|/)(routes|handlers|api)/.*\.(ts|js|mjs|py|rb|go)$|(^|/)route\.ts$'
 QUERY_RE='searchParams|req\.query|useSearchParams|query param'

@@ -135,5 +135,14 @@ add_files "$R" app/routers/trips.py; run_check "$R"
 check "B-11 bad pattern keeps built-in triggers" test "$ST" -eq 1
 check "B-11 bad pattern is reported" reports "(unclosed"
 
+# PR #44 review: under pipefail, an early-exiting grep -q must not turn a
+# present artifact into a missing one when the changed-file list outgrows
+# the pipe buffer.
+R=$(make_repo big)
+mkdir -p "$R/docs/user-stories"
+for i in $(seq 1 3000); do : > "$R/docs/user-stories/area-$i-with-a-long-descriptive-file-name.md"; done
+add_files "$R" src/app/trips/page.tsx "${ARTIFACTS[@]}"; run_check "$R"
+check "large diff with every artifact exits 0" test "$ST" -eq 0
+
 [ "$fail" -eq 0 ] && echo "require-feature-checklist.test.sh PASS"
 exit "$fail"

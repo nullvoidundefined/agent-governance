@@ -34,7 +34,7 @@ BUILTIN_TRIGGERS=(
   '(^|/)src/(routes|handlers)/.+\.(ts|js)$'
 )
 TEST_FILE_PATTERN='(\.(test|spec)\.[^/]+$)|(/__tests__/)|((^|/)test_[^/]+\.py$)|((^|/)__init__\.py$)'
-STORY_PATTERN='^docs/user-stories/.+\.md$'
+STORY_PATTERN='^docs/user-stories/.+[.]md$'
 E2E_PATTERN='(^|/)e2e/(.+/)?([^/]+\.(spec|test)\.(ts|js|mjs)|test_[^/]+\.py)$'
 
 # is_check_disabled: true when .enforce.json sets productDocs to false. A
@@ -72,14 +72,17 @@ find_triggers() {
 }
 
 # list_missing_artifacts <changed-files>: prints one line per required
-# artifact the branch did not change.
+# artifact the branch did not change. Each check reads a here-string, never a
+# pipe: under pipefail an early-exiting grep -q kills its upstream writer with
+# SIGPIPE once the file list outgrows the pipe buffer, and the failed pipeline
+# would report a present artifact as missing (PR #44 review).
 list_missing_artifacts() {
   local changed="$1"
-  printf '%s\n' "$changed" | grep -qxF 'docs/feature-list/features.md' \
+  grep -qxF 'docs/feature-list/features.md' <<<"$changed" \
     || echo "  docs/feature-list/features.md not updated (feature row and status)"
-  printf '%s\n' "$changed" | grep -E "$STORY_PATTERN" | grep -qvxF 'docs/user-stories/README.md' \
+  awk -v story="$STORY_PATTERN" '$0 ~ story && $0 != "docs/user-stories/README.md" { found = 1 } END { exit !found }' <<<"$changed" \
     || echo "  no user story created or updated in docs/user-stories/ (README.md alone does not count)"
-  printf '%s\n' "$changed" | grep -qE "$E2E_PATTERN" \
+  grep -qE "$E2E_PATTERN" <<<"$changed" \
     || echo "  no e2e spec created or updated under e2e/"
 }
 

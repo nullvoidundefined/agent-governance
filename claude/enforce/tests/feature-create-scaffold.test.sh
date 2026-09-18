@@ -159,5 +159,34 @@ OUT=$(cd "$REPO5" && HOME="$SB/partial-home" bash "$PORT/scaffold.sh" voice-pres
 check "partial templates exit 8" test "$ST" -eq 8
 check "partial templates write no empty features list" test ! -e "$SB/worktrees5/voice-presets/docs/feature-list/features.md"
 
+# PR #44 review round 2.
+# The .enforce.json opt-out skips the product docs entirely.
+REPO6="$SB/optout"; make_repo "$REPO6" main
+git -C "$REPO6" rm -rq docs/feature-list docs/user-stories; printf '{"productDocs": false}\n' > "$REPO6/.enforce.json"
+git -C "$REPO6" add -A; git -C "$REPO6" commit -qm "library"
+OUT=$(cd "$REPO6" && "$SCAFFOLD" voice-presets --area voice --worktree-parent "$SB/worktrees6" --no-fetch 2>&1); ST=$?
+check "opt-out exits 0" test "$ST" -eq 0
+check "opt-out writes no features list" test ! -e "$SB/worktrees6/voice-presets/docs/feature-list/features.md"
+check "opt-out writes no story" test ! -e "$SB/worktrees6/voice-presets/docs/user-stories/voice.md"
+check "opt-out says so" reports "productDocs false"
+# A partial sibling tree falls back to a complete ~/.claude.
+PARTIAL="$SB/partial-port"; mkdir -p "$PARTIAL/skills/feature-create/scripts" "$PARTIAL/prompts"
+cp "$SCAFFOLD" "$PARTIAL/skills/feature-create/scripts/scaffold.sh"; cp "$CLAUDE_HARNESS_ROOT/prompts/feature-list-template.md" "$PARTIAL/prompts/"
+REPO7="$SB/fallback"; make_repo "$REPO7" main
+OUT=$(cd "$REPO7" && HOME="$SB/synced-home" bash "$PARTIAL/skills/feature-create/scripts/scaffold.sh" voice-presets --area voice --worktree-parent "$SB/worktrees7" --no-fetch 2>&1); ST=$?
+check "partial sibling tree falls back to ~/.claude" test "$ST" -eq 0
+# Replacement values with sed metacharacters render literally.
+REPO8="$SB/r&d#app"; make_repo "$REPO8" main
+git -C "$REPO8" rm -rq docs/feature-list docs/user-stories; git -C "$REPO8" commit -qm "drop product docs"
+OUT=$(cd "$REPO8" && "$SCAFFOLD" voice-presets --area voice --ticket 'A&B#1\x' --worktree-parent "$SB/worktrees8" --no-fetch 2>&1); ST=$?
+check "metacharacters exit 0" test "$ST" -eq 0
+check "project name with & and # renders literally" grep -qxF '# r&d#app Feature List' "$SB/worktrees8/voice-presets/docs/feature-list/features.md"
+check "ticket with & # and backslash renders literally" grep -qxF '**Ticket:** A&B#1\x' "$SB/worktrees8/voice-presets/docs/user-stories/voice.md"
+# An existing area file missing from a new README is still indexed.
+REPO9="$SB/unindexed"; make_repo "$REPO9" main
+git -C "$REPO9" rm -q docs/user-stories/README.md; git -C "$REPO9" commit -qm "drop the index"
+OUT=$(cd "$REPO9" && "$SCAFFOLD" voice-presets --area voice --worktree-parent "$SB/worktrees9" --no-fetch 2>&1); ST=$?
+check "existing area file indexed in a seeded README" grep -qF '| `voice.md` | Voice |' "$SB/worktrees9/voice-presets/docs/user-stories/README.md"
+
 [ "$fail" -eq 0 ] && echo "feature-create-scaffold.test.sh PASS"
 exit "$fail"
