@@ -160,9 +160,28 @@ if [ "$is_global_repo" -eq 0 ] && [ "$on_trunk" -eq 1 ]; then
 fi
 
 # R-508: a new route, handler, page, or setup change is user-facing by
-# definition, and the README is where a user finds out.
+# definition, and the README is where a user finds out. The route patterns
+# cover every stack the R-607 checklist (enforce/require-feature-checklist.sh,
+# BUILTIN_TRIGGERS) treats as a new route: Next.js pages and route handlers,
+# Nuxt pages, Nitro server/api and server/routes, FastAPI routers, and Express
+# routes and handlers. That script is copied standalone into product
+# repositories, so it cannot source a shared list; the git-workflow-guard
+# fixture reads its triggers and fails when this list stops covering them.
+R508_SURFACE_PATTERNS=(
+  '(^|/)(routes|handlers)/'
+  '(^|/)(page|route)\.(tsx|ts|jsx|js)$'
+  '(^|/)app/pages/.+\.vue$'
+  '(^|/)server/api/'
+  '(^|/)app/routers/[^/]+\.py$'
+  '(^|/)features/'
+  '(^|/)\.env\.example$'
+  '(^|/)docker-compose[^/]*\.ya?ml$'
+  '(^|/)Dockerfile$'
+)
+SURFACE_GREP_ARGS=()
+for surface_pattern in "${R508_SURFACE_PATTERNS[@]}"; do SURFACE_GREP_ARGS+=(-e "$surface_pattern"); done
 SURFACE=$(printf '%s\n' "$ADDED" | grep -v '^$' |
-  grep -E '(^|/)(routes|handlers)/|(^|/)page\.tsx$|(^|/)route\.ts$|(^|/)features/|(^|/)\.env\.example$|(^|/)docker-compose[^/]*\.ya?ml$|(^|/)Dockerfile$' | head -3 || true)
+  grep -E "${SURFACE_GREP_ARGS[@]}" | head -3 || true)
 if [ -n "$SURFACE" ] && ! grep -qiE '(^|/)README[^/]*$' <<< "$CHANGED"; then
   echo "git-workflow-guard: this commit adds a user-facing surface ($(printf '%s' "$SURFACE" | tr '\n' ' ')) and touches no README. R-508 updates the README in the same commit as the feature, structure, or setup change." >&2
 fi
