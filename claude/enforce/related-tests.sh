@@ -86,7 +86,9 @@ buildNodeCommands() {
   shift
   for changed_file in "$@"; do
     case "$changed_file" in
-      node_modules/*|*/node_modules/*|dist/*|*/dist/*) ;;
+      # Tracked build output or vendored code: no runner maps it, yet it can
+      # change what a test loads, so it falls back (PR #58 review).
+      node_modules/*|*/node_modules/*|dist/*|*/dist/*) return 1 ;;
       *) sources+=("$changed_file") ;;
     esac
   done

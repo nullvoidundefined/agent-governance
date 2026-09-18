@@ -136,4 +136,16 @@ rm "$W/docs/notes.md"
 OUT=$(map_in "$W" pytest)
 [ "$OUT" = "exit=0" ] || { echo "FAIL M14: a deleted doc must run nothing, got: $OUT"; exit 1; }
 
+# M15. A tracked build-output or vendored path falls back rather than being
+# dropped: no runner maps it, and it can still change what a test loads
+# (PR #58 review).
+for vendored in dist/bundle.js node_modules/pkg/index.js; do
+  B=$(new_sandbox); mkdir -p "$B/$(dirname "$vendored")"
+  echo '{"devDependencies":{"vitest":"^3.0.0"}}' > "$B/package.json"
+  echo 'module.exports = 1;' > "$B/$vendored"; git -C "$B" add -f -A && git -C "$B" commit -qm "chore: base"
+  echo '// rebuilt' >> "$B/$vendored"
+  OUT=$(map_in "$B" vitest)
+  [ "$OUT" = "exit=1" ] || { echo "FAIL M15: a changed tracked $vendored must fall back, got: $OUT"; exit 1; }
+done
+
 echo "PASS"
