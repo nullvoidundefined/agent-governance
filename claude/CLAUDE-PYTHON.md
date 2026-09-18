@@ -220,12 +220,9 @@ def create_app() -> FastAPI:
 """Liveness and readiness probes, registered before every application router."""
 
 import structlog
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncConnection
-
-from app.db.session import get_connection
 
 router = APIRouter(tags=["health"])
 
@@ -237,12 +234,11 @@ async def read_liveness() -> dict[str, str]:
 
 
 @router.get("/health/ready")
-async def read_readiness(
-    response: Response, connection: AsyncConnection = Depends(get_connection, scope="function")
-) -> dict[str, str]:
-    """Answer 200 when the database answers, 503 when it does not."""
+async def read_readiness(request: Request, response: Response) -> dict[str, str]:
+    """Answer 200 when the database answers, 503 when it does not, including a failed connect."""
     try:
-        await connection.execute(text("SELECT 1"))
+        async with request.app.state.engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
     except (OSError, SQLAlchemyError) as err:
         structlog.get_logger().warning("readiness_db_failed", exc_info=err)
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -252,7 +248,7 @@ async def read_readiness(
 
 - `/health` is the Railway healthcheck path and the Docker `HEALTHCHECK` target
 - `/health/ready` runs in post-deploy smoke tests
-- The health router is included first, outside the `/v1` prefix and outside rate limiting and CSRF (R-345)
+- The health router is included first and outside the `/v1` prefix (R-345). Router order cannot bypass global middleware, so the rate limiter and the CSRF guard each skip `/health` and `/health/ready` by path, and readiness opens its own connection so a failed connect still answers 503
 
 ---
 
@@ -269,10 +265,11 @@ from arq.connections import RedisSettings
 from app.core.logging import configure_logging
 from app.core.settings import get_settings
 from app.db.engine import create_database_engine
+from app.workers.context import WorkerContext
 from app.workers.jobs.send_digest_email import send_digest_email
 
 
-async def start_worker_resources(ctx: dict[str, object]) -> None:
+async def start_worker_resources(ctx: WorkerContext) -> None:
     """Open the engine once per worker process and log the start."""
     settings = get_settings()
     configure_logging(settings)
@@ -280,7 +277,7 @@ async def start_worker_resources(ctx: dict[str, object]) -> None:
     structlog.get_logger().info("worker_started")
 
 
-async def stop_worker_resources(ctx: dict[str, object]) -> None:
+async def stop_worker_resources(ctx: WorkerContext) -> None:
     """Dispose the engine on graceful shutdown."""
     await ctx["engine"].dispose()
     structlog.get_logger().info("worker_stopped")
@@ -288,7 +285,7 @@ async def stop_worker_resources(ctx: dict[str, object]) -> None:
 
 class WorkerSettings:
     functions = [send_digest_email]
-    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    redis_settings = RedisSettings.from_dsn(get_settings().redis_url.get_secret_value())
     on_startup = start_worker_resources
     on_shutdown = stop_worker_resources
     max_jobs = 10
@@ -298,13 +295,13 @@ class WorkerSettings:
 ```
 
 - `WorkerSettings` is the one place a module-level read of settings is allowed, because arq imports the class to start the process; nothing else imports `workers/settings.py`
-- A job function takes `ctx` first, receives only IDs and small values, and loads everything else from the database; a payload never carries a model object
+- `WorkerContext` is a `TypedDict` (`engine: AsyncEngine`, `job_id: str`, plus arq's keys), so `mypy --strict` types every `ctx[...]` read. A job function takes `ctx: WorkerContext` first, receives only IDs and small values, and loads everything else from the database; a payload never carries a model object
 - Every job binds `job_id=ctx["job_id"]` into the structlog context on entry, so every line and every outbound call carries it (R-341)
 - Jobs are idempotent: a retried job checks its own completion marker before it acts
 - The API enqueues through one `clients/queue.py` (`await queue.enqueue_job("send_digest_email", user_id)`), and the job name string lives only there, derived from `send_digest_email.__name__`
-- Health: arq writes a health key every `health_check_interval`, and the container's `HEALTHCHECK` runs `arq --check app.workers.settings.WorkerSettings`
+- Health (R-345): `start_worker_resources` also starts a minimal Starlette app on `WORKER_PORT` (default 3002) as a background `uvicorn.Server` task, serving `/health` and `/health/ready` (a `SELECT 1` and a Redis `PING`), and the container's `HEALTHCHECK` hits it; `arq --check` stays a CI smoke of the queue, not the probe
 - arq handles `SIGTERM` by letting running jobs finish up to `job_timeout`; Railway's drain window is set at least that long
-- The worker ships as `Dockerfile.worker`: the API image with `CMD ["arq", "app.workers.settings.WorkerSettings"]` and the `arq --check` healthcheck
+- The worker ships as `Dockerfile.worker`: the API image with `CMD ["arq", "app.workers.settings.WorkerSettings"]` and a `HEALTHCHECK` on port 3002
 
 ---
 
@@ -353,6 +350,7 @@ Cookie sessions backed by Postgres, the same design as the Express template. The
 ```python
 """Creates and verifies session tokens and passwords; the cookie holds the only raw token."""
 
+import asyncio
 import hashlib
 import secrets
 from datetime import timedelta
@@ -371,10 +369,10 @@ def generate_session_token() -> tuple[str, str]:
     return raw_token, hashlib.sha256(raw_token.encode()).hexdigest()
 
 
-def verify_password(candidate: str, stored_hash: str | None) -> bool:
-    """Check a password, hashing against a dummy when the user is unknown so timing matches."""
+async def verify_password(candidate: str, stored_hash: str | None) -> bool:
+    """Check a password off the event loop, against a dummy hash when the user is unknown."""
     target_hash = stored_hash.encode() if stored_hash else _DUMMY_PASSWORD_HASH
-    is_match = bcrypt.checkpw(candidate.encode(), target_hash)
+    is_match = await asyncio.to_thread(bcrypt.checkpw, candidate.encode(), target_hash)
     return is_match and stored_hash is not None
 ```
 
@@ -385,7 +383,7 @@ def verify_password(candidate: str, stored_hash: str | None) -> bool:
 - **Admin**: `require_admin` depends on `get_current_user` and raises `AUTH_ADMIN_REQUIRED` unless `user.role == "admin"`
 - **Logout** deletes the session row and clears the cookie; a password change deletes every other session of that user
 - **Cleanup**: expired rows are deleted hourly (pg_cron Cleanup Jobs below)
-- bcrypt runs inside `asyncio.to_thread`, so hashing never blocks the event loop
+- bcrypt always runs inside `asyncio.to_thread`, for verification as above and for hashing at registration, so it never blocks the event loop
 
 ---
 
@@ -405,7 +403,7 @@ Cookie sessions need a CSRF guard. The API requires a custom header that a brows
 - A Redis-backed fixed-window limiter in `middleware/rate_limit.py`, keyed by client IP (the first hop of `X-Forwarded-For` behind Railway's proxy)
 - Global limit: 100 requests per 15 minutes; auth routes (`/v1/auth/login`, `/v1/auth/register`, password reset): 10 per 15 minutes
 - Over the limit: 429 with `RATE_LIMIT_EXCEEDED` and a `Retry-After` header
-- Without `REDIS_URL` the limiter falls back to an in-process counter and logs one `rate_limiter_in_memory` warning at startup, because per-process counters do not hold across instances
+- Without `REDIS_URL` the limiter falls back to an in-process counter and logs one `rate_limiter_in_memory` warning, in development and test only: settings refuse to start production without `REDIS_URL`, because per-process counters let an attacker rotate across instances past the auth limit
 - Skipped when `settings.environment == "test"`; the rate-limit tests turn it back on explicitly
 
 ---
@@ -415,7 +413,7 @@ Cookie sessions need a CSRF guard. The API requires a custom header that a brows
 - `middleware/idempotency.py` handles `POST` and `PUT` requests that carry an `Idempotency-Key` header from an authenticated user; everything else passes through
 - A key seen within 24 hours replays the stored status code and body without running the handler
 - A new key claims a row in `request_idempotency_keys` (`key`, `user_id`, `status_code`, `response_body jsonb`, `created_at`, unique on `(key, user_id)`), runs the handler, and stores the status and body
-- A second request that arrives while the first still holds the claim answers 409
+- A second request that arrives while the first still holds the claim answers 409. When the handler raises or answers 5xx, the middleware deletes the claim in a `finally` block, so the client's retry runs again instead of meeting 409 until cleanup
 - Rows older than 24 hours are deleted by the hourly cleanup job
 
 ---
@@ -444,14 +442,14 @@ class Settings(BaseSettings):
     app_name: str = "api"
     environment: Literal["development", "test", "staging", "production"] = "development"
     database_url: SecretStr
-    redis_url: str | None = None
+    redis_url: SecretStr | None = None
     cors_origin: str | None = None
 
     @model_validator(mode="after")
     def require_production_values(self) -> "Settings":
         """Refuse to start in production without the values production needs."""
-        if self.environment == "production" and not self.cors_origin:
-            raise ValueError("CORS_ORIGIN is required in production")
+        if self.environment == "production" and not (self.cors_origin and self.redis_url):
+            raise ValueError("CORS_ORIGIN and REDIS_URL are required in production")
         return self
 
 
@@ -704,10 +702,10 @@ Each stage is validated on a Neon branch before staging, and staging before prod
 
 ## Error Handling and Response Envelope
 
-Every success is `{ "data": ... }` (with `"meta"` for pages). Every error is `{ "code": "...", "error": "..." }`, the same envelope the Express template returns, so one frontend `apiFetch` handles both backends.
+Every success is `{ "data": ... }` (with `"meta"` for pages). Every error is `{ "code": "...", "error": "..." }`, the envelope the Express template's code returns, so one frontend `apiFetch` handles both backends. `CLAUDE-BACKEND.md` still documents an older `{ error: { message } }` shape, and correcting it is tracked separately.
 
 ```python
-"""Machine-readable error codes; clients switch on these, never on the message."""
+"""Machine-readable error codes; clients switch on these, never on the message. Excerpt."""
 
 from enum import StrEnum
 
@@ -720,15 +718,16 @@ class ErrorCode(StrEnum):
     CSRF_HEADER_MISSING = "CSRF_HEADER_MISSING"
     INPUT_VALIDATION_ERROR = "INPUT_VALIDATION_ERROR"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
+    ROUTING_METHOD_NOT_ALLOWED = "ROUTING_METHOD_NOT_ALLOWED"
     ROUTING_NOT_FOUND = "ROUTING_NOT_FOUND"
     SERVER_DATABASE_UNAVAILABLE = "SERVER_DATABASE_UNAVAILABLE"
     SERVER_INTERNAL_ERROR = "SERVER_INTERNAL_ERROR"
     SERVER_REQUEST_TIMEOUT = "SERVER_REQUEST_TIMEOUT"
 ```
 
-- Codes live in `constants/error_codes.py`, namespaced `DOMAIN_REASON`, each with a one-line comment saying when it fires
+- Codes live in `constants/error_codes.py`, namespaced `DOMAIN_REASON`, each with a one-line comment saying when it fires; the excerpt above omits domain codes, and the real registry holds every code the app raises (`TRIPS_NOT_FOUND`, `AUTH_EMAIL_ALREADY_REGISTERED`, the `BILLING_WEBHOOK_*` codes), because an unregistered code is a type error
 - `app/errors.py` defines `AppError(status_code, code, message)` and its subclasses (`NotFoundError`, `ConflictError`, `ForbiddenError`); routes and services raise these
-- `register_exception_handlers` installs four handlers: `AppError` to its own status and code; `RequestValidationError` to 400 `INPUT_VALIDATION_ERROR` with field errors; the connection-class `OperationalError` and `asyncpg` connection errors to 503 `SERVER_DATABASE_UNAVAILABLE`; and bare `Exception` to 500 `SERVER_INTERNAL_ERROR`
+- `register_exception_handlers` installs five handlers: `AppError` to its own status and code; Starlette's `HTTPException` (unknown path, wrong method) to `ROUTING_NOT_FOUND` or `ROUTING_METHOD_NOT_ALLOWED`, so no response ever uses FastAPI's default `{ detail }`; `RequestValidationError` to 400 `INPUT_VALIDATION_ERROR` with field errors; the connection-class `OperationalError` and `asyncpg` connection errors to 503 `SERVER_DATABASE_UNAVAILABLE`; and bare `Exception` to 500 `SERVER_INTERNAL_ERROR`
 - The 500 handler logs with `exc_info`, reports to Sentry with the request ID, and returns `"Internal server error"` in production; outside production it returns the exception message, never a traceback
 - A unique violation is caught where a useful message exists (`IntegrityError` whose `orig.sqlstate == "23505"` on register becomes 409 `AUTH_EMAIL_ALREADY_REGISTERED`), never mapped globally
 - Cache and analytics failures degrade: catch the specific exception, log it, continue without the value; they never fail the request (R-344)
