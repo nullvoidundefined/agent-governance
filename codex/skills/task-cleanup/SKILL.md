@@ -85,6 +85,14 @@ Check if the spec and plan are fully shipped (all tasks done, all acceptance cri
 
 Run the project's test, build, and lint commands (whatever `package.json`, `Makefile`, or the project `CLAUDE.md` defines). All three must pass before any merge decision.
 
+**PR loop** (R-514, R-515; skip the review steps on the trivial tier):
+1. Run `/code-review` on the branch diff, or dispatch a fresh reviewer subagent given only the diff, before opening the PR. Fix every real finding test-first (failing case, then fix) and record what the review found in the PR document.
+2. Open the PR and request the Copilot review.
+3. Start the next ticket while CI and Copilot run. Return to this PR when both finish; do not block the session on a poll loop.
+4. Fix each valid Copilot comment (failing case first when behavior changes), reply in its thread naming the fix commit, and resolve the thread (R-515).
+5. Request a second Copilot round only when round one changed behavior (code or tests). Wording, docs, and PR-description fixes merge on green CI without a re-review.
+6. For 2 to 5 small related tickets, one bundle PR may replace separate PRs: label it `bundle`, keep one commit per ticket with its own `Refs:` trailer, and merge with `--rebase` (R-512). Never bundle deletion, security, sync, or migration changes.
+
 **Merge decision:**
 - Confirm with the user before merging. `git-workflow-guard` gates `gh pr merge` (R-514) and not a local `git merge`, so the ask here is the skill's, and "merge when ready" from an earlier turn is not it.
 - Squash merge onto main: `git checkout main && git merge --squash feat/<slug>`

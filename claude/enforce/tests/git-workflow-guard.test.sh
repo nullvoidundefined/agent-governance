@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Covers: hook:git-workflow-guard
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
-# merge (R-514), denies a non-squash merge (R-512), and warns on a cross-cutting
+# merge (R-514), denies a non-squash merge (R-512) except a rebase of a PR
+# labeled bundle whose every commit carries a Refs: trailer, and warns on a cross-cutting
 # commit to main (R-511) and a surface-adding commit with no README (R-508),
 # whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
@@ -21,8 +22,54 @@ silent_on() {   # silent_on <rule> <command> <repo>
   case "$(warning "$2" "$3")" in *"$1"*) echo "unexpected $1 warning for: $2" >&2; return 1 ;; *) return 0 ;; esac
 }
 
+# Bundle exception (R-512): `--rebase` passes only for a PR labeled `bundle`
+# whose every commit carries a `Refs:` trailer, read from `gh pr view`. The gh
+# call is stubbed through CLAUDE_GH_CMD so no fixture reaches GitHub.
+STUB_DIR=$(mktemp -d)
+# write_gh_stub: writes an executable gh stand-in that prints $2 as the
+# `gh pr view` JSON and exits with status $3 (default 0).
+write_gh_stub() {
+  local stub_path="$STUB_DIR/$1"
+  printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit %s\n' "$2" "${3:-0}" >"$stub_path"
+  chmod +x "$stub_path"
+  printf '%s' "$stub_path"
+}
+# stubbed_decision: the hook's decision for command $1 with gh stubbed by $2.
+stubbed_decision() {
+  local out
+  out=$(payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null)
+  if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+# stubbed_reason: the hook's decision reason for command $1 with gh stubbed by $2.
+stubbed_reason() {
+  payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason'
+}
+BUNDLE_OK=$(write_gh_stub bundle-ok '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
+NO_LABEL=$(write_gh_stub no-label '{"labels":[{"name":"enhancement"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"Refs: IAN-2"}]}')
+MISSING_REFS=$(write_gh_stub missing-refs '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"No trailer here, Refs: IAN-2 inline only"}]}')
+GH_FAILS=$(write_gh_stub gh-fails '' 1)
+GH_GARBAGE=$(write_gh_stub gh-garbage 'not json')
+
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$BUNDLE_OK")" = "ask" ]      # bundle + all Refs: past R-512, R-514 still asks
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$NO_LABEL")" = "deny" ]      # no bundle label
+case "$(stubbed_reason 'gh pr merge 42 --rebase' "$NO_LABEL")" in *bundle*) ;; *) echo "no-label deny must name the bundle label" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$MISSING_REFS")" = "deny" ]  # one commit lacks a Refs: trailer line
+case "$(stubbed_reason 'gh pr merge 42 --rebase' "$MISSING_REFS")" in *Refs:*) ;; *) echo "missing-refs deny must name the Refs: trailer" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$GH_FAILS")" = "deny" ]      # gh cannot answer: fail closed
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$GH_GARBAGE")" = "deny" ]    # unparseable answer: fail closed
+[ "$(stubbed_decision 'gh pr merge --rebase' "$GH_FAILS")" = "deny" ]         # no PR number, gh still consulted
+# The PR selector is the first positional argument, never a flag's value, and
+# --repo is forwarded: this stub answers as a bundle only for `42 --repo o/r`.
+SELECTOR_STUB="$STUB_DIR/selector"
+printf '%s\n' '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
+printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
+chmod +x "$SELECTOR_STUB"
+[ "$(stubbed_decision 'gh pr merge --subject 7 -R o/r --rebase 42' "$SELECTOR_STUB")" = "ask" ]
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SELECTOR_STUB")" = "deny" ]   # --repo dropped: a different PR
+[ "$(stubbed_decision 'gh pr merge 42 --merge' "$BUNDLE_OK")" = "deny" ]      # merge commits stay denied, bundle or not
+[ "$(stubbed_decision 'gh pr merge 42 --merge --rebase' "$BUNDLE_OK")" = "deny" ]  # --merge wins over a bundle --rebase
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]       # squash never consults gh
 [ "$(decision 'gh pr merge 42 --merge')" = "deny" ]        # wrong strategy (R-512)
-[ "$(decision 'gh pr merge 42 --rebase')" = "deny" ]       # wrong strategy, 2nd form
 [ "$(decision 'gh pr merge 42 --squash')" = "ask" ]        # right strategy, still needs authorization (R-514)
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 

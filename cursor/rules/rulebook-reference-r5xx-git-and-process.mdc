@@ -63,7 +63,13 @@ R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch.
   Enforcement: hook:git-workflow-guard (commit-time advisory when the staged change spans 5+ files across 3+ directories on `main`; the agent-governance repo, recognized via `repo-identity.sh`, is exempt because `main` is its working branch)
 
 R-512: Squash-merge feature branches: `git merge --squash`; one commit per feature on `main`.
-  Enforcement: hook:git-workflow-guard (denies `gh pr merge --merge` and `--rebase`)
+  Spec:
+  - Default: every feature branch squash-merges, so its work-in-progress history stays off the trunk.
+  - Bundle exception (IAN-122, 2026-09-19): 2 to 5 small, related tickets may ship as one PR labeled `bundle`, so they share one CI run and one Copilot pass. The branch carries exactly one commit per ticket; each commit has a conventional subject and its own `Refs: <KEY>` trailer line. Merge it with `gh pr merge <n> --rebase` so every ticket keeps exactly one commit on `main`. Squash the ticket's fixups into its commit before the merge (`git rebase` with `fixup!` commits and `--autosquash`), never leave a review fix as its own commit.
+  - Never bundle a deletion, security, sync, or migration change; those ship as their own squash-merged PR so each can be reviewed and reverted alone.
+  - Rebase merging must be enabled on the repository. `repo-setup` sets product repositories to squash only, so a bundle there needs the owner to enable rebase merging first.
+  - Merge commits (`--merge`) are never allowed.
+  Enforcement: hook:git-workflow-guard (denies `gh pr merge --merge`; denies `--rebase` unless `gh pr view <n> --json labels,commits` shows the `bundle` label and every commit message has a `Refs: [A-Z][A-Z0-9]+-[0-9]+` line, failing closed when `gh` cannot answer; the 2-to-5 size and the excluded change kinds are manual)
 
 R-513: Grep the test suite for a changed constant's old value before pushing; update every stale assertion in the same commit as the source change.
   Scope: any push (not just pre-PR) that changes a named constant's value: palette colors, status strings, limits, URLs, error messages.
@@ -74,6 +80,9 @@ R-514: Never merge a PR without explicit user authorization in the current turn.
   Spec:
   - Claude may create PRs, push branches, and request Copilot review (`gh pr create --reviewer copilot`).
   - Default path: (1) CI passes; (2) Copilot review passes, except for a trivial-tier PR, which requests no Copilot review (IAN-98, 2026-09-18) and merges on green CI under the same merge authorization as any PR; (3) the user explicitly asks to merge after both are confirmed green, or a project rule grants standing merge-on-green authorization. The trivial path removes the review wait, never the authorization or the `gh pr merge` prompt. "Merge when ready" is not authorization.
+  - Before opening a PR, run `/code-review` (or a fresh reviewer subagent given only the diff) on the branch diff, fix every real finding test-first, and record what it found in the PR document (IAN-122, 2026-09-19).
+  - Request a second Copilot round only when round one led to a behavior change (code or tests). Fixes to wording, docs, or the PR description merge without a re-review.
+  - After opening a PR and requesting review, start the next ticket and return when CI and Copilot finish; never block the session on polls.
   - Direct pushes to `main`/`master`: warn the user and name the risks (no CI gate, no Copilot review, no rollback point); execute only on express user request in the current turn.
   Enforcement: hook:git-workflow-guard (asks before `gh pr merge` and before any push whose target branch resolves to `main`/`master`; the agent-governance repo, recognized via `repo-identity.sh`, is exempt, its pushes being R-106's business)
 

@@ -3,8 +3,10 @@
 # command plus the index. One PreToolUse(Bash) hook, four rules:
 #   R-514  a push whose target branch is main/master asks first, and so does
 #          `gh pr merge` (authorization is per turn, never standing)
-#   R-512  `gh pr merge --merge` / `--rebase` is denied; feature branches
-#          squash-merge into one commit per feature
+#   R-512  `gh pr merge --merge` is denied, and so is `--rebase` unless the PR
+#          is a bundle (the `bundle` label, a `Refs:` trailer on every commit,
+#          read from `gh pr view`); feature branches squash-merge into one
+#          commit per feature
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -83,11 +85,73 @@ deny() {
   exit 0
 }
 
-# R-512 and R-514 on the merge path. A merge needs no repository context: the
-# command alone carries both the strategy and the fact that a merge is imminent.
+# read_merge_target_arguments: fills the caller's view_arguments array with
+# the `gh pr view` arguments naming the same PR the merge names: the first
+# positional argument after `merge` (a number, URL, or branch), plus any
+# --repo/-R. The values of merge's other value-taking flags are skipped so a
+# subject or head SHA is never mistaken for the PR. Word splitting is on
+# whitespace only; a quoted value holding a space can at worst name the wrong
+# PR, which gh then fails to find or reports without the bundle label.
+read_merge_target_arguments() {
+  local merge_arguments merge_token skip_next=0 repo_next=0 pr_selector=""
+  merge_arguments=$(printf '%s' "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[^;&|]*' | head -1 |
+    sed -E 's/^gh[[:space:]]+pr[[:space:]]+merge[[:space:]]*//' || true)
+  for merge_token in $merge_arguments; do
+    if [ "$repo_next" -eq 1 ]; then view_arguments+=(--repo "$merge_token"); repo_next=0; continue; fi
+    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
+    case "$merge_token" in
+      -R | --repo) repo_next=1 ;;
+      --repo=*) view_arguments+=("$merge_token") ;;
+      -t | --subject | -b | --body | -F | --body-file | -A | --author-email | --match-head-commit) skip_next=1 ;;
+      -*) ;;
+      *) [ -z "$pr_selector" ] && pr_selector="$merge_token" ;;
+    esac
+  done
+  [ -n "$pr_selector" ] && view_arguments=("$pr_selector" ${view_arguments[@]+"${view_arguments[@]}"})
+  return 0
+}
+
+# read_bundle_verdict: prints "ok" when the PR being merged is a bundle PR
+# (R-512's exception): it carries the `bundle` label and every commit message
+# holds a `Refs: <KEY>` trailer line. Otherwise prints the sentence naming the
+# first missing condition. The PR is the first positional argument after
+# `merge`, or the current branch's PR when none is given, the same resolution
+# gh itself uses. Fail-closed: a gh that errors or answers with anything jq
+# cannot read is reported as unverifiable, never as a bundle. CLAUDE_GH_CMD
+# replaces gh for the fixture.
+read_bundle_verdict() {
+  local gh_command="${CLAUDE_GH_CMD:-gh}" pr_json
+  local -a view_arguments=()
+  read_merge_target_arguments
+  if ! pr_json=$(cd "$CWD" 2>/dev/null && "$gh_command" pr view ${view_arguments[@]+"${view_arguments[@]}"} --json labels,commits 2>/dev/null) ||
+    ! printf '%s' "$pr_json" | jq -e '(.labels | type == "array") and (.commits | type == "array")' >/dev/null 2>&1; then
+    echo "gh pr view could not confirm the PR's labels and commits, so the bundle conditions are unverified."
+    return 0
+  fi
+  if ! printf '%s' "$pr_json" | jq -e 'any(.labels[]; .name == "bundle")' >/dev/null 2>&1; then
+    echo "the PR has no \`bundle\` label."
+    return 0
+  fi
+  if ! printf '%s' "$pr_json" | jq -e '(.commits | length) > 0 and all(.commits[];
+      ((.messageHeadline // "") + "\n" + (.messageBody // "")) | test("(^|\n)Refs: [A-Z][A-Z0-9]+-[0-9]+"))' >/dev/null 2>&1; then
+    echo "at least one commit has no \`Refs: <KEY>\` trailer line."
+    return 0
+  fi
+  echo ok
+}
+
+# R-512 and R-514 on the merge path. A squash or merge-commit decision needs
+# no repository context: the command alone carries both the strategy and the
+# fact that a merge is imminent. Only a rebase consults gh, from the command's
+# working directory, to check the bundle conditions.
 if grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' <<< "$CMD"; then
-  if grep -qE '[[:space:]]--(merge|rebase)([[:space:]]|=|$)' <<< "$CMD"; then
+  if grep -qE '[[:space:]]--merge([[:space:]]|=|$)' <<< "$CMD"; then
     deny "This merges the PR with a strategy R-512 does not allow. Feature branches squash-merge: one commit per feature on main, so the branch's work-in-progress history stays off the trunk. Re-run with --squash."
+  fi
+  if grep -qE '[[:space:]]--rebase([[:space:]]|=|$)' <<< "$CMD"; then
+    BUNDLE_VERDICT=$(read_bundle_verdict)
+    [ "$BUNDLE_VERDICT" = "ok" ] ||
+      deny "This rebase-merges the PR, which R-512 allows only for a bundle PR, and $BUNDLE_VERDICT A bundle carries the \`bundle\` label and one commit per ticket, each with its own \`Refs: <KEY>\` trailer line, so every ticket keeps exactly one commit on main. Otherwise re-run with --squash."
   fi
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
