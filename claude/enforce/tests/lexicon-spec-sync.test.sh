@@ -89,11 +89,11 @@ node "$SANDBOX/enforce/render-lexicon-spec.mjs" --print >/dev/null 2>&1 && {
   echo "FAIL: a registry that bans a verb its own scope table binds must be rejected"
   exit 1
 } || true
-printf '%s' "$CONTRADICTION" | grep -q 'contradicts itself' || {
+grep -q 'contradicts itself' <<< "$CONTRADICTION" || {
   echo "FAIL: the rejection must say the registry contradicts itself, got: $CONTRADICTION"
   exit 1
 }
-printf '%s' "$CONTRADICTION" | grep -q 'verbGroups.read' || {
+grep -q 'verbGroups.read' <<< "$CONTRADICTION" || {
   echo "FAIL: the rejection must name the offending field, got: $CONTRADICTION"
   exit 1
 }

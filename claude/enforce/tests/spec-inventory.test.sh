@@ -32,11 +32,11 @@ check "orphan plan has no pair" row "docs/superpowers/plans/2026-09-02-orphan.md
 check "last commit subject shown" row "2026-09-01-voice-presets-design.md" "docs(specs): voice presets design and plan"
 check "slug mentions counted (design commit and feat commit)" row "2026-09-01-voice-presets-design.md" "| 2 |"
 check "artifacts present over named" row "2026-09-01-voice-presets-design.md" "| 1/2 |"
-check "absent artifact listed" bash -c "printf '%s' \"\$0\" | grep -q 'src/services/missingThing.ts'" "$OUT"
+check "absent artifact listed" bash -c "grep -q 'src/services/missingThing.ts' <<< \"\$0\"" "$OUT"
 
 OUT=$(cd "$REPO" && bash "$INV" docs/nowhere docs/nowhere-either 2>&1); ST=$?
 check "empty directories exit 0" test "$ST" -eq 0
-check "empty directories say so" bash -c "printf '%s' \"\$0\" | grep -q 'no files under'" "$OUT"
+check "empty directories say so" bash -c "grep -q 'no files under' <<< \"\$0\"" "$OUT"
 
 [ "$fail" -eq 0 ] && echo "spec-inventory.test.sh PASS"
 exit "$fail"

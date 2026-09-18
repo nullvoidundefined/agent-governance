@@ -63,7 +63,7 @@ if [ -n "$GIT_DIRECTORY" ]; then
   case "$GIT_DIRECTORY" in /*) CWD="$GIT_DIRECTORY" ;; *) CWD="$CWD/$GIT_DIRECTORY" ;; esac
 fi
 
-printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' || exit 0
+grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' <<< "$CMD" || exit 0
 
 ask() {
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
@@ -85,8 +85,8 @@ deny() {
 
 # R-512 and R-514 on the merge path. A merge needs no repository context: the
 # command alone carries both the strategy and the fact that a merge is imminent.
-if printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'; then
-  if printf '%s' "$CMD" | grep -qE '[[:space:]]--(merge|rebase)([[:space:]]|=|$)'; then
+if grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' <<< "$CMD"; then
+  if grep -qE '[[:space:]]--(merge|rebase)([[:space:]]|=|$)' <<< "$CMD"; then
     deny "This merges the PR with a strategy R-512 does not allow. Feature branches squash-merge: one commit per feature on main, so the branch's work-in-progress history stays off the trunk. Re-run with --squash."
   fi
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
@@ -109,7 +109,7 @@ case "$BRANCH" in main | master) on_trunk=1 ;; esac
 
 # R-514 on the push path: the target branch is the explicit refspec when one is
 # given, and the checked-out branch otherwise.
-if [ "$is_global_repo" -eq 0 ] && printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+push([[:space:]]|$)'; then
+if [ "$is_global_repo" -eq 0 ] && grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+push([[:space:]]|$)' <<< "$CMD"; then
   PUSH_ARGS=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+push[^;&|]*' | head -1 |
     sed -E 's/^git[[:space:]]+push[[:space:]]*//' | tr ' ' '\n' | grep -vE '^(-.*)?$' || true)
   REFSPEC=$(printf '%s\n' "$PUSH_ARGS" | sed -n '2p')
@@ -132,10 +132,10 @@ fi
 # Commit-time advisories. Staged paths are unioned with any `git add` argument
 # in the same command, because a chained `git add X && git commit` runs this
 # hook before anything reaches the index.
-printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+commit([[:space:]]|$)' || exit 0
+grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+commit([[:space:]]|$)' <<< "$CMD" || exit 0
 CHANGED=$(git -C "$TOP" diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 ADDED=$(git -C "$TOP" diff --cached --name-only --diff-filter=A 2>/dev/null || true)
-if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+add[[:space:]]'; then
+if grep -qE 'git[[:space:]]+add[[:space:]]' <<< "$CMD"; then
   WORKING=$(git -C "$TOP" status --porcelain 2>/dev/null || true)
   CHANGED="$CHANGED
 $(printf '%s\n' "$WORKING" | awk 'NF {print $NF}')"
@@ -163,7 +163,7 @@ fi
 # definition, and the README is where a user finds out.
 SURFACE=$(printf '%s\n' "$ADDED" | grep -v '^$' |
   grep -E '(^|/)(routes|handlers)/|(^|/)page\.tsx$|(^|/)route\.ts$|(^|/)features/|(^|/)\.env\.example$|(^|/)docker-compose[^/]*\.ya?ml$|(^|/)Dockerfile$' | head -3 || true)
-if [ -n "$SURFACE" ] && ! printf '%s\n' "$CHANGED" | grep -qiE '(^|/)README[^/]*$'; then
+if [ -n "$SURFACE" ] && ! grep -qiE '(^|/)README[^/]*$' <<< "$CHANGED"; then
   echo "git-workflow-guard: this commit adds a user-facing surface ($(printf '%s' "$SURFACE" | tr '\n' ' ')) and touches no README. R-508 updates the README in the same commit as the feature, structure, or setup change." >&2
 fi
 exit 0

@@ -61,7 +61,7 @@ repo_root_for() {
 }
 
 pattern() { jq -r --arg n "$1" '.patterns[$n] // ""' "$POLICY" 2>/dev/null; }
-matches() { [ -n "$2" ] && printf '%s' "$1" | grep -qE "$2"; }
+matches() { [ -n "$2" ] && grep -qE "$2" <<< "$1"; }
 
 TESTS_PATTERN=$(pattern tests)
 SPECS_PATTERN=$(pattern specs)
@@ -215,7 +215,7 @@ done < <(printf '%s' "$NORM" | grep -oE '(^|[;&|(][[:space:]]*|[[:space:]])tee([
 
 # A mutating verb makes every path-like operand of the command a write target.
 MUTATE='(^|[;&|(][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?(rm|mv|cp|shred|truncate|unlink|sed[[:space:]]+-[a-zA-Z]*i|git[[:space:]]+(rm|mv|checkout|restore|clean|stash))([[:space:]]|$)'
-if printf '%s' "$NORM" | grep -qE "$MUTATE"; then
+if grep -qE "$MUTATE" <<< "$NORM"; then
   while IFS= read -r token; do
     [ -n "$token" ] && add_target "$token"
   done < <(printf '%s' "$NORM" | tr ';&|()' '     ' | tr -s ' ' '\n' | sed -E "s/^['\"]|['\"]$//g" | grep -E '^[^-]' | grep -E '/|\.' || true)

@@ -27,7 +27,7 @@ REGISTERED=$(jq -r '[.. | .command? // empty] | .[]' "$SETTINGS" | sed 's#.*/##'
 MISSING=""
 while IFS= read -r h; do
   [ -z "$h" ] && continue
-  printf '%s\n' "$REGISTERED" | grep -qx "$h" || MISSING="$MISSING $h"
+  grep -qx "$h" <<< "$REGISTERED" || MISSING="$MISSING $h"
 done <<< "$REQUIRED"
 
 RULE_FILES="${CLAUDE_RULES_FILES:-$HOME/.claude/rulebook/reference.md $HOME/.claude/rulebook/agents.md $HOME/.claude/rulebook/audits.md $HOME/.claude/rulebook/cost.md}"
@@ -37,7 +37,7 @@ ENFORCERS=$(jq -r '.rules[].enforcer' "$MANIFEST" | sort -u)
 UNMAPPED=""
 while IFS= read -r cited_enforcer; do
   [ -z "$cited_enforcer" ] && continue
-  printf '%s\n' "$ENFORCERS" | grep -qxF "$cited_enforcer" || UNMAPPED="$UNMAPPED $cited_enforcer"
+  grep -qxF "$cited_enforcer" <<< "$ENFORCERS" || UNMAPPED="$UNMAPPED $cited_enforcer"
 done <<< "$CITED"
 
 WARNING=""

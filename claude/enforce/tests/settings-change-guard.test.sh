@@ -24,7 +24,7 @@ OUT=$(run user_settings "$LIVE")
 jq '(.hooks.PreToolUse[].hooks) |= map(select(.command | test("git-workflow-guard") | not))' "$LIVE" > "$TMP/dropped.json"
 OUT=$(run user_settings "$TMP/dropped.json")
 printf '%s' "$OUT" | jq -e '.decision == "block"' >/dev/null || { echo "FAIL: expected a block when a required hook is dropped, got: $OUT"; exit 1; }
-printf '%s' "$OUT" | grep -q 'git-workflow-guard.sh' || { echo "FAIL: block must name the dropped hook, got: $OUT"; exit 1; }
+grep -q 'git-workflow-guard.sh' <<< "$OUT" || { echo "FAIL: block must name the dropped hook, got: $OUT"; exit 1; }
 
 # 3. Other sources are ignored.
 OUT=$(run project_settings "$TMP/dropped.json")

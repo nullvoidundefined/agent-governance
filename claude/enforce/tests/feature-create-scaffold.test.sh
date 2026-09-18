@@ -19,7 +19,7 @@ TODAY=$(date +%Y-%m-%d)
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { printf '%s' "$OUT" | grep -qF "$1"; }
+reports() { grep -qF "$1" <<< "$OUT"; }
 
 # section_has <file> <heading> <text>: true when the text appears between
 # "## <heading>" and the next "## " heading.
@@ -85,7 +85,7 @@ check "no ticket leaves the placeholder" grep -q '^\*\*Ticket:\*\* <ticket-key>$
 OUT=$(cd "$REPO" && "$SCAFFOLD" no-area "$PLAN" --worktree-parent "$WT" --no-fetch 2>&1); ST=$?
 check "B-19 missing --area exits 2" test "$ST" -eq 2
 check "B-19 lists existing areas" reports "voice"
-check "B-19 does not list the README" bash -c "! printf '%s' \"\$0\" | grep -q 'README'" "$OUT"
+check "B-19 does not list the README" bash -c "! grep -q 'README' <<< \"\$0\"" "$OUT"
 check "B-19 creates no worktree" test ! -e "$WT/no-area"
 OUT=$(cd "$REPO" && "$SCAFFOLD" bad-area "$PLAN" --area "Bad Area" --worktree-parent "$WT" --no-fetch 2>&1); ST=$?
 check "B-19 malformed area exits 2" test "$ST" -eq 2

@@ -39,7 +39,7 @@ if [ -f "$GIT_INVOCATION_HELPER" ]; then
   # exactly what throws it away (2026-09-18 audit, defect 4).
   parse_git_target_options "$RAW_CMD" push
 fi
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 # EGRESS NOTE (2026-07-31 security audit P1): when live, this hook sends the
 # outgoing diff to api.anthropic.com under ANTHROPIC_API_KEY. Repos listed in

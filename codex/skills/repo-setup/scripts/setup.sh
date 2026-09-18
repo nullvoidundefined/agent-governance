@@ -89,7 +89,7 @@ done
 if [ -z "$REPO" ]; then
   REPO=$("$GH" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
 fi
-printf '%s' "$REPO" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || { echo "usage: setup.sh <owner/repo> [--check] [--stack s] [--branches a,b] [--required-reviews N] [--ci-context name]" >&2; exit 2; }
+grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' <<< "$REPO" || { echo "usage: setup.sh <owner/repo> [--check] [--stack s] [--branches a,b] [--required-reviews N] [--ci-context name]" >&2; exit 2; }
 OWNER="${REPO%%/*}"
 command -v "$GH" >/dev/null 2>&1 || { echo "repo-setup: gh is not installed" >&2; exit 3; }
 "$GH" auth status >/dev/null 2>&1 || { echo "repo-setup: gh is not authenticated (gh auth login)" >&2; exit 3; }
@@ -276,7 +276,7 @@ refs_json=$(printf '%s' "$BRANCHES" | tr ',' '\n' | sed 's#^#"refs/heads/#; s#$#
 EXISTING=$("$GH" api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null || true)
 ensure_ruleset() { # <name> <json>
   local name="$1" json="$2" tmp
-  if printf '%s\n' "$EXISTING" | grep -qx "$name"; then report "$name" OK "ruleset present"; return; fi
+  if grep -qx "$name" <<< "$EXISTING"; then report "$name" OK "ruleset present"; return; fi
   if apply; then
     tmp=$(mktemp); printf '%s' "$json" > "$tmp"
     if "$GH" api -X POST "repos/$REPO/rulesets" --input "$tmp" >/dev/null 2>&1; then report "$name" OK "ruleset created"; else report "$name" MISSING "ruleset creation failed (admin token needed)"; fi
@@ -324,7 +324,7 @@ fi
 
 # --- greptile ----------------------------------------------------------------------
 apps=$("$GH" api "/user/installations" --jq '.installations[].app_slug' 2>/dev/null || true)
-if printf '%s\n' "$apps" | grep -qx greptile; then
+if grep -qx greptile <<< "$apps"; then
   report greptile OK "Greptile app installed for $OWNER"
 else
   report greptile MISSING "install at https://github.com/apps/greptile/installations/new and grant $REPO (no API for this)"
