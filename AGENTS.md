@@ -15,8 +15,10 @@ that should govern this session live in `claude/`, are projected into `codex/` b
 Run `./sync.sh` from the root of this checkout before relying on any rule or gate.
 Claude Code sessions do this automatically through a `SessionStart` hook registered in
 `.claude/settings.json`; Codex has no equivalent automatic entry point, so the step is
-yours. It is idempotent and never deletes live files, a deliberate tradeoff after an
-earlier destructive incident.
+yours. It is idempotent and never deletes a live file it did not install, a deliberate
+tradeoff after an earlier destructive incident: it removes a file only when its own
+manifest (`.sync-manifest` in each live directory) shows it installed that file, the
+repository no longer tracks it, and its live content is unchanged.
 
 Until it runs, the rules loaded from `~/.codex` are whatever was installed last, which
 may predate every change in your working tree. The failure is silent: a stale rule file

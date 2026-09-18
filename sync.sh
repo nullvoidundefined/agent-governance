@@ -13,23 +13,110 @@
 # not a scratch directory, and its local side effects (e.g. `npm ci` dropping
 # node_modules/ under claude/enforce/) are not part of what ships.
 #
-# Never deletes anything from a live directory (no rsync --delete). An
-# earlier version did, gated by a hand-maintained per-tool exclude list
-# meant to protect each tool's own runtime state (sessions, auth, caches,
-# logs, local config). That list needed to name every such path, forever,
-# across three different, evolving tools, and it did not: the first real
-# run deleted a live SDD workspace directory outright, plus Codex's entire
-# config.toml and its 696KB global-state file, none of which were in the
-# list. A hand-typed denylist that must be exhaustive to be safe is the
-# wrong shape. Sync now only ever adds or updates tracked files; nothing
-# already sitting in a live directory is ever removed by it, even a
-# tracked file removed from the source stays behind until cleaned up by
-# hand. That is a strictly safer trade than the alternative.
+# Never deletes anything it did not install (no rsync --delete). An earlier
+# version did, gated by a hand-maintained per-tool exclude list meant to
+# protect each tool's own runtime state (sessions, auth, caches, logs, local
+# config). That list needed to name every such path, forever, across three
+# different, evolving tools, and it did not: the first real run deleted a live
+# SDD workspace directory outright, plus Codex's entire config.toml and its
+# 696KB global-state file, none of which were in the list. A hand-typed
+# denylist that must be exhaustive to be safe is the wrong shape.
+#
+# Removal is an allowlist instead (IAN-116). Each run writes
+# <target>/.sync-manifest, one "<sha256>  <path>" line per file it installed.
+# The next run removes a live file only when all three hold: the previous
+# manifest lists it, the repository no longer tracks it, and its live content
+# still hashes to the manifest's value. A file edited live since it was
+# installed is kept and reported on stderr, a file sync never installed is
+# never looked at, a manifest path that is absolute or climbs out of the
+# target is ignored, and a directory is removed only when removing a file
+# emptied it. A run with no previous manifest (an install synced before
+# manifests existed) removes nothing, so files orphaned before then still
+# need cleaning up by hand.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CLAUDE="${SYNC_CLAUDE_HOME:-$HOME/.claude}"
 TARGET_CURSOR="${SYNC_CURSOR_HOME:-$HOME/.cursor}"
 TARGET_CODEX="${SYNC_CODEX_HOME:-$HOME/.codex}"
+
+# sha256Tool: prints the SHA-256 command available here, sha256sum on Linux
+# and shasum -a 256 on macOS; both print "<hex>  <path>" lines.
+sha256Tool() {
+  if command -v sha256sum >/dev/null 2>&1; then echo "sha256sum"; else echo "shasum -a 256"; fi
+}
+SHA256=$(sha256Tool)
+
+# hashLiveEntry(path): the manifest hash of one path, the content hash for a
+# regular file and the hash of "symlink:<target>" for a symlink, so a tracked
+# symlink is compared by where it points rather than by what it points at.
+hashLiveEntry() {
+  if [ -L "$1" ]; then
+    printf 'symlink:%s' "$(readlink "$1")" | $SHA256 | awk '{print $1}'
+  else
+    $SHA256 < "$1" | awk '{print $1}'
+  fi
+}
+
+# writeManifestLines(stagedFolder): one "<sha256>  <path>" line per file in the
+# staged tree, paths relative to it, sorted so an unchanged tree writes an
+# identical manifest. Regular files are hashed in batches by find -exec, which
+# runs nothing for an empty tree (xargs would hash empty stdin instead).
+writeManifestLines() {
+  local staged="$1" link
+  {
+    (cd "$staged" && find . -type f -exec $SHA256 {} +) | sed 's#  \./#  #'
+    while IFS= read -r -d '' link; do
+      printf '%s  %s\n' "$(hashLiveEntry "$staged/$link")" "${link#./}"
+    done < <(cd "$staged" && find . -type l -print0)
+  } | LC_ALL=C sort -k2
+}
+
+# isInsideTarget(relPath): true when a manifest path stays inside its target:
+# not empty, not absolute, and with no ".." component.
+isInsideTarget() {
+  case "/$1/" in
+    //) return 1 ;;
+    //*) return 1 ;;
+    */../*) return 1 ;;
+  esac
+  return 0
+}
+
+# pruneEmptiedDirectories(dest, removedPath): removes the removed file's
+# parent directory and then each ancestor below dest, stopping at the first
+# that is not empty; rmdir refuses a non-empty directory, so only directories
+# this removal emptied can go.
+pruneEmptiedDirectories() {
+  local dest="$1" dir
+  dir=$(dirname "$2")
+  while [ "$dir" != "$dest" ] && [ "${dir#"$dest"/}" != "$dir" ]; do
+    rmdir "$dir" 2>/dev/null || break
+    dir=$(dirname "$dir")
+  done
+}
+
+# removeUntrackedInstalledFiles(dest, newManifest): applies the three-part
+# removal rule above to every path the previous manifest lists and the new one
+# does not, printing each removal on stdout and each kept file on stderr. The
+# awk filter checks the 64-hex-digit hash without a regex interval, which
+# mawk (Ubuntu's default awk) has not always supported.
+removeUntrackedInstalledFiles() {
+  local dest="$1" new_manifest="$2" old_manifest="$1/.sync-manifest" line recorded rel live
+  [ -f "$old_manifest" ] || return 0
+  while IFS= read -r line; do
+    recorded="${line%%  *}"; rel="${line#*  }"
+    isInsideTarget "$rel" || continue
+    live="$dest/$rel"
+    { [ -f "$live" ] || [ -L "$live" ]; } || continue
+    if [ "$(hashLiveEntry "$live")" = "$recorded" ]; then
+      rm -f "$live"
+      pruneEmptiedDirectories "$dest" "$live"
+      echo "removed $live (installed by an earlier sync, no longer tracked)"
+    else
+      echo "KEPT: $live is no longer tracked but was edited since sync installed it; remove it by hand if it is not needed" >&2
+    fi
+  done < <(awk 'NR == FNR { tracked[substr($0, 67)] = 1; next } substr($0, 65, 2) == "  " && substr($0, 1, 64) !~ /[^0-9a-f]/ && !(substr($0, 67) in tracked)' "$new_manifest" "$old_manifest")
+}
 
 sync_one() {
   local folder="$1" dest="$2"
@@ -61,8 +148,14 @@ sync_one() {
     fi
   done < <(find "$staging/$folder" -name "*.json" -print0)
 
+  local new_manifest
+  new_manifest=$(mktemp)
+  writeManifestLines "$staging/$folder" > "$new_manifest"
+
   rsync "${rsync_args[@]}" "$staging/$folder/" "$dest/"
   rm -rf "$staging"
+  removeUntrackedInstalledFiles "$dest" "$new_manifest"
+  mv "$new_manifest" "$dest/.sync-manifest"
   echo "synced $REPO_ROOT/$folder -> $dest"
 }
 

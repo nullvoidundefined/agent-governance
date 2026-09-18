@@ -32,7 +32,7 @@ R-003: Run every session under the synced harness; no session runs bare.
   - `rsync` is installed with apt when absent in a remote session; a laptop without it is told to install it and run `./sync.sh` by hand.
   - Bootstrap in a remote session: a cloud container starts with no `~/.claude` at all, so the user-level registration cannot fire. The agent-governance repository carries a repo-level `.claude/settings.json` that runs `harness-sync.sh` with `$CLAUDE_PROJECT_DIR`; every other repository carries `.claude/hooks/harness-bootstrap.sh`, written by the `repo-setup` skill, which clones the agent-governance repository into the container and runs the same hook.
   - A session that reaches no checkout says so once (remote only; silent locally, where the harness is already installed) and treats every rule as manual for that session. Tracking degrades loudly, never silently.
-  - The sync never deletes (sync.sh's own rule); hooks registered by the synced `settings.json` apply from the next tool call, the rules apply at once.
+  - The sync never deletes a live file it did not install: it removes only a file its previous `.sync-manifest` lists, the repository no longer tracks, and whose live content still matches the manifest (sync.sh's own rule); hooks registered by the synced `settings.json` apply from the next tool call, the rules apply at once.
   Enforcement: hook:harness-sync (SessionStart, first in the chain, advisory: syncs or reports; fixture `hooks/tests/harness-sync.test.sh`); the repo-level bootstrap is installed by `repo-setup` (its `harness` item, `--check` reports a repository without it)
 
 ## Secrets and trust (R-1xx)

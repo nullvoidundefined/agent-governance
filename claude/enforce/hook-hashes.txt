@@ -180,7 +180,7 @@ f1fc3f383057d792b65649832846d56f57201e63b8da50a3c097657e70b74ccb  hooks/task-sta
 eaf7b10eb9adcd5bfe4da030b25fe724daa2711560ff206ee6d80e7f67641eee  hooks/tests/fix-commit-requires-test.test.sh
 7ca5fa29322581b291073e12cf4e5e4a31072dbb1e4cb11bdce990304c6aa1a7  hooks/tests/git-global-option-bypass.test.sh
 5cfeb2a6ae071267705cc0d0f03951267c82ad2e966e3527cbc1e43f2bb39f47  hooks/tests/global-repo-push-guard.test.sh
-facae671684c11942e733436635cf8a8ba58ebc366ffb25915beec5feccf9d42  hooks/tests/harness-sync.test.sh
+1c739ba26eb98bf5f9cd61d2a1063232720ef12dc832b46d075194ca443363fd  hooks/tests/harness-sync.test.sh
 afe519f905ce0aa8ff01d0461c6239c12a4ab72c28ca798a4809284881bb4174  hooks/tests/hook-integrity-check.test.sh
 1adf94ee4678ab18bd841102d173b9d7d95ed8fdb6630cd6cea2b7f79dcb1d73  hooks/tests/hookspath-drift-check.test.sh
 ecb45c962385dae4f55bef7740be71865e8c45f3aa0e1a5754ae292958c273b0  hooks/tests/install-git-hooks.test.sh

@@ -61,7 +61,7 @@
     "rules/rulebook-audits.mdc": "sha256:e1738fa78722e7e7bf73b3323aff4d77bc68d479147fb8e693fc8df933179235",
     "rules/rulebook-cost.mdc": "sha256:5508a2e6d0b86ca603227eaf52c35413c86238cb7902aca3e5370f4d0d00b442",
     "rules/rulebook-reference-convention-files.mdc": "sha256:8bec50ae2d0b6ff82955be1a1b4e70b0f286b8c9c6fd1f23fe3a4f347fe75c69",
-    "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:2c6539c4c7f7e7e30aa9d259f38ad37a94ca317e7dc59ec8f8cc689a11355afa",
+    "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:1dd09b23082bdf5ec374aa0c79d9aeb83f4e5efdadf64819a23e49c3ef6a6b27",
     "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:a13e816bf845f30e461c9efe661e64567402df21bb9a533d338c1e97f09599ce",
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:2187087d46fb321dc667b4e0cfd4b91f6c879fcb4ea3219e876500151470bf20",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:0a5b5fcb579ad11114516767d7400d2e0f706d1a7bdf1c880ea03615aca97f56",

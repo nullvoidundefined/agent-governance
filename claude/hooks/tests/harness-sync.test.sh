@@ -66,6 +66,9 @@ check "bootstrap stamps the source" test "$(cat "$FAKE/.claude/.sync-source")" =
 check "bootstrap reports the count" reports "synced 5 changed or missing file(s) from $CO"
 
 # 2. No drift: silent locally, in-sync line remotely, source found from the stamp.
+# sync.sh writes .sync-manifest into each live tree (IAN-116); it is not a
+# tracked file, so it must never count as drift.
+check "bootstrap writes the sync manifest" test -f "$FAKE/.claude/.sync-manifest"
 OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "in sync is silent locally" silent
 OUT=$(printf '{}' | CLAUDE_CODE_REMOTE=true bash "$HOOK" 2>/dev/null)

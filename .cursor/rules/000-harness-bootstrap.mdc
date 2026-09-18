@@ -23,8 +23,9 @@ no equivalent automatic entry point, so that step is yours to run.
 ## Do this first, before relying on any rule or gate
 
 Run `./sync.sh` from the root of this checkout. It is idempotent, it never deletes
-live files (a deliberate tradeoff after an earlier destructive incident), and it
-stamps `~/.claude/.sync-source` so later sessions in other projects know where the
+a live file it did not install (a deliberate tradeoff after an earlier destructive
+incident; it removes only a file its own `.sync-manifest` shows it installed, that the
+repository no longer tracks, and whose live content is unchanged), and it stamps `~/.claude/.sync-source` so later sessions in other projects know where the
 harness came from.
 
 Until that runs, the rules loaded from `~/.cursor` are whatever was installed last,
