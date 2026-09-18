@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Shard: slow
+# Watches: CLAUDE-*.md rules/* rules/*/*
 # Verifies every convention track has path frontmatter, a resolving rules link,
 # and a reference in the session table or frontend convention file.
 # Fresh sandbox mutations prove missing wiring is rejected by filename.

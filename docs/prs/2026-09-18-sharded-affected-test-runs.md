@@ -65,4 +65,17 @@ The decisions behind the design were the maintainer's, taken one at a time:
 - **An unfinished sentence** in the Go guidance ("so they can.") now reads "so they can run in parallel."
 - `main` gained #40, which rewrote `CLAUDE-PYTHON.md`. The merge keeps that rewrite and re-adds the R-509 bullet in its new Testing section, reworded for its bullet style and its single-Postgres fixture model (one database per xdist worker).
 
+## Review round 2 (Copilot)
+
+- **Whole-tree scanners in the slow tier.** Name matching could not reach fixtures that read files they never name. `credential-shape-scan.test.sh` scans every tracked file, and `hook-latency.test.sh` times every registered hook and reads `settings.json`. A slow or serial fixture now declares what it reads on a `# Watches:` line of globs, and a change matching one selects it. Headers:
+  - `hook-latency.test.sh`: `hooks/*.sh settings.json`.
+  - `convention-track-invariants.test.sh`: the `CLAUDE-*.md` and `rules/` files.
+  - `fixture-implementation-root.test.sh`: both fixture trees, the hooks, and `harness-root.sh`.
+  - `translate-cursor.test.sh`: `translate/` and `cursor/`.
+
+  The last two were not flagged but have the same shape. `credential-shape-scan.test.sh` left the slow tier instead of watching `*`, because a catch-all glob would count every file as mapped and silence the unmapped-change fallback. It runs every turn, in parallel with the rest.
+- **List-only selection** (`FIXTURE_SHARD_LIST_ONLY=1`) lets the runner fixture assert, against this checkout's real headers, that each of those scanners is selected by the change it guards. Three of the five real-tree cases failed before the headers were added.
+- **A shell bug found on the way:** the watch globs were word-split with filename expansion on, so `hooks/*.sh` expanded against the working directory before matching. Filename expansion is now off while the globs are read.
+- **The top-level README** line now describes the fast tier, the watch globs, and the serial fixtures accurately.
+
 Ticket: IAN-94.

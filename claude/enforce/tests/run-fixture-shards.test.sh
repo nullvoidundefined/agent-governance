@@ -3,8 +3,8 @@
 # Verifies enforce/run-fixture-shards.sh, the one runner behind both fixture
 # suites (R-509, IAN-94). Full mode runs every fixture in parallel and the
 # `# Shard: serial` ones alone afterwards. Affected mode always runs the fast
-# tier, adds a `# Shard: slow` fixture only when it names a changed file or is
-# itself changed, and falls back to everything when a changed file maps to no
+# tier, adds a `# Shard: slow` fixture only when it names a changed file, a
+# changed path matches its `# Watches:` globs, or it is itself changed, and falls back to everything when a changed file maps to no
 # fixture or is shared by all of them. A fixture passes only on exit 0 with a
 # PASS line and no FAIL line, the verdict the old sequential runners applied.
 #
@@ -184,6 +184,41 @@ reset
 OUT=$(cd "$SANDBOX" && env -u FIXTURE_CHANGED_FILES GIT_CEILING_DIRECTORIES="$SANDBOX" bash "$RUNNER" "$NO_GIT" --affected </dev/null 2>&1); STATUS=$?
 check "affected mode outside git runs the slow tier too" ran nogit-slow
 check "affected mode outside git says why" out_has "no git repository"
+
+# --- a slow fixture's `# Watches:` globs select it without naming a file ---
+# Tree-scanning fixtures depend on files they never name (PR #42 review).
+WATCH_TREE="$SANDBOX/watch/claude/enforce/tests"
+mkdir -p "$WATCH_TREE"
+printf '#!/usr/bin/env bash\n# exercises skills/x/SKILL.md\ntouch "$MARKS/watch-fast"\necho PASS\n' > "$WATCH_TREE/fast.test.sh"
+printf '#!/usr/bin/env bash\n# Shard: slow\n# Watches: hooks/*.sh settings.json\ntouch "$MARKS/watch-slow"\necho PASS\n' > "$WATCH_TREE/scanner.test.sh"
+reset
+OUT=$(FIXTURE_CHANGED_FILES='claude/hooks/zeta.sh' bash "$RUNNER" "$WATCH_TREE" --affected </dev/null 2>&1)
+check "a watched glob selects the slow fixture" ran watch-slow
+check "a file matched only by a watch glob is not unmapped" not out_has "unmapped"
+reset
+OUT=$(FIXTURE_CHANGED_FILES='claude/settings.json' bash "$RUNNER" "$WATCH_TREE" --affected </dev/null 2>&1)
+check "a watched exact path selects the slow fixture" ran watch-slow
+reset
+OUT=$(FIXTURE_CHANGED_FILES='claude/skills/x/SKILL.md' bash "$RUNNER" "$WATCH_TREE" --affected </dev/null 2>&1)
+check "a change outside the watch globs leaves the slow fixture out" not ran watch-slow
+
+# --- the real tree keeps its whole-tree scanners in reach ---
+# List-only selection over this checkout's own fixtures, so the headers that
+# carry the guarantee cannot be dropped without this failing.
+real_selection() {
+  FIXTURE_SHARD_LIST_ONLY=1 FIXTURE_CHANGED_FILES="$1" bash "$RUNNER" "$CLAUDE_HARNESS_ROOT/enforce/tests" --affected </dev/null 2>/dev/null
+}
+selection_has() { printf '%s\n' "$1" | grep -qx "$2"; }
+SEL=$(real_selection 'claude/skills/task-start/SKILL.md')
+check "an unrelated text edit still runs the credential-shape scan" selection_has "$SEL" credential-shape-scan.test.sh
+SEL=$(real_selection 'claude/hooks/secret-scan.sh')
+check "a hook edit runs the hook-latency guard" selection_has "$SEL" hook-latency.test.sh
+SEL=$(real_selection 'claude/settings.json')
+check "a settings edit runs the hook-latency guard" selection_has "$SEL" hook-latency.test.sh
+SEL=$(real_selection 'claude/CLAUDE-GO.md')
+check "a convention-file edit runs the track invariants" selection_has "$SEL" convention-track-invariants.test.sh
+SEL=$(real_selection 'claude/hooks/tests/session-end.test.sh')
+check "a fixture edit runs the implementation-root sweep" selection_has "$SEL" fixture-implementation-root.test.sh
 
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?

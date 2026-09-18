@@ -13,8 +13,9 @@
 #       `# Shard: slow` or `# Shard: serial` header) always runs, so the
 #       closure and tree-scanning checks, which are nearly all fast, never
 #       wait for pre-push. A slow fixture runs when its text names a changed
-#       file (the path under claude/, or the basename) or when the fixture
-#       itself changed. Everything runs when a changed file is named by no
+#       file (the path under claude/, or the basename), when a changed path
+#       matches a glob on its `# Watches:` line, or when the fixture itself
+#       changed. Everything runs when a changed file is named by no
 #       fixture in any tree, is one of the shared files every fixture depends
 #       on, or cannot be known because there is no git repository, so a change
 #       the selector cannot place is never skipped.
@@ -23,6 +24,8 @@
 # relative) when set, else from git: the working tree's changes plus the
 # commits since the upstream, or since the merge base with origin/main when
 # there is no upstream, or since the root commit when there is neither.
+# FIXTURE_SHARD_LIST_ONLY=1 prints the chosen fixtures' names and runs
+# nothing, so selection can be tested against a real tree.
 # FIXTURE_SERIAL_SETTLE_SECONDS sets the pause before the serial fixtures
 # (default 5). FIXTURE_SHARD_JOBS sets the parallelism; the default is the CPU count
 # capped at 8, where measured wall time stopped improving (2026-09-18: 105s
@@ -84,12 +87,26 @@ changed_files_from_git() {
 }
 
 # names_file <fixture> <repo-relative path>: true when the fixture is that
-# path or its text names the path under claude/ or the file's basename.
+# path, its text names the path under claude/ or the file's basename, or the
+# path matches one of the globs on its `# Watches:` line. A whole-tree scanner
+# declares what it reads there, because it never names those files itself
+# (PR #42 review: hook-latency times every registered hook without naming one).
 names_file() {
-  local fixture="$1" path="$2" relative
+  local fixture="$1" path="$2" relative glob
   relative="${path#claude/}"
   case "$fixture" in *"/$relative") return 0 ;; esac
-  grep -qF -- "$relative" "$fixture" || grep -qF -- "$(basename "$path")" "$fixture"
+  grep -qF -- "$relative" "$fixture" || grep -qF -- "$(basename "$path")" "$fixture" && return 0
+  # Word-split the globs with filename expansion off, or `hooks/*.sh` would
+  # expand against the current directory before it is ever matched.
+  local globs matched=1
+  globs=$(sed -n 's/^# Watches: //p' "$fixture")
+  set -f
+  for glob in $globs; do
+    # shellcheck disable=SC2053  # the right side is a glob on purpose
+    [[ "$relative" == $glob ]] && { matched=0; break; }
+  done
+  set +f
+  return "$matched"
 }
 
 # fallback_reason <changed files> <mapping corpus>: prints why every fixture
@@ -177,6 +194,10 @@ main() {
       reason=$(fallback_reason "$changed" "$corpus")
     fi
     [ -n "$reason" ] || selected=$(select_affected "$fixtures" "$changed")
+  fi
+  if [ -n "${FIXTURE_SHARD_LIST_ONLY:-}" ]; then
+    for fixture in $selected; do basename "$fixture"; done
+    exit 0
   fi
   count=$(printf '%s\n' "$selected" | grep -c .)
   jobs="${FIXTURE_SHARD_JOBS:-$(default_job_count)}"

@@ -188,7 +188,12 @@ what the working tree's changes need, which is what the R-509 Stop gate does:
 the fast tier always, a `# Shard: slow` fixture only when it names a changed
 file, and everything when a change is named by no fixture or touches the
 runner's shared files. Mark a fixture `# Shard: slow` when it takes more than
-about five seconds, and `# Shard: serial` when it measures timing.
+about five seconds, and `# Shard: serial` when it measures timing. A slow or
+serial fixture that scans a whole tree, rather than naming the files it reads,
+declares them on a `# Watches:` line of globs relative to `claude/` (for
+example `# Watches: hooks/*.sh settings.json`), and a change matching any of
+them selects it. A scanner whose scope is every file stays in the fast tier
+instead, since a catch-all glob would leave no change unmapped.
 
 Run them from the checkout, not from `~/.claude`. Every fixture resolves the
 implementation it exercises through `enforce/harness-root.sh`, which derives
