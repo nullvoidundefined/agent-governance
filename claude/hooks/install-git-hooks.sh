@@ -63,4 +63,19 @@ fi
 HOOKS_PATH=$(git -C "$REPO" config --get core.hooksPath || true)
 if [ -n "$HOOKS_PATH" ]; then
   echo "install-git-hooks: note, core.hooksPath is set to '$HOOKS_PATH'; verify the hook you just installed is the one git will run (R-107)." >&2
+  # A RELATIVE hooksPath beginning `.git/` is the specific trap worth naming,
+  # because it looks correct and works in the checkout where it was set. In a
+  # linked worktree `.git` is a FILE rather than a directory, so `.git/hooks`
+  # resolves to nothing, git silently runs no hook, and every branch pushed
+  # from a worktree skips the pre-push suite while the primary checkout still
+  # gates normally. Found 2026-09-18 after a whole session of lane worktrees
+  # pushed without their gate. Git's default with the setting unset is the
+  # common directory's hooks, which is correct in both layouts, so the repair
+  # is to remove the override rather than to point it somewhere cleverer.
+  case "$HOOKS_PATH" in
+    .git/*)
+      echo "install-git-hooks: WARNING, core.hooksPath is the relative path '$HOOKS_PATH'. In a linked worktree \`.git\` is a file, so that path does not exist and git runs NO hooks there: every push from a worktree skips this gate silently." >&2
+      echo "install-git-hooks: unset it to restore git's default, which resolves correctly in both a checkout and a worktree: git -C \"$REPO\" config --unset core.hooksPath" >&2
+      ;;
+  esac
 fi
