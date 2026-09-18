@@ -40,17 +40,19 @@ Based on the answers above, run only the applicable actions. Skip any that do no
 
 ### If user-facing behavior shipped:
 
+This block is R-607; the document shapes are the templates in `~/.claude/prompts/` (`feature-list-template.md`, `user-story-area-template.md`). Skip this block in a repository whose `.enforce.json` sets `"productDocs": false`.
+
 **Feature list update:**
 ```bash
 # Check current feature list
 cat docs/feature-list/features.md
 ```
-Add or update the relevant row. Set status to **Complete** with today's date. Include story IDs if applicable.
+Find the feature's row in its area's `## ` section; `feature-create` or `task-start` added it as **Planned** when the work began. Set it to **Complete** when every criterion of its stories shipped, or to **Partial** with the gap named in the notes. Keep the story ids in the notes. Rewrite the `Last updated:` line with today's date and what changed. If no row exists, add one to the matching section now.
 
 **User story:**
-Check if a user story exists in `docs/user-stories/` for this flow.
-- If none exists: create one with acceptance criteria derived from the implementation.
-- If one exists: verify acceptance criteria match what shipped. Update if needed.
+Find the story in `docs/user-stories/<area>.md` by its `US-<AREA>-NNN` id.
+- If none exists: append one to the area file with the next free number in the area and criteria derived from the implementation; index a new area file in `docs/user-stories/README.md`.
+- If one exists: tick (`- [x]`) each criterion that shipped, leave the rest unticked, and edit a criterion that no longer matches what shipped.
 - The `**E2E test:**` line must reference the actual file path under `e2e/`.
 
 **E2E test:**
@@ -142,7 +144,7 @@ Output the summary table the scan printed, with every TODO resolved to its outco
 | Action              | Status  | Notes                        |
 |---------------------|---------|------------------------------|
 | Feature list        | Updated | Row added for <feature>      |
-| User story          | Created | docs/user-stories/<slug>.md  |
+| User story          | Updated | docs/user-stories/<area>.md  |
 | E2E test            | Exists  | e2e/<slug>.spec.ts           |
 | Storybook stories   | Verified| 2 new stories created        |
 | Query params doc    | N/A     | No new params                |
@@ -171,7 +173,8 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 - Writing a squash commit message that says "final cleanup" instead of summarizing the feature
 - Leaving shipped specs/plans in docs/superpowers/ (they become noise for future sessions)
 - Deferring the E2E test without a line in the user story saying why and when
-- Updating the feature list but not the user story (or vice versa)
+- Updating the feature list but not the user story (or vice versa); the push gate refuses a new route without both (R-607)
+- Leaving a shipped row at **Planned**, or ticking criteria that did not ship
 - Forgetting to delete the feature branch after squash merge
 - Closing the ticket as `done` before the verification gate passes
 - Writing the calendar gap between open and close as `actual_minutes`

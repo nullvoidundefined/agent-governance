@@ -31,7 +31,11 @@ say() { printf 'feature-create: %s\n' "$*"; }
 die() { printf 'feature-create: %s\n' "$*" >&2; exit "${2:-8}"; }
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# The templates sit beside skills/ in the harness tree. A Codex or Cursor port
+# of this script lives under ~/.codex or ~/.cursor, which carry no prompts/,
+# so it falls back to the synced ~/.claude.
 PROMPTS_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)/prompts
+[ -f "$PROMPTS_DIR/feature-list-template.md" ] || PROMPTS_DIR="$HOME/.claude/prompts"
 SLUG=""; PLAN=""; WORKTREE_PARENT=""; BASE=""; FETCH=1; TICKET=""; AREA=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -200,6 +204,7 @@ insert_feature_row() {
 }
 
 scaffolded=()
+[ -f "$PROMPTS_DIR/user-story-area-template.md" ] || die "product-doc templates not found under $PROMPTS_DIR; sync the harness (~/.claude) and re-run" 8
 mkdir -p docs/feature-list docs/user-stories
 STORY_ID=$(next_story_id)
 if [ ! -f "$FEATURES" ]; then

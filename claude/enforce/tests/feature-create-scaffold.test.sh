@@ -131,5 +131,18 @@ check "B-22 README seeded and indexes the area" grep -qF '| `voice.md` | Voice |
 check "B-22 story file written" grep -q '^## US-VOICE-001: ' "$W/docs/user-stories/voice.md"
 check "B-22 seeded docs committed" test -z "$(git -C "$W" status --porcelain)"
 
+# A ported copy (Codex, Cursor) lives in a tree with no prompts/: it reads the
+# templates from the synced ~/.claude, and stops with exit 8 when that has
+# none either.
+PORT="$SB/port/skills/feature-create/scripts"; mkdir -p "$PORT"; cp "$SCAFFOLD" "$PORT/scaffold.sh"
+mkdir -p "$SB/synced-home/.claude"; cp -R "$CLAUDE_HARNESS_ROOT/prompts" "$SB/synced-home/.claude/prompts"
+REPO3="$SB/ported"; make_repo "$REPO3" main
+OUT=$(cd "$REPO3" && HOME="$SB/synced-home" bash "$PORT/scaffold.sh" voice-presets --area voice --worktree-parent "$SB/worktrees3" --no-fetch 2>&1); ST=$?
+check "port falls back to ~/.claude templates" test "$ST" -eq 0
+check "port appended the story" grep -q '^## US-VOICE-008: ' "$SB/worktrees3/voice-presets/docs/user-stories/voice.md"
+OUT=$(cd "$REPO3" && HOME="$SB/empty-home" bash "$PORT/scaffold.sh" voice-cloning "$PLAN" --area voice --worktree-parent "$SB/worktrees3" --no-fetch 2>&1); ST=$?
+check "port without templates exits 8" test "$ST" -eq 8
+check "port without templates says why" reports "templates not found"
+
 [ "$fail" -eq 0 ] && echo "feature-create-scaffold.test.sh PASS"
 exit "$fail"

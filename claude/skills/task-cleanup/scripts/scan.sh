@@ -111,7 +111,7 @@ todo_or_na() { [ -n "$1" ] && printf 'TODO' || printf 'N/A'; }
 echo "| Action              | Status   | Notes |"
 echo "|---------------------|----------|-------|"
 row "Feature list" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'add or update the row, status Complete with today' || echo 'no user-facing surface added')"
-row "User story" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'docs/user-stories/<slug>.md, criteria match what shipped' || echo '-')"
+row "User story" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'docs/user-stories/<area>.md, shipped criteria ticked (R-607)' || echo '-')"
 row "E2E test" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'RED slice now, or the user story says why it waits' || echo '-')"
 row "Storybook stories" "$(todo_or_na "$components")" "$([ -n "$components" ] && echo 'only where the project CLAUDE.md defines the convention' || echo 'no new components')"
 row "Query params doc" "$(todo_or_na "$query")" "$([ -n "$query" ] && echo 'docs/query-params.md, same commit as the code' || echo 'no new params')"

@@ -58,7 +58,11 @@ set -uo pipefail
 
 GH="${REPO_SETUP_GH_CMD:-gh}"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# The product-doc templates and the canonical checklist sit beside skills/ in
+# the harness tree; a Codex or Cursor port of this script lives under ~/.codex
+# or ~/.cursor, which carry neither, so it falls back to the synced ~/.claude.
 HARNESS_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+[ -f "$HARNESS_ROOT/enforce/require-feature-checklist.sh" ] || HARNESS_ROOT="$HOME/.claude"
 REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""; PRODUCT_DOCS=1
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -228,6 +232,8 @@ elif [ "$PRODUCT_DOCS" -eq 0 ]; then
   fi
 elif [ -z "$absent_docs" ]; then
   report product-docs OK "features list, user stories index, and feature checklist present"
+elif [ ! -f "$HARNESS_ROOT/prompts/feature-list-template.md" ] || [ ! -f "$HARNESS_ROOT/enforce/require-feature-checklist.sh" ]; then
+  report product-docs MISSING "absent:${absent_docs}; harness templates not found under $HARNESS_ROOT (sync ~/.claude)"
 elif apply; then
   write_product_docs
   report product-docs OK "wrote${absent_docs} (R-607)"
