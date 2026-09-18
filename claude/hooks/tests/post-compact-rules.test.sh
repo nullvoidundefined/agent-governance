@@ -27,7 +27,19 @@ printf '%s' "$OUT" | grep -q 'PreCompact\|UserPromptSubmit' && { echo "FAIL: emi
 
 # 5. The task-start ledger (2026-09-17 skills audit S-8) is re-injected when
 #    the working tree carries .claude/task-tier.json, and absent otherwise.
-printf '%s' "$CTX" | grep -q 'Task ledger' && { echo "FAIL: ledger section emitted with no ledger on disk"; exit 1; } || true
+# The negative case needs its own ledger-free repository. It used to assert
+# against $CTX, which is produced by running the hook in whatever directory the
+# suite happens to sit in, and the hook resolves the ledger from that
+# directory's git toplevel. So the case passed only while the harness itself
+# carried no .claude/task-tier.json, and failed the moment a session classified
+# its own work, which is the harness's normal state rather than an edge case
+# (2026-09-18: reproduced against a real ledger; a suite that fails under
+# ordinary use teaches people to distrust it).
+NO_LEDGER_REPO=$(mktemp -d)
+git -C "$NO_LEDGER_REPO" init -q
+NO_LEDGER_CTX=$(cd "$NO_LEDGER_REPO" && echo '{"hook_event_name":"SessionStart","source":"compact"}' | "$HOOK" | jq -r '.hookSpecificOutput.additionalContext')
+printf '%s' "$NO_LEDGER_CTX" | grep -q 'Task ledger' && { echo "FAIL: ledger section emitted with no ledger on disk"; exit 1; } || true
+rm -rf "$NO_LEDGER_REPO"
 LEDGER_REPO=$(mktemp -d)
 git -C "$LEDGER_REPO" init -q
 mkdir -p "$LEDGER_REPO/.claude"
