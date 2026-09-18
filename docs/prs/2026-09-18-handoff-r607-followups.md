@@ -12,12 +12,15 @@ This PR overwrites `docs/session-handoff/session-handoff.md` (R-602) with the cl
 
 ## Architectural decisions
 
+- **#53's handoff is merged in, not overwritten.** #53 landed a handoff for the observability fixture while this PR was open. The conflict was resolved by keeping all of its open items: the `hook-latency` flake, which this session reproduced on unmodified `main`, and the carried pipeline audit. Its claim that the #46 ticket was never opened was corrected, because IAN-99 exists.
+- **Review round 1 (Copilot) corrections:** the metrics are labelled as branch statistics with the revisited-files count and velocity flag; the merge count is 4 merges carrying 5 PRs; the file count is 48; the R-508 regex is described in full so the follow-up keeps its existing matches; and all four CI templates are named.
+
 - **The previous handoff's open items are carried forward, not dropped.** R-602 overwrites the file, so an item that is not restated is lost. Each item from the old file was checked against `main` and Linear first. Pushing #46 is done, so that item is gone. The IAN-99 close and the pipeline audit are still open, so they stay.
 - **The `tdd.sh` bash-runner follow-up is listed as dropped, not pending.** It was a follow-up of #44, and #49 shipped it before this handoff was written.
 
 ## Testing
 
-- The file is 4.1 KB, under the 8 KB cap, with the six sections in order. The recorded SHA `cc7e7b2` resolves on `main`.
+- The file is under the 8 KB cap after merging #53's handoff into it, with the six sections in order. The recorded SHA `cc7e7b2` resolves on `main`.
 - Each "still open" claim was checked on `b7ed743`: `git-workflow-guard.sh:165` still carries the old regex, no `template-ci-*.yml` names the checklist, and Linear shows IAN-99 as In Progress.
 
 ## Reflection
