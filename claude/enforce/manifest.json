@@ -727,6 +727,14 @@
             "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
         },
         {
+            "id": "R-334",
+            "tier": "llm-judge",
+            "enforcer": "hook:llm-rule-judge",
+            "severity": "error",
+            "autofix": false,
+            "note": "compound naming: base noun first, secondary nouns after; a deterministic gate awaits the per-project aggregate-root list the domain-lexicon skill produces"
+        },
+        {
             "id": "R-509",
             "tier": "regex",
             "enforcer": "hook:verification-gate",
