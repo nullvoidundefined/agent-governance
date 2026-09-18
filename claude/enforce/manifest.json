@@ -6,7 +6,7 @@
             "enforcer": "hook:harness-sync",
             "severity": "warning",
             "autofix": false,
-            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
+            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, keeps enforce/node_modules in line with the synced lockfile via enforce/install-enforce-dependencies.sh (also run by sync.sh; fixture: sync-tests/sync.test.sh), reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
         },
         {
             "id": "R-602",

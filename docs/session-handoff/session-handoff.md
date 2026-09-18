@@ -1,35 +1,43 @@
-# Session Handoff: 2026-09-18, observability fixture scratch-file leak
+# Session Handoff: 2026-09-18, R-607 product docs close-out, merged with the observability-fixture handoff (#53)
 
 ## 1. Last commit
 
-- `a726f6c` fix(enforce): keep the observability fixture's scratch file inside its temp dir (#51), squash-merged on `main`. PR doc: `docs/prs/2026-09-18-observability-fixture-scratch-file.md`.
-- This handoff lands on top of it in a separate `docs(handoff)` PR.
+- This session: `cc7e7b2 feat(rules): R-607 features list and user stories in every application repo (#44)`, squash-merged by the owner at 15:02Z.
+- `main` is now at `87f647a docs(handoff): record the observability fixture fix and the hook-latency flake (#53)`. This handoff replaces #53's file and keeps every open item from it.
 
 ## 2. Production state
 
-- `main` is at `a726f6c`, CI (`fixtures` and GitGuardian) passed on #51, and the main checkout is pulled to the same commit.
-- `./sync.sh` has run, so `~/.claude`, `~/.cursor`, and `~/.codex` carry #51, and the installed hook-integrity check reports no hash mismatches.
-- The leaked `apps-console.ts` that sat untracked in the main checkout's root has been deleted.
+- `~/.claude`, `~/.codex`, and `~/.cursor` carry R-607 (synced from `cc7e7b2`) and #51 (synced by the #51 session). The live harness has the R-607 norm line, `hooks/push-feature-docs-gate.sh`, `enforce/require-feature-checklist.sh`, and the three templates in `prompts/`.
+- CI (`fixtures`, GitGuardian) passed on #44's final head `96975e3` and on #51. The untracked `apps-console.ts` in the main checkout was deleted by the #51 session. It was a scratch file leaked by `observability-rules.test.sh`, the defect #51 fixed.
 
 ## 3. Session metrics
 
-- Session started 2026-09-18T15:13:54Z (R-503 record) and the fix was merged by about 15:32Z, so about 20 minutes of working time.
-- Commits: 1 on `main` (squashed). Files changed: 3. Rework count: 1, because the first full suite run failed `hook-hashes-closure` on the edited fixture and the hash manifest had to be regenerated. Velocity flag: normal.
-- No tracker ticket: the task was trivial tier under R-605.
+- Branch and PR statistics for `feat/product-docs-rule`, not live session metrics. `session-metrics.sh` has no session-start SHA for this repository, because the session ran from the Voyager 2.0 directory, and `--since d2937ce` also counts other sessions' squashed PRs.
+- Commits: 14 on the branch: 10 of this session's own, plus 4 merges of `main` that brought in 5 PRs (#41 and #43 in the first merge, then #45, #42, and #47). Files changed: 48 (matching the PR's `changedFiles`). Files revisited by 2 or more commits: 21. Rework count: 2 (two Copilot review rounds sent the work back). Velocity flag: normal.
+- Ticket IAN-96: 125 working minutes against a 45-minute heuristic estimate (ratio 2.78). Closed.
 
 ## 4. What shipped
 
-- `claude/enforce/tests/observability-rules.test.sh` writes its `console.log` sample under its own `mktemp -d` tree and removes that tree on an `EXIT` trap, so a failing assertion no longer leaves `apps-console.ts` in the repository root.
-- `claude/enforce/hook-hashes.txt` carries the fixture's new hash. It was regenerated after the rebase onto #46 rather than hand-merged.
-- An audit of every relative-path write in `claude/enforce/tests` and `claude/hooks/tests` found no other fixture with the defect; each one writes only after a `cd` into a temp directory.
+- R-607 (`claude/CLAUDE.md`, `claude/rulebook/reference.md`): every application repository keeps `docs/feature-list/features.md` and per-area `docs/user-stories/<area>.md` files with `US-<AREA>-NNN` stories.
+- `push-feature-docs-gate` runs the harness copy of the checklist on every Claude Code `git push`, and never the repository's own copy. Triggers cover Next, Nuxt, FastAPI, and Express at any monorepo prefix.
+- `repo-setup` gained a `product-docs` item and a `--no-product-docs` opt-out. `feature-create` requires `--area`. `task-start` and `task-cleanup` add and close the feature row and story.
+- Design: `claude/docs/superpowers/specs/2026-09-18-product-docs-design.md`. PR doc: `docs/prs/2026-09-18-product-docs-rule.md`.
+- From #51 and #53: `observability-rules.test.sh` writes its sample under its own temp directory.
 
 ## 5. Pending, by urgency
 
-- `hook-latency.test.sh` is flaky on this machine: the `PreToolUse:Write` chain ran 5 to 10 percent over its budget in 3 of 4 runs and passed on the fourth, and it blocked the first pre-push. It times the installed `~/.claude` hooks, so the fix is to find which per-edit hook has grown slow, not to widen the budget (R-204). Estimate: about an hour.
-- Carried from the previous handoff: the #46 ticket was never opened (title "Replace printf | grep -q membership checks with here-strings", tier standard, branch `fix/pipefail-herestring-grep`, started_at 2026-09-18T13:58:11Z). Estimate: 5 minutes once the Linear tools are loaded.
-- Carried from the previous handoff: 117 `| grep -q` pipelines under `claude/` read from `jq`, `head`, or `git` rather than `printf`; audit the ones whose output can pass 64KB under pipefail. Estimate: about two hours.
+- **Close IAN-99** (#46, here-string conversion). The #53 handoff says this ticket was never opened, but it exists in Linear as IAN-99, still In Progress, while the PR merged as `b6a2ebc`. Close it with actuals from its own session, which started at 13:58:11Z. About 5 minutes.
+- **`hook-latency.test.sh` flakes under load** (from #53). This session saw it too: the `PreToolUse:Write` chain ran 464 to 974 ms against budgets of 450 to 888 ms. It failed the same way on an unmodified `origin/main`, while the load average was 67 to 81 during parallel sessions. Profile the per-edit hooks rather than widen the budget (R-204). About an hour.
+- **R-607 follow-up 1: CI templates.** None of the four `claude/skills/repo-setup/scripts/template-ci-*.yml` files (node, python, go, ruby) runs `scripts/require-feature-checklist.sh`, so a push made outside Claude Code goes unchecked. Add one step to each template, plus a `repo-setup.test.sh` assertion per stack. About 30 minutes, Standard tier.
+- **R-607 follow-up 2: the R-508 surface list.** `claude/hooks/git-workflow-guard.sh:165` matches `routes/`, `handlers/`, `page.tsx`, `route.ts`, `features/`, `.env.example`, `docker-compose*.yml`, and `Dockerfile`. It lacks Nuxt `app/pages/**/*.vue` and `server/(api|routes)/`, and FastAPI `app/routers/*.py`, so the R-508 README reminder never fires for those stacks. Add the three patterns and keep every existing match. `task-cleanup/scripts/scan.sh`'s `SURFACE_RE` already holds the extended list, so the two could share one source. About 30 minutes, Standard tier, test first.
+- **Carried twice:** 117 `| grep -q` pipelines under `claude/` read from `jq`, `head`, or `git` rather than `printf`. Audit the ones whose output can pass 64 KB under pipefail. About two hours.
+- **Voyager 2.0:** its first `feature-create` call needs `--area` (for example `--area chat`).
+- Dropped: the `tdd.sh` bash-runner follow-up, which #49 shipped.
 
 ## 6. Next session
 
-- Profile the `PreToolUse:Write` hook chain. Read `claude/enforce/tests/hook-latency.test.sh` and the `PreToolUse` `Write` entries in `claude/settings.json`.
-- Worktrees need `npm ci --prefix claude/enforce` before the lint-backed fixtures run, or they fail with `ERR_MODULE_NOT_FOUND`.
+1. Close IAN-99 through `/ticket-lifecycle close`.
+2. Follow-up 2: read `claude/hooks/git-workflow-guard.sh` (around line 165), `SURFACE_RE` in `claude/skills/task-cleanup/scripts/scan.sh`, and `claude/enforce/tests/git-workflow-guard.test.sh`.
+3. Follow-up 1: read all four `claude/skills/repo-setup/scripts/template-ci-{node,python,go,ruby}.yml` files and `claude/enforce/tests/repo-setup.test.sh`.
+4. Profile the `PreToolUse:Write` hook chain: read `claude/enforce/tests/hook-latency.test.sh` and the `PreToolUse` `Write` entries in `claude/settings.json`.
+5. Open a ticket for each follow-up at classification (R-605). A new worktree needs `npm ci --prefix claude/enforce` before the lint-backed fixtures run.
