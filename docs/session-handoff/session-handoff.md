@@ -11,12 +11,14 @@
 - The pre-push hook in the primary checkout's `.git/hooks` was reinstalled from the new sample. It runs only the port checks, and a push measured 4 s.
 - Two orphan files remain in the live tree, because `sync.sh` never deletes files and `destructive-command-guard` hard-denies removing them from a session: `~/.claude/hooks/llm-rule-judge.sh` and `~/.claude/enforce/tests/llm-rule-judge.test.sh`. They make the hook-integrity guard warn at every session start until the owner deletes them by hand.
 - The `rule-judge` CI check runs on `pull_request_target` from `main`'s workflow file. It passed on #58 with the "no secret" notice, because the `ANTHROPIC_API_KEY` repository secret is not set yet.
+- The enforce dependencies are live and locked: a `./sync.sh` from `dc636d4` ran `npm ci --prefix ~/.claude/enforce`, wrote the `node_modules/.enforce-installed-lock` stamp, and `lint.mjs` lints a `.vue` file with exit 0.
 
 ## 3. Session metrics
 
 - Branch and PR statistics, not live session metrics: parallel sessions merged #42, #44, #46, #49 to #53, #55 to #57 into `main` during this session.
 - #54: 12 commits, including two rebases and one merge of `main`. #58: 1 commit, plus this handoff. Rework count: 3. The first Copilot review sent back 12 comments, the second sent back 7, and a pre-push fixture went red after Task 5.
 - Ticket IAN-98: closed at merge of #58 with actuals. Its estimate was a 150-minute heuristic.
+- #55 and #60 (enforce dependencies): 5 commits across two PRs. Copilot sent 4, 1, then 1 comments, all fixed test-first. Rework: #55 merged at `a404fc3` before its two review-fix commits landed, so #60 cherry-picked them. No ticket: the tracker connectors were unauthenticated.
 
 ## 4. What shipped
 
@@ -25,6 +27,8 @@
 - #54: the turn-end gate runs related tests for vitest, jest, pytest, and Go (`enforce/related-tests.sh`). The governance repository keeps #42's `--affected`.
 - #54: R-509 no longer names pre-push. R-514 gained a trivial-tier path that skips only the Copilot review. `task-start` and `task-cleanup` document it.
 - #58: the related-test mapping falls back when there is no base commit, on an unmapped non-doc file, and on a deleted file. Docs-only changes still run nothing. The "related tests only" note attaches per command. The judge fetch works in private repositories. The convention files list the five judged rules.
+- #55: `sync.sh` and the no-drift path of `harness-sync.sh` call `claude/enforce/install-enforce-dependencies.sh`, which runs a locked `npm ci` when the synced lockfile differs from the last installed one or a locked package is missing, and fails loudly naming the command when npm is missing or fails. Root cause: #43 added two ESLint dependencies that sync never installed, so the live `lint.mjs` crashed with `ERR_MODULE_NOT_FOUND`. `push-eslint-gate.sh` already denied on that crash; it now names the broken bundle instead of blaming the diff. CI runs `sync-tests/sync.test.sh`.
+- #60: the installer's lock is owned by a PID and reclaimed only when that process is gone, a failed stamp write fails the install, harness-sync tells a mid-copy failure from an install failure, and the setup docs say `npm ci`. PR docs: `docs/prs/2026-09-18-sync-enforce-node-modules.md` and `docs/prs/2026-09-18-sync-enforce-review-followups.md`.
 - Outside the repository: `personal/.claude/CLAUDE.md` exempts trivial-tier PRs from the PR document and the Copilot review, and the `claude-handles-merges` memory records the same exception.
 - Design: `claude/docs/superpowers/specs/2026-09-18-task-wall-time-design.md`. Plan: `docs/slices/slice-03-task-wall-time.md`. PR docs: `docs/prs/2026-09-18-cut-task-wall-time.md` and `docs/prs/2026-09-18-pr54-review-followups.md`.
 
