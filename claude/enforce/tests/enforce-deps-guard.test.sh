@@ -36,9 +36,9 @@ chmod +x "$SANDBOX/enforce/tests/sandbox.test.sh"
 # Case 1: package.json present, node_modules absent. The guard must refuse.
 OUT=$(bash "$SANDBOX/enforce/tests/run-tests.sh" 2>&1); ST=$?
 guardRefused() { [ "$ST" -ne 0 ]; }
-guardNamedInstall() { printf '%s' "$OUT" | grep -q "npm ci --prefix"; }
-guardNamedGitignore() { printf '%s' "$OUT" | grep -q "gitignored"; }
-guardRanNoFixture() { ! printf '%s' "$OUT" | grep -q "sandbox.test.sh PASS"; }
+guardNamedInstall() { grep -q "npm ci --prefix" <<< "$OUT"; }
+guardNamedGitignore() { grep -q "gitignored" <<< "$OUT"; }
+guardRanNoFixture() { ! grep -q "sandbox.test.sh PASS" <<< "$OUT"; }
 check "a missing enforce/node_modules refuses the run" guardRefused
 check "the refusal names the install command" guardNamedInstall
 check "the refusal explains why every checkout needs it" guardNamedGitignore
@@ -48,7 +48,7 @@ check "no fixture runs before the guard refuses" guardRanNoFixture
 mkdir -p "$SANDBOX/enforce/node_modules"
 OUT2=$(bash "$SANDBOX/enforce/tests/run-tests.sh" 2>&1); ST2=$?
 guardAllowed() { [ "$ST2" -eq 0 ]; }
-fixtureRan() { printf '%s' "$OUT2" | grep -q "sandbox.test.sh"; }
+fixtureRan() { grep -q "sandbox.test.sh" <<< "$OUT2"; }
 check "an installed enforce/node_modules runs the suite" guardAllowed
 check "the suite reaches its fixtures once installed" fixtureRan
 

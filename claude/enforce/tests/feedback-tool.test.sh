@@ -11,8 +11,8 @@ TOOL="$CLAUDE_HARNESS_ROOT/skills/resolve-user-feedback/scripts/feedback.mjs"
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { printf '%s' "$OUT" | grep -qF "$1"; }
-not_reports() { ! printf '%s' "$OUT" | grep -qF "$1"; }
+reports() { grep -qF "$1" <<< "$OUT"; }
+not_reports() { ! grep -qF "$1" <<< "$OUT"; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
 # The connection string is assembled at run time so no credential-shaped

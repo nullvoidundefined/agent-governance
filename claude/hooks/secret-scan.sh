@@ -84,7 +84,7 @@ if [ -z "${PATTERN:-}" ]; then
   PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
 fi
 
-if printf '%s' "$SCAN_TEXT" | grep -qE "$PATTERN"; then
+if grep -qE "$PATTERN" <<< "$SCAN_TEXT"; then
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -117,7 +117,7 @@ credential_shape_hit() {
   while IFS= read -r match; do
     [ -n "$match" ] || continue
     value=${match#*://}; value=${value#*:}; value=${value%@}
-    printf '%s' "$value" | grep -qiE "$PLACEHOLDER_VALUE" || { printf 'a URI carrying a password (%s)' "${match%%:*}://user:...@"; return 0; }
+    grep -qiE "$PLACEHOLDER_VALUE" <<< "$value" || { printf 'a URI carrying a password (%s)' "${match%%:*}://user:...@"; return 0; }
   done < <(printf '%s' "$text" | grep -oE "$URI_WITH_PASSWORD" || true)
   # password/secret/token assignments with a literal value of six or more
   # characters: quoted, or a bare token of literal-looking characters that
@@ -127,7 +127,7 @@ credential_shape_hit() {
   while IFS= read -r match; do
     [ -n "$match" ] || continue
     value=$(printf '%s' "$match" | sed -E 's/^[^=:]*[=:][[:space:]]*//; s/[[:space:],;)}]$//; s/^["'"'"']//; s/["'"'"']$//')
-    printf '%s' "$value" | grep -qiE "$PLACEHOLDER_VALUE" || { printf 'a %s assignment with a literal value' "$(printf '%s' "$match" | grep -oiE '^[a-z_-]+')"; return 0; }
+    grep -qiE "$PLACEHOLDER_VALUE" <<< "$value" || { printf 'a %s assignment with a literal value' "$(printf '%s' "$match" | grep -oiE '^[a-z_-]+')"; return 0; }
   done < <(printf '%s' "$text" | grep -oiE '(^|[^a-z_])(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)[[:space:]]*[=:][[:space:]]*("[^"[:space:]]{6,}"|'"'"'[^'"'"'[:space:]]{6,}'"'"'|[A-Za-z0-9_+/=!#-]{6,})([[:space:],;)}]|$)' | sed -E 's/^[^a-zA-Z_]//' || true)
   return 1
 }
@@ -175,7 +175,7 @@ MUTATION="(^|[;&|][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?$MUTATE_VERBS([[:s
 # branch's gap a discrepancy rather than a policy).
 REDIRECT=">>?[[:space:]]*[^[:space:]>;|&]*($PROT)"
 
-if printf '%s' "$SAFE_CMD" | grep -qE "$MUTATION" || printf '%s' "$SAFE_CMD" | grep -qE "$REDIRECT"; then
+if grep -qE "$MUTATION" <<< "$SAFE_CMD" || grep -qE "$REDIRECT" <<< "$SAFE_CMD"; then
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -196,7 +196,7 @@ if [ "$TOOL" = "Write" ] || [ "$TOOL" = "Edit" ]; then
     *)
       PROT_BASENAME='(^|/)\.env(\.[A-Za-z0-9_-]+)?$'
       PROT_DIR='/\.(aws|ssh|gnupg)(/|$)|/\.config/gh/hosts\.yml$'
-      if printf '%s' "$FILE" | grep -qE "$PROT_BASENAME" || printf '%s' "$FILE" | grep -qE "$PROT_DIR"; then
+      if grep -qE "$PROT_BASENAME" <<< "$FILE" || grep -qE "$PROT_DIR" <<< "$FILE"; then
         jq -n '{
           hookSpecificOutput: {
             hookEventName: "PreToolUse",

@@ -1,45 +1,35 @@
-# Session Handoff: 2026-09-17 to 09-18, external audit remediation and the port protection boundary
+# Session Handoff: 2026-09-18, observability fixture scratch-file leak
 
 ## 1. Last commit
 
-- `d8c43e7` `docs(agents): generated trees are in audit scope by default, and reports declare what they executed (#24)`, on `main`, pushed.
-- Twenty-six PRs merged this session (audit findings: #20 to #25; earlier workstreams: #8, #10, #11, #13, #14, #16, #19). Zero open. No branch left unmerged.
-- One primary checkout on `main`; every lane worktree and sibling `agent-governance-*` folder was removed after merge.
+- `a726f6c` fix(enforce): keep the observability fixture's scratch file inside its temp dir (#51), squash-merged on `main`. PR doc: `docs/prs/2026-09-18-observability-fixture-scratch-file.md`.
+- This handoff lands on top of it in a separate `docs(handoff)` PR.
 
 ## 2. Production state
 
-- Both suites green on `main`, plus `manifest-fixture-closure`, `hook-hashes-closure`, and both translator `--check` runs. Live `~/.claude`, `~/.cursor`, `~/.codex` synced from this tree.
-- The mirrored permission layer works in both ports for the first time (#25). Both adapters sourced `enforce/settingsPermissionRules.sh`, a file that never existed here, with `|| true`, so every `permissions.deny` and `permissions.ask` Bash rule was inert: `rm -rf ~`, `rm -rf /`, and `gh repo delete` passed with no decision. `claude/enforce/settings-permission-rules.sh` supplies it, and both adapters now DENY visibly when it or `settings.json` is unreadable.
-- Deletions and renames now dispatch events under Codex: the patch replay discarded `*** Delete File:` and `*** Move to:`, so a locked test was protected against editing but not deletion or rename (R-410, R-411).
-- Fixtures test the submitted checkout, not the installed copy. Sixty-five resolved their subject through `$HOME/.claude`, so a pre-push run verified whichever branch was synced last. `claude/enforce/harness-root.sh` resolves each from the tree it lives in; `hook-latency.test.sh` deliberately stays on the live install.
-- Ten push-time hooks now evaluate the repository a command actually targets; `git -C /other/repo push` was judged against the ambient tree before.
+- `main` is at `a726f6c`, CI (`fixtures` and GitGuardian) passed on #51, and the main checkout is pulled to the same commit.
+- `./sync.sh` has run, so `~/.claude`, `~/.cursor`, and `~/.codex` carry #51, and the installed hook-integrity check reports no hash mismatches.
+- The leaked `apps-console.ts` that sat untracked in the main checkout's root has been deleted.
 
 ## 3. Session metrics
 
-- 26 PRs merged, ~140 commits across all lanes, 6 subagents dispatched, 3 peer sessions coordinated and frozen.
-- Roughly 16% of commits were pure bookkeeping (port regeneration, manifest refreshes, reconciliation). Worth watching, not necessarily avoidable.
+- Session started 2026-09-18T15:13:54Z (R-503 record) and the fix was merged by about 15:32Z, so about 20 minutes of working time.
+- Commits: 1 on `main` (squashed). Files changed: 3. Rework count: 1, because the first full suite run failed `hook-hashes-closure` on the edited fixture and the hash manifest had to be regenerated. Velocity flag: normal.
+- No tracker ticket: the task was trivial tier under R-605.
 
 ## 4. What shipped
 
-- **External audit remediation, all ten findings**, each re-verified on `main` first: the two adapter defects (#25); fixture-root binding, git target context, honest redaction docs (#20); one shared port-check inventory replacing three that had drifted, deterministic CI installs, a bounded paid judge, and `Rework commits` renamed to `Files revisited` (#21).
-- **Prompt contracts** (#22): the engineering role forbade and required the same credential reads, reconciled at one line (match content-free, never open); Standard tier said no spec while pointing at a spec-driven loop, fixed in both skills; a new **Investigation tier** classifies work by what it produces.
-- **Project-local bootstraps** (#23): `.cursor/rules/000-harness-bootstrap.mdc` and a root `AGENTS.md` give Cursor and Codex the entry point only Claude Code had. Building them exposed that `harness-sync.sh` compared only the `claude/` payload while `sync.sh` writes all three, so a stale `~/.cursor` could never trigger its own repair.
-- **Audit scope defaults** (#24): generated trees are in scope unless an exclusion names their hand-authored files and why skipping them is safe; the roles ask the absence and symmetry questions; every report carries a Coverage table separating executed from read-only from not-covered.
-- **Earlier**: the cursor exporter (#13), crash-safe task-state tracking (#14), the R-105 tracker exemption with its Cursor synthetic-server path (#11), the permissions narrowing (#10), slice 01 of the python and vue tracks (#19).
+- `claude/enforce/tests/observability-rules.test.sh` writes its `console.log` sample under its own `mktemp -d` tree and removes that tree on an `EXIT` trap, so a failing assertion no longer leaves `apps-console.ts` in the repository root.
+- `claude/enforce/hook-hashes.txt` carries the fixture's new hash. It was regenerated after the rebase onto #46 rather than hand-merged.
+- An audit of every relative-path write in `claude/enforce/tests` and `claude/hooks/tests` found no other fixture with the defect; each one writes only after a `cd` into a temp directory.
 
 ## 5. Pending, by urgency
 
-- **CLOSED 2026-09-18, both Codex probes run and recorded.** `apply_patch` dispatches `PreToolUse:apply_patch` and the `Write|Edit` registration receives it: eight write-time gates fired. Codex honors an adapter deny, proven by side effect rather than by log line, since the denied command's output file was never created. The 89 of 101 coverage figure therefore stands. The probes turned up one narrower gap, now in `claude/ISSUES.md`: a file written by shell redirection dispatches only a Bash event carrying a command string and no path, so every gate reasoning about a write target is bypassed while the file still appears in the outgoing diff. R-334's Enforcement line (#32) states that consequence.
-- **P2, data-binding residue** (filed in `claude/ISSUES.md`): eleven hooks read data from `$HOME/.claude` behind override variables and few fixtures pin them, so a fixture can run checkout code against installed data. Two are pinned and pass against an empty `HOME`; the general fix is for `harness-root.sh` to export those overrides alongside `CLAUDE_HARNESS_ROOT`.
-- **P2, `core.hooksPath` in linked worktrees.** `.git` is a file there, so the `pre-push` gate never runs and a branch pushed from a lane worktree gets no push-time gate. The repair changes shared git config, so it waits on a decision.
-- **P2, owner actions from the earlier audit.** Rotate the GitHub PAT, purge the transcripts named in `claude/ISSUES.md`, resolve the GitGuardian incident as a test credential.
-- **P3, doppelscript: vitest runs stale compiled tests from `dist/`.** Found while cutting that repository's Actions bill. `packages/constants/dist/__tests__/tier.test.js` was a fossil asserting a four-key tier config the source replaced with nine, and `tsconfig.build.json` excludes tests so the build neither regenerates nor removes it: it failed the pre-push suite while the source test passed 6 of 6, costing three failed pushes before the cause was clear. Deleting the orphan unblocked it; the durable fix is excluding `dist/**` from the vitest config. The same checkout also had `node_modules` stale against the lockfile (`@eslint/compat` missing), which is a plain `pnpm install --frozen-lockfile`.
-- **P3, rename `redact-output.sh`.** The name promises what a PostToolUse hook cannot do, and every description that drifted toward prevention drifted toward the name. `secret-exposure-warning.sh` is the suggestion; the enforcer id moves in lockstep across eight files and both ports, so it is its own commit.
-- **P3, parked from the cursor-exporter review**: the two gitignore renderers implement one algorithm twice, codex's closure check still carries the whole-hook gate cursor fixed, seven `translate/` names are noun phrases against R-316.
+- `hook-latency.test.sh` is flaky on this machine: the `PreToolUse:Write` chain ran 5 to 10 percent over its budget in 3 of 4 runs and passed on the fourth, and it blocked the first pre-push. It times the installed `~/.claude` hooks, so the fix is to find which per-edit hook has grown slow, not to widen the budget (R-204). Estimate: about an hour.
+- Carried from the previous handoff: the #46 ticket was never opened (title "Replace printf | grep -q membership checks with here-strings", tier standard, branch `fix/pipefail-herestring-grep`, started_at 2026-09-18T13:58:11Z). Estimate: 5 minutes once the Linear tools are loaded.
+- Carried from the previous handoff: 117 `| grep -q` pipelines under `claude/` read from `jq`, `head`, or `git` rather than `printf`; audit the ones whose output can pass 64KB under pipefail. Estimate: about two hours.
 
 ## 6. Next session
 
-- Read first: `docs/audits/2026-09-18-codex-rule-coverage.md` (per-rule table, Coverage section), then `claude/ISSUES.md`'s 2026-09-17 and 2026-09-18 entries.
-- Run the two Codex probes above before trusting any coverage number anywhere.
-- The scoped ports-and-seams audit the owner approved now has its preconditions: scope defaults (#24) and the real-adapter contract suite (#25), so it can execute rather than read. Run it under the Investigation tier.
-- Peer sessions `voyager-2-0-3f` and `agent-governance-reconcile-ed` were frozen here by owner directive and handed their branches over; nothing is owed back. The slice branch `feat/python-vue-conventions` still needs reconciling with `main` before slice 01 PR 3. A Voyager session has one authorized exception to that freeze: landing rule R-334 (compound naming) on its own branch and PR.
+- Profile the `PreToolUse:Write` hook chain. Read `claude/enforce/tests/hook-latency.test.sh` and the `PreToolUse` `Write` entries in `claude/settings.json`.
+- Worktrees need `npm ci --prefix claude/enforce` before the lint-backed fixtures run, or they fail with `ERR_MODULE_NOT_FOUND`.

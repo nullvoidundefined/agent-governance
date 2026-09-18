@@ -146,6 +146,15 @@ deny  "$(write_json Write "$VITE_VUE/src/components/TripCard.vue")"             
 allow "$(write_json Write "$VOCAB_FIXTURE/apps/server/src/services/email/app-mailer.d.ts")"      # unchanged: files are skipped
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/format.ts"}}'                # no Nuxt package, TypeScript app/ is not a root
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/server/utils/format.ts"}}'             # no Nuxt package, server/ is not a root
+# Copilot review on PR #45: only the package's own app/ and server/ are roots. A
+# Nuxt package under an ancestor directory named server/ or app/ must not root
+# there, or its real app/ is read as a Next-style route exemption and kebab
+# directories pass.
+NESTED_NUXT="$VOCAB_FIXTURE/server/tripPlanner"
+mkdir -p "$NESTED_NUXT/app"
+printf '%s\n' '{"dependencies":{"nuxt":"^4.1.0"}}' >"$NESTED_NUXT/package.json"
+deny  "$(write_json Write "$NESTED_NUXT/app/trip-legs/reorderTripLegs.ts")"      # kebab under the package's own app/ (R-312)
+allow "$(write_json Write "$NESTED_NUXT/app/pages/coming-soon/index.vue")"       # its pages/ exemption still holds
 rm -rf "$VOCAB_FIXTURE"
 
 echo "structure-gate.test.sh PASS"

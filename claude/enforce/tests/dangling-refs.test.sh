@@ -11,8 +11,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { printf '%s' "$OUT" | grep -qF "$1"; }
-not_reports() { ! printf '%s' "$OUT" | grep -qF "$1"; }
+reports() { grep -qF "$1" <<< "$OUT"; }
+not_reports() { ! grep -qF "$1" <<< "$OUT"; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
 REPO="$SB/repo"; mkdir -p "$REPO/src/services" "$REPO/src/handlers" "$REPO/app"
@@ -34,7 +34,7 @@ git -C "$REPO" mv src/services/rank.ts src/services/rankJobs.ts
 git -C "$REPO" commit -qm "refactor: drop score, rename rank"
 OUT=$(cd "$REPO" && bash "$DR" 2>&1); ST=$?
 check "exits 0" test "$ST" -eq 0
-check "range from merge base" bash -c "printf '%s' \"\$0\" | grep -qE '^dangling-refs: range [0-9a-f]{40}\.\.HEAD'" "$OUT"
+check "range from merge base" bash -c "grep -qE '^dangling-refs: range [0-9a-f]{40}\.\.HEAD' <<< \"\$0\"" "$OUT"
 check "deleted ts module reported with importer" reports 'DANGLING: src/services/score.ts <- src/handlers/getScore.ts:1:'
 check "renamed module reported by old name" reports 'DANGLING: src/services/rank.ts <- src/handlers/getRank.ts:1:'
 check "deleted python module reported" reports 'DANGLING: app/helper.py <- app/main.py:1:'

@@ -13,7 +13,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { printf '%s' "$OUT" | grep -qF "$1"; }
+reports() { grep -qF "$1" <<< "$OUT"; }
 line() { printf '%s' "$OUT" | grep -E "$1" | grep -qF "$2"; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
@@ -65,6 +65,18 @@ OUT=$(cd "$REPO" && bash "$SCAN" --range "main..feat/presets" 2>&1)
 check "explicit range honoured" reports "range main..feat/presets"
 check "not on a feature branch" line '^6\.' "no"
 check "squash row N/A on main" line 'Squash merge' "N/A"
+
+# PR #44 review: the R-607 stacks count as user-facing surfaces too, so the
+# feature-list and user-story rows are TODO for a Nuxt page or a FastAPI router.
+for surface_path in app/pages/trips/index.vue server/api/trips.get.ts app/routers/trips.py; do
+  name=$(printf '%s' "$surface_path" | tr '/.' '--')
+  git -C "$REPO" checkout -q main; git -C "$REPO" checkout -q -b "feat/$name"
+  mkdir -p "$REPO/$(dirname "$surface_path")"; printf 'x\n' > "$REPO/$surface_path"
+  git -C "$REPO" add -A; git -C "$REPO" commit -qm "feat: $surface_path"
+  OUT=$(cd "$REPO" && bash "$SCAN" 2>&1)
+  check "R-607 surface $surface_path is user-facing" line '^1\.' "yes ($surface_path)"
+  check "R-607 surface $surface_path makes the story row TODO" line 'User story' "TODO"
+done
 
 [ "$fail" -eq 0 ] && echo "task-cleanup-scan.test.sh PASS"
 exit "$fail"

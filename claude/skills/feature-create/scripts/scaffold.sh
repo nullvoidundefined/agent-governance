@@ -8,8 +8,13 @@
 # steps to the session: the acceptance criteria in the user story (read from
 # the plan) and the execution recommendation.
 #
-# Usage: scaffold.sh <slug> [plan-path] [--ticket <key>] [--worktree-parent <dir>]
-#                    [--base <branch>] [--no-fetch]
+# Usage: scaffold.sh <slug> --area <area> [plan-path] [--ticket <key>]
+#                    [--worktree-parent <dir>] [--base <branch>] [--no-fetch]
+# --area names the product area (R-607): the story is appended to
+# docs/user-stories/<area>.md as the next free US-<AREA>-NNN, and the feature
+# row is inserted into the features-list section whose heading slugifies to
+# the area (a new section at the end when none does). Absent product docs are
+# seeded from the harness templates in prompts/.
 # --ticket writes the key onto the user story's **Ticket:** line and as the
 # Refs: trailer of the scaffold commit (R-605); without it the story carries
 # the <ticket-key> placeholder for the session to fill.
@@ -25,24 +30,60 @@ set -uo pipefail
 say() { printf 'feature-create: %s\n' "$*"; }
 die() { printf 'feature-create: %s\n' "$*" >&2; exit "${2:-8}"; }
 
-SLUG=""; PLAN=""; WORKTREE_PARENT=""; BASE=""; FETCH=1; TICKET=""
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# The templates sit beside skills/ in the harness tree. A Codex or Cursor port
+# of this script lives under ~/.codex or ~/.cursor, which carry no prompts/,
+# so it falls back to the synced ~/.claude.
+# The sibling tree is used only when it carries every template, so a partial
+# tree never shadows a complete synced copy.
+PRODUCT_DOC_TEMPLATES=(feature-list-template.md user-stories-readme-template.md user-story-area-template.md)
+
+# has_all_templates <dir>: true when the directory holds every template.
+has_all_templates() {
+  local template
+  for template in "${PRODUCT_DOC_TEMPLATES[@]}"; do [ -f "$1/$template" ] || return 1; done
+}
+PROMPTS_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)/prompts
+has_all_templates "$PROMPTS_DIR" || PROMPTS_DIR="$HOME/.claude/prompts"
+SLUG=""; PLAN=""; WORKTREE_PARENT=""; BASE=""; FETCH=1; TICKET=""; AREA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --worktree-parent) WORKTREE_PARENT="${2:-}"; shift 2 ;;
     --base) BASE="${2:-}"; shift 2 ;;
     --ticket) TICKET="${2:-}"; shift 2 ;;
+    --area) AREA="${2:-}"; shift 2 ;;
     --no-fetch) FETCH=0; shift ;;
     --*) die "unknown option $1" 2 ;;
     *) if [ -z "$SLUG" ]; then SLUG="$1"; elif [ -z "$PLAN" ]; then PLAN="$1"; else die "unexpected argument $1" 2; fi; shift ;;
   esac
 done
-[ -n "$SLUG" ] || die "usage: scaffold.sh <slug> [plan-path] [--ticket <key>] [--worktree-parent <dir>] [--base <branch>] [--no-fetch]" 2
-printf '%s' "$SLUG" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
+[ -n "$SLUG" ] || die "usage: scaffold.sh <slug> --area <area> [plan-path] [--ticket <key>] [--worktree-parent <dir>] [--base <branch>] [--no-fetch]" 2
+grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' <<< "$SLUG" || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
 
 # --- Step 1: inputs --------------------------------------------------------
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository" 8
 cd "$ROOT" || die "cannot enter $ROOT" 8
 PROJECT=$(basename "$ROOT")
+
+# slugify_heading: reads headings on stdin, prints each as a lowercase
+# hyphenated slug, so "## Authentication & Account" names the area
+# authentication-account.
+slugify_heading() { sed -e 's/^## *//' | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9][^a-z0-9]*/-/g' -e 's/^-//' -e 's/-$//'; }
+
+# list_known_areas: prints the areas the repository already has, from the
+# story files and the features-list headings, one per line.
+list_known_areas() {
+  { ls docs/user-stories/*.md 2>/dev/null | sed -e 's#.*/##' -e 's#\.md$##' | grep -vx README
+    grep -E '^## ' docs/feature-list/features.md 2>/dev/null | slugify_heading; } | sort -u
+}
+
+if [ -z "$AREA" ]; then
+  printf 'feature-create: --area <area> is required (R-607: stories live in one file per product area). Known areas:\n%s\n' "$(list_known_areas | sed 's/^/  /')" >&2
+  exit 2
+fi
+grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' <<< "$AREA" || die "area '$AREA' must be lowercase words joined by single hyphens" 2
+AREA_UPPER=$(printf '%s' "$AREA" | tr '[:lower:]' '[:upper:]')
+AREA_TITLE=$(printf '%s' "$AREA" | tr '-' ' ' | awk '{for (i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
 SLUG_UPPER=$(printf '%s' "$SLUG" | tr '[:lower:]' '[:upper:]')
 TITLE=$(printf '%s' "$SLUG" | tr '-' ' ' | awk '{for (i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
 [ -n "$WORKTREE_PARENT" ] || WORKTREE_PARENT="$ROOT/../$PROJECT-worktrees"
@@ -118,36 +159,98 @@ else
 fi
 
 # --- Step 5 (mechanical half): scaffold ------------------------------------
+# R-607: seed any absent product doc from the templates, append the story to
+# the area file, index a new area file, and insert the feature row into the
+# area's section of the features list.
+FEATURES=docs/feature-list/features.md
+STORIES_README=docs/user-stories/README.md
+STORY_FILE="docs/user-stories/$AREA.md"
+E2E_PATH="e2e/$SLUG.spec.ts"
+TODAY=$(date +%Y-%m-%d)
+
+# escape_sed_replacement <value>: prints the value with the characters a sed
+# replacement interprets (backslash, the # delimiter, &) escaped, so a
+# directory or ticket name renders literally.
+escape_sed_replacement() { printf '%s' "$1" | sed -e 's/[\\#&]/\\&/g'; }
+
+# render_template <template>: prints a prompts/ template with every
+# placeholder this scaffold knows substituted.
+render_template() {
+  sed -e "s#{{PROJECT}}#$(escape_sed_replacement "$PROJECT")#g" -e "s#{{DATE}}#$TODAY#g" \
+      -e "s#{{AREA_TITLE}}#$AREA_TITLE#g" -e "s#{{STORY_ID}}#$STORY_ID#g" -e "s#{{STORY_TITLE}}#$TITLE#g" \
+      -e "s#{{E2E_PATH}}#$E2E_PATH#g" -e "s#{{TICKET}}#$(escape_sed_replacement "${TICKET:-<ticket-key>}")#g" "$PROMPTS_DIR/$1"
+}
+
+# next_story_id: prints US-<AREA>-NNN, one past the highest number the area
+# file already uses (001 for a new file); ids are never reused.
+next_story_id() {
+  local highest
+  highest=$(grep -oE "US-$AREA_UPPER-[0-9]+" "$STORY_FILE" 2>/dev/null | sed "s/^US-$AREA_UPPER-//" | sort -n | tail -1)
+  printf 'US-%s-%03d' "$AREA_UPPER" "$(( 10#${highest:-0} + 1 ))"
+}
+
+# insert_feature_row <row>: puts the row after the last table line of the
+# section whose heading slugifies to the area, or appends a new section with
+# a table when no heading matches; rewrites the Last updated line.
+insert_feature_row() {
+  local row="$1" tmp
+  tmp=$(mktemp)
+  awk -v area="$AREA" -v title="$AREA_TITLE" -v row="$row" '
+    function slug(h) { h = tolower(h); sub(/^## */, "", h); gsub(/[^a-z0-9]+/, "-", h); sub(/^-/, "", h); sub(/-$/, "", h); return h }
+    { lines[++n] = $0 }
+    /^## / { if (slug($0) == area) { start = n } else if (start && !stop) { stop = n } }
+    END {
+      if (!start) {
+        for (i = 1; i <= n; i++) print lines[i]
+        print ""; print "## " title; print ""
+        print "| Feature | Status | Notes |"; print "| ------- | ------ | ----- |"; print row
+        exit
+      }
+      last = 0; end = stop ? stop - 1 : n
+      for (i = start + 1; i <= end; i++) if (lines[i] ~ /^\|/) last = i
+      for (i = 1; i <= n; i++) {
+        print lines[i]
+        if (last && i == last) print row
+        if (!last && i == start) { print ""; print "| Feature | Status | Notes |"; print "| ------- | ------ | ----- |"; print row }
+      }
+    }' "$FEATURES" > "$tmp" && mv "$tmp" "$FEATURES"
+  if grep -q '^Last updated: ' "$FEATURES"; then
+    sed -i.bak -e "s#^Last updated: .*#Last updated: $TODAY ($SLUG planned)#" "$FEATURES" && rm -f "$FEATURES.bak"
+  else
+    # R-607 requires the line on every change; a list that never had one
+    # gains it under the title.
+    tmp=$(mktemp)
+    awk -v line="Last updated: $TODAY ($SLUG planned)" 'NR == 1 { print; print ""; print line; next } { print }' "$FEATURES" > "$tmp" && mv "$tmp" "$FEATURES"
+  fi
+}
+
 scaffolded=()
-if [ -f docs/feature-list/features.md ]; then
-  printf '| %s | **Planned** | US-%s |\n' "$TITLE" "$SLUG_UPPER" >> docs/feature-list/features.md
-  scaffolded+=(docs/feature-list/features.md)
-  say "appended a Planned row to docs/feature-list/features.md; move it into the matching section if one exists"
+if [ -f .enforce.json ] && jq -e '.productDocs == false' .enforce.json >/dev/null 2>&1; then
+  say "product docs skipped: .enforce.json sets productDocs false (R-607 opt-out)"
 else
-  say "no docs/feature-list/features.md; feature-list row skipped"
-fi
-if [ -d docs/user-stories ]; then
-  STORY="docs/user-stories/$SLUG.md"
-  cat > "$STORY" <<EOF
-# $TITLE User Stories
-
-## US-$SLUG_UPPER-001: <Primary user flow>
-
-**As** a user
-**I want to** <action from plan>
-**So that** <benefit from plan>
-
-**Acceptance criteria:**
-
-1. <!-- Derive from the plan's task descriptions; one criterion per testable behavior -->
-
-**E2E test:** \`e2e/$SLUG.spec.ts\`
-**Ticket:** ${TICKET:-<ticket-key>}
-EOF
-  scaffolded+=("$STORY")
-  say "wrote $STORY; fill the acceptance criteria from $PLAN"
-else
-  say "no docs/user-stories/; user story skipped"
+  for template in "${PRODUCT_DOC_TEMPLATES[@]}"; do
+    [ -f "$PROMPTS_DIR/$template" ] || die "product-doc templates not found under $PROMPTS_DIR (missing $template); sync the harness (~/.claude) and re-run" 8
+  done
+  mkdir -p docs/feature-list docs/user-stories
+  STORY_ID=$(next_story_id)
+  if [ ! -f "$FEATURES" ]; then
+    render_template feature-list-template.md > "$FEATURES"
+    say "seeded $FEATURES from the harness template"
+  fi
+  if [ ! -f "$STORIES_README" ]; then
+    render_template user-stories-readme-template.md > "$STORIES_README"
+    say "seeded $STORIES_README from the harness template"
+  fi
+  if [ -f "$STORY_FILE" ]; then
+    { printf '\n'; render_template user-story-area-template.md | awk '/^## /{on=1} on'; } >> "$STORY_FILE"
+  else
+    render_template user-story-area-template.md > "$STORY_FILE"
+  fi
+  # The README indexes every area file, including one that predates the README.
+  grep -qF "| \`$AREA.md\` |" "$STORIES_README" || printf '| `%s.md` | %s |\n' "$AREA" "$AREA_TITLE" >> "$STORIES_README"
+  insert_feature_row "| $TITLE | **Planned** | $STORY_ID |"
+  scaffolded+=("$FEATURES" "$STORIES_README" "$STORY_FILE")
+  say "appended $STORY_ID to $STORY_FILE and a Planned row to the $AREA_TITLE section of $FEATURES; fill the acceptance criteria from $PLAN"
 fi
 
 # --- Step 6: commit ----------------------------------------------------------

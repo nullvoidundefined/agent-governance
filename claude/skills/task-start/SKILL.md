@@ -160,9 +160,19 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 |---|---|
 | **Trivial** | Do the work. Skip to implementation. |
 | **Investigation** | Write the scope line, gather evidence, report. No branch unless the report is a file. |
-| **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, then tdd-gated-dispatch's single-session loop |
+| **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, add the product docs when the task adds user-facing behavior (below), then tdd-gated-dispatch's single-session loop |
 | **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
 | **Saga** | As Complex, plus: Opus for all planning and review, tdd-gated-dispatch for every subagent, and a review checkpoint after each stage. No stage starts until the prior stage's tests are green. |
+
+### Product docs at task start (R-607)
+
+In an application repository (one without `"productDocs": false` in `.enforce.json`), a task that adds or changes user-facing behavior records it before the first slice opens, so the feature list and the stories describe the work while it is planned rather than after it ships:
+
+- **Complex and Saga:** `feature-create <slug> --area <area>` does it: it appends the next `US-<AREA>-NNN` story to `docs/user-stories/<area>.md` and a **Planned** row to the area's section of `docs/feature-list/features.md`. Fill the story's criteria from the plan as that skill's Step 2 says.
+- **Standard:** do the same by hand on the feature branch. Pick the area from the `## ` sections of `features.md`. Add a **Planned** row there, or set an existing row to **Partial** when the task extends a shipped feature, and rewrite the `Last updated:` line. Append a story in the shape of `~/.claude/prompts/user-story-area-template.md` with the next free number in the area file. Name the e2e spec the slice will write on the `**E2E test:**` line. Commit it as `docs(<slug>): feature row and US-<AREA>-NNN`.
+- **Trivial and Investigation:** nothing, unless the change adds a page or an API route. In that case the push gate will ask for the docs anyway, so treat the task as Standard.
+
+The push gate (`push-feature-docs-gate`) refuses a push that adds a page or API route without these changes, so skipping this step only moves the work to push time.
 
 The ticket moves to `in-progress` at the first `tdd.sh open`, which `feature-create` does when it hands off to the execution skill.
 
