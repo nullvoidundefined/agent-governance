@@ -94,12 +94,17 @@ if [ "$drifted" -gt 0 ]; then
   fi
   if sync_err=$(cd "$CHECKOUT" && SYNC_CLAUDE_HOME="$LIVE" SYNC_CURSOR_HOME="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}" SYNC_CODEX_HOME="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}" ./sync.sh 2>&1 >/dev/null); then
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT")
-  elif printf '%s' "$sync_err" | grep -q '^REFUSED'; then
+  elif grep -q '^REFUSED' <<< "$sync_err"; then
     say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses its payload: $sync_err); sync.sh copies claude/, cursor/, then codex/, so a payload before the refused one may already be updated while the refused one and those after it are not, and $drifted tracked file(s) differed before the run. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
     exit 0
-  else
-    # The files synced; the failure came after the copy (the enforce install).
+  elif grep -q '^FAILED:' <<< "$sync_err"; then
+    # Only the enforce installer writes FAILED:, and sync.sh runs it after every
+    # payload copied, so the files synced and the install is what failed.
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT, but ./sync.sh then failed: $sync_err")
+  else
+    # Anything else stopped sync.sh mid-copy (an rsync, mkdir, or git failure).
+    say_context "harness-sync (R-003): ./sync.sh failed before its copy completed from $CHECKOUT: $sync_err. Payloads are copied claude/, cursor/, then codex/, so the live trees may be partly updated; $drifted tracked file(s) differed before the run. Fix the cause and re-run ./sync.sh before relying on any gate this session."
+    exit 0
   fi
 else
   notes+=("live ~/.claude matches $CHECKOUT")
