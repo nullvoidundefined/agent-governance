@@ -55,7 +55,7 @@
     "rules/frontend-vue.mdc": "sha256:1766bfe3f853f7ab44902ce07cb75dcc275fcab0dfc88204aee24c28feb4890f",
     "rules/frontend.mdc": "sha256:bd3717423c9dd1f2b2775f4f9048675a17410447c138558a9bb9398ee2298c97",
     "rules/go.mdc": "sha256:84fb302b3b1aa7cb2424d40c557fe061868adfaccb81770d170a4ad26b29149b",
-    "rules/python.mdc": "sha256:2e90301cd4ee1d771f5cea198c18742fd5ae6531a1adf93133a3b80a2282f2a4",
+    "rules/python.mdc": "sha256:20f81711ebff0303a5113ee5735de7a07f20f4a52f652d833e3275516314b9b9",
     "rules/ruby.mdc": "sha256:9b65e8c20cbffd8492fa14bdccb797a553bcc940a03402a89d3a622701aa0525",
     "rules/rulebook-agents.mdc": "sha256:d732c4b8d6e834a96549bc9bcb409dd0e83babc2b5f90a2bf05d49994dd825f6",
     "rules/rulebook-audits.mdc": "sha256:e1738fa78722e7e7bf73b3323aff4d77bc68d479147fb8e693fc8df933179235",
