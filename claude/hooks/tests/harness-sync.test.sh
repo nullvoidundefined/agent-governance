@@ -8,7 +8,9 @@
 # a sync.sh refusal (invalid JSON) leaves the live tree unchanged and is
 # reported; a live enforce node_modules missing a locked package is repaired
 # with or without drift, and an unavailable npm is reported; the logs
-# session-end.sh writes live are neither drift nor overwritten. Needs rsync,
+# session-end.sh writes live are neither drift nor overwritten; the no-drift
+# check over 1000 tracked files costs a bounded number of processes rather
+# than one per file. Needs rsync,
 # which sync.sh needs too.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -154,6 +156,47 @@ OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
 check "a live-written roll-up is not drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
 check "a live-written roll-up survives the next SessionStart" grep -qF "R-999" "$FAKE/.claude/global-memory/rule_fires.md"
 check "a live-written miss log survives the next SessionStart" grep -qF "R-998" "$FAKE/.claude/global-memory/rule_misses.md"
+
+# 3f. The no-drift check costs a bounded number of processes, not one per
+# tracked file (IAN-115). It ran one cmp per tracked file, so with the real
+# checkout's 531 tracked files every SessionStart spent about 0.8 s (1.2 s under
+# load) confirming that nothing had changed, more than the rest of the
+# SessionStart chain together. The sandbox checkout gains 1000 tracked files,
+# and a no-drift run must cost less than DRIFT_CHECK_SPAWN_BUDGET bare bash+jq
+# spawns timed beside it: a per-file loop costs roughly one spawn per file, far
+# above the budget under any load, and a batched check costs a handful.
+DRIFT_CHECK_SPAWN_BUDGET=60
+mkdir -p "$CO/claude/bulk"
+for i in $(seq 1000); do printf 'bulk %s\n' "$i" > "$CO/claude/bulk/file$i.md"; done
+git -C "$CO" add -A; git -C "$CO" commit -qm "bulk"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+check "bulk files synced" test -f "$FAKE/.claude/bulk/file1000.md"
+now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+# median_ms <command...>: median wall-clock of three runs of a command.
+median_ms() {
+  local run started samples=()
+  for run in 1 2 3; do
+    started=$(now_ms); "$@" >/dev/null 2>&1; samples+=($(( $(now_ms) - started )))
+  done
+  printf '%s\n' "${samples[@]}" | sort -n | sed -n 2p
+}
+# run_no_drift_check: one harness-sync run against the already-synced sandbox.
+run_no_drift_check() { printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK"; }
+# run_bare_spawns: DRIFT_CHECK_SPAWN_BUDGET bare bash+jq spawns, the control.
+run_bare_spawns() {
+  local n
+  for n in $(seq "$DRIFT_CHECK_SPAWN_BUDGET"); do printf '{}' | bash -c 'jq -r ".x // \"\"" >/dev/null'; done
+}
+check_ms=$(median_ms run_no_drift_check)
+control_ms=$(median_ms run_bare_spawns)
+echo "  no-drift check over 1000+ tracked files: ${check_ms}ms (budget ${control_ms}ms, $DRIFT_CHECK_SPAWN_BUDGET bare spawns)"
+check "the no-drift check does not spawn once per tracked file" test "$check_ms" -lt "$control_ms"
+OUT=$(run_no_drift_check 2>/dev/null)
+check "the batched check still finds no drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
+printf 'edited live\n' > "$FAKE/.claude/bulk/file500.md"; rm -f "$FAKE/.claude/bulk/file501.md"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+check "the batched check counts an edited and a missing file" reports "synced 2 changed or missing file(s)"
+check "the batched check's sync repairs both" bash -c 'cmp -s "$1/claude/bulk/file500.md" "$2/.claude/bulk/file500.md" && test -f "$2/.claude/bulk/file501.md"' _ "$CO" "$FAKE"
 
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"
