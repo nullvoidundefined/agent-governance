@@ -53,7 +53,10 @@ OUT=$(printf '{}' | CLAUDE_CODE_REMOTE=true bash "$HOOK" "$CO" 2>/dev/null)
 check "bootstrap syncs the live tree" test -f "$FAKE/.claude/hooks/sample.sh"
 check "bootstrap copies the rules" cmp -s "$CO/claude/CLAUDE.md" "$FAKE/.claude/CLAUDE.md"
 check "bootstrap stamps the source" test "$(cat "$FAKE/.claude/.sync-source")" = "$CO"
-check "bootstrap reports the count" reports "synced 3 changed or missing file(s) from $CO"
+# Five, not three: the sandbox checkout carries three tracked claude/ files
+# plus cursor/README.md and codex/README.md, and the drift check counts every
+# payload ./sync.sh writes rather than claude/ alone (2026-09-18).
+check "bootstrap reports the count" reports "synced 5 changed or missing file(s) from $CO"
 
 # 2. No drift: silent locally, in-sync line remotely, source found from the stamp.
 OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
@@ -66,6 +69,22 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$FAKE/.claude/hooks/sample.sh"
 OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "drifted file re-synced" cmp -s "$CO/claude/hooks/sample.sh" "$FAKE/.claude/hooks/sample.sh"
 check "drift reported with its count" reports "synced 1 changed or missing file(s)"
+
+# 3b. Drift in a NON-claude payload also triggers the sync. ./sync.sh writes all
+# three live trees, but the drift check compared claude/ alone, so a stale
+# ~/.cursor or ~/.codex could never trigger the sync that repairs it: a Cursor
+# session kept running last week's adapter while a Claude session on the same
+# machine was current (2026-09-18). Each payload is checked in its own case so a
+# regression names which one stopped being seen.
+printf '# stale cursor rule\n' > "$SB/home/.cursor/README.md"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+check "cursor drift re-synced" cmp -s "$CO/cursor/README.md" "$SB/home/.cursor/README.md"
+check "cursor drift reported" reports "synced 1 changed or missing file(s)"
+
+printf '# stale codex guidance\n' > "$SB/home/.codex/README.md"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+check "codex drift re-synced" cmp -s "$CO/codex/README.md" "$SB/home/.codex/README.md"
+check "codex drift reported" reports "synced 1 changed or missing file(s)"
 
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"

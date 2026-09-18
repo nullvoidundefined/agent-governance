@@ -1,0 +1,50 @@
+---
+description: How a Cursor session in the agent-governance checkout reaches the harness it is supposed to run under. Always on.
+globs:
+alwaysApply: true
+---
+<!-- Hand-authored project-local bootstrap, not generated. The cursor/ tree beside it
+     is the PAYLOAD that translate/cursor.mjs generates and sync.sh installs into
+     ~/.cursor; this file is this repository's own project config, the Cursor
+     counterpart of .claude/settings.json, and no exporter writes it. -->
+
+# Harness bootstrap (this repository only)
+
+This checkout is the source of the governance harness, not a consumer of it. The
+rules, hooks, and gates that should govern this session live in `claude/` and are
+projected into `cursor/` by `translate/cursor.mjs`; `./sync.sh` installs `cursor/`
+into `~/.cursor`, `claude/` into `~/.claude`, and `codex/` into `~/.codex`.
+
+Claude Code sessions bootstrap themselves here: `.claude/settings.json` registers a
+`SessionStart` hook that runs `claude/hooks/harness-sync.sh`, which compares the
+live trees against this checkout and runs `./sync.sh` when they differ. Cursor has
+no equivalent automatic entry point, so that step is yours to run.
+
+## Do this first, before relying on any rule or gate
+
+Run `./sync.sh` from the root of this checkout. It is idempotent, it never deletes
+live files (a deliberate tradeoff after an earlier destructive incident), and it
+stamps `~/.claude/.sync-source` so later sessions in other projects know where the
+harness came from.
+
+Until that runs, the rules loaded from `~/.cursor` are whatever was installed last,
+which may predate every change in your working tree. The failure is silent: a stale
+rule file reads exactly like a current one.
+
+## Verifying rather than assuming
+
+- `node translate/cursor.mjs --check` exits 0 when `cursor/` matches its `claude/`
+  sources, 1 when a source edit has not been regenerated, and 2 on a source error.
+  A nonzero exit means the payload itself is stale, and syncing would only install
+  the staleness; run `node translate/cursor.mjs --write` first.
+- `node translate/codex.mjs --check` does the same for the Codex payload.
+- `diff -r cursor ~/.cursor` names the files that differ if you want the specific
+  list rather than a verdict.
+
+## What not to edit
+
+Everything under `cursor/` is generated except `cursor/hooks/claude-hook-adapter.sh`,
+`cursor/README.md`, and the two `cursor/commands/session-*.md` files, which the port
+map classifies hand-authored. Editing any other file under `cursor/` is lost at the
+next `--write`, and `--check` fails in CI and at push until it is reverted. Change
+the `claude/` source or `translate/cursor-port-map.json` instead, then regenerate.
