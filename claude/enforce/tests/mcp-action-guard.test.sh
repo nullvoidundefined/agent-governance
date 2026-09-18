@@ -45,9 +45,43 @@ pass mcp__claude_ai_Google_Drive__download_file_content   # read-only
 pass mcp__claude_ai_Linear__list_issue_labels     # 'labels' is not the verb 'label'
 pass mcp__claude_ai_Gmail__untrash_message        # restorative, not destructive
 pass mcp__claude-in-chrome__tabs_create_mcp       # browser server exempt
-pass mcp__claude_ai_Linear__save_issue            # tracker write exempt: private bookkeeping
-pass mcp__claude_ai_Linear__save_comment          # tracker write exempt
-pass mcp__Linear__save_issue                      # the same server without the claude_ai prefix
+# The tracker exemption now derives from the operator's config rather than a
+# hardcoded server name, so these cases need one. Without a config the guard
+# fails closed and asks, which is the intended posture and is asserted by the
+# malformed-config cases further down.
+NAMED_HOME=$(mktemp -d)
+mkdir -p "$NAMED_HOME/.claude"
+cat >"$NAMED_HOME/.claude/TICKET-TRACKER.json" <<'NAMED_TRACKER'
+{
+  "active": "linear",
+  "trackers": {
+    "linear": {
+      "tools": {
+        "create": "mcp__claude_ai_Linear__save_issue",
+        "comment": "mcp__claude_ai_Linear__save_comment",
+        "create_short": "mcp__Linear__save_issue"
+      }
+    }
+  }
+}
+NAMED_TRACKER
+passNamed() {
+  [ -z "$(printf '{"tool_name":"%s","tool_input":{}}' "$1" | HOME="$NAMED_HOME" "$HOOK")" ]
+}
+askNamed() {
+  printf '{"tool_name":"%s","tool_input":{}}' "$1" \
+    | HOME="$NAMED_HOME" "$HOOK" \
+    | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null
+}
+passNamed mcp__claude_ai_Linear__save_issue   # tracker write exempt: private bookkeeping
+passNamed mcp__claude_ai_Linear__save_comment # tracker write exempt
+passNamed mcp__Linear__save_issue             # the same server without the claude_ai prefix
+
+# The bare-suffix shape is Cursor's alone. A different server carrying a tool
+# whose suffix happens to match a configured one is NOT exempt, or the config
+# would widen far past what the operator wrote.
+askNamed mcp__github__save_issue              # same suffix, different server, still asks
+rm -rf "$NAMED_HOME"
 ask  mcp__github__create_pull_request             # a public repo is publishing, never exempt
 ask  mcp__claude_ai_Notion__notion-create-pages   # only the tracker is exempt, not every writer
 pass mcp__plugin_context7_context7__query-docs    # a docs lookup is not a database write

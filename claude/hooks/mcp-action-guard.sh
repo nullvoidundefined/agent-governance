@@ -97,10 +97,14 @@ fi
 # this exemption exists to remove). Matching the configured strings makes the
 # exemption exactly as wide as what the operator wrote down and no wider.
 #
-# Two shapes match. An exact tool name is the normal case. A bare suffix match
-# covers Cursor, whose adapter rewrites a bare MCP name to `mcp__cursor__<tool>`
-# before any hook sees it, so the server segment there is synthetic by
-# construction and only the suffix survives.
+# Two shapes match, and the second is deliberately narrow. An exact tool name is
+# the rule. A bare-suffix match applies ONLY when the server segment is Cursor's
+# synthetic `cursor`, because that adapter rewrites a bare MCP name to
+# `mcp__cursor__<tool>` before any hook sees it and the real segment is gone.
+# Allowing the suffix to match on any server would exempt `save_issue` on
+# github or anywhere else, which is wider than the operator wrote down; CI
+# caught exactly that, because a suffix match passed locally against a real
+# config and the intended exact match did not exist there at all.
 #
 # Fails CLOSED by structure: a missing, unreadable, or schema-invalid config
 # returns non-zero, the call is not exempt, and R-105 asks as it always would.
@@ -108,13 +112,15 @@ isActiveTrackerTool() {
   local config="${CLAUDE_TICKET_TRACKER_FILE:-$HOME/.claude/TICKET-TRACKER.json}"
   local bare="${TOOL##*__}"
   [ -f "$config" ] || return 1
-  jq -e --arg full "$TOOL" --arg bare "$bare" '
+  local allow_suffix=false
+  case "$SERVER" in cursor) allow_suffix=true ;; esac
+  jq -e --arg full "$TOOL" --arg bare "$bare" --argjson suffix "$allow_suffix" '
     (type == "object")
     and (.active | type == "string")
     and (.trackers[.active].tools | type == "object")
     and ([.trackers[.active].tools | to_entries[] | .value] as $tools
          | ($tools | index($full) != null)
-           or ($tools | map(sub("^mcp__.*__"; "")) | index($bare) != null))
+           or ($suffix and ($tools | map(sub("^mcp__.*__"; "")) | index($bare) != null)))
   ' "$config" >/dev/null 2>&1
 }
 
