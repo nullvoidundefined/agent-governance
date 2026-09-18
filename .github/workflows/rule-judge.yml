@@ -1,0 +1,71 @@
+# The CI rule judge (claude/enforce/judge-diff.sh): judges each pull request's
+# diff against the llm-judge tier rules in claude/enforce/manifest.json. Moved
+# here from a local push hook on 2026-09-18 (IAN-98), where it averaged 171 s
+# per push. Without the ANTHROPIC_API_KEY secret the job passes with a notice,
+# matching the judge's fail-open posture: the deterministic gates remain the
+# hard guarantee.
+#
+# Trust boundary (PR #54 review): the job holds a secret, so it must never
+# execute code the pull request controls. It therefore runs on
+# pull_request_target, which takes this workflow file from the base branch
+# rather than from the pull request, and it runs the judge from a separate
+# checkout of a trusted commit: the pull request's base in this repository,
+# main for a caller repository. The pull request's head is only fetched as
+# git objects for `git diff`, never checked out or executed. The judge
+# therefore applies the base branch's rules and vocabulary to the change.
+# Other repositories reuse the job through workflow_call.
+name: rule-judge
+
+on:
+  pull_request_target:
+  workflow_call:
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+
+# A second push supersedes the first; the older run would judge a head nobody
+# will merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# The judge reads git objects and nothing else.
+permissions:
+  contents: read
+
+jobs:
+  judge:
+    name: rule-judge
+    runs-on: ubuntu-latest
+    steps:
+      # The base side only (the default ref for pull_request_target), used as
+      # the repository the diff is computed in. Credentials are not persisted,
+      # so nothing later in the job can push with the token.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: target
+
+      # The judge itself, from a commit the pull request cannot change.
+      - uses: actions/checkout@v7
+        with:
+          repository: nullvoidundefined/agent-governance
+          ref: ${{ github.repository == 'nullvoidundefined/agent-governance' && github.event.pull_request.base.sha || 'main' }}
+          persist-credentials: false
+          path: judge
+
+      - name: Fetch the pull request head as data
+        working-directory: target
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+
+      - name: Judge the pull request diff
+        working-directory: target
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash ../judge/claude/enforce/judge-diff.sh "$BASE_SHA" "$HEAD_SHA"

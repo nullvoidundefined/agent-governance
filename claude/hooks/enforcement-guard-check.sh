@@ -44,36 +44,8 @@ WARNING=""
 [ -n "$MISSING" ] && WARNING="These manifest-required hooks are NOT registered in settings.json:$MISSING."
 [ -n "$UNMAPPED" ] && WARNING="$WARNING These rule-cited enforcers have NO manifest entry (R-516):$UNMAPPED."
 
-# Judge-tier liveness (2026-07-31 criticism audit P0: the judge exited
-# silently for want of a key for its entire life, leaving its error-severity
-# rules honor-system with green stub tests concealing it). Warn whenever
-# llm-judge rules exist but the hook environment carries no way to run them.
-JUDGE_RULES=$(jq -r '[.rules[] | select(.tier=="llm-judge")] | length' "$MANIFEST" 2>/dev/null || echo 0)
-JUDGE_ACCEPT_FILE="${CLAUDE_JUDGE_ACCEPT_FILE:-$HOME/.claude/enforce/judge-accepted-honor-system}"
-JUDGE_KEYCHAIN_SERVICE="${CLAUDE_JUDGE_KEYCHAIN_SERVICE:-claude-judge-api-key}"
-# One probe per supported secret store, each guarded on its binary existing.
-# `security` is macOS-only, so on Linux the only satisfying path used to be an
-# env var and the warning could not be cleared the way the message described
-# (2026-09-17 audit P3-7). A host with none of these stores still warns exactly
-# as before. This list and the one llm-rule-judge.sh resolves a key from are the
-# same list on purpose: a store counted here that the judge could not read
-# reported a healthy judge that still fail-opened on every push (PR #8 review),
-# so a store added to either file belongs in both.
-JUDGE_KEY_AVAILABLE=0
-judge_key_in_a_store() {
-  [ -n "${ANTHROPIC_API_KEY:-}" ] && return 0
-  command -v security >/dev/null 2>&1 \
-    && security find-generic-password -s "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1 && return 0
-  command -v secret-tool >/dev/null 2>&1 \
-    && secret-tool lookup service "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1 && return 0
-  command -v pass >/dev/null 2>&1 \
-    && pass show "$JUDGE_KEYCHAIN_SERVICE" >/dev/null 2>&1 && return 0
-  return 1
-}
-judge_key_in_a_store && JUDGE_KEY_AVAILABLE=1
-if [ "${JUDGE_RULES:-0}" -gt 0 ] && [ "$JUDGE_KEY_AVAILABLE" -eq 0 ] && [ -z "${CLAUDE_JUDGE_CMD:-}" ] && [ ! -f "$JUDGE_ACCEPT_FILE" ]; then
-  WARNING="$WARNING The llm-judge tier ($JUDGE_RULES manifest rules, including error-severity naming rules) CANNOT run: no ANTHROPIC_API_KEY in the hook environment and no keychain entry ($JUDGE_KEYCHAIN_SERVICE), so llm-rule-judge.sh fail-opens on every push. Provision it interactively, on macOS with: security add-generic-password -a \"\$USER\" -s $JUDGE_KEYCHAIN_SERVICE -w   or on Linux with: secret-tool store --label='claude judge' service $JUDGE_KEYCHAIN_SERVICE   (or \`pass insert $JUDGE_KEYCHAIN_SERVICE\`; egress disclosure in README Enforcement), or touch enforce/judge-accepted-honor-system to record the deliberate choice and silence this warning."
-fi
+# The llm-judge tier runs in CI (.github/workflows/rule-judge.yml, IAN-98,
+# 2026-09-18) against a repository secret, so no local key is probed here.
 
 if [ -n "$WARNING" ]; then
   jq -n --arg m "Rule-enforcement guard: $WARNING Enforcement is degraded until the mapping is repaired." \

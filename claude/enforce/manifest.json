@@ -628,7 +628,7 @@
         {
             "id": "R-315",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false
         },
@@ -651,21 +651,21 @@
         {
             "id": "R-316",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false
         },
         {
             "id": "R-317",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false
         },
         {
             "id": "R-325",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "warn",
             "autofix": false,
             "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
@@ -763,7 +763,7 @@
         {
             "id": "R-334",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false,
             "note": "compound naming: base noun first; judged against the project Domain vocabulary glossary, and dropped from the judged set when a repository has none"

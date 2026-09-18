@@ -2,7 +2,7 @@
 
 # Codex port status
 
-50 of 54 hook registrations port, across 6 Codex events.
+49 of 53 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -24,7 +24,6 @@
 | `push-feature-docs-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `constant-change-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `audit-signal-check` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `llm-rule-judge` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `single-file-folder-reminder` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `build-cheatsheets` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |

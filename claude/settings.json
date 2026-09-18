@@ -235,11 +235,6 @@
                     },
                     {
                         "type": "command",
-                        "command": "~/.claude/hooks/llm-rule-judge.sh",
-                        "if": "Bash(git *)"
-                    },
-                    {
-                        "type": "command",
                         "command": "~/.claude/hooks/single-file-folder-reminder.sh"
                     },
                     {

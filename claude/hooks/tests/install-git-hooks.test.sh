@@ -124,4 +124,18 @@ run_install "$ABSOLUTE_REPO"
 absoluteFormNotWarned() { ! grep -q "runs NO hooks there" <<< "$out"; }
 check "an absolute hooksPath draws no worktree warning" absoluteFormNotWarned
 
+# The installed pre-push runs no fixture suite (IAN-98, 2026-09-18): the full
+# suite is CI's required "fixtures" check, and the local copy doubled every
+# push's wait. Each stub suite would leave SUITE_RAN behind if it ran.
+SUITE_REPO=$(mktemp -d)
+git -C "$SUITE_REPO" init -q .
+mkdir -p "$SUITE_REPO/claude/enforce/tests" "$SUITE_REPO/claude/hooks/tests"
+for suite in enforce hooks; do
+  printf 'touch "%s/SUITE_RAN"\nexit 0\n' "$SUITE_REPO" > "$SUITE_REPO/claude/$suite/tests/run-tests.sh"
+done
+run_install "$SUITE_REPO"
+( cd "$SUITE_REPO" && bash .git/hooks/pre-push origin example </dev/null >/dev/null 2>&1 ) || true
+noSuiteRan() { [ ! -e "$SUITE_REPO/SUITE_RAN" ]; }
+check "the pre-push runs no fixture suite" noSuiteRan
+
 exit "$fail"
