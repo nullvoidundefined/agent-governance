@@ -701,6 +701,14 @@
             "note": "crash-safe live task-state tracking on TaskCreate/TaskUpdate; the generated handoff Task state section is rendered by session-end.sh from this hook's output"
         },
         {
+            "id": "R-605",
+            "tier": "regex",
+            "enforcer": "hook:pr-ticket-ref-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Bash gh pr create: denies when no commit in the pull request's range (base from --base, else origin's default branch) and no --body or --body-file text carries a `Refs: <KEY>` line; exempts a docs-only range and a trivial tier recorded for the current branch in .claude/task-tier.json; with ~/.claude/TICKET-TRACKER.json absent it allows with a warning naming the degraded path. Ticket opening, advancing, and the key on specs and handoffs stay manual. Fixture: enforce/tests/pr-ticket-ref-gate.test.sh"
+        },
+        {
             "id": "R-607",
             "tier": "regex",
             "enforcer": "hook:push-feature-docs-gate",

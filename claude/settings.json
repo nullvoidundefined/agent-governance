@@ -225,6 +225,11 @@
                     },
                     {
                         "type": "command",
+                        "command": "~/.claude/hooks/pr-ticket-ref-gate.sh",
+                        "if": "Bash(gh *)"
+                    },
+                    {
+                        "type": "command",
                         "command": "~/.claude/hooks/constant-change-guard.sh",
                         "if": "Bash(git *)"
                     },
