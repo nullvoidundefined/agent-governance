@@ -7,7 +7,9 @@
 # reports only greptile as the manual remainder; a second apply changes
 # nothing; an installed Greptile makes --check exit 0; --stack and
 # --required-reviews shape the templates and the ruleset; an existing file
-# is never overwritten.
+# is never overwritten; the product-docs item (R-607) seeds the features
+# list, the user stories index, and the checklist script, never overwrites
+# them, and --no-product-docs records the opt-out in .enforce.json.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 SETUP="$CLAUDE_HARNESS_ROOT/skills/repo-setup/scripts/setup.sh"
@@ -59,7 +61,7 @@ git -C "$REPO" add -A; git -C "$REPO" commit -qm init
 # 1. --check on a bare repository: everything missing, exit 1, nothing written.
 OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --check 2>&1); ST=$?
 check "check exits 1 when items are missing" test "$ST" -eq 1
-for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan greptile harness; do
+for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan greptile harness product-docs; do
   check "check reports $item MISSING" row "$item" MISSING
 done
 check "check writes no files" test ! -e "$REPO/.github"
@@ -68,7 +70,7 @@ check "check posts nothing" bash -c "! grep -q -- '-X POST' '$STUB_LOG'"
 # 2. Apply: files, branch, rulesets, policy, alerts, scanning, harness bootstrap; greptile remains.
 OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1); ST=$?
 check "apply exits 1 while greptile is manual" test "$ST" -eq 1
-for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan harness; do
+for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan harness product-docs; do
   check "apply reports $item OK" row "$item" OK
 done
 check "bootstrap hook written" test -x "$REPO/.claude/hooks/harness-bootstrap.sh"
@@ -141,6 +143,68 @@ printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \\
 OUT=$(cd "$REPO4" && bash "$SETUP" acme/agent-governance --check 2>&1)
 check "harness repository reports harness OK from its own hook" row harness OK
 check "harness repository gets no bootstrap hook" test ! -e "$REPO4/.claude/hooks/harness-bootstrap.sh"
+
+# 8. Product docs (R-607, spec B-16, B-17): --check names each absent file;
+#    apply writes all three from the harness templates and the canonical
+#    script; an existing features list is never overwritten.
+REPO5="$SB/app"; mkdir -p "$REPO5"; git -C "$REPO5" init -q -b main
+OUT=$(cd "$REPO5" && bash "$SETUP" acme/widget --check 2>&1)
+check "B-16 product-docs MISSING on a bare repository" row product-docs MISSING
+for f in docs/feature-list/features.md docs/user-stories/README.md scripts/require-feature-checklist.sh; do
+  check "B-16 check names $f" bash -c "printf '%s' \"\$0\" | grep -E '^product-docs ' | grep -qF '$f'" "$OUT"
+done
+check "B-16 check writes no docs" test ! -e "$REPO5/docs"
+mkdir -p "$REPO5/docs/feature-list"; printf '# Hand-written list\n' > "$REPO5/docs/feature-list/features.md"
+OUT=$(cd "$REPO5" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "B-17 apply reports product-docs OK" row product-docs OK
+check "B-17 existing features list not overwritten" test "$(cat "$REPO5/docs/feature-list/features.md")" = "# Hand-written list"
+check "B-17 user stories index written" grep -q 'R-607' "$REPO5/docs/user-stories/README.md"
+check "B-17 index has no placeholder left" bash -c "! grep -q '{{' '$REPO5/docs/user-stories/README.md'"
+check "B-17 checklist script executable" test -x "$REPO5/scripts/require-feature-checklist.sh"
+check "B-17 checklist script is the canonical copy" cmp -s "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$REPO5/scripts/require-feature-checklist.sh"
+REPO5B="$SB/app-fresh"; mkdir -p "$REPO5B"; git -C "$REPO5B" init -q -b main
+OUT=$(cd "$REPO5B" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "B-17 features list written from the template" grep -q '^Status key: \*\*Complete\*\* | \*\*Partial\*\* | \*\*Planned\*\*$' "$REPO5B/docs/feature-list/features.md"
+check "B-17 features list names the project" grep -q '^# app-fresh Feature List$' "$REPO5B/docs/feature-list/features.md"
+check "B-17 features list has a dated Last updated line" grep -qE '^Last updated: [0-9]{4}-[0-9]{2}-[0-9]{2} ' "$REPO5B/docs/feature-list/features.md"
+OUT=$(cd "$REPO5B" && bash "$SETUP" acme/widget --check 2>&1)
+check "B-17 check after apply reports OK" row product-docs OK
+
+# 9. Opt-out (spec B-18): --no-product-docs writes no docs, merges
+#    productDocs:false into an existing .enforce.json, and --check then
+#    reports SKIPPED without counting it as missing.
+REPO6="$SB/library"; mkdir -p "$REPO6"; git -C "$REPO6" init -q -b main
+printf '{"importZones":[]}\n' > "$REPO6/.enforce.json"
+OUT=$(cd "$REPO6" && bash "$SETUP" acme/widget --no-product-docs --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "B-18 opt-out reports SKIPPED" row product-docs SKIPPED
+check "B-18 opt-out writes no docs" test ! -e "$REPO6/docs"
+check "B-18 opt-out writes no script" test ! -e "$REPO6/scripts"
+check "B-18 opt-out recorded" jqe '.productDocs == false' "$REPO6/.enforce.json"
+check "B-18 opt-out keeps existing keys" jqe '.importZones == []' "$REPO6/.enforce.json"
+OUT=$(cd "$REPO6" && bash "$SETUP" acme/widget --check 2>&1)
+check "B-18 check reports SKIPPED" row product-docs SKIPPED
+check "B-18 SKIPPED is not counted missing" bash -c "! grep -q '^product-docs .*MISSING' <<< \"\$0\"" "$OUT"
+
+# 10. PR #44 review: a ported setup.sh whose harness tree lacks one template
+#     reports product-docs MISSING and writes no empty README.
+PORT="$SB/port/skills/repo-setup/scripts"; mkdir -p "$PORT"; cp "$SETUP" "$PORT/setup.sh"
+mkdir -p "$SB/partial-home/.claude/prompts" "$SB/partial-home/.claude/enforce"
+cp "$CLAUDE_HARNESS_ROOT/prompts/feature-list-template.md" "$SB/partial-home/.claude/prompts/"
+cp "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$SB/partial-home/.claude/enforce/"
+REPO7="$SB/partial-app"; mkdir -p "$REPO7"; git -C "$REPO7" init -q -b main
+OUT=$(cd "$REPO7" && HOME="$SB/partial-home" bash "$PORT/setup.sh" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "partial templates report product-docs MISSING" row product-docs MISSING
+check "partial templates write no README" test ! -e "$REPO7/docs/user-stories/README.md"
+
+# 11. PR #44 review round 2: a partial sibling tree falls back to a complete
+#     ~/.claude, and a project name with sed metacharacters renders literally.
+PORT2="$SB/partial-port/skills/repo-setup/scripts"; mkdir -p "$PORT2" "$SB/partial-port/enforce"
+cp "$SETUP" "$PORT2/setup.sh"; cp "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$SB/partial-port/enforce/"
+mkdir -p "$SB/full-home/.claude"; cp -R "$CLAUDE_HARNESS_ROOT/prompts" "$SB/full-home/.claude/prompts"; cp -R "$SB/partial-port/enforce" "$SB/full-home/.claude/enforce"
+REPO8="$SB/r&d#app"; mkdir -p "$REPO8"; git -C "$REPO8" init -q -b main
+OUT=$(cd "$REPO8" && HOME="$SB/full-home" bash "$PORT2/setup.sh" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "partial sibling tree falls back and reports OK" row product-docs OK
+check "project name with & and # renders literally" grep -qxF '# r&d#app Feature List' "$REPO8/docs/feature-list/features.md"
 
 # 7. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?

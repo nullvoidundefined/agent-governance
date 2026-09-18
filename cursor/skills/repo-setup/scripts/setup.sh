@@ -33,6 +33,13 @@
 #                 the harness (R-003); the repository URL comes from
 #                 --harness-repo or the origin of the ~/.claude/.sync-source
 #                 checkout
+#   product-docs  docs/feature-list/features.md, docs/user-stories/README.md,
+#                 and scripts/require-feature-checklist.sh (R-607), written
+#                 from the harness templates in prompts/ and the canonical
+#                 enforce/require-feature-checklist.sh when absent, never
+#                 overwritten; SKIPPED when .enforce.json sets productDocs to
+#                 false, which --no-product-docs records for a library or
+#                 tooling repository
 #
 # Usage: setup.sh <owner/repo> [--check] [--stack node|python|go|ruby]
 #                 [--branches main,staging] [--required-reviews N]
@@ -41,6 +48,8 @@
 #                 workflow already exists under another job name)
 #                 [--harness-repo <git url>]    (the agent-governance clone
 #                 URL for the bootstrap hook)
+#                 [--no-product-docs]           (opt a library or tooling
+#                 repository out of R-607's product docs)
 # Run from the repository's checkout (local files are written there).
 # REPO_SETUP_GH_CMD overrides the gh binary (fixtures stub it).
 # Exit: 0 baseline met (or applied); 1 with --check when any item is missing;
@@ -49,7 +58,21 @@ set -uo pipefail
 
 GH="${REPO_SETUP_GH_CMD:-gh}"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""
+# The product-doc templates and the canonical checklist sit beside skills/ in
+# the harness tree; a Codex or Cursor port of this script lives under ~/.codex
+# or ~/.cursor, which carry neither, so it falls back to the synced ~/.claude.
+# The sibling tree is used only when it carries every file this path needs,
+# so a partial tree never shadows a complete synced copy.
+PRODUCT_DOC_SOURCES=(prompts/feature-list-template.md prompts/user-stories-readme-template.md enforce/require-feature-checklist.sh)
+
+# has_product_doc_sources <dir>: true when the harness tree holds every source.
+has_product_doc_sources() {
+  local source
+  for source in "${PRODUCT_DOC_SOURCES[@]}"; do [ -f "$1/$source" ] || return 1; done
+}
+HARNESS_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+has_product_doc_sources "$HARNESS_ROOT" || HARNESS_ROOT="$HOME/.claude"
+REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""; PRODUCT_DOCS=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK=1; shift ;;
@@ -58,6 +81,7 @@ while [ $# -gt 0 ]; do
     --required-reviews) REVIEWS="${2:-0}"; shift 2 ;;
     --ci-context) CI_CONTEXT="${2:-ci}"; shift 2 ;;
     --harness-repo) HARNESS_REPO="${2:-}"; shift 2 ;;
+    --no-product-docs) PRODUCT_DOCS=0; shift ;;
     --*) echo "repo-setup: unknown option $1" >&2; exit 2 ;;
     *) REPO="$1"; shift ;;
   esac
@@ -83,7 +107,7 @@ fi
 case "$STACK" in node) ECOSYSTEM=npm ;; python) ECOSYSTEM=pip ;; go) ECOSYSTEM=gomod ;; ruby) ECOSYSTEM=bundler ;; *) echo "repo-setup: unknown stack $STACK" >&2; exit 2 ;; esac
 
 missing=0
-report() { printf '%-14s %-8s %s\n' "$1" "$2" "$3"; [ "$2" = "OK" ] || missing=$((missing + 1)); }
+report() { printf '%-14s %-8s %s\n' "$1" "$2" "$3"; [ "$2" = "OK" ] || [ "$2" = "SKIPPED" ] || missing=$((missing + 1)); }
 apply() { [ "$CHECK" -eq 0 ]; }
 
 echo "repo-setup: $REPO (stack $STACK, branches $BRANCHES)$( [ "$CHECK" -eq 1 ] && printf ', check only')"
@@ -159,6 +183,73 @@ elif apply; then
   [ "$HAS_BOOTSTRAP" -eq 2 ] || report harness OK "wrote .claude/hooks/harness-bootstrap.sh (clones $HARNESS_REPO in a remote session) and registered it at SessionStart"
 else
   report harness MISSING "no SessionStart hook runs .claude/hooks/harness-bootstrap.sh (R-003)"
+fi
+
+# --- product docs (R-607) ----------------------------------------------------
+# An application repository keeps a features list and per-area user stories,
+# and carries a copy of the feature checklist for its own git hook and CI (the
+# harness push gate runs the harness copy, never this one). A library or
+# tooling repository opts out once with --no-product-docs, recorded as data in
+# .enforce.json so every later --check and the push gate read the same answer.
+PRODUCT_DOCS_FILES=(docs/feature-list/features.md docs/user-stories/README.md scripts/require-feature-checklist.sh)
+PROJECT_NAME=$(basename "$ROOT")
+TODAY=$(date +%Y-%m-%d)
+
+# is_product_docs_opted_out: true when .enforce.json sets productDocs to false.
+is_product_docs_opted_out() {
+  [ -f .enforce.json ] && jq -e '.productDocs == false' .enforce.json >/dev/null 2>&1
+}
+
+# record_product_docs_opt_out: merges productDocs:false into .enforce.json,
+# keeping every other key; prints nothing, returns non-zero on invalid JSON.
+record_product_docs_opt_out() {
+  local tmp
+  [ -f .enforce.json ] || printf '{}\n' > .enforce.json
+  tmp=$(mktemp)
+  if jq '.productDocs = false' .enforce.json > "$tmp" 2>/dev/null; then mv "$tmp" .enforce.json; else rm -f "$tmp"; return 1; fi
+}
+
+# render_product_doc_template <template> <path>: writes a prompts/ template to
+# the path with the project name and today's date substituted.
+render_product_doc_template() {
+  local project_escaped
+  project_escaped=$(printf '%s' "$PROJECT_NAME" | sed -e 's/[\\#&]/\\&/g')
+  mkdir -p "$(dirname "$2")"
+  sed -e "s#{{PROJECT}}#$project_escaped#g" -e "s#{{DATE}}#$TODAY#g" "$HARNESS_ROOT/prompts/$1" > "$2"
+}
+
+# write_product_docs: writes each absent product doc; never overwrites.
+write_product_docs() {
+  [ -f docs/feature-list/features.md ] || render_product_doc_template feature-list-template.md docs/feature-list/features.md
+  [ -f docs/user-stories/README.md ] || render_product_doc_template user-stories-readme-template.md docs/user-stories/README.md
+  if [ ! -f scripts/require-feature-checklist.sh ]; then
+    mkdir -p scripts
+    cp "$HARNESS_ROOT/enforce/require-feature-checklist.sh" scripts/require-feature-checklist.sh
+    chmod +x scripts/require-feature-checklist.sh
+  fi
+}
+
+absent_docs=""
+for f in "${PRODUCT_DOCS_FILES[@]}"; do [ -f "$f" ] || absent_docs="$absent_docs $f"; done
+if is_product_docs_opted_out; then
+  report product-docs SKIPPED ".enforce.json productDocs false (library or tooling repository)"
+elif [ "$PRODUCT_DOCS" -eq 0 ]; then
+  if ! apply; then
+    report product-docs MISSING "--no-product-docs given with --check; re-run without --check to record the opt-out"
+  elif record_product_docs_opt_out; then
+    report product-docs SKIPPED "recorded productDocs false in .enforce.json"
+  else
+    report product-docs MISSING ".enforce.json is not valid JSON; fix it, then re-run"
+  fi
+elif [ -z "$absent_docs" ]; then
+  report product-docs OK "features list, user stories index, and feature checklist present"
+elif ! has_product_doc_sources "$HARNESS_ROOT"; then
+  report product-docs MISSING "absent:${absent_docs}; harness templates not found under $HARNESS_ROOT (sync ~/.claude)"
+elif apply; then
+  write_product_docs
+  report product-docs OK "wrote${absent_docs} (R-607)"
+else
+  report product-docs MISSING "absent:${absent_docs}"
 fi
 
 # --- branches ----------------------------------------------------------------

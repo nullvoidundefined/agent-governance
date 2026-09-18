@@ -220,6 +220,11 @@
                     },
                     {
                         "type": "command",
+                        "command": "~/.claude/hooks/push-feature-docs-gate.sh",
+                        "if": "Bash(git *)"
+                    },
+                    {
+                        "type": "command",
                         "command": "~/.claude/hooks/constant-change-guard.sh",
                         "if": "Bash(git *)"
                     },
