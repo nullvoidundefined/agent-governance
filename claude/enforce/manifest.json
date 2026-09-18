@@ -431,7 +431,7 @@
             "enforcer": "hook:git-workflow-guard",
             "severity": "error",
             "autofix": false,
-            "note": "denies gh pr merge --merge and --rebase"
+            "note": "denies gh pr merge --merge/-m, and --rebase/-r unless gh pr view shows the bundle label and a distinct Refs: trailer on every commit (fail-closed on gh error, timeout, cd, or GH_REPO)"
         },
         {
             "id": "R-511",

@@ -98,7 +98,7 @@ R-508: Update `README.md` in the same commit when adding a user-facing feature o
 R-509: Default to sharded (parallel) test runs; turn ends, commits, and branch-level merges run only the tests the changed files affect, and the full sharded suite when a change cannot be mapped or touches shared test setup; the full suite runs as the required CI check before any merge to main; neither a turn nor a writing subagent ends on a red suite. [hook:verification-gate]
 R-510: Trust pre-commit hooks for what they cover; do not manually re-run their format/lint/build steps. [manual]
 R-511: Run cross-cutting refactors (5+ files, 3+ dirs) on a dedicated branch, one at a time. [hook:git-workflow-guard]
-R-512: Squash-merge feature branches; one commit per feature on `main`. [hook:git-workflow-guard]
+R-512: Squash-merge feature branches; one commit per feature on `main`; the one exception is an opt-in bundle PR (label `bundle`, 2 to 5 small related tickets, one commit per ticket with its own conventional subject and `Refs:` trailer), rebase-merged so each ticket keeps one commit on `main`, never for deletion, security, sync, or migration changes. [hook:git-workflow-guard]
 R-513: Before pushing a changed constant, grep the test suite for the old value and update every stale assertion in the same commit. [hook:constant-change-guard]
 R-514: Never merge a PR without explicit user authorization in the current turn ("merge when ready" is not authorization); direct pushes to `main` only on express request after naming the risks. [hook:git-workflow-guard]
 R-515: Resolve every addressed reviewer thread on GitHub (GraphQL API) in the same turn as the fix commit, replying with the SHA. [manual]
