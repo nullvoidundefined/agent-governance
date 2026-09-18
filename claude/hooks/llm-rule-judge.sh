@@ -53,10 +53,52 @@ if [ -f "$EXEMPT_FILE" ]; then
   fi
 fi
 
+# collect_project_vocabulary
+# Prints the `## Domain vocabulary` sections of the target repository's design
+# specs (R-330), one after another, capped so the payload stays bounded the way
+# the diff is. Takes no arguments. Prints nothing and returns 0 when the
+# repository has no such section, which is the signal to stop judging R-334.
+collect_project_vocabulary() {
+  local root spec_file collected
+  root=$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)
+  [ -n "$root" ] || return 0
+  collected=""
+  for spec_file in "$root"/docs/superpowers/specs/*-design.md "$root"/claude/docs/superpowers/specs/*-design.md; do
+    [ -f "$spec_file" ] || continue
+    collected="$collected$(awk '
+      /^## Domain vocabulary/ { p = 1; print; next }
+      p && /^## / { exit }
+      p { print }
+    ' "$spec_file")"
+  done
+  printf '%s' "$collected" | head -c "${CLAUDE_JUDGE_VOCAB_MAX_BYTES:-20000}"
+}
+
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-DIFF=$(run_git_on_target diff --diff-filter=ACMR "$BASE"..HEAD -- '*.ts' '*.tsx' '*.py' '*.rb' '*.go' 2>/dev/null || true)
+# Source extensions the naming and structure rules actually govern. `.js`,
+# The exclusions carry `glob` magic deliberately. Without it, `**/dist/**`
+# matches a nested `apps/web/dist/x.ts` and NOT a top-level `dist/x.ts`, so
+# generated output at the repository root was judged while the same output one
+# directory down was skipped, which is worse than no exclusion because it is
+# inconsistent and silent. The fixtures below pin both depths.
+#
+# Excluding generated output is a correctness rule, not a cost saving: the fix
+# for a name in a generated file is never in that file, it is in the source the
+# generator read, which the judge already sees. Do not prune this list to make
+# the payload smaller; raise the exclusions or narrow the change instead.
+#
+# `.mjs`, and `.vue` were added 2026-09-18 with R-334: migrations in the
+# node-pg-migrate projects are JavaScript and components in the Vue track are
+# `.vue`, so table names and component names, the two layers R-334 is most
+# about, were bypassing this gate entirely. Generated trees are excluded
+# because a judge reporting a naming defect in build output wastes the push
+# it interrupts.
+DIFF=$(run_git_on_target diff --diff-filter=ACMR "$BASE"..HEAD -- \
+  '*.ts' '*.tsx' '*.js' '*.mjs' '*.vue' '*.py' '*.rb' '*.go' \
+  ':(exclude,glob)**/node_modules/**' ':(exclude,glob)**/dist/**' ':(exclude,glob)**/build/**' \
+  ':(exclude,glob)**/.output/**' ':(exclude,glob)**/*.gen.*' ':(exclude,glob)**/*.min.js' 2>/dev/null || true)
 [ -z "$DIFF" ] && exit 0
 
 # Input budget. max_tokens caps what the model writes, never what it reads, so
@@ -120,6 +162,17 @@ else
     exit 0
   fi
   RULE_IDS=$(jq -r '.rules[] | select(.tier=="llm-judge") | .id' "$MANIFEST")
+
+  # R-334 judges a name against the aggregate roots its project settled, and
+  # this payload otherwise carries only rulebook text and the diff. Without the
+  # project's own glossary the judge would have to invent a root list, so the
+  # glossary is collected here and R-334 is dropped from the judged set when a
+  # repository has none. A rule that cannot be decided is not judged.
+  PROJECT_VOCABULARY=$(collect_project_vocabulary)
+  if [ -z "$PROJECT_VOCABULARY" ]; then
+    RULE_IDS=$(printf '%s\n' "$RULE_IDS" | grep -v '^R-334$' || true)
+  fi
+  [ -n "$RULE_IDS" ] || exit 0
   # Full rule blocks (norm + Spec) from the reference file; CLAUDE.md carries
   # only one-line norms since the 2026-07-29 restructure.
   RULETEXT=$(for r in $RULE_IDS; do
@@ -130,8 +183,8 @@ else
     ' "$CLAUDE_DIR/rulebook/reference.md" || true
   done)
   SYS=$(cat "$ENFORCE_DIR/judge-prompt.md")
-  USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" --arg tr "$DIFF_TRUNCATED" \
-    '{rules:$rt, diff:$d, diff_truncated:($tr == "true")} | tostring')
+  USERMSG=$(jq -n --arg rt "$RULETEXT" --arg d "$DIFF" --arg tr "$DIFF_TRUNCATED" --arg pv "$PROJECT_VOCABULARY" \
+    '{rules:$rt, diff:$d, diff_truncated:($tr == "true"), project_vocabulary:$pv} | tostring')
   BODY=$(jq -n --arg s "$SYS" --arg u "$USERMSG" '{model:"claude-haiku-4-5-20251001",max_tokens:1024,temperature:0,system:$s,messages:[{role:"user",content:$u}]}')
   # A push-time gate must not be able to hang a push indefinitely: the request
   # carries its own connect and total timeouts rather than relying on whatever

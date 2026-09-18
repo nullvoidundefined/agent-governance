@@ -15,6 +15,28 @@ printf 'export function generate(){}\n' > generate.ts; git add .; git commit -q 
 # A stub that prints the given JSON verdict to stdout.
 mkstub() { local j f; j=$(mktemp); printf '%s' "$1" > "$j"; f=$(mktemp); printf '#!/usr/bin/env bash\ncat %q\n' "$j" > "$f"; chmod +x "$f"; echo "$f"; }
 
+# Creates a curl stub that captures the request's -d argument and returns an
+# API response containing an empty violations verdict. Arguments: stub directory
+# and capture filename. Prints nothing. Returns 0 on success, nonzero on failure.
+mkcapture() {
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'capture_file=%q\n' "$2"
+    cat <<'STUB'
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-d" ]; then
+    printf '%s' "$2" > "$capture_file"
+    printf '%s\n' '{"content":[{"text":"{\"violations\":[]}"}]}'
+    exit 0
+  fi
+  shift
+done
+exit 1
+STUB
+  } > "$1/curl"
+  chmod +x "$1/curl"
+}
+
 # High confidence -> ask (the human adjudicates; 2026-09-05).
 S1=$(mkstub '{"violations":[{"rule":"R-315","confidence":0.9,"file":"generate.ts","why":"vague filename"}]}')
 OUT=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S1" "$HOOK")
@@ -121,5 +143,75 @@ ERRNONE=$(printf '%s' "$PAYLOAD" | env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD 
 printf '%s' "$ERRNONE" | grep -q "no API key" \
   || { echo "FAIL: with no store holding a key the judge must report that it skipped; got $ERRNONE"; exit 1; }
 rm -rf "$STUB_DIR"
+
+# Vue-only and JavaScript-only outgoing diffs must reach the judge.
+for source_file in generate.vue generate.js; do
+  printf 'export function generate(){}\n' > "$source_file"
+  git add "$source_file"; git commit -q -m "add $source_file"
+  SOURCE_VERDICT=$(mkstub "$(jq -n --arg file "$source_file" \
+    '{violations:[{rule:"R-315",confidence:0.9,file:$file,why:"vague filename"}]}')")
+  SOURCE_OUT=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$SOURCE_VERDICT" "$HOOK")
+  printf '%s' "$SOURCE_OUT" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null \
+    || { echo "FAIL: $source_file-only diff should reach the judge and ask"; exit 1; }
+done
+
+# Each generated-only outgoing diff must be empty and exit silently. S1 would
+# produce an ask if any excluded source file reached the judge.
+GENERATED_FAILURES=0
+# Both depths are pinned on purpose. The first implementation excluded with
+# `**/dist/**` and no glob magic, which matches `apps/web/dist/x.ts` but NOT a
+# top-level `dist/x.ts`, so generated output at the repository root was judged
+# while identical output one directory down was skipped. A revert to that form
+# passes the nested cases and fails the root ones, which is the whole point of
+# listing both (2026-09-18).
+for generated_file in dist/generated.ts apps/web/dist/generated.ts build/generated.ts \
+  node_modules/example/generated.ts generated.gen.ts nested/deep/other.gen.ts vendor/app.min.js; do
+  mkdir -p "$(dirname "$generated_file")"
+  printf 'export function generate(){}\n' > "$generated_file"
+  git add -f "$generated_file"; git commit -q -m "add $generated_file"
+  GENERATED_OUT=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S1" "$HOOK" 2>&1)
+  [ -z "$GENERATED_OUT" ] \
+    || { echo "FAIL: $generated_file-only diff should exit silently; got: $GENERATED_OUT"; GENERATED_FAILURES=$((GENERATED_FAILURES + 1)); }
+done
+
+# CLAUDE_JUDGE_CMD bypasses payload assembly and receives no request. Capture
+# curl's -d argument instead, keeping the real manifest and reference text.
+CAPTURE_DIR=$(mktemp -d)
+mkcapture "$CAPTURE_DIR" "$CAPTURE_DIR/request.json"
+REAL_MANIFEST="$CLAUDE_HARNESS_ROOT/enforce/manifest.json"
+jq -e '.rules | any(.id == "R-334" and .tier == "llm-judge")' "$REAL_MANIFEST" >/dev/null \
+  || { echo "FAIL: the real manifest must include R-334 at tier llm-judge"; exit 1; }
+printf 'export function generateAgain(){}\n' >> generate.js
+git add generate.js; git commit -q -m "change judged source for vocabulary fixtures"
+
+# No design spec exists in this fixture repository. A captured request proves
+# the judge ran; R-334 must be absent from its rules and the push must allow.
+VOCAB_OUT=$(printf '%s' "$PAYLOAD" | env -u CLAUDE_JUDGE_CMD \
+  PATH="$CAPTURE_DIR:$PATH" ANTHROPIC_API_KEY="$(printf '%s' fixture key)" \
+  CLAUDE_MANIFEST_FILE="$REAL_MANIFEST" CLAUDE_ENFORCE_BASE=HEAD~1 \
+  CLAUDE_JUDGE_USAGE_LOG="$CAPTURE_DIR/usage.log" "$HOOK" 2>&1)
+[ -z "$VOCAB_OUT" ] || { echo "FAIL: no-glossary push should allow silently; got: $VOCAB_OUT"; exit 1; }
+jq -e '.messages[0].content | fromjson | fromjson |
+  (.rules | length > 0) and (.rules | contains("R-334") | not) and
+  (.project_vocabulary == "")' "$CAPTURE_DIR/request.json" >/dev/null \
+  || { echo "FAIL: no-glossary payload must omit R-334 and have empty project_vocabulary"; exit 1; }
+
+# The glossary is read from the target repository even outside the source diff.
+mkdir -p docs/superpowers/specs
+printf '# Thing design\n\n## Domain vocabulary\nQuasarBasket names the distinctive aggregate root.\n\n## Scope\nUnrelated scope text.\n' \
+  > docs/superpowers/specs/2026-01-01-thing-design.md
+rm -f "$CAPTURE_DIR/request.json"
+VOCAB_OUT=$(printf '%s' "$PAYLOAD" | env -u CLAUDE_JUDGE_CMD \
+  PATH="$CAPTURE_DIR:$PATH" ANTHROPIC_API_KEY="$(printf '%s' fixture key)" \
+  CLAUDE_MANIFEST_FILE="$REAL_MANIFEST" CLAUDE_ENFORCE_BASE=HEAD~1 \
+  CLAUDE_JUDGE_USAGE_LOG="$CAPTURE_DIR/usage.log" "$HOOK" 2>&1)
+[ -z "$VOCAB_OUT" ] || { echo "FAIL: glossary push should allow silently; got: $VOCAB_OUT"; exit 1; }
+jq -e '.messages[0].content | fromjson | fromjson |
+  (.rules | contains("R-334")) and
+  (.project_vocabulary | contains("QuasarBasket names the distinctive aggregate root.")) and
+  (.project_vocabulary | contains("Unrelated scope text.") | not)' "$CAPTURE_DIR/request.json" >/dev/null \
+  || { echo "FAIL: glossary payload must include R-334 and the domain vocabulary section"; exit 1; }
+rm -rf "$CAPTURE_DIR"
+[ "$GENERATED_FAILURES" -eq 0 ] || exit 1
 
 echo "llm-rule-judge.test.sh PASS"
