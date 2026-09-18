@@ -2,7 +2,8 @@
 # Covers: hook:git-workflow-guard
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
 # merge (R-514), denies a non-squash merge (R-512), and warns on a cross-cutting
-# commit to main (R-511) and a surface-adding commit with no README (R-508).
+# commit to main (R-511) and a surface-adding commit with no README (R-508),
+# whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
@@ -89,6 +90,49 @@ git -C "$REPO" checkout -q -b feature/next
 : >"$REPO/src/services/notify.ts"
 git -C "$REPO" add src/services/notify.ts
 [ -z "$(warning 'git commit -m "feat: notify"' "$REPO")" ]
+git -C "$REPO" commit -qm "feat: notify"
+
+# IAN-118: R-508 covers the Nuxt, Nitro, and FastAPI surfaces, and agrees with
+# the R-607 checklist: every path the checklist's built-in triggers treat as a
+# new route is a surface here too. A plain Vue component is not a surface.
+# stage_only <path>: stages exactly one new file, nothing else.
+stage_only() {
+  mkdir -p "$REPO/$(dirname "$1")"; : >"$REPO/$1"; git -C "$REPO" add -- ":(literal)$1"
+}
+# unstage_path <path>: removes the file staged by stage_only.
+unstage_path() {
+  git -C "$REPO" rm -q --cached -- ":(literal)$1"; rm -f "$REPO/$1"
+}
+for surface in 'app/pages/index.vue' 'app/pages/trips/[id].vue' 'server/api/trips.get.ts' \
+  'server/routes/health.ts' 'app/routers/trips.py' 'apps/client/web/app/pages/about.vue' \
+  'app/trips/page.tsx' 'src/app/api/trips/route.ts'; do
+  stage_only "$surface"
+  warns R-508 'git commit -m "feat: surface"' "$REPO"
+  unstage_path "$surface"
+done
+for non_surface in 'app/components/TripCard.vue' 'app/composables/useTrips.ts' 'app/services/trips.py'; do
+  stage_only "$non_surface"
+  silent_on R-508 'git commit -m "feat: component"' "$REPO"
+  unstage_path "$non_surface"
+done
+# Parity: read the checklist's built-in triggers and require the guard to fire
+# on each sample path any of them matches.
+CHECKLIST_TRIGGERS=$(sed -n '/^BUILTIN_TRIGGERS=(/,/^)/p' "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" | sed -n "s/^  '\(.*\)'$/\1/p")
+TRIGGER_ARGS=()
+while IFS= read -r trigger; do TRIGGER_ARGS+=(-e "$trigger"); done <<<"$CHECKLIST_TRIGGERS"
+[ "${#TRIGGER_ARGS[@]}" -ge 10 ]
+PARITY_CHECKED=0
+for sample in 'app/pages/trips/index.vue' 'server/api/users/[id].post.ts' 'server/routes/feed.xml.ts' \
+  'app/routers/users.py' 'src/routes/trips.ts' 'src/handlers/trips.js' 'app/(shop)/cart/page.jsx' \
+  'src/app/api/health/route.js' 'app/components/Nav.vue'; do
+  # A here-string, not a pipe: a SIGPIPE under pipefail would skip a sample.
+  grep -qE "${TRIGGER_ARGS[@]}" <<<"$sample" || continue
+  PARITY_CHECKED=$((PARITY_CHECKED + 1))
+  stage_only "$sample"
+  warns R-508 'git commit -m "feat: parity"' "$REPO"
+  unstage_path "$sample"
+done
+[ "$PARITY_CHECKED" -eq 8 ]
 rm -rf "$REPO"
 
 echo "git-workflow-guard.test.sh PASS"
