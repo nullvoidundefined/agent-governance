@@ -19,9 +19,9 @@ grep -qF "$FAKE_TOKEN" <<< "$OUT" && { echo "FAIL: raw token survived redaction"
 # read the match as a miss, so a leaked token in long output went unreported.
 LARGE_RESPONSE_PAYLOAD=$({
   printf 'remote: %s pushed\n' "$FAKE_TOKEN"
-  awk 'BEGIN { for (i = 0; i < 8192; i++) print "filler line of ordinary build output" }'
+  awk 'BEGIN { for (i = 0; i < 32768; i++) print "filler line of ordinary build output" }'
 } | jq -Rs '{tool_name:"Bash",tool_response:{stdout:.}}')
-[ "${#LARGE_RESPONSE_PAYLOAD}" -gt 65536 ] || { echo "FAIL: the large-output payload must exceed 64KB"; exit 1; }
+[ "${#LARGE_RESPONSE_PAYLOAD}" -gt 1048576 ] || { echo "FAIL: the large-output payload must exceed 1MB, past both the pipe buffer and the macOS argument limit"; exit 1; }
 OUT=$(printf '%s' "$LARGE_RESPONSE_PAYLOAD" | "$HOOK")
 grep -qF '[REDACTED]' <<< "$OUT" || { echo "FAIL: a token on the first line of output over 64KB went undetected"; exit 1; }
 grep -qF "$FAKE_TOKEN" <<< "$OUT" && { echo "FAIL: raw token survived redaction in large output"; exit 1; }

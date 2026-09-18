@@ -88,7 +88,10 @@ if grep -qE "$PATTERN" <<< "$RESPONSE"; then
     s/(SECRET|TOKEN|PASSWORD|CREDENTIAL|API[_-]?KEY|SECRET[_-]?KEY|ACCESS[_-]?KEY|AUTH[_-]?KEY|PRIVATE[_-]?KEY)[=:]\s*[A-Za-z0-9_\/+=~.-]{20,}/$1=[REDACTED]/g;
   ')
 
-  jq -n --arg redacted "$REDACTED" '{
+  # The redacted copy reaches jq on stdin, not through --arg: Linux caps one
+  # argument at 128KB, so --arg failed with "Argument list too long" on large
+  # output (2026-09-18). jq reads all of its input, so this pipe cannot SIGPIPE.
+  printf '%s' "$REDACTED" | jq -Rs '. as $redacted | {
     suppressOutput: true,
     hookSpecificOutput: {
       hookEventName: "PostToolUse",
