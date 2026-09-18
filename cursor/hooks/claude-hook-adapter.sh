@@ -37,7 +37,15 @@
 # agent is told to repair the violation before the turn is accepted as done.
 #
 # Fail open: an adapter fault must never lock the user out of their editor.
-# Every path that cannot decide answers allow (or an empty object).
+# Every path that cannot decide answers allow (or an empty object). The one
+# deliberate exception is the mirrored permission layer (the Bash(...) and
+# Read(...) rules of settings.json, evaluated by
+# ~/.claude/enforce/settings-permission-rules.sh): when that helper cannot be
+# loaded, or the settings file cannot be read, the shell call and the file read
+# are DENIED with a message naming the repair. Until 2026-09-18 the helper was
+# sourced with `2>/dev/null || true` from a path that has never existed in this
+# repository, and the whole layer was inert while PORT-STATUS.md advertised it
+# as mirrored; the failure was invisible precisely because it failed open.
 #
 # Debug: CLAUDE_CURSOR_HOOK_DEBUG=1 appends every raw payload and every hook's
 # stdout to $CLAUDE_CURSOR_STATE_DIR/debug.log (default
@@ -184,19 +192,62 @@ record_finding() {
 }
 
 # --- the Bash(...) and Read(...) rules of settings.json -------------------------
-# shellcheck source=../../enforce/settingsPermissionRules.sh
-source "$CLAUDE_HOME/enforce/settingsPermissionRules.sh" 2>/dev/null || true
+
+# The helper is resolved deterministically and its absence is recorded rather
+# than swallowed: PERMISSION_RULES_ERROR non-empty means no rule can be
+# evaluated, and every shell call and every file read is denied with that text
+# until the install is repaired.
+CLAUDE_ENFORCE_DIR="${CLAUDE_ENFORCE_DIR:-$CLAUDE_HOME/enforce}"
+PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/settings-permission-rules.sh}"
+PERMISSION_RULES_ERROR=""
+if [ -r "$PERMISSION_RULES_FILE" ]; then
+  # shellcheck source=../../claude/enforce/settings-permission-rules.sh
+  source "$PERMISSION_RULES_FILE" \
+    || PERMISSION_RULES_ERROR="The settings.json permission rules could not be loaded from $PERMISSION_RULES_FILE (the file is there but failed to source), so the Bash(...) and Read(...) rules mirrored from Claude Code cannot be evaluated."
+else
+  PERMISSION_RULES_ERROR="The settings.json permission rules are missing: no readable settings-permission-rules.sh at $PERMISSION_RULES_FILE, so the Bash(...) and Read(...) rules mirrored from Claude Code cannot be evaluated. Reinstall the harness (sync.sh) or set CLAUDE_HOME to the Claude Code configuration this port was built from."
+fi
+if [ -z "$PERMISSION_RULES_ERROR" ] \
+  && { ! type matching_bash_rule >/dev/null 2>&1 || ! type read_is_denied >/dev/null 2>&1; }; then
+  PERMISSION_RULES_ERROR="$PERMISSION_RULES_FILE loaded but does not define both matching_bash_rule and read_is_denied, so the Bash(...) and Read(...) rules mirrored from Claude Code cannot be evaluated."
+fi
+
+# The permission layer's own failure mode. Denying is the point: an adapter
+# that cannot read the deny list has not established that the call is
+# permitted, and the `|| true` this replaced turned that state into an allow
+# nobody ever saw (2026-09-18 port audit).
+permission_layer_failed() {
+  WORST="deny"
+  REASONS=$(append_text "$REASONS" "This call is denied because the mirrored Claude Code permission rules could not be evaluated, and an unreadable deny list is not permission to proceed. $1")
+}
 
 apply_bash_permission_rules() {
-  local cmd="$1" rule
-  type matching_bash_rule >/dev/null 2>&1 || return 0
-  if rule=$(matching_bash_rule deny "$cmd"); then
+  local cmd="$1" rule status
+  [ -n "$cmd" ] || return 0
+  if [ -n "$PERMISSION_RULES_ERROR" ]; then
+    permission_layer_failed "$PERMISSION_RULES_ERROR"
+    return 0
+  fi
+  rule=$(matching_bash_rule deny "$cmd")
+  status=$?
+  if [ "$status" -eq 0 ]; then
     WORST="deny"
     REASONS=$(append_text "$REASONS" "settings.json denies \`Bash($rule)\` (Claude Code permissions.deny, mirrored under Cursor). A human runs this manually if it is genuinely required.")
-  elif rule=$(matching_bash_rule ask "$cmd"); then
-    WORST="ask"
-    REASONS=$(append_text "$REASONS" "settings.json asks before \`Bash($rule)\` (Claude Code permissions.ask, mirrored under Cursor). Confirm with the user before running it.")
+    return 0
   fi
+  if [ "$status" -ge 2 ]; then
+    permission_layer_failed "$SETTINGS_FILE is missing, unreadable, or not JSON, so no Bash(...) rule could be matched."
+    return 0
+  fi
+  rule=$(matching_bash_rule ask "$cmd")
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    if [ "$(rank ask)" -gt "$(rank "$WORST")" ]; then WORST="ask"; fi
+    REASONS=$(append_text "$REASONS" "settings.json asks before \`Bash($rule)\` (Claude Code permissions.ask, mirrored under Cursor). Confirm with the user before running it.")
+    return 0
+  fi
+  [ "$status" -ge 2 ] && permission_layer_failed "$SETTINGS_FILE is missing, unreadable, or not JSON, so no Bash(...) rule could be matched."
+  return 0
 }
 
 # --- events -------------------------------------------------------------------
@@ -302,13 +353,27 @@ handle_pre_tool_use() {
   emit_permission
 }
 
+deny_read() {
+  # $1 = the one message both the user and the agent are shown.
+  jq -n --arg m "$1" '{permission:"deny", user_message:$m, agent_message:$m}'
+}
+
 handle_before_read() {
-  local file
+  local file status
   file=$(printf '%s' "$INPUT" | jq -r '.file_path // ""')
-  if [ -n "$file" ] && type read_is_denied >/dev/null 2>&1 && read_is_denied "$file"; then
-    jq -n --arg f "$file" '{permission:"deny",
-      user_message:("Read of " + $f + " blocked (R-102): credential files stay off-path. Use the value from memory or ask the user; never echo it."),
-      agent_message:("Read of " + $f + " blocked (R-102): credential files stay off-path. Use the value from memory or ask the user; never echo it.")}'
+  [ -n "$file" ] || { printf '{"permission":"allow"}\n'; return 0; }
+  if [ -n "$PERMISSION_RULES_ERROR" ]; then
+    deny_read "Read of $file is denied because the mirrored Claude Code permission rules could not be evaluated, and an unreadable deny list is not permission to read. $PERMISSION_RULES_ERROR"
+    return 0
+  fi
+  read_is_denied "$file"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    deny_read "Read of $file blocked (R-102): credential files stay off-path. Use the value from memory or ask the user; never echo it."
+    return 0
+  fi
+  if [ "$status" -ge 2 ]; then
+    deny_read "Read of $file is denied because $SETTINGS_FILE is missing, unreadable, or not JSON, so no Read(...) rule could be matched and the deny list is unknown."
     return 0
   fi
   printf '{"permission":"allow"}\n'
