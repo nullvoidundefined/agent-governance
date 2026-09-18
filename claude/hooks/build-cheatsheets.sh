@@ -31,7 +31,7 @@ fi
 # existed. Declared here rather than inside the branch above so that the
 # function is defined on both paths.
 declare -f run_git_on_target >/dev/null 2>&1 || run_git_on_target() { git "$@"; }
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 TRUSTED_FILE="$HOME/.claude/enforce/gate-trusted-repos.txt"
 ORIGIN_URL=$(run_git_on_target remote get-url origin 2>/dev/null || true)

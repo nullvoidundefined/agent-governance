@@ -76,7 +76,7 @@ git add anytype.py; git commit -qm "test: anytype"
 OUT_ANN=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT_ANN" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: ANN401 (a typing.Any parameter) must deny"; exit 1; }
-printf '%s' "$OUT_ANN" | grep -q "ANN401" \
+grep -q "ANN401" <<< "$OUT_ANN" \
   || { echo "FAIL: the ANN401 denial must name the code; got: $OUT_ANN"; exit 1; }
 
 printf 'def total(items):\n    return sum(items)  # type: ignore\n' > blanket.py
@@ -84,7 +84,7 @@ git add blanket.py; git commit -qm "test: blanket ignore"
 OUT_PGH=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT_PGH" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: PGH003 (a blanket type ignore) must deny"; exit 1; }
-printf '%s' "$OUT_PGH" | grep -q "PGH003" \
+grep -q "PGH003" <<< "$OUT_PGH" \
   || { echo "FAIL: the PGH003 denial must name the code; got: $OUT_PGH"; exit 1; }
 printf 'def total(items):\n    return sum(items)  # type: ignore[arg-type]\n' > blanket.py
 git add blanket.py; git commit -qm "test: coded ignore"

@@ -78,8 +78,8 @@ GOT=$(gate "$REPO")
 REPO=$(new_repo)
 write_package_json "$REPO" 1
 GOT=$(gate "$REPO")
-printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected an R-509 block, got: $GOT"; exit 1; }
-printf '%s' "$GOT" | grep -q 'GATE_MARKER_OUTPUT' || { echo "FAIL: block must paste the real command output, got: $GOT"; exit 1; }
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: expected an R-509 block, got: $GOT"; exit 1; }
+grep -q 'GATE_MARKER_OUTPUT' <<< "$GOT" || { echo "FAIL: block must paste the real command output, got: $GOT"; exit 1; }
 
 # 4. stop_hook_active short-circuits the same failing repo.
 GOT=$(gate "$REPO" true)
@@ -101,7 +101,7 @@ write_package_json "$REPO" 0
 mkdir -p "$REPO/.claude"
 printf 'echo VERIFY_SH_MARKER\nexit 1\n' > "$REPO/.claude/verify.sh"
 GOT=$(gate "$REPO")
-printf '%s' "$GOT" | grep -q 'VERIFY_SH_MARKER' || { echo "FAIL: .claude/verify.sh must win over package.json, got: $GOT"; exit 1; }
+grep -q 'VERIFY_SH_MARKER' <<< "$GOT" || { echo "FAIL: .claude/verify.sh must win over package.json, got: $GOT"; exit 1; }
 
 # 8. Memo: a passing check runs once per tree state. The script logs each run.
 REPO=$(new_repo)
@@ -118,8 +118,8 @@ RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
 [ "$RUNS" = "2" ] || { echo "FAIL: expected a re-run after the tree changed, got $RUNS runs"; exit 1; }
 # A red run must not be memoized: flip the check to failing, then back.
 write_package_json "$REPO" 1
-GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected a block after the check turned red"; exit 1; }
-GOT=$(gate "$REPO"); printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: a red tree was memoized as green"; exit 1; }
+GOT=$(gate "$REPO"); grep -q 'R-509' <<< "$GOT" || { echo "FAIL: expected a block after the check turned red"; exit 1; }
+GOT=$(gate "$REPO"); grep -q 'R-509' <<< "$GOT" || { echo "FAIL: a red tree was memoized as green"; exit 1; }
 
 # 10. A check failing once but passing on the automatic retry does not block.
 REPO=$(new_repo)
@@ -135,8 +135,8 @@ rm -f "$FLAG_FILE"
 REPO=$(new_repo)
 write_package_json "$REPO" 1
 GOT=$(CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
-printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: expected an R-509 block after two failures, got: $GOT"; exit 1; }
-printf '%s' "$GOT" | grep -q 'automatic retry' || { echo "FAIL: block reason must note the automatic retry, got: $GOT"; exit 1; }
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: expected an R-509 block after two failures, got: $GOT"; exit 1; }
+grep -q 'automatic retry' <<< "$GOT" || { echo "FAIL: block reason must note the automatic retry, got: $GOT"; exit 1; }
 
 # 12. A hard timeout (124) never retries: runs exactly once.
 REPO=$(new_repo)
@@ -145,8 +145,8 @@ cat > "$REPO/package.json" <<EOF
 { "name": "fixture", "version": "1.0.0", "scripts": { "test": "echo run >> $RUN_LOG; sleep 2" } }
 EOF
 GOT=$(CLAUDE_VERIFY_TIMEOUT=1 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
-printf '%s' "$GOT" | grep -q 'CLAUDE_VERIFY_TIMEOUT' || { echo "FAIL: expected a timeout block, got: $GOT"; exit 1; }
-printf '%s' "$GOT" | grep -qv 'automatic retry' || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
+grep -q 'CLAUDE_VERIFY_TIMEOUT' <<< "$GOT" || { echo "FAIL: expected a timeout block, got: $GOT"; exit 1; }
+grep -qv 'automatic retry' <<< "$GOT" || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
 RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
 [ "$RUNS" = "1" ] || { echo "FAIL: a timeout must not retry, expected 1 run, got $RUNS"; exit 1; }
 
@@ -154,11 +154,11 @@ RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
 REPO=$(new_repo)
 write_package_json "$REPO" 1
 GOT=$(gate "$REPO" false SubagentStop implementer)
-printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: SubagentStop for an implementer must block on red, got: $GOT"; exit 1; }
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: SubagentStop for an implementer must block on red, got: $GOT"; exit 1; }
 GOT=$(gate "$REPO" false SubagentStop general-purpose)
-printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: SubagentStop for an unlisted agent type must block on red, got: $GOT"; exit 1; }
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: SubagentStop for an unlisted agent type must block on red, got: $GOT"; exit 1; }
 GOT=$(gate "$REPO" false SubagentStop)
-printf '%s' "$GOT" | grep -q 'R-509' || { echo "FAIL: SubagentStop with no agent_type must block on red, got: $GOT"; exit 1; }
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: SubagentStop with no agent_type must block on red, got: $GOT"; exit 1; }
 GOT=$(gate "$REPO" false SubagentStop slice-critic)
 [ "$GOT" = "none" ] || { echo "FAIL: SubagentStop for the critic must be skipped, got: $GOT"; exit 1; }
 GOT=$(gate "$REPO" false SubagentStop spec-conformance-review)
@@ -176,7 +176,7 @@ touch "$REPO/claude/CLAUDE.md"
 printf 'echo MONOREPO_SUITE_MARKER\nexit 1\n' > "$REPO/claude/enforce/tests/run-tests.sh"
 printf 'exit 0\n' > "$REPO/claude/hooks/tests/run-tests.sh"
 GOT=$(gate "$REPO")
-printf '%s' "$GOT" | grep -q 'MONOREPO_SUITE_MARKER' || { echo "FAIL: monorepo claude/ suites must be discovered and block on red, got: $GOT"; exit 1; }
+grep -q 'MONOREPO_SUITE_MARKER' <<< "$GOT" || { echo "FAIL: monorepo claude/ suites must be discovered and block on red, got: $GOT"; exit 1; }
 
 # 14. P2-5 (2026-09-17 audit): the turn-end gate ran two checks in this repo
 # while pre-push and CI ran three, so a turn could end green on a tree whose
@@ -192,7 +192,7 @@ printf 'exit 0
 printf 'console.log("TRANSLATOR_MARKER"); process.exit(1);
 ' > "$REPO/translate/codex.mjs"
 GOT=$(gate "$REPO")
-printf '%s' "$GOT" | grep -q 'TRANSLATOR_MARKER' || { echo "FAIL: a stale codex port must block the turn, got: $GOT"; exit 1; }
+grep -q 'TRANSLATOR_MARKER' <<< "$GOT" || { echo "FAIL: a stale codex port must block the turn, got: $GOT"; exit 1; }
 
 REPO=$(new_repo)
 mkdir -p "$REPO/claude/enforce/tests" "$REPO/claude/hooks/tests"

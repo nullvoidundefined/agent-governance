@@ -33,7 +33,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$FIX/skills/sample-skill/scripts/check
 CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK" --update >/dev/null
 printf '#!/usr/bin/env bash\n# tampered\nexit 0\n' > "$FIX/skills/sample-skill/scripts/check.sh"
 OUT_SKILL=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
-printf '%s' "$OUT_SKILL" | grep -q 'skills/sample-skill/scripts/check.sh' || { echo "FAIL: expected drift warning naming skills/sample-skill/scripts/check.sh"; exit 1; }
+grep -q 'skills/sample-skill/scripts/check.sh' <<< "$OUT_SKILL" || { echo "FAIL: expected drift warning naming skills/sample-skill/scripts/check.sh"; exit 1; }
 # Leave the fixture as the live-vs-repo section below expects it (hooks/ and
 # enforce/ only), with the manifest regenerated to match.
 rm -rf "$FIX/skills"

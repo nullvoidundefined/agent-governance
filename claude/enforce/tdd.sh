@@ -117,9 +117,9 @@ classify_red() {
   tests=$(printf '%s' "$record" | jq '.assertionResults | length')
   message=$(printf '%s' "$record" | jq -r '.message // ""')
   if [ "$tests" -eq 0 ]; then
-    if printf '%s' "$message" | grep -qE "$PARSE_FAILURE"; then
+    if grep -qE "$PARSE_FAILURE" <<< "$message"; then
       die "$rel does not parse; a broken test is not a RED test. First line: $(printf '%s' "$message" | head -1)"
-    elif printf '%s' "$message" | grep -qE "$MISSING_MODULE"; then
+    elif grep -qE "$MISSING_MODULE" <<< "$message"; then
       printf 'missing-module'
     elif [ -z "$message" ]; then
       die "$rel contains no tests"
@@ -136,8 +136,8 @@ classify_red() {
   fi
   local failures
   failures=$(printf '%s' "$record" | jq -r '[.assertionResults[].failureMessages[]] | join("\n")')
-  if printf '%s' "$failures" | grep -qE "$MISSING_MODULE"; then printf 'missing-module'
-  elif printf '%s' "$failures" | grep -qE "$ASSERTION"; then printf 'assertion'
+  if grep -qE "$MISSING_MODULE" <<< "$failures"; then printf 'missing-module'
+  elif grep -qE "$ASSERTION" <<< "$failures"; then printf 'assertion'
   else die "$rel fails for a reason this script does not classify: $(printf '%s' "$failures" | head -1)"
   fi
 }
@@ -226,7 +226,7 @@ cmd_red() {
   tests_pattern=$(jq -r '.patterns.tests' "$POLICY")
   for f in "$@"; do
     rel=$(relative "$f")
-    printf '%s' "$rel" | grep -qE "$tests_pattern" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
+    grep -qE "$tests_pattern" <<< "$rel" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
     rels+=("$rel")
   done
   run_suite
@@ -335,9 +335,9 @@ cmd_validate() {
   violations=$(printf '%s\n' "$changed" | while IFS= read -r p; do
     [ -n "$p" ] || continue
     if [ "$mode" = allow ]; then
-      printf '%s' "$p" | grep -qE "$pattern" || printf '%s\n' "$p"
+      grep -qE "$pattern" <<< "$p" || printf '%s\n' "$p"
     else
-      printf '%s' "$p" | grep -qE "$pattern" && printf '%s\n' "$p"
+      grep -qE "$pattern" <<< "$p" && printf '%s\n' "$p"
     fi
   done)
   [ -z "$violations" ] || die "$role wrote outside its boundary (R-411): $(printf '%s' "$violations" | tr '\n' ' '). Discard those writes (git checkout/rm) and re-dispatch; the role file states the boundary, protected-path-guard enforces it in subagent context."

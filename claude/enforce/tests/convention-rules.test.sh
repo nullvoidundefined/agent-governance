@@ -34,7 +34,7 @@ run() { node "$E/lint.mjs" "$TMP/$1" >/dev/null 2>&1; }
 reports() {
   local report
   report=$(node "$E/lint.mjs" "$TMP/$1" 2>&1 || true)
-  printf '%s' "$report" | grep -q "$2"
+  grep -q "$2" <<< "$report"
 }
 
 # --- R-320 ---------------------------------------------------------------

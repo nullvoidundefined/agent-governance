@@ -13,7 +13,7 @@ set -uo pipefail
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
-if ! printf '%s' "$CMD" | grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[[:space:]]'; then
+if ! grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[[:space:]]' <<< "$CMD"; then
   exit 0
 fi
 

@@ -20,7 +20,7 @@ for t in "$DIR"/*.test.sh; do
   # Require PASS and reject any FAIL line: a fixture printing per-case
   # "FAIL: ..." lines while exiting 0 was reported ok by the old grep
   # (2026-09-16 audit, Testing item 4).
-  if out=$(bash "$t" 2>&1) && printf '%s' "$out" | grep -q "PASS" && ! printf '%s' "$out" | grep -q "FAIL"; then
+  if out=$(bash "$t" 2>&1) && grep -q "PASS" <<< "$out" && ! grep -q "FAIL" <<< "$out"; then
     echo "ok   $name"
   else
     echo "FAIL $name"; printf '%s\n' "$out" | tail -3; fail=1

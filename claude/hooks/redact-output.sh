@@ -57,7 +57,7 @@ PATTERN+='|AIza[0-9A-Za-z_-]{35}'
 PATTERN+='|postgres(ql)?://[^:]+:[^@]{8,}@[^\s]+'
 PATTERN+='|(SECRET|TOKEN|PASSWORD|CREDENTIAL|API[_-]?KEY|SECRET[_-]?KEY|ACCESS[_-]?KEY|AUTH[_-]?KEY|PRIVATE[_-]?KEY)[=:][[:space:]]*[A-Za-z0-9_/+=~.-]{20,}'
 
-if printf '%s' "$RESPONSE" | grep -qE "$PATTERN"; then
+if grep -qE "$PATTERN" <<< "$RESPONSE"; then
   # Perl handles the redaction; -0777 slurps the whole response so the
   # private-key rule can span lines (the body, not just the BEGIN header).
   REDACTED=$(printf '%s' "$RESPONSE" | perl -0777 -pe '

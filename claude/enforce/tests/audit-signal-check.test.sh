@@ -37,9 +37,9 @@ for i in 1 2 3 4; do
 done
 
 GOT=$(advisory 'git push origin main')
-printf '%s' "$GOT" | grep -q 'src/handlers' || { echo "FAIL: advisory missing src/handlers, got: $GOT"; exit 1; }
-printf '%s' "$GOT" | grep -q 'R-801' || { echo "FAIL: advisory missing R-801, got: $GOT"; exit 1; }
-printf '%s' "$GOT" | grep -q 'src/services' && { echo "FAIL: under-threshold src/services flagged: $GOT"; exit 1; }
+grep -q 'src/handlers' <<< "$GOT" || { echo "FAIL: advisory missing src/handlers, got: $GOT"; exit 1; }
+grep -q 'R-801' <<< "$GOT" || { echo "FAIL: advisory missing R-801, got: $GOT"; exit 1; }
+grep -q 'src/services' <<< "$GOT" && { echo "FAIL: under-threshold src/services flagged: $GOT"; exit 1; }
 
 # Advisory only: the permission decision is never set.
 GOT=$(decision 'git push origin main')
@@ -63,7 +63,7 @@ GOT=$(advisory 'git push origin main')
 # No audit on record -> 30-day fallback window catches the commits and says so.
 rm docs/audits/*-engineering*.md
 GOT=$(advisory 'git push origin main')
-printf '%s' "$GOT" | grep -qi 'no engineering audit' || { echo "FAIL: expected no-audit-on-record advisory, got: $GOT"; exit 1; }
+grep -qi 'no engineering audit' <<< "$GOT" || { echo "FAIL: expected no-audit-on-record advisory, got: $GOT"; exit 1; }
 
 # Nested docs trees are excluded like the top-level one (2026-09-16 audit
 # P1-3: claude/docs was counted as an engineering surface despite the header
@@ -74,7 +74,7 @@ for i in 1 2 3 4 5; do
   git add -A && git commit -qm "docs: note $i"
 done
 GOT=$(advisory 'git push origin main')
-printf '%s' "$GOT" | grep -q 'claude/docs' && { echo "FAIL: nested docs tree counted as a surface: $GOT"; exit 1; }
+grep -q 'claude/docs' <<< "$GOT" && { echo "FAIL: nested docs tree counted as a surface: $GOT"; exit 1; }
 
 # Non-push commands untouched.
 GOT=$(advisory 'git status')

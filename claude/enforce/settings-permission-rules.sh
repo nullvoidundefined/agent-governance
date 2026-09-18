@@ -194,7 +194,7 @@ read_is_denied() {
   absolute=$(absolute_read_path "$target")
   while IFS= read -r pattern; do
     [ -n "$pattern" ] || continue
-    if printf '%s' "$absolute" | grep -qE "$(read_rule_regex "$pattern")"; then
+    if grep -qE "$(read_rule_regex "$pattern")" <<< "$absolute"; then
       return 0
     fi
   done <<< "$patterns"

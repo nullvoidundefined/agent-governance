@@ -13,7 +13,7 @@ export FEATURE_CREATE_TEST_CMD=true
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { printf '%s' "$OUT" | grep -qF "$1"; }
+reports() { grep -qF "$1" <<< "$OUT"; }
 
 # make_repo <dir> <default-branch>: a project with docs/ trees and one plan.
 make_repo() {

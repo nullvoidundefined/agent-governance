@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$SLUG" ] || die "usage: scaffold.sh <slug> [plan-path] [--ticket <key>] [--worktree-parent <dir>] [--base <branch>] [--no-fetch]" 2
-printf '%s' "$SLUG" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
+grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' <<< "$SLUG" || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
 
 # --- Step 1: inputs --------------------------------------------------------
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository" 8

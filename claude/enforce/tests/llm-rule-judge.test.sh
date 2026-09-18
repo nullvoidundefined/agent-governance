@@ -140,7 +140,7 @@ done
 ERRNONE=$(printf '%s' "$PAYLOAD" | env -u ANTHROPIC_API_KEY -u CLAUDE_JUDGE_CMD \
   PATH="$STUB_DIR:$PATH" CLAUDE_ENFORCE_BASE=HEAD~1 \
   CLAUDE_JUDGE_KEYCHAIN_SERVICE="claude-test-no-such-service" "$HOOK" 2>&1 >/dev/null)
-printf '%s' "$ERRNONE" | grep -q "no API key" \
+grep -q "no API key" <<< "$ERRNONE" \
   || { echo "FAIL: with no store holding a key the judge must report that it skipped; got $ERRNONE"; exit 1; }
 rm -rf "$STUB_DIR"
 

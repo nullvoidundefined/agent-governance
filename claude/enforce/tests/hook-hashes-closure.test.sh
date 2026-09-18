@@ -69,7 +69,7 @@ fi
 
 while IFS= read -r path; do
   [ -n "$path" ] || continue
-  printf '%s\n' "$MANIFEST_PATHS" | grep -qxF "$path" || {
+  grep -qxF "$path" <<< "$MANIFEST_PATHS" || {
     echo "FAIL: $path is covered by the R-203 guard but absent from the manifest (new file without a --update)"
     fail=1
   }

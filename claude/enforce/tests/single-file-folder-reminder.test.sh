@@ -15,7 +15,7 @@ git add .; git commit -q -m add
 
 # Folder with exactly one source module -> advisory on stderr naming the folder.
 ERR=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR" | grep -q "src/voices" || { echo "FAIL: expected single-file-folder advisory for src/voices"; exit 1; }
+grep -q "src/voices" <<< "$ERR" || { echo "FAIL: expected single-file-folder advisory for src/voices"; exit 1; }
 # It must NOT block (no deny JSON on stdout).
 OUT=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>/dev/null)
 [ -z "$OUT" ] || { echo "FAIL: advisory must not deny"; exit 1; }

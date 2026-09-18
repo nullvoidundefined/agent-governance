@@ -51,7 +51,7 @@ case "$FILE" in */__tests__/* | */tests/* | */spec/* | */e2e/*) is_test=1 ;; esa
 # (anti-pattern 8): a skip line naming a triage ID is a tracked deferral and
 # passes; a bare one is the suppression the rule forbids.
 if [ "$is_test" -eq 1 ]; then
-  if printf '%s' "$ADDED" | grep -qE '\b(it|test|describe|context|suite)\.only\(|\b(fit|fdescribe)\('; then
+  if grep -qE '\b(it|test|describe|context|suite)\.only\(|\b(fit|fdescribe)\(' <<< "$ADDED"; then
     deny "This write marks a test exclusive (R-401). '.only' silences every other test in the file, and a committed .only silences them for everyone. Run the single file or the single name from the command line instead."
   fi
   SKIPS=$(printf '%s' "$ADDED" | grep -E '\b(it|test|describe|context|suite)\.(skip|fixme)\(|\b(xit|xtest|xdescribe)\(|@pytest\.mark\.skip\b|\bpytest\.skip\(|\bt\.Skipf?\(|,[[:space:]]*skip:[[:space:]]*true' || true)

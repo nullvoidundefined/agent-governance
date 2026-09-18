@@ -20,9 +20,9 @@ printf '# Audit report decoy\n' > docs/audits/2026-01-01-engineering.md
 printf '# Handoff\n\n- Last commit: `%s` chore: init\n- next: continue\n' "$GOOD_SHA" > docs/session-handoff/session-handoff.md
 OUT=$(echo '{}' | "$HOOK")
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext')
-printf '%s' "$CTX" | grep -q 'session-handoff/session-handoff.md' || { echo "FAIL: canonical handoff not injected"; exit 1; }
-printf '%s' "$CTX" | grep -q 'SHA-verified' || { echo "FAIL: expected SHA-verified verdict"; exit 1; }
-printf '%s' "$CTX" | grep -q 'Audit report decoy' && { echo "FAIL: audit report injected as handoff"; exit 1; } || true
+grep -q 'session-handoff/session-handoff.md' <<< "$CTX" || { echo "FAIL: canonical handoff not injected"; exit 1; }
+grep -q 'SHA-verified' <<< "$CTX" || { echo "FAIL: expected SHA-verified verdict"; exit 1; }
+grep -q 'Audit report decoy' <<< "$CTX" && { echo "FAIL: audit report injected as handoff"; exit 1; } || true
 
 # Handoff with an unknown SHA -> injected but labeled UNVERIFIED.
 printf '# Handoff\n\n- Last commit: `deadbeefcafe` mystery\n' > docs/session-handoff/session-handoff.md

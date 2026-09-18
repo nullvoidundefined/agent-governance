@@ -11,8 +11,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { printf '%s' "$OUT" | grep -qF "$1"; }
-not_reports() { ! printf '%s' "$OUT" | grep -qF "$1"; }
+reports() { grep -qF "$1" <<< "$OUT"; }
+not_reports() { ! grep -qF "$1" <<< "$OUT"; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
 REPO="$SB/repo"; mkdir -p "$REPO/src/services" "$REPO/src/handlers" "$REPO/app"
