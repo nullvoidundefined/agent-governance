@@ -8,10 +8,12 @@
 # a guessed started_at 21 minutes early, overstating actual_minutes (53 vs 31)
 # and inverting the estimate_ratio recalibration (1.18 vs 0.69).
 #
-# Cases: the transcript's first timestamp wins; the record is write-once, so
-# a compact or resume re-injects the original value; a transcript not yet on
-# disk falls back to the hook's own clock; a payload with no transcript_path
-# writes nothing; a stale record from another session is pruned.
+# Cases: the transcript's first valid timestamp wins, even after invalid
+# candidates; the record is write-once, so a compact or resume re-injects the
+# original value; a transcript not yet on disk falls back to the hook's own
+# clock, but a transcript already on disk with no valid timestamp writes
+# nothing; a payload with no transcript_path writes nothing; a stale record
+# from another session is pruned.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/session-start.sh"
@@ -71,6 +73,18 @@ check "context carries started_at from the transcript" ctx_has "$CTX" "started_a
 check "context names the session id" ctx_has "$CTX" "$SID"
 check "context renders the record path under ~, never the real home" ctx_lacks "$CTX" "$SANDBOX"
 
+# --- Invalid timestamps are skipped until a real instant appears ---
+SID_SKIPBAD="11111111-aaaa-bbbb-cccc-000000000005"
+TRANSCRIPT_SKIPBAD="$KEY_DIR/$SID_SKIPBAD.jsonl"
+RECORD_SKIPBAD="$KEY_DIR/session-start.$SID_SKIPBAD"
+{
+  printf '%s\n' '{"type":"user","timestamp":"2026-13-45T25:61:00Z"}'
+  printf '%s\n' '{"type":"assistant","timestamp":"2026-09-18T09:00:00.000Z"}'
+} > "$TRANSCRIPT_SKIPBAD"
+CTX_SKIPBAD=$(get_ctx "$SANDBOX" "$(payload_for startup "$TRANSCRIPT_SKIPBAD")")
+check "an invalid transcript timestamp does not block a later valid one" file_holds "$RECORD_SKIPBAD" "2026-09-18T09:00:00.000Z"
+check "context carries the later valid timestamp" ctx_has "$CTX_SKIPBAD" "started_at: 2026-09-18T09:00:00.000Z"
+
 # --- Write-once: a later start of the same session keeps the original ---
 printf '%s\n' '{"type":"user","timestamp":"2026-09-19T00:00:00.000Z"}' > "$TRANSCRIPT"
 CTX_COMPACT=$(get_ctx "$SANDBOX" "$(payload_for compact "$TRANSCRIPT")")
@@ -89,11 +103,19 @@ printf '2026-99-99T99:99:99Z\n' > "$RECORD"
 get_ctx "$SANDBOX" "$(payload_for compact "$TRANSCRIPT")" >/dev/null
 check "a shape-valid but impossible record is rederived" file_holds "$RECORD" "2026-09-19T00:00:00.000Z"
 
-# --- A transcript timestamp that is not a real instant is not trusted ---
+# --- A transcript already on disk with no valid timestamp does not pin a clock fallback ---
 SID_BADTS="11111111-aaaa-bbbb-cccc-000000000004"
 printf '%s\n' '{"type":"user","timestamp":"2026-13-45T25:61:00Z"}' > "$KEY_DIR/$SID_BADTS.jsonl"
-get_ctx "$SANDBOX" "$(payload_for startup "$KEY_DIR/$SID_BADTS.jsonl")" >/dev/null
-check "an impossible transcript timestamp is not recorded" is_iso_utc_valid "$(cat "$KEY_DIR/session-start.$SID_BADTS" 2>/dev/null)"
+CTX_BADTS=$(get_ctx "$SANDBOX" "$(payload_for startup "$KEY_DIR/$SID_BADTS.jsonl")")
+check "an impossible transcript timestamp does not create a record" no_file "$KEY_DIR/session-start.$SID_BADTS"
+check "an impossible transcript timestamp is not injected" ctx_lacks "$CTX_BADTS" "started_at:"
+
+# --- Startup with a present transcript but no timestamp writes nothing ---
+SID_PENDING="11111111-aaaa-bbbb-cccc-000000000006"
+printf '%s\n' '{"type":"summary","summary":"not written yet"}' > "$KEY_DIR/$SID_PENDING.jsonl"
+CTX_PENDING=$(get_ctx "$SANDBOX" "$(payload_for startup "$KEY_DIR/$SID_PENDING.jsonl")")
+check "startup without a transcript timestamp writes no record" no_file "$KEY_DIR/session-start.$SID_PENDING"
+check "startup without a transcript timestamp injects no start" ctx_lacks "$CTX_PENDING" "started_at:"
 
 # --- Resume or compact with no record and no transcript timestamp: the ---
 # --- clock is not the start, so nothing is recorded or claimed ---
@@ -132,7 +154,7 @@ touch -t "$(date -v-20d +%Y%m%d%H%M 2>/dev/null || date -d '20 days ago' +%Y%m%d
 # 14 days and 2 hours: past the TTL, but a whole-day `-mtime +14` keeps it.
 JUST_STALE="$KEY_DIR/session-start.99999999-aaaa-bbbb-cccc-000000000010"
 printf '2026-08-01T00:00:00Z\n' > "$JUST_STALE"
-touch -t "$(date -v-14d -v-2H +%Y%m%d%H%M 2>/dev/null || date -d '14 days 2 hours ago' +%Y%m%d%H%M)" "$JUST_STALE"
+touch -t "$(date -v-14d -v-2H +%Y%m%d%H%M 2>/dev/null || date -d '14 days ago 2 hours ago' +%Y%m%d%H%M)" "$JUST_STALE"
 FRESH_OTHER="$KEY_DIR/session-start.99999999-aaaa-bbbb-cccc-000000000011"
 printf '2026-08-01T00:00:00Z\n' > "$FRESH_OTHER"
 touch -t "$(date -v-13d +%Y%m%d%H%M 2>/dev/null || date -d '13 days ago' +%Y%m%d%H%M)" "$FRESH_OTHER"

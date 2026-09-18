@@ -440,16 +440,19 @@ check_interrupted_tasks() (
 # The source is the first `timestamp` in the session transcript, the same
 # value the transcript would show a human auditing the session afterwards; a
 # transcript not yet on disk (a fresh startup) falls back to this hook's own
-# clock, which is the session start by definition, but only on a startup or
-# clear source: on resume or compact the clock is later than the start, so a
-# session with neither a record nor a transcript timestamp gets no record and
-# no block rather than a wrong one. The record is write-once: compact and
-# resume re-read it rather than rederive it, and a record that is not a real
-# UTC instant is replaced. Records of other sessions older than 14 days
-# (20160 minutes, exact, matching check_interrupted_tasks rather than find's
-# whole-day -mtime rounding) are pruned. <key> and <session-id> derive from
-# transcript_path exactly as they do in task-state-tracker.sh; no
-# transcript_path, no record, which is the case under the Cursor adapter.
+# clock, which is the session start by definition, but only when the transcript
+# path does not exist yet: if the file exists but its first 50 lines do not yet
+# yield a real timestamp, no clock fallback is persisted and a later
+# startup/resume/compact may still record the transcript-derived value. On
+# resume or compact the clock is later than the start, so a session with
+# neither a record nor a transcript timestamp gets no record and no block
+# rather than a wrong one. The record is write-once: compact and resume re-read
+# it rather than rederive it, and a record that is not a real UTC instant is
+# replaced. Records of other sessions older than 14 days (1209600 seconds,
+# exact, matching check_interrupted_tasks rather than find's rounded age tests)
+# are pruned. <key> and <session-id> derive from transcript_path exactly as
+# they do in task-state-tracker.sh; no transcript_path, no record, which is the
+# case under the Cursor adapter.
 # Runs in a `set +e` subshell: advisory, never load-bearing on session start.
 #
 # is_utc_instant accepts `YYYY-MM-DDTHH:MM:SS[.fff]Z` only when it names a
@@ -465,6 +468,7 @@ is_utc_instant() {
 record_session_start() (
   set +e
   local transcript_path="$1" source="$2" key session_id state_dir record started_at
+  local file now_epoch file_epoch
 
   case "$transcript_path" in
     */*) key="${transcript_path%/*}"; key="${key##*/}" ;;
@@ -478,7 +482,15 @@ record_session_start() (
   state_dir="$HOME/.claude/projects/$key"
   record="$state_dir/session-start.$session_id"
   mkdir -p "$state_dir" 2>/dev/null || return 0
-  find "$state_dir" -maxdepth 1 -name 'session-start.*' ! -name "session-start.$session_id" -mmin +20160 -delete 2>/dev/null
+  now_epoch=$(date -u +%s)
+  for file in "$state_dir"/session-start.*; do
+    [ -e "$file" ] || continue
+    [ "$file" = "$record" ] && continue
+    file_epoch=$(date -r "$file" +%s 2>/dev/null) || continue
+    if [ $(( now_epoch - file_epoch )) -gt 1209600 ]; then
+      rm -f "$file" 2>/dev/null
+    fi
+  done
 
   started_at=$(head -1 "$record" 2>/dev/null)
   if ! is_utc_instant "$started_at"; then
@@ -492,7 +504,10 @@ record_session_start() (
       | jq -Rr 'fromjson? | objects | .timestamp // empty | strings' 2>/dev/null)
     if ! is_utc_instant "$started_at"; then
       case "$source" in
-        startup | clear | "") started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) ;;
+        startup | clear | "")
+          [ ! -e "$transcript_path" ] || return 0
+          started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ;;
         *) return 0 ;;
       esac
     fi
