@@ -179,7 +179,10 @@ package_scripts_change() {
     next=$(printf '%s' "$INPUT" | jq -r '.tool_input.content // ""' | jq -c '[.scripts.test, .scripts.typecheck, .scripts["type-check"]]' 2>/dev/null)
     [ -n "$next" ] && [ "$current" != "$next" ]
   else
-    printf '%s' "$INPUT" | jq -r '(.tool_input.old_string // "") + "\n" + (.tool_input.new_string // "")' | grep -qE '"(test|typecheck|type-check)"[[:space:]]*:'
+    # Process substitution, not a pipe: under pipefail, grep -q exiting at an
+    # early match kills jq with SIGPIPE on output over 64KB (IAN-120).
+    grep -qE '"(test|typecheck|type-check)"[[:space:]]*:' \
+      < <(printf '%s' "$INPUT" | jq -r '(.tool_input.old_string // "") + "\n" + (.tool_input.new_string // "")')
   fi
 }
 

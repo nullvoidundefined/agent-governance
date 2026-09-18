@@ -408,6 +408,34 @@ printf '%s' "$EMPTY_TS_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK"
 
 check "an empty-but-valid log is still pruned" no_file "$EMPTY_TS_LOG"
 
+# --- Dedupe against a log larger than the pipe buffer (IAN-120) ---
+#
+# The dedupe piped sed over the whole log into `grep -qFx`. Once the log
+# outgrew the pipe buffer, grep exited at an early match while sed was still
+# writing, sed died of SIGPIPE, and under pipefail the match read as a miss,
+# so every session re-appended a line the log already held.
+LARGE_LOG_HOME="$SANDBOX/large-log-home"
+LARGE_LOG_MEM_DIR="$LARGE_LOG_HOME/.claude/projects/-large-log-project/memory"
+LARGE_LOG_FIRES="$LARGE_LOG_HOME/.claude/global-memory/rule_fires.md"
+LARGE_LOG_MISSES="$LARGE_LOG_HOME/.claude/global-memory/rule_misses.md"
+mkdir -p "$LARGE_LOG_MEM_DIR" "$LARGE_LOG_HOME/.claude/global-memory"
+cp "$MEM_DIR/feedback.md" "$LARGE_LOG_MEM_DIR/feedback.md"
+{
+  printf '# Rule fires log\n\nheader\n\n2020-01-01 R-207 no-em-dash.sh blocked an Edit; replaced with colon\n'
+  awk 'BEGIN { for (i = 0; i < 4096; i++) print "2020-01-02 R-999 an unrelated fire recorded in an older session " i }'
+} > "$LARGE_LOG_FIRES"
+{
+  printf '# Rule misses log\n\nheader\n\n2020-01-01 R-102 MISS leaked a value via sed; gap: codify compare-in-shell\n'
+  awk 'BEGIN { for (i = 0; i < 4096; i++) print "2020-01-02 R-999 MISS an unrelated miss recorded in an older session " i }'
+} > "$LARGE_LOG_MISSES"
+# log_exceeds_pipe_buffer <file>: true when the file is larger than 64KB, so
+# the case above cannot pass merely because the log fit in the pipe buffer.
+log_exceeds_pipe_buffer() { [ "$(wc -c < "$1" | tr -d ' ')" -gt 65536 ]; }
+check "the large fires log exceeds the 64KB pipe buffer" log_exceeds_pipe_buffer "$LARGE_LOG_FIRES"
+HOME="$LARGE_LOG_HOME" bash "$HOOK" < /dev/null
+check "fire not duplicated in a log over 64KB" count_is "$LARGE_LOG_FIRES" "no-em-dash.sh blocked an Edit" 1
+check "miss not duplicated in a log over 64KB" count_is "$LARGE_LOG_MISSES" "R-102 MISS leaked a value via sed" 1
+
 if [ "$fail" -eq 0 ]; then
     echo "ALL PASS"
     exit 0
