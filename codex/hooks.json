@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh secret-scan no-em-dash fix-commit-requires-test conflict-markers commit-message-guard destructive-db-guard destructive-command-guard codex-billing-guard protected-path-guard global-repo-push-guard git-workflow-guard push-eslint-gate push-ruff-gate push-rubocop-gate push-golangci-gate push-feature-docs-gate constant-change-guard audit-signal-check llm-rule-judge single-file-folder-reminder build-cheatsheets",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh secret-scan no-em-dash fix-commit-requires-test conflict-markers commit-message-guard destructive-db-guard destructive-command-guard codex-billing-guard protected-path-guard global-repo-push-guard git-workflow-guard push-eslint-gate push-ruff-gate push-rubocop-gate push-golangci-gate push-feature-docs-gate constant-change-guard audit-signal-check single-file-folder-reminder build-cheatsheets",
             "timeout": 60,
             "statusMessage": "Rebuilding feature cheat sheets"
           }

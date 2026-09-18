@@ -22,10 +22,10 @@ Rules that had automation behind them (the em-dash hook, Prettier) never slipped
 |------|-------------|------|----------|
 | `regex` | a hook doing cheap path/string checks | per edit (Write/Edit) or per Bash call | R-312, R-306, R-311, R-103 |
 | `ast` | the bundled ESLint config (`lint.mjs`) run by `push-eslint-gate.sh` | per push | R-323, R-321, R-319, R-326, R-324, R-303 |
-| `llm-judge` | `llm-rule-judge.sh` (a fast model over the diff) | per push | R-315, R-316, R-317, R-325 |
+| `llm-judge` | `judge-diff.sh` (a fast model over the diff), run by the `rule-judge` CI workflow | per pull request | R-315, R-316, R-317, R-325, R-334 |
 | `advisory` | a non-blocking warning or confirm prompt (reminder, push-time stderr, or `ask`) | per edit or per push | R-310, R-309, R-506, R-513, R-801 |
 
-Per-edit checks must stay cheap (no Node, no network). All heavy work (ESLint, the model call) runs once per push.
+Per-edit checks must stay cheap (no Node, no network). Heavy work runs once per push (ESLint) or once per pull request in CI (the model call).
 
 The row above lists exactly the manifest's `llm-judge` rows and nothing else. It listed seven rules until 2026-09-17 (audit P2-4): R-320 and R-322 left the tier in the 2026-09-04 reclassification as pure AST questions, R-318's own Spec in `rulebook/reference.md` argues against ever judging it ("a non-deterministic verdict on an undecidable property is confidence theater"), and R-325's documented judge half had no manifest row, so the judge never evaluated the one thing the doc said it decided. Only that last one was a defect, and it is fixed; the other three were the table drifting ahead of decisions already taken.
 

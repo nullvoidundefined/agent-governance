@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Test harness for pre-push.sample (backs R-509 at the git pre-push boundary).
+# Test harness for pre-push.sample.
 #
-# 2026-09-16 audit P1-2: the sample resolved suites from $HOME/.claude (the
-# synced live copy) instead of the repo being pushed, so an unsynced change
-# was validated against stale code. These cases pin the resolution order:
-# claude/ monorepo layout first, toplevel governance layout second, and the
-# live-copy fallback only when the checkout carries no suites.
+# Since 2026-09-18 (IAN-98) the sample runs no fixture suite: the full suites
+# are CI's required `fixtures` check, and the local copy doubled every push's
+# wait. It still runs the port checks from enforce/port-checks.sh. These cases
+# pin both halves: red suites in either governance layout no longer block a
+# push, and a red port check still does.
 #
 # Run: hooks/tests/pre-push-sample.test.sh
 
@@ -37,31 +37,35 @@ write_suites() { # root, enforce-exit, hooks-exit
 
 run_sample() { (cd "$1" && bash "$SAMPLE" >/dev/null 2>&1); }
 
-# 1. Monorepo layout, red claude/ suite: push aborts.
+# write_port_checks <repo> <exit status>: a port-check inventory whose one
+# check exits with the given status, standing in for node translate/*.mjs.
+write_port_checks() {
+    mkdir -p "$1/claude/enforce"
+    printf 'listPortChecks() { echo "exit %s"; }\n' "$2" > "$1/claude/enforce/port-checks.sh"
+}
+
+# 1. Monorepo layout, red claude/ suites: push proceeds; suites run in CI.
 REPO=$(new_repo mono-red)
-write_suites "$REPO/claude" 1 0
-if run_sample "$REPO"; then echo "FAIL: monorepo red suite must abort"; fail=1; else echo "PASS: monorepo red suite aborts"; fi
+write_suites "$REPO/claude" 1 1
+if run_sample "$REPO"; then echo "PASS: monorepo red suites no longer block the push"; else echo "FAIL: pre-push must not run the monorepo suites"; fail=1; fi
 
-# 2. Monorepo layout, green suites: push proceeds.
-REPO=$(new_repo mono-green)
-write_suites "$REPO/claude" 0 0
-if run_sample "$REPO"; then echo "PASS: monorepo green suites proceed"; else echo "FAIL: monorepo green suites must proceed"; fail=1; fi
-
-# 3. The pushed repo wins over a red live copy: an unsynced green checkout
-#    must not be failed by stale ~/.claude state.
-REPO=$(new_repo checkout-wins)
-write_suites "$REPO/claude" 0 0
-write_suites "$HOME/.claude" 1 1
-if run_sample "$REPO"; then echo "PASS: pushed repo wins over red live copy"; else echo "FAIL: pushed repo must win over the live copy"; fail=1; fi
-rm -rf "$HOME/.claude"
-
-# 4. Toplevel governance layout is still recognized.
+# 2. Toplevel governance layout, red suites: push proceeds too.
 REPO=$(new_repo legacy-red)
-write_suites "$REPO" 1 0
-if run_sample "$REPO"; then echo "FAIL: toplevel red suite must abort"; fail=1; else echo "PASS: toplevel red suite aborts"; fi
+write_suites "$REPO" 1 1
+if run_sample "$REPO"; then echo "PASS: toplevel red suites no longer block the push"; else echo "FAIL: pre-push must not run the toplevel suites"; fail=1; fi
 
-# 5. No suites anywhere: fail open (a suite-less repo is not blocked).
+# 3. A red port check aborts the push.
+REPO=$(new_repo port-red)
+write_port_checks "$REPO" 1
+if run_sample "$REPO"; then echo "FAIL: a red port check must abort"; fail=1; else echo "PASS: a red port check aborts"; fi
+
+# 4. A green port check proceeds.
+REPO=$(new_repo port-green)
+write_port_checks "$REPO" 0
+if run_sample "$REPO"; then echo "PASS: a green port check proceeds"; else echo "FAIL: a green port check must proceed"; fail=1; fi
+
+# 5. Nothing to check: fail open.
 REPO=$(new_repo bare)
-if run_sample "$REPO"; then echo "PASS: suite-less repo proceeds"; else echo "FAIL: suite-less repo must proceed"; fail=1; fi
+if run_sample "$REPO"; then echo "PASS: a repo with nothing to check proceeds"; else echo "FAIL: a repo with nothing to check must proceed"; fail=1; fi
 
 exit "$fail"
