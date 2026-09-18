@@ -16,6 +16,9 @@
 #       (2026-09-15 retry addition).
 #   11. A check failing twice in a row blocks, naming the retry in the reason.
 #   12. A hard timeout (124) never retries.
+#   13. A vitest project runs only the tests related to the changed source,
+#       not the full npm test (IAN-98).
+#   14. A changed package manifest is a harness file, so the full suite runs.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/verification-gate.sh"
@@ -140,12 +143,19 @@ grep -q 'R-509' <<< "$GOT" || { echo "FAIL: expected an R-509 block after two fa
 grep -q 'automatic retry' <<< "$GOT" || { echo "FAIL: block reason must note the automatic retry, got: $GOT"; exit 1; }
 
 # 12. A hard timeout (124) never retries: runs exactly once.
+# The check is a .claude/verify.sh whose first statement logs the run, not an
+# npm script: on 2026-09-18, at a load average near 150, npm did not reach the
+# script body inside a 1s timeout, the log stayed empty, and the case failed
+# with "got 0" although the gate never retried. A plain bash script starts
+# well inside the 5s timeout even under that load, so each attempt the gate
+# makes is logged, and a gate that retried after a timeout still shows 2 runs.
+# `exec sleep` makes the sleep the process the gate kills, so no orphaned
+# sleep outlives the case.
 REPO=$(new_repo)
 RUN_LOG=$(mktemp)
-cat > "$REPO/package.json" <<EOF
-{ "name": "fixture", "version": "1.0.0", "scripts": { "test": "echo run >> $RUN_LOG; sleep 2" } }
-EOF
-GOT=$(CLAUDE_VERIFY_TIMEOUT=1 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
+mkdir -p "$REPO/.claude"
+printf 'echo run >> %s\nexec sleep 30\n' "$RUN_LOG" > "$REPO/.claude/verify.sh"
+GOT=$(CLAUDE_VERIFY_TIMEOUT=5 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
 grep -q 'CLAUDE_VERIFY_TIMEOUT' <<< "$GOT" || { echo "FAIL: expected a timeout block, got: $GOT"; exit 1; }
 ! grep -q 'automatic retry' <<< "$GOT" || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
 RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
@@ -221,5 +231,37 @@ printf 'exit 0\n' > "$REPO/claude/enforce/tests/run-tests.sh"
 printf 'echo "HOOKS_ARGS[$*]"\nexit 1\n' > "$REPO/claude/hooks/tests/run-tests.sh"
 GOT=$(gate "$REPO")
 grep -qF 'HOOKS_ARGS[--affected]' <<< "$GOT" || { echo "FAIL: the gate must run the hook suite with --affected, got: $GOT"; exit 1; }
+
+# A vitest project whose npm test leaves FULL_SUITE_RAN, with an npx stub on
+# PATH that logs its arguments to npx.log instead of running vitest.
+new_vitest_repo() {
+  local dir
+  dir=$(new_repo)
+  mkdir -p "$dir/src" "$dir/stub-bin"
+  cat > "$dir/package.json" <<'JSON'
+{ "name": "fixture", "version": "1.0.0", "scripts": { "test": "touch FULL_SUITE_RAN" }, "devDependencies": { "vitest": "^3.0.0" } }
+JSON
+  echo 'export const a = 1;' > "$dir/src/a.ts"
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s/npx.log"\n' "$dir" > "$dir/stub-bin/npx"
+  chmod +x "$dir/stub-bin/npx"
+  printf 'npx.log\nstub-bin/\nFULL_SUITE_RAN\n' > "$dir/.gitignore"
+  git -C "$dir" add -A && git -C "$dir" commit -qm "chore: vitest project"
+  echo "$dir"
+}
+
+# 13. A changed source runs vitest related on it, and not the full suite.
+REPO=$(new_vitest_repo); echo 'export const b = 2;' >> "$REPO/src/a.ts"
+GOT=$(PATH="$REPO/stub-bin:$PATH" gate "$REPO")
+[ "$GOT" = "none" ] || { echo "FAIL: 13 expected silence, got: $GOT"; exit 1; }
+[ "$(cat "$REPO/npx.log" 2>/dev/null)" = "--no-install vitest related --run --passWithNoTests src/a.ts" ] \
+  || { echo "FAIL: 13 expected vitest related on src/a.ts, got: $(cat "$REPO/npx.log" 2>/dev/null)"; exit 1; }
+[ ! -e "$REPO/FULL_SUITE_RAN" ] || { echo "FAIL: 13 the full suite must not run for a mapped change"; exit 1; }
+
+# 14. A changed package.json falls back to the full suite.
+REPO=$(new_vitest_repo)
+jq '.description = "changed"' "$REPO/package.json" > "$REPO/package.json.tmp" && mv "$REPO/package.json.tmp" "$REPO/package.json"
+PATH="$REPO/stub-bin:$PATH" gate "$REPO" >/dev/null
+[ -e "$REPO/FULL_SUITE_RAN" ] || { echo "FAIL: 14 a changed manifest must run the full suite"; exit 1; }
+[ ! -e "$REPO/npx.log" ] || { echo "FAIL: 14 a fallback must not also run related tests"; exit 1; }
 
 echo "verification-gate.test.sh PASS"

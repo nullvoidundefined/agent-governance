@@ -114,16 +114,16 @@ Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'acti
 - LLM consumers include one fixture test against a real captured response (`testdata/`).
 - No `t.Skip` to suppress a failing test; fix it or delete it (R-401 item 9).
 
-- Test runs (R-509): `go test` already runs packages in parallel; mark independent tests `t.Parallel()` and keep them free of shared globals so they can run in parallel. Turn ends, commits, and branch-level merges test only the packages containing changed files plus every package that depends on one of them: find the changed packages with `go list -f '{{.ImportPath}} {{.Dir}}' ./...` against the changed directories, then list each package's dependencies with `go list -f '{{.ImportPath}} {{join .Deps " "}}' ./...` and keep the packages whose dependency list contains a changed package (`.Deps` lists what a package imports, so the selection is the reverse lookup, not the command's output as printed); the full `go test ./...` runs at pre-push and as the required CI check before any merge to `main`.
+- Test runs (R-509): `go test` already runs packages in parallel; mark independent tests `t.Parallel()` and keep them free of shared globals so they can run in parallel. Turn ends, commits, and branch-level merges test only the packages containing changed files plus every package that depends on one of them: find the changed packages with `go list -f '{{.ImportPath}} {{.Dir}}' ./...` against the changed directories, then list each package's dependencies with `go list -f '{{.ImportPath}} {{join .Deps " "}}' ./...` and keep the packages whose dependency list contains a changed package (`.Deps` lists what a package imports, so the selection is the reverse lookup, not the command's output as printed); the full `go test ./...` runs as the required CI check before any merge to `main`, not at pre-push (IAN-98).
 ## Tooling (analog of Prettier/ESLint)
 
-- `gofmt` + `goimports` on staged files pre-commit (R-408); `go vet` and the full test suite pre-push (R-509).
+- `gofmt` + `goimports` on staged files pre-commit (R-408); `go vet` through the golangci push gate, and the full test suite in CI (R-509).
 - Trust the pre-commit hooks; do not manually re-run them (R-510).
 
 ## Enforcement (analog of push-eslint-gate)
 
 - `hook:push-golangci-gate` runs the bundled `~/.claude/enforce/golangci-enforce.yml` over the outgoing Go diff on `git push`, added lines only: `mnd` (R-324 magic numbers) and `nolintlint` (R-329 analog: every `//nolint` carries a specific linter and reason). Opt-in per repo via `enforce/gate-trusted-repos.txt`, because linting Go compiles the tree and compiling untrusted code is a code-execution surface (2026-07-31 security audit); fails open without golangci-lint or off the trust list.
-- `hook:llm-rule-judge` judges `*.go` in the outgoing diff (R-315/R-316/R-317/R-318/R-322/R-325).
+- `ci:llm-rule-judge` (the `rule-judge` CI check) judges `*.go` in each pull request's diff (R-315/R-316/R-317/R-318/R-322/R-325).
 - `hook:structure-gate` scans `internal/`-, `cmd/`-, and `pkg/`-rooted Go trees: catch-alls deny; dir-case checks are waived for Go (lowercase packages, kebab binary names); `db/` blessed.
 - Ternaries do not exist in Go, so R-327 is structurally satisfied.
 

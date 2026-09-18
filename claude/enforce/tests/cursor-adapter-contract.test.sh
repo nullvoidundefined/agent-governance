@@ -31,7 +31,7 @@
 # renames a field breaks the port while this fixture stays green.
 set -uo pipefail
 
-REPO_TOP=$(git rev-parse --show-toplevel)
+REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 ADAPTER="$REPO_TOP/cursor/hooks/claude-hook-adapter.sh"
 PERMISSION_RULES_SOURCE="$REPO_TOP/claude/enforce/settings-permission-rules.sh"
 

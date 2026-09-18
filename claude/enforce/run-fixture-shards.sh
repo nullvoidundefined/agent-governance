@@ -7,12 +7,12 @@
 #       every fixture: the parallel batch first, then each `# Shard: serial`
 #       fixture alone, because a timing-sensitive fixture measured under the
 #       load of its neighbours fails for reasons that are not its subject's.
-#       Pre-push and CI use this mode through run-tests.sh.
+#       CI and doctor.sh use this mode through run-tests.sh.
 #   run-fixture-shards.sh <tests-dir> --affected
 #       the Stop gate's mode. The fast tier (every fixture with no
 #       `# Shard: slow` or `# Shard: serial` header) always runs, so the
 #       closure and tree-scanning checks, which are nearly all fast, never
-#       wait for pre-push. A slow or serial fixture runs when its text names a changed
+#       wait for CI. A slow or serial fixture runs when its text names a changed
 #       file (the path under claude/, or the basename), when a changed path
 #       matches a glob on its `# Watches:` line, or when the fixture itself
 #       changed. Everything runs when a changed file is named by no

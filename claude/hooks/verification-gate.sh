@@ -20,9 +20,14 @@
 #     the slow fixtures its changes name (enforce/run-fixture-shards.sh): 30
 #     to 37 seconds measured for a one-hook edit, against about 85 for the full
 #     sharded run and the 4.6 minutes the sequential runner took. The full
-#     sharded suite runs at pre-push and in CI, the required check before any
-#     merge to main, and --affected itself falls back to it for any change it
-#     cannot place.
+#     sharded suite runs in CI, the required check before any merge to main
+#     (not at pre-push since IAN-98), and --affected itself falls back to it
+#     for any change it cannot place.
+#   - Related tests only in application repos (IAN-98, 2026-09-18): the
+#     vitest, jest, pytest, and Go branches run the tests enforce/related-tests.sh
+#     maps the changed files to, and the full suite when it cannot map a
+#     change or a harness file (manifest, lockfile, test config) changed. The
+#     full suite runs in CI as the required check.
 #   - Fails open: a repo with no discoverable check command is not blocked,
 #     otherwise every prose repo deadlocks on every turn.
 #   - One automatic retry on a non-timeout failure, after a short pause
@@ -119,6 +124,37 @@ MAX_OUTPUT_CHARS=8000
 CHECKS=""
 add_check() { CHECKS="${CHECKS}${1}"$'\n'; }
 
+# The R-509 related-test mapping for application stacks
+# (enforce/related-tests.sh, IAN-98). An absent helper, or a mapping that
+# falls back, means the full-suite commands run as before.
+RELATED_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)/related-tests.sh"
+# shellcheck source=/dev/null
+[ -f "$RELATED_HELPER" ] && . "$RELATED_HELPER"
+RELATED_NOTE=""
+
+# add_test_check <stack> <full-suite commands, one per line>
+# Adds the related-test commands for the stack when the mapping answers, and
+# the full-suite commands when it falls back or the helper is missing.
+add_test_check() {
+  local related line
+  if type buildRelatedTestCommands >/dev/null 2>&1 && related=$(buildRelatedTestCommands "$1"); then
+    RELATED_NOTE=" (related tests only; the full suite runs in CI)"
+    while IFS= read -r line; do [ -n "$line" ] && add_check "$line"; done <<< "$related"
+    return 0
+  fi
+  while IFS= read -r line; do [ -n "$line" ] && add_check "$line"; done <<< "$2"
+}
+
+# detect_node_test_runner
+# Prints vitest or jest when package.json depends on one, else none.
+detect_node_test_runner() {
+  local runner
+  for runner in vitest jest; do
+    jq -e --arg r "$runner" '(.dependencies[$r] // .devDependencies[$r]) != null' package.json >/dev/null 2>&1 && { echo "$runner"; return; }
+  done
+  echo none
+}
+
 package_manager() {
   [ -f pnpm-lock.yaml ] && { echo pnpm; return; }
   [ -f yarn.lock ] && { echo yarn; return; }
@@ -158,17 +194,17 @@ elif [ -f claude/enforce/tests/run-tests.sh ] && [ -f claude/hooks/tests/run-tes
   fi
 elif [ -f package.json ]; then
   PM=$(package_manager)
-  has_npm_script test && add_check "$PM test"
+  has_npm_script test && add_test_check "$(detect_node_test_runner)" "$PM test"
   for script in typecheck type-check; do
     has_npm_script "$script" && { add_check "$PM run $script"; break; }
   done
 elif [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ]; then
-  command -v pytest >/dev/null 2>&1 && add_check "pytest -q"
+  command -v pytest >/dev/null 2>&1 && add_test_check pytest "pytest -q"
   if command -v mypy >/dev/null 2>&1 && { grep -q '\[tool.mypy\]' pyproject.toml 2>/dev/null || [ -f mypy.ini ]; }; then
     add_check "mypy ."
   fi
 elif [ -f go.mod ]; then
-  command -v go >/dev/null 2>&1 && { add_check "go test ./..."; add_check "go vet ./..."; }
+  command -v go >/dev/null 2>&1 && add_test_check go "go test ./..."$'\n'"go vet ./..."
 elif [ -f Gemfile ] && [ -d spec ]; then
   command -v bundle >/dev/null 2>&1 && add_check "bundle exec rspec"
 fi
@@ -257,7 +293,7 @@ while IFS= read -r check; do
   fi
   RETRY_NOTE=""
   [ "$RETRIED" -eq 1 ] && RETRY_NOTE=" (failed again on an automatic retry after ${RETRY_DELAY_SECONDS}s, so this is not transient contention)"
-  block "R-509 verification gate: \`${check}\` failed (exit ${STATUS}) in ${ROOT}${RETRY_NOTE}.
+  block "R-509 verification gate: \`${check}\` failed (exit ${STATUS}) in ${ROOT}${RETRY_NOTE}${RELATED_NOTE}.
 
 ${TAIL}
 

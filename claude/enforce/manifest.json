@@ -6,7 +6,7 @@
             "enforcer": "hook:harness-sync",
             "severity": "warning",
             "autofix": false,
-            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
+            "note": "SessionStart, first in the chain: syncs the live ~/.claude from the agent-governance checkout on drift or absence, installs rsync remotely, keeps enforce/node_modules in line with the synced lockfile via enforce/install-enforce-dependencies.sh (also run by sync.sh; fixture: sync-tests/sync.test.sh), reports once when no checkout is reachable; fixture: hooks/tests/harness-sync.test.sh; the remote bootstrap for other repos is repo-setup's harness item"
         },
         {
             "id": "R-602",
@@ -628,7 +628,7 @@
         {
             "id": "R-315",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false
         },
@@ -651,21 +651,21 @@
         {
             "id": "R-316",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false
         },
         {
             "id": "R-317",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false
         },
         {
             "id": "R-325",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "warn",
             "autofix": false,
             "note": "decides the 'never destructure a method off its object' half, which is a type question the AST rule deliberately excludes; the eslint row decides the 2+ property reads"
@@ -763,7 +763,7 @@
         {
             "id": "R-334",
             "tier": "llm-judge",
-            "enforcer": "hook:llm-rule-judge",
+            "enforcer": "ci:llm-rule-judge",
             "severity": "error",
             "autofix": false,
             "note": "compound naming: base noun first; judged against the project Domain vocabulary glossary, and dropped from the judged set when a repository has none"

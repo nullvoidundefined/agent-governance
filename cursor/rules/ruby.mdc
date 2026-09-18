@@ -157,7 +157,7 @@ Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag reques
 - `spec/` mirrors `app/` (R-313); `*_spec.rb` never sits beside its source.
 - No `skip`/`pending` to suppress a failing spec; fix it or delete it (R-401 item 9).
 
-- Test runs (R-509): run the full suite in parallel with `parallel_tests` (`bundle exec parallel_rspec`), one test database per process (`TEST_ENV_NUMBER`). Turn ends, commits, and branch-level merges run only the affected specs: the changed `*_spec.rb` files plus the specs mirroring changed `app/` files (`spec/` mirrors `app/`, R-313). The full parallel run happens at pre-push and as the required CI check before any merge to `main`. Adding `parallel_tests` is a new dependency and needs its R-331 justification.
+- Test runs (R-509): run the full suite in parallel with `parallel_tests` (`bundle exec parallel_rspec`), one test database per process (`TEST_ENV_NUMBER`). Turn ends, commits, and branch-level merges run only the affected specs: the changed `*_spec.rb` files plus the specs mirroring changed `app/` files (`spec/` mirrors `app/`, R-313). The full parallel run happens as the required CI check before any merge to `main`, not at pre-push (IAN-98). Adding `parallel_tests` is a new dependency and needs its R-331 justification.
 ## Tooling (analog of Prettier/ESLint)
 
 - RuboCop (with rails/rspec plugins) is lint and formatter; `bundle exec rubocop -a` on staged files pre-commit (R-408); full sweep pre-push/CI (R-509).
@@ -166,6 +166,6 @@ Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag reques
 ## Enforcement (analog of push-eslint-gate)
 
 - `hook:push-rubocop-gate` runs the bundled `~/.claude/enforce/rubocop-enforce.yml` over the outgoing Ruby diff on `git push`, added lines only: `Style/NestedTernaryOperator` (R-327), `Naming/MethodName`/`Naming/VariableName`/`Naming/ConstantName` (R-316/R-317 support). PATH-resolved RuboCop only, never `bundle exec` (the target repo's Gemfile is untrusted code; 2026-07-31 security audit); fails open without RuboCop.
-- `hook:llm-rule-judge` judges `*.rb` in the outgoing diff (R-315/R-316/R-317/R-318/R-322/R-325).
+- `ci:llm-rule-judge` (the `rule-judge` CI check) judges `*.rb` in each pull request's diff (R-315/R-316/R-317/R-318/R-322/R-325).
 - `hook:structure-gate` scans `app/`- and `lib/`-rooted Ruby trees: snake_case allowed, `lib/` and `db/` blessed; catch-alls, other abbreviations, and co-located specs deny.
 - `hook:migration-defaults-guard` covers the Rails migration forms above.

@@ -968,7 +968,7 @@ Path parameters are `snake_case` and named for the resource (`trip_id`, never `i
 - `pytest-asyncio` in `asyncio_mode = "auto"`; fixtures live in `conftest.py`; tests mirror `app/` under `tests/unit` and `tests/integration` (R-313)
 - `@pytest.mark.skip` never suppresses a failing test; a test that cannot pass yet is deleted and re-added with the capability (R-401)
 - Coverage floor: 60 percent on `app/`, measured with `pytest-cov`
-- Test runs (R-509): run in parallel with `pytest -n auto` (`pytest-xdist`), adding `--dist loadfile` when tests in one file share an expensive fixture, and give each worker its own database named from the `worker_id` fixture so the rolled-back transactions of two workers never meet; turn ends, commits, and branch-level merges run only the affected tests (the changed test files plus the tests mirroring changed `app/` modules, or `pytest-testmon` once the project adopts it), and the full `pytest -n auto` runs at pre-push and as the required CI check before any merge to `main`; either plugin is a new dependency and needs its R-331 justification
+- Test runs (R-509): run in parallel with `pytest -n auto` (`pytest-xdist`), adding `--dist loadfile` when tests in one file share an expensive fixture, and give each worker its own database named from the `worker_id` fixture so the rolled-back transactions of two workers never meet; turn ends, commits, and branch-level merges run only the affected tests (the changed test files plus the tests mirroring changed `app/` modules, or `pytest-testmon` once the project adopts it), and the full `pytest -n auto` runs as the required CI check before any merge to `main`, not at pre-push (IAN-98); either plugin is a new dependency and needs its R-331 justification
 
 ---
 
@@ -987,7 +987,7 @@ Mechanical enforcers cover the Python analogs of the AST-tier rules; `~/.claude/
 
 - `hook:push-ruff-gate` runs the bundled `~/.claude/enforce/ruff-enforce.toml` over the added lines of the outgoing Python diff on `git push`: `PLR2004` (R-324 magic values), `ANN401` with `PGH003` and `PGH004` (no `typing.Any`, no blanket suppressions), `E731` (no lambda assigned to a name), `T201` (no `print`, R-342), and `E722`, `S110`, `BLE001` (R-344); repos in `enforce/exempt-repos.txt` skip it, and it fails open without ruff or uv
 - The same gate adds `D100` and `D103` (module and public-function docstrings, the R-320 analog) when the repo's `.enforce.json` sets `fileHeaders: true`, the switch that also turns on the ESLint header rule
-- `hook:llm-rule-judge` judges `*.py` in the outgoing diff against the naming and responsibility rules (R-315, R-316, R-317, R-318, R-322, R-325, R-334)
+- `ci:llm-rule-judge` (the `rule-judge` CI check) judges `*.py` in each pull request's diff against the naming and responsibility rules (R-315, R-316, R-317, R-318, R-322, R-325, R-334)
 - `hook:structure-gate` allows `snake_case` package directories plus `db/`, `core/`, `middleware/`, and `dependencies/` in Python trees; catch-all directories, kebab-case, and co-located tests are denied
 - `hook:migration-defaults-guard` checks the Alembic default forms in Migrations above
 

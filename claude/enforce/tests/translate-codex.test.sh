@@ -5,7 +5,7 @@
 # fixture survives repo moves (2026-09-17 lesson). Grows one section per
 # acceptance criterion B-1..B-11.
 set -uo pipefail
-REPO_TOP=$(git rev-parse --show-toplevel)
+REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 TRANSLATOR="$REPO_TOP/translate/codex.mjs"
 
 fail=0

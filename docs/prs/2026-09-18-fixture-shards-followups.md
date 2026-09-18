@@ -55,4 +55,9 @@
 - The two behaviour cases failed before the fix and pass after it.
 - CI's `pull_request` run of the `enforce` workflow never started for this PR, so the required `fixtures` check had no run. It was started by `workflow_dispatch` on the branch, which attaches its result to the same commit.
 
+## Merge with IAN-98
+
+- `main` gained #54 (IAN-98), which moved the full suite off pre-push: pre-push now runs only the port checks, and CI is the one full run, as the required check before merge. The merge keeps that policy. It corrects the comments #42 had left saying pre-push runs the full suite, in the Stop gate, the runner, both `run-tests.sh` wrappers, and the Frontend guide. The Go guide keeps IAN-98's "not at pre-push" together with this PR's reverse-dependency correction.
+- The earlier merge in this PR had also created a conflict with `main` that stopped GitHub from starting the `pull_request` run of `enforce`; with the conflict resolved the run triggers normally.
+
 Ticket: IAN-94.
