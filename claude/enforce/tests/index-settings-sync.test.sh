@@ -21,7 +21,7 @@ SETTINGS_MODEL=$(jq -r '.model // ""' "$CLAUDE_ROOT/settings.json")
 INDEX_LINE=$(grep 'feedback_default_sonnet_proactive_switch' "$CLAUDE_ROOT/global-memory/INDEX.md" | head -1)
 [ -n "$INDEX_LINE" ] || { echo "FAIL: INDEX.md no longer lists the session-default memory"; exit 1; }
 
-printf '%s' "$INDEX_LINE" | grep -qF "$SETTINGS_MODEL" || {
+grep -qF "$SETTINGS_MODEL" <<< "$INDEX_LINE" || {
   echo "FAIL: INDEX.md session-default line does not name the settings model '$SETTINGS_MODEL'; the injected index has drifted from settings.json (P2-3)."
   exit 1
 }

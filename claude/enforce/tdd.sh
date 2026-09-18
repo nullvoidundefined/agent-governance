@@ -26,7 +26,9 @@
 #       no other failure, and the outside-file pass count at or above the
 #       baseline. Moves to phase "green". Re-run after every refactor.
 #   tdd.sh close
-#       removes the lock; refused unless the phase is green.
+#       removes the lock; refused unless the phase is green, or the phase is
+#       open and no test was ever locked (nothing could have been written
+#       under the lock, so an abandoned slice need not wait for the user).
 #   tdd.sh status
 #       prints the lock.
 #   tdd.sh validate <role>
@@ -35,14 +37,20 @@
 #       untracked path inside the role's role-policy.json boundary (R-411);
 #       the implementer's GREEN re-run rather than trusted.
 #
-# Runner: Vitest or Jest resolved from the project's node_modules/.bin, then
-# the copy bundled under ~/.claude/enforce/node_modules (with a warning). Both
-# emit the same JSON report. pytest, go test, and RSpec arrive with the first
-# project on that stack (2026-09-06 decision 1); until then this refuses
-# rather than guessing. Exit 1 with the reason on stderr on every refusal.
+# Runner: chosen from the test paths. A `*.test.sh` path is a bash fixture:
+# the suite is every `*.test.sh` in the named files' directories, run through
+# run-fixture-shards.sh beside this script with that runner's verdict (exit 0,
+# a PASS line, no FAIL line), and converted to the JSON report shape below.
+# Any other path, or no path, uses Vitest or Jest resolved from the project's
+# node_modules/.bin, then the copy bundled under ~/.claude/enforce/node_modules
+# (with a warning). A slice never mixes the two. pytest, go test, and RSpec
+# arrive with the first project on that stack (2026-09-06 decision 1); until
+# then this refuses rather than guessing. Exit 1 with the reason on stderr on
+# every refusal.
 set -uo pipefail
 
 CLAUDE_DIR="${CLAUDE_TDD_HOME:-$HOME/.claude}"
+SHARD_RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-fixture-shards.sh"
 POLICY="$CLAUDE_DIR/enforce/role-policy.json"
 LOCK_RELATIVE=".claude/tdd-lock.json"
 
@@ -87,16 +95,77 @@ resolve_runner() {
   fi
 }
 
-# Runs the whole suite and leaves the JSON report path in REPORT. A non-zero
-# exit is expected whenever a test fails, so only a missing report is fatal.
+# select_runner <test rel>...: shell when every path is a *.test.sh fixture,
+# the JavaScript runner when none is (or none is named), a refusal when mixed.
+select_runner() {
+  local rel shell=0 other=0
+  for rel in "$@"; do
+    case "$rel" in *.test.sh) shell=$((shell + 1)) ;; *) other=$((other + 1)) ;; esac
+  done
+  if [ "$shell" -gt 0 ] && [ "$other" -gt 0 ]; then
+    die "a slice runs one runner: $shell *.test.sh fixture(s) and $other other test file(s) were named; split them into separate slices"
+  fi
+  if [ "$shell" -gt 0 ]; then
+    [ -f "$SHARD_RUNNER" ] || die "shell fixtures need $SHARD_RUNNER, which is missing"
+    RUNNER="$SHARD_RUNNER"; RUNNER_KIND=shell
+    MISSING_MODULE="$SHELL_MISSING"; ASSERTION="$SHELL_ASSERTION"
+  else
+    resolve_runner
+  fi
+}
+
+# Runs the whole suite for the named tests and leaves the JSON report path in
+# REPORT. A non-zero exit is expected whenever a test fails, so only a missing
+# report is fatal.
 run_suite() {
-  resolve_runner
+  select_runner "$@"
   REPORT=$(mktemp)
   case "$RUNNER_KIND" in
     vitest) "$RUNNER" run --reporter=json --outputFile="$REPORT" >/dev/null 2>&1 || true ;;
     jest) "$RUNNER" --json --outputFile="$REPORT" >/dev/null 2>&1 || true ;;
+    shell) run_shell_suite "$@" > "$REPORT" ;;
   esac
   jq -e '.testResults' "$REPORT" >/dev/null 2>&1 || die "the $RUNNER_KIND run produced no JSON report; run '$RUNNER' by hand to see why"
+}
+
+# run_shell_suite <test rel>...: runs every *.test.sh in the named files'
+# directories through the shard runner and prints the Vitest-shaped report.
+run_shell_suite() {
+  local dirs rel dir results fixture records=""
+  dirs=$(for rel in "$@"; do dirname "$rel"; done | sort -u)
+  while IFS= read -r dir; do
+    results=$(mktemp -d)
+    bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --all --results-dir "$results" >/dev/null 2>&1
+    for fixture in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
+      [ -f "$fixture" ] && records+=$(shell_record "$fixture" "$results")$'\n'
+    done
+    rm -rf "$results"
+  done <<< "$dirs"
+  printf '%s' "$records" | jq -s '{testResults: .}'
+}
+
+# shell_record <fixture> <results dir>: one report record. A fixture that does
+# not parse has no tests and a syntax message; one that passed has one passing
+# test; one that exited 0 saying neither PASS nor FAIL has no tests and no
+# message; any other outcome is one failed test carrying its FAIL lines, or
+# its last lines and exit code when it printed none.
+shell_record() {
+  local fixture="$1" results="$2" name syntax status output failures
+  name=$(basename "$fixture")
+  if ! syntax=$(bash -n "$fixture" 2>&1); then
+    jq -n --arg n "$fixture" --arg m "syntax error: $syntax" '{name:$n, status:"failed", message:$m, assertionResults:[]}'
+    return
+  fi
+  status=$(cat "$results/$name.status" 2>/dev/null || echo 1)
+  output=$(cat "$results/$name.out" 2>/dev/null || true)
+  if [ "$(cat "$results/$name.verdict" 2>/dev/null)" = ok ]; then
+    jq -n --arg n "$fixture" --arg t "$name" '{name:$n, status:"passed", message:"", assertionResults:[{title:$t, status:"passed", failureMessages:[]}]}'
+  elif [ "$status" -eq 0 ] && ! grep -q PASS <<< "$output" && ! grep -q FAIL <<< "$output"; then
+    jq -n --arg n "$fixture" '{name:$n, status:"failed", message:"", assertionResults:[]}'
+  else
+    failures=$(grep FAIL <<< "$output" || { tail -5 <<< "$output"; echo "exit $status"; })
+    jq -n --arg n "$fixture" --arg t "$name" --arg f "$failures" '{name:$n, status:"failed", message:"", assertionResults:[{title:$t, status:"failed", failureMessages:[$f]}]}'
+  fi
 }
 
 # Absolute physical path of a root-relative file, as the report names it.
@@ -105,8 +174,12 @@ report_name() { printf '%s/%s' "$ROOT_PHYSICAL" "$1"; }
 file_record() { jq -c --arg n "$(report_name "$1")" '.testResults[] | select(.name == $n)' "$REPORT"; }
 
 MISSING_MODULE='Cannot find module|Failed to resolve import|does not provide an export|is not a function|is not defined|Cannot read propert'
-PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse error'
+PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse error|syntax error'
 ASSERTION='AssertionError|expected|toBe|toEqual|toMatch|toThrow|toHaveBeen'
+# Shell fixtures: bash's own message for a script or command that does not
+# exist yet is the missing-module RED; a FAIL line is the assertion RED.
+SHELL_MISSING='(: No such file or directory|: command not found)$'
+SHELL_ASSERTION='FAIL'
 
 # Classifies one RED file from its report record. Prints the failure class or
 # dies with the refusal.
@@ -117,9 +190,9 @@ classify_red() {
   tests=$(printf '%s' "$record" | jq '.assertionResults | length')
   message=$(printf '%s' "$record" | jq -r '.message // ""')
   if [ "$tests" -eq 0 ]; then
-    if printf '%s' "$message" | grep -qE "$PARSE_FAILURE"; then
+    if grep -qE "$PARSE_FAILURE" <<< "$message"; then
       die "$rel does not parse; a broken test is not a RED test. First line: $(printf '%s' "$message" | head -1)"
-    elif printf '%s' "$message" | grep -qE "$MISSING_MODULE"; then
+    elif grep -qE "$MISSING_MODULE" <<< "$message"; then
       printf 'missing-module'
     elif [ -z "$message" ]; then
       die "$rel contains no tests"
@@ -136,8 +209,8 @@ classify_red() {
   fi
   local failures
   failures=$(printf '%s' "$record" | jq -r '[.assertionResults[].failureMessages[]] | join("\n")')
-  if printf '%s' "$failures" | grep -qE "$MISSING_MODULE"; then printf 'missing-module'
-  elif printf '%s' "$failures" | grep -qE "$ASSERTION"; then printf 'assertion'
+  if grep -qE "$MISSING_MODULE" <<< "$failures"; then printf 'missing-module'
+  elif grep -qE "$ASSERTION" <<< "$failures"; then printf 'assertion'
   else die "$rel fails for a reason this script does not classify: $(printf '%s' "$failures" | head -1)"
   fi
 }
@@ -170,7 +243,7 @@ cmd_open() {
     case "$1" in
       --spec) spec=$(relative "$2"); locked=$(printf '%s' "$locked" | jq -c --arg p "$spec" '. + [$p]'); shift 2 ;;
       --lock)
-        if [ "$refactor" -eq 1 ] && printf '%s' "$2" | grep -qE "$(jq -r '.patterns.tests' "$POLICY")"; then
+        if [ "$refactor" -eq 1 ] && grep -qE "$(jq -r '.patterns.tests' "$POLICY")" <<< "$2"; then
           lock_tests+=("$(relative "$2")")
         else
           locked=$(printf '%s' "$locked" | jq -c --arg p "$2" '. + [$p]')
@@ -194,7 +267,7 @@ cmd_open() {
 open_refactor() {
   local slice="$1" spec="$2" locked="$3"; shift 3
   local rels=("$@")
-  run_suite
+  run_suite "${rels[@]+"${rels[@]}"}"
   local failing
   failing=$(jq -r '.testResults[] | select(.status == "failed" or ([.assertionResults[] | select(.status == "failed")] | length > 0)) | .name' "$REPORT" | sed "s#^$ROOT_PHYSICAL/##")
   [ -z "$failing" ] || { rm -f "$REPORT"; die "a refactor starts from a green suite and this one is red: $(printf '%s' "$failing" | tr '\n' ' '). Fix or RED-slice the failure first."; }
@@ -226,10 +299,10 @@ cmd_red() {
   tests_pattern=$(jq -r '.patterns.tests' "$POLICY")
   for f in "$@"; do
     rel=$(relative "$f")
-    printf '%s' "$rel" | grep -qE "$tests_pattern" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
+    grep -qE "$tests_pattern" <<< "$rel" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
     rels+=("$rel")
   done
-  run_suite
+  run_suite "${rels[@]}"
   local entries='[]' class
   for rel in "${rels[@]}"; do
     class=$(classify_red "$rel") || exit 1
@@ -270,9 +343,10 @@ cmd_green() {
   require_lock
   case "$(phase)" in red | green | refactor) ;; *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;; esac
   check_hashes
-  run_suite
-  local rels names rel record
+  local rels names rel record locked_rels=()
   rels=$(jq -r '.tests[].path' "$LOCK")
+  while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$rels"
+  run_suite "${locked_rels[@]+"${locked_rels[@]}"}"
   names='[]'
   while IFS= read -r rel; do
     [ -n "$rel" ] || continue
@@ -297,7 +371,10 @@ cmd_green() {
 
 cmd_close() {
   require_lock
-  [ "$(phase)" = "green" ] || die "phase is $(phase); a slice closes only from green. Make it green, or ask the user to delete $LOCK_RELATIVE"
+  if [ "$(phase)" = "open" ] && jq -e '(.tests // []) | length == 0' "$LOCK" >/dev/null; then :
+  else
+    [ "$(phase)" = "green" ] || die "phase is $(phase); a slice closes only from green, or from open before any test is locked. Make it green, or ask the user to delete $LOCK_RELATIVE"
+  fi
   say "closed: $(jq -r '.slice' "$LOCK")"
   rm -f "$LOCK"
 }
@@ -335,9 +412,9 @@ cmd_validate() {
   violations=$(printf '%s\n' "$changed" | while IFS= read -r p; do
     [ -n "$p" ] || continue
     if [ "$mode" = allow ]; then
-      printf '%s' "$p" | grep -qE "$pattern" || printf '%s\n' "$p"
+      grep -qE "$pattern" <<< "$p" || printf '%s\n' "$p"
     else
-      printf '%s' "$p" | grep -qE "$pattern" && printf '%s\n' "$p"
+      grep -qE "$pattern" <<< "$p" && printf '%s\n' "$p"
     fi
   done)
   [ -z "$violations" ] || die "$role wrote outside its boundary (R-411): $(printf '%s' "$violations" | tr '\n' ' '). Discard those writes (git checkout/rm) and re-dispatch; the role file states the boundary, protected-path-guard enforces it in subagent context."

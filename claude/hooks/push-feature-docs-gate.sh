@@ -37,7 +37,7 @@ if [ -f "$GIT_INVOCATION_HELPER" ]; then
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
   parse_git_target_options "$RAW_CMD" push
 fi
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 # Repo exemption: the allowlist every push gate shares (origin URL per line).
 EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"

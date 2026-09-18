@@ -31,7 +31,7 @@ if [ -f "$GIT_INVOCATION_HELPER" ]; then
   CMD=$(printf '%s' "$CMD" | strip_git_global_options)
   parse_git_target_options "$RAW_CMD" push
 fi
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 # Repo exemption (2026-07-22, Ian-approved): repos listed by origin URL in
 # enforce/exempt-repos.txt skip this gate entirely. Team repos with their own
@@ -61,9 +61,9 @@ REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$ENFORCE_DIR/lint.mjs
 # (closed, as it should be) with advice to fix ESLint violations that did not
 # exist (2026-09-18: a synced lockfile never installed). Name the bundle and
 # the locked install that repairs it instead, on stderr and in the reason.
-if printf '%s' "$REPORT" | grep -Eq 'ERR_MODULE_NOT_FOUND|Cannot find (package|module)'; then
+if grep -Eq 'ERR_MODULE_NOT_FOUND|Cannot find (package|module)' <<< "$REPORT"; then
   BROKEN="The enforcement ESLint bundle at $ENFORCE_DIR is broken, not your diff: lint.mjs could not load one of its dependencies, so the push is denied until the bundle is repaired. Run: npm ci --prefix $ENFORCE_DIR (./sync.sh from the agent-governance checkout does this). Error:
-$(printf '%s\n' "$REPORT" | grep -E 'ERR_MODULE_NOT_FOUND|Cannot find' | head -n 3)"
+$(grep -E 'ERR_MODULE_NOT_FOUND|Cannot find' <<< "$REPORT" | head -n 3)"
   printf 'push-eslint-gate: %s\n' "$BROKEN" >&2
   jq -n --arg r "$BROKEN" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0

@@ -12,11 +12,11 @@ set -uo pipefail
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' <<< "$CMD" || exit 0
 # Either message-bearing form: `-m` or `-F -` fed by a heredoc. `-F <file>`
 # keeps the message on disk rather than in the command, so it stays out of
 # reach and out of this gate (2026-09-17 audit P2-7).
-printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-m|-F[[:space:]]+-)([[:space:]]|$)' || exit 0
+grep -qE '(^|[[:space:]])(-m|-F[[:space:]]+-)([[:space:]]|$)' <<< "$CMD" || exit 0
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
@@ -79,7 +79,7 @@ fi
 
 SUBJECT=$(printf '%s\n' "$MSG" | head -1)
 
-if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert)(\([^)]*\))?!?: .+'; then
+if ! grep -qE '^(feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert)(\([^)]*\))?!?: .+' <<< "$SUBJECT"; then
   deny "commit-message-guard BLOCKED this commit (R-505): subject '$SUBJECT' is not in conventional form 'type(scope): summary'. Types: feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert."
 fi
 

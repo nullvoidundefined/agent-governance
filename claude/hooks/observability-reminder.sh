@@ -35,13 +35,13 @@ add() { reminders="${reminders}- $1"$'\n'; }
 # R-345 and R-341: entry files that register routes or middleware.
 case "$base" in
   app.ts | app.js | app.mjs | server.ts | server.js | index.ts | main.py | app.py | main.go | routes.rb)
-    if printf '%s' "$content" | grep -qE 'app\.(get|use|post)\(|router\.|@app\.(route|get)|include_router\(|app\.add_api_route|http\.HandleFunc|mux\.Handle|r\.(Get|Post|Handle)\(|Rails\.application\.routes'; then
-      if ! printf '%s' "$content" | grep -q '/health'; then
+    if grep -qE 'app\.(get|use|post)\(|router\.|@app\.(route|get)|include_router\(|app\.add_api_route|http\.HandleFunc|mux\.Handle|r\.(Get|Post|Handle)\(|Rails\.application\.routes' <<< "$content"; then
+      if ! grep -q '/health' <<< "$content"; then
         add "R-345: this entry file registers routes but no \`GET /health\` (liveness, no dependencies) or \`GET /health/ready\` (dependency checks, 503 when degraded). Register both before the application routes."
-      elif ! printf '%s' "$content" | grep -qE '/health/ready|/ready'; then
+      elif ! grep -qE '/health/ready|/ready' <<< "$content"; then
         add "R-345: \`/health\` is registered but no readiness probe (\`/health/ready\`) checks the dependencies; the post-deploy smoke target needs one."
       fi
-      if printf '%s' "$content" | grep -qE 'app\.use\(|include_router\(|app\.add_middleware|Rails\.application' && ! printf '%s' "$content" | grep -qiE 'x-request-id|request[-_]?id|pino-?http|requestLogger|RequestId|ActionDispatch::RequestId|log_tags'; then
+      if grep -qE 'app\.use\(|include_router\(|app\.add_middleware|Rails\.application' <<< "$content" && ! grep -qiE 'x-request-id|request[-_]?id|pino-?http|requestLogger|RequestId|ActionDispatch::RequestId|log_tags' <<< "$content"; then
         add "R-341: middleware is registered here but nothing mints or honors \`X-Request-Id\`. Add the request-ID middleware (pino-http genReqId plus the response header; structlog contextvars; slog with the ID from context; log_tags in Rails) before the routes."
       fi
     fi
@@ -51,8 +51,8 @@ esac
 # R-346: a clients/ module with an outbound call and no timeout.
 case "$file_path" in
   */clients/*)
-    if printf '%s' "$content" | grep -qE '\bfetch\(|axios|\bgot\(|undici|httpx\.|requests\.(get|post|put|delete|request)|http\.Client|http\.Get\(|Net::HTTP|Faraday|new [A-Z][A-Za-z]*Client\('; then
-      if ! printf '%s' "$content" | grep -qiE 'timeout|AbortSignal|signal:|deadline|context\.WithTimeout|read_timeout|open_timeout'; then
+    if grep -qE '\bfetch\(|axios|\bgot\(|undici|httpx\.|requests\.(get|post|put|delete|request)|http\.Client|http\.Get\(|Net::HTTP|Faraday|new [A-Z][A-Za-z]*Client\(' <<< "$content"; then
+      if ! grep -qiE 'timeout|AbortSignal|signal:|deadline|context\.WithTimeout|read_timeout|open_timeout' <<< "$content"; then
         add "R-346: this client makes an outbound call with no timeout. Set one explicitly (fetch \`signal: AbortSignal.timeout(ms)\`, SDK \`timeout\`, httpx \`timeout=\`, \`context.WithTimeout\`, Faraday \`timeout\`) and wrap the call in \`withClientTelemetry\` so duration, outcome, and the request ID are logged."
       fi
     fi

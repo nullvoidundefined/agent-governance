@@ -8,8 +8,9 @@ description: Use for any Standard, Complex, or Saga task once a spec exists, to 
 One behavior at a time. The harness, not the prompt, proves RED and GREEN and
 keeps the tests out of the implementer's hands.
 
-**Stack assumption:** `enforce/tdd.sh` runs Vitest or Jest. Any other runner
-refuses; the loop below still applies by hand until the runner lands.
+**Stack assumption:** `enforce/tdd.sh` runs Vitest, Jest, or bash `*.test.sh`
+fixtures (the suite is every `*.test.sh` in the named files' directories). Any
+other runner refuses; the loop below still applies by hand until the runner lands.
 
 ## What the harness enforces (so this skill does not have to ask for it)
 

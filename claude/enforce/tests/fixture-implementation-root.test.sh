@@ -111,7 +111,7 @@ fixture_passes_against_sabotaged_home() {
   while IFS= read -r flag; do reset_flags+=("$flag"); done < <(harness_binding_reset_flags)
   out=$(env "${reset_flags[@]}" HOME="$SANDBOX" CLAUDE_FIRE_LOG=/dev/null \
     bash "$fixture" 2>&1)
-  printf '%s' "$out" | grep -q 'PASS' && ! printf '%s' "$out" | grep -q 'FAIL'
+  grep -q 'PASS' <<< "$out" && ! grep -q 'FAIL' <<< "$out"
 }
 
 # Runs one fixture file with the DATA overrides aimed at the sabotaged sandbox
@@ -128,7 +128,7 @@ fixture_fails_against_sabotaged_data() {
     CLAUDE_TDD_HOME="$SANDBOX/.claude" \
     CLAUDE_FIRE_LOG=/dev/null \
     bash "$fixture" 2>&1)
-  printf '%s' "$out" | grep -q 'FAIL'
+  grep -q 'FAIL' <<< "$out"
 }
 
 # Succeeds when sourcing harness-root.sh in a clean shell leaves every runtime
@@ -162,7 +162,7 @@ fixture_fails_against_sabotaged_root() {
   local fixture="$1" out
   out=$(CLAUDE_HARNESS_ROOT="$SANDBOX/.claude" CLAUDE_FIRE_LOG=/dev/null \
     bash "$fixture" 2>&1)
-  printf '%s' "$out" | grep -q 'FAIL' || [ -z "$out" ]
+  grep -q 'FAIL' <<< "$out" || [ -z "$out" ]
 }
 
 # Succeeds when no fixture outside the recorded allowlist names $HOME/.claude

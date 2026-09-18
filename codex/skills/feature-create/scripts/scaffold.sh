@@ -58,7 +58,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$SLUG" ] || die "usage: scaffold.sh <slug> --area <area> [plan-path] [--ticket <key>] [--worktree-parent <dir>] [--base <branch>] [--no-fetch]" 2
-printf '%s' "$SLUG" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
+grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' <<< "$SLUG" || die "slug '$SLUG' must be lowercase words joined by single hyphens" 2
 
 # --- Step 1: inputs --------------------------------------------------------
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository" 8
@@ -81,7 +81,7 @@ if [ -z "$AREA" ]; then
   printf 'feature-create: --area <area> is required (R-607: stories live in one file per product area). Known areas:\n%s\n' "$(list_known_areas | sed 's/^/  /')" >&2
   exit 2
 fi
-printf '%s' "$AREA" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' || die "area '$AREA' must be lowercase words joined by single hyphens" 2
+grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' <<< "$AREA" || die "area '$AREA' must be lowercase words joined by single hyphens" 2
 AREA_UPPER=$(printf '%s' "$AREA" | tr '[:lower:]' '[:upper:]')
 AREA_TITLE=$(printf '%s' "$AREA" | tr '-' ' ' | awk '{for (i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)} 1')
 SLUG_UPPER=$(printf '%s' "$SLUG" | tr '[:lower:]' '[:upper:]')

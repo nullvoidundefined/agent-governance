@@ -75,7 +75,7 @@ line_n_field() {
 # name), by exact substring. A named wrapper because check() arguments must
 # never contain a live pipe.
 stderr_names_tool() {
-  printf '%s' "$1" | grep -qF -- "$2"
+  grep -qF -- "$2" <<< "$1"
 }
 
 # each_line_valid_json: true only if every line of file $1 parses as its

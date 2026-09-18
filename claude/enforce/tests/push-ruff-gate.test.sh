@@ -76,7 +76,7 @@ git add anytype.py; git commit -qm "test: anytype"
 OUT_ANN=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT_ANN" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: ANN401 (a typing.Any parameter) must deny"; exit 1; }
-printf '%s' "$OUT_ANN" | grep -q "ANN401" \
+grep -q "ANN401" <<< "$OUT_ANN" \
   || { echo "FAIL: the ANN401 denial must name the code; got: $OUT_ANN"; exit 1; }
 
 printf 'def total(items):\n    return sum(items)  # type: ignore\n' > blanket.py
@@ -84,7 +84,7 @@ git add blanket.py; git commit -qm "test: blanket ignore"
 OUT_PGH=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT_PGH" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: PGH003 (a blanket type ignore) must deny"; exit 1; }
-printf '%s' "$OUT_PGH" | grep -q "PGH003" \
+grep -q "PGH003" <<< "$OUT_PGH" \
   || { echo "FAIL: the PGH003 denial must name the code; got: $OUT_PGH"; exit 1; }
 printf 'def total(items):\n    return sum(items)  # type: ignore[arg-type]\n' > blanket.py
 git add blanket.py; git commit -qm "test: coded ignore"
@@ -103,7 +103,7 @@ git add s110.py; git commit -qm "test: s110"
 OUT_S110=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT_S110" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: a broad handler swallowed by pass must deny"; exit 1; }
-printf '%s' "$OUT_S110" | grep -q "S110" \
+grep -q "S110" <<< "$OUT_S110" \
   || { echo "FAIL: the denial must name S110, not only its BLE001 companion; got: $OUT_S110"; exit 1; }
 printf 'def load(read):\n    try:\n        read()\n    except ValueError:\n        pass\n' > s110.py
 git add s110.py; git commit -qm "test: specific handler"
@@ -135,8 +135,8 @@ printf 'def fetch_leg(leg_id):\n    return leg_id\n' > legs.py
 git add .enforce.json legs.py; git commit -q -m "test: opt into file headers"
 OUT12=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT12" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
-printf '%s' "$OUT12" | grep -q 'D100' || { echo "FAIL: expected D100 in the opted-in denial"; exit 1; }
-printf '%s' "$OUT12" | grep -q 'D103' || { echo "FAIL: expected D103 in the opted-in denial"; exit 1; }
+grep -q 'D100' <<< "$OUT12" || { echo "FAIL: expected D100 in the opted-in denial"; exit 1; }
+grep -q 'D103' <<< "$OUT12" || { echo "FAIL: expected D103 in the opted-in denial"; exit 1; }
 git rm -q legs.py
 printf '"""Loads legs by id."""\n\n\ndef fetch_leg(leg_id):\n    """Return the leg id unchanged."""\n    return leg_id\n' > leg_lookup.py
 git add leg_lookup.py; git commit -q -m "test: documented module"

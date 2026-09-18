@@ -228,7 +228,7 @@ fi
 real_selection() {
   bash "$RUNNER" "$CLAUDE_HARNESS_ROOT/enforce/tests" --affected --list --changed-from "$(changes_file "$1")" </dev/null 2>/dev/null
 }
-selection_has() { printf '%s\n' "$1" | grep -qx "$2"; }
+selection_has() { grep -qx "$2" <<< "$1"; }
 SEL=$(real_selection 'claude/skills/task-start/SKILL.md')
 check "an unrelated text edit still runs the credential-shape scan" selection_has "$SEL" credential-shape-scan.test.sh
 SEL=$(real_selection 'claude/hooks/secret-scan.sh')
@@ -297,6 +297,22 @@ reset
 OUT=$(cd "$REPO" && GIT_DIR="$DECOY_REPO/.git" GIT_WORK_TREE="$DECOY_REPO" bash "$RUNNER" "$TESTS" --affected </dev/null 2>&1); STATUS=$?
 git -C "$REPO" checkout -q -- claude/hooks/gamma.sh
 check "an inherited GIT_DIR does not redirect change detection" ran slow-c
+
+# --- per-fixture results kept for a caller ---
+# tdd.sh builds its shell-fixture report from these files, so each fixture's
+# output, verdict, and exit status survive the run in the directory named.
+KEPT="$SANDBOX/kept"
+mkdir -p "$KEPT"
+printf '#!/usr/bin/env bash\necho "saying hello"\nexit 7\n' > "$TESTS/fast-e.test.sh"
+reset
+OUT=$(bash "$RUNNER" "$TESTS" --all --results-dir "$KEPT" </dev/null 2>&1); STATUS=$?
+check "a kept results dir holds each fixture's exit status" grep -qx 7 "$KEPT/fast-e.test.sh.status"
+check "a kept results dir holds each fixture's output" grep -qx 'saying hello' "$KEPT/fast-e.test.sh.out"
+check "a kept results dir holds each fixture's verdict" grep -qx ok "$KEPT/fast-a.test.sh.verdict"
+check "a kept results dir survives the run" [ -f "$KEPT/fast-b.test.sh.status" ]
+rm -f "$TESTS/fast-e.test.sh"
+OUT=$(bash "$RUNNER" "$TESTS" --all --results-dir "$SANDBOX/absent" 2>&1); STATUS=$?
+check "a results dir that does not exist is a usage error" [ "$STATUS" -eq 2 ]
 
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?

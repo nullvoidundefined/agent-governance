@@ -31,6 +31,12 @@
 #   --changed-from <file>  read the changed paths (repo relative, one per
 #                          line) from a file instead of from git.
 #   --list                 print the chosen fixtures' names and run nothing.
+# One option exists for callers that need each fixture's own result:
+#   --results-dir <dir>    keep <name>.out, <name>.verdict, and <name>.status
+#                          (the exit code) for every fixture in an existing
+#                          directory instead of a temporary one deleted at
+#                          the end. enforce/tdd.sh builds its shell report
+#                          from these.
 # A tree with no fixtures fails, as the sequential runners did.
 # FIXTURE_SERIAL_SETTLE_SECONDS sets the pause before the serial fixtures
 # (default 5). FIXTURE_SHARD_JOBS sets the parallelism; the default is the CPU count
@@ -55,6 +61,7 @@ run_one_fixture() {
   name=$(basename "$fixture")
   output=$(bash "$fixture" </dev/null 2>&1); status=$?
   printf '%s\n' "$output" > "$result_dir/$name.out"
+  echo "$status" > "$result_dir/$name.status"
   # Here-strings, not pipes: under pipefail, `printf | grep -q` fails when grep
   # exits at its first match while printf is still writing, which turned
   # long-output passes into failures (PR #42 CI, 2026-09-18).
@@ -215,12 +222,12 @@ affected_selection() {
 # usage_error <message>: exits 2 with the message and the usage line.
 usage_error() {
   echo "run-fixture-shards.sh: $1" >&2
-  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>]" >&2
+  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>] [--results-dir <dir>]" >&2
   exit 2
 }
 
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" fixtures jobs result_dir total count status
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" kept_dir="" fixtures jobs result_dir total count status
   [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
   case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
   shift 2
@@ -228,6 +235,7 @@ main() {
     case "$1" in
       --list) list_only=1; shift ;;
       --changed-from) [ -r "${2:-}" ] || usage_error "--changed-from needs a readable file"; changed_from="$2"; shift 2 ;;
+      --results-dir) [ -d "${2:-}" ] || usage_error "--results-dir needs an existing directory"; kept_dir="$2"; shift 2 ;;
       *) usage_error "unknown option '$1'" ;;
     esac
   done
@@ -248,11 +256,11 @@ main() {
   count=$(grep -c . <<< "$SELECTED")
   jobs="${FIXTURE_SHARD_JOBS:-$(default_job_count)}"
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
-  result_dir=$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")
+  result_dir="${kept_dir:-$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")}"
   export CLAUDE_FIRE_LOG=/dev/null
   run_selected "$SELECTED" "$jobs" "$result_dir"
   report_results "$SELECTED" "$result_dir"; status=$?
-  rm -rf "$result_dir"
+  [ -n "$kept_dir" ] || rm -rf "$result_dir"
   exit "$status"
 }
 main "$@"

@@ -15,7 +15,7 @@ cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 [ -z "$cmd" ] && exit 0
 
 # Only commands that actually invoke the codex CLI matter here.
-printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|[[:space:]])codex([[:space:]]|$)' || exit 0
+grep -Eq '(^|[;&|(]|[[:space:]])codex([[:space:]]|$)' <<< "$cmd" || exit 0
 
 emit() {
   jq -n --arg r "$1" '{
@@ -28,11 +28,11 @@ emit() {
   exit 0
 }
 
-if printf '%s' "$cmd" | grep -Eq 'codex login[^;&|]*--with-(api-key|access-token)'; then
+if grep -Eq 'codex login[^;&|]*--with-(api-key|access-token)' <<< "$cmd"; then
   emit "codex-billing-guard: this command runs 'codex login --with-api-key' or '--with-access-token', switching the codex CLI from the ChatGPT subscription to metered API billing (R-908). Confirm this is deliberate."
 fi
 
-if printf '%s' "$cmd" | grep -Eq '(^|[;&|[:space:]])(export[[:space:]]+)?OPENAI_API_KEY='; then
+if grep -Eq '(^|[;&|[:space:]])(export[[:space:]]+)?OPENAI_API_KEY=' <<< "$cmd"; then
   emit "codex-billing-guard: this command sets OPENAI_API_KEY, which the codex CLI prefers over the stored ChatGPT login and switches usage to metered API billing (R-908). Confirm this is deliberate, or drop it to stay on the subscription."
 fi
 
@@ -41,7 +41,7 @@ if [ -n "${OPENAI_API_KEY:-}" ]; then
 fi
 
 status="$(${CLAUDE_CODEX_CMD:-codex} login status 2>&1 || true)"
-if ! printf '%s' "$status" | grep -qi 'Logged in using ChatGPT'; then
+if ! grep -qi 'Logged in using ChatGPT' <<< "$status"; then
   emit "codex-billing-guard: 'codex login status' does not report ChatGPT auth (got: '${status:-empty}'). Running codex now likely bills the OpenAI API instead of the ChatGPT subscription (R-908). Confirm before proceeding, or run 'codex login' to reauthenticate with ChatGPT."
 fi
 

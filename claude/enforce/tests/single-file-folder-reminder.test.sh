@@ -15,7 +15,7 @@ git add .; git commit -q -m add
 
 # Folder with exactly one source module -> advisory on stderr naming the folder.
 ERR=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR" | grep -q "src/voices" || { echo "FAIL: expected single-file-folder advisory for src/voices"; exit 1; }
+grep -q "src/voices" <<< "$ERR" || { echo "FAIL: expected single-file-folder advisory for src/voices"; exit 1; }
 # It must NOT block (no deny JSON on stdout).
 OUT=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>/dev/null)
 [ -z "$OUT" ] || { echo "FAIL: advisory must not deny"; exit 1; }
@@ -25,7 +25,7 @@ printf '{ "singleFileFolderExemptions": ["src/voices"] }\n' > .enforce.json
 printf 'export function getVoice() {\n  return "y";\n}\n' > src/voices/voices.ts
 git add .; git commit -q -m exempt
 ERR2=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR2" | grep -q "src/voices" && { echo "FAIL: exemption should suppress the advisory"; exit 1; } || true
+grep -q "src/voices" <<< "$ERR2" && { echo "FAIL: exemption should suppress the advisory"; exit 1; } || true
 
 # Python: a package dir holding one real module warns; __init__.py does not count.
 mkdir -p app/scoring
@@ -33,14 +33,14 @@ printf '"""Scoring."""\n' > app/scoring/__init__.py
 printf 'def score_match():\n    return 1\n' > app/scoring/score_match.py
 git add .; git commit -q -m py
 ERR3=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR3" | grep -q "app/scoring" || { echo "FAIL: expected advisory for single-module python package"; exit 1; }
+grep -q "app/scoring" <<< "$ERR3" || { echo "FAIL: expected advisory for single-module python package"; exit 1; }
 
 # Python: Alembic versions/ dir with one migration is exempt.
 mkdir -p migrations/versions
 printf 'def upgrade():\n    pass\n' > migrations/versions/a1_init.py
 git add .; git commit -q -m mig
 ERR4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR4" | grep -q "migrations/versions" && { echo "FAIL: migrations dirs should be exempt"; exit 1; } || true
+grep -q "migrations/versions" <<< "$ERR4" && { echo "FAIL: migrations dirs should be exempt"; exit 1; } || true
 
 # R-305 orders components/Header/Header.tsx; R-309 must not then call that folder
 # a single-file folder. Two hooks pointing opposite directions is not enforcement.
@@ -49,6 +49,6 @@ printf 'export function Header() {\n  return null;\n}\n' > src/components/Header
 printf '.header { color: red; }\n' > src/components/Header/Header.module.scss
 git add .; git commit -q -m component
 ERR5=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR5" | grep -q "src/components/Header" && { echo "FAIL: a paired component folder is the R-305 layout, not an R-309 violation"; exit 1; } || true
+grep -q "src/components/Header" <<< "$ERR5" && { echo "FAIL: a paired component folder is the R-305 layout, not an R-309 violation"; exit 1; } || true
 
 echo "single-file-folder-reminder.test.sh PASS"

@@ -77,7 +77,7 @@ check "bootstrap hook written" test -x "$REPO/.claude/hooks/harness-bootstrap.sh
 check "bootstrap hook carries the repo url" grep -q 'HARNESS_REPO="https://github.com/acme/agent-governance"' "$REPO/.claude/hooks/harness-bootstrap.sh"
 check "bootstrap hook has no placeholder left" bash -c "! grep -q __HARNESS_REPO__ '$REPO/.claude/hooks/harness-bootstrap.sh'"
 check "settings register the bootstrap at SessionStart" jqe '[.hooks.SessionStart[].hooks[].command | select(test("harness-bootstrap.sh"))] | length == 1' "$REPO/.claude/settings.json"
-check "apply reports greptile with the install link" bash -c "printf '%s' \"\$0\" | grep -q 'https://github.com/apps/greptile/installations/new'" "$OUT"
+check "apply reports greptile with the install link" bash -c "grep -q 'https://github.com/apps/greptile/installations/new' <<< \"\$0\"" "$OUT"
 check "ci workflow written with the ci job" grep -q '^    name: ci$' "$REPO/.github/workflows/ci.yml"
 check "ci workflow uses pnpm for node" grep -q 'pnpm test' "$REPO/.github/workflows/ci.yml"
 check "dependabot names the npm ecosystem" grep -q 'package-ecosystem: npm' "$REPO/.github/dependabot.yml"
@@ -108,7 +108,7 @@ export STUB_APPS=greptile
 OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --check 2>&1); ST=$?
 check "check exits 0 at baseline" test "$ST" -eq 0
 check "greptile OK when installed" row greptile OK
-check "baseline line printed" bash -c "printf '%s' \"\$0\" | grep -q 'meets the baseline'" "$OUT"
+check "baseline line printed" bash -c "grep -q 'meets the baseline' <<< \"\$0\"" "$OUT"
 
 # 5. Stack and review options shape the output.
 REPO2="$SB/pyapp"; mkdir -p "$REPO2"; git -C "$REPO2" init -q -b main
@@ -128,7 +128,7 @@ printf 'name: enforce\njobs:\n  fixtures:\n    runs-on: ubuntu-latest\n' > "$REP
 printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo pre"}]}]}}\n' > "$REPO3/.claude/settings.json"
 OUT=$(cd "$REPO3" && bash "$SETUP" acme/widget --ci-context fixtures --harness-repo https://github.com/acme/agent-governance 2>&1)
 check "existing workflow satisfies ci" row ci OK
-check "existing workflow named in the report" bash -c "printf '%s' \"\$0\" | grep -q 'workflow present: .github/workflows/enforce.yml'" "$OUT"
+check "existing workflow named in the report" bash -c "grep -q 'workflow present: .github/workflows/enforce.yml' <<< \"\$0\"" "$OUT"
 check "no ci.yml written beside an existing workflow" test ! -e "$REPO3/.github/workflows/ci.yml"
 check "ci-context honoured in the ruleset" jqe '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[0].context == "fixtures"' "$STUB_STATE/ruleset-protect-merge.json"
 check "existing settings keep their hooks" jqe '.hooks.PreToolUse[0].hooks[0].command == "echo pre"' "$REPO3/.claude/settings.json"
@@ -183,7 +183,7 @@ check "B-18 opt-out recorded" jqe '.productDocs == false' "$REPO6/.enforce.json"
 check "B-18 opt-out keeps existing keys" jqe '.importZones == []' "$REPO6/.enforce.json"
 OUT=$(cd "$REPO6" && bash "$SETUP" acme/widget --check 2>&1)
 check "B-18 check reports SKIPPED" row product-docs SKIPPED
-check "B-18 SKIPPED is not counted missing" bash -c "! printf '%s' \"\$0\" | grep -q '^product-docs .*MISSING'" "$OUT"
+check "B-18 SKIPPED is not counted missing" bash -c "! grep -q '^product-docs .*MISSING' <<< \"\$0\"" "$OUT"
 
 # 10. PR #44 review: a ported setup.sh whose harness tree lacks one template
 #     reports product-docs MISSING and writes no empty README.
