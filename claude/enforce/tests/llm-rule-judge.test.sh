@@ -211,6 +211,36 @@ jq -e '.messages[0].content | fromjson | fromjson |
   (.project_vocabulary | contains("QuasarBasket names the distinctive aggregate root.")) and
   (.project_vocabulary | contains("Unrelated scope text.") | not)' "$CAPTURE_DIR/request.json" >/dev/null \
   || { echo "FAIL: glossary payload must include R-334 and the domain vocabulary section"; exit 1; }
+# Truncation must be visible in the payload, not silent. Widening the diff
+# filter to *.js, *.mjs and *.vue makes the input budget bite sooner, and a test
+# asserting only "the judge was called" passes just as happily when the model
+# reasoned about a prefix of the change. These two cases pin both directions so
+# a passing suite can never hide that (2026-09-18).
+rm -f "$CAPTURE_DIR/request.json"
+printf 'export function smallChange(){}\n' >> generate.js
+git add generate.js
+git commit -q -m "test(fixture): a small judged change for the truncation cases"
+UNTRUNCATED_OUT=$(printf '%s' "$PAYLOAD" | env -u CLAUDE_JUDGE_CMD \
+  PATH="$CAPTURE_DIR:$PATH" ANTHROPIC_API_KEY="$(printf '%s' fixture key)" \
+  CLAUDE_MANIFEST_FILE="$REAL_MANIFEST" CLAUDE_ENFORCE_BASE=HEAD~1 \
+  CLAUDE_JUDGE_USAGE_LOG="$CAPTURE_DIR/usage.log" "$HOOK" 2>&1)
+[ -z "$UNTRUNCATED_OUT" ] || { echo "FAIL: small-diff push should allow silently; got: $UNTRUNCATED_OUT"; exit 1; }
+jq -e '.messages[0].content | fromjson | fromjson |
+  (.diff_truncated == false) and (.diff | contains("smallChange"))' "$CAPTURE_DIR/request.json" >/dev/null \
+  || { echo "FAIL: a diff inside the budget must be sent whole with diff_truncated false"; exit 1; }
+
+# The same change under a one-hundred-byte budget: the flag must flip, so the
+# model is told it is reasoning about a prefix rather than the whole change.
+rm -f "$CAPTURE_DIR/request.json"
+printf '%s' "$PAYLOAD" | env -u CLAUDE_JUDGE_CMD \
+  PATH="$CAPTURE_DIR:$PATH" ANTHROPIC_API_KEY="$(printf '%s' fixture key)" \
+  CLAUDE_MANIFEST_FILE="$REAL_MANIFEST" CLAUDE_ENFORCE_BASE=HEAD~1 \
+  CLAUDE_JUDGE_DIFF_MAX_BYTES=100 \
+  CLAUDE_JUDGE_USAGE_LOG="$CAPTURE_DIR/usage.log" "$HOOK" >/dev/null 2>&1 || true
+jq -e '.messages[0].content | fromjson | fromjson |
+  (.diff_truncated == true) and ((.diff | length) <= 100)' "$CAPTURE_DIR/request.json" >/dev/null \
+  || { echo "FAIL: a diff over the budget must be truncated AND flagged diff_truncated true"; exit 1; }
+
 rm -rf "$CAPTURE_DIR"
 [ "$GENERATED_FAILURES" -eq 0 ] || exit 1
 
