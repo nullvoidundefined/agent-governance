@@ -1,0 +1,1 @@
+../CLAUDE-FRONTEND-NUXT.md

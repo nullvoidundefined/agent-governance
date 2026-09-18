@@ -49,8 +49,10 @@
 !/rules/cloud-deployment.mdc
 !/rules/database.mdc
 !/rules/frontend-next.mdc
+!/rules/frontend-nuxt.mdc
 !/rules/frontend-react.mdc
 !/rules/frontend-vite.mdc
+!/rules/frontend-vue.mdc
 !/rules/frontend.mdc
 !/rules/go.mdc
 !/rules/python.mdc
