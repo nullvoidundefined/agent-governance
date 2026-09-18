@@ -35,7 +35,7 @@ fi
 # existed. Declared here rather than inside the branch above so that the
 # function is defined on both paths.
 declare -f run_git_on_target >/dev/null 2>&1 || run_git_on_target() { git "$@"; }
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 run_git_on_target rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 TOP=$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)

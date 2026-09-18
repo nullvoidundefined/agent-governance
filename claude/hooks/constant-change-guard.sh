@@ -31,7 +31,7 @@ if [ -f "$GIT_INVOCATION_HELPER" ]; then
   # exactly what throws it away (2026-09-18 audit, defect 4).
   parse_git_target_options "$RAW_CMD" push
 fi
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 run_git_on_target rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 BASE=$(resolve_outgoing_base)
@@ -50,7 +50,7 @@ while IFS= read -r constants_file; do
   KEPT=$(printf '%s\n' "$DIFF" | grep '^+' | grep -oE "'[^']{3,}'|\"[^\"]{3,}\"" | sed "s/^[\"']//;s/[\"']$//" | sort -u)
   while IFS= read -r removed_value; do
     [ -z "$removed_value" ] && continue
-    printf '%s\n' "$KEPT" | grep -qxF "$removed_value" && continue
+    grep -qxF "$removed_value" <<< "$KEPT" && continue
     HITS=$(cd "$TOP" && git grep -lF -e "$removed_value" -- '*__tests__*' '*.test.*' '*.spec.*' 'tests/*' '*/tests/*' '*test_*.py' '*_test.py' 'spec/*' '*/spec/*' '*_spec.rb' '*_test.go' 2>/dev/null || true)
     if [ -n "$HITS" ]; then
       STALE="$STALE

@@ -18,10 +18,10 @@ OUT=""; ST=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; echo "  output was: $OUT"; fail=1; fi; }
 
 # reports <text>: true when the last run's output contains the text.
-reports() { printf '%s' "$OUT" | grep -qF -- "$1"; }
+reports() { grep -qF -- "$1" <<< "$OUT"; }
 
 # lacks <text>: true when the last run's output does not contain the text.
-lacks() { ! printf '%s' "$OUT" | grep -qF -- "$1"; }
+lacks() { ! grep -qF -- "$1" <<< "$OUT"; }
 
 # make_repo <name>: a repository with one commit on main and a checked-out
 # feat/x branch; prints its path.

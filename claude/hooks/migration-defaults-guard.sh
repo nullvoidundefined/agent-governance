@@ -33,11 +33,11 @@ case "$TOOL" in
 esac
 
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
-if ! printf '%s' "$FILE_PATH" | grep -qE '/migrations/|(^|/)db/migrate/'; then
+if ! grep -qE '/migrations/|(^|/)db/migrate/' <<< "$FILE_PATH"; then
   exit 0
 fi
 
-if printf '%s' "$FILE_PATH" | grep -qE '(^|/)db/migrate/.*\.rb$'; then
+if grep -qE '(^|/)db/migrate/.*\.rb$' <<< "$FILE_PATH"; then
   # Rails (Ruby analog of R-328, CLAUDE-RUBY.md Migrations section).
   # Nested quotes: default: "'active'". Bare-string SQL call in either quote
   # style: default: "now()" / default: 'now()' (must be a lambda:
@@ -46,7 +46,7 @@ if printf '%s' "$FILE_PATH" | grep -qE '(^|/)db/migrate/.*\.rb$'; then
   NESTED_RE='default:[[:space:]]*("[^"]*'\''|'\''[^'\'']*")'
   SQL_CALL_RE='default:[[:space:]]*("[^"]*\([^"]*\)[^"]*"|'\''[^'\'']*\([^'\'']*\)[^'\'']*'\'')'
   REASON="migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328 (Rails form). Use a bare string for a constant (default: \"active\") and a lambda for a SQL expression (default: -> { \"now()\" }). Never nest quotes (default: \"'active'\" is wrong) and never pass a SQL call as a bare string (default: \"now()\" is wrong). Fix the default and retry."
-elif printf '%s' "$FILE_PATH" | grep -q '\.py$'; then
+elif grep -q '\.py$' <<< "$FILE_PATH"; then
   # Alembic (Python analog of R-328, CLAUDE-PYTHON.md Migrations section).
   # Nested quotes: server_default="'active'". Bare-string SQL call:
   # server_default="now()" (must be sa.text(...)). sa.text("now()") is exempt
@@ -65,8 +65,8 @@ else
   REASON="migration-defaults-guard hook BLOCKED this migration edit: a column default violates R-328. Use a bare string for a constant (default: 'active') and pgm.func() for a SQL expression (default: pgm.func('now()')). Never nest quotes (default: \"'active'\" is wrong) and never pass a SQL call as a bare string (default: 'now()' is wrong). Fix the default and retry."
 fi
 
-if printf '%s' "$CONTENT" | grep -qE "$NESTED_RE" \
-   || printf '%s' "$CONTENT" | grep -qE "$SQL_CALL_RE"; then
+if grep -qE "$NESTED_RE" <<< "$CONTENT" \
+   || grep -qE "$SQL_CALL_RE" <<< "$CONTENT"; then
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
   [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }

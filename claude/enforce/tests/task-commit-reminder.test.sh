@@ -23,7 +23,7 @@ git add -A && git commit -qm "chore: init"
 echo change > tracked.txt
 echo new > untracked.txt
 GOT=$(advisory completed)
-printf '%s' "$GOT" | grep -q 'R-504' || { echo "FAIL: expected R-504 reminder on dirty completion, got: $GOT"; exit 1; }
+grep -q 'R-504' <<< "$GOT" || { echo "FAIL: expected R-504 reminder on dirty completion, got: $GOT"; exit 1; }
 
 # Dirty tree + non-completed status -> silent.
 GOT=$(advisory in_progress)

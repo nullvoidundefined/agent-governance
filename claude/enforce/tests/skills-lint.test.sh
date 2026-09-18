@@ -103,7 +103,7 @@ lint_skills() {
     # 3. rule ids
     local rid
     for rid in $(grep -oE 'R-[0-9]{3}' "$skill" | sort -u); do
-      printf '%s\n' "$rule_ids" | grep -qx "$rid" || { echo "FAIL: $dir: cites $rid, which has no Spec block in rulebook/"; failed=1; }
+      grep -qx "$rid" <<< "$rule_ids" || { echo "FAIL: $dir: cites $rid, which has no Spec block in rulebook/"; failed=1; }
     done
     # 4. em dash
     if grep -q $'\xe2\x80\x94' "$skill"; then
@@ -112,7 +112,7 @@ lint_skills() {
     # 5. superpowers names
     local sp
     for sp in $(grep -oE 'superpowers:[a-z-]+' "$skill" | sed 's/^superpowers://' | sort -u); do
-      printf '%s\n' "$allowed_superpowers" | grep -qx "$sp" || { echo "FAIL: $dir: names superpowers:$sp, which README.md's plugin line does not list"; failed=1; }
+      grep -qx "$sp" <<< "$allowed_superpowers" || { echo "FAIL: $dir: names superpowers:$sp, which README.md's plugin line does not list"; failed=1; }
     done
     # 6. docs paths: a cited path passes when it is a canonical entry, sits
     #    under a canonical directory, or is an ancestor directory of one
@@ -132,7 +132,7 @@ lint_skills() {
     if [ "$dir" = "structure-conventions" ]; then
       local advertised carried
       advertised=$(printf '%s' "$desc" | grep -oE 'R-[0-9]{3}( to R-[0-9]{3})?' | while read -r span; do
-        if printf '%s' "$span" | grep -q ' to '; then
+        if grep -q ' to ' <<< "$span"; then
           seq "$(printf '%s' "$span" | sed -E 's/^R-([0-9]{3}) to R-([0-9]{3})$/\1/')" "$(printf '%s' "$span" | sed -E 's/^R-([0-9]{3}) to R-([0-9]{3})$/\2/')" | sed 's/^/R-/'
         else printf '%s\n' "$span"; fi
       done | sort -u)
@@ -200,7 +200,7 @@ printf -- '---\nname: wrong-name\ndescription: drifted\n---\n<!-- Cloned from cl
 
 SB_OUT=$(lint_skills "$SB/claude" "$SB" 2>&1) && { echo "FAIL: sandbox with a broken skill was reported clean"; exit 1; }
 fail=0
-expect() { printf '%s\n' "$SB_OUT" | grep -qF "$1" || { echo "FAIL: sandbox did not report: $1"; fail=1; }; }
+expect() { grep -qF "$1" <<< "$SB_OUT" || { echo "FAIL: sandbox did not report: $1"; fail=1; }; }
 expect "broken: frontmatter name 'wrong-name' is not the directory name"
 expect "broken: description plus when_to_use is 1600 characters"
 expect "broken: cites ~/.claude/enforce/nothing.sh"
@@ -209,7 +209,7 @@ expect "broken: contains U+2014"
 expect "broken: names superpowers:nonexistent"
 expect "broken: writes or reads docs/elsewhere/file.md"
 expect "broken: cursor/skills/broken/SKILL.md has drifted"
-if printf '%s\n' "$SB_OUT" | grep -q '^FAIL: clean:'; then
+if grep -q '^FAIL: clean:' <<< "$SB_OUT"; then
   echo "FAIL: sandbox reported the clean skill (gitignored path, README-listed superpowers name, canonical docs path):"; printf '%s\n' "$SB_OUT" | grep '^FAIL: clean:'; fail=1
 fi
 [ "$fail" -eq 0 ] || exit 1
@@ -231,7 +231,7 @@ EOF
 FOREIGN_OUT=$(lint_skills "$SB/live" "$SB" 2>&1) || {
   echo "FAIL: a skill absent from the repo's skills tree was linted anyway:"; printf '%s\n' "$FOREIGN_OUT"; exit 1
 }
-if printf '%s\n' "$FOREIGN_OUT" | grep -q 'foreign'; then
+if grep -q 'foreign' <<< "$FOREIGN_OUT"; then
   echo "FAIL: the lint reported a foreign skill it should have skipped:"; printf '%s\n' "$FOREIGN_OUT"; exit 1
 fi
 

@@ -31,7 +31,7 @@ REPO=$(new_repo)
 
 # 1. Missing baseline is a hard stop with instructions.
 OUT=$(node "$E/ratchet.mjs" "$REPO" 2>&1) && { echo "FAIL: a missing baseline must exit non-zero"; exit 1; } || true
-printf '%s' "$OUT" | grep -q -- '--update' || { echo "FAIL: missing-baseline message must point at --update, got: $OUT"; exit 1; }
+grep -q -- '--update' <<< "$OUT" || { echo "FAIL: missing-baseline message must point at --update, got: $OUT"; exit 1; }
 
 # 2. --update records per-rule counts.
 node "$E/ratchet.mjs" --update "$REPO" >/dev/null
@@ -46,8 +46,8 @@ node "$E/ratchet.mjs" "$REPO" >/dev/null || { echo "FAIL: an unchanged tree must
 printf 'export function retrieveNote() { return 1; }\n' > "$REPO/src/services/c.ts"
 git -C "$REPO" add -A && git -C "$REPO" commit -qm "feat: add"
 OUT=$(node "$E/ratchet.mjs" "$REPO" 2>&1) && { echo "FAIL: a new violation must fail the ratchet"; exit 1; } || true
-printf '%s' "$OUT" | grep -q 'lexicon/naming  2 -> 3' || { echo "FAIL: regression must name the rule and delta, got: $OUT"; exit 1; }
-printf '%s' "$OUT" | grep -q 'R-204' || { echo "FAIL: regression must refuse baseline-raising as the fix, got: $OUT"; exit 1; }
+grep -q 'lexicon/naming  2 -> 3' <<< "$OUT" || { echo "FAIL: regression must name the rule and delta, got: $OUT"; exit 1; }
+grep -q 'R-204' <<< "$OUT" || { echo "FAIL: regression must refuse baseline-raising as the fix, got: $OUT"; exit 1; }
 
 # 5. Fixing below the baseline passes and reports the improvement.
 printf 'export function getNote() { return 1; }\n' > "$REPO/src/services/a.ts"
@@ -55,7 +55,7 @@ printf 'export function generateNote() { return 1; }\n' > "$REPO/src/services/b.
 printf 'export function getOtherNote() { return 1; }\n' > "$REPO/src/services/c.ts"
 git -C "$REPO" add -A && git -C "$REPO" commit -qm "fix: names"
 OUT=$(node "$E/ratchet.mjs" "$REPO" 2>&1) || { echo "FAIL: a tree below baseline must pass, got: $OUT"; exit 1; }
-printf '%s' "$OUT" | grep -q 'improved' || { echo "FAIL: expected an improvement line, got: $OUT"; exit 1; }
+grep -q 'improved' <<< "$OUT" || { echo "FAIL: expected an improvement line, got: $OUT"; exit 1; }
 
 # 6. --strict refuses an unlocked improvement.
 node "$E/ratchet.mjs" --strict "$REPO" >/dev/null 2>&1 && { echo "FAIL: --strict must fail on an unlocked improvement"; exit 1; } || true

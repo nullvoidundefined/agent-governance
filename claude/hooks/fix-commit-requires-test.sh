@@ -59,7 +59,7 @@ INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
 # Only care about `git commit -m "..."` invocations.
-if ! printf '%s' "$CMD" | grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[[:space:]]'; then
+if ! grep -qE '(^|;|&|\|)[[:space:]]*git[[:space:]]+commit[[:space:]]' <<< "$CMD"; then
   exit 0
 fi
 
@@ -106,7 +106,7 @@ if [ -z "$SUBJECT" ]; then
 fi
 
 # Only enforce on fix-family prefixes.
-if ! printf '%s' "$SUBJECT" | grep -qE '^(fix:|fix\(|bug:|bugfix:|hotfix:)'; then
+if ! grep -qE '^(fix:|fix\(|bug:|bugfix:|hotfix:)' <<< "$SUBJECT"; then
   exit 0
 fi
 
@@ -119,7 +119,7 @@ STAGED=$(git diff --cached --name-only 2>/dev/null || true)
 ADD_SEGMENTS=$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+add[[:space:]]+[^;&|]+' || true)
 if [ -n "$ADD_SEGMENTS" ]; then
   ADD_PATHS=$(printf '%s\n' "$ADD_SEGMENTS" | sed -E 's/^git[[:space:]]+add[[:space:]]+//' | tr ' ' '\n' | grep -v '^$' || true)
-  if printf '%s\n' "$ADD_PATHS" | grep -qE '^(-A|--all|\.)$'; then
+  if grep -qE '^(-A|--all|\.)$' <<< "$ADD_PATHS"; then
     ADD_PATHS="$ADD_PATHS
 $(git status --porcelain 2>/dev/null | awk '{print $NF}')"
   fi
@@ -133,7 +133,7 @@ fi
 # Match against the R-403 test globs. Python: tests/ trees (R-313) plus the
 # pytest filename conventions test_*.py and *_test.py. Ruby: spec/ trees and
 # *_spec.rb (RSpec). Go: co-located *_test.go (R-313 Go exception).
-if printf '%s\n' "$STAGED" | grep -qE '(\.test\.|\.spec\.|^e2e/|/e2e/|^__tests__/|/__tests__/|^tests?/|/tests?/|(^|/)test_[^/]*\.py$|_test\.py$|(^|/)conftest\.py$|^spec/|/spec/|_spec\.rb$|_test\.go$)'; then
+if grep -qE '(\.test\.|\.spec\.|^e2e/|/e2e/|^__tests__/|/__tests__/|^tests?/|/tests?/|(^|/)test_[^/]*\.py$|_test\.py$|(^|/)conftest\.py$|^spec/|/spec/|_spec\.rb$|_test\.go$)' <<< "$STAGED"; then
   # A test file is present; commit may proceed.
   exit 0
 fi

@@ -19,7 +19,7 @@ OUT=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
 # Tamper with a hook -> warns naming it.
 printf '#!/usr/bin/env bash\n# tampered\nexit 0\n' > "$FIX/hooks/sample-guard.sh"
 OUT2=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
-printf '%s' "$OUT2" | grep -q 'sample-guard.sh' || { echo "FAIL: expected drift warning naming sample-guard.sh"; exit 1; }
+grep -q 'sample-guard.sh' <<< "$OUT2" || { echo "FAIL: expected drift warning naming sample-guard.sh"; exit 1; }
 
 # --update accepts the change -> silent again.
 CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK" --update >/dev/null
@@ -33,7 +33,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$FIX/skills/sample-skill/scripts/check
 CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK" --update >/dev/null
 printf '#!/usr/bin/env bash\n# tampered\nexit 0\n' > "$FIX/skills/sample-skill/scripts/check.sh"
 OUT_SKILL=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
-printf '%s' "$OUT_SKILL" | grep -q 'skills/sample-skill/scripts/check.sh' || { echo "FAIL: expected drift warning naming skills/sample-skill/scripts/check.sh"; exit 1; }
+grep -q 'skills/sample-skill/scripts/check.sh' <<< "$OUT_SKILL" || { echo "FAIL: expected drift warning naming skills/sample-skill/scripts/check.sh"; exit 1; }
 # Leave the fixture as the live-vs-repo section below expects it (hooks/ and
 # enforce/ only), with the manifest regenerated to match.
 rm -rf "$FIX/skills"
@@ -52,8 +52,8 @@ OUT4=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
 
 printf '#!/usr/bin/env bash\n# repo moved ahead\nexit 0\n' > "$REPO_FIX/claude/hooks/sample-guard.sh"
 OUT5=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$FIX" "$HOOK")
-printf '%s' "$OUT5" | grep -q 'does not match the repo checkout' || { echo "FAIL: expected live-vs-repo drift warning; got: $OUT5"; exit 1; }
-printf '%s' "$OUT5" | grep -q 'sample-guard.sh' || { echo "FAIL: live-vs-repo warning must name the drifted file; got: $OUT5"; exit 1; }
+grep -q 'does not match the repo checkout' <<< "$OUT5" || { echo "FAIL: expected live-vs-repo drift warning; got: $OUT5"; exit 1; }
+grep -q 'sample-guard.sh' <<< "$OUT5" || { echo "FAIL: live-vs-repo warning must name the drifted file; got: $OUT5"; exit 1; }
 
 # P1-1 (2026-09-17 audit): an absent manifest used to exit 0 in silence, so
 # deleting one file was the entire bypass. It must warn instead.
@@ -61,9 +61,9 @@ MISSING_FIX=$(mktemp -d)
 mkdir -p "$MISSING_FIX/hooks" "$MISSING_FIX/enforce"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$MISSING_FIX/hooks/sample-guard.sh"
 OUT6=$(echo '{}' | CLAUDE_INTEGRITY_ROOT="$MISSING_FIX" "$HOOK")
-printf '%s' "$OUT6" | grep -q 'MISSING' \
+grep -q 'MISSING' <<< "$OUT6" \
   || { echo "FAIL: expected a warning when the hash manifest is absent; got: $OUT6"; exit 1; }
-printf '%s' "$OUT6" | grep -q 'unverified' \
+grep -q 'unverified' <<< "$OUT6" \
   || { echo "FAIL: the absent-manifest warning must say enforcement is unverified, not intact; got: $OUT6"; exit 1; }
 
 # P1-1 second half: --update had no floor. Against a tree holding no

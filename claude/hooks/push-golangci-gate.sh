@@ -35,7 +35,7 @@ if [ -f "$GIT_INVOCATION_HELPER" ]; then
   # exactly what throws it away (2026-09-18 audit, defect 4).
   parse_git_target_options "$RAW_CMD" push
 fi
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 # Repo exemption: same allowlist as the other push gates (origin URL per line).
 EXEMPT_FILE="$HOME/.claude/enforce/exempt-repos.txt"

@@ -28,11 +28,11 @@ check() {
     fail=1
   fi
 }
-ctx_has()   { printf '%s' "$1" | grep -qF -- "$2"; }
-ctx_lacks() { ! printf '%s' "$1" | grep -qF -- "$2"; }
+ctx_has()   { grep -qF -- "$2" <<< "$1"; }
+ctx_lacks() { ! grep -qF -- "$2" <<< "$1"; }
 file_holds() { [ -f "$1" ] && [ "$(cat "$1")" = "$2" ]; }
 no_file()   { [ ! -e "$1" ]; }
-is_iso_utc() { printf '%s' "$1" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$'; }
+is_iso_utc() { grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$' <<< "$1"; }
 # Shape plus a real calendar instant: strips the fraction, parses, and
 # requires the round trip to reproduce the input.
 is_iso_utc_valid() {

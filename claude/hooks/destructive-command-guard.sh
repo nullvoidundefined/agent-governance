@@ -43,7 +43,7 @@ AT="(^|[;&|(])[[:space:]]*"
 
 # --- gh api: mutating HTTP methods ----------------------------------------
 
-if printf '%s' "$norm" | grep -Eqi "${AT}gh api([[:space:]]|$)"; then
+if grep -Eqi "${AT}gh api([[:space:]]|$)" <<< "$norm"; then
     method="$(printf '%s' "$norm" \
         | grep -Eoi '(-X|--method) [A-Za-z]+' \
         | head -1 \
@@ -74,35 +74,35 @@ fi
 # read leaves core.hooksPath as the final token, whatever read flag spelling
 # precedes it (2026-09-16 audit P2-2: the old flag-spelling exemption denied
 # the bare `git config core.hooksPath` read the rule itself mandates).
-if printf '%s' "$norm" | grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]" \
-    || printf '%s' "$norm" | grep -Eqi "${AT}git config[^|;&]*--unset[^|;&]*core\.hooksPath"; then
+if grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]" <<< "$norm" \
+    || grep -Eqi "${AT}git config[^|;&]*--unset[^|;&]*core\.hooksPath" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
 fi
 
 # --- credential readout ---------------------------------------------------
 
-if printf '%s' "$norm" | grep -Eqi "${AT}gh auth token([[:space:]]|$)" \
-    || printf '%s' "$norm" | grep -Eqi "${AT}gh auth status[^|;&]*(-t|--show-token)([[:space:]]|$)"; then
+if grep -Eqi "${AT}gh auth token([[:space:]]|$)" <<< "$norm" \
+    || grep -Eqi "${AT}gh auth status[^|;&]*(-t|--show-token)([[:space:]]|$)" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: it prints a live GitHub token to stdout, which lands in the transcript, the session log, and scrollback (R-102). Read the token from the keychain at execution time instead of echoing it."
 fi
 
-if printf '%s' "$norm" | grep -Eqi "${AT}security (find-generic-password|find-internet-password)[^|;&]*(-w|-g)([[:space:]]|$)"; then
+if grep -Eqi "${AT}security (find-generic-password|find-internet-password)[^|;&]*(-w|-g)([[:space:]]|$)" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: it prints a keychain secret to stdout (R-102). Resolve the value inside the consuming process so the plaintext never enters the transcript."
 fi
 
 # --- tampering with the hooks directory -----------------------------------
 
-if printf '%s' "$norm" | grep -Eqi "${AT}(rm|mv|chmod|chown|truncate|shred)([[:space:]]|$)[^|;&]*\.claude/hooks"; then
+if grep -Eqi "${AT}(rm|mv|chmod|chown|truncate|shred)([[:space:]]|$)[^|;&]*\.claude/hooks" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: it removes, moves, or strips execution from the hooks directory, disabling the safety harness (R-203). Never bypass a guard without explicit approval in the current turn."
 fi
 
 # --- gh commands whose effect is irreversible or rule-evading -------------
 
-if printf '%s' "$norm" | grep -Eqi "${AT}gh alias set([[:space:]]|$)"; then
+if grep -Eqi "${AT}gh alias set([[:space:]]|$)" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: a gh alias re-labels a denied command so it no longer matches the deny list, evading Bash(gh repo delete*) and its siblings (R-203)."
 fi
 
-if printf '%s' "$norm" | grep -Eqi "${AT}gh repo edit[^|;&]*--visibility public([[:space:]]|$)"; then
+if grep -Eqi "${AT}gh repo edit[^|;&]*--visibility public([[:space:]]|$)" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: making a repository public is effectively irreversible once forks, caches, and archives pick it up. A human makes this call deliberately."
 fi
 

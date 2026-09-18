@@ -1,8 +1,8 @@
 # Slice 01: Python and Vue Convention Tracks
 
 Spec: `claude/docs/superpowers/specs/2026-09-17-python-vue-convention-tracks-design.md`
-Branch: `feat/python-vue-conventions` (the slice branch; each PR branches from it and squash-merges back, and the slice branch squash-merges to `main` when PR 7 lands)
-Status: Gate 1 approved 2026-09-17; PRs 1 to 5 on `main`; PR 6 in review
+Branch: `feat/python-vue-conventions` was the planned slice branch. PR #19 carried PRs 1 and 2 to `main` and left it stale, so PRs 3 to 7 each branched off `main` and squash-merged there.
+Status: complete 2026-09-18; all seven PRs on `main`
 Tracker: Linear project Agent Governance, slice ticket IAN-72, one child ticket per PR
 Started: 2026-09-17
 
@@ -19,8 +19,8 @@ This slice brings the Python convention track to the depth of the TypeScript tra
 | 3 | `CLAUDE-FRONTEND-VUE.md` and `CLAUDE-FRONTEND-NUXT.md` | 20% | IAN-90, PR #34 | 2026-09-18 | Branched off `main`, not the slice branch: PR #19 moved PRs 1 and 2 to `main` and left the slice branch stale, so PRs 3 to 7 each branch off `main` and squash-merge there. The Nuxt globs name Nitro's `server/api`, `server/middleware`, `server/routes`, and `server/plugins` instead of the spec's `**/server/**/*.ts`, which also matched an Express `apps/server/src/` tree; fixture A10 holds the line. The `CLAUDE.md` convention-files sentence was left unchanged, because the Vue track is already named in `rules/session-types.md` and the `CLAUDE.md` sentence names no track. |
 | 4 | `CLAUDE-PYTHON.md` rewrite | 25% | IAN-92, PR #40 | 2026-09-18 | Table names follow R-334, merged after the spec: `user_sessions`, `request_idempotency_keys`, and `billing_webhook_events` replace the spec's `sessions`, `idempotency_keys`, and `stripe_events`. The AC-3 and AC-4 assertions are P1 to P3 in the invariant test. The connection dependency is declared with `scope="function"` so the commit lands before the response. |
 | 5 | Enforcement E1 to E6 | 15% | IAN-95, PR #43 | 2026-09-18 | E6 is opt-in (owner decision): D100 and D103 fire only when `.enforce.json` sets `fileHeaders`, the ESLint header rule's switch, because always-on docstrings broke unrelated fixtures when the TypeScript rule tried it. E1 also widens `push-eslint-gate.sh` and `ratchet.mjs`, whose `.tsx?` filters would have kept every `.vue` file from the linter. `**/*.vue` joins only the main rule block, not the server, services, or test blocks, so no server-only rule reaches browser files. |
-| 6 | Enforcement E7: structure-gate Vue branch | 12% | IAN-97 | | The branch keys on a `nuxt` dependency only, not on a `.vue` extension, because a `.vue` file inside a Vite app sits under `src/`, which the gate already roots on, and rooting any `.vue` path at `app/` would misfire there. The `.vue` extension keys only the R-305 folder check (any `vue` or `nuxt` package). Page directories and Nitro `server/api` and `server/routes` directories are exempt from R-312 as URL segments, the Nuxt form of the Next `app/` exemption. The one edit to existing lines moves the two package-lookup helpers above the walk. |
-| 7 | Sync, hashes, README, handoff | 5% | | | |
+| 6 | Enforcement E7: structure-gate Vue branch | 12% | IAN-97, PRs #45 and #47 | 2026-09-18 | The branch keys on a `nuxt` dependency only, not on a `.vue` extension, because a `.vue` file inside a Vite app sits under `src/`, which the gate already roots on, and rooting any `.vue` path at `app/` would misfire there. The `.vue` extension keys only the R-305 folder check (any `vue` or `nuxt` package). Page directories and Nitro `server/api` and `server/routes` directories are exempt from R-312 as URL segments, the Nuxt form of the Next `app/` exemption. The one edit to existing lines moves the two package-lookup helpers above the walk. PR #45 merged before its Copilot-review fix landed, so the fix (the Nuxt root is the package's own `app/` and `server/`, not any ancestor segment of that name) shipped as PR #47. |
+| 7 | Sync, hashes, README, handoff | 5% | IAN-72, PR #48 | 2026-09-18 | Hashes were regenerated inside each PR, and `claude/README.md` gained the Vue and Nuxt rows in PR 3, so neither needed a closing change. `sync.sh` was not run from `main`, because the live `~/.claude` syncs from another session's worktree that already contains every slice PR; syncing from `main` would have rolled back that session's unmerged commits. The live check found that `~/.claude/enforce/node_modules` lacked PR 5's two new dependencies, because sync copies tracked files only; `npm ci` there restored the push gate, and the root cause is filed as its own task. The shared `docs/session-handoff/session-handoff.md` belongs to the governance session, so this slice's close is recorded here instead of overwriting it. |
 
 Later list (deferred, not in this slice): Python naming-lexicon AST enforcer; SFC-aware brace counting in `clean-code-scan.mjs`; deletion of the stale `enforce/eslintOptions.mjs` duplicate.
 
@@ -151,6 +151,8 @@ The `structure-conventions` skill gains the Nuxt vocabulary in R-305 and the Pyt
 **Review focus:** The `git diff origin/main` output, since this is the push that publishes the slice to a public remote.
 
 **Size:** 4 files, small.
+
+**Outcome (2026-09-18):** only the slice plan changed. The hashes and the README rows had already landed inside PRs 3 to 6, the live sync ran from another session's checkout that already held every slice PR, and the handoff went to the slice plan rather than the governance session's shared handoff file. AC-10 was checked against the live tree instead: every slice file matched `main` except the two files that PR #47 changed, which that checkout had not yet merged, and the missing live dependencies were installed. Row 7 of the execution record has the detail.
 
 ## Gate rules for this slice
 

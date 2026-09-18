@@ -109,8 +109,8 @@ RELATIVE_REPO=$(mktemp -d)
 git -C "$RELATIVE_REPO" init -q .
 git -C "$RELATIVE_REPO" config core.hooksPath ".git/hooks"
 run_install "$RELATIVE_REPO"
-relativeFormWarned() { printf '%s' "$out" | grep -q "runs NO hooks there"; }
-relativeFormNamesRepair() { printf '%s' "$out" | grep -q -- "--unset core.hooksPath"; }
+relativeFormWarned() { grep -q "runs NO hooks there" <<< "$out"; }
+relativeFormNamesRepair() { grep -q -- "--unset core.hooksPath" <<< "$out"; }
 check "a relative .git/ hooksPath is called out, not merely noted" relativeFormWarned
 check "the warning names the repair" relativeFormNamesRepair
 
@@ -121,7 +121,7 @@ git -C "$ABSOLUTE_REPO" init -q .
 mkdir -p "$ABSOLUTE_REPO/githooks"
 git -C "$ABSOLUTE_REPO" config core.hooksPath "$ABSOLUTE_REPO/githooks"
 run_install "$ABSOLUTE_REPO"
-absoluteFormNotWarned() { ! printf '%s' "$out" | grep -q "runs NO hooks there"; }
+absoluteFormNotWarned() { ! grep -q "runs NO hooks there" <<< "$out"; }
 check "an absolute hooksPath draws no worktree warning" absoluteFormNotWarned
 
 exit "$fail"

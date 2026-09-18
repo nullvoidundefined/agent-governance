@@ -52,10 +52,10 @@ print_sections_mentioning() {
 }
 
 lower=$(printf '%s' "$QUERY" | tr '[:upper:]' '[:lower:]')
-if printf '%s' "$lower" | grep -qE '^(layer )?[0-9]+$'; then
+if grep -qE '^(layer )?[0-9]+$' <<< "$lower"; then
   n=$(printf '%s' "$lower" | grep -oE '[0-9]+')
   print_sections layer "$n" && exit 0
-elif printf '%s' "$QUERY" | grep -qE '^R-[0-9]{3}$'; then
+elif grep -qE '^R-[0-9]{3}$' <<< "$QUERY"; then
   print_sections_mentioning "$QUERY" && exit 0
 else
   print_sections heading "$lower" && exit 0

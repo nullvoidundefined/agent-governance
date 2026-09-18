@@ -40,7 +40,7 @@ TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 [ "$TOOL" = "Bash" ] || exit 0
 
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
-if ! printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+push([[:space:]]|$)'; then
+if ! grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+push([[:space:]]|$)' <<< "$CMD"; then
   exit 0
 fi
 
@@ -123,15 +123,15 @@ PATTERN+='|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}'
 PATTERN+='|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 PATTERN+='|AIza[0-9A-Za-z_-]{35}'
 
-if printf '%s' "$ADDED" | grep -qE "$PATTERN"; then
+if grep -qE "$PATTERN" <<< "$ADDED"; then
   deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds a string matching a known secret pattern. The agent-governance remote is public (R-106); a pushed secret is published irreversibly. Remove the secret from the committed history before pushing."
   exit 0
 fi
 
 USER_NAME=$(id -un 2>/dev/null || echo "")
 HOME_RE="/(Users|home)/${USER_NAME}(/|$)"
-if printf '%s' "$ADDED" | grep -Fq "$HOME" \
-   || { [ -n "$USER_NAME" ] && printf '%s' "$ADDED" | grep -qE "$HOME_RE"; }; then
+if grep -Fq "$HOME" <<< "$ADDED" \
+   || { [ -n "$USER_NAME" ] && grep -qE "$HOME_RE" <<< "$ADDED"; }; then
   deny "global-repo-push-guard hook BLOCKED this git push: the outgoing diff (git diff origin/main) adds this machine's real home path. The agent-governance remote is public (R-106); local filesystem paths must not be published. Replace the absolute path with a placeholder (\$HOME or ~) before pushing."
   exit 0
 fi

@@ -60,28 +60,28 @@ emit() {
 # Destructive = irreversible data loss. Benign writes (UPDATE/INSERT) are NOT
 # destructive, so admin updates against prod are not hard-denied (they still ask).
 destructive=0
-if printf '%s\n' "$upper" | grep -Eq 'DROP[[:space:]]+(DATABASE|TABLE)|TRUNCATE([[:space:]]|$)|DELETE[[:space:]]+FROM' \
-    || printf '%s\n' "$cmd" | grep -Eqi 'pg_restore|migrate:down'; then
+if grep -Eq 'DROP[[:space:]]+(DATABASE|TABLE)|TRUNCATE([[:space:]]|$)|DELETE[[:space:]]+FROM' <<< "$upper" \
+    || grep -Eqi 'pg_restore|migrate:down' <<< "$cmd"; then
     destructive=1
 fi
 
 # Aimed at a managed/remote (production OR staging) database.
 remote=0
-if printf '%s\n' "$cmd" | grep -Eqi 'neon\.tech|railway\.app'; then
+if grep -Eqi 'neon\.tech|railway\.app' <<< "$cmd"; then
     remote=1
 fi
-if printf '%s\n' "$cmd" | grep -Eqi 'railway[[:space:]]+(run|up)' \
-    && printf '%s\n' "$cmd" | grep -Eqi '(-e|--environment)[[:space:]]+(production|staging)'; then
+if grep -Eqi 'railway[[:space:]]+(run|up)' <<< "$cmd" \
+    && grep -Eqi '(-e|--environment)[[:space:]]+(production|staging)' <<< "$cmd"; then
     remote=1
 fi
 
 # Specifically production.
 prod=0
-if printf '%s\n' "$cmd" | grep -Eqi 'railway[[:space:]]+(run|up)' \
-    && printf '%s\n' "$cmd" | grep -Eqi '(-e|--environment)[[:space:]]+production'; then
+if grep -Eqi 'railway[[:space:]]+(run|up)' <<< "$cmd" \
+    && grep -Eqi '(-e|--environment)[[:space:]]+production' <<< "$cmd"; then
     prod=1
 fi
-if printf '%s\n' "$cmd" | grep -Eqi 'node_env[^a-z0-9]+production'; then
+if grep -Eqi 'node_env[^a-z0-9]+production' <<< "$cmd"; then
     prod=1
 fi
 
@@ -128,7 +128,7 @@ fi
 # Local databases are the developer's own; never prompt. Exempt only when
 # localhost is named and the command is not also remote/production-targeted.
 if [ "$remote" -eq 0 ] && [ "$prod" -eq 0 ] \
-    && printf '%s\n' "$cmd" | grep -Eqi 'localhost|127\.0\.0\.1'; then
+    && grep -Eqi 'localhost|127\.0\.0\.1' <<< "$cmd"; then
     exit 0
 fi
 
@@ -145,7 +145,7 @@ fi
 
 # ASK: non-destructive writes against a managed/remote database.
 if [ "$remote" -eq 1 ]; then
-    if printf '%s\n' "$cmd" | grep -Eqiw 'update|insert|alter|create'; then
+    if grep -Eqiw 'update|insert|alter|create' <<< "$cmd"; then
         emit ask "Write against a managed/remote (production or staging) database. Confirm before running."
     fi
 fi

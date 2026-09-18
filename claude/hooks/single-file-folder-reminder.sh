@@ -26,7 +26,7 @@ if [ -f "$GIT_INVOCATION_HELPER" ]; then
   # exactly what throws it away (2026-09-18 audit, defect 4).
   parse_git_target_options "$RAW_CMD" push
 fi
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' || exit 0
+grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push' <<< "$CMD" || exit 0
 
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
@@ -57,7 +57,7 @@ while IFS= read -r dir; do
   [ -z "$dir" ] && continue
   # Migration trees (Alembic versions/, node-pg-migrate) legitimately start at one file.
   case "$dir" in migrations|migrations/*|*/migrations|*/migrations/*) continue ;; esac
-  printf '%s\n' "$EXEMPT" | grep -qx "$dir" && continue
+  grep -qx "$dir" <<< "$EXEMPT" && continue
   count=0
   lone_module=""
   for path in "$TOP/$dir"/*; do

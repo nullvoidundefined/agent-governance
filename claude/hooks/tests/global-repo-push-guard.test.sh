@@ -110,7 +110,7 @@ setup_repo "$REPO" "$ORIGIN"
 commit_to "$REPO" "doc reference: $HOME/projects/notes.md"
 ORPHAN_OUT=$(jq -n --arg cwd "$REPO" --arg cmd "git push" \
     '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}' | bash "$ORPHAN_DIR/global-repo-push-guard.sh")
-if printf '%s' "$ORPHAN_OUT" | grep -q '"permissionDecision": "ask"'; then
+if grep -q '"permissionDecision": "ask"' <<< "$ORPHAN_OUT"; then
     echo "PASS: missing identity helper fails closed to ask"
 else
     echo "FAIL: missing identity helper must ask, got: $ORPHAN_OUT"; fail=1

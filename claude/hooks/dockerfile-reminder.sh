@@ -46,7 +46,7 @@ find_dockerfile_dir() {
 is_dockerfile=0
 case "$base" in Dockerfile | Dockerfile.* | *.Dockerfile | Containerfile) is_dockerfile=1 ;; esac
 if [ "$is_dockerfile" -eq 1 ]; then
-  if ! printf '%s\n' "$content" | grep -qiE '^[[:space:]]*USER[[:space:]]+[^[:space:]]'; then
+  if ! grep -qiE '^[[:space:]]*USER[[:space:]]+[^[:space:]]' <<< "$content"; then
     add "R-351: this Dockerfile never switches to a non-root user. Add \`USER node\` (or \`USER app\`) after the runtime stage's COPY lines."
   fi
   stage_names=$(printf '%s\n' "$content" | grep -ioE '^[[:space:]]*FROM[[:space:]].*[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+' | awk '{print tolower($NF)}' | sort -u)
@@ -59,7 +59,7 @@ if [ "$is_dockerfile" -eq 1 ]; then
       [ -z "$image" ] && continue
       lowered=$(printf '%s' "$image" | tr 'A-Z' 'a-z')
       [ "$lowered" = "scratch" ] && continue
-      printf '%s\n' "$stage_names" | grep -qxF "$lowered" && continue
+      grep -qxF "$lowered" <<< "$stage_names" && continue
       case "$image" in
         *@sha256:*) continue ;;
         *:latest) printf '%s ' "$image" ;;
@@ -92,7 +92,7 @@ if [ "$is_dockerfile" -eq 0 ]; then
     */railway.toml | */railway.json | */fly.toml | */render.yaml | */Procfile | */app.yaml | */nixpacks.toml)
       artifact="platform deploy config" ;;
     */package.json)
-      printf '%s\n' "$content" | grep -qE '"start"[[:space:]]*:' && artifact="package.json with a start script" ;;
+      grep -qE '"start"[[:space:]]*:' <<< "$content" && artifact="package.json with a start script" ;;
   esac
 fi
 

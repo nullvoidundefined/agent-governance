@@ -228,7 +228,7 @@ fi
 real_selection() {
   bash "$RUNNER" "$CLAUDE_HARNESS_ROOT/enforce/tests" --affected --list --changed-from "$(changes_file "$1")" </dev/null 2>/dev/null
 }
-selection_has() { printf '%s\n' "$1" | grep -qx "$2"; }
+selection_has() { grep -qx "$2" <<< "$1"; }
 SEL=$(real_selection 'claude/skills/task-start/SKILL.md')
 check "an unrelated text edit still runs the credential-shape scan" selection_has "$SEL" credential-shape-scan.test.sh
 SEL=$(real_selection 'claude/hooks/secret-scan.sh')
