@@ -387,15 +387,27 @@ handle_before_read() {
 # so session-start.sh records its own clock on the first start and re-reads
 # that record afterwards. No real conversation id, no path: the "default"
 # fallback would give every conversation one shared, write-once start.
+#
+# The session id is SAFE_ID when sanitizing changed nothing, so the block
+# names a readable conversation; otherwise SAFE_ID plus a digest of the raw
+# id, because SAFE_ID alone is lossy ("conv/a" and "conv_a" both become
+# "conv_a") and two conversations sharing one write-once record would share
+# one start.
+digest_text() {
+  local digest
+  digest=$( { command -v shasum >/dev/null 2>&1 && printf '%s' "$1" | shasum -a 256; } \
+    || { command -v sha256sum >/dev/null 2>&1 && printf '%s' "$1" | sha256sum; } \
+    || printf '%s' "$1" | cksum)
+  printf '%s' "$digest" | tr -dc '0-9a-f' | cut -c1-16
+}
 synthetic_transcript_path() {
-  local root_hash
+  local root_hash session_id
   case "$CONVERSATION_ID" in "" | default) return 0 ;; esac
-  root_hash=$( { command -v shasum >/dev/null 2>&1 && printf '%s' "$ROOT" | shasum -a 256; } \
-    || { command -v sha256sum >/dev/null 2>&1 && printf '%s' "$ROOT" | sha256sum; } \
-    || printf '%s' "$ROOT" | cksum)
-  root_hash=$(printf '%s' "$root_hash" | tr -dc '0-9a-f' | cut -c1-16)
+  root_hash=$(digest_text "$ROOT")
   [ -n "$root_hash" ] || return 0
-  printf '%s/.claude/projects/cursor-%s/%s.jsonl' "$HOME" "$root_hash" "$SAFE_ID"
+  session_id="$SAFE_ID"
+  [ "$SAFE_ID" = "$CONVERSATION_ID" ] || session_id="$SAFE_ID-$(digest_text "$CONVERSATION_ID")"
+  printf '%s/.claude/projects/cursor-%s/%s.jsonl' "$HOME" "$root_hash" "$session_id"
 }
 
 handle_session_start() {
