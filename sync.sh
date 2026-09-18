@@ -30,7 +30,8 @@
 # installed is kept and reported on stderr, a file sync never installed is
 # never looked at, a manifest path that is absolute or climbs out of the
 # target is ignored, and a directory is removed only when removing a file
-# emptied it. A run with no previous manifest (an install synced before
+# emptied it. A candidate whose path matches a tracked path ignoring letter
+# case is never removed. A run with no previous manifest (an install synced before
 # manifests existed) removes nothing, so files orphaned before then still
 # need cleaning up by hand.
 set -euo pipefail
@@ -99,7 +100,12 @@ pruneEmptiedDirectories() {
 # removal rule above to every path the previous manifest lists and the new one
 # does not, printing each removal on stdout and each kept file on stderr. The
 # awk filter checks the 64-hex-digit hash without a regex interval, which
-# mawk (Ubuntu's default awk) has not always supported.
+# mawk (Ubuntu's default awk) has not always supported. Paths are compared
+# ignoring case: after a rename that changes only letter case, a
+# case-insensitive volume (macOS by default) still holds the tracked file
+# under the old spelling, and removing that spelling would delete it (local
+# review on #69). On a case-sensitive volume the old spelling then stays
+# behind, which is the safe side of the trade.
 removeUntrackedInstalledFiles() {
   local dest="$1" new_manifest="$2" old_manifest="$1/.sync-manifest" line recorded rel live
   [ -f "$old_manifest" ] || return 0
@@ -115,7 +121,7 @@ removeUntrackedInstalledFiles() {
     else
       echo "KEPT: $live is no longer tracked but was edited since sync installed it; remove it by hand if it is not needed" >&2
     fi
-  done < <(awk 'NR == FNR { tracked[substr($0, 67)] = 1; next } substr($0, 65, 2) == "  " && substr($0, 1, 64) !~ /[^0-9a-f]/ && !(substr($0, 67) in tracked)' "$new_manifest" "$old_manifest")
+  done < <(awk 'NR == FNR { tracked[tolower(substr($0, 67))] = 1; next } substr($0, 65, 2) == "  " && substr($0, 1, 64) !~ /[^0-9a-f]/ && !(tolower(substr($0, 67)) in tracked)' "$new_manifest" "$old_manifest")
 }
 
 sync_one() {

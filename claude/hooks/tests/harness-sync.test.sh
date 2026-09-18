@@ -94,6 +94,22 @@ OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "a kept live-edited file is still there" test -f "$FAKE/.claude/hooks/retired.sh"
 check "a kept live-edited file is named in the context" reports "KEPT: $FAKE/.claude/hooks/retired.sh"
 
+# 3a2. A commit that only stops tracking a file still triggers the sync that
+# removes it (local review on #69). The drift check compared tracked paths
+# alone, so a removal-only commit showed no drift and the installed file stayed
+# until some unrelated change caused a sync. A path the live manifest lists,
+# the repository no longer tracks, and the live tree still holds is drift.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CO/claude/hooks/removal-only.sh"
+git -C "$CO" add -A; git -C "$CO" commit -qm "add a hook to remove"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+check "the hook to remove was installed" test -f "$FAKE/.claude/hooks/removal-only.sh"
+git -C "$CO" rm -q claude/hooks/removal-only.sh; git -C "$CO" commit -qm "remove the hook only"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+check "a removal-only commit is drift" reports "synced 1 changed or missing file(s)"
+check "a removal-only commit removes the installed file" test ! -e "$FAKE/.claude/hooks/removal-only.sh"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+check "after the removal the trees match" silent
+
 # 3b. Drift in a NON-claude payload also triggers the sync. ./sync.sh writes all
 # three live trees, but the drift check compared claude/ alone, so a stale
 # ~/.cursor or ~/.codex could never trigger the sync that repairs it: a Cursor

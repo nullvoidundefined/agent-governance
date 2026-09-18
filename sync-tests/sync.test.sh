@@ -106,6 +106,19 @@ grep -q "removable.txt" "$TMP/remove.out" || { echo "FAIL: a removal was not rep
 [ -f "$TMP/live/claude/sessions/marker.txt" ] || { echo "FAIL: live-only runtime state was removed"; exit 1; }
 if grep -q "removable.txt\|edited.txt" "$MANIFEST"; then echo "FAIL: the new manifest still lists files the repo no longer tracks"; exit 1; fi
 
+# A rename that changes only letter case (local review on #69): on a
+# case-insensitive volume (macOS by default) rsync --checksum leaves the old
+# entry in place under the old spelling, and the old path resolves to the file
+# the repository still tracks, so removing it would delete a tracked file. A
+# candidate whose path matches a tracked path ignoring case is never removed.
+echo "case rename" > "$TMP/repo/claude/CaseRename.txt"
+git -C "$TMP/repo" add -A; git -C "$TMP/repo" commit -q -m "fixture: add case-rename file"
+run_sync >/dev/null
+git -C "$TMP/repo" mv claude/CaseRename.txt claude/caserename.txt
+git -C "$TMP/repo" commit -q -m "fixture: rename by case only"
+run_sync >/dev/null
+[ -f "$TMP/live/claude/caserename.txt" ] || { echo "FAIL: a case-only rename removed the file the repository still tracks"; exit 1; }
+
 # First run with no manifest (an install synced before manifests existed):
 # nothing is removed, and the manifest is written for the next run.
 echo "legacy" > "$TMP/repo/claude/legacy.txt"
