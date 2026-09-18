@@ -95,7 +95,7 @@ if [ "$drifted" -gt 0 ]; then
   if sync_err=$(cd "$CHECKOUT" && SYNC_CLAUDE_HOME="$LIVE" SYNC_CURSOR_HOME="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}" SYNC_CODEX_HOME="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}" ./sync.sh 2>&1 >/dev/null); then
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT")
   elif printf '%s' "$sync_err" | grep -q '^REFUSED'; then
-    say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses the whole sync); the live ~/.claude is unchanged and $drifted tracked file(s) differ. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
+    say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses its payload: $sync_err); sync.sh copies claude/, cursor/, then codex/, so a payload before the refused one may already be updated while the refused one and those after it are not, and $drifted tracked file(s) differed before the run. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
     exit 0
   else
     # The files synced; the failure came after the copy (the enforce install).

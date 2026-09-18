@@ -96,8 +96,14 @@ printf '%s\n' "$*" >> "$NPM_LOG"
 [ "${STUB_NPM_FAIL:-}" = "1" ] && { echo "stub npm: registry unreachable" >&2; exit 1; }
 prefix=""
 while [ $# -gt 0 ]; do [ "$1" = "--prefix" ] && prefix="$2"; shift; done
+# npm ci deletes node_modules before installing, stamp included.
+rm -f "$prefix/node_modules/.enforce-installed-lock"
 jq -r '.packages | to_entries[] | select(.key != "" and (.value.optional | not)) | .key' "$prefix/package-lock.json" |
   while IFS= read -r pkg; do mkdir -p "$prefix/$pkg"; done
+# STUB_NPM_READONLY: leave node_modules unwritable, so the stamp copy that
+# follows a successful install fails.
+[ "${STUB_NPM_READONLY:-}" = "1" ] && chmod a-w "$prefix/node_modules"
+exit 0
 STUB
 chmod +x "$STUB_NPM"
 export NPM_LOG
@@ -149,6 +155,30 @@ if STUB_NPM_FAIL=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/npmfail.err"
 grep -q "FAILED" "$TMP/npmfail.err" || { echo "FAIL: npm ci failure was not reported"; cat "$TMP/npmfail.err"; exit 1; }
 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync did not recover once npm worked"; exit 1; }
 [ -d "$TMP/live/claude/enforce/node_modules/eslint-plugin-vue" ] || { echo "FAIL: a failed install was not retried on the next sync"; exit 1; }
+
+# Copilot review on #55: the stamp copy is the installer's last step, and a
+# helper without set -e used to report "installed" even when it failed, so the
+# sync claimed success with no stamp written.
+writeEnforceLock eslint vue-eslint-parser eslint-plugin-vue typescript
+if STUB_NPM_READONLY=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/stamp.err"; then
+  chmod u+w "$TMP/live/claude/enforce/node_modules"; echo "FAIL: sync succeeded although the install stamp could not be written"; exit 1
+fi
+chmod u+w "$TMP/live/claude/enforce/node_modules"
+grep -q "FAILED" "$TMP/stamp.err" || { echo "FAIL: a stamp write failure was not reported"; cat "$TMP/stamp.err"; exit 1; }
+
+# Copilot review on #55: sync.sh and a parallel session's SessionStart can both
+# find the install stale, and npm ci rebuilds the shared node_modules, so the
+# install is serialized by a lock. A lock held by someone else is waited on and
+# then reported, never run through.
+mkdir "$TMP/live/claude/enforce/.enforce-install-lock"
+calls=$(npmCallCount)
+if ENFORCE_INSTALL_LOCK_WAIT=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/lock.err"; then echo "FAIL: sync installed through a lock held by another install"; exit 1; fi
+[ "$(npmCallCount)" = "$calls" ] || { echo "FAIL: npm ran while another install held the lock"; exit 1; }
+grep -q "enforce-install-lock" "$TMP/lock.err" || { echo "FAIL: a held install lock was not named"; cat "$TMP/lock.err"; exit 1; }
+rmdir "$TMP/live/claude/enforce/.enforce-install-lock"
+SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync did not install once the lock was released"; exit 1; }
+[ ! -e "$TMP/live/claude/enforce/.enforce-install-lock" ] || { echo "FAIL: the install left its lock behind"; exit 1; }
+[ -d "$TMP/live/claude/enforce/node_modules/typescript" ] || { echo "FAIL: install after the lock release did not complete"; exit 1; }
 
 rm -rf "$TMP"
 echo "sync.test.sh PASS"

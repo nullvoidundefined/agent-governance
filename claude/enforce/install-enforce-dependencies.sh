@@ -20,12 +20,21 @@
 # exit 0 printing "installed" when npm ci ran and succeeded, exit 1 with a
 # FAILED line on stderr naming the command to run when npm is missing or fails.
 # SYNC_NPM overrides the npm executable (fixtures).
+#
+# The check, install, and stamp run under a lock directory beside node_modules,
+# because sync.sh and a parallel session's SessionStart can both find the
+# install stale, and npm ci deletes and rebuilds the shared tree. A caller that
+# finds the lock held waits up to ENFORCE_INSTALL_LOCK_WAIT seconds (default
+# 300), then re-checks, since the holder has usually just installed. A lock
+# older than ten minutes is treated as abandoned by a killed install.
 set -uo pipefail
 
 ENFORCE_DIR="${1:?usage: install-enforce-dependencies.sh <enforce-dir>}"
 NPM_BIN="${SYNC_NPM:-npm}"
 LOCK="$ENFORCE_DIR/package-lock.json"
 STAMP="$ENFORCE_DIR/node_modules/.enforce-installed-lock"
+LOCK_DIR="$ENFORCE_DIR/.enforce-install-lock"
+LOCK_WAIT="${ENFORCE_INSTALL_LOCK_WAIT:-300}"
 
 # hasEveryLockedPackage(): true when every non-optional package the lockfile
 # names has its directory under the enforce dir. Optional packages are skipped
@@ -61,10 +70,34 @@ runLockedInstall() {
     return 1
   fi
   rm -f "$log"
-  cp "$LOCK" "$STAMP"
+  if ! cp "$LOCK" "$STAMP"; then
+    echo "FAILED: npm ci succeeded but the install stamp $STAMP could not be written, so every sync will reinstall. Check the permissions and free space of $ENFORCE_DIR/node_modules." >&2
+    return 1
+  fi
   echo "installed"
 }
 
+# acquireInstallLock(): takes the install lock, clearing one abandoned for more
+# than ten minutes; fails naming the lock when it stays held past LOCK_WAIT.
+acquireInstallLock() {
+  local waited=0
+  until mkdir "$LOCK_DIR" 2>/dev/null; do
+    if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+      rmdir "$LOCK_DIR" 2>/dev/null
+      continue
+    fi
+    if [ "$waited" -ge "$LOCK_WAIT" ]; then
+      echo "FAILED: another enforce install has held $LOCK_DIR for over ${LOCK_WAIT}s. If no npm ci is running, remove that directory and run: npm ci --prefix $ENFORCE_DIR" >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+}
+
 [ -f "$LOCK" ] || exit 0
+isInstallCurrent && exit 0
+acquireInstallLock || exit 1
 isInstallCurrent && exit 0
 runLockedInstall
