@@ -1,45 +1,25 @@
 #!/usr/bin/env bash
-# Git pre-push hook for the agent-governance repo: a red fixture suite aborts
-# the push.
+# Git pre-push hook for the agent-governance repo: a stale Cursor or Codex
+# port aborts the push.
 #
 # Tracked as a sample because .git/hooks is not version-controlled, so it cannot
 # ship installed. Install it with:
 #
 #   bash ~/.claude/hooks/install-git-hooks.sh /path/to/checkout
 #
-# Suites are resolved from the repo being pushed, not from ~/.claude: the
-# 2026-09-16 audit (P1-2) found the previous version validating the synced
-# live copy while pushing the checkout, so an unsynced change was tested
-# against stale code. The $CLAUDE_DIR fallback remains only for a checkout
-# that carries no suites of its own.
-#
-# This is the local half of the gate. The authoritative half is the `fixtures`
-# job in .github/workflows/enforce.yml, because this hook is --no-verify-able
-# and therefore advisory however it is written.
+# The fixture suites do not run here (IAN-98, 2026-09-18). They are the
+# required `fixtures` check in .github/workflows/enforce.yml, which a push
+# cannot skip, and running them locally as well doubled every push's wait;
+# the turn-end gate already ran the fixtures each change affects. The port
+# checks stay, because they take seconds and nothing else local catches a
+# port left stale by an edit made outside a session.
 set -uo pipefail
 
 # git runs pre-push with cwd at the repo toplevel; resolve it explicitly
 # anyway so the hook also behaves when invoked by hand.
 TOP=$(git rev-parse --show-toplevel 2>/dev/null) || TOP="$PWD"
 
-# Layouts, most specific first: the governance monorepo (suites under
-# claude/), a governance-shaped tree at the toplevel (legacy layout), then
-# the synced live copy as a last resort.
-if [ -f "$TOP/claude/enforce/tests/run-tests.sh" ]; then
-  SUITE_ROOT="$TOP/claude"
-elif [ -f "$TOP/enforce/tests/run-tests.sh" ]; then
-  SUITE_ROOT="$TOP"
-else
-  SUITE_ROOT="${CLAUDE_DIR:-$HOME/.claude}"
-fi
-
 fail=0
-for suite in enforce/tests/run-tests.sh hooks/tests/run-tests.sh; do
-  [ -f "$SUITE_ROOT/$suite" ] || continue
-  if ! bash "$SUITE_ROOT/$suite"; then
-    fail=1
-  fi
-done
 
 # The port checks come from enforce/port-checks.sh, the one inventory the
 # turn-end gate and CI also read, so a port added to the repository is checked
@@ -63,7 +43,7 @@ fi
 
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
-  echo "pre-push: fixture suite is red; push aborted (R-509)." >&2
+  echo "pre-push: port checks are red; push aborted." >&2
   echo "Fix the failure. Do not weaken the gate that caught it (R-204)." >&2
   exit 1
 fi
