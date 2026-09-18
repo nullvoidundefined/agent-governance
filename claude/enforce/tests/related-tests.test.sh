@@ -83,4 +83,22 @@ ECHOED=$(cd "$H" && bash -c "printf '%s\n' ${CMD#npx --no-install vitest related
 OUT=$(map_in "$O" rspec)
 [ "$OUT" = "exit=1" ] || { echo "FAIL M7: $OUT"; exit 1; }
 
+# M8. A deleted source file falls back: a deletion can break tests the
+# mapping cannot see (PR #54 review).
+D=$(new_sandbox); mkdir -p "$D/src"
+echo '{"devDependencies":{"vitest":"^3.0.0"}}' > "$D/package.json"
+echo 'export const gone = 1;' > "$D/src/gone.ts"; commit_sandbox "$D"
+rm "$D/src/gone.ts"
+OUT=$(map_in "$D" vitest)
+[ "$OUT" = "exit=1" ] || { echo "FAIL M8: a deleted file must fall back, got: $OUT"; exit 1; }
+
+# M9. A changed Python dependency manifest falls back (PR #54 review).
+for manifest in requirements.txt requirements-dev.txt Pipfile.lock poetry.lock uv.lock setup.py; do
+  Q=$(new_sandbox)
+  echo 'X = 1' > "$Q/mod.py"; echo 'pin==1' > "$Q/$manifest"; commit_sandbox "$Q"
+  echo 'pin==2' >> "$Q/$manifest"
+  OUT=$(map_in "$Q" pytest)
+  [ "$OUT" = "exit=1" ] || { echo "FAIL M9: a changed $manifest must fall back, got: $OUT"; exit 1; }
+done
+
 echo "PASS"

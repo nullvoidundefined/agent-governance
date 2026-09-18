@@ -69,7 +69,7 @@ Execution:      Inline, immediate
 Skills invoked: None (just do it)
 ```
 
-Execute the change on its own branch, open the PR, and merge once CI is green (the trivial fast path, R-514). Done.
+Execute the change on its own branch, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). Done.
 
 ### Standard
 

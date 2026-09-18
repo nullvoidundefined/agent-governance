@@ -10,18 +10,17 @@
 # the repository root; never executed directly.
 
 # listChangedFiles
-# Prints each existing file that differs from the branch's fork point
-# (upstream, else origin/HEAD, else HEAD), committed or not, plus untracked
-# files, one path per line relative to the repository root.
+# Prints each path that differs from the branch's fork point (upstream, else
+# origin/HEAD, else HEAD), committed or not, plus untracked files, one path
+# per line relative to the repository root. Deleted paths are included: the
+# caller treats them as unmappable (PR #54 review).
 listChangedFiles() {
   local base
   base=$(git merge-base HEAD '@{u}' 2>/dev/null \
     || git merge-base HEAD origin/HEAD 2>/dev/null \
     || git rev-parse HEAD 2>/dev/null) || return 0
   { git diff --name-only -z "$base" -- 2>/dev/null; git ls-files -o -z --exclude-standard 2>/dev/null; } \
-    | tr '\0' '\n' | sort -u | while IFS= read -r changed_file; do
-      [ -f "$changed_file" ] && printf '%s\n' "$changed_file"
-    done
+    | tr '\0' '\n' | sort -u
 }
 
 # isHarnessFile <path>
@@ -31,7 +30,8 @@ isHarnessFile() {
   case "$(basename "$1")" in
     run-tests.sh|harness-root.sh|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock) return 0 ;;
     vitest.config.*|vite.config.*|jest.config.*|tsconfig*.json) return 0 ;;
-    conftest.py|pytest.ini|pyproject.toml|setup.cfg|go.mod|go.sum) return 0 ;;
+    conftest.py|pytest.ini|pyproject.toml|setup.cfg|setup.py|tox.ini|go.mod|go.sum) return 0 ;;
+    requirements*.txt|Pipfile|Pipfile.lock|poetry.lock|uv.lock) return 0 ;;
   esac
   return 1
 }
@@ -125,12 +125,14 @@ buildGoCommands() {
 # buildRelatedTestCommands <vitest|jest|pytest|go>
 # Prints the related-test commands for the files changed on this branch.
 # Exit 1 is the full-suite fallback: an unknown stack, a changed harness file,
-# or a changed source file the mapping cannot place.
+# a deleted file (whose dependents no mapper can find), or a changed source
+# file the mapping cannot place.
 buildRelatedTestCommands() {
   local stack="$1" changed_file changed_files=()
   while IFS= read -r changed_file; do
     [ -n "$changed_file" ] || continue
     isHarnessFile "$changed_file" && return 1
+    [ -e "$changed_file" ] || return 1
     changed_files+=("$changed_file")
   done < <(listChangedFiles)
   [ "${#changed_files[@]}" -gt 0 ] || return 0

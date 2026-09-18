@@ -40,9 +40,7 @@ PR #42 (IAN-94) merged to `main` while this branch was in progress. It already m
 
 | File | Change | Responsibility |
 |---|---|---|
-| `claude/enforce/tests/run-tests.sh` | modify | Accepts optional fixture names and runs only those. |
-| `claude/hooks/tests/run-tests.sh` | modify | Same change as above. |
-| `claude/enforce/related-tests.sh` | create | The test mapping: changed files to related-test commands, per stack. |
+| `claude/enforce/related-tests.sh` | create | The test mapping for application stacks (vitest, jest, pytest, Go). This repository's fixtures use `run-tests.sh --affected` from PR #42 instead. |
 | `claude/enforce/tests/related-tests.test.sh` | create | Fixtures for each stack row, each fallback trigger, and the hostile filename. |
 | `claude/hooks/verification-gate.sh` | modify | Uses the mapping through `add_test_check`, falling back to the full suite. |
 | `claude/enforce/tests/verification-gate.test.sh` | modify | Adds invariants 13 to 15 for targeted runs. |
@@ -60,7 +58,9 @@ PR #42 (IAN-94) merged to `main` while this branch was in progress. It already m
 
 ---
 
-### Task 1: Suite runners accept fixture names
+### Task 1: Suite runners accept fixture names (superseded by PR #42, not shipped)
+
+> Superseded. PR #42 shipped `run-tests.sh --affected`, which selects this repository's fixtures by `# Shard:` and `# Watches:` headers. This task's fixture-name interface was dropped in the rebase and does not exist on `main`. The steps below are kept only as a record of what was built and discarded.
 
 **Files:**
 - Modify: `claude/enforce/tests/run-tests.sh` (the `for t in "$DIR"/*.test.sh` loop)
@@ -130,7 +130,9 @@ git commit -m "feat(enforce): suite runners accept fixture names" -m "Refs: IAN-
 
 ---
 
-### Task 2: The test mapping helper
+### Task 2: The test mapping helper (revised after PR #42)
+
+> Revised. The shipped helper has no `governance` stack: its M1 to M4 governance cases and `buildGovernanceCommands` were dropped in the rebase, and `buildRelatedTestCommands governance` now falls back like any unknown stack. The shipped fixture covers vitest, jest, pytest, Go, a hostile filename, an unknown stack, deleted files, and Python manifests. The code below is the pre-rebase draft; `claude/enforce/related-tests.sh` is authoritative.
 
 **Files:**
 - Create: `claude/enforce/related-tests.sh`
@@ -442,7 +444,9 @@ git commit -m "feat(enforce): related-test mapping for the R-509 turn-end gate" 
 
 ---
 
-### Task 3: The turn-end gate runs related tests
+### Task 3: The turn-end gate runs related tests (revised after PR #42)
+
+> Revised. The governance branch of the gate keeps PR #42's `--affected`, and only the package.json, pytest, and Go branches call `add_test_check`. The shipped invariants 13 and 14 test a vitest project, not the governance layout shown below.
 
 **Files:**
 - Modify: `claude/hooks/verification-gate.sh` (the discovery block, and the `block` message in the check loop)
