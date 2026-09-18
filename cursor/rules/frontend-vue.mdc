@@ -13,7 +13,7 @@ The Vue half of the frontend track. Read together with `~/.claude/CLAUDE-FRONTEN
 
 ## Framework & Stack
 
-- **Vue 3** with the Composition API and `<script setup lang="ts">` only; no Options API, no `defineComponent({ setup() })` objects, no plain `<script>` blocks without `setup`
+- **Vue 3.5 or later** (reactive props destructure and `useTemplateRef` below need it; Nuxt 4 already requires it) with the Composition API and `<script setup lang="ts">` only; no Options API, no `defineComponent({ setup() })` objects, no plain `<script>` blocks without `setup`
 - **TypeScript**; strict mode, no `any`, `vue-tsc --noEmit` in CI next to `tsc`
 - **TanStack Query for Vue** (`@tanstack/vue-query`) for all server state; no `fetch` inside `onMounted` or a `watch`
 - **Pinia** for app state that outlives one component
@@ -96,7 +96,7 @@ function submitDraftMessage() {
 ### Rules
 
 - **Block order:** `<script setup lang="ts">` first, `<template>` second; no `<style>` block (styles live in the sibling `.module.scss`)
-- **Props** declared with the type-only form `defineProps<Props>()`, the interface named `Props` above it in the same file; destructure with defaults in the declaration (Vue 3.5 reactive props destructure), never `withDefaults` in new code
+- **Props** declared with the type-only form `defineProps<Props>()`, the interface named `Props` above it in the same file; destructure with defaults in the declaration (reactive props destructure), never `withDefaults` in new code
 - **Emits** declared with `defineEmits<Emits>()` using the call-signature form; event names are kebab-case in templates and camelCase in the signature
 - **`ref`** for primitives and reassigned values, **`computed`** for derived values; `reactive` only for a local object never reassigned or destructured
 - **Explicit imports** from `vue` and `#imports`, even though Nuxt auto-imports them, so every file type-checks and lints on its own and a reader sees where each name comes from
