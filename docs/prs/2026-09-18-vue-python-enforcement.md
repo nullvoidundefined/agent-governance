@@ -9,7 +9,7 @@ This PR makes the new Vue and Python convention tracks mechanical rather than re
 ## What changed
 
 - **E1 to E3** (commit `14c4a0e`): `vue-eslint-parser` and `eslint-plugin-vue` are added to `claude/enforce/package.json`. A `.vue` block in `eslint.config.mjs` hands the script to the TypeScript parser. import-x parses and resolves `.vue` neighbours. `eslint-options.mjs` adds `**/*.vue` to every opt-in block. `push-eslint-gate.sh` and `ratchet.mjs` accept `.vue` paths, and the server-tree globs gain `**/server/api/**/*.ts` and `**/server/middleware/**/*.ts`.
-- **E4** (commit `5ccb367`): `new-file-header-reminder.sh` covers `.vue` files and accepts a leading HTML comment or a leading script comment as the header.
+- **E4** (commit `5ccb367`): `new-file-header-reminder.sh` covers `.vue` files and accepts a comment on the first line inside `<script setup>` as the header. It first also accepted an HTML comment above the script, but the ESLint header rule reads only the script and rejected that, so the two enforcers disagreed; fixing Copilot's review exposed it, and the Vue track now names the one header position.
 - **E5** (commit `13c0172`): `dockerfile-reminder.sh` treats `nuxt.config.*` as a frontend build config.
 - **E6** (commit `1204e0c`): `push-ruff-gate.sh` adds `D100` and `D103` through `--extend-select` when `.enforce.json` sets `fileHeaders: true`. `ruff-enforce.toml` exempts tests, fixtures, and migrations. `manifest.json` gains `ruff:D100` and `ruff:D103` under R-320, and the hash manifest and the Python track's Enforcement section are updated to match.
 
@@ -22,6 +22,7 @@ This PR makes the new Vue and Python convention tracks mechanical rather than re
 
 ## Testing
 
+- Copilot's review found that `fileHeaders` would apply the header rule to `*.stories.vue`, `*.test.vue`, and `*.spec.vue`. The ignore list now names the Vue variants, with a failing case added first.
 - Every case failed before its implementation and passes after it. The cases cover AC-5, the E2 no-cycle case through a `.vue` file, the E3 Nitro `no-console` cases, the E4 header cases, the E5 `nuxt.config` case, AC-7 with the opt-in switch, and the gate's `.vue` filter.
 - Two fixtures were wrong at first, and I corrected them before implementing. The E2 cycle case used macOS's symlinked `mktemp` path, which hides every cycle from import-x. `test-quality-rules.test.sh` documents that trap, so the case now uses the real path. The E6 case expected `D100` on an unchanged line 1, but the gate judges added lines only, so the opted-in module is now a new file.
 - The full enforce suite and the full hooks suite pass with `HOME` pointed at this checkout. The manifest, manifest-fixture-closure, and enforcement-guard-check tests pass, and both port `--check` runs are clean.

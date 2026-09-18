@@ -135,6 +135,9 @@ export function buildEslintOptions(repoRoot) {
     "**/*.spec.tsx",
     "**/*.stories.ts",
     "**/*.stories.tsx",
+    "**/*.test.vue",
+    "**/*.spec.vue",
+    "**/*.stories.vue",
     "**/*.config.ts",
     "**/*.d.ts",
   ];

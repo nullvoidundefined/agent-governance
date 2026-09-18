@@ -64,13 +64,15 @@ check "ts commented file silent"   silent "src/services/y.ts" "/** does y becaus
 export const y = 1;
 "
 
-# E4 (slice 01 PR 5): a new .vue file needs a header too; an HTML comment first,
-# or a comment as the first line inside <script setup>, counts as one.
+# E4 (slice 01 PR 5): a new .vue file needs a header too, as a comment on the
+# first line inside <script setup>. An HTML comment above the script does not
+# count, because the ESLint rule (eslint:file-header-comment) reads the script's
+# AST and rejects it; the two enforcers of R-320 must agree (convention-rules.test.sh).
 check "vue no header nudges"       nudges "app/components/TripCard/TripCard.vue" '<script setup lang="ts">
 const isOpen = false;
 </script>
 '
-check "vue html-comment silent"    silent "app/components/TripCard/TripCard.vue" '<!-- Shows one trip as a card because the list and map both need it. -->
+check "vue html-comment nudges"    nudges "app/components/TripCard/TripCard.vue" '<!-- Shows one trip as a card because the list and map both need it. -->
 <script setup lang="ts">
 const isOpen = false;
 </script>
