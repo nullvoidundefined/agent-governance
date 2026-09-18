@@ -32,7 +32,7 @@ f4a31d13138e292988b75863b67dd79727dff41efedc9e556a6c24a528e48289  enforce/tdd.sh
 dffdcf4f1f19535a4a6cbc59808ba8ce444dac15d557b94321125fc53e5f4920  enforce/tests/audit-signal-check.test.sh
 eb74056eae3e00d3376fdb9eeacc77b35f51333e3a5dcc85531179db19c0bd54  enforce/tests/claude-md-lint.test.sh
 82a3e27d132a2f546493ee056f19b96f781ae1ab3f6c37cb5b07aab4180a1df8  enforce/tests/clean-code-reminder.test.sh
-3eddcb8519cbea252d1b949305723da7ee63b8ee1239ed7f598854b401b70b04  enforce/tests/codex-adapter-contract.test.sh
+26cbdf4dcd70b545103799a2799ab99a7bfe6ea9cc557e5037d2214175c9247c  enforce/tests/codex-adapter-contract.test.sh
 66864ddc08bb5c14d3dd69e3ffd45c4f21296cb7b27aad97a7beaffc2697bc6d  enforce/tests/codex-billing-guard.test.sh
 1e44f8cb6e90d7991bede447968afc90fc8289faf7c8c95b898ec4e1376420a6  enforce/tests/codex-test-author-guard.test.sh
 4c4ce378682c820e50afd40e0f80e68afc959a8d5c4b6a703072742c318dcef5  enforce/tests/commit-message-guard.test.sh

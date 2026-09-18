@@ -3,7 +3,7 @@
 #
 # Runs the Claude Code hooks under OpenAI Codex. Codex's hooks.json uses the
 # same schema, events, stdin fields, and stdout fields as Claude Code, so
-# nearly every hook could be wired directly. Three things differ, and this
+# nearly every hook could be wired directly. Four things differ, and this
 # adapter is where they are handled so the hook scripts stay untouched:
 #
 #   1. File edits arrive as one apply_patch call whose tool_input.command is
@@ -30,6 +30,19 @@
 #      layer FAILS CLOSED, denying the call and saying so, because a mirror
 #      that stops mirroring is indistinguishable from an allow and the port
 #      status page still claims the rules are enforced.
+#   4. apply_patch is not the only door Codex writes files through. Asked to
+#      edit a file, Codex often runs a shell command instead, and a shell
+#      command reaches the hooks as one PreToolUse Bash event whose tool_input
+#      carries a command string and no path at all. Codex registers the
+#      write-target gates (structure-gate, content-gate, dependency-add-guard,
+#      migration-defaults-guard, codex-test-author-guard) on the Write|Edit
+#      matcher, so before 2026-09-18 none of them ever saw a file written by a
+#      redirection: the same edit was denied through apply_patch and allowed
+#      through `printf ... > path`. The adapter now extracts the write targets
+#      out of the command text and dispatches one synthetic Write event per
+#      target to those gates, IN ADDITION to the ordinary Bash event, which
+#      still runs unchanged. See the extractor section below for exactly what
+#      that analysis catches and what it cannot.
 #
 # Usage (from ~/.codex/hooks.json, one entry per hook group; this file is
 # copied to ~/.codex/hooks/ by openai/build.mjs):
@@ -57,6 +70,17 @@ ASK_POLICY="${CLAUDE_CODEX_ASK_POLICY:-deny}"
 CLAUDE_ENFORCE_DIR="${CLAUDE_ENFORCE_DIR:-$CLAUDE_HOME/enforce}"
 SETTINGS_FILE="${CLAUDE_SETTINGS_FILE:-$CLAUDE_HOME/settings.json}"
 PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/settings-permission-rules.sh}"
+
+# The gates Codex registers on the Write|Edit matcher, which is why a file
+# written by a shell command reaches none of them on its own. A synthetic write
+# event goes to exactly this list. It is written out here rather than derived,
+# because the adapter is handed only its own matcher's hook names; the fixture
+# codex-adapter-contract.test.sh compares this list against the Write|Edit
+# registration in codex/hooks.json, so a settings.json change that moves a gate
+# in or out of that group fails a test instead of silently narrowing the port.
+# Overridable so the fixtures can observe what is dispatched; setting it empty
+# turns the synthetic dispatch off.
+read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard}"
 
 # The permission helper is resolved deterministically and its absence is
 # recorded rather than swallowed. PERMISSION_RULES_ERROR non-empty means the
@@ -130,6 +154,15 @@ rank() {
   case "$1" in deny) echo 3 ;; ask) echo 2 ;; *) echo 1 ;; esac
 }
 
+# One guard can now be reached twice for a single call: once on the Bash event
+# and once on the synthetic write event for the file that command creates.
+# Identical text is collapsed so the denial the model reads says it once.
+append_reason() {
+  [ -n "$1" ] || return 0
+  case "$REASONS" in *"$1"*) return 0 ;; esac
+  REASONS=$(append_text "$REASONS" "$1")
+}
+
 absorb_decision() {
   local decision reason ctx
   decision=$(json_field "$HOOK_OUT" '.hookSpecificOutput.permissionDecision')
@@ -145,7 +178,7 @@ absorb_decision() {
   case "$decision" in
     deny | ask)
       if [ "$(rank "$decision")" -gt "$(rank "$WORST")" ]; then WORST="$decision"; fi
-      [ -n "$reason" ] && REASONS=$(append_text "$REASONS" "$reason")
+      append_reason "$reason"
       ;;
   esac
   ctx=$(json_field "$HOOK_OUT" '.hookSpecificOutput.additionalContext')
@@ -155,12 +188,20 @@ absorb_decision() {
   return 0
 }
 
-run_all() {
-  local name
-  for name in "${HOOK_NAMES[@]+"${HOOK_NAMES[@]}"}"; do
-    run_hook "$name" "$1"
+# Runs a named set of hooks over one payload. $1 is the payload, the rest are
+# hook basenames, so the synthetic write events can be sent to the Write|Edit
+# gates rather than to the hook list this invocation happened to be given.
+run_hooks() {
+  local payload="$1" name
+  shift
+  for name in "$@"; do
+    run_hook "$name" "$payload"
     absorb_decision
   done
+}
+
+run_all() {
+  run_hooks "$1" "${HOOK_NAMES[@]+"${HOOK_NAMES[@]}"}"
 }
 
 # --- the Bash(...) rules of settings.json -------------------------------------
@@ -227,15 +268,16 @@ patch_lines() {
   '
 }
 
-# Patch paths are relative to the call's cwd; the gates read absolute ones.
-absolute_patch_path() {
+# Paths named by a patch or by a shell command are relative to the call's cwd;
+# the gates read absolute ones.
+absolute_call_path() {
   case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$CWD" "$1" ;; esac
 }
 
 replay_file() {
   # $1 = Claude event, $2 = kind, $3 = path, $4 = old text, $5 = new text
   local file payload
-  file=$(absolute_patch_path "$3")
+  file=$(absolute_call_path "$3")
   if [ "$2" = "add" ]; then
     payload=$(printf '%s' "$INPUT" | jq --arg e "$1" --arg f "$file" --arg c "$5" \
       '. + {hook_event_name:$e, tool_name:"Write", tool_input:{file_path:$f, content:$c}}')
@@ -262,12 +304,12 @@ replay_shell_operation() {
 replay_operation() {
   # $1 = Claude event, $2 = kind, $3 = path, $4 = old, $5 = new, $6 = move destination
   if [ "$2" = "delete" ]; then
-    replay_shell_operation "$1" "rm -- '$(absolute_patch_path "$3")'"
+    replay_shell_operation "$1" "rm -- '$(absolute_call_path "$3")'"
   else
     replay_file "$1" "$2" "$3" "$4" "$5"
   fi
   [ -n "$6" ] || return 0
-  replay_shell_operation "$1" "mv -- '$(absolute_patch_path "$3")' '$(absolute_patch_path "$6")'"
+  replay_shell_operation "$1" "mv -- '$(absolute_call_path "$3")' '$(absolute_call_path "$6")'"
 }
 
 replay_patch() {
@@ -289,6 +331,206 @@ replay_patch() {
     esac
   done < <(patch_lines "$2")
   [ -n "$path" ] && replay_operation "$1" "$kind" "$path" "$old" "$new" "$dest"
+  return 0
+}
+
+# --- the shell door: write targets inside a Bash command ----------------------
+#
+# WHAT THIS CATCHES, and nothing beyond it. A shell command is not statically
+# analyzable in general, so this is a literal-token extractor, not a shell:
+#   caught   output redirection, `> path` and `>> path`, at any fd (`2> path`)
+#            and with the noclobber override (`>| path`), once per redirection
+#            so a command line with several of them yields several targets
+#   caught   `tee path` and `tee -a path`, including several operands, since
+#            tee writes every file it is given
+#   caught   the destination of `cp`, `mv`, and `install`, taken as the last
+#            non-flag operand, with `sudo`, `command`, `env` and leading
+#            VAR=value assignments stepped over first
+#   caught   single-quoted and double-quoted operands, including paths that
+#            contain spaces, and backslash escapes outside quotes
+#   caught   redirections written inside `$(...)` or backticks, which really do
+#            write the file they name
+#   skipped  heredoc bodies, stripped before tokenizing, so a `>` in the text
+#            being written is not mistaken for a redirection of its own
+#   skipped  `>&2`, `2>&1`, `>(...)` process substitution, and /dev/* targets,
+#            none of which name a file in the repository
+#
+# WHAT IT CANNOT DO, and no amount of pattern work would change it: a path that
+# only exists once the shell has run is not visible to anything that refuses to
+# run the shell, and this adapter refuses. A target built from a variable
+# (`> "$out"`), from a command substitution (`> "$(mktemp)"`), from a glob, or
+# from `eval` is dropped rather than guessed at, as is a file written by an
+# interpreter from inside its own source (`python - <<PY`), by `dd of=`, by an
+# editor, or by any tool whose argument convention is not one of the four verbs
+# above. Redirection is the common shape and is now covered; the rest is not,
+# and a reader must not take this section for total coverage. The backstop for
+# what escapes here is unchanged: `tdd.sh green` compares locked-file hashes
+# against the RED commit, which catches the write after the fact.
+
+# Heredoc bodies are data, not shell. A `>` inside the text being written names
+# nothing, so the bodies are removed before any token is read; the line opening
+# the heredoc stays, because its own redirections are real.
+strip_heredoc_bodies() {
+  printf '%s' "$1" | awk '
+    delim != "" { if ($0 == delim) delim = ""; next }
+    {
+      print
+      if (match($0, /<<-?[ \t]*[A-Za-z_'"'"'"][^ \t;|&<>()]*/)) {
+        delim = substr($0, RSTART, RLENGTH)
+        sub(/^<<-?[ \t]*/, "", delim)
+        gsub(/['"'"'"]/, "", delim)
+      }
+    }
+  '
+}
+
+# Tokenizes a command into tab-separated lines the caller walks:
+#   RED<TAB><path>   the operand of a `>` or `>>` redirection
+#   TOK<TAB><word>   an ordinary word, quotes resolved
+#   SEP              a statement, pipeline, or grouping boundary
+# Quote state is tracked character by character, which is the only way an
+# operand containing a space survives as one token.
+shell_write_tokens() {
+  printf '%s' "$1" | awk '
+    BEGIN { q = sprintf("%c", 39) }
+    function flush() {
+      if (!started) return
+      if (pending) { printf "RED\t%s\n", cur; pending = 0 } else printf "TOK\t%s\n", cur
+      cur = ""; started = 0
+    }
+    { buf = buf $0 "\n" }
+    END {
+      n = length(buf)
+      for (i = 1; i <= n; i++) {
+        c = substr(buf, i, 1)
+        if (sq) { if (c == q) sq = 0; else cur = cur c; started = 1; continue }
+        if (dq) {
+          if (c == "\\" && index("\"\\$`", substr(buf, i + 1, 1)) > 0) { i++; cur = cur substr(buf, i, 1) }
+          else if (c == "\"") dq = 0
+          else cur = cur c
+          started = 1; continue
+        }
+        if (c == q) { sq = 1; started = 1; continue }
+        if (c == "\"") { dq = 1; started = 1; continue }
+        if (c == "\\") { i++; cur = cur substr(buf, i, 1); started = 1; continue }
+        if (c == ">") {
+          flush()
+          if (substr(buf, i + 1, 1) == ">") i++
+          if (substr(buf, i + 1, 1) == "|") i++
+          if (substr(buf, i + 1, 1) == "&" || substr(buf, i + 1, 1) == "(") { i++; continue }
+          pending = 1; continue
+        }
+        if (c == "<") { flush(); if (substr(buf, i + 1, 1) == "<") i++; continue }
+        if (index(";|&(){}\n", c) > 0) { flush(); pending = 0; print "SEP"; continue }
+        if (c == " " || c == "\t") { flush(); continue }
+        cur = cur c; started = 1
+      }
+      flush()
+      print "SEP"
+    }
+  '
+}
+
+# A token names a file only when it names it literally. Anything carrying a
+# parameter expansion, a command substitution, or a glob would have to be run
+# to be known, and a device node is not a file in the repository.
+is_literal_path() {
+  case "$1" in
+    "" | /dev/* | -*) return 1 ;;
+    *'$'* | '`'* | *'`'* | *'*'* | *'?'* | *'['*) return 1 ;;
+  esac
+  return 0
+}
+
+# The command word of one statement, with the wrappers that precede it stepped
+# over, so `sudo cp`, `env FOO=1 cp` and `/bin/cp` all report `cp`.
+statement_verb() {
+  local token
+  while IFS= read -r token; do
+    [ -n "$token" ] || continue
+    case "$token" in
+      *=*) continue ;;
+      sudo | command | env | nohup | time) continue ;;
+    esac
+    basename -- "$token"
+    return 0
+  done <<<"$1"
+  return 0
+}
+
+# The operands of one statement: everything after the command word that is not
+# a flag. `install -m 644 src dst` keeps 644 as an operand, which is harmless
+# because only the last one is read as a destination.
+statement_operands() {
+  local token seen_verb=""
+  while IFS= read -r token; do
+    [ -n "$token" ] || continue
+    if [ -z "$seen_verb" ]; then
+      case "$token" in
+        *=*) continue ;;
+        sudo | command | env | nohup | time) continue ;;
+      esac
+      seen_verb="yes"
+      continue
+    fi
+    case "$token" in -*) continue ;; esac
+    printf '%s\n' "$token"
+  done <<<"$1"
+  return 0
+}
+
+# The files one statement writes through its own argument convention: every
+# operand for tee, the last operand for the copying verbs.
+statement_write_targets() {
+  local verb operands count
+  verb=$(statement_verb "$1")
+  case "$verb" in tee | cp | mv | install) ;; *) return 0 ;; esac
+  operands=$(statement_operands "$1")
+  [ -n "$operands" ] || return 0
+  if [ "$verb" = "tee" ]; then
+    printf '%s\n' "$operands"
+    return 0
+  fi
+  count=$(printf '%s\n' "$operands" | grep -c .)
+  [ "$count" -ge 2 ] && printf '%s\n' "$operands" | tail -n 1
+  return 0
+}
+
+# Every write target of one command line, one per line, unfiltered duplicates.
+shell_write_targets() {
+  local tag value statement=""
+  while IFS=$'\t' read -r tag value; do
+    case "$tag" in
+      RED) is_literal_path "$value" && printf '%s\n' "$value" ;;
+      TOK) statement="$statement$value"$'\n' ;;
+      SEP)
+        statement_write_targets "$statement"
+        statement=""
+        ;;
+    esac
+  done < <(shell_write_tokens "$(strip_heredoc_bodies "$1")")
+  return 0
+}
+
+# Shows each file a shell command writes to the gates Codex registers on
+# Write|Edit, as the Write call an equivalent Claude Code session would have
+# made. The content is empty because a redirection's content is whatever the
+# command prints, which is not known before it runs; the path checks are the
+# point, and the text of the command itself is already read by the hooks that
+# run on the Bash event.
+replay_shell_writes() {
+  local target file payload seen=$'\n'
+  [ ${#CODEX_WRITE_TARGET_HOOKS[@]} -gt 0 ] || return 0
+  while IFS= read -r target; do
+    is_literal_path "$target" || continue
+    file=$(absolute_call_path "$target")
+    case "$seen" in *$'\n'"$file"$'\n'*) continue ;; esac
+    seen="$seen$file"$'\n'
+    payload=$(printf '%s' "$INPUT" | jq --arg f "$file" \
+      '. + {tool_name:"Write", tool_input:{file_path:$f, content:""}}')
+    debug "shell-write" "$file"
+    run_hooks "$payload" "${CODEX_WRITE_TARGET_HOOKS[@]}"
+  done < <(shell_write_targets "$1")
   return 0
 }
 
@@ -347,10 +589,12 @@ case "$EVENT" in
   PreToolUse)
     if [ "$TOOL" = "apply_patch" ]; then
       replay_patch PreToolUse "$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')"
+    elif [ "$TOOL" = "Bash" ]; then
+      COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+      apply_bash_permission_rules "$COMMAND"
+      run_all "$INPUT"
+      replay_shell_writes "$COMMAND"
     else
-      if [ "$TOOL" = "Bash" ]; then
-        apply_bash_permission_rules "$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')"
-      fi
       run_all "$INPUT"
     fi
     emit_pre_tool_use

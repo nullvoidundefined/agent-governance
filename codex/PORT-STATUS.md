@@ -84,3 +84,17 @@ Codex edits files through one `apply_patch` call rather than through Write and E
 | `*** Move to:` | `Bash` with `mv -- '<source>' '<destination>'`, in addition to the content event for that file, so a guard sees the destination and not only the source |
 
 Paths are made absolute against the call's `cwd` before the replay, because the gates resolve what they are given rather than what the patch abbreviated.
+
+## Shell writes
+
+`apply_patch` is not the only door Codex writes files through. Asked to edit a file, Codex frequently runs a shell command instead, and that reaches the hooks as one `PreToolUse` Bash event carrying a command string and no path, so the gates registered on the `Write|Edit` matcher saw nothing at all. Since 2026-09-18 the adapter extracts the write targets from the command text and dispatches one synthetic `Write` event per target to those gates, in addition to the ordinary Bash event, which still runs unchanged. The content of a synthetic event is empty, because what a redirection writes is whatever the command prints and that is not known before it runs; the path checks are the point, and the command text itself is already read by the hooks on the Bash event.
+
+| Shell construction | Seen by the write-target gates as |
+|---|---|
+| `> path`, `>> path`, at any fd and with `>\|` | `Write` with `file_path`, one per redirection |
+| `tee path`, `tee -a path` | `Write` per operand, since tee writes every file it is given |
+| `cp`, `mv`, `install` | `Write` for the last non-flag operand, with `sudo`, `command`, `env` and `VAR=value` prefixes stepped over |
+| quoted operands, including paths containing spaces | `Write` with the whole path, which is what a regex over raw command text gets wrong |
+| `>&2`, `2>&1`, `>(...)`, `/dev/*` targets, heredoc bodies | nothing: none of them names a file in the repository |
+
+What this cannot do is the honest half of the table. A shell command is not statically analyzable in general, and the adapter refuses to run one to find out, so a target built from a variable (`> "$out"`), from a command substitution, from a glob, or through `eval` is dropped rather than guessed at, as is a file written by an interpreter from inside its own source (`python - <<PY`), by `dd of=`, or by any tool whose argument convention is not one of the four verbs above. Redirection is the common shape and is covered; the rest is not, and the backstop for what escapes is unchanged, `tdd.sh green` comparing locked-file hashes against the RED commit after the fact.

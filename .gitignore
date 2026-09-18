@@ -3,6 +3,11 @@ node_modules/
 .DS_Store
 # Claude Code's built-in worktrees for this repo (a session's scratch checkouts).
 .claude/worktrees/
+# Lane worktrees created inside the repo rather than as sibling directories,
+# which is where they belong: a sibling clutters the folder a human browses.
+# Untracked and unignored, `git add -A` embeds them as nested repositories and
+# git warns about submodules, which is how this was noticed (2026-09-18).
+.worktrees/
 # task-start's per-repo ledger (claude/skills/task-start/scripts/task-tier.sh):
 # session-local state, never a fixture or a tracked artifact.
 .claude/task-tier.json
