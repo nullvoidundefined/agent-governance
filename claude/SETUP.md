@@ -66,8 +66,10 @@ bash ~/.claude/enforce/doctor.sh --full
 `--full` runs the settings-parse, settings-schema-keys, hook-registration, hook-integrity, hook-executability, deps, sandbox-availability, statusline, and port-freshness checks, then both fixture suites (`enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh`) as one `fixture-suites` check. See `enforce/README.md` for the full check list, the exit contract, and the `--release` gate. The same two fixture suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
 
 The ESLint-backed tests the fixture suites drive need `enforce/node_modules`, which is
-gitignored and therefore absent from a fresh clone. Run `npm install` in
-`~/.claude/enforce` first, or six tests fail on a missing ESLint.
+gitignored and therefore absent from a fresh clone. `./sync.sh` installs them into
+`~/.claude/enforce` with a locked `npm ci`; to install by hand, run
+`npm ci --prefix ~/.claude/enforce` (never `npm install`, which can resolve
+differently from the committed lockfile), or six tests fail on a missing ESLint.
 
 ## The turn-level verification gate (R-509)
 
