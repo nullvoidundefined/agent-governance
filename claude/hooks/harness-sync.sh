@@ -145,6 +145,12 @@ if [ "$drifted" -gt 0 ]; then
   fi
   if sync_err=$(cd "$CHECKOUT" && SYNC_CLAUDE_HOME="$LIVE" SYNC_CURSOR_HOME="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}" SYNC_CODEX_HOME="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}" ./sync.sh 2>&1 >/dev/null); then
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT")
+    # sync.sh keeps a file it installed once the repository stops tracking it
+    # when that file was edited live, and says so on stderr (IAN-116); a
+    # successful run's stderr is otherwise dropped, so the KEPT lines are
+    # carried into the context where the session can see them.
+    kept=$(grep '^KEPT:' <<< "$sync_err" | paste -sd ';' -)
+    [ -n "$kept" ] && notes+=("$kept")
   elif grep -q '^REFUSED' <<< "$sync_err"; then
     say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses its payload: $sync_err); sync.sh copies claude/, cursor/, then codex/, so a payload before the refused one may already be updated while the refused one and those after it are not, and $drifted tracked file(s) differed before the run. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
     exit 0

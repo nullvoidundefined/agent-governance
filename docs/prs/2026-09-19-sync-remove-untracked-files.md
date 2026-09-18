@@ -13,7 +13,8 @@ Refs: IAN-116
 - A run with no previous manifest removes nothing and writes the first manifest.
 - The new manifest replaces the old one only after the copy succeeded, so a refused or failed run leaves the previous manifest in place for the next one.
 - The header comment of `sync.sh` now describes the removal rule and its limits (R-332), and the statements that sync "never deletes" in `README.md`, `AGENTS.md`, `.cursor/rules/000-harness-bootstrap.mdc`, `claude/rulebook/reference.md` (and its generated Cursor port), `claude/SETUP.md`, and `claude/ISSUES.md` now say what it does instead.
-- `claude/hooks/tests/harness-sync.test.sh` asserts the bootstrap writes the manifest and that the next run still reports no drift; harness-sync compares only tracked files, so the untracked manifest never counts as drift and needed no code change.
+- `claude/hooks/harness-sync.sh` carries sync.sh's `KEPT:` lines into the SessionStart context. The hook discards a successful sync's stderr, and harness-sync is how most syncs run, so without this the report would reach nobody. Its drift check compares only tracked files, so the untracked manifest never counts as drift and needed no change; `claude/enforce/README.md` says both.
+- `claude/hooks/tests/harness-sync.test.sh` asserts the bootstrap writes the manifest, that the next run still reports no drift, and (case 3a) that a hook file edited live and then untracked is kept and named in the context.
 
 ## Architectural decisions
 
@@ -27,7 +28,8 @@ Refs: IAN-116
 
 - Red first: with only the new cases in `sync-tests/sync.test.sh`, the file failed at its first new assertion with `FAIL: sync did not write .../live/claude/.sync-manifest`.
 - The cases check that the manifest carries the exact `<sha256>  CLAUDE.md` line; that a removed tracked file at the top level, one in a nested directory, and one beside a live-only file are removed; that the emptied nested directories go while the directory holding the live-only file and that file stay; that a live-edited removed file is kept and named on stderr; that removals are named on stdout; that the new manifest no longer lists removed files; that a run with no previous manifest removes nothing and writes one; and that a manifest line naming `../outside.txt` does not remove the file outside the target. The existing cases (live-only runtime state survives, JSON refusal writes nothing, a second run is idempotent, untracked source content never ships) still pass.
-- Green: `bash sync-tests/sync.test.sh` prints `sync.test.sh PASS`, and `bash claude/hooks/tests/harness-sync.test.sh` passes with the new manifest assertion.
+- Case 3a in `claude/hooks/tests/harness-sync.test.sh` failed with `FAIL: a kept live-edited file is named in the context` before the hook forwarded `KEPT:` lines.
+- Green: `bash sync-tests/sync.test.sh` prints `sync.test.sh PASS`, and `bash claude/hooks/tests/harness-sync.test.sh` passes with the new assertions.
 - A sync of the real checkout into temporary targets wrote manifests of 365, 96, and 72 lines for `claude/`, `cursor/`, and `codex/`, 533 in total, which matches `git ls-files` for the three payloads.
 - `bash claude/enforce/tests/run-tests.sh` and `bash claude/hooks/tests/run-tests.sh` pass; `shellcheck --severity=error` is clean; `node translate/cursor.mjs --check` was stale after the rulebook edit, so `--write` regenerated the port and both translator checks are now clean.
 

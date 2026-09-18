@@ -80,6 +80,20 @@ OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "drifted file re-synced" cmp -s "$CO/claude/hooks/sample.sh" "$FAKE/.claude/hooks/sample.sh"
 check "drift reported with its count" reports "synced 1 changed or missing file(s)"
 
+# 3a. A file sync.sh keeps because it was edited live after sync installed it
+# (IAN-116) is named in the SessionStart context: sync.sh reports it on
+# stderr, which the hook otherwise discards on a successful sync. The same
+# commit that stops tracking the file changes another one, so the run syncs.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CO/claude/hooks/retired.sh"
+git -C "$CO" add -A; git -C "$CO" commit -qm "add retired hook"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+printf '# edited live\n' >> "$FAKE/.claude/hooks/retired.sh"
+git -C "$CO" rm -q claude/hooks/retired.sh; printf '# rules, revised\n' > "$CO/claude/CLAUDE.md"
+git -C "$CO" commit -qam "retire the hook"
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
+check "a kept live-edited file is still there" test -f "$FAKE/.claude/hooks/retired.sh"
+check "a kept live-edited file is named in the context" reports "KEPT: $FAKE/.claude/hooks/retired.sh"
+
 # 3b. Drift in a NON-claude payload also triggers the sync. ./sync.sh writes all
 # three live trees, but the drift check compared claude/ alone, so a stale
 # ~/.cursor or ~/.codex could never trigger the sync that repairs it: a Cursor
