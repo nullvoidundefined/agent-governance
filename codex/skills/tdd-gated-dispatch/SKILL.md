@@ -44,6 +44,9 @@ component (the only R-705 exception). Everything else is a slice.
 
 ```
 1. open       bash ~/.claude/enforce/tdd.sh open "B-n <behavior>" --spec docs/superpowers/specs/<date>-<slug>-design.md
+              (Complex and Saga. In Standard there is no spec by design: open with the slice title alone,
+              `tdd.sh open "<behavior>"`, and read "the B-n entry" below as "the behavior in the slice title".
+              --spec is optional in tdd.sh; passing a path that does not exist locks a file nobody wrote.)
 2. RED        test author writes the test; tdd.sh red <file> prints RED:
 3. commit     git add <test file> .claude/tdd-lock.json && git commit -m "test(<scope>): B-n <behavior>"
 4. GREEN      implementer writes the minimum; tdd.sh green prints GREEN:

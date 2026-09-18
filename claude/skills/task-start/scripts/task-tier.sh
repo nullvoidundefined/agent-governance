@@ -7,7 +7,7 @@
 # scan reads them and post-compact-rules.sh re-injects them.
 #
 # Usage:
-#   task-tier.sh set <trivial|standard|complex|saga> "<reason>" [--share <percent>]
+#   task-tier.sh set <trivial|standard|complex|saga|investigation> "<reason>" [--share <percent>]
 #   task-tier.sh get          prints the ledger as JSON (exit 1 when none)
 #   task-tier.sh summary      one line: tier, reason, elapsed, branch
 #   task-tier.sh clear        removes the ledger (task-cleanup's last step)
@@ -24,7 +24,7 @@ cmd_set() {
   local tier="${1:-}" reason="${2:-}" share=""
   shift 2 2>/dev/null || true
   if [ "${1:-}" = "--share" ]; then share="${2:-}"; fi
-  case "$tier" in trivial|standard|complex|saga) ;; *) die "tier must be trivial, standard, complex, or saga (got '${tier}')" ;; esac
+  case "$tier" in trivial|standard|complex|saga|investigation) ;; *) die "tier must be trivial, standard, complex, saga, or investigation (got '${tier}')" ;; esac
   [ -n "$reason" ] || die "give the one-sentence reason for the tier as the second argument"
   local previous=""
   [ -f "$LEDGER" ] && previous=$(jq -r '.tier // ""' "$LEDGER" 2>/dev/null)

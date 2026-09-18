@@ -99,7 +99,7 @@ f61ef27eb1b20322a4360774c1a63fab61c57b6d03ca4876f15a9497572a7e42  enforce/tests/
 3c450cec1854b171a4485f3f6af98aa3810508ae94bf446207d887812ff5b254  enforce/tests/structure-gate.test.sh
 7cf04f98353aa3d546b7ad1cc8f58bcd785e8cea7ee137fd68dbb00ff19fd566  enforce/tests/task-cleanup-scan.test.sh
 64072e4e050348ba43b5fba21b1f78d47273feb1c6b776e19a03406d6abe0557  enforce/tests/task-commit-reminder.test.sh
-1defb8688c7c72637141104d76b51e19cf61d45fa479c1e57095c6f20fb24191  enforce/tests/task-tier.test.sh
+a024ed21c7202b63b0e7a626521b43ded15676e3aacd57db555dbeaebc21c320  enforce/tests/task-tier.test.sh
 0cfe57db170d7cf44227596aec9a55a8ec630d998cfd12e28dc53be0d73d7492  enforce/tests/tdd-red-green.test.sh
 a88c3f9fb1565ce7b336a0f25c7aeb70dee8469c56dbb6d4c07244d413c5b75d  enforce/tests/test-quality-rules.test.sh
 971eaf7d5f71c858b59d8ea843b8ae1a8f982369311bdb14696cd77b64798007  enforce/tests/translate-codex.test.sh
@@ -201,4 +201,4 @@ ff4a27b7d838e38509b377ad98844e21660c2154764da944f7f654fbf08b6dc5  skills/repo-se
 64223f545e8a46a9c8d948e660632c0bed5d693cbf1bb24f1d05c348ea9d8d39  skills/resolve-user-feedback/scripts/feedback.mjs
 c2ff49a0aa760123b42abeb148ff21122b3082d58174a08135864d69f2f24b12  skills/spec-grounding/scripts/check.sh
 88efc219455277f349b6ea88c6e0ef4261f37d63bb064ad1df499b49504bdb26  skills/task-cleanup/scripts/scan.sh
-9ab69338da21a8c9363803bca2e27489f343cd2cfca9ca8a7777f52cd0adf2ae  skills/task-start/scripts/task-tier.sh
+b1c452692dcc750ee3accf9f48b4a56125ce324e66cdf6fd69379122e66908cb  skills/task-start/scripts/task-tier.sh
