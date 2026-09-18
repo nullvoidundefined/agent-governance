@@ -175,7 +175,7 @@ d322d8b5ab978f6eecf3a9750365a2658e25cd1b6dca5e34b0488906a9d1f7f3  hooks/tests/in
 8b623b647cccd286beda39b210877230baf7cd4bc000f433a63fccddff9a221e  hooks/tests/log-rule-fire.test.sh
 e36ad053047f459a9b0f19fd297a2fc1b9ff7b4d74ca46a95ae09f2075068493  hooks/tests/migration-defaults-guard.test.sh
 2b0e9bcc155c8cccbf8690ae1cffe24c7efa23f8aa5bf85f646ae6e35213309d  hooks/tests/new-file-header-reminder.test.sh
-7e759a48ed86b1d37e94372818fa8765e5ee24bac7c493af2cf46271d3eb7fa6  hooks/tests/post-compact-rules.test.sh
+cda5c78086c4cf18714b6ed76f0c2da94cfce833d15360f2c5a1658e6a1841cb  hooks/tests/post-compact-rules.test.sh
 fd1ac54df49fdb7c4ca522352e6a511fcf16d98bca581adbef1087cebe03d479  hooks/tests/pre-push-sample.test.sh
 aa093b0fbaba6e252cc07c809b7a79930064f5fa967f548404a4bd1127e178a0  hooks/tests/run-tests.sh
 60c2839d0774882fa69af939e81f1017bec1c07f0a6b8a35ae00f18746c240cf  hooks/tests/session-end.test.sh
