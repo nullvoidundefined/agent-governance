@@ -33,11 +33,17 @@
 ## Load-aware sharding (added at the maintainer's request)
 
 - The first full run for this PR failed only `hook-latency.test.sh`. Two other worktrees were running the sharded suites at the same time, each with up to 8 jobs, and the load average reached 105; during a retry it climbed from 31 to 124 while the suite ran. `hook-latency` passed twice when run alone with normal baselines. Every session sharding with a fixed 8 jobs on a 14-CPU machine is what overloaded it.
-- **Idle-CPU job count.** Without `--jobs`, the runner now uses the CPU count minus the one-minute load, from 1 to 8.
+- **Idle-CPU job count.** Without `--jobs`, the runner now uses the CPU count minus the one-minute load, from a quarter of the CPUs up to 8. The floor started at 1, and a Stop-gate run on a loaded machine then went one fixture at a time past the gate's 600-second timeout; a quarter of the CPUs keeps a busy machine moving.
 - **Load-aware settle.** `--settle-seconds` is now the minimum pause before the serial fixtures. After it, the runner waits until the one-minute load falls below the CPU count, for at most `--settle-max-seconds` (default 60), and says so when the cap is reached with the machine still loaded.
 - `--load-from <file>` lets the fixture set the load reading, so every case is independent of how busy the machine running it is. The new cases:
   - a load that falls after three seconds holds the serial fixture back about that long;
   - a load that never falls releases it at the cap, and the run still finishes and reports it;
   - two idle CPUs give two jobs, and a saturated machine gives one.
+
+## Change detection from the branch point
+
+- The same timed-out gate run exposed a selection bug. This branch was created from `origin/main`, so git set `origin/main` as its upstream, and the runner diffed `@{u}` against `HEAD` with two dots. That compares the two trees, so once `main` moved ahead, every file `main` had gained, such as a spec added by another PR, appeared as a change here. The unknown file then triggered the unmapped-change fallback and a full run at each turn end. The diff now uses three dots (`@{u}...HEAD`), which counts only this branch's own commits since the branch point. A case pushes a new file to the upstream after the branch point and asserts it is not counted.
+- `main` meanwhile gained `--results-dir` in the runner for `tdd.sh`. The merge keeps it alongside this branch's options, and `tdd.sh`'s call is unchanged.
+- Both full suites passed after the merge in 187 seconds, with the runner choosing 4 and 3 jobs while the machine's load was still settling.
 
 Ticket: IAN-94.
