@@ -57,4 +57,12 @@ The decisions behind the design were the maintainer's, taken one at a time:
 - Two of this fixture's case names contained the failure marker in capitals, which the verdict rule reads as a failure. The fixture failed its own run while every case passed, and the case names were changed.
 - Ticket IAN-94 was opened 43 minutes after the request, after the timing runs and design questions had already happened; its `started_at` is the request time from the session transcript.
 
+## Review round 1 (Copilot)
+
+- **False green in `git-env-isolation.test.sh`.** Its sandbox copied `run-tests.sh` alone, which now needs its sibling runner, so both suites exited before reaching the synthetic fixture. The decoy checks still passed without testing anything. The fixture now asserts that each sandboxed suite exits 0 and reaches its fixture. Both new checks failed against the old sandbox, and after the sandbox was rebuilt in the checkout's `claude/<tree>/tests` layout with the runner beside it, all eight checks pass.
+- **Serial-only tree.** An empty parallel batch still piped into `xargs`, and GNU `xargs` starts its command once on empty input, here with no fixture argument. The batch call is now skipped when empty. The new case passed on macOS before the fix, because BSD `xargs` skips empty input, so the Linux CI runner is where it would have failed.
+- **`--affected` outside a repository.** With no injected change list and no repository, the runner ran only the fast tier. It now runs everything and says so. The new case failed before the fix and passes after it.
+- **An unfinished sentence** in the Go guidance ("so they can.") now reads "so they can run in parallel."
+- `main` gained #40, which rewrote `CLAUDE-PYTHON.md`. The merge keeps that rewrite and re-adds the R-509 bullet in its new Testing section, reworded for its bullet style and its single-Postgres fixture model (one database per xdist worker).
+
 Ticket: IAN-94.

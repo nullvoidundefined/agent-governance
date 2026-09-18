@@ -162,6 +162,29 @@ settled_before_serial() {
 check "the serial fixture starts only after the settle pause" settled_before_serial
 rm -f "$MARKS"/.batch-end-* "$MARKS/.serial-start"
 
+# --- a tree holding only serial fixtures ---
+# An empty parallel batch must not start a child with no fixture argument,
+# which xargs does on some platforms when its input is empty (PR #42 review).
+SERIAL_ONLY="$SANDBOX/serial-only/claude/enforce/tests"
+mkdir -p "$SERIAL_ONLY"
+printf '#!/usr/bin/env bash\n# Shard: serial\ntouch "$MARKS/serial-only"\necho PASS\n' > "$SERIAL_ONLY/only.test.sh"
+reset
+OUT=$(bash "$RUNNER" "$SERIAL_ONLY" --all </dev/null 2>&1); STATUS=$?
+check "a serial-only tree passes when its fixture passes" [ "$STATUS" -eq 0 ]
+check "the serial-only fixture ran" ran serial-only
+
+# --- affected mode outside a git repository ---
+# With no repository there is no way to know what changed, so nothing may be
+# ruled out: everything runs (PR #42 review).
+NO_GIT="$SANDBOX/no-git/claude/enforce/tests"
+mkdir -p "$NO_GIT"
+printf '#!/usr/bin/env bash\ntouch "$MARKS/nogit-fast"\necho PASS\n' > "$NO_GIT/fast.test.sh"
+printf '#!/usr/bin/env bash\n# Shard: slow\ntouch "$MARKS/nogit-slow"\necho PASS\n' > "$NO_GIT/slow.test.sh"
+reset
+OUT=$(cd "$SANDBOX" && env -u FIXTURE_CHANGED_FILES GIT_CEILING_DIRECTORIES="$SANDBOX" bash "$RUNNER" "$NO_GIT" --affected </dev/null 2>&1); STATUS=$?
+check "affected mode outside git runs the slow tier too" ran nogit-slow
+check "affected mode outside git says why" out_has "no git repository"
+
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?
 check "an unknown mode is refused" [ "$STATUS" -eq 2 ]

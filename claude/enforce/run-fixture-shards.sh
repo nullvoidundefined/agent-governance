@@ -15,8 +15,9 @@
 #       wait for pre-push. A slow fixture runs when its text names a changed
 #       file (the path under claude/, or the basename) or when the fixture
 #       itself changed. Everything runs when a changed file is named by no
-#       fixture in any tree, or is one of the shared files every fixture
-#       depends on, so a change the selector cannot place is never skipped.
+#       fixture in any tree, is one of the shared files every fixture depends
+#       on, or cannot be known because there is no git repository, so a change
+#       the selector cannot place is never skipped.
 #
 # Changed files come from FIXTURE_CHANGED_FILES (newline separated, repo
 # relative) when set, else from git: the working tree's changes plus the
@@ -128,8 +129,12 @@ run_selected() {
   for fixture in $fixtures; do
     if [ "$(shard_of "$fixture")" = serial ]; then serial="$serial $fixture"; else batch="$batch $fixture"; fi
   done
-  for fixture in $batch; do echo "$fixture"; done \
-    | xargs -P "$jobs" -n 1 bash "$0" --run-one "$result_dir" 2>/dev/null
+  # Guarded because GNU xargs starts the child once even on empty input, with
+  # no fixture argument, which a serial-only tree would report as a failure.
+  if [ -n "$batch" ]; then
+    for fixture in $batch; do echo "$fixture"; done \
+      | xargs -P "$jobs" -n 1 bash "$0" --run-one "$result_dir" 2>/dev/null
+  fi
   [ -n "$batch" ] && [ -n "$serial" ] && sleep "${FIXTURE_SERIAL_SETTLE_SECONDS:-$SERIAL_SETTLE_DEFAULT_SECONDS}"
   for fixture in $serial; do bash "$0" --run-one "$result_dir" "$fixture"; done
 }
@@ -164,7 +169,13 @@ main() {
       changed=$([ -n "$root" ] && changed_files_from_git "$root" | sort -u)
     fi
     corpus=$(ls "$tests_dir"/../../*/tests/*.test.sh "$tests_dir"/*.test.sh 2>/dev/null | sort -u)
-    reason=$(fallback_reason "$changed" "$corpus")
+    # With no injected list and no repository there is no way to know what
+    # changed, so nothing may be ruled out.
+    if [ -z "${FIXTURE_CHANGED_FILES+set}" ] && [ -z "$root" ]; then
+      reason="no git repository to read changes from"
+    else
+      reason=$(fallback_reason "$changed" "$corpus")
+    fi
     [ -n "$reason" ] || selected=$(select_affected "$fixtures" "$changed")
   fi
   count=$(printf '%s\n' "$selected" | grep -c .)
