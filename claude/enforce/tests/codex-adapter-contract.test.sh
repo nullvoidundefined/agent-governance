@@ -50,7 +50,7 @@
 # Codex release changes them this fixture keeps passing while the port breaks.
 set -uo pipefail
 
-REPO_TOP=$(git rev-parse --show-toplevel)
+REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 ADAPTER="$REPO_TOP/codex/hooks/codex-hook-adapter.sh"
 PERMISSION_RULES_SOURCE="$REPO_TOP/claude/enforce/settings-permission-rules.sh"
 

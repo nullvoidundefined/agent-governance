@@ -5,7 +5,7 @@
 # that runs past option parsing; never reads the live ~/.claude or real
 # credential files.
 set -uo pipefail
-REPO_TOP=$(git rev-parse --show-toplevel)
+REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 DOCTOR="$REPO_TOP/claude/enforce/doctor.sh"
 
 fail=0

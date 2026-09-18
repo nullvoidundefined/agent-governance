@@ -130,16 +130,19 @@ run_suite() {
 
 # run_shell_suite <test rel>...: runs every *.test.sh in the named files'
 # directories through the shard runner and prints the Vitest-shaped report.
+# The runner starts in a scratch directory, not the repository root, so a
+# fixture that writes a relative path cannot leave files in the slice's tree
+# (PR #49 review); fixture paths are absolute, so nothing else changes.
 run_shell_suite() {
-  local dirs rel dir results fixture records=""
+  local dirs rel dir results scratch fixture records=""
   dirs=$(for rel in "$@"; do dirname "$rel"; done | sort -u)
   while IFS= read -r dir; do
-    results=$(mktemp -d)
-    bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --all --results-dir "$results" >/dev/null 2>&1
+    results=$(mktemp -d); scratch=$(mktemp -d)
+    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --all --results-dir "$results" >/dev/null 2>&1)
     for fixture in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
       [ -f "$fixture" ] && records+=$(shell_record "$fixture" "$results")$'\n'
     done
-    rm -rf "$results"
+    rm -rf "$results" "$scratch"
   done <<< "$dirs"
   printf '%s' "$records" | jq -s '{testResults: .}'
 }
@@ -353,9 +356,11 @@ cmd_green() {
     names=$(printf '%s' "$names" | jq -c --arg n "$(report_name "$rel")" '. + [$n]')
     record=$(file_record "$rel")
     [ -n "$record" ] || die "$rel was not run"
-    printf '%s' "$record" | jq -e '.status == "failed"' >/dev/null && die "$rel failed to run: $(printf '%s' "$record" | jq -r '.message' | head -1)"
+    # A file with no test results failed to load; one with results failed a
+    # test, and the refusal names it with the first line of its failure.
+    printf '%s' "$record" | jq -e '.status == "failed" and (.assertionResults | length) == 0' >/dev/null && die "$rel failed to run: $(printf '%s' "$record" | jq -r '.message' | head -1)"
     printf '%s' "$record" | jq -e '[.assertionResults[] | select(.status != "passed")] | length == 0' >/dev/null \
-      || die "$rel is not green: $(printf '%s' "$record" | jq -r '[.assertionResults[] | select(.status != "passed") | "\(.title) (\(.status))"] | join(", ")')"
+      || die "$rel is not green: $(printf '%s' "$record" | jq -r '[.assertionResults[] | select(.status != "passed") | "\(.title) (\(.status))" + (((.failureMessages // [])[0] // "") | split("\n") | map(select(test("\\S"))) | if length > 0 then ": " + .[0] else "" end)] | join(", ")')"
     local expected
     expected=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .tests' "$LOCK")
     [ "$(printf '%s' "$record" | jq '.assertionResults | length')" -ge "$expected" ] || die "$rel ran fewer tests than RED recorded ($expected)"
