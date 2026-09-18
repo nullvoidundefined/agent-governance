@@ -12,7 +12,7 @@
 #       the Stop gate's mode. The fast tier (every fixture with no
 #       `# Shard: slow` or `# Shard: serial` header) always runs, so the
 #       closure and tree-scanning checks, which are nearly all fast, never
-#       wait for pre-push. A slow fixture runs when its text names a changed
+#       wait for pre-push. A slow or serial fixture runs when its text names a changed
 #       file (the path under claude/, or the basename), when a changed path
 #       matches a glob on its `# Watches:` line, or when the fixture itself
 #       changed. Everything runs when a changed file is named by no
@@ -32,10 +32,16 @@
 #                          line) from a file instead of from git.
 #   --list                 print the chosen fixtures' names and run nothing.
 # A tree with no fixtures fails, as the sequential runners did.
-# FIXTURE_SERIAL_SETTLE_SECONDS sets the pause before the serial fixtures
-# (default 5). FIXTURE_SHARD_JOBS sets the parallelism; the default is the CPU count
-# capped at 8, where measured wall time stopped improving (2026-09-18: 105s
-# at 4 jobs, 62s at 8, 65s at 12 for the enforce and hook trees together).
+# --settle-seconds <n> sets the minimum pause before the serial fixtures
+# (default 5), after which the runner also waits for the one-minute load to
+# fall below the CPU count, for at most --settle-max-seconds <n> (default 60).
+# --jobs <n> sets the parallelism; without it the runner uses the idle CPUs
+# (CPU count minus current load), from a quarter of the CPUs to 8, where 8 is where measured wall
+# time stopped improving (2026-09-18: 105s at 4 jobs, 62s at 8, 65s at 12 for
+# the enforce and hook trees together). --load-from <file> reads the load
+# from a file instead of the kernel, for tests. Every control is an argument
+# for the same reason as the test options: an exported variable must not be
+# able to shorten the quiet period or overload the gate.
 #
 # A fixture passes on exit 0 with a PASS line and no FAIL line, the verdict
 # the sequential runners applied; output is printed in name order once the
@@ -43,9 +49,15 @@
 # when every chosen fixture passed, 1 when one failed, 2 on a usage error.
 set -uo pipefail
 
-SHARED_FILES="enforce/harness-root.sh enforce/run-fixture-shards.sh enforce/tests/run-tests.sh hooks/tests/run-tests.sh"
+# Files every fixture of a kind depends on without naming them: the harness
+# plumbing, and the ESLint bundle's manifest, lockfile, and config, which
+# every lint-driven fixture loads (PR #42 late review: a lockfile change was
+# mapped to the one fast fixture that names it and skipped the slow ones).
+SHARED_FILES="enforce/harness-root.sh enforce/run-fixture-shards.sh enforce/tests/run-tests.sh hooks/tests/run-tests.sh enforce/package.json enforce/package-lock.json enforce/eslint.config.mjs enforce/eslint-options.mjs enforce/lint.mjs"
 MAX_DEFAULT_JOBS=8
 SERIAL_SETTLE_DEFAULT_SECONDS=5
+SERIAL_SETTLE_MAX_DEFAULT_SECONDS=60
+LOAD_FROM=""
 
 # run_one_fixture <result dir> <fixture>: runs one fixture with stdin closed
 # and records its verdict and output. Invoked through xargs as a subcommand,
@@ -76,12 +88,51 @@ shard_of() {
   else echo fast; fi
 }
 
-# default_job_count: CPU count capped at MAX_DEFAULT_JOBS.
+# cpu_count: the online CPU count, 4 when it cannot be read.
+cpu_count() {
+  getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4
+}
+
+# current_load: the one-minute load average as a whole number, read from
+# --load-from when given (tests), else from the kernel; 0 when unreadable, so
+# an unknown load never stalls a run.
+current_load() {
+  local raw
+  if [ -n "$LOAD_FROM" ]; then raw=$(head -1 "$LOAD_FROM" 2>/dev/null)
+  elif [ -r /proc/loadavg ]; then raw=$(cut -d' ' -f1 /proc/loadavg)
+  else raw=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}'); fi
+  raw="${raw%%.*}"
+  [[ "$raw" =~ ^[0-9]+$ ]] && echo "$raw" || echo 0
+}
+
+# default_job_count: the idle CPUs (CPU count minus the current load), from a
+# quarter of the CPUs to MAX_DEFAULT_JOBS. A fixed 8 let several sessions
+# sharding at once drive the load to 124 on a 14-CPU machine; a floor of 1
+# then ran a full suite one fixture at a time past the Stop gate's 600-second
+# timeout (2026-09-18).
 default_job_count() {
-  local cpus
-  cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-  [ "$cpus" -gt "$MAX_DEFAULT_JOBS" ] && cpus=$MAX_DEFAULT_JOBS
-  echo "$cpus"
+  local jobs cpus floor
+  cpus=$(cpu_count)
+  floor=$(( cpus / 4 )); [ "$floor" -lt 1 ] && floor=1
+  jobs=$(( cpus - $(current_load) ))
+  [ "$jobs" -lt "$floor" ] && jobs=$floor
+  [ "$jobs" -gt "$MAX_DEFAULT_JOBS" ] && jobs=$MAX_DEFAULT_JOBS
+  echo "$jobs"
+}
+
+# settle_before_serial <min seconds> <max seconds>: waits at least the minimum,
+# then until the load falls below the CPU count or the maximum is reached. A
+# fixed pause was not enough once other sessions kept the machine loaded: the
+# timing fixture then measured their load, not the chain it guards.
+settle_before_serial() {
+  local min_seconds="$1" max_seconds="$2" waited cpus
+  sleep "$min_seconds"; waited="$min_seconds"; cpus=$(cpu_count)
+  while [ "$(current_load)" -ge "$cpus" ] && [ "$waited" -lt "$max_seconds" ]; do
+    sleep 1; waited=$(( waited + 1 ))
+  done
+  if [ "$(current_load)" -ge "$cpus" ]; then
+    echo "fixture-shards: load still $(current_load) on $cpus CPUs after ${waited}s; running the serial fixtures anyway"
+  fi
 }
 
 # changed_files_from_git <repo root>: working-tree changes plus unpushed or
@@ -94,7 +145,10 @@ changed_files_from_git() {
   elif base=$(git -C "$root" merge-base HEAD origin/main 2>/dev/null); then :
   else base=$(git -C "$root" rev-list --max-parents=0 HEAD 2>/dev/null | tail -1); fi
   [ -n "$base" ] || return 1
-  diff_lines=$(git -C "$root" diff --name-only "$base" HEAD 2>/dev/null) || return 1
+  # Three dots: the changes since the branch point only. A two-dot diff
+  # against an upstream that had moved ahead also listed every file main had
+  # gained, and forced a full run at each turn end (2026-09-18).
+  diff_lines=$(git -C "$root" diff --name-only "$base...HEAD" 2>/dev/null) || return 1
   sed -E 's/^.. //; s/^.* -> //; s/^"//; s/"$//' <<< "$status_lines"
   printf '%s\n' "$diff_lines"
 }
@@ -151,7 +205,7 @@ select_affected() {
   done <<< "$fixtures"
 }
 
-# run_selected <fixtures> <jobs> <result dir>: the parallel batch, then a
+# run_selected <fixtures> <jobs> <result dir> <settle seconds> <settle max>: the parallel batch, then a
 # settle pause, then each serial fixture alone. The pause exists because a
 # timing fixture started the instant the batch ends measures the batch's
 # leftover load: on 2026-09-18 hook-latency failed by 2ms straight after the
@@ -162,7 +216,7 @@ select_affected() {
 # in the checkout path never splits one fixture into several arguments (PR #42
 # review round 4).
 run_selected() {
-  local fixtures="$1" jobs="$2" result_dir="$3" fixture serial="" batch=""
+  local fixtures="$1" jobs="$2" result_dir="$3" settle_seconds="$4" settle_max_seconds="$5" fixture serial="" batch=""
   while IFS= read -r fixture; do
     [ -n "$fixture" ] || continue
     if [ "$(shard_of "$fixture")" = serial ]; then serial+="$fixture"$'\n'; else batch+="$fixture"$'\n'; fi
@@ -173,13 +227,14 @@ run_selected() {
     printf '%s' "$batch" | tr '\n' '\0' \
       | xargs -0 -P "$jobs" -n 1 bash "$0" --run-one "$result_dir" 2>/dev/null
   fi
-  [ -n "$batch" ] && [ -n "$serial" ] && sleep "${FIXTURE_SERIAL_SETTLE_SECONDS:-$SERIAL_SETTLE_DEFAULT_SECONDS}"
+  [ -n "$batch" ] && [ -n "$serial" ] && settle_before_serial "$settle_seconds" "$settle_max_seconds"
   while IFS= read -r fixture; do
     [ -n "$fixture" ] && bash "$0" --run-one "$result_dir" "$fixture"
   done <<< "$serial"
 }
 
-# report_results <fixtures> <result dir>: ok/FAIL lines in name order; true
+# report_results <fixtures> <result dir>: ok/FAIL lines in name order, each
+# failing fixture followed by its failure lines and last three lines; true
 # when all passed.
 report_results() {
   local fixtures="$1" result_dir="$2" fixture name all_passed=0
@@ -189,7 +244,13 @@ report_results() {
     if [ "$(cat "$result_dir/$name.verdict" 2>/dev/null)" = ok ]; then
       echo "ok   $name"
     else
-      echo "FAIL $name"; tail -3 "$result_dir/$name.out" 2>/dev/null; all_passed=1
+      # Every failure line, then the tail: the last three lines alone were
+      # all passing cases when fixture-implementation-root failed on main
+      # after #42, which left the failure unreadable from the CI log.
+      echo "FAIL $name"
+      grep -E '^FAIL' "$result_dir/$name.out" 2>/dev/null
+      tail -3 "$result_dir/$name.out" 2>/dev/null
+      all_passed=1
     fi
   done <<< "$fixtures"
   return "$all_passed"
@@ -215,12 +276,12 @@ affected_selection() {
 # usage_error <message>: exits 2 with the message and the usage line.
 usage_error() {
   echo "run-fixture-shards.sh: $1" >&2
-  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>]" >&2
+  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>] [--jobs <n>] [--settle-seconds <n>] [--settle-max-seconds <n>] [--load-from <file>]" >&2
   exit 2
 }
 
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" fixtures jobs result_dir total count status
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status
   [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
   case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
   shift 2
@@ -228,6 +289,10 @@ main() {
     case "$1" in
       --list) list_only=1; shift ;;
       --changed-from) [ -r "${2:-}" ] || usage_error "--changed-from needs a readable file"; changed_from="$2"; shift 2 ;;
+      --jobs) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || usage_error "--jobs needs a positive integer"; jobs="$2"; shift 2 ;;
+      --settle-seconds) [[ "${2:-}" =~ ^[0-9]+$ ]] || usage_error "--settle-seconds needs a whole number"; settle_seconds="$2"; shift 2 ;;
+      --settle-max-seconds) [[ "${2:-}" =~ ^[0-9]+$ ]] || usage_error "--settle-max-seconds needs a whole number"; settle_max_seconds="$2"; shift 2 ;;
+      --load-from) [ -r "${2:-}" ] || usage_error "--load-from needs a readable file"; LOAD_FROM="$2"; shift 2 ;;
       *) usage_error "unknown option '$1'" ;;
     esac
   done
@@ -246,11 +311,11 @@ main() {
     exit 0
   fi
   count=$(grep -c . <<< "$SELECTED")
-  jobs="${FIXTURE_SHARD_JOBS:-$(default_job_count)}"
+  [ -n "$jobs" ] || jobs=$(default_job_count)
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
   result_dir=$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")
   export CLAUDE_FIRE_LOG=/dev/null
-  run_selected "$SELECTED" "$jobs" "$result_dir"
+  run_selected "$SELECTED" "$jobs" "$result_dir" "$settle_seconds" "$settle_max_seconds"
   report_results "$SELECTED" "$result_dir"; status=$?
   rm -rf "$result_dir"
   exit "$status"

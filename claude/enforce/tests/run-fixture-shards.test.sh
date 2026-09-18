@@ -29,9 +29,16 @@ TESTS="$REPO/claude/enforce/tests"
 MARKS="$SANDBOX/marks"
 mkdir -p "$TESTS" "$REPO/claude/hooks" "$MARKS"
 export MARKS
-# No settle pause except in the one case that tests it, so the other full-mode
-# cases do not each pay the runner's default.
-export FIXTURE_SERIAL_SETTLE_SECONDS=0
+# No settle pause except in the cases that test it, so the other full-mode
+# cases do not each pay the runner's default. RUN_OPTS reaches every
+# run_runner call; the direct calls below pass --settle-seconds themselves.
+# The runner reads the machine's load for its settle wait and default job
+# count; the fixture feeds it a file instead, so no case depends on how busy
+# the machine running it is. LOAD_FILE holds a quiet load unless a case says
+# otherwise.
+LOAD_FILE="$SANDBOX/load"
+echo 0 > "$LOAD_FILE"
+RUN_OPTS=(--settle-seconds 0 --load-from "$LOAD_FILE")
 
 # write_fixture <name> <header or ""> <body line>
 write_fixture() {
@@ -64,9 +71,9 @@ run_runner() {
   local mode="$1" changed="${2:-}"
   reset
   if [ -n "$changed" ]; then
-    OUT=$(bash "$RUNNER" "$TESTS" "$mode" --changed-from "$(changes_file "$changed")" </dev/null 2>&1); STATUS=$?
+    OUT=$(bash "$RUNNER" "$TESTS" "$mode" ${RUN_OPTS[@]+"${RUN_OPTS[@]}"} --changed-from "$(changes_file "$changed")" </dev/null 2>&1); STATUS=$?
   else
-    OUT=$(cd "$REPO" && bash "$RUNNER" "$TESTS" "$mode" </dev/null 2>&1); STATUS=$?
+    OUT=$(cd "$REPO" && bash "$RUNNER" "$TESTS" "$mode" ${RUN_OPTS[@]+"${RUN_OPTS[@]}"} </dev/null 2>&1); STATUS=$?
   fi
 }
 out_has() { grep -qF -- "$1" <<< "$OUT"; }
@@ -146,10 +153,17 @@ for pair in p1 p2; do
   printf '#!/usr/bin/env bash\ntouch "$MARKS/start-%s"\nfor _ in $(seq 50); do [ -e "$MARKS/start-%s" ] && { echo PASS; exit 0; }; sleep 0.1; done\necho "FAIL: ran alone"\n' \
     "$pair" "$other" > "$TESTS/$pair.test.sh"
 done
-FIXTURE_SHARD_JOBS=4 run_runner --all
+RUN_OPTS=(--settle-seconds 0 --jobs 4 --load-from "$LOAD_FILE")
+run_runner --all
 check "fixtures in the parallel batch overlap in time" [ "$STATUS" -eq 0 ]
-FIXTURE_SHARD_JOBS=1 run_runner --all
+RUN_OPTS=(--settle-seconds 0 --jobs 1 --load-from "$LOAD_FILE")
+run_runner --all
 check "one job runs them one at a time (the control)" [ "$STATUS" -ne 0 ]
+# An inherited job count is ignored: exported as 1 around the default, the
+# pair still overlaps (PR #42 late review).
+RUN_OPTS=(--settle-seconds 0 --load-from "$LOAD_FILE")
+FIXTURE_SHARD_JOBS=1 run_runner --all
+check "an inherited FIXTURE_SHARD_JOBS does not change the job count" [ "$STATUS" -eq 0 ]
 rm -f "$TESTS/p1.test.sh" "$TESTS/p2.test.sh"
 
 # --- the serial fixtures wait for the batch's load to settle ---
@@ -161,14 +175,61 @@ rm -f "$TESTS/p1.test.sh" "$TESTS/p2.test.sh"
 write_fixture fast-a "" 'date +%s > "$MARKS/.batch-end-a"'
 write_fixture fast-b "" 'date +%s > "$MARKS/.batch-end-b"'
 write_fixture serial-d '# Shard: serial' 'date +%s > "$MARKS/.serial-start"'
-FIXTURE_SERIAL_SETTLE_SECONDS=2 run_runner --all
+RUN_OPTS=(--settle-seconds 2 --load-from "$LOAD_FILE")
+run_runner --all
 settled_before_serial() {
   local batch_end serial_start
   batch_end=$(cat "$MARKS/.batch-end-a" "$MARKS/.batch-end-b" | sort -n | tail -1)
   serial_start=$(cat "$MARKS/.serial-start")
-  [ $(( serial_start - batch_end )) -ge 2 ]
+  [ $(( serial_start - batch_end )) -ge "$1" ]
 }
-check "the serial fixture starts only after the settle pause" settled_before_serial
+check "the serial fixture starts only after the settle pause" settled_before_serial 2
+# An inherited zero cannot skip the default pause (PR #42 late review).
+RUN_OPTS=(--load-from "$LOAD_FILE")
+FIXTURE_SERIAL_SETTLE_SECONDS=0 run_runner --all
+check "an inherited FIXTURE_SERIAL_SETTLE_SECONDS cannot skip the default pause" settled_before_serial 5
+
+# The pause before serial fixtures also waits for the machine's load to fall
+# below its CPU count, because several sessions sharding at once drove the
+# load to 124 and the timing fixture failed after a fixed pause (2026-09-18).
+settled_within() {
+  local batch_end serial_start
+  batch_end=$(cat "$MARKS/.batch-end-a" "$MARKS/.batch-end-b" | sort -n | tail -1)
+  serial_start=$(cat "$MARKS/.serial-start")
+  [ $(( serial_start - batch_end )) -lt "$1" ]
+}
+echo 999 > "$LOAD_FILE"
+( sleep 3; echo 0 > "$LOAD_FILE" ) &
+RUN_OPTS=(--settle-seconds 0 --settle-max-seconds 30 --load-from "$LOAD_FILE")
+run_runner --all
+wait
+check "the serial fixtures wait while the load is high" settled_before_serial 2
+check "they start soon after the load falls, well before the cap" settled_within 15
+echo 999 > "$LOAD_FILE"
+RUN_OPTS=(--settle-seconds 0 --settle-max-seconds 2 --load-from "$LOAD_FILE")
+run_runner --all
+check "a load that never falls still lets the run finish at the cap" [ "$STATUS" -eq 0 ]
+check "the capped wait lasts about the cap" settled_within 10
+check "a capped wait is reported" out_has "load still"
+
+# The default job count is the idle CPUs, from a quarter of the CPUs to 8, so
+# a second session sharding on a busy machine adds little load of its own and
+# still finishes inside the Stop gate's timeout.
+CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
+FLOOR=$(( CPUS / 4 )); [ "$FLOOR" -lt 1 ] && FLOOR=1
+IDLE=$(( FLOOR + 1 ))
+if [ "$IDLE" -le 8 ] && [ "$IDLE" -lt "$CPUS" ]; then
+  echo $(( CPUS - IDLE )) > "$LOAD_FILE"
+  RUN_OPTS=(--settle-seconds 0 --load-from "$LOAD_FILE")
+  run_runner --all
+  check "the default job count is the idle CPUs" out_has "with $IDLE jobs"
+fi
+echo 999 > "$LOAD_FILE"
+run_runner --all
+check "a saturated machine still gets a quarter of its CPUs" out_has "with $FLOOR jobs"
+echo 0 > "$LOAD_FILE"
+RUN_OPTS=(--settle-seconds 0 --load-from "$LOAD_FILE")
+RUN_OPTS=(--settle-seconds 0 --load-from "$LOAD_FILE")
 rm -f "$MARKS"/.batch-end-* "$MARKS/.serial-start"
 
 # --- a tree holding only serial fixtures ---
@@ -279,7 +340,7 @@ printf '#!/usr/bin/env bash\ntouch "$MARKS/spaced-fast"\n# exercises hooks/alpha
 printf '#!/usr/bin/env bash\n# Shard: slow\n# exercises hooks/gamma.sh\ntouch "$MARKS/spaced-slow"\necho PASS\n' > "$SPACED/slow.test.sh"
 printf '#!/usr/bin/env bash\n# Shard: serial\ntouch "$MARKS/spaced-serial"\necho PASS\n' > "$SPACED/serial.test.sh"
 reset
-OUT=$(bash "$RUNNER" "$SPACED" --all </dev/null 2>&1); STATUS=$?
+OUT=$(bash "$RUNNER" "$SPACED" --all --settle-seconds 0 --load-from "$LOAD_FILE" </dev/null 2>&1); STATUS=$?
 check "a spaced checkout path passes in full mode" [ "$STATUS" -eq 0 ]
 check "every fixture under a spaced path ran" ran spaced-serial
 reset
@@ -297,6 +358,70 @@ reset
 OUT=$(cd "$REPO" && GIT_DIR="$DECOY_REPO/.git" GIT_WORK_TREE="$DECOY_REPO" bash "$RUNNER" "$TESTS" --affected </dev/null 2>&1); STATUS=$?
 git -C "$REPO" checkout -q -- claude/hooks/gamma.sh
 check "an inherited GIT_DIR does not redirect change detection" ran slow-c
+
+# --- failure lines survive a long tail ---
+# A failing fixture's report carries every failure line, not only its last
+# three lines, which on 2026-09-18 were all passing cases and hid the real one
+# (main CI after #42).
+printf '#!/usr/bin/env bash\necho "FAIL: the early case"\nfor n in 1 2 3 4 5 6; do echo "PASS: later case $n"; done\n' > "$TESTS/fast-e.test.sh"
+run_runner --all
+check "the report names a failure line buried before the tail" out_has "FAIL: the early case"
+rm -f "$TESTS/fast-e.test.sh"
+
+# --- change detection against an upstream and against origin/main ---
+# The base is the upstream when one exists, else the merge base with
+# origin/main; each must count this branch's own commits and nothing already
+# pushed or already on main (PR #42 late review).
+BASE_REMOTE="$SANDBOX/remote.git"
+BASE_REPO="$SANDBOX/base-repo"
+git init -q --bare "$BASE_REMOTE"
+cp -R "$REPO" "$BASE_REPO"
+# Earlier sections rewrote fast-a so it no longer names hooks/alpha.sh;
+# restore the mapping so an alpha change is a mapped fast-tier change here.
+printf '#!/usr/bin/env bash\n# exercises hooks/alpha.sh\ntouch "$MARKS/fast-a"\necho PASS\n' > "$BASE_REPO/claude/enforce/tests/fast-a.test.sh"
+git -C "$BASE_REPO" commit -qam 'restore fast-a mapping'
+git -C "$BASE_REPO" remote add origin "$BASE_REMOTE"
+git -C "$BASE_REPO" branch -M main
+git -C "$BASE_REPO" push -q -u origin main
+BASE_TESTS="$BASE_REPO/claude/enforce/tests"
+printf 'pushed\n' > "$BASE_REPO/claude/hooks/gamma.sh"
+git -C "$BASE_REPO" commit -qam 'gamma, pushed'
+git -C "$BASE_REPO" push -q
+printf 'unpushed\n' > "$BASE_REPO/claude/hooks/alpha.sh"
+git -C "$BASE_REPO" commit -qam 'alpha, unpushed'
+reset
+OUT=$(cd "$BASE_REPO" && bash "$RUNNER" "$BASE_TESTS" --affected --settle-seconds 0 --load-from "$LOAD_FILE" </dev/null 2>&1)
+check "with an upstream, an already pushed change is not counted" not ran slow-c
+check "with an upstream, the unpushed commit is counted" ran fast-a
+# The upstream moving ahead must not count its own new files as this
+# branch's changes: a two-dot diff against a moved base listed everything main
+# had gained and forced a full run at every turn end (2026-09-18).
+AHEAD_CLONE="$SANDBOX/ahead-clone"
+git clone -q "$BASE_REMOTE" "$AHEAD_CLONE"
+mkdir -p "$AHEAD_CLONE/docs"
+printf 'new on main\n' > "$AHEAD_CLONE/docs/landed-on-main.md"
+git -C "$AHEAD_CLONE" add -A
+git -C "$AHEAD_CLONE" -c user.email=t@t -c user.name=t commit -qm 'main moves ahead'
+git -C "$AHEAD_CLONE" push -q
+git -C "$BASE_REPO" fetch -q
+reset
+OUT=$(cd "$BASE_REPO" && bash "$RUNNER" "$BASE_TESTS" --affected --settle-seconds 0 --load-from "$LOAD_FILE" </dev/null 2>&1)
+check "a file that landed on the upstream after the branch point is not a change" not out_has "unmapped"
+git -C "$BASE_REPO" checkout -q -b topic origin/main
+git -C "$BASE_REPO" branch -q --unset-upstream 2>/dev/null
+printf 'topic\n' > "$BASE_REPO/claude/hooks/gamma.sh"
+git -C "$BASE_REPO" commit -qam 'gamma on topic'
+reset
+OUT=$(cd "$BASE_REPO" && bash "$RUNNER" "$BASE_TESTS" --affected --settle-seconds 0 --load-from "$LOAD_FILE" </dev/null 2>&1)
+check "without an upstream, the branch's own commit against origin/main is counted" ran slow-c
+
+# --- toolchain files are shared ---
+# A change to the ESLint bundle's manifest or config reaches every lint-driven
+# fixture, whether or not one of them names the file (PR #42 late review).
+SEL=$(real_selection 'claude/enforce/package-lock.json')
+check "a lockfile change runs the slow lint fixtures too" selection_has "$SEL" test-quality-rules.test.sh
+SEL=$(real_selection 'claude/enforce/eslint.config.mjs')
+check "an ESLint config change runs the slow lint fixtures too" selection_has "$SEL" naming-lexicon.test.sh
 
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?
