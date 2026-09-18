@@ -4,8 +4,9 @@
 # suites (R-509, IAN-94). Full mode runs every fixture in parallel and the
 # `# Shard: serial` ones alone afterwards. Affected mode always runs the fast
 # tier, adds a `# Shard: slow` fixture only when it names a changed file, a
-# changed path matches its `# Watches:` globs, or it is itself changed, and falls back to everything when a changed file maps to no
-# fixture or is shared by all of them. A fixture passes only on exit 0 with a
+# changed path matches its `# Watches:` globs, or it is itself changed, and
+# falls back to everything when a changed file maps to no fixture, is shared
+# by all of them, or cannot be listed. A fixture passes only on exit 0 with a
 # PASS line and no FAIL line, the verdict the old sequential runners applied.
 #
 # The fixtures under test are fakes in a sandbox git repository that write
@@ -63,12 +64,14 @@ run_runner() {
   local mode="$1" changed="${2:-}"
   reset
   if [ -n "$changed" ]; then
-    OUT=$(FIXTURE_CHANGED_FILES="$changed" bash "$RUNNER" "$TESTS" "$mode" </dev/null 2>&1); STATUS=$?
+    OUT=$(bash "$RUNNER" "$TESTS" "$mode" --changed-from "$(changes_file "$changed")" </dev/null 2>&1); STATUS=$?
   else
     OUT=$(cd "$REPO" && bash "$RUNNER" "$TESTS" "$mode" </dev/null 2>&1); STATUS=$?
   fi
 }
-out_has() { printf '%s' "$OUT" | grep -qF -- "$1"; }
+out_has() { grep -qF -- "$1" <<< "$OUT"; }
+# changes_file <newline-separated paths>: writes them for --changed-from.
+changes_file() { printf '%s\n' "$1" > "$SANDBOX/changes.txt"; echo "$SANDBOX/changes.txt"; }
 
 # --- full mode ---
 run_runner --all
@@ -187,7 +190,7 @@ mkdir -p "$NO_GIT"
 printf '#!/usr/bin/env bash\ntouch "$MARKS/nogit-fast"\necho PASS\n' > "$NO_GIT/fast.test.sh"
 printf '#!/usr/bin/env bash\n# Shard: slow\ntouch "$MARKS/nogit-slow"\necho PASS\n' > "$NO_GIT/slow.test.sh"
 reset
-OUT=$(cd "$SANDBOX" && env -u FIXTURE_CHANGED_FILES GIT_CEILING_DIRECTORIES="$SANDBOX" bash "$RUNNER" "$NO_GIT" --affected </dev/null 2>&1); STATUS=$?
+OUT=$(cd "$SANDBOX" && GIT_CEILING_DIRECTORIES="$SANDBOX" bash "$RUNNER" "$NO_GIT" --affected </dev/null 2>&1); STATUS=$?
 check "affected mode outside git runs the slow tier too" ran nogit-slow
 check "affected mode outside git says why" out_has "no git repository"
 
@@ -198,21 +201,32 @@ mkdir -p "$WATCH_TREE"
 printf '#!/usr/bin/env bash\n# exercises skills/x/SKILL.md\ntouch "$MARKS/watch-fast"\necho PASS\n' > "$WATCH_TREE/fast.test.sh"
 printf '#!/usr/bin/env bash\n# Shard: slow\n# Watches: hooks/*.sh settings.json\ntouch "$MARKS/watch-slow"\necho PASS\n' > "$WATCH_TREE/scanner.test.sh"
 reset
-OUT=$(FIXTURE_CHANGED_FILES='claude/hooks/zeta.sh' bash "$RUNNER" "$WATCH_TREE" --affected </dev/null 2>&1)
+OUT=$(bash "$RUNNER" "$WATCH_TREE" --affected --changed-from "$(changes_file 'claude/hooks/zeta.sh')" </dev/null 2>&1)
 check "a watched glob selects the slow fixture" ran watch-slow
 check "a file matched only by a watch glob is not unmapped" not out_has "unmapped"
 reset
-OUT=$(FIXTURE_CHANGED_FILES='claude/settings.json' bash "$RUNNER" "$WATCH_TREE" --affected </dev/null 2>&1)
+OUT=$(bash "$RUNNER" "$WATCH_TREE" --affected --changed-from "$(changes_file 'claude/settings.json')" </dev/null 2>&1)
 check "a watched exact path selects the slow fixture" ran watch-slow
 reset
-OUT=$(FIXTURE_CHANGED_FILES='claude/skills/x/SKILL.md' bash "$RUNNER" "$WATCH_TREE" --affected </dev/null 2>&1)
+OUT=$(bash "$RUNNER" "$WATCH_TREE" --affected --changed-from "$(changes_file 'claude/skills/x/SKILL.md')" </dev/null 2>&1)
 check "a change outside the watch globs leaves the slow fixture out" not ran watch-slow
 
 # --- the real tree keeps its whole-tree scanners in reach ---
 # List-only selection over this checkout's own fixtures, so the headers that
 # carry the guarantee cannot be dropped without this failing.
+# Guard first: a runner that ignored --list would run this checkout's real
+# suite, this fixture included, recursively. Prove on the sandbox tree that
+# list mode runs nothing before pointing it at the real one.
+reset
+LISTED=$(bash "$RUNNER" "$TESTS" --affected --list --changed-from "$(changes_file 'claude/hooks/gamma.sh')" </dev/null 2>/dev/null)
+list_mode_is_inert() { [ -z "$(ls "$MARKS")" ] && grep -qx 'slow-c.test.sh' <<< "$LISTED"; }
+check "list mode names the chosen fixtures and runs none of them" list_mode_is_inert
+if ! list_mode_is_inert; then
+  echo "run-fixture-shards.test.sh: list mode is not inert, so the real-tree cases are not run"
+  exit 1
+fi
 real_selection() {
-  FIXTURE_SHARD_LIST_ONLY=1 FIXTURE_CHANGED_FILES="$1" bash "$RUNNER" "$CLAUDE_HARNESS_ROOT/enforce/tests" --affected </dev/null 2>/dev/null
+  bash "$RUNNER" "$CLAUDE_HARNESS_ROOT/enforce/tests" --affected --list --changed-from "$(changes_file "$1")" </dev/null 2>/dev/null
 }
 selection_has() { printf '%s\n' "$1" | grep -qx "$2"; }
 SEL=$(real_selection 'claude/skills/task-start/SKILL.md')
@@ -225,6 +239,35 @@ SEL=$(real_selection 'claude/CLAUDE-GO.md')
 check "a convention-file edit runs the track invariants" selection_has "$SEL" convention-track-invariants.test.sh
 SEL=$(real_selection 'claude/hooks/tests/session-end.test.sh')
 check "a fixture edit runs the implementation-root sweep" selection_has "$SEL" fixture-implementation-root.test.sh
+
+# --- inherited environment cannot steer a real run ---
+# The test-only inputs are arguments, so a variable exported in the caller's
+# shell (the old injection names included) changes nothing (PR #42 review).
+printf 'changed\n' > "$REPO/claude/hooks/gamma.sh"
+reset
+OUT=$(cd "$REPO" && FIXTURE_CHANGED_FILES='claude/hooks/alpha.sh' FIXTURE_SHARD_LIST_ONLY=1 bash "$RUNNER" "$TESTS" --affected </dev/null 2>&1); STATUS=$?
+check "an inherited change list does not hide a real change" ran slow-c
+check "an inherited list-only flag does not stop the run" ran fast-a
+git -C "$REPO" checkout -q -- claude/hooks/gamma.sh
+
+# --- git that cannot list changes ---
+# A failing status or diff means the change set is unknown, so nothing may be
+# ruled out (PR #42 review).
+printf 'changed\n' > "$REPO/claude/hooks/alpha.sh"
+chmod 000 "$REPO/.git/index"
+reset
+OUT=$(cd "$REPO" && bash "$RUNNER" "$TESTS" --affected </dev/null 2>&1); STATUS=$?
+chmod 644 "$REPO/.git/index"
+git -C "$REPO" checkout -q -- claude/hooks/alpha.sh
+check "an unreadable change set runs everything" ran slow-c
+check "the git failure is named" out_has "git could not list"
+
+# --- an empty tree is a failure, not a pass ---
+EMPTY_TREE="$SANDBOX/empty/claude/enforce/tests"
+mkdir -p "$EMPTY_TREE"
+OUT=$(bash "$RUNNER" "$EMPTY_TREE" --all </dev/null 2>&1); STATUS=$?
+check "a tree with no fixtures fails the run" [ "$STATUS" -ne 0 ]
+check "the empty tree is named" out_has "no fixtures"
 
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --bogus 2>&1); STATUS=$?

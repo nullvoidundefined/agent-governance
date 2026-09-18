@@ -20,12 +20,18 @@
 #       on, or cannot be known because there is no git repository, so a change
 #       the selector cannot place is never skipped.
 #
-# Changed files come from FIXTURE_CHANGED_FILES (newline separated, repo
-# relative) when set, else from git: the working tree's changes plus the
-# commits since the upstream, or since the merge base with origin/main when
-# there is no upstream, or since the root commit when there is neither.
-# FIXTURE_SHARD_LIST_ONLY=1 prints the chosen fixtures' names and runs
-# nothing, so selection can be tested against a real tree.
+# Changed files come from git: the working tree's changes plus the commits
+# since the upstream, or since the merge base with origin/main when there is
+# no upstream, or since the root commit when there is neither. A git query
+# that fails means the change set is unknown, and everything runs.
+#
+# Two options exist for tests only, and they are arguments rather than
+# environment variables so that nothing exported in a caller's shell can
+# steer a real run (PR #42 review): run-tests.sh forwards only the mode.
+#   --changed-from <file>  read the changed paths (repo relative, one per
+#                          line) from a file instead of from git.
+#   --list                 print the chosen fixtures' names and run nothing.
+# A tree with no fixtures fails, as the sequential runners did.
 # FIXTURE_SERIAL_SETTLE_SECONDS sets the pause before the serial fixtures
 # (default 5). FIXTURE_SHARD_JOBS sets the parallelism; the default is the CPU count
 # capped at 8, where measured wall time stopped improving (2026-09-18: 105s
@@ -79,14 +85,18 @@ default_job_count() {
 }
 
 # changed_files_from_git <repo root>: working-tree changes plus unpushed or
-# branch commits, one repo-relative path per line.
+# branch commits, one repo-relative path per line; non-zero when git cannot
+# produce the list, so a failure is never read as "nothing changed".
 changed_files_from_git() {
-  local root="$1" base
-  git -C "$root" status --porcelain --untracked-files=all 2>/dev/null | sed -E 's/^.. //; s/^.* -> //; s/^"//; s/"$//'
+  local root="$1" base status_lines diff_lines
+  status_lines=$(git -C "$root" status --porcelain --untracked-files=all 2>/dev/null) || return 1
   if base=$(git -C "$root" rev-parse -q --verify '@{u}' 2>/dev/null); then :
   elif base=$(git -C "$root" merge-base HEAD origin/main 2>/dev/null); then :
   else base=$(git -C "$root" rev-list --max-parents=0 HEAD 2>/dev/null | tail -1); fi
-  [ -n "$base" ] && git -C "$root" diff --name-only "$base" HEAD 2>/dev/null
+  [ -n "$base" ] || return 1
+  diff_lines=$(git -C "$root" diff --name-only "$base" HEAD 2>/dev/null) || return 1
+  sed -E 's/^.. //; s/^.* -> //; s/^"//; s/"$//' <<< "$status_lines"
+  printf '%s\n' "$diff_lines"
 }
 
 # names_file <fixture> <repo-relative path>: true when the fixture is that
@@ -174,42 +184,60 @@ report_results() {
   return "$all_passed"
 }
 
+# affected_selection <tests dir> <fixtures> <changed-from file or "">: sets
+# SELECTED and REASON for --affected. REASON non-empty means everything runs.
+affected_selection() {
+  local tests_dir="$1" fixtures="$2" changed_from="$3" changed root corpus
+  SELECTED="$fixtures"; REASON=""
+  if [ -n "$changed_from" ]; then
+    changed=$(cat "$changed_from")
+  else
+    root=$(git -C "$tests_dir" rev-parse --show-toplevel 2>/dev/null) || { REASON="no git repository to read changes from"; return; }
+    changed=$(changed_files_from_git "$root") || { REASON="git could not list the changes"; return; }
+    changed=$(sort -u <<< "$changed")
+  fi
+  corpus=$(ls "$tests_dir"/../../*/tests/*.test.sh "$tests_dir"/*.test.sh 2>/dev/null | sort -u)
+  REASON=$(fallback_reason "$changed" "$corpus")
+  [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
+}
+
+# usage_error <message>: exits 2 with the message and the usage line.
+usage_error() {
+  echo "run-fixture-shards.sh: $1" >&2
+  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>]" >&2
+  exit 2
+}
+
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" fixtures selected changed corpus reason root jobs result_dir total count status
-  [ -d "$tests_dir" ] || { echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected" >&2; exit 2; }
-  case "$mode" in --all | --affected) ;; *) echo "run-fixture-shards.sh: unknown mode '$mode'" >&2; exit 2 ;; esac
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" fixtures jobs result_dir total count status
+  [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
+  case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --list) list_only=1; shift ;;
+      --changed-from) [ -r "${2:-}" ] || usage_error "--changed-from needs a readable file"; changed_from="$2"; shift 2 ;;
+      *) usage_error "unknown option '$1'" ;;
+    esac
+  done
   tests_dir=$(cd "$tests_dir" && pwd)
   fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
-  total=$(printf '%s\n' "$fixtures" | grep -c .)
-  selected="$fixtures"; reason=""
-  if [ "$mode" = --affected ]; then
-    if [ -n "${FIXTURE_CHANGED_FILES+set}" ]; then changed="$FIXTURE_CHANGED_FILES"
-    else
-      root=$(git -C "$tests_dir" rev-parse --show-toplevel 2>/dev/null) || root=""
-      changed=$([ -n "$root" ] && changed_files_from_git "$root" | sort -u)
-    fi
-    corpus=$(ls "$tests_dir"/../../*/tests/*.test.sh "$tests_dir"/*.test.sh 2>/dev/null | sort -u)
-    # With no injected list and no repository there is no way to know what
-    # changed, so nothing may be ruled out.
-    if [ -z "${FIXTURE_CHANGED_FILES+set}" ] && [ -z "$root" ]; then
-      reason="no git repository to read changes from"
-    else
-      reason=$(fallback_reason "$changed" "$corpus")
-    fi
-    [ -n "$reason" ] || selected=$(select_affected "$fixtures" "$changed")
-  fi
-  if [ -n "${FIXTURE_SHARD_LIST_ONLY:-}" ]; then
-    for fixture in $selected; do basename "$fixture"; done
+  [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
+  total=$(grep -c . <<< "$fixtures")
+  SELECTED="$fixtures"; REASON=""
+  [ "$mode" = --affected ] && affected_selection "$tests_dir" "$fixtures" "$changed_from"
+  if [ -n "$list_only" ]; then
+    for fixture in $SELECTED; do basename "$fixture"; done
     exit 0
   fi
-  count=$(printf '%s\n' "$selected" | grep -c .)
+  count=$(grep -c . <<< "$SELECTED")
   jobs="${FIXTURE_SHARD_JOBS:-$(default_job_count)}"
-  echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${reason:+ (everything: $reason)}"
+  echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
   result_dir=$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")
   export CLAUDE_FIRE_LOG=/dev/null
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
-  run_selected "$selected" "$jobs" "$result_dir"
-  report_results "$selected" "$result_dir"; status=$?
+  run_selected "$SELECTED" "$jobs" "$result_dir"
+  report_results "$SELECTED" "$result_dir"; status=$?
   rm -rf "$result_dir"
   exit "$status"
 }
