@@ -94,7 +94,7 @@ R-412: Work in slices: `tdd.sh open`, the failing test, `tdd.sh red` before any 
 
 R-501: Check for a parallel session on the same working tree before the first edit; if one is active, move to a worktree. [hook:parallel-session-check]
 R-502: Create tasks (`TaskCreate`) for user-visible workstreams, not inline sub-steps. [manual]
-R-503: For 3+ tasks or any plan/skill execution: announce each task's % share of total work, capture a start timestamp, report cumulative % at each completion and total elapsed time at the end. [manual]
+R-503: For 3+ tasks or any plan/skill execution: announce each task's % share of total work, capture a start timestamp, report cumulative % at each completion and total elapsed time at the end. [hook:session-start, manual]
 R-504: Commit after every discrete task; a `TaskUpdate` to `completed` triggers an immediate commit. [hook:task-commit-reminder in Claude Code; manual in Cursor]
 R-505: Conventional commit subjects (`type(scope): summary`); one commit per triage ID, two max when inseparable. [hook:commit-message-guard]
 R-506: One-sentence commit bodies; multi-line only for business-logic bugs, architectural refactors, security changes. [hook:commit-message-guard]

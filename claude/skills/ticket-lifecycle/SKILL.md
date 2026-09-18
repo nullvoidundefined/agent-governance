@@ -59,7 +59,7 @@ Run at the end of `task-start` Step 1, after the tier is announced and before se
 1. Skip entirely for the trivial tier unless the user asks for a ticket. A typo fix does not earn a work item.
 2. Require `title`, `tier`, `assist`, `estimate_minutes`, and `repo`. Any missing: name the missing field and stop.
 3. Search the tracker for an open ticket carrying this `branch` value. One hit: report the key and stop, no second ticket. Several hits: ask which is live, open nothing.
-4. Capture `started_at` as the R-503 start timestamp.
+4. Read `started_at` from the `## Session start (R-503)` block that `hooks/session-start.sh` injects at every session start, compaction included. Block summarized away: read the file its `Record:` line names, `session-start.<session-id>` in the session's project directory under the Claude home. Neither present: leave `started_at` empty and say so in the report. Never estimate it, never round it, and never substitute the current time.
 5. Create the ticket in state `backlog`, or `in-progress` when work starts in the same turn. Write every known field. Sanitize the body first: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]` (R-104).
 6. Report the ticket key and URL. Write the key onto the spec's `**Ticket:**` line when a spec exists, and into the handoff doc.
 7. Add `Refs: <ticket-key>` as a trailer on every commit for this task.
