@@ -52,8 +52,22 @@ jobs:
 
       # node_modules is gitignored, so a fresh clone has none and the six
       # ESLint-backed fixtures fail on a missing ESLint rather than on a defect.
+      # Locked installs only. The fallback to `npm install` that used to sit
+      # here could resolve or repair dependencies differently from the
+      # committed lockfile, so a green CI run no longer proved the lockfile
+      # itself installs (2026-09-18 external audit, finding 8). A transient
+      # registry failure is retried as the SAME locked operation instead.
       - name: Install enforcement dependencies
-        run: npm ci --prefix claude/enforce || npm install --prefix claude/enforce
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci --prefix claude/enforce; then
+              exit 0
+            fi
+            echo "npm ci failed (attempt $attempt of 3); retrying the same locked install"
+            sleep $(( attempt * 5 ))
+          done
+          echo "npm ci failed three times: the lockfile or the registry is the problem, and npm install would only hide which" >&2
+          exit 1
 
       # push-ruff-gate.test.sh drives the REAL ruff binary. The rubocop and
       # golangci fixtures stub their linters through CLAUDE_*_CMD, so they pass
@@ -102,14 +116,26 @@ jobs:
       - name: Hook fixtures
         run: bash "$HOME/.claude/hooks/tests/run-tests.sh"
 
-      # Fails the moment codex/ or cursor/ drifts from claude/ (a source edit
-      # landed without --write, or a hand edit touched a generated file)
-      # instead of waiting for the next contributor to notice by hand.
-      - name: Translator port check (codex)
-        run: node translate/codex.mjs --check
-
-      - name: Translator port check (cursor)
-        run: node translate/cursor.mjs --check
+      # Fails the moment a generated port tree drifts from claude/ (a source
+      # edit landed without --write, or a hand edit touched a generated file)
+      # instead of waiting for the next contributor to notice by hand. The
+      # list of ports comes from claude/enforce/port-checks.sh, the same
+      # inventory the turn-end gate and the pre-push hook read, so adding a
+      # port cannot leave one caller behind (2026-09-18 external audit,
+      # finding 7). CI remains an independent enforcement point: it decides
+      # here that a drifted port is a red build.
+      - name: Translator port checks
+        run: |
+          . claude/enforce/port-checks.sh
+          checks=$(listPortChecks .)
+          [ -n "$checks" ] || { echo "no translator present: nothing to check"; exit 0; }
+          status=0
+          while IFS= read -r check; do
+            [ -n "$check" ] || continue
+            echo "running: $check"
+            eval "$check" || status=1
+          done <<< "$checks"
+          exit "$status"
 
       # This repo carries no TypeScript, so the ratchet reports "nothing to
       # baseline" and exits 0. The step is here so a regression in the ratchet

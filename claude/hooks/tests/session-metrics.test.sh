@@ -39,7 +39,7 @@ printf 'bb\n' > "$REPO/b.txt"; git -C "$REPO" add -A; git -C "$REPO" commit -qm 
 OUT=$(cd "$REPO" && bash "$METRICS" 2>&1)
 check "commits counted" reports "Commits this session: 3"
 check "files counted" reports "Files changed: 2"
-check "rework counted" reports "Rework commits (file touched by 2+ commits): 1"
+check "revisited files counted" reports "Files revisited (touched by 2+ commits): 1"
 check "flag normal" reports "Velocity flag: NORMAL"
 
 # --since overrides the stamp.
