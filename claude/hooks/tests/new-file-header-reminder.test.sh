@@ -64,4 +64,24 @@ check "ts commented file silent"   silent "src/services/y.ts" "/** does y becaus
 export const y = 1;
 "
 
+# E4 (slice 01 PR 5): a new .vue file needs a header too; an HTML comment first,
+# or a comment as the first line inside <script setup>, counts as one.
+check "vue no header nudges"       nudges "app/components/TripCard/TripCard.vue" '<script setup lang="ts">
+const isOpen = false;
+</script>
+'
+check "vue html-comment silent"    silent "app/components/TripCard/TripCard.vue" '<!-- Shows one trip as a card because the list and map both need it. -->
+<script setup lang="ts">
+const isOpen = false;
+</script>
+'
+check "vue script-comment silent"  silent "app/components/TripCard/TripCard.vue" '<script setup lang="ts">
+/** Shows one trip as a card because the list and map both need it. */
+const isOpen = false;
+</script>
+'
+check "vue story silent"           silent "app/components/TripCard/TripCard.stories.vue" '<script setup lang="ts">
+</script>
+'
+
 exit "$fail"
