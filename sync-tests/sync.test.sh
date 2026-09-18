@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # sync.test.sh: verifies sync.sh copies each folder into its target, never
-# deletes anything already there (no rsync --delete, see sync.sh's header for
-# why), refuses on invalid JSON without a partial write, is idempotent, and
+# deletes anything it did not install (no rsync --delete, see sync.sh's header
+# for why), removes a file it installed once the repository stops tracking it
+# and only while its live content is unchanged (IAN-116), refuses on invalid JSON without a partial write, is idempotent, and
 # syncs only git-tracked source content (never untracked/gitignored local
 # state such as node_modules), and brings the live enforce node_modules in
 # line with a synced lockfile, failing loudly when npm cannot. Every target is a temp dir via the SYNC_*_HOME
@@ -66,18 +67,74 @@ run_sync >"$TMP/untracked-run.log" 2>&1 || { echo "FAIL: sync refused because of
 [ ! -e "$TMP/live/claude/untracked-dir" ] || { echo "FAIL: untracked directory leaked into destination"; exit 1; }
 rm -rf "$TMP/repo/claude/untracked-invalid.json" "$TMP/repo/claude/untracked-dir"
 
-# --- a tracked file removed from source (git rm) is NOT removed from the
-# destination on the next sync: sync only ever adds or updates, it never
-# deletes, even a file it once put there itself stays behind once the
-# source stops tracking it, until someone cleans it up by hand.
+# --- safe removal (IAN-116). sync.sh writes <target>/.sync-manifest, one
+# "<sha256>  <path>" line per file it installed. On the next run it removes a
+# live file only when the previous manifest lists it, the repository no longer
+# tracks it, and its live content still hashes to the manifest's value; a file
+# edited live is kept and reported, a file sync never installed is never
+# touched, and a directory is removed only when that removal emptied it.
+MANIFEST="$TMP/live/claude/.sync-manifest"
+[ -f "$MANIFEST" ] || { echo "FAIL: sync did not write $MANIFEST"; exit 1; }
+expected_line="$(shasum -a 256 "$TMP/repo/claude/CLAUDE.md" | awk '{print $1}')  CLAUDE.md"
+grep -qxF "$expected_line" "$MANIFEST" || { echo "FAIL: manifest lacks '$expected_line'"; cat "$MANIFEST"; exit 1; }
+
+mkdir -p "$TMP/repo/claude/nested/deep" "$TMP/repo/claude/shared"
 echo "temporary" > "$TMP/repo/claude/removable.txt"
-git -C "$TMP/repo" add claude/removable.txt
-git -C "$TMP/repo" commit -q -m "fixture: add removable tracked file"
+echo "temporary nested" > "$TMP/repo/claude/nested/deep/removable.txt"
+echo "temporary shared" > "$TMP/repo/claude/shared/removable.txt"
+echo "edited later" > "$TMP/repo/claude/edited.txt"
+git -C "$TMP/repo" add -A
+git -C "$TMP/repo" commit -q -m "fixture: add removable tracked files"
 run_sync >/dev/null
-[ -f "$TMP/live/claude/removable.txt" ] || { echo "FAIL: tracked file was not synced"; exit 1; }
-git -C "$TMP/repo" rm -q claude/removable.txt
+for f in removable.txt nested/deep/removable.txt shared/removable.txt edited.txt; do
+  [ -f "$TMP/live/claude/$f" ] || { echo "FAIL: tracked file $f was not synced"; exit 1; }
+done
+# A live-only file beside a synced one: sync never installed it, so neither it
+# nor the directory holding it may go when the synced neighbor is removed.
+echo "mine" > "$TMP/live/claude/shared/own.txt"
+echo "edited live" > "$TMP/live/claude/edited.txt"
+git -C "$TMP/repo" rm -q claude/removable.txt claude/nested/deep/removable.txt claude/shared/removable.txt claude/edited.txt
+git -C "$TMP/repo" commit -q -m "fixture: stop tracking the removable files"
+run_sync >"$TMP/remove.out" 2>"$TMP/remove.err"
+[ ! -e "$TMP/live/claude/removable.txt" ] || { echo "FAIL: a file sync installed and the repo stopped tracking was not removed"; exit 1; }
+[ ! -e "$TMP/live/claude/nested" ] || { echo "FAIL: directories emptied by the removal were left behind"; exit 1; }
+[ -f "$TMP/live/claude/shared/own.txt" ] || { echo "FAIL: a live file sync never installed was removed"; exit 1; }
+[ ! -e "$TMP/live/claude/shared/removable.txt" ] || { echo "FAIL: a removed file beside a live-only file was not removed"; exit 1; }
+[ -f "$TMP/live/claude/edited.txt" ] || { echo "FAIL: a file edited live since sync installed it was removed"; exit 1; }
+grep -q "edited.txt" "$TMP/remove.err" || { echo "FAIL: a kept live-edited file was not reported"; cat "$TMP/remove.out" "$TMP/remove.err"; exit 1; }
+grep -q "removable.txt" "$TMP/remove.out" || { echo "FAIL: a removal was not reported"; cat "$TMP/remove.out"; exit 1; }
+[ -f "$TMP/live/claude/sessions/marker.txt" ] || { echo "FAIL: live-only runtime state was removed"; exit 1; }
+if grep -q "removable.txt\|edited.txt" "$MANIFEST"; then echo "FAIL: the new manifest still lists files the repo no longer tracks"; exit 1; fi
+
+# A rename that changes only letter case (local review on #69): on a
+# case-insensitive volume (macOS by default) rsync --checksum leaves the old
+# entry in place under the old spelling, and the old path resolves to the file
+# the repository still tracks, so removing it would delete a tracked file. A
+# candidate whose path matches a tracked path ignoring case is never removed.
+echo "case rename" > "$TMP/repo/claude/CaseRename.txt"
+git -C "$TMP/repo" add -A; git -C "$TMP/repo" commit -q -m "fixture: add case-rename file"
 run_sync >/dev/null
-[ -f "$TMP/live/claude/removable.txt" ] || { echo "FAIL: sync deleted a file from the destination; it must never delete anything"; exit 1; }
+git -C "$TMP/repo" mv claude/CaseRename.txt claude/caserename.txt
+git -C "$TMP/repo" commit -q -m "fixture: rename by case only"
+run_sync >/dev/null
+[ -f "$TMP/live/claude/caserename.txt" ] || { echo "FAIL: a case-only rename removed the file the repository still tracks"; exit 1; }
+
+# First run with no manifest (an install synced before manifests existed):
+# nothing is removed, and the manifest is written for the next run.
+echo "legacy" > "$TMP/repo/claude/legacy.txt"
+git -C "$TMP/repo" add -A; git -C "$TMP/repo" commit -q -m "fixture: add legacy file"
+run_sync >/dev/null
+rm -f "$MANIFEST"
+git -C "$TMP/repo" rm -q claude/legacy.txt; git -C "$TMP/repo" commit -q -m "fixture: stop tracking legacy file"
+run_sync >/dev/null
+[ -f "$TMP/live/claude/legacy.txt" ] || { echo "FAIL: a run with no previous manifest removed a file"; exit 1; }
+[ -f "$MANIFEST" ] || { echo "FAIL: a run with no previous manifest did not write one"; exit 1; }
+
+# A manifest line naming a path outside the target is never acted on.
+outside="$TMP/outside.txt"; echo "outside" > "$outside"
+printf '%s  ../outside.txt\n' "$(shasum -a 256 "$outside" | awk '{print $1}')" >> "$MANIFEST"
+run_sync >/dev/null 2>&1
+[ -f "$outside" ] || { echo "FAIL: a manifest entry escaping the target removed a file outside it"; exit 1; }
 
 # --- enforce dependencies (2026-09-18): a synced claude/enforce/package-lock.json
 # that adds a dependency must reach the live node_modules. The copy used to be

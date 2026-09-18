@@ -94,7 +94,32 @@ countDriftedFiles() {
   if [ "$pairs" -gt 0 ]; then
     count=$((count + $(countDifferingPairs "$pairs" "$pair_list")))
   fi
+  count=$((count + $(countPendingRemovals claude "$LIVE" "$tracked")))
+  count=$((count + $(countPendingRemovals cursor "$CURSOR_LIVE" "$tracked")))
+  count=$((count + $(countPendingRemovals codex "$CODEX_LIVE" "$tracked")))
   printf '%s' "$count"
+}
+
+# countPendingRemovals(payload, liveRoot, trackedList): files sync.sh would
+# remove on its next run, counted as drift so that a commit whose only change
+# stops tracking a file still triggers the sync that removes it (local review
+# on #69). A candidate is a path the live .sync-manifest lists, the checkout no
+# longer tracks (compared ignoring case, as sync.sh does), and the live tree
+# still holds. sync.sh drops every such path from its next manifest, removed or
+# kept, so a candidate is drift for one run only and never forces a sync at
+# every SessionStart. A path that is absolute or has a ".." component is
+# skipped, as sync.sh skips it.
+countPendingRemovals() {
+  local payload="$1" live_root="$2" tracked="$3" rel pending=0
+  [ -f "$live_root/.sync-manifest" ] || { printf '0'; return; }
+  while IFS= read -r rel; do
+    case "/$rel/" in //* | */../*) continue ;; esac
+    if [ -f "$live_root/$rel" ] || [ -L "$live_root/$rel" ]; then pending=$((pending + 1)); fi
+  done < <(printf '%s\n' "$tracked" | awk -v prefix="$payload/" '
+    NR == FNR { if (index($0, prefix) == 1) tracked[tolower(substr($0, length(prefix) + 1))] = 1; next }
+    substr($0, 65, 2) == "  " && substr($0, 1, 64) !~ /[^0-9a-f]/ && !(tolower(substr($0, 67)) in tracked) { print substr($0, 67) }
+  ' - "$live_root/.sync-manifest")
+  printf '%s' "$pending"
 }
 
 # countDifferingPairs(pairCount, relList): how many of the newline-terminated
@@ -145,6 +170,12 @@ if [ "$drifted" -gt 0 ]; then
   fi
   if sync_err=$(cd "$CHECKOUT" && SYNC_CLAUDE_HOME="$LIVE" SYNC_CURSOR_HOME="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}" SYNC_CODEX_HOME="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}" ./sync.sh 2>&1 >/dev/null); then
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT")
+    # sync.sh keeps a file it installed once the repository stops tracking it
+    # when that file was edited live, and says so on stderr (IAN-116); a
+    # successful run's stderr is otherwise dropped, so the KEPT lines are
+    # carried into the context where the session can see them.
+    kept=$(grep '^KEPT:' <<< "$sync_err" | paste -sd ';' -)
+    [ -n "$kept" ] && notes+=("$kept")
   elif grep -q '^REFUSED' <<< "$sync_err"; then
     say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses its payload: $sync_err); sync.sh copies claude/, cursor/, then codex/, so a payload before the refused one may already be updated while the refused one and those after it are not, and $drifted tracked file(s) differed before the run. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
     exit 0
