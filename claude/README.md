@@ -126,6 +126,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── lint.mjs                     # Lints any absolute path; used by the push gate.
 │   ├── ratchet.mjs                  # Full-tree baseline; fails when a count rises.
 │   ├── tdd.sh                       # Slice loop evidence: open, red, green, close.
+│   ├── run-fixture-shards.sh        # Runs a fixture tree in parallel; --affected picks what the changes need (R-509).
 │   ├── role-policy.json             # Subagent write boundaries by agent_type (R-411).
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
@@ -134,7 +135,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── doctor-accepted-keys.txt     # Settings keys the vendored schema lags on; doctor.sh warns instead of failing.
 │   ├── secret-patterns.txt          # R-102 pattern set shared by secret-scan.sh and doctor.sh --release.
 │   ├── rules/                       # 9 custom ESLint rules (R-316/317, R-319, R-320, R-325, R-342, R-343, R-344, R-401 x2).
-│   └── tests/                       # fixture tests; run-tests.sh runs them all.
+│   └── tests/                       # fixture tests; run-tests.sh runs all in parallel, `# Shard: serial` ones alone after; --affected runs every fast fixture plus the slow ones a change names or watches.
 ├── .github/workflows/enforce.yml    # CI: both fixture suites + the ratchet.
 ├── ../translate/                    # Monorepo-root sibling, not synced here: codex.mjs and cursor.mjs each regenerate their target from these claude/ sources.
 ├── rules/                           # Auto-load zone: session-types.md + path-scoped

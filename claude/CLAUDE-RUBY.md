@@ -156,6 +156,7 @@ Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag reques
 - `spec/` mirrors `app/` (R-313); `*_spec.rb` never sits beside its source.
 - No `skip`/`pending` to suppress a failing spec; fix it or delete it (R-401 item 9).
 
+- Test runs (R-509): run the full suite in parallel with `parallel_tests` (`bundle exec parallel_rspec`), one test database per process (`TEST_ENV_NUMBER`). Turn ends, commits, and branch-level merges run only the affected specs: the changed `*_spec.rb` files plus the specs mirroring changed `app/` files (`spec/` mirrors `app/`, R-313). The full parallel run happens at pre-push and as the required CI check before any merge to `main`. Adding `parallel_tests` is a new dependency and needs its R-331 justification.
 ## Tooling (analog of Prettier/ESLint)
 
 - RuboCop (with rails/rspec plugins) is lint and formatter; `bundle exec rubocop -a` on staged files pre-commit (R-408); full sweep pre-push/CI (R-509).

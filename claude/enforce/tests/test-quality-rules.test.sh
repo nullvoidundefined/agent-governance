@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: eslint:behavior-assertion-required, eslint:no-cycle, eslint:no-self-mock
 # Verifies the 2026-09-06 test-quality and dependency rules:
 #   R-401 item 1  no-self-mock: a test that vi.mock()s / jest.mock()s the module it

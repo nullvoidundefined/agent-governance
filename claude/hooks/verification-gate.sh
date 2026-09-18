@@ -15,6 +15,14 @@
 #   - Dirty-tree gated: a read-only exploration turn must not pay a full suite
 #     (R-9xx, lesson_hook_runtime_budget). Checks run only when the working
 #     tree is dirty or the branch carries unpushed commits.
+#   - Affected fixtures only in the governance repo (IAN-94, 2026-09-18):
+#     both suites run with --affected, so a turn pays for the fast tier plus
+#     the slow fixtures its changes name (enforce/run-fixture-shards.sh): 30
+#     to 37 seconds measured for a one-hook edit, against about 85 for the full
+#     sharded run and the 4.6 minutes the sequential runner took. The full
+#     sharded suite runs at pre-push and in CI, the required check before any
+#     merge to main, and --affected itself falls back to it for any change it
+#     cannot place.
 #   - Fails open: a repo with no discoverable check command is not blocked,
 #     otherwise every prose repo deadlocks on every turn.
 #   - One automatic retry on a non-timeout failure, after a short pause
@@ -125,13 +133,13 @@ elif [ -f enforce/tests/run-tests.sh ] && [ -f hooks/tests/run-tests.sh ] && [ -
   # A governance-shaped tree at the toplevel (the pre-migration ~/.claude
   # layout, or a CI checkout of claude/ itself). No typecheck: plain shell
   # and JS with no tsc. Both fixture suites are the checks.
-  add_check "bash enforce/tests/run-tests.sh"
-  add_check "bash hooks/tests/run-tests.sh"
+  add_check "bash enforce/tests/run-tests.sh --affected"
+  add_check "bash hooks/tests/run-tests.sh --affected"
 elif [ -f claude/enforce/tests/run-tests.sh ] && [ -f claude/hooks/tests/run-tests.sh ] && [ -f claude/CLAUDE.md ]; then
   # The agent-governance monorepo: the same governance tree one level down
   # under claude/ (2026-09-16 audit P1-1).
-  add_check "bash claude/enforce/tests/run-tests.sh"
-  add_check "bash claude/hooks/tests/run-tests.sh"
+  add_check "bash claude/enforce/tests/run-tests.sh --affected"
+  add_check "bash claude/hooks/tests/run-tests.sh --affected"
   # The same port checks pre-push and CI run, so the turn-end gate and the
   # push gate stop disagreeing about what verifies this repo: a stale codex
   # port used to survive until push time (2026-09-17 audit P2-5), and the
