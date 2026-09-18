@@ -482,8 +482,14 @@ record_session_start() (
 
   started_at=$(head -1 "$record" 2>/dev/null)
   if ! is_utc_instant "$started_at"; then
-    started_at=$(head -50 "$transcript_path" 2>/dev/null \
-      | jq -Rr 'fromjson? | objects | .timestamp // empty | strings' 2>/dev/null | head -1)
+    started_at=""
+    while IFS= read -r candidate; do
+      if is_utc_instant "$candidate"; then
+        started_at="$candidate"
+        break
+      fi
+    done < <(head -50 "$transcript_path" 2>/dev/null \
+      | jq -Rr 'fromjson? | objects | .timestamp // empty | strings' 2>/dev/null)
     if ! is_utc_instant "$started_at"; then
       case "$source" in
         startup | clear | "") started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) ;;
