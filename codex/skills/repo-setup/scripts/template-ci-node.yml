@@ -23,6 +23,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # R-607 product-docs check: a pull request that adds a user-facing route
+      # must also change the features list, a user story, and an e2e spec.
+      # It needs the full history to diff against the base branch. A library
+      # or tooling repository opted out with productDocs false in .enforce.json
+      # has no script and skips; a missing script without that opt-out fails.
+      - name: R-607 feature checklist
+        if: github.event_name == 'pull_request'
+        env:
+          FEATURE_CHECKLIST_BASE: origin/${{ github.base_ref }}
+        run: |
+          if [ -f scripts/require-feature-checklist.sh ]; then
+            bash scripts/require-feature-checklist.sh
+          elif jq -e '.productDocs == false' .enforce.json >/dev/null 2>&1; then
+            echo "R-607 feature checklist skipped: .enforce.json sets productDocs to false."
+          else
+            echo "scripts/require-feature-checklist.sh is missing: restore it with the repo-setup skill, or set productDocs to false in .enforce.json." >&2
+            exit 1
+          fi
       - uses: pnpm/action-setup@v4
         with:
           run_install: false

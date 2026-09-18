@@ -16,7 +16,7 @@ Bring a GitHub repository to the baseline every project starts from, or audit on
 
 | Item | What it is | Why |
 |---|---|---|
-| `ci` | `.github/workflows/ci.yml`: lint, typecheck where the stack has one, and tests, on every PR and on pushes to the protected branches; the job is named `ci` | The rulesets below require a status check with that exact context, so nothing lands on main or staging without it |
+| `ci` | `.github/workflows/ci.yml`: lint, typecheck where the stack has one, and tests, on every PR and on pushes to the protected branches, plus the R-607 feature checklist (`scripts/require-feature-checklist.sh` against the PR base, skipped when `.enforce.json` sets `productDocs` to `false`) on pull requests; the job is named `ci` | The rulesets below require a status check with that exact context, so nothing lands on main or staging without it |
 | `dependabot` | `.github/dependabot.yml`: weekly updates for the workflow actions and the stack's package ecosystem, minor and patch bumps grouped | Dependencies age whether or not anyone looks |
 | `pr-template` | `.github/pull_request_template.md` with the seven-field PR description format from build-by-slice-require-review | Every PR body carries context, problem, approach, contents, tests, and review focus |
 | `gitignore` | A `.gitignore` for the stack, with `.env*` and the harness ledgers excluded (R-102) | A secret committed on day one is in history forever |

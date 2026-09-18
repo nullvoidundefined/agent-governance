@@ -9,7 +9,8 @@
 # --required-reviews shape the templates and the ruleset; an existing file
 # is never overwritten; the product-docs item (R-607) seeds the features
 # list, the user stories index, and the checklist script, never overwrites
-# them, and --no-product-docs records the opt-out in .enforce.json.
+# them, and --no-product-docs records the opt-out in .enforce.json; every CI
+# template runs that checklist on pull requests and honours the opt-out.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 SETUP="$CLAUDE_HARNESS_ROOT/skills/repo-setup/scripts/setup.sh"
@@ -205,6 +206,62 @@ REPO8="$SB/r&d#app"; mkdir -p "$REPO8"; git -C "$REPO8" init -q -b main
 OUT=$(cd "$REPO8" && HOME="$SB/full-home" bash "$PORT2/setup.sh" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
 check "partial sibling tree falls back and reports OK" row product-docs OK
 check "project name with & and # renders literally" grep -qxF '# r&d#app Feature List' "$REPO8/docs/feature-list/features.md"
+
+# 12. IAN-117: every CI template runs the R-607 checklist on pull requests
+#     against the full history, and the step itself fails a branch that adds
+#     a route without docs, skips an opted-out repository that has no script,
+#     and fails closed when the script is missing without an opt-out.
+TEMPLATES="$CLAUDE_HARNESS_ROOT/skills/repo-setup/scripts"
+
+# extract_checklist_run <template>: prints the checklist step's run block with
+# the YAML indentation removed, or nothing when the step is absent.
+extract_checklist_run() {
+  awk '
+    /^      - name: R-607 feature checklist$/ { in_step = 1; next }
+    in_step && /^      - / { exit }
+    in_step && /^        run: \|$/ { in_run = 1; next }
+    in_run && /^          / { sub(/^          /, ""); print; next }
+    in_run { exit }
+  ' "$1"
+}
+
+# make_route_branch <dir>: a repository whose feature branch adds a Nuxt page
+# and no product docs, with origin/main pointing at its base.
+make_route_branch() {
+  local dir="$1"
+  mkdir -p "$dir"; git -C "$dir" init -q -b main
+  git -C "$dir" config user.email t@example.invalid; git -C "$dir" config user.name t
+  git -C "$dir" commit -q --allow-empty -m base
+  git -C "$dir" update-ref refs/remotes/origin/main HEAD
+  git -C "$dir" checkout -q -b feat/page
+  mkdir -p "$dir/app/pages"; printf '<template />\n' > "$dir/app/pages/trips.vue"
+  git -C "$dir" add -A; git -C "$dir" commit -qm page
+}
+
+for stack in node python go ruby; do
+  tpl="$TEMPLATES/template-ci-$stack.yml"
+  RUN_BLOCK=$(extract_checklist_run "$tpl")
+  check "IAN-117 $stack template has the checklist step" test -n "$RUN_BLOCK"
+  check "IAN-117 $stack step runs scripts/require-feature-checklist.sh" grep -qF 'bash scripts/require-feature-checklist.sh' <<<"$RUN_BLOCK"
+  check "IAN-117 $stack checkout fetches full history" grep -qE '^          fetch-depth: 0$' "$tpl"
+  check "IAN-117 $stack step runs on pull requests only" grep -qF "if: github.event_name == 'pull_request'" "$tpl"
+  check "IAN-117 $stack step diffs against the PR base" grep -qF 'FEATURE_CHECKLIST_BASE: origin/${{ github.base_ref }}' "$tpl"
+  STEP="$SB/checklist-step-$stack.sh"; printf '%s\n' "$RUN_BLOCK" > "$STEP"
+
+  R="$SB/ci-$stack-route"; make_route_branch "$R"
+  mkdir -p "$R/scripts"; cp "$CLAUDE_HARNESS_ROOT/enforce/require-feature-checklist.sh" "$R/scripts/"
+  (cd "$R" && FEATURE_CHECKLIST_BASE=origin/main bash "$STEP" >/dev/null 2>&1); ST=$?
+  check "IAN-117 $stack step fails a route added without docs" test "$ST" -eq 1
+
+  R="$SB/ci-$stack-optout"; make_route_branch "$R"
+  printf '{"productDocs":false}\n' > "$R/.enforce.json"
+  (cd "$R" && FEATURE_CHECKLIST_BASE=origin/main bash "$STEP" >/dev/null 2>&1); ST=$?
+  check "IAN-117 $stack step passes an opted-out repository with no script" test "$ST" -eq 0
+
+  R="$SB/ci-$stack-missing"; make_route_branch "$R"
+  (cd "$R" && FEATURE_CHECKLIST_BASE=origin/main bash "$STEP" >/dev/null 2>&1); ST=$?
+  check "IAN-117 $stack step fails closed when the script is missing" test "$ST" -eq 1
+done
 
 # 7. Usage.
 OUT=$(cd "$REPO" && bash "$SETUP" not-a-repo 2>&1); ST=$?
