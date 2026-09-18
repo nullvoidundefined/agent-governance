@@ -59,7 +59,7 @@ ADDED_LINES=$(git diff "$RANGE" 2>/dev/null | grep '^+' | grep -v '^+++' || true
 COMMITS=$(git rev-list --count "$RANGE" 2>/dev/null || echo 0)
 FILE_COUNT=$(printf '%s\n' "$CHANGED" | grep -c . || true)
 
-SURFACE_RE='(^|/)(routes|handlers)/|(^|/)page\.tsx$|(^|/)route\.ts$|(^|/)features/|(^|/)\.env\.example$|(^|/)docker-compose[^/]*\.ya?ml$|(^|/)Dockerfile$'
+SURFACE_RE='(^|/)(routes|handlers)/|(^|/)page\.tsx$|(^|/)route\.ts$|(^|/)app/pages/.+\.vue$|(^|/)server/(api|routes)/|(^|/)app/routers/[^/]+\.py$|(^|/)features/|(^|/)\.env\.example$|(^|/)docker-compose[^/]*\.ya?ml$|(^|/)Dockerfile$'
 COMPONENT_RE='(^|/)components/([^/]+/)?[^/]+\.(tsx|jsx|vue|svelte)$'
 ENDPOINT_RE='(^|/)(routes|handlers|api)/.*\.(ts|js|mjs|py|rb|go)$|(^|/)route\.ts$'
 QUERY_RE='searchParams|req\.query|useSearchParams|query param'
@@ -111,7 +111,7 @@ todo_or_na() { [ -n "$1" ] && printf 'TODO' || printf 'N/A'; }
 echo "| Action              | Status   | Notes |"
 echo "|---------------------|----------|-------|"
 row "Feature list" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'add or update the row, status Complete with today' || echo 'no user-facing surface added')"
-row "User story" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'docs/user-stories/<slug>.md, criteria match what shipped' || echo '-')"
+row "User story" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'docs/user-stories/<area>.md, shipped criteria ticked (R-607)' || echo '-')"
 row "E2E test" "$(todo_or_na "$surface")" "$([ -n "$surface" ] && echo 'RED slice now, or the user story says why it waits' || echo '-')"
 row "Storybook stories" "$(todo_or_na "$components")" "$([ -n "$components" ] && echo 'only where the project CLAUDE.md defines the convention' || echo 'no new components')"
 row "Query params doc" "$(todo_or_na "$query")" "$([ -n "$query" ] && echo 'docs/query-params.md, same commit as the code' || echo 'no new params')"

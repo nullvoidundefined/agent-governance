@@ -701,6 +701,14 @@
             "note": "crash-safe live task-state tracking on TaskCreate/TaskUpdate; the generated handoff Task state section is rendered by session-end.sh from this hook's output"
         },
         {
+            "id": "R-607",
+            "tier": "regex",
+            "enforcer": "hook:push-feature-docs-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Bash git push: runs the canonical enforce/require-feature-checklist.sh over the outgoing diff (never the target repository's copy) and denies when the branch adds a Next, Nuxt, FastAPI, or Express route without changing docs/feature-list/features.md, a docs/user-stories/ story, and an e2e spec; .enforce.json productDocs false opts a repository out. Fixtures: enforce/tests/push-feature-docs-gate.test.sh, enforce/tests/require-feature-checklist.test.sh"
+        },
+        {
             "id": "R-513",
             "tier": "advisory",
             "enforcer": "hook:constant-change-guard",
