@@ -55,16 +55,19 @@ RETIREMENT_CANDIDATES="$HOME/.claude/global-memory/retirement_candidates.md"
 # resume drift check below needs source, transcript_path, and cwd from
 # it). An empty or malformed payload degrades to empty fields rather than
 # failing the hook: this script's whole point is to run unattended at
-# session start. One jq call reads all three fields as @tsv (review round 1,
+# session start. One jq call reads all three fields (review round 1,
 # finding 2: every hook-latency-budget spawn matters on the SessionStart
-# chain) instead of one jq call per field.
+# chain) instead of one jq call per field. The fields are joined with the
+# unit separator U+001F, not a tab: tab is IFS whitespace, so `read` folds
+# consecutive tabs and an empty transcript_path shifted cwd into its place,
+# which keyed a start record on the workspace's parent directory.
 INPUT=$(cat 2>/dev/null || true)
 SOURCE=""
 TRANSCRIPT_PATH=""
 SESSION_CWD=""
-INPUT_META=$(printf '%s' "$INPUT" | jq -r '[(.source // ""), (.transcript_path // ""), (.cwd // "")] | @tsv' 2>/dev/null || true)
+INPUT_META=$(printf '%s' "$INPUT" | jq -r '[(.source // ""), (.transcript_path // ""), (.cwd // "")] | map(tostring) | join("\u001f")' 2>/dev/null || true)
 if [ -n "$INPUT_META" ]; then
-  IFS=$'\t' read -r SOURCE TRANSCRIPT_PATH SESSION_CWD <<< "$INPUT_META"
+  IFS=$'\x1f' read -r SOURCE TRANSCRIPT_PATH SESSION_CWD <<< "$INPUT_META"
 fi
 
 # Buffer the context we will emit.
@@ -451,8 +454,10 @@ check_interrupted_tasks() (
 # replaced. Records of other sessions older than 14 days (1209600 seconds,
 # exact, matching check_interrupted_tasks rather than find's rounded age tests)
 # are pruned. <key> and <session-id> derive from transcript_path exactly as
-# they do in task-state-tracker.sh; no transcript_path, no record, which is the
-# case under the Cursor adapter.
+# they do in task-state-tracker.sh; no transcript_path, no record. The Cursor
+# adapter passes a synthetic ~/.claude/projects/cursor-<hash>/<conversation-id>.jsonl
+# that never exists on disk, so a Cursor conversation takes the clock branch
+# once and re-reads its record after that.
 # Runs in a `set +e` subshell: advisory, never load-bearing on session start.
 #
 # is_utc_instant accepts `YYYY-MM-DDTHH:MM:SS[.fff]Z` only when it names a

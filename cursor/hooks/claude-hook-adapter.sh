@@ -26,7 +26,8 @@
 #   preToolUse           -> PreToolUse Write|Edit, only when the payload describes a
 #                           file write (newer Cursor builds; lets the edit gates deny
 #                           before the edit lands instead of deferring)
-#   sessionStart         -> SessionStart           {additional_context}
+#   sessionStart         -> SessionStart           {additional_context}; transcript_path is
+#                           synthetic (see synthetic_transcript_path)
 #   sessionEnd           -> SessionEnd             (no response)
 #   stop                 -> Stop                   {followup_message}
 #
@@ -379,10 +380,29 @@ handle_before_read() {
   printf '{"permission":"allow"}\n'
 }
 
+# Cursor keeps no transcript under ~/.claude/projects, but session-start.sh
+# keys its R-503 start record on transcript_path: the parent directory name
+# is the project key and the basename minus .jsonl is the session id. This
+# names a file that is never created, stable per workspace and conversation,
+# so session-start.sh records its own clock on the first start and re-reads
+# that record afterwards. No real conversation id, no path: the "default"
+# fallback would give every conversation one shared, write-once start.
+synthetic_transcript_path() {
+  local root_hash
+  case "$CONVERSATION_ID" in "" | default) return 0 ;; esac
+  root_hash=$( { command -v shasum >/dev/null 2>&1 && printf '%s' "$ROOT" | shasum -a 256; } \
+    || { command -v sha256sum >/dev/null 2>&1 && printf '%s' "$ROOT" | sha256sum; } \
+    || printf '%s' "$ROOT" | cksum)
+  root_hash=$(printf '%s' "$root_hash" | tr -dc '0-9a-f' | cut -c1-16)
+  [ -n "$root_hash" ] || return 0
+  printf '%s/.claude/projects/cursor-%s/%s.jsonl' "$HOME" "$root_hash" "$SAFE_ID"
+}
+
 handle_session_start() {
   local payload
   rm -f "$FINDINGS_FILE" "$LAST_FOLLOWUP_FILE" 2>/dev/null || true
-  payload=$(jq -n --arg cwd "$ROOT" '{hook_event_name:"SessionStart", source:"startup", cwd:$cwd}')
+  payload=$(jq -n --arg cwd "$ROOT" --arg tp "$(synthetic_transcript_path)" \
+    '{hook_event_name:"SessionStart", source:"startup", cwd:$cwd} + (if $tp == "" then {} else {transcript_path:$tp} end)')
   run_all "$payload"
   if [ -n "$CONTEXT" ]; then
     jq -n --arg m "$CONTEXT" '{additional_context:$m}'

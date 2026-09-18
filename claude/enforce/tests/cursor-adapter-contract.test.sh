@@ -146,5 +146,50 @@ check "a missing permission helper denies the read rather than allowing it" perm
 
 mv "$SANDBOX/permission-rules.parked" "$SANDBOX_CLAUDE/enforce/settings-permission-rules.sh" 2>/dev/null || true
 
+# --- 4. sessionStart gives session-start.sh a stable per-conversation key -----
+#
+# Cursor has no transcript at ~/.claude/projects/<key>/<session-id>.jsonl, so
+# the adapter passes a synthetic transcript_path that names a file which never
+# exists. session-start.sh then records the R-503 start from its own clock,
+# once per conversation, and re-reads that record on every later start.
+
+cp "$REPO_TOP/claude/hooks/session-start.sh" "$SANDBOX_CLAUDE/hooks/session-start.sh"
+chmod +x "$SANDBOX_CLAUDE/hooks/session-start.sh"
+
+session_payload() {
+  # $1 = conversation_id; "" omits the field entirely.
+  if [ -n "$1" ]; then
+    jq -n --arg id "$1" --arg cwd "$WORK" '{cwd:$cwd, workspace_roots:[$cwd], conversation_id:$id}'
+  else
+    jq -n --arg cwd "$WORK" '{cwd:$cwd, workspace_roots:[$cwd]}'
+  fi
+}
+context_mentions() { printf '%s' "$2" | jq -r '.additional_context // ""' 2>/dev/null | grep -qF -- "$1"; }
+start_records() { find "$SANDBOX_HOME/.claude/projects" -name 'session-start.*' 2>/dev/null; }
+record_count_is() { [ "$(start_records | grep -c .)" -eq "$1" ]; }
+transcript_count_is() { [ "$(find "$SANDBOX_HOME/.claude/projects" -name '*.jsonl' 2>/dev/null | grep -c .)" -eq "$1" ]; }
+first_record_is_under_cursor_key() { start_records | head -1 | grep -qE '/projects/cursor-[0-9a-f]+/session-start\.conv-alpha$'; }
+
+OUT=$(run_adapter "$(session_payload conv-alpha)" sessionStart session-start)
+check "a Cursor conversation gets a Session start (R-503) block" context_mentions "## Session start (R-503)" "$OUT"
+check "the block names the Cursor conversation as the session" context_mentions "(session conv-alpha)" "$OUT"
+check "exactly one start record is written, under a cursor-<hash> key" first_record_is_under_cursor_key
+check "the synthetic transcript is never created on disk" transcript_count_is 0
+
+RECORD=$(start_records | head -1)
+printf '2026-01-02T03:04:05Z\n' >"$RECORD"
+OUT=$(run_adapter "$(session_payload conv-alpha)" sessionStart session-start)
+check "a second start of the same conversation re-reads the record, not the clock" context_mentions "started_at: 2026-01-02T03:04:05Z" "$OUT"
+check "the second start adds no record" record_count_is 1
+
+OUT=$(run_adapter "$(session_payload conv-beta)" sessionStart session-start)
+check "a second conversation in the same workspace gets its own record" record_count_is 2
+
+OUT=$(run_adapter "$(session_payload "")" sessionStart session-start)
+check "a payload with no conversation_id gets no R-503 block" not context_mentions "## Session start (R-503)" "$OUT"
+OUT=$(run_adapter "$(session_payload default)" sessionStart session-start)
+check "the conversation_id \"default\" gets no R-503 block" not context_mentions "## Session start (R-503)" "$OUT"
+check "neither unkeyed start writes a record" record_count_is 2
+
 [ "$fail" -eq 0 ] && echo "cursor-adapter-contract.test.sh PASS"
 exit "$fail"
