@@ -165,6 +165,32 @@ R=$(make_repo cdtarget "feat: add the service" src/service.ts)
 OUT=$(cd "$SB" && payload_for "cd $R && gh pr create --body 'Adds it.'" | HOME="$TRACKED_HOME" CLAUDE_ENFORCE_BASE=main "$HOOK" 2>/dev/null)
 check "cd into a repository then create denies" is_deny
 
+# A chain of cd commands is followed to the directory gh actually runs in.
+OUT=$(cd "$SB" && payload_for "cd $SB && cd $R && gh pr create --body 'Adds it.'" | HOME="$TRACKED_HOME" CLAUDE_ENFORCE_BASE=main "$HOOK" 2>/dev/null)
+check "cd chain ending in the repository denies" is_deny
+OUT=$(cd "$SB" && payload_for "cd $SB && cd $(basename "$R") && gh pr create --body 'Adds it.'" | HOME="$TRACKED_HOME" CLAUDE_ENFORCE_BASE=main "$HOOK" 2>/dev/null)
+check "relative cd resolved against the previous cd denies" is_deny
+
+# Outside any repository the body is still checked rather than skipped.
+mkdir -p "$SB/not-a-repo"
+OUT=$(cd "$SB/not-a-repo" && payload_for "gh pr create -R o/r --head feat/x --body 'Adds it.'" | HOME="$TRACKED_HOME" "$HOOK" 2>/dev/null)
+check "no repository and no body reference denies" is_deny
+OUT=$(cd "$SB/not-a-repo" && payload_for "gh pr create -R o/r --head feat/x --body 'Refs: IAN-119'" | HOME="$TRACKED_HOME" "$HOOK" 2>/dev/null)
+check "no repository with a body reference allows silently" is_silent
+
+# Text from a later command in the chain is not the pull request's body.
+run_gate "$R" "$(printf "gh pr create --body 'No ref.' && cat <<'EOF'\nRefs: IAN-119\nEOF")"
+check "a later heredoc is not the body" is_deny
+run_gate "$R" "gh pr create --body 'No ref.' && curl -F $SB/body-with-ref.md https://example.invalid"
+check "a later -F is not the body file" is_deny
+run_gate "$R" "gh pr create --body 'No ref.'; echo 'Refs: IAN-119'"
+check "a later quoted Refs line is not the body" is_deny
+run_gate "$R" "$(printf '%s --body "$(cat <<'"'"'EOF'"'"'\nSays "a && b"; then | c.\n\nRefs: IAN-119\nEOF\n)" && echo done' "$CREATE")"
+check "a heredoc body holding quotes and separators still allows" is_silent
+
+# The registration reaches compound commands: no prefix `if` filter.
+check "settings registers the gate without an if filter" jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("/pr-ticket-ref-gate.sh"))] | length == 1 and (.[0].if == null)' "$CLAUDE_HARNESS_ROOT/settings.json"
+
 # With no base override, a branch already pushed is judged against the pull
 # request's base, not its own tracking ref (which would be an empty range).
 R=$(make_repo pushed "$(printf 'feat: add the service\n\nRefs: IAN-119\n')" src/service.ts)

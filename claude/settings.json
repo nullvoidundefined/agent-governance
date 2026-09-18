@@ -225,8 +225,7 @@
                     },
                     {
                         "type": "command",
-                        "command": "~/.claude/hooks/pr-ticket-ref-gate.sh",
-                        "if": "Bash(gh *)"
+                        "command": "~/.claude/hooks/pr-ticket-ref-gate.sh"
                     },
                     {
                         "type": "command",

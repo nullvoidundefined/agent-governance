@@ -38,19 +38,64 @@ has_refs_line() {
   grep -Eq -- "$REFS_LINE_PATTERN" <<< "$1"
 }
 
-# resolve_target_dir <command> <session-cwd>: prints the directory the pull
-# request is created from, honoring a leading `cd <dir>` in the command and
-# falling back to the session's working directory.
+# resolve_target_dir <prefix> <session-cwd>: prints the directory the pull
+# request is created from by replaying every `cd <dir>` in the text before the
+# gh invocation, each relative to the one before, starting from the session's
+# working directory. A cd whose target does not exist leaves the directory
+# unchanged, as the shell would after the failed cd.
 resolve_target_dir() {
-  local command="$1" session_dir="$2" cd_pattern cd_dir
+  local remaining="$1" dir="$2" cd_pattern cd_dir
   cd_pattern="(^|[;&|(])[[:space:]]*cd[[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)"
-  if [[ "$command" =~ $cd_pattern ]]; then
+  while [[ "$remaining" =~ $cd_pattern ]]; do
+    remaining="${remaining#*"${BASH_REMATCH[0]}"}"
     cd_dir="${BASH_REMATCH[2]}"
     cd_dir="${cd_dir#[\"\']}"; cd_dir="${cd_dir%[\"\']}"
-    case "$cd_dir" in "~"/*) cd_dir="$HOME/${cd_dir#\~/}" ;; /*) ;; *) cd_dir="$session_dir/$cd_dir" ;; esac
-    [ -d "$cd_dir" ] && { printf '%s' "$cd_dir"; return; }
-  fi
-  printf '%s' "$session_dir"
+    case "$cd_dir" in "~") cd_dir="$HOME" ;; "~"/*) cd_dir="$HOME/${cd_dir#\~/}" ;; /*) ;; *) cd_dir="$dir/$cd_dir" ;; esac
+    [ -d "$cd_dir" ] && dir="$cd_dir"
+  done
+  printf '%s' "$dir"
+}
+
+# heredoc_end_offset <text> <delimiter>: the text starts at a `<<` heredoc
+# operator; prints the offset of the newline that ends the heredoc's
+# terminator line, or the text's length when the terminator never appears.
+heredoc_end_offset() {
+  local text="$1" delimiter="$2" offset=0 line is_first=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    offset=$((offset + ${#line} + 1))
+    if [ "$is_first" -eq 1 ]; then is_first=0; continue; fi
+    line="${line#"${line%%[!$'\t']*}"}"
+    [ "$line" = "$delimiter" ] && { printf '%s' "$((offset - 1))"; return; }
+  done <<< "$text"
+  printf '%s' "${#text}"
+}
+
+# gh_invocation_text <text>: the text starts at `gh pr create`; prints it up
+# to the first unquoted command separator (; & | or a newline), so a later
+# command in the chain cannot supply the body or its flags. Quotes are
+# tracked and a heredoc is skipped whole, so a body holding quotes or
+# separators stays inside the invocation.
+gh_invocation_text() {
+  local text="$1" index=0 length=${#1} char quote='' heredoc_pattern end
+  heredoc_pattern="^<<-?[[:space:]]*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"
+  while [ "$index" -lt "$length" ]; do
+    char="${text:index:1}"
+    if [ "$quote" = "'" ]; then
+      [ "$char" = "'" ] && quote=''
+    elif [ "$char" = '\' ]; then
+      index=$((index + 1))
+    elif [ "$char" = '<' ] && [[ "${text:index}" =~ $heredoc_pattern ]]; then
+      end=$(heredoc_end_offset "${text:index}" "${BASH_REMATCH[1]}")
+      index=$((index + end))
+      continue
+    elif [ "$char" = '"' ]; then
+      if [ "$quote" = '"' ]; then quote=''; else quote='"'; fi
+    elif [ -z "$quote" ]; then
+      case "$char" in ';'|'&'|'|'|$'\n') break ;; "'") quote="'" ;; esac
+    fi
+    index=$((index + 1))
+  done
+  printf '%s' "${text:0:index}"
 }
 
 # body_flag_text <command>: prints everything after the first --body/-b flag,
@@ -83,7 +128,7 @@ body_has_reference() {
   [ -n "$file" ] && [ -f "$file" ] && has_refs_line "$(cat "$file" 2>/dev/null)"
 }
 
-# resolve_pr_base <command> <target-dir>: prints the merge base of HEAD with
+# resolve_pr_base <invocation> <repo-top>: prints the merge base of HEAD with
 # the pull request's base branch; empty when none of the candidates exist.
 resolve_pr_base() {
   local command="$1" dir="$2" base_pattern named="" default="" candidate merge_base
@@ -149,7 +194,7 @@ emit_degraded_warning() {
 # emit_deny <base>: denies the call, naming R-605 and the fix.
 emit_deny() {
   local note=""
-  [ -n "$1" ] || note=" The pull request's base could not be resolved, so the commits were not read; the body alone was checked."
+  [ -n "$1" ] || note=" No repository or base branch could be resolved, so the commits were not read; the body alone was checked."
   record_fire "deny"
   jq -nc --arg r "R-605 (ticket reference): no commit in this pull request and no --body/--body-file text carries a \`Refs: <KEY>\` line (KEY like IAN-119; a bare rule ID or key does not count). Open the ticket with /ticket-lifecycle, then add \`Refs: <KEY>\` as a commit trailer or a line of the PR body. Exempt: docs-only changes and a trivial tier recorded by task-tier.sh for this branch.${note}" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
@@ -161,21 +206,28 @@ grep -Eq -- "$CREATE_PATTERN" <<< "$CMD" || exit 0
 
 SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 [ -n "$SESSION_DIR" ] && [ -d "$SESSION_DIR" ] || SESSION_DIR="$PWD"
-TARGET_DIR=$(resolve_target_dir "$CMD" "$SESSION_DIR")
-# The flags are read from the gh invocation onward, so that a `-b` or `-F`
-# belonging to an earlier command in the chain (git switch -b) is not taken
-# for the pull request's body.
-GH_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)(.*)'
-GH_TEXT="$CMD"
-[[ "$CMD" =~ $GH_PATTERN ]] && GH_TEXT="${BASH_REMATCH[2]}"
-TOP=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || true)
-[ -n "$TOP" ] || exit 0
+# Split the command at the gh invocation: the text before it decides the
+# directory (its cd chain), and only the invocation itself supplies the body
+# and the flags, so neither an earlier `-b` (git checkout -b) nor a later
+# command's heredoc or `-F` is taken for the pull request's.
+GH_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)'
+PREFIX=""
+[[ "$CMD" =~ $GH_PATTERN ]] && PREFIX="${CMD%%"${BASH_REMATCH[0]}"*}"
+GH_TEXT=$(gh_invocation_text "${CMD#"$PREFIX"}")
+TARGET_DIR=$(resolve_target_dir "$PREFIX" "$SESSION_DIR")
 
 body_has_reference "$GH_TEXT" "$TARGET_DIR" && exit 0
-BASE=$(resolve_pr_base "$GH_TEXT" "$TOP")
-commits_have_reference "$TOP" "$BASE" && exit 0
-is_docs_only_range "$TOP" "$BASE" && exit 0
-is_trivial_tier "$TOP" && exit 0
+# Outside a repository (gh pr create -R owner/repo --head branch) there are
+# no commits or ledger to read; the body was the only source, so the call
+# falls through to the tracker check and the deny rather than exiting open.
+TOP=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || true)
+BASE=""
+if [ -n "$TOP" ]; then
+  BASE=$(resolve_pr_base "$GH_TEXT" "$TOP")
+  commits_have_reference "$TOP" "$BASE" && exit 0
+  is_docs_only_range "$TOP" "$BASE" && exit 0
+  is_trivial_tier "$TOP" && exit 0
+fi
 if [ ! -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
   emit_degraded_warning
   exit 0
