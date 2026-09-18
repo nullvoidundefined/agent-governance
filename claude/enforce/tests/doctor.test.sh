@@ -137,15 +137,20 @@ printf '%s\n' '#!/usr/bin/env bash' 'cat >/dev/null 2>&1 || true' 'exit 0' >"$ST
 chmod +x "$STUB_DRAIN/.claude/hooks/enforcement-guard-check.sh"
 mkfifo "$STDIN_FIFO_DIR/stdin"
 sleep 60 >"$STDIN_FIFO_DIR/stdin" & STDIN_HOLDER=$!
-HOME="$STUB_DRAIN" bash "$DOCTOR" --root "$SANDBOX" <"$STDIN_FIFO_DIR/stdin" >/dev/null 2>&1 & DOCTOR_PID=$!
+HOME="$STUB_DRAIN" bash "$DOCTOR" --root "$SANDBOX" <"$STDIN_FIFO_DIR/stdin" >"$STDIN_FIFO_DIR/out" 2>&1 & DOCTOR_PID=$!
 DOCTOR_EXITED=0
 for _ in $(seq 1 40); do
   kill -0 "$DOCTOR_PID" 2>/dev/null || { DOCTOR_EXITED=1; break; }
   sleep 0.25
 done
-kill "$STDIN_HOLDER" 2>/dev/null; wait "$DOCTOR_PID" 2>/dev/null; wait "$STDIN_HOLDER" 2>/dev/null
+kill "$STDIN_HOLDER" 2>/dev/null; wait "$DOCTOR_PID" 2>/dev/null; DOCTOR_STATUS=$?; wait "$STDIN_HOLDER" 2>/dev/null
+OUT=$(cat "$STDIN_FIFO_DIR/out")
 rm -rf "$STUB_DRAIN" "$STDIN_FIFO_DIR"
 check "verifiers never block on an inherited stdin that stays open" test "$DOCTOR_EXITED" -eq 1
+# Exiting is not enough: a doctor.sh that fails fast would also exit inside
+# the bound. The run must succeed and report the draining verifier as clean.
+check "open-stdin run exits 0" test "$DOCTOR_STATUS" -eq 0
+check "open-stdin run reports the draining verifier clean" grep -q "^pass hook-registration: clean" <<<"$OUT"
 
 # Task 4: environment probes (B-6). HOME_SANDBOX keeps this invocation off
 # the live ~/.claude (finding 3): it drives the full script past option
