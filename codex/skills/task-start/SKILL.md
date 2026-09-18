@@ -47,7 +47,7 @@ Then estimate and open the ticket, in that order (R-605, R-606):
 1. Ask `/ticket-lifecycle` for `estimate <tier>`. Five or more comparable closed tickets: take the median for a task that resembles them, the 80th percentile for one with an unknown dependency. Fewer than five: use the R-906 heuristic and say it is a heuristic.
 2. Announce the estimate in minutes with its basis: "Estimate: N minutes (median of n=M closed [tier] tickets)" or "Estimate: N minutes (heuristic, n=M is too small a sample)".
 3. Open the ticket through `/ticket-lifecycle` with `title`, `tier`, `assist`, `model`, `estimate_minutes`, `repo`, and the branch once it exists. Skip for the trivial tier unless the user asks for one.
-4. Capture the R-503 start timestamp as `started_at`. Announce the ticket key, and carry it in a `Refs: <key>` trailer on every commit for this task.
+4. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Announce the ticket key, and carry it in a `Refs: <key>` trailer on every commit for this task.
 
 ## Step 2: Determine Process Requirements
 

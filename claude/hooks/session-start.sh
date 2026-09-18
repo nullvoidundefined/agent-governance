@@ -33,6 +33,12 @@
 # check_resume_drift below). A non-resume start (startup, clear, compact)
 # skips the drift check entirely.
 #
+# On every source whose payload carries transcript_path, the hook also
+# records the session's start timestamp (R-503) to
+# ~/.claude/projects/<key>/session-start.<session-id> and injects it as a
+# "## Session start (R-503)" block, which ticket-lifecycle's `open` reads as
+# started_at (see record_session_start below for when it declines to).
+#
 # To test manually:
 #   echo '{}' | ~/.claude/hooks/session-start.sh
 # Should print JSON with hookSpecificOutput.additionalContext containing
@@ -424,6 +430,100 @@ check_interrupted_tasks() (
   [ -n "$out" ] && printf '%s' "$out"
   return 0
 )
+
+# record_session_start writes the session's start timestamp (R-503) to
+# ~/.claude/projects/<key>/session-start.<session-id>, one UTC ISO-8601 line,
+# and prints it. ticket-lifecycle's `open` reads started_at from here or from
+# the context block below, never from recall: on 2026-09-18 a recalled
+# started_at ran 21 minutes early and inverted a ticket's estimate_ratio.
+#
+# The source is the first `timestamp` in the session transcript, the same
+# value the transcript would show a human auditing the session afterwards; a
+# transcript not yet on disk (a fresh startup) falls back to this hook's own
+# clock, which is the session start by definition, but only when the transcript
+# path does not exist yet: if the file exists but its first 50 lines do not yet
+# yield a real timestamp, no clock fallback is persisted and a later
+# startup/resume/compact may still record the transcript-derived value. On
+# resume or compact the clock is later than the start, so a session with
+# neither a record nor a transcript timestamp gets no record and no block
+# rather than a wrong one. The record is write-once: compact and resume re-read
+# it rather than rederive it, and a record that is not a real UTC instant is
+# replaced. Records of other sessions older than 14 days (1209600 seconds,
+# exact, matching check_interrupted_tasks rather than find's rounded age tests)
+# are pruned. <key> and <session-id> derive from transcript_path exactly as
+# they do in task-state-tracker.sh; no transcript_path, no record, which is the
+# case under the Cursor adapter.
+# Runs in a `set +e` subshell: advisory, never load-bearing on session start.
+#
+# is_utc_instant accepts `YYYY-MM-DDTHH:MM:SS[.fff]Z` only when it names a
+# real instant: the shape is checked in bash, then jq parses the whole-second
+# part and requires the round trip to reproduce it, which rejects month 13,
+# hour 25, and February 30 alike.
+is_utc_instant() {
+  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]] || return 1
+  local whole="${1%%.*}"
+  whole="${whole%Z}Z"
+  [ "$(jq -rn --arg t "$whole" '$t | fromdateiso8601 | todateiso8601' 2>/dev/null)" = "$whole" ]
+}
+record_session_start() (
+  set +e
+  local transcript_path="$1" source="$2" key session_id state_dir record started_at
+  local file now_epoch file_epoch
+
+  case "$transcript_path" in
+    */*) key="${transcript_path%/*}"; key="${key##*/}" ;;
+    *) return 0 ;;
+  esac
+  [ -n "$key" ] && [ "$key" != "." ] || return 0
+  session_id="${transcript_path##*/}"
+  session_id="${session_id%.jsonl}"
+  [ -n "$session_id" ] || return 0
+
+  state_dir="$HOME/.claude/projects/$key"
+  record="$state_dir/session-start.$session_id"
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  now_epoch=$(date -u +%s)
+  for file in "$state_dir"/session-start.*; do
+    [ -e "$file" ] || continue
+    [ "$file" = "$record" ] && continue
+    file_epoch=$(date -r "$file" +%s 2>/dev/null) || continue
+    if [ $(( now_epoch - file_epoch )) -gt 1209600 ]; then
+      rm -f "$file" 2>/dev/null
+    fi
+  done
+
+  started_at=$(head -1 "$record" 2>/dev/null)
+  if ! is_utc_instant "$started_at"; then
+    started_at=""
+    while IFS= read -r candidate; do
+      if is_utc_instant "$candidate"; then
+        started_at="$candidate"
+        break
+      fi
+    done < <(head -50 "$transcript_path" 2>/dev/null \
+      | jq -Rr 'fromjson? | objects | .timestamp // empty | strings' 2>/dev/null)
+    if ! is_utc_instant "$started_at"; then
+      case "$source" in
+        startup | clear | "")
+          [ ! -e "$transcript_path" ] || return 0
+          started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ;;
+        *) return 0 ;;
+      esac
+    fi
+    printf '%s\n' "$started_at" > "$record" 2>/dev/null || return 0
+  fi
+
+  printf 'started_at: %s (session %s)\nRecord: %s\n' "$started_at" "$session_id" "$(redact_home "$record")"
+  return 0
+)
+
+SESSION_START_OUTPUT=$(record_session_start "$TRANSCRIPT_PATH" "$SOURCE" 2>/dev/null || true)
+if [ -n "$SESSION_START_OUTPUT" ]; then
+  CTX+=$'## Session start (R-503)\n\n'
+  CTX+="$SESSION_START_OUTPUT"
+  CTX+=$'\nThis is the R-503 start timestamp and ticket-lifecycle `open` started_at. Read it from here or the record; never estimate it.\n\n'
+fi
 
 if [ "$SOURCE" = "resume" ]; then
   DRIFT_OUTPUT=$(check_resume_drift "$SOURCE" "$TRANSCRIPT_PATH" "$SESSION_CWD" 2>/dev/null || true)

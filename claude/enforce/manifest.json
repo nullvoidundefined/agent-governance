@@ -667,6 +667,14 @@
             "autofix": false
         },
         {
+            "id": "R-503",
+            "tier": "advisory",
+            "enforcer": "hook:session-start",
+            "severity": "warn",
+            "autofix": false,
+            "note": "SessionStart, every source: records the start timestamp (first valid transcript timestamp, else the hook clock on startup or clear only) write-once to ~/.claude/projects/<key>/session-start.<session-id> and injects it; ticket-lifecycle open reads started_at from it. Needs transcript_path in the payload, which the Cursor adapter does not pass. The percentage announcements and elapsed-time reports stay manual. Fixture: hooks/tests/session-start-timestamp.test.sh"
+        },
+        {
             "id": "R-601",
             "tier": "advisory",
             "enforcer": "hook:task-state-tracker",

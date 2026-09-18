@@ -552,10 +552,11 @@ R-502: Create tasks (`TaskCreate`) for user-visible workstreams, not inline sub-
 R-503: Announce each task's percentage share of total work and capture a start timestamp for any multi-step project.
   Scope: 3 or more tasks, or any plan or skill execution.
   Spec:
-  - At task start: announce the task's share and capture `date +%s`; store both in the task tracker or progress ledger so they survive compaction.
+  - Session start: `hooks/session-start.sh` records the start timestamp, UTC ISO-8601, write-once to `~/.claude/projects/<key>/session-start.<session-id>` and injects it as a `## Session start (R-503)` block on every start, compaction included. The value is the first `timestamp` in the session transcript that names a real UTC instant, or the hook's own clock on a `startup` or `clear` start whose transcript has none yet; a `resume` or `compact` start with neither gets no record and no block, because the clock there is later than the start. The block needs `transcript_path` in the SessionStart payload: Claude Code supplies it, the Cursor adapter does not, so under Cursor the field stays empty rather than guessed. Read it from there; never recall or estimate it. ticket-lifecycle's `open` takes `started_at` from it.
+  - At task start: announce the task's share and capture `date -u +%Y-%m-%dT%H:%M:%SZ`; store both in the task tracker or progress ledger so they survive compaction.
   - At task completion: report the cumulative percentage done.
   - At project completion: report 100% and total elapsed wall-clock time from first task start to final task end.
-  Enforcement: manual
+  Enforcement: hook:session-start (records and injects the session start timestamp); the percentage announcements and elapsed-time reports are manual. Origin: on 2026-09-18 a ticket opened with a recalled started_at 21 minutes early, overstating actual_minutes (53 vs 31) and inverting the estimate_ratio recalibration (1.18 vs 0.69).
 
 R-504: Commit after every discrete task; a `TaskUpdate` to `completed` triggers an immediate commit.
   Scope: exception: conflicting same-file edits may combine with both task IDs.
