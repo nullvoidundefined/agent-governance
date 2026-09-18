@@ -118,6 +118,14 @@ Use separate class names and compose them in JSX:
 <button className={`${styles.chip} ${selected ? styles.chipSelected : ''}`}>
 ```
 
+#### In Vue templates
+
+Vue composes the same classes with the `:class` array form; a falsy entry is dropped, so no empty-string branch is needed:
+
+```vue
+<button :class="[styles.chip, isSelected && styles.chipSelected]">
+```
+
 ---
 
 ## SCSS Nesting
@@ -390,6 +398,25 @@ import styles from './ChatBox.module.scss';
 - Access classes via `styles.camelCaseName`
 - Compose with template literals for multiple/conditional classes
 - Never use `classnames` or `clsx` libraries; template literals are sufficient
+
+### SCSS Module Import in Vue
+
+The sibling `.module.scss` file is imported inside `<script setup>`, the same as in TSX, so the per-component-folder rule holds for both frameworks; an SFC never carries a `<style module>` block:
+
+```vue
+<script setup lang="ts">
+import styles from './ChatBox.module.scss';
+</script>
+
+<template>
+    <div :class="styles.chatBox">
+        <div :class="[styles.message, styles.user]"></div>
+    </div>
+</template>
+```
+
+- Import as `styles` (always this name), exactly as in TSX
+- Compose multiple or conditional classes with the `:class` array form, never a template literal
 
 ---
 

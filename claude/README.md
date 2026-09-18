@@ -76,6 +76,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 ├── CLAUDE-FRONTEND-REACT.md         # Auto-loads on .tsx/.jsx and src/state/: React component and state conventions.
 ├── CLAUDE-FRONTEND-NEXT.md          # Read on demand: Next.js App Router conventions.
 ├── CLAUDE-FRONTEND-VITE.md          # Read on demand: Vite + TanStack Router conventions.
+├── CLAUDE-FRONTEND-VUE.md           # Auto-loads on .vue and app/components, composables, stores: Vue 3 SFC and state conventions.
+├── CLAUDE-FRONTEND-NUXT.md          # Auto-loads on Nuxt pages, layouts, middleware, plugins, and Nitro server trees: Nuxt 4 conventions.
 ├── CLAUDE-DATABASE.md               # Read on demand: Postgres / SQL conventions.
 ├── CLAUDE-STYLING.md                # Read on demand: SCSS module conventions.
 ├── CLAUDE-PYTHON.md                 # Auto-loads on .py: FastAPI / pytest conventions.

@@ -27,6 +27,12 @@ set -euo pipefail
 cat >/dev/null
 
 SETTINGS="${REDACTION_GUARD_SETTINGS:-$HOME/.claude/settings.json}"
+# The on-disk half of the check reads a directory of hook scripts, which is
+# data to this hook in exactly the way settings.json is. It carries its own
+# override for the same reason: a fixture must be able to state which tree it
+# means rather than inherit whichever one the last ./sync.sh installed
+# (2026-09-18, the data half of verification-integrity defect 3).
+HOOKS_DIR="${REDACTION_GUARD_HOOKS_DIR:-$HOME/.claude/hooks}"
 [ -f "$SETTINGS" ] || exit 0
 
 missing=""
@@ -40,7 +46,7 @@ if ! jq -e '[.hooks.PostToolUse[]?.hooks[]?.command // empty] | any(test("redact
 fi
 
 for s in secret-scan.sh redact-output.sh; do
-  [ -f "$HOME/.claude/hooks/$s" ] || missing+="- ~/.claude/hooks/$s is MISSING on disk"$'\n'
+  [ -f "$HOOKS_DIR/$s" ] || missing+="- ~/.claude/hooks/$s is MISSING on disk"$'\n'
 done
 
 [ -n "$missing" ] || exit 0

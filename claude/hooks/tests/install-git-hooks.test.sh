@@ -99,4 +99,29 @@ NON_REPO="$SANDBOX/plain"; mkdir -p "$NON_REPO"
 run_install "$NON_REPO"
 check "rejects a path that is not a git work tree" test "$rc" -eq 1
 
+# A relative core.hooksPath beginning .git/ is the form that silently disables
+# every hook in a linked worktree, where .git is a file rather than a directory.
+# The installer must name that specifically rather than emitting only its
+# generic "hooksPath is set" note, because the generic note reads as harmless
+# and this form is not (2026-09-18: a full session of lane worktrees pushed
+# with no pre-push gate).
+RELATIVE_REPO=$(mktemp -d)
+git -C "$RELATIVE_REPO" init -q .
+git -C "$RELATIVE_REPO" config core.hooksPath ".git/hooks"
+run_install "$RELATIVE_REPO"
+relativeFormWarned() { printf '%s' "$out" | grep -q "runs NO hooks there"; }
+relativeFormNamesRepair() { printf '%s' "$out" | grep -q -- "--unset core.hooksPath"; }
+check "a relative .git/ hooksPath is called out, not merely noted" relativeFormWarned
+check "the warning names the repair" relativeFormNamesRepair
+
+# An absolute hooksPath inside the repo is fine in both layouts and must keep
+# getting the generic note only, so the new warning cannot become noise.
+ABSOLUTE_REPO=$(mktemp -d)
+git -C "$ABSOLUTE_REPO" init -q .
+mkdir -p "$ABSOLUTE_REPO/githooks"
+git -C "$ABSOLUTE_REPO" config core.hooksPath "$ABSOLUTE_REPO/githooks"
+run_install "$ABSOLUTE_REPO"
+absoluteFormNotWarned() { ! printf '%s' "$out" | grep -q "runs NO hooks there"; }
+check "an absolute hooksPath draws no worktree warning" absoluteFormNotWarned
+
 exit "$fail"

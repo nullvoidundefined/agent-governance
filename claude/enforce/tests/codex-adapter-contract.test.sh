@@ -19,6 +19,21 @@
 #      tests could be deleted, and a file could be renamed into a protected
 #      tree, with the gates none the wiser.
 #
+# A live Codex probe on 2026-09-18 found the third, one door narrower: asked to
+# edit a file, Codex often writes it with a shell redirection rather than with
+# apply_patch, and that arrives as a single PreToolUse Bash event carrying a
+# command string and no path. The gates Codex registers on the Write|Edit
+# matcher (structure-gate, content-gate, dependency-add-guard, and the rest)
+# therefore never saw the file at all, so the same edit was denied through
+# apply_patch and allowed through `printf ... > path`. Section 3 below drives
+# the real adapter with the shell constructions that write a file and asserts
+# both halves: that a target is extracted, and that the real
+# protected-path-guard, reached ONLY through the synthetic write event, denies
+# it. The guard is deliberately kept out of the Bash-side hook list in those
+# cases, because protected-path-guard carries a redirection extractor of its
+# own; leaving it in would let the guard's own parsing pass a case the adapter
+# had not fixed.
+#
 # Both holes look fine in a unit test of the hooks and fine in a unit test of a
 # stub adapter. They are only visible end to end, so this fixture runs the
 # actual adapter script, in a hermetic sandbox, with a synthetic settings.json,
@@ -80,27 +95,37 @@ chmod +x "$SANDBOX_CLAUDE/hooks/protected-path-guard.sh"
 
 # The synthetic hook: records every payload the adapter dispatches to it and
 # decides nothing, so a case can assert what the gates were shown.
+# One line per dispatch, so a case can count events as well as read them.
 cat >"$SANDBOX_CLAUDE/hooks/record-calls.sh" <<'EOF'
 #!/usr/bin/env bash
 set -uo pipefail
 payload=$(cat 2>/dev/null || true)
-printf '%s\n' "$payload" >>"${ADAPTER_EVENT_LOG:-/dev/null}"
+printf '%s' "$payload" | jq -c . >>"${ADAPTER_EVENT_LOG:-/dev/null}" 2>/dev/null
 exit 0
 EOF
 chmod +x "$SANDBOX_CLAUDE/hooks/record-calls.sh"
 
 # A repository with a red slice whose test file is locked, so the real
 # protected-path-guard has something to protect.
+# The locked spec carries a space in its name on purpose: a path with a space
+# is exactly what a regex over raw command text gets wrong, so it is the case
+# that separates extracting a target from guessing at one.
+mkdir -p "$WORK/docs"
 env HOME="$SANDBOX_HOME" git init -q "$WORK" >/dev/null 2>&1
 printf 'locked\n' >"$WORK/tests/locked.test.sh"
 printf 'widget\n' >"$WORK/src/widget.ts"
+printf 'spec\n' >"$WORK/docs/my spec.md"
 cat >"$WORK/.claude/tdd-lock.json" <<'EOF'
-{"slice": "contract-fixture", "phase": "red", "tests": [{"path": "tests/locked.test.sh"}]}
+{"slice": "contract-fixture", "phase": "red", "tests": [{"path": "tests/locked.test.sh"}], "locked": ["docs/my spec.md"]}
 EOF
 
 # --- driving the adapter -------------------------------------------------------
 
 ASK_POLICY="deny"
+# Which hooks a synthetic write event is shown to. Empty for every case that is
+# not about the shell door, so those cases see the Bash event and nothing else;
+# section 3 sets it to the one hook that case is asserting about.
+WRITE_TARGET_HOOKS=""
 
 run_adapter() {
   # $1 = stdin payload; the rest are hook basenames, exactly as hooks.json
@@ -114,6 +139,7 @@ run_adapter() {
     CLAUDE_ROLE_POLICY_FILE="$SANDBOX_CLAUDE/enforce/role-policy.json" \
     CLAUDE_CODEX_STATE_DIR="$SANDBOX/state" \
     CLAUDE_CODEX_ASK_POLICY="$ASK_POLICY" \
+    CLAUDE_CODEX_WRITE_TARGET_HOOKS="$WRITE_TARGET_HOOKS" \
     ADAPTER_EVENT_LOG="$EVENT_LOG" \
     CODEX_TEST_GUARD=off \
     bash "$ADAPTER" "$@"
@@ -203,6 +229,129 @@ check "the deletion denial names the locked path" reason_mentions "tests/locked.
 OUT=$(run_adapter "$(patch_payload "$(move_patch 'src/widget.ts' 'tests/moved.test.ts')")" protected-path-guard)
 check "renaming a file into a locked test tree is denied (R-410)" decision_is deny "$OUT"
 check "the rename denial names the destination, not only the source" reason_mentions "tests/moved.test.ts" "$OUT"
+
+# --- 3. the shell door: a file written by a command, not by a patch -----------
+
+# Runs one shell command through the adapter with the real protected-path-guard
+# reachable ONLY as a write-target hook, so a denial can have come from nothing
+# but a synthesized write event.
+guarded_shell_run() {
+  WRITE_TARGET_HOOKS="protected-path-guard"
+  run_adapter "$(bash_payload "$1")" record-calls
+  WRITE_TARGET_HOOKS=""
+}
+
+# Runs one shell command with the recording hook on both doors, so the event log
+# holds the Bash event first and then one line per synthesized write event.
+recorded_shell_run() {
+  reset_log
+  WRITE_TARGET_HOOKS="record-calls"
+  run_adapter "$(bash_payload "$1")" record-calls >/dev/null
+  WRITE_TARGET_HOOKS=""
+}
+
+# The file paths the adapter synthesized, one per line, sandbox prefix removed.
+logged_write_targets() {
+  jq -r 'select(.tool_name == "Write") | .tool_input.file_path' "$EVENT_LOG" 2>/dev/null \
+    | sed "s|^$WORK/||"
+}
+
+logged_write_target_is() { [ "$(logged_write_targets)" = "$1" ]; }
+logged_write_targets_are() { [ "$(logged_write_targets | paste -sd, -)" = "$1" ]; }
+logged_event_count_is() { [ "$(grep -c . "$EVENT_LOG")" -eq "$1" ]; }
+no_write_event_logged() { [ -z "$(logged_write_targets)" ]; }
+
+OUT=$(guarded_shell_run "printf 'x' > tests/locked.test.sh")
+check "a > redirection onto a locked test is denied (R-410)" decision_is deny "$OUT"
+check "the redirection denial names the locked path" reason_mentions "tests/locked.test.sh" "$OUT"
+
+OUT=$(guarded_shell_run "printf 'x' >> tests/locked.test.sh")
+check "a >> redirection onto a locked test is denied (R-410)" decision_is deny "$OUT"
+
+OUT=$(guarded_shell_run "printf 'x' | tee tests/locked.test.sh")
+check "tee onto a locked test is denied (R-410)" decision_is deny "$OUT"
+
+OUT=$(guarded_shell_run "printf 'x' | tee -a tests/locked.test.sh")
+check "tee -a onto a locked test is denied (R-410)" decision_is deny "$OUT"
+
+OUT=$(guarded_shell_run "cp src/widget.ts tests/locked.test.sh")
+check "a cp destination inside the locked tree is denied (R-410)" decision_is deny "$OUT"
+
+OUT=$(guarded_shell_run "mv -f src/widget.ts tests/locked.test.sh")
+check "an mv destination inside the locked tree is denied (R-410)" decision_is deny "$OUT"
+
+OUT=$(guarded_shell_run "install -m 644 src/widget.ts tests/locked.test.sh")
+check "an install destination inside the locked tree is denied (R-410)" decision_is deny "$OUT"
+
+# The quoted operand is the case a regex over command text cannot reach: the
+# locked spec's name contains a space, so only a quote-aware tokenizer sees it.
+OUT=$(guarded_shell_run "printf 'x' > 'docs/my spec.md'")
+check "a single-quoted target with a space is denied (R-410)" decision_is deny "$OUT"
+check "the quoted-target denial names the whole path" reason_mentions "docs/my spec.md" "$OUT"
+
+OUT=$(guarded_shell_run "printf 'x' > \"docs/my spec.md\"")
+check "a double-quoted target with a space is denied (R-410)" decision_is deny "$OUT"
+
+OUT=$(guarded_shell_run "printf 'x' > src/generated.ts")
+check "a redirection onto an ordinary production path is not denied" not decision_is deny "$OUT"
+
+recorded_shell_run "printf 'x' > src/one.ts; printf 'y' > tests/locked.test.sh"
+check "two redirections on one command line each produce a target" \
+  logged_write_targets_are "src/one.ts,tests/locked.test.sh"
+
+recorded_shell_run "printf 'x' > tests/locked.test.sh"
+check "the Bash event still runs beside the synthesized write event" logged_event_count_is 2
+
+# The negative case: no write target, no synthetic event, and the Bash event
+# the adapter always dispatched is still the only one.
+recorded_shell_run "git status --short"
+check "a command with no write target dispatches exactly one event" logged_event_count_is 1
+check "a command with no write target synthesizes nothing" no_write_event_logged
+
+recorded_shell_run "echo x > /dev/null"
+check "a /dev target is not reported as a file write" no_write_event_logged
+
+recorded_shell_run "grep -R widget src 2>&1 | head -3"
+check "an fd duplication is not read as a redirection target" no_write_event_logged
+
+# The documented limit, pinned so it cannot be mistaken for coverage: a target
+# that only exists once the shell has run is dropped, not guessed at.
+recorded_shell_run 'printf "x" > "$LOCKED_TEST"'
+check "a target built from a variable yields no synthetic event" no_write_event_logged
+
+recorded_shell_run 'printf "x" > "$(mktemp)"'
+check "a target built from a command substitution yields no synthetic event" no_write_event_logged
+
+# A heredoc body is the text being written, not shell. A > inside it must not
+# become a target of its own, or ordinary writes would draw false denials.
+recorded_shell_run "cat <<'DOC' > docs/note.md
+a > b is not a redirection here
+DOC"
+check "a heredoc body's > is not mistaken for a second target" logged_write_target_is "docs/note.md"
+
+# --- 4. the write-target hook list, against the registration it mirrors -------
+
+# The adapter names the Write|Edit gates itself, because it is handed only its
+# own matcher's hook list. These two read the same set from both sides so the
+# copy cannot drift out of the port unnoticed.
+adapter_write_target_hooks() {
+  sed -n 's/^read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-\(.*\)}"$/\1/p' "$ADAPTER" \
+    | tr ' ' '\n' | grep . | sort
+}
+
+registered_write_edit_hooks() {
+  jq -r '.hooks.PreToolUse[] | select(.matcher == "Write|Edit") | .hooks[].command' \
+    "$REPO_TOP/codex/hooks.json" 2>/dev/null \
+    | sed -E 's/.*codex-hook-adapter\.sh //' | tr ' ' '\n' | grep . | sort
+}
+
+write_target_hooks_match_registration() {
+  [ -n "$(adapter_write_target_hooks)" ] \
+    && [ "$(adapter_write_target_hooks)" = "$(registered_write_edit_hooks)" ]
+}
+
+check "the adapter's write-target hooks are the Write|Edit registration" \
+  write_target_hooks_match_registration
 
 [ "$fail" -eq 0 ] && echo "codex-adapter-contract.test.sh PASS"
 exit "$fail"

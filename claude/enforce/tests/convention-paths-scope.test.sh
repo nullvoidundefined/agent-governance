@@ -184,4 +184,56 @@ report_result "$?" A5 'core carries no React rule tokens'
   matches_path CLAUDE-FRONTEND-REACT.md '' --tsx-glob
 report_result "$?" A6 'React convention exists with a frontmatter glob ending in *.tsx'
 
+# A7: a Vue component in its component folder loads the core and the Vue file
+# and nothing else, so no React, Next, Vite, or Nuxt rule reaches an SFC.
+vue_component_path='app/components/Foo/Foo.vue'
+check_paths 0 CLAUDE-FRONTEND.md "$vue_component_path" &&
+  check_paths 0 CLAUDE-FRONTEND-VUE.md "$vue_component_path" &&
+  check_paths 1 CLAUDE-FRONTEND-REACT.md "$vue_component_path" &&
+  check_paths 1 CLAUDE-FRONTEND-NEXT.md "$vue_component_path" &&
+  check_paths 1 CLAUDE-FRONTEND-VITE.md "$vue_component_path" &&
+  check_paths 1 CLAUDE-FRONTEND-NUXT.md "$vue_component_path"
+report_result "$?" A7 'a Vue component loads only the core and the Vue file'
+
+# Checks that a convention file carries every listed level-two heading verbatim.
+# Arguments: convention basename, then the expected heading texts without '## '.
+# Prints the first missing heading to standard error; returns 0 when all exist, else 1.
+has_headings() {
+  local convention="$1" heading
+  shift
+  [ -f "$claude_directory/$convention" ] || return 1
+  for heading in "$@"; do
+    if ! grep -Fxq "## $heading" "$claude_directory/$convention"; then
+      printf 'missing heading in %s: %s\n' "$convention" "$heading" >&2
+      return 1
+    fi
+  done
+  return 0
+}
+
+# A8 and A9: each Vue-track file carries the section outline the spec's section 1 table names.
+has_headings CLAUDE-FRONTEND-VUE.md 'Framework & Stack' 'Directory Vocabulary (Vue rows)' \
+  'File Naming (Vue rows)' 'Component Patterns' 'Import Ordering' 'State Management' \
+  'Headless Primitives' 'ESLint (Vue rules)' 'Testing (Vue rows)'
+report_result "$?" A8 'Vue file carries the spec section outline'
+
+has_headings CLAUDE-FRONTEND-NUXT.md 'Framework' 'Directory Structure' 'Route Groups and Layouts' \
+  'Auth Gating' 'Proxies' 'Metadata and Fonts' 'Environment Variables' 'Theme' 'Sentry' \
+  'File Naming (framework-specific rows)' 'Containers (R-351)'
+report_result "$?" A9 'Nuxt file carries the spec section outline'
+
+# A10: the Nuxt file's app/ and Nitro globs cover each intended path class while
+# never reaching an Express server tree, whose package directory is also named server.
+check_paths 0 CLAUDE-FRONTEND-NUXT.md \
+  'apps/client/web/app/layouts/protected.vue' \
+  'apps/client/web/app/middleware/requireSession.ts' \
+  'apps/client/web/app/plugins/queryClient.ts' \
+  'apps/client/web/app/app.vue' \
+  'apps/client/web/server/routes/auth/session.get.ts' \
+  'apps/client/web/server/plugins/sentry.ts' \
+  'apps/client/web/server/middleware/authCookie.ts' &&
+  check_paths 1 CLAUDE-FRONTEND-NUXT.md 'apps/server/src/app.ts' \
+    'apps/server/src/middleware/requestId.ts' 'apps/server/src/handlers/trips/createTrip.ts'
+report_result "$?" A10 'Nuxt covers Nitro trees while excluding an Express server tree'
+
 exit "$failure"
