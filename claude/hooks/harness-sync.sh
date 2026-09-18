@@ -64,21 +64,72 @@ fi
 CURSOR_LIVE="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}"
 CODEX_LIVE="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}"
 
-# countDriftedPayloadFiles(payload, liveRoot): tracked files under <payload>/
-# in the checkout that are missing from liveRoot or differ from it.
-countDriftedPayloadFiles() {
-  local payload="$1" live_root="$2" rel live count=0
+# countDriftedFiles: tracked files of the three payloads that are missing from
+# their live tree or differ from it. One `git ls-files` lists all three; a
+# missing file is counted with the shell's own test; every pair present on both
+# sides is compared by content in one batch (countDifferingPairs). One cmp per
+# tracked file cost about 0.8 s on every SessionStart with 531 tracked files,
+# more than the rest of the SessionStart chain together, and even batched, one
+# pass per payload tripled the fixed process cost (IAN-115).
+countDriftedFiles() {
+  local rel live tracked count=0 pairs=0 pair_list=""
+  tracked=$(git -C "$CHECKOUT" ls-files -- claude cursor codex 2>/dev/null)
   while IFS= read -r rel; do
-    [ -n "$rel" ] || continue
-    live="$live_root/${rel#"$payload"/}"
-    if [ ! -f "$live" ] || ! cmp -s "$CHECKOUT/$rel" "$live"; then count=$((count + 1)); fi
-  done < <(git -C "$CHECKOUT" ls-files -- "$payload" 2>/dev/null)
+    case "$rel" in
+      claude/*) live="$LIVE/${rel#claude/}" ;;
+      cursor/*) live="$CURSOR_LIVE/${rel#cursor/}" ;;
+      codex/*) live="$CODEX_LIVE/${rel#codex/}" ;;
+      "") continue ;;
+      # A name git prints C-quoted (a tab, a newline, a double quote) matches
+      # no payload prefix; it counts as drift so it is never silently left
+      # out, the answer the per-file loop gave too (Copilot review on #67).
+      *) count=$((count + 1)); continue ;;
+    esac
+    if [ -f "$live" ] && [ -f "$CHECKOUT/$rel" ]; then
+      pair_list+="$rel"$'\n'; pairs=$((pairs + 1))
+    else
+      count=$((count + 1))
+    fi
+  done <<< "$tracked"
+  if [ "$pairs" -gt 0 ]; then
+    count=$((count + $(countDifferingPairs "$pairs" "$pair_list")))
+  fi
   printf '%s' "$count"
 }
 
-drifted=$(countDriftedPayloadFiles claude "$LIVE")
-drifted=$((drifted + $(countDriftedPayloadFiles cursor "$CURSOR_LIVE")))
-drifted=$((drifted + $(countDriftedPayloadFiles codex "$CODEX_LIVE")))
+# countDifferingPairs(pairCount, relList): how many of the newline-terminated
+# checkout-relative paths differ between the checkout and the live trees. Both
+# sides are hashed from relative paths, so a checkout or home path containing a
+# newline cannot split an entry (Copilot review on #67): the checkout side runs
+# in the checkout, and the live side runs in a temporary directory whose
+# claude, cursor, and codex entries are symlinks to the three live trees. Two
+# `git hash-object --stdin-paths` processes hash every file; --no-filters
+# hashes the raw bytes, which is what sync.sh copies and what cmp compared.
+# When either batch fails or comes back short (a file unreadable or removed
+# mid-run), it falls back to one cmp per pair, so an error can cost time but
+# never hide drift, and a temporary directory that cannot be made counts every
+# pair as drift for the same reason. countDriftedFiles passes only names that
+# git printed unquoted, so an entry of relList is always one line.
+countDifferingPairs() {
+  local pair_count="$1" rel_list="$2" live_view left_hashes right_hashes rel differing=0
+  live_view=$(mktemp -d "${TMPDIR:-/tmp}/harness-sync.XXXXXX" 2>/dev/null) || { printf '%s' "$pair_count"; return; }
+  ln -s "$LIVE" "$live_view/claude"; ln -s "$CURSOR_LIVE" "$live_view/cursor"; ln -s "$CODEX_LIVE" "$live_view/codex"
+  if left_hashes=$(printf '%s' "$rel_list" | git -C "$CHECKOUT" hash-object --no-filters --stdin-paths 2>/dev/null) \
+    && right_hashes=$(printf '%s' "$rel_list" | (cd "$live_view" && git hash-object --no-filters --stdin-paths) 2>/dev/null) \
+    && [ "$(grep -c . <<< "$left_hashes")" -eq "$pair_count" ] \
+    && [ "$(grep -c . <<< "$right_hashes")" -eq "$pair_count" ]; then
+    differing=$(paste -d ' ' <(printf '%s\n' "$left_hashes") <(printf '%s\n' "$right_hashes") | awk '$1 != $2 { n++ } END { print n + 0 }')
+  else
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      cmp -s "$CHECKOUT/$rel" "$live_view/$rel" || differing=$((differing + 1))
+    done <<< "$rel_list"
+  fi
+  rm -f "$live_view/claude" "$live_view/cursor" "$live_view/codex"; rmdir "$live_view" 2>/dev/null
+  printf '%s' "$differing"
+}
+
+drifted=$(countDriftedFiles)
 
 notes=()
 if [ "$drifted" -gt 0 ]; then
