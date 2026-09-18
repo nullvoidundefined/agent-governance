@@ -13,6 +13,24 @@ export CLAUDE_FIRE_LOG=/dev/null
 # own .git/config with core.bare=true and a fixture's dummy git identity).
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Sixteen fixtures in this directory drive the ESLint rule bundle, which lives
+# in enforce/node_modules. That directory is gitignored, so a fresh checkout or
+# a new worktree has none, and every one of those fixtures fails at once in a
+# way that reads like sixteen unrelated rules regressing rather than one
+# missing install. Since PR #20 bound fixtures to the checkout they live in
+# rather than to $HOME/.claude, they can no longer borrow the installed tree's
+# modules either, so this became the normal first experience of a new
+# worktree. A line in enforce/README.md does not help: nothing sends you there,
+# because the symptom does not look like a setup problem. Reported cold by the
+# session that hit it, 2026-09-18.
+ENFORCE_DIR="$(cd "$DIR/.." && pwd)"
+if [ -f "$ENFORCE_DIR/package.json" ] && [ ! -d "$ENFORCE_DIR/node_modules" ]; then
+  echo "enforcement fixtures need this checkout's own ESLint bundle, which is not installed." >&2
+  echo "run: npm ci --prefix $ENFORCE_DIR" >&2
+  echo "(node_modules is gitignored, so every fresh checkout and every new worktree needs it once.)" >&2
+  exit 1
+fi
 fail=0
 for t in "$DIR"/*.test.sh; do
   name=$(basename "$t")
