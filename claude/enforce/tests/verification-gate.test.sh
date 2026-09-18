@@ -19,6 +19,8 @@
 #   13. A vitest project runs only the tests related to the changed source,
 #       not the full npm test (IAN-98).
 #   14. A changed package manifest is a harness file, so the full suite runs.
+#   15. A failing typecheck in a mapped project is not labelled related-only.
+#   16. A failing related-test command is labelled related-only.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/verification-gate.sh"
@@ -263,5 +265,24 @@ jq '.description = "changed"' "$REPO/package.json" > "$REPO/package.json.tmp" &&
 PATH="$REPO/stub-bin:$PATH" gate "$REPO" >/dev/null
 [ -e "$REPO/FULL_SUITE_RAN" ] || { echo "FAIL: 14 a changed manifest must run the full suite"; exit 1; }
 [ ! -e "$REPO/npx.log" ] || { echo "FAIL: 14 a fallback must not also run related tests"; exit 1; }
+
+# 15. The related-only note belongs to the mapped test command alone: a
+# failing typecheck beside it must not be reported as "related tests only"
+# (PR #54 re-review).
+REPO=$(new_vitest_repo)
+jq '.scripts.typecheck = "echo TYPECHECK_MARKER; exit 1"' "$REPO/package.json" > "$REPO/p.tmp" && mv "$REPO/p.tmp" "$REPO/package.json"
+git -C "$REPO" add -A && git -C "$REPO" commit -qm "chore: add typecheck"
+echo 'export const c = 3;' >> "$REPO/src/a.ts"
+GOT=$(PATH="$REPO/stub-bin:$PATH" gate "$REPO")
+grep -q 'TYPECHECK_MARKER' <<< "$GOT" || { echo "FAIL: 15 expected the typecheck block, got: $GOT"; exit 1; }
+if grep -q 'related tests only' <<< "$GOT"; then echo "FAIL: 15 a typecheck failure must not carry the related-only note, got: $GOT"; exit 1; fi
+
+# 16. A failing related-test command carries the related-only note.
+REPO=$(new_vitest_repo)
+printf '#!/usr/bin/env bash\necho RELATED_MARKER; exit 1\n' > "$REPO/stub-bin/npx"
+echo 'export const d = 4;' >> "$REPO/src/a.ts"
+GOT=$(PATH="$REPO/stub-bin:$PATH" gate "$REPO")
+grep -q 'RELATED_MARKER' <<< "$GOT" || { echo "FAIL: 16 expected the related-test block, got: $GOT"; exit 1; }
+grep -q 'related tests only' <<< "$GOT" || { echo "FAIL: 16 a related-test failure must carry the note, got: $GOT"; exit 1; }
 
 echo "verification-gate.test.sh PASS"

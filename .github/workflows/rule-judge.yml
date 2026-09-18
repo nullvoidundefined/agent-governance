@@ -38,14 +38,15 @@ jobs:
     name: rule-judge
     runs-on: ubuntu-latest
     steps:
-      # The base side only (the default ref for pull_request_target), used as
-      # the repository the diff is computed in. Credentials are not persisted,
-      # so nothing later in the job can push with the token.
+      # The base side only, used as the repository the diff is computed in.
+      # Credentials stay persisted here so the next step can fetch the pull
+      # request head from a private caller repository (PR #54 re-review). The
+      # token is read-only (permissions: contents: read) and nothing the pull
+      # request controls ever runs in this job.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
-          persist-credentials: false
           path: target
 
       # The judge itself, from a commit the pull request cannot change.
