@@ -87,30 +87,51 @@ fi
 # synthetic-server call is resolved against it: a bare name listed under the
 # active tracker's tools map is treated as that server's call, and anything
 # else keeps the synthetic segment and stays subject to the full guard.
-resolve_synthetic_server() {
-  local config="$HOME/.claude/TICKET-TRACKER.json" bare="${TOOL##*__}"
-  [ -f "$config" ] || return 0
-  jq -e --arg t "$bare" '
+# isActiveTrackerTool(): true when the incoming tool is one the active tracker
+# config names for itself. The config is the authority rather than a list of
+# server names hardcoded here, because an MCP server's identifier is not
+# stable: the same Linear server registers as `claude_ai_Linear` in one install
+# and as a UUID such as `0ccea419-4dc2-4479-9c56-baefac2065ba` in another, and
+# a name list silently stops matching on the second (2026-09-18: every ticket
+# write prompted on a UUID-registered install, which is exactly the friction
+# this exemption exists to remove). Matching the configured strings makes the
+# exemption exactly as wide as what the operator wrote down and no wider.
+#
+# Two shapes match. An exact tool name is the normal case. A bare suffix match
+# covers Cursor, whose adapter rewrites a bare MCP name to `mcp__cursor__<tool>`
+# before any hook sees it, so the server segment there is synthetic by
+# construction and only the suffix survives.
+#
+# Fails CLOSED by structure: a missing, unreadable, or schema-invalid config
+# returns non-zero, the call is not exempt, and R-105 asks as it always would.
+isActiveTrackerTool() {
+  local config="${CLAUDE_TICKET_TRACKER_FILE:-$HOME/.claude/TICKET-TRACKER.json}"
+  local bare="${TOOL##*__}"
+  [ -f "$config" ] || return 1
+  jq -e --arg full "$TOOL" --arg bare "$bare" '
     (type == "object")
     and (.active | type == "string")
     and (.trackers[.active].tools | type == "object")
-    and ([.trackers[.active].tools | to_entries[] | .value]
-         | map(sub("^mcp__.*__"; "")) | index($t) != null)
-  ' "$config" >/dev/null 2>&1 || return 0
-  SERVER=$(jq -r '.active' "$config" 2>/dev/null || printf '')
+    and ([.trackers[.active].tools | to_entries[] | .value] as $tools
+         | ($tools | index($full) != null)
+           or ($tools | map(sub("^mcp__.*__"; "")) | index($bare) != null))
+  ' "$config" >/dev/null 2>&1
 }
-case "$SERVER" in cursor) resolve_synthetic_server ;; esac
 
-case "$SERVER" in
-  Linear | claude_ai_Linear | linear)
-    if [ "$REASON" = "writes to an external system of record" ]; then
-      case " $(printf '%s' "$ACTION" | tr '_' ' ') " in
-        *" merge "* | *" submit "* | *" upload "* | *" apply "*) ;;
-        *) exit 0 ;;
-      esac
-    fi
-    ;;
-esac
+# The operator narrowed R-105 for their own tracker on 2026-09-17: the
+# ticket-lifecycle skill writes at every state change, so a confirmation landed
+# every few minutes, and each bought little because the tracker is private and
+# a wrong field is editable in place. The narrowing stops at the write class
+# and at writes that stay inside the tracker. A tracker call that lands code,
+# submits for review, or carries a file out is not bookkeeping, so it still
+# asks; so does anything the destroy or transmit classes matched, which is why
+# this sits after REASON is decided rather than beside the browser exemption.
+if isActiveTrackerTool && [ "$REASON" = "writes to an external system of record" ]; then
+  case " $(printf '%s' "$ACTION" | tr '_' ' ') " in
+    *" merge "* | *" submit "* | *" upload "* | *" apply "*) ;;
+    *) exit 0 ;;
+  esac
+fi
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"

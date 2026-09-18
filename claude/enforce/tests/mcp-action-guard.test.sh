@@ -94,4 +94,52 @@ askWithHome  mcp__cursor__create_page   # an unlisted tool keeps the synthetic s
 askWithHome  mcp__cursor__delete_issue  # a destroy verb asks even when the tool name resolves to the tracker
 rm -rf "$SANDBOX_HOME"
 
+# An MCP server's identifier is not stable across installs. The same Linear
+# server registers as `claude_ai_Linear` in one and as a bare UUID in another,
+# and the first version of this exemption matched a hardcoded list of server
+# NAMES, so on a UUID-registered install it never fired and every ticket write
+# prompted (2026-09-18, reported from a real session). The exemption now asks
+# the tracker config, which names the full tool strings including whatever
+# server segment that install uses.
+UUID_HOME=$(mktemp -d)
+mkdir -p "$UUID_HOME/.claude"
+cat >"$UUID_HOME/.claude/TICKET-TRACKER.json" <<'UUID_TRACKER'
+{
+  "active": "linear",
+  "trackers": {
+    "linear": {
+      "tools": {
+        "create": "mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_issue",
+        "comment": "mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_comment",
+        "read": "mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__get_issue"
+      }
+    }
+  }
+}
+UUID_TRACKER
+
+# askWithUuidHome / passWithUuidHome: the two predicates above, run against a
+# sandbox HOME whose tracker config uses a UUID server segment.
+askWithUuidHome() {
+  printf '{"tool_name":"%s","tool_input":{}}' "$1" \
+    | HOME="$UUID_HOME" "$HOOK" \
+    | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null
+}
+passWithUuidHome() {
+  [ -z "$(printf '{"tool_name":"%s","tool_input":{}}' "$1" | HOME="$UUID_HOME" "$HOOK")" ]
+}
+
+passWithUuidHome mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_issue    # the configured create tool is exempt
+passWithUuidHome mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_comment  # the configured comment tool is exempt
+askWithUuidHome  mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__delete_issue  # destroy still asks on the exempt server
+askWithUuidHome  mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__merge_diff    # landing code still asks
+askWithUuidHome  mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_project  # a write tool the config does not name still asks
+askWithUuidHome  mcp__claude_ai_Notion__notion-create-pages              # another server is never exempt
+
+# A config the schema rejects exempts nothing, the same fail-closed posture the
+# malformed-config cases above assert for the previous matcher.
+printf 'not json at all\n' >"$UUID_HOME/.claude/TICKET-TRACKER.json"
+askWithUuidHome mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_issue
+rm -rf "$UUID_HOME"
+
 echo "mcp-action-guard.test.sh PASS"
