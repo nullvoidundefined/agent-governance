@@ -14,6 +14,9 @@
 #   S110     try-except-pass         -> R-344 analog (never swallow it)
 #   BLE001   blind-except            -> R-344 analog (catch the specific exception; a blind
 #                                       `except Exception` that re-raises passes)
+#   D100     module docstring        -> R-320 analog, opt-in: push-ruff-gate.sh adds D100
+#   D103     public-function docstring  and D103 with --extend-select only when the repo's
+#                                       .enforce.json sets fileHeaders true
 
 [lint]
 select = ["ANN401", "BLE001", "E722", "E731", "PGH003", "PGH004", "PLR2004", "S110", "T201"]
@@ -22,12 +25,12 @@ select = ["ANN401", "BLE001", "E722", "E731", "PGH003", "PGH004", "PLR2004", "S1
 # R-324 exempts test/fixture literals; test doubles legitimately type Any.
 # R-342/R-344 scope is service code: tests print and catch broadly on purpose,
 # and CLI entry points print by design.
-"**/tests/**" = ["ANN401", "BLE001", "PLR2004", "T201"]
-"**/test_*.py" = ["ANN401", "BLE001", "PLR2004", "T201"]
-"**/*_test.py" = ["ANN401", "BLE001", "PLR2004", "T201"]
-"**/conftest.py" = ["ANN401", "BLE001", "PLR2004", "T201"]
-"**/__fixtures__/**" = ["ANN401", "BLE001", "PLR2004", "T201"]
-"**/migrations/**" = ["PLR2004"]
+"**/tests/**" = ["ANN401", "BLE001", "D100", "D103", "PLR2004", "T201"]
+"**/test_*.py" = ["ANN401", "BLE001", "D100", "D103", "PLR2004", "T201"]
+"**/*_test.py" = ["ANN401", "BLE001", "D100", "D103", "PLR2004", "T201"]
+"**/conftest.py" = ["ANN401", "BLE001", "D100", "D103", "PLR2004", "T201"]
+"**/__fixtures__/**" = ["ANN401", "BLE001", "D100", "D103", "PLR2004", "T201"]
+"**/migrations/**" = ["D100", "D103", "PLR2004"]
 "**/scripts/**" = ["T201"]
 "**/bin/**" = ["T201"]
 "**/cli/**" = ["T201"]

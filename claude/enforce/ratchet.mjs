@@ -33,7 +33,7 @@ import { join, resolve } from "node:path";
 import { buildEslintOptions } from "./eslint-options.mjs";
 
 const BASELINE_FILENAME = ".enforce-baseline.json";
-const SOURCE_EXTENSION_PATTERN = /\.tsx?$/;
+const SOURCE_EXTENSION_PATTERN = /\.(tsx?|vue)$/;
 const EXCLUDED_PATH_PATTERN = /(^|\/)(node_modules|dist|build|coverage|\.next)(\/|$)/;
 
 const args = process.argv.slice(2);
@@ -42,9 +42,9 @@ const isStrict = args.includes("--strict");
 const repoRoot = resolve(args.find((arg) => !arg.startsWith("--")) ?? process.cwd());
 const baselinePath = join(repoRoot, BASELINE_FILENAME);
 
-/** Tracked .ts/.tsx files, from git so .gitignore is honored for free. */
+/** Tracked .ts/.tsx/.vue files, from git so .gitignore is honored for free. */
 function collectSourceFiles(root) {
-  const listed = execFileSync("git", ["ls-files", "-z", "--", "*.ts", "*.tsx"], {
+  const listed = execFileSync("git", ["ls-files", "-z", "--", "*.ts", "*.tsx", "*.vue"], {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -80,7 +80,7 @@ function writeBaseline(counts, fileCount) {
 
 const sourceFiles = collectSourceFiles(repoRoot);
 if (sourceFiles.length === 0) {
-  console.log("ratchet: no tracked .ts/.tsx files under this root; nothing to baseline.");
+  console.log("ratchet: no tracked .ts/.tsx/.vue files under this root; nothing to baseline.");
   process.exit(0);
 }
 

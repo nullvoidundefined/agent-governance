@@ -102,6 +102,7 @@ function submitDraftMessage() {
 - **Explicit imports** from `vue` and `#imports`, even though Nuxt auto-imports them, so every file type-checks and lints on its own and a reader sees where each name comes from
 - **Handlers** are named functions in `<script setup>` (verb plus noun, R-316); no multi-statement inline handlers in the template
 - **No inline styles** and no `style` bindings except for a runtime-computed CSS custom property (`:style="{ '--progress': progressRatio }"`)
+- **File header** (R-320): a `/** what and why */` comment on the first line inside `<script setup>`, never an HTML comment above it, because the header rule reads the script
 - **Component name** set with `defineOptions({ name })` on every component, and a kebab-case `data-test-id` on each component's root element and every page's root element
 - **`v-for`** always carries a stable `:key` from the data, never the index; never `v-if` and `v-for` on the same element
 - **`v-html`** is banned unless the input passes a sanitizer in `services/`; the call site names the sanitizer
