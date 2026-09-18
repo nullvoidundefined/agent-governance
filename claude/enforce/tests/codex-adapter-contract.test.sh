@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:protected-path-guard
 #
 # The contract the REAL codex/hooks/codex-hook-adapter.sh owes the gates. Every

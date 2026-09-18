@@ -61,7 +61,7 @@ repo_root_for() {
 }
 
 pattern() { jq -r --arg n "$1" '.patterns[$n] // ""' "$POLICY" 2>/dev/null; }
-matches() { [ -n "$2" ] && printf '%s' "$1" | grep -qE "$2"; }
+matches() { [ -n "$2" ] && grep -qE "$2" <<< "$1"; }
 
 TESTS_PATTERN=$(pattern tests)
 SPECS_PATTERN=$(pattern specs)

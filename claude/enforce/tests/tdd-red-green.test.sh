@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Verifies enforce/tdd.sh (R-412): open writes the lock, red accepts only a
 # test that fails for an assertion or missing-module reason with the rest of
 # the suite green, green requires the named tests to pass with the suite at or

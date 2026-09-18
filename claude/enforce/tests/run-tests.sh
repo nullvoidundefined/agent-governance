@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runs every enforcement fixture test and fails if any does not report PASS.
+# Runs the enforcement fixture tests through enforce/run-fixture-shards.sh and
+# fails if any does not report PASS. `--affected` runs only the fixtures the
+# changed files need (the R-509 Stop gate); no argument runs all of them.
 set -uo pipefail
 # Fixture fires are not telemetry: silence the rule-fire log for the run.
 export CLAUDE_FIRE_LOG=/dev/null
@@ -31,19 +33,13 @@ if [ -f "$ENFORCE_DIR/package.json" ] && [ ! -d "$ENFORCE_DIR/node_modules" ]; t
   echo "(node_modules is gitignored, so every fresh checkout and every new worktree needs it once.)" >&2
   exit 1
 fi
-fail=0
-for t in "$DIR"/*.test.sh; do
-  name=$(basename "$t")
-  # Require PASS and reject any FAIL line: a fixture printing per-case
-  # "FAIL: ..." lines while exiting 0 was reported ok by the old grep
-  # (2026-09-16 audit, Testing item 4).
-  if out=$(bash "$t" 2>&1) && grep -q "PASS" <<< "$out" && ! grep -q "FAIL" <<< "$out"; then
-    echo "ok   $name"
-  else
-    echo "FAIL $name"; printf '%s\n' "$out" | tail -3; fail=1
-  fi
-done
-if [ "$fail" -eq 0 ]; then
+# The runner applies the verdict the old loop did (exit 0, a PASS line, no
+# FAIL line; the 2026-09-16 audit, Testing item 4, found a fixture printing
+# "FAIL: ..." lines while exiting 0 reported ok), runs the fixtures in
+# parallel, and with --affected runs only what the changed files need. No
+# argument means every fixture: pre-push, CI, and doctor.sh call it that way.
+MODE="${1:---all}"
+if bash "$DIR/../run-fixture-shards.sh" "$DIR" "$MODE"; then
   echo "ALL ENFORCEMENT TESTS PASS"
 else
   echo "ENFORCEMENT TESTS FAILED"; exit 1

@@ -34,7 +34,7 @@ git -C "$REPO" mv src/services/rank.ts src/services/rankJobs.ts
 git -C "$REPO" commit -qm "refactor: drop score, rename rank"
 OUT=$(cd "$REPO" && bash "$DR" 2>&1); ST=$?
 check "exits 0" test "$ST" -eq 0
-check "range from merge base" bash -c "printf '%s' \"\$0\" | grep -qE '^dangling-refs: range [0-9a-f]{40}\.\.HEAD'" "$OUT"
+check "range from merge base" bash -c "grep -qE '^dangling-refs: range [0-9a-f]{40}\.\.HEAD' <<< \"\$0\"" "$OUT"
 check "deleted ts module reported with importer" reports 'DANGLING: src/services/score.ts <- src/handlers/getScore.ts:1:'
 check "renamed module reported by old name" reports 'DANGLING: src/services/rank.ts <- src/handlers/getRank.ts:1:'
 check "deleted python module reported" reports 'DANGLING: app/helper.py <- app/main.py:1:'

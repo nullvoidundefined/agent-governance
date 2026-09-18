@@ -781,6 +781,14 @@ DELETE /links/:id/tags/:tagId → remove from sub-resource
 
 ---
 
+## Test Runs (R-509)
+
+Default to parallel, affected-only runs; the full suite belongs to pre-push and CI.
+
+- **Parallel by default.** Vitest runs test files in parallel workers; never turn that off globally (`--no-file-parallelism`, `fileParallelism: false`, a single-thread pool) to hide shared state. Give each worker its own state instead: a per-worker database or schema keyed on `VITEST_POOL_ID`, unique temp directories, no shared ports.
+- **Turn ends, commits, and branch-level merges** (merging `main` into a feature branch) run only the affected tests: `vitest run --changed origin/main` (or `--changed` alone for uncommitted work), or `vitest related --run <changed files>`. A change to shared test setup (`vitest.config.*`, global setup files, test utilities every suite imports) runs the full suite.
+- **Pre-push and CI** run the full suite. When one CI job is too slow, shard it across a matrix with `vitest run --shard=<i>/<n> --reporter=blob` and merge with `vitest --merge-reports`. The full suite is the required check before any merge to `main`.
+
 ## Formatting (Prettier)
 
 ```json

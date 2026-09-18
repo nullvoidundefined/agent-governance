@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:llm-rule-judge
 # Verifies llm-rule-judge.sh denies a push when the judge returns a high-confidence
 # violation, and allows below-threshold or empty verdicts. Uses CLAUDE_JUDGE_CMD to
@@ -71,7 +72,7 @@ S4c=$(mkstub '{"violations":[{"rule":"R-325","confidence":0.95,"file":"x.ts","wh
 OUT4c=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S4c" "$HOOK" 2>/dev/null)
 [ -z "$OUT4c" ] || { echo "FAIL: R-325 is warn severity and must not gate the push; got: $OUT4c"; exit 1; }
 ERR4c=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_JUDGE_CMD="$S4c" "$HOOK" 2>&1 >/dev/null)
-printf '%s' "$ERR4c" | grep -q "R-325" || { echo "FAIL: a warn-severity judge verdict must still reach stderr; got: $ERR4c"; exit 1; }
+grep -q "R-325" <<< "$ERR4c" || { echo "FAIL: a warn-severity judge verdict must still reach stderr; got: $ERR4c"; exit 1; }
 
 # An id with no manifest row at all defaults to error severity and DOES deny,
 # so an unknown id is not a silent bypass of the gate.

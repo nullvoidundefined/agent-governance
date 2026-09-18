@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:verification-gate
 # Verifies verification-gate.sh (R-509 Stop gate). Invariants:
 #   1. A clean working tree is silent (no check runs, nothing to verify).
@@ -146,7 +147,7 @@ cat > "$REPO/package.json" <<EOF
 EOF
 GOT=$(CLAUDE_VERIFY_TIMEOUT=1 CLAUDE_VERIFY_RETRY_DELAY=0 gate "$REPO")
 grep -q 'CLAUDE_VERIFY_TIMEOUT' <<< "$GOT" || { echo "FAIL: expected a timeout block, got: $GOT"; exit 1; }
-grep -qv 'automatic retry' <<< "$GOT" || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
+! grep -q 'automatic retry' <<< "$GOT" || { echo "FAIL: a timeout must not report an automatic retry"; exit 1; }
 RUNS=$(wc -l < "$RUN_LOG" | tr -d ' ')
 [ "$RUNS" = "1" ] || { echo "FAIL: a timeout must not retry, expected 1 run, got $RUNS"; exit 1; }
 
@@ -203,5 +204,22 @@ printf 'exit 0
 ' > "$REPO/claude/hooks/tests/run-tests.sh"
 GOT=$(gate "$REPO")
 [ "$GOT" = "none" ] || { echo "FAIL: a checkout with no translate/ must stay green, got: $GOT"; exit 1; }
+
+# 15. IAN-94: the turn-end gate runs only the fixtures the turn's changes
+# need, so it passes --affected to both suites. The full suite belongs to
+# pre-push and CI, which call run-tests.sh with no argument.
+REPO=$(new_repo)
+mkdir -p "$REPO/claude/enforce/tests" "$REPO/claude/hooks/tests"
+touch "$REPO/claude/CLAUDE.md"
+# The gate stops at the first red check and is silent on green, so each suite
+# is made the red one in turn to surface the arguments it received.
+printf 'echo "ENFORCE_ARGS[$*]"\nexit 1\n' > "$REPO/claude/enforce/tests/run-tests.sh"
+printf 'exit 0\n' > "$REPO/claude/hooks/tests/run-tests.sh"
+GOT=$(gate "$REPO")
+grep -qF 'ENFORCE_ARGS[--affected]' <<< "$GOT" || { echo "FAIL: the gate must run the enforce suite with --affected, got: $GOT"; exit 1; }
+printf 'exit 0\n' > "$REPO/claude/enforce/tests/run-tests.sh"
+printf 'echo "HOOKS_ARGS[$*]"\nexit 1\n' > "$REPO/claude/hooks/tests/run-tests.sh"
+GOT=$(gate "$REPO")
+grep -qF 'HOOKS_ARGS[--affected]' <<< "$GOT" || { echo "FAIL: the gate must run the hook suite with --affected, got: $GOT"; exit 1; }
 
 echo "verification-gate.test.sh PASS"

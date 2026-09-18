@@ -48,7 +48,7 @@ printf '#!/usr/bin/env bash\ntouch "%s/RAN"\necho "{}"\n' "$FAKEBIN" > "$FAKEBIN
 chmod +x "$FAKEBIN/golangci-lint"
 git remote add origin https://example.com/untrusted/repo.git 2>/dev/null || true
 ERR5=$(printf '%s' "$PAYLOAD" | PATH="$FAKEBIN:$PATH" CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>&1 1>/dev/null)
-printf '%s' "$ERR5" | grep -q "gate-trusted-repos" || { echo "FAIL: expected trust-skip note for untrusted repo"; exit 1; }
+grep -q "gate-trusted-repos" <<< "$ERR5" || { echo "FAIL: expected trust-skip note for untrusted repo"; exit 1; }
 [ ! -f "$FAKEBIN/RAN" ] || { echo "FAIL: golangci binary ran against an untrusted repo"; exit 1; }
 
 # The stub above proves the gate's parsing, not the config. A v1-schema config

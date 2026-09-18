@@ -103,7 +103,7 @@ git add s110.py; git commit -qm "test: s110"
 OUT_S110=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT_S110" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: a broad handler swallowed by pass must deny"; exit 1; }
-printf '%s' "$OUT_S110" | grep -q "S110" \
+grep -q "S110" <<< "$OUT_S110" \
   || { echo "FAIL: the denial must name S110, not only its BLE001 companion; got: $OUT_S110"; exit 1; }
 printf 'def load(read):\n    try:\n        read()\n    except ValueError:\n        pass\n' > s110.py
 git add s110.py; git commit -qm "test: specific handler"
@@ -135,8 +135,8 @@ printf 'def fetch_leg(leg_id):\n    return leg_id\n' > legs.py
 git add .enforce.json legs.py; git commit -q -m "test: opt into file headers"
 OUT12=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT12" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
-printf '%s' "$OUT12" | grep -q 'D100' || { echo "FAIL: expected D100 in the opted-in denial"; exit 1; }
-printf '%s' "$OUT12" | grep -q 'D103' || { echo "FAIL: expected D103 in the opted-in denial"; exit 1; }
+grep -q 'D100' <<< "$OUT12" || { echo "FAIL: expected D100 in the opted-in denial"; exit 1; }
+grep -q 'D103' <<< "$OUT12" || { echo "FAIL: expected D103 in the opted-in denial"; exit 1; }
 git rm -q legs.py
 printf '"""Loads legs by id."""\n\n\ndef fetch_leg(leg_id):\n    """Return the leg id unchanged."""\n    return leg_id\n' > leg_lookup.py
 git add leg_lookup.py; git commit -q -m "test: documented module"

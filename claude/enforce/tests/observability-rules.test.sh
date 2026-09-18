@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: eslint:analytics-event-name, eslint:no-console, eslint:no-empty, eslint:no-swallowed-catch, eslint:structured-log-call
 # Verifies the observability rules (R-342, R-343, R-344) added 2026-09-04.
 #

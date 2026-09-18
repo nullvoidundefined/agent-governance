@@ -47,7 +47,7 @@ S4=$(mkstub '{"files":[{"path":"app/models/job.rb","offenses":[{"severity":"warn
 OUT4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_RUBOCOP_CMD="$S4" "$HOOK")
 printf '%s' "$OUT4" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null \
   || { echo "FAIL: a suppressed exception on an added line must deny; got: $OUT4"; exit 1; }
-printf '%s' "$OUT4" | grep -q "Lint/SuppressedException" \
+grep -q "Lint/SuppressedException" <<< "$OUT4" \
   || { echo "FAIL: the denial must name the cop that fired; got: $OUT4"; exit 1; }
 
 # Unparseable output -> fail open (allow).

@@ -16,14 +16,13 @@
 
 ## 4. What shipped
 
-- 175 sites in 70 files converted to `grep ... <<< "$VAR"`, with the same semantics (see the PR doc's semantics check).
+- 221 sites in 73 files converted to `grep ... <<< "$VAR"`, with the same semantics (see the PR doc's semantics check).
 - Regression case in `claude/enforce/tests/redact-output.test.sh`: red 5 of 5 on the old hook, green 5 of 5 on the new one.
 
 ## 5. Pending, by urgency
 
 - Ticket not opened: the Linear MCP tools were not loaded in this session. Open it at the next lifecycle event with: title "Replace printf | grep -q membership checks with here-strings", tier standard, assist llm, model claude-opus-5, estimate_minutes 30 (heuristic), repo agent-governance, branch fix/pipefail-herestring-grep, started_at 2026-09-18T13:58:11Z.
 - 117 other `| grep -q` pipelines under `claude/` have a non-`printf` upstream (`jq`, `head`, `git`). Audit the ones that can emit more than 64KB under pipefail.
-- `verification-gate.test.sh:149` asserts with `grep -qv 'automatic retry'`, which passes when any line lacks the phrase; the intended check is `! grep -q 'automatic retry'`.
 
 ## 6. Next session
 

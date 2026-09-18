@@ -170,7 +170,7 @@ cmd_open() {
     case "$1" in
       --spec) spec=$(relative "$2"); locked=$(printf '%s' "$locked" | jq -c --arg p "$spec" '. + [$p]'); shift 2 ;;
       --lock)
-        if [ "$refactor" -eq 1 ] && printf '%s' "$2" | grep -qE "$(jq -r '.patterns.tests' "$POLICY")"; then
+        if [ "$refactor" -eq 1 ] && grep -qE "$(jq -r '.patterns.tests' "$POLICY")" <<< "$2"; then
           lock_tests+=("$(relative "$2")")
         else
           locked=$(printf '%s' "$locked" | jq -c --arg p "$2" '. + [$p]')

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Shard: slow
+# Watches: enforce/tests/*.test.sh hooks/tests/*.test.sh hooks/*.sh enforce/harness-root.sh
 # fixture-implementation-root.test.sh: proves that the fixture suites verify
 # the implementation carried by THIS checkout and not the copy that happens to
 # be installed under ~/.claude (2026-09-18 audit, verification-integrity

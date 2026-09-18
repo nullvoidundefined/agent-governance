@@ -24,6 +24,9 @@ check() {
 SANDBOX=$(mktemp -d)
 mkdir -p "$SANDBOX/enforce/tests"
 cp "$RUNNER" "$SANDBOX/enforce/tests/run-tests.sh"
+# run-tests.sh delegates to its sibling shard runner (IAN-94), so the sandbox
+# carries that runner too; the guard under test still runs before it.
+cp "$CLAUDE_HARNESS_ROOT/enforce/run-fixture-shards.sh" "$SANDBOX/enforce/run-fixture-shards.sh"
 printf '{"name":"sandbox-enforce","private":true}\n' > "$SANDBOX/enforce/package.json"
 # One trivially passing fixture, so a run that gets past the guard succeeds and
 # the two cases below differ only by the guard, never by fixture content.
@@ -45,7 +48,7 @@ check "no fixture runs before the guard refuses" guardRanNoFixture
 mkdir -p "$SANDBOX/enforce/node_modules"
 OUT2=$(bash "$SANDBOX/enforce/tests/run-tests.sh" 2>&1); ST2=$?
 guardAllowed() { [ "$ST2" -eq 0 ]; }
-fixtureRan() { printf '%s' "$OUT2" | grep -q "sandbox.test.sh"; }
+fixtureRan() { grep -q "sandbox.test.sh" <<< "$OUT2"; }
 check "an installed enforce/node_modules runs the suite" guardAllowed
 check "the suite reaches its fixtures once installed" fixtureRan
 

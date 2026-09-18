@@ -52,14 +52,14 @@ check "ledger carries an epoch start" test "$(jq -r .startedAt "$REPO/.claude/ta
 
 printf '.claude/task-tier.json\n' > "$REPO/.gitignore"
 OUT=$(cd "$REPO" && bash "$TIER" set complex "touches auth across three packages" 2>&1)
-check "no gitignore note once ignored" bash -c "! printf '%s' \"\$0\" | grep -q 'not gitignored'" "$OUT"
+check "no gitignore note once ignored" bash -c "! grep -q 'not gitignored' <<< \"\$0\"" "$OUT"
 check "reclassification announced" reports "reclassified standard -> complex"
 check "ledger records the previous tier" test "$(jq -r .reclassifiedFrom "$REPO/.claude/task-tier.json")" = "standard"
 
 OUT=$(cd "$REPO" && bash "$TIER" get 2>&1)
 check "get prints json" bash -c "printf '%s' \"\$0\" | jq -e '.tier == \"complex\"' >/dev/null" "$OUT"
 OUT=$(cd "$REPO" && bash "$TIER" summary 2>&1)
-check "summary names tier, reason, branch" bash -c "printf '%s' \"\$0\" | grep -q 'complex | touches auth across three packages | started .* elapsed | branch feat/presets'" "$OUT"
+check "summary names tier, reason, branch" bash -c "grep -q 'complex | touches auth across three packages | started .* elapsed | branch feat/presets' <<< \"\$0\"" "$OUT"
 
 OUT=$(cd "$REPO" && bash "$TIER" clear 2>&1)
 check "clear removes the ledger" test ! -e "$REPO/.claude/task-tier.json"

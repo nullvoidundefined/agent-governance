@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Verifies push-eslint-gate.sh denies a git push whose outgoing diff has an ESLint
 # violation, and allows one whose diff is clean.
 #
