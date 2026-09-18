@@ -219,6 +219,27 @@ check "a newline home is bootstrapped" test -f "$NEWLINE_HOME/.claude/bulk/file1
 OUT=$(printf '{}' | HARNESS_SYNC_HOME="$NEWLINE_HOME" SYNC_CURSOR_HOME="$NEWLINE_HOME/.cursor" SYNC_CODEX_HOME="$NEWLINE_HOME/.codex" SYNC_NPM="$STUB_NPM" bash "$HOOK" "$CO" 2>/dev/null)
 check "a newline home in sync is not drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
 
+# 3i. A tracked name that git quotes (a tab, a newline, a double quote) is
+# never silently left out of the drift check (Copilot review on #67). Without
+# -z, `git ls-files` prints such a name C-quoted, so it matches no payload
+# prefix; the check counts it as drift rather than skipping it, the same
+# answer the per-file loop gave. A separate sandbox keeps the quoted name away
+# from the cases above.
+QUOTED_CO="$SB/quoted-checkout"; mkdir -p "$QUOTED_CO/claude"; QUOTED_CO=$(cd "$QUOTED_CO" && pwd -P)
+QUOTED_HOME="$SB/quoted-home"; mkdir -p "$QUOTED_HOME"
+git -C "$QUOTED_CO" init -q -b main
+git -C "$QUOTED_CO" config user.email t@example.invalid; git -C "$QUOTED_CO" config user.name t
+cp "$REAL_SYNC" "$QUOTED_CO/sync.sh"; chmod +x "$QUOTED_CO/sync.sh"
+printf '# rules\n' > "$QUOTED_CO/claude/CLAUDE.md"
+printf 'tabbed\n' > "$QUOTED_CO/claude/tab$(printf '\t')name.md"
+git -C "$QUOTED_CO" add -A; git -C "$QUOTED_CO" commit -qm init
+quoted_run() { printf '{}' | HARNESS_SYNC_HOME="$QUOTED_HOME" SYNC_CURSOR_HOME="$QUOTED_HOME/.cursor" SYNC_CODEX_HOME="$QUOTED_HOME/.codex" bash "$HOOK" "$QUOTED_CO" 2>/dev/null; }
+quoted_run >/dev/null
+mkdir -p "$QUOTED_HOME/.claude"; cp "$QUOTED_CO/claude/CLAUDE.md" "$QUOTED_HOME/.claude/CLAUDE.md"
+printf 'tabbed\n' > "$QUOTED_HOME/.claude/tab$(printf '\t')name.md"
+OUT=$(quoted_run)
+check "a git-quoted tracked name is not silently skipped" reports "harness-sync (R-003)"
+
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"
 OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)

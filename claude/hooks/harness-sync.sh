@@ -79,7 +79,11 @@ countDriftedFiles() {
       claude/*) live="$LIVE/${rel#claude/}" ;;
       cursor/*) live="$CURSOR_LIVE/${rel#cursor/}" ;;
       codex/*) live="$CODEX_LIVE/${rel#codex/}" ;;
-      *) continue ;;
+      "") continue ;;
+      # A name git prints C-quoted (a tab, a newline, a double quote) matches
+      # no payload prefix; it counts as drift so it is never silently left
+      # out, the answer the per-file loop gave too (Copilot review on #67).
+      *) count=$((count + 1)); continue ;;
     esac
     if [ -f "$live" ] && [ -f "$CHECKOUT/$rel" ]; then
       pair_list+="$rel"$'\n'; pairs=$((pairs + 1))
@@ -103,11 +107,12 @@ countDriftedFiles() {
 # hashes the raw bytes, which is what sync.sh copies and what cmp compared.
 # When either batch fails or comes back short (a file unreadable or removed
 # mid-run), it falls back to one cmp per pair, so an error can cost time but
-# never hide drift. `git ls-files` quotes any tracked name containing a
-# newline, so an entry of relList is always one line.
+# never hide drift, and a temporary directory that cannot be made counts every
+# pair as drift for the same reason. countDriftedFiles passes only names that
+# git printed unquoted, so an entry of relList is always one line.
 countDifferingPairs() {
   local pair_count="$1" rel_list="$2" live_view left_hashes right_hashes rel differing=0
-  live_view=$(mktemp -d 2>/dev/null) || { printf '%s' "$pair_count"; return; }
+  live_view=$(mktemp -d "${TMPDIR:-/tmp}/harness-sync.XXXXXX" 2>/dev/null) || { printf '%s' "$pair_count"; return; }
   ln -s "$LIVE" "$live_view/claude"; ln -s "$CURSOR_LIVE" "$live_view/cursor"; ln -s "$CODEX_LIVE" "$live_view/codex"
   if left_hashes=$(printf '%s' "$rel_list" | git -C "$CHECKOUT" hash-object --no-filters --stdin-paths 2>/dev/null) \
     && right_hashes=$(printf '%s' "$rel_list" | (cd "$live_view" && git hash-object --no-filters --stdin-paths) 2>/dev/null) \
