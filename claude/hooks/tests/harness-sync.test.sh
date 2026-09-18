@@ -119,6 +119,16 @@ rm -rf "$FAKE/.claude/enforce/node_modules/eslint"
 OUT=$(printf '{}' | SYNC_NPM="$SB/no-such-npm" bash "$HOOK" 2>/dev/null)
 check "unavailable npm is reported with the fix" reports "npm ci --prefix $FAKE/.claude/enforce"
 
+# 3d. A copy that fails for any reason other than a JSON refusal (Copilot review
+# on #55) must not be reported as a completed sync followed by a failed
+# install. The live codex home is replaced by a plain file, so sync.sh's
+# mkdir -p of that target fails in the middle of the copy.
+mv "$SB/home/.codex" "$SB/home/.codex.saved"; printf 'not a directory\n' > "$SB/home/.codex"
+OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+rm -f "$SB/home/.codex"; mv "$SB/home/.codex.saved" "$SB/home/.codex"
+check "a failed copy is not reported as synced" bash -c '! grep -qF "but ./sync.sh then failed" <<<"$1"' _ "$(context)"
+check "a failed copy is reported as a failed copy" reports "failed before its copy completed"
+
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"
 OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)

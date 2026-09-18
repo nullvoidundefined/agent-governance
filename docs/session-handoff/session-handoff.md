@@ -1,43 +1,51 @@
-# Session Handoff: 2026-09-18, R-607 product docs close-out, merged with the observability-fixture handoff (#53)
+# Session Handoff: 2026-09-18, IAN-98 per-task wall time (#54, #58), merged with the R-607 close-out handoff
 
 ## 1. Last commit
 
-- This session: `cc7e7b2 feat(rules): R-607 features list and user stories in every application repo (#44)`, squash-merged by the owner at 15:02Z.
-- `main` is now at `87f647a docs(handoff): record the observability fixture fix and the hook-latency flake (#53)`. This handoff replaces #53's file and keeps every open item from it.
+- This session: `7522be1 fix(enforce): related-test mapping falls back on unknowable or unmapped changes; per-command related note`, on `fix/pr54-review-followups` (PR #58). This handoff ships in the same PR.
+- `main` has `2135149 feat(enforce): cut per-task wall time ... (#54)`, which the owner merged at 16:12Z. This handoff replaces the R-607 close-out file and keeps every open item from it.
 
 ## 2. Production state
 
-- `~/.claude`, `~/.codex`, and `~/.cursor` carry R-607 (synced from `cc7e7b2`) and #51 (synced by the #51 session). The live harness has the R-607 norm line, `hooks/push-feature-docs-gate.sh`, `enforce/require-feature-checklist.sh`, and the three templates in `prompts/`.
-- CI (`fixtures`, GitGuardian) passed on #44's final head `96975e3` and on #51. The untracked `apps-console.ts` in the main checkout was deleted by the #51 session. It was a scratch file leaked by `observability-rules.test.sh`, the defect #51 fixed.
+- The live `~/.claude`, `~/.cursor`, and `~/.codex` are synced from the primary checkout at `ab3596d` (#57), so they include #54. The judge hook is unregistered in the live `settings.json`, and `enforce/related-tests.sh` is installed.
+- The pre-push hook in the primary checkout's `.git/hooks` was reinstalled from the new sample. It runs only the port checks, and a push measured 4 s.
+- Two orphan files remain in the live tree, because `sync.sh` never deletes files and `destructive-command-guard` hard-denies removing them from a session: `~/.claude/hooks/llm-rule-judge.sh` and `~/.claude/enforce/tests/llm-rule-judge.test.sh`. They make the hook-integrity guard warn at every session start until the owner deletes them by hand.
+- The `rule-judge` CI check runs on `pull_request_target` from `main`'s workflow file. It passed on #58 with the "no secret" notice, because the `ANTHROPIC_API_KEY` repository secret is not set yet.
 
 ## 3. Session metrics
 
-- Branch and PR statistics for `feat/product-docs-rule`, not live session metrics. `session-metrics.sh` has no session-start SHA for this repository, because the session ran from the Voyager 2.0 directory, and `--since d2937ce` also counts other sessions' squashed PRs.
-- Commits: 14 on the branch: 10 of this session's own, plus 4 merges of `main` that brought in 5 PRs (#41 and #43 in the first merge, then #45, #42, and #47). Files changed: 48 (matching the PR's `changedFiles`). Files revisited by 2 or more commits: 21. Rework count: 2 (two Copilot review rounds sent the work back). Velocity flag: normal.
-- Ticket IAN-96: 125 working minutes against a 45-minute heuristic estimate (ratio 2.78). Closed.
+- Branch and PR statistics, not live session metrics: parallel sessions merged #42, #44, #46, #49 to #53, #55 to #57 into `main` during this session.
+- #54: 12 commits, including two rebases and one merge of `main`. #58: 1 commit, plus this handoff. Rework count: 3. The first Copilot review sent back 12 comments, the second sent back 7, and a pre-push fixture went red after Task 5.
+- Ticket IAN-98: closed at merge of #58 with actuals. Its estimate was a 150-minute heuristic.
 
 ## 4. What shipped
 
-- R-607 (`claude/CLAUDE.md`, `claude/rulebook/reference.md`): every application repository keeps `docs/feature-list/features.md` and per-area `docs/user-stories/<area>.md` files with `US-<AREA>-NNN` stories.
-- `push-feature-docs-gate` runs the harness copy of the checklist on every Claude Code `git push`, and never the repository's own copy. Triggers cover Next, Nuxt, FastAPI, and Express at any monorepo prefix.
-- `repo-setup` gained a `product-docs` item and a `--no-product-docs` opt-out. `feature-create` requires `--area`. `task-start` and `task-cleanup` add and close the feature row and story.
-- Design: `claude/docs/superpowers/specs/2026-09-18-product-docs-design.md`. PR doc: `docs/prs/2026-09-18-product-docs-rule.md`.
-- From #51 and #53: `observability-rules.test.sh` writes its sample under its own temp directory.
+- #54: the LLM rule judge moved from a push hook to `enforce/judge-diff.sh` plus `.github/workflows/rule-judge.yml`. The workflow runs on `pull_request_target`, uses a trusted checkout of the judge, and treats the PR head as data only.
+- #54: pre-push runs only the port checks, and the full suites stay the required `fixtures` CI check.
+- #54: the turn-end gate runs related tests for vitest, jest, pytest, and Go (`enforce/related-tests.sh`). The governance repository keeps #42's `--affected`.
+- #54: R-509 no longer names pre-push. R-514 gained a trivial-tier path that skips only the Copilot review. `task-start` and `task-cleanup` document it.
+- #58: the related-test mapping falls back when there is no base commit, on an unmapped non-doc file, and on a deleted file. Docs-only changes still run nothing. The "related tests only" note attaches per command. The judge fetch works in private repositories. The convention files list the five judged rules.
+- Outside the repository: `personal/.claude/CLAUDE.md` exempts trivial-tier PRs from the PR document and the Copilot review, and the `claude-handles-merges` memory records the same exception.
+- Design: `claude/docs/superpowers/specs/2026-09-18-task-wall-time-design.md`. Plan: `docs/slices/slice-03-task-wall-time.md`. PR docs: `docs/prs/2026-09-18-cut-task-wall-time.md` and `docs/prs/2026-09-18-pr54-review-followups.md`.
 
 ## 5. Pending, by urgency
 
-- **Close IAN-99** (#46, here-string conversion). The #53 handoff says this ticket was never opened, but it exists in Linear as IAN-99, still In Progress, while the PR merged as `b6a2ebc`. Close it with actuals from its own session, which started at 13:58:11Z. About 5 minutes.
-- **`hook-latency.test.sh` flakes under load** (from #53). This session saw it too: the `PreToolUse:Write` chain ran 464 to 974 ms against budgets of 450 to 888 ms. It failed the same way on an unmodified `origin/main`, while the load average was 67 to 81 during parallel sessions. Profile the per-edit hooks rather than widen the budget (R-204). About an hour.
-- **R-607 follow-up 1: CI templates.** None of the four `claude/skills/repo-setup/scripts/template-ci-*.yml` files (node, python, go, ruby) runs `scripts/require-feature-checklist.sh`, so a push made outside Claude Code goes unchecked. Add one step to each template, plus a `repo-setup.test.sh` assertion per stack. About 30 minutes, Standard tier.
-- **R-607 follow-up 2: the R-508 surface list.** `claude/hooks/git-workflow-guard.sh:165` matches `routes/`, `handlers/`, `page.tsx`, `route.ts`, `features/`, `.env.example`, `docker-compose*.yml`, and `Dockerfile`. It lacks Nuxt `app/pages/**/*.vue` and `server/(api|routes)/`, and FastAPI `app/routers/*.py`, so the R-508 README reminder never fires for those stacks. Add the three patterns and keep every existing match. `task-cleanup/scripts/scan.sh`'s `SURFACE_RE` already holds the extended list, so the two could share one source. About 30 minutes, Standard tier, test first.
-- **Carried twice:** 117 `| grep -q` pipelines under `claude/` read from `jq`, `head`, or `git` rather than `printf`. Audit the ones whose output can pass 64 KB under pipefail. About two hours.
-- **Voyager 2.0:** its first `feature-create` call needs `--area` (for example `--area chat`).
-- Dropped: the `tdd.sh` bash-runner follow-up, which #49 shipped.
+- **Owner, 1 minute:** delete the two orphan judge files listed in section 2.
+- **Owner, 1 minute:** run `gh secret set ANTHROPIC_API_KEY --repo nullvoidundefined/agent-governance`. After `rule-judge` has run green with the secret, decide whether to make it a required check.
+- **`sync.sh` never deletes files removed from the repository.** A task chip, "Make sync.sh delete files removed from the repo", was offered. About 45 minutes, Standard tier.
+- **Close IAN-99** (#46, here-string conversion). It is still In Progress in Linear, although `b6a2ebc` merged. About 5 minutes.
+- **`global-memory/rule_fires.md` is tracked but written live, so the harness never matches its checkout.** `claude/hooks/session-end.sh` rolls the rule-fire log up into the live `~/.claude/global-memory/rule_fires.md`, and the same path is tracked in `claude/`. After the first roll-up, the live copy differs from the checkout for good. As a result, `harness-sync.sh` finds drift and runs a full `./sync.sh` at every SessionStart (measured at about 1.5 s per resume on 2026-09-18). Each sync also overwrites the live roll-up with the checkout's copy, which discards fires recorded since the last commit. A `./sync.sh` on 2026-09-18 left the live file identical to the checkout. Fix: stop tracking the file (gitignore it and seed it on first write), or exclude it from both the drift check and the copy; test first in `hooks/tests/harness-sync.test.sh`. This is the likely cause of the next item. About 45 minutes, Standard tier.
+- **`hook-latency.test.sh` flakes under load.** It times the installed chain, not the checkout, so a branch cannot fix or break it. This session saw it fail and pass alternately on the same installed hooks at load averages of 62 to 228. Profile the per-edit hooks rather than widen the budget (R-204). About an hour.
+- **R-607 follow-up 1: CI templates.** The four `claude/skills/repo-setup/scripts/template-ci-*.yml` files do not run `scripts/require-feature-checklist.sh`. About 30 minutes.
+- **R-607 follow-up 2: the R-508 surface list.** `claude/hooks/git-workflow-guard.sh:165` lacks the Nuxt `app/pages/**/*.vue`, `server/(api|routes)/`, and FastAPI `app/routers/*.py` patterns. About 30 minutes, test first.
+- **Carried three times:** 117 `| grep -q` pipelines under `claude/` read from `jq`, `head`, or `git`. Audit the ones whose output can exceed 64 KB under pipefail. About two hours.
+- **Voyager 2.0:** its first `feature-create` call needs `--area`.
 
 ## 6. Next session
 
-1. Close IAN-99 through `/ticket-lifecycle close`.
-2. Follow-up 2: read `claude/hooks/git-workflow-guard.sh` (around line 165), `SURFACE_RE` in `claude/skills/task-cleanup/scripts/scan.sh`, and `claude/enforce/tests/git-workflow-guard.test.sh`.
-3. Follow-up 1: read all four `claude/skills/repo-setup/scripts/template-ci-{node,python,go,ruby}.yml` files and `claude/enforce/tests/repo-setup.test.sh`.
-4. Profile the `PreToolUse:Write` hook chain: read `claude/enforce/tests/hook-latency.test.sh` and the `PreToolUse` `Write` entries in `claude/settings.json`.
-5. Open a ticket for each follow-up at classification (R-605). A new worktree needs `npm ci --prefix claude/enforce` before the lint-backed fixtures run.
+1. Confirm that the owner deleted the orphan files. `echo '{}' | bash ~/.claude/hooks/hook-integrity-check.sh` should print nothing.
+2. Close IAN-99 through `/ticket-lifecycle close`.
+3. `sync.sh` deletion: read `sync.sh` and `compute_hashes` in `claude/hooks/hook-integrity-check.sh`.
+4. The R-607 follow-ups, as listed in section 5.
+5. `rule_fires.md` drift (section 5): check `git ls-files claude/global-memory/rule_fires.md` and the roll-up in `claude/hooks/session-end.sh`, then rerun `hook-latency.test.sh` once it is fixed.
+6. A new worktree needs `npm ci --prefix claude/enforce` before the lint-backed fixtures run.
