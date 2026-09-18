@@ -34,6 +34,7 @@
 - **Owner, 1 minute:** run `gh secret set ANTHROPIC_API_KEY --repo nullvoidundefined/agent-governance`. After `rule-judge` has run green with the secret, decide whether to make it a required check.
 - **`sync.sh` never deletes files removed from the repository.** A task chip, "Make sync.sh delete files removed from the repo", was offered. About 45 minutes, Standard tier.
 - **Close IAN-99** (#46, here-string conversion). It is still In Progress in Linear, although `b6a2ebc` merged. About 5 minutes.
+- **`global-memory/rule_fires.md` is tracked but written live, so the harness never matches its checkout.** `claude/hooks/session-end.sh` rolls the rule-fire log up into the live `~/.claude/global-memory/rule_fires.md`, and the same path is tracked in `claude/`. After the first roll-up, the live copy differs from the checkout for good. As a result, `harness-sync.sh` finds drift and runs a full `./sync.sh` at every SessionStart (measured at about 1.5 s per resume on 2026-09-18). Each sync also overwrites the live roll-up with the checkout's copy, which discards fires recorded since the last commit. A `./sync.sh` on 2026-09-18 left the live file identical to the checkout. Fix: stop tracking the file (gitignore it and seed it on first write), or exclude it from both the drift check and the copy; test first in `hooks/tests/harness-sync.test.sh`. This is the likely cause of the next item. About 45 minutes, Standard tier.
 - **`hook-latency.test.sh` flakes under load.** It times the installed chain, not the checkout, so a branch cannot fix or break it. This session saw it fail and pass alternately on the same installed hooks at load averages of 62 to 228. Profile the per-edit hooks rather than widen the budget (R-204). About an hour.
 - **R-607 follow-up 1: CI templates.** The four `claude/skills/repo-setup/scripts/template-ci-*.yml` files do not run `scripts/require-feature-checklist.sh`. About 30 minutes.
 - **R-607 follow-up 2: the R-508 surface list.** `claude/hooks/git-workflow-guard.sh:165` lacks the Nuxt `app/pages/**/*.vue`, `server/(api|routes)/`, and FastAPI `app/routers/*.py` patterns. About 30 minutes, test first.
@@ -46,4 +47,5 @@
 2. Close IAN-99 through `/ticket-lifecycle close`.
 3. `sync.sh` deletion: read `sync.sh` and `compute_hashes` in `claude/hooks/hook-integrity-check.sh`.
 4. The R-607 follow-ups, as listed in section 5.
-5. A new worktree needs `npm ci --prefix claude/enforce` before the lint-backed fixtures run.
+5. `rule_fires.md` drift (section 5): check `git ls-files claude/global-memory/rule_fires.md` and the roll-up in `claude/hooks/session-end.sh`, then rerun `hook-latency.test.sh` once it is fixed.
+6. A new worktree needs `npm ci --prefix claude/enforce` before the lint-backed fixtures run.
