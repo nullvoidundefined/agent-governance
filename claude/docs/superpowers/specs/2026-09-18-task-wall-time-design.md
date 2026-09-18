@@ -26,6 +26,14 @@ The user chose each of these on 2026-09-18.
 2. **A trivial-tier change gets its own PR with no ceremony.** It needs no ticket, no `docs/prs/` document, and no wait for a Copilot review, and it merges once CI is green. The alternatives were a daily batch PR, which delays each fix until the batch ships, and a direct push to `main`, which skips CI before the change lands.
 3. **The turn-end gate runs only the tests related to the changed files, and the full suite runs in CI.** A required CI status check stands in for R-509's local pre-push sweep. The alternatives were to run the full suite once locally before each push, which brings back one to three minutes per push, or to escalate to the full suite when shared paths change, which adds a path list that has to be maintained.
 
+## Reconciliation with PR #42 (2026-09-18)
+
+PR #42 (IAN-94) merged to `main` while this branch was in progress. It already makes the turn-end gate run only the affected fixtures in this repository, through `run-tests.sh --affected` and `enforce/run-fixture-shards.sh`, selecting fixtures by `# Shard:` and `# Watches:` headers. It also rewrote R-509. With the user's approval, this branch was rebased onto `main` and keeps #42's mechanism for the governance repository:
+
+- B-3's governance row, and the runner's fixture-name arguments, were dropped in favor of `--affected`. `enforce/related-tests.sh` now maps only the vitest, jest, pytest, and Go stacks.
+- B-5 edits #42's R-509 wording rather than replacing it: the only change is that the full suite no longer runs at pre-push.
+- B-1 and B-2 are unchanged. They were not part of #42.
+
 ## Domain vocabulary
 
 - push gate - a PreToolUse hook that fires on `git push` and can block it - chosen over: push hook, because "hook" alone does not say that it can block.

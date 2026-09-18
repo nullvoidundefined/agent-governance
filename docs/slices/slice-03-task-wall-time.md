@@ -28,6 +28,14 @@
 3. **Pre-push keeps the port checks.** These are the `node translate/*.mjs --check` runs. They take seconds, and a stale port is the one failure that the fixture-free push path would otherwise let through.
 4. **One PR carries all three fixes.** The spec and the plan are single documents, and splitting the work would mean three CI and review cycles for one feature.
 
+## Reconciliation with PR #42 (2026-09-18)
+
+PR #42 (IAN-94) merged to `main` while this branch was in progress. It already makes the turn-end gate run only the affected fixtures in this repository, through `run-tests.sh --affected` and `enforce/run-fixture-shards.sh`, selecting fixtures by `# Shard:` and `# Watches:` headers. It also rewrote R-509. With the user's approval, this branch was rebased onto `main` and keeps #42's mechanism for the governance repository:
+
+- B-3's governance row, and the runner's fixture-name arguments, were dropped in favor of `--affected`. `enforce/related-tests.sh` now maps only the vitest, jest, pytest, and Go stacks.
+- B-5 edits #42's R-509 wording rather than replacing it: the only change is that the full suite no longer runs at pre-push.
+- B-1 and B-2 are unchanged. They were not part of #42.
+
 ## File map
 
 | File | Change | Responsibility |
