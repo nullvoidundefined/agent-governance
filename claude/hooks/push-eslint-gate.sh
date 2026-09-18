@@ -47,7 +47,7 @@ fi
 BASE=$(resolve_outgoing_base)
 [ -z "$BASE" ] && exit 0
 
-FILES=$(run_git_on_target diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.tsx?$' || true)
+FILES=$(run_git_on_target diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|vue)$' || true)
 [ -z "$FILES" ] && exit 0
 
 TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"

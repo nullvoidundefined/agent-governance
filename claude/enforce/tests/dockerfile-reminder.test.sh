@@ -88,4 +88,10 @@ OUT=$(run "$REPO/node_modules/express/package.json"); [ -z "$OUT" ] || { echo "F
 printf 'export { Button } from "./Button";\n' > "$REPO/apps/client/src/components/index.ts"
 OUT=$(run "$REPO/apps/client/src/components/index.ts"); [ -z "$OUT" ] || { echo "FAIL: an index.ts outside a server tree must be silent"; exit 1; }
 
+# E5 (slice 01 PR 5): a Nuxt config is a frontend build config, like next.config.
+REPO=$(new_repo nuxt)
+printf 'export default defineNuxtConfig({ ssr: true });\n' > "$REPO/nuxt.config.ts"
+OUT=$(run "$REPO/nuxt.config.ts")
+ctx "$OUT" | grep -q 'frontend build config' || { echo "FAIL: expected a reminder for nuxt.config.ts with no Dockerfile"; exit 1; }
+
 echo "dockerfile-reminder.test.sh PASS"

@@ -3,9 +3,13 @@
  * Loaded by lint.mjs and invoked by push-eslint-gate.sh to check outgoing diffs
  * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319,
  * R-326, R-327, R-324, R-329, R-303 no-cycle everywhere and import zones when a
- * repo opts in via .enforce.json, R-344 catch discipline, R-401 test quality).
+ * repo opts in via .enforce.json, R-344 catch discipline, R-401 test quality). Vue single-file components
+ * (.vue) get the same rules on their <script setup lang="ts"> block through
+ * vue-eslint-parser, with the TypeScript parser for the script content.
  */
 import tseslint from "typescript-eslint";
+import pluginVue from "eslint-plugin-vue";
+import vueParser from "vue-eslint-parser";
 import { createNodeResolver, importX } from "eslint-plugin-import-x";
 import analyticsEventName from "./rules/analytics-event-name.mjs";
 import behaviorAssertionRequired from "./rules/behavior-assertion-required.mjs";
@@ -28,10 +32,14 @@ const foreignRulePlugins = {
 };
 
 export default tseslint.config({
-  files: ["**/*.ts", "**/*.tsx"],
+  files: ["**/*.ts", "**/*.tsx", "**/*.vue"],
   plugins: {
     "@typescript-eslint": tseslint.plugin,
     "import-x": importX,
+    // Registered with no rule enabled: a Vue repo keeps live disable comments
+    // for its own eslint-plugin-vue rules (the Vue track requires one beside
+    // v-html), and an undefined rule in a disable comment fails the gate.
+    vue: pluginVue,
     ...foreignRulePlugins,
   },
   languageOptions: {
@@ -49,10 +57,10 @@ export default tseslint.config({
   // 2026-09-06); the plugin's own typescript preset fails to load its resolver
   // here, so the settings are spelled out.
   settings: {
-    "import-x/extensions": [".ts", ".tsx", ".cts", ".mts", ".js", ".jsx", ".cjs", ".mjs"],
+    "import-x/extensions": [".ts", ".tsx", ".cts", ".mts", ".js", ".jsx", ".cjs", ".mjs", ".vue"],
     "import-x/internal-regex": "^@/",
-    "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".tsx", ".cts", ".mts"] },
-    "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx", ".jsx", ".cjs", ".mjs"] })],
+    "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".tsx", ".cts", ".mts"], "vue-eslint-parser": [".vue"] },
+    "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx", ".jsx", ".cjs", ".mjs", ".vue"] })],
   },
   rules: {
     "sort-keys": ["error", "asc", { natural: true, minKeys: 2 }],
@@ -116,6 +124,14 @@ export default tseslint.config({
     ],
   },
 }, {
+  // A .vue file is parsed by vue-eslint-parser, which hands the script block to
+  // the TypeScript parser, so every rule above applies to <script setup lang="ts">.
+  files: ["**/*.vue"],
+  languageOptions: {
+    parser: vueParser,
+    parserOptions: { extraFileExtensions: [".vue"], parser: tseslint.parser, sourceType: "module" },
+  },
+}, {
   // R-319: one exported symbol per file, scoped to the function-module trees only
   // (services, api, clients). Constants and types modules group multiple exports
   // per R-307/R-309 and are intentionally NOT subject to this rule, so types.ts /
@@ -158,6 +174,8 @@ export default tseslint.config({
     "**/src/repositories/**/*.ts",
     "**/src/middleware/**/*.ts",
     "**/src/workers/**/*.ts",
+    "**/server/api/**/*.ts",
+    "**/server/middleware/**/*.ts",
   ],
   ignores: [
     "**/__tests__/**",

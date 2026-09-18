@@ -91,17 +91,17 @@ export function buildEslintOptions(repoRoot) {
   const importZones = collectImportZones(enforceConfig, repoRoot);
   if (importZones.length > 0) {
     overrideConfig.push({
-      files: ["**/*.ts", "**/*.tsx"],
+      files: ["**/*.ts", "**/*.tsx", "**/*.vue"],
       plugins: { "import-x": importX },
       rules: { "import-x/no-restricted-paths": ["error", { zones: importZones }] },
-      settings: { "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx"] })] },
+      settings: { "import-x/resolver-next": [createNodeResolver({ extensions: [".js", ".ts", ".tsx", ".vue"] })] },
     });
   }
 
   const namingOptions = buildNamingOptions(enforceConfig);
   if (namingOptions) {
     overrideConfig.push({
-      files: ["**/*.ts", "**/*.tsx"],
+      files: ["**/*.ts", "**/*.tsx", "**/*.vue"],
       ignores: [
         "**/__tests__/**",
         "**/__fixtures__/**",
@@ -135,6 +135,9 @@ export function buildEslintOptions(repoRoot) {
     "**/*.spec.tsx",
     "**/*.stories.ts",
     "**/*.stories.tsx",
+    "**/*.test.vue",
+    "**/*.spec.vue",
+    "**/*.stories.vue",
     "**/*.config.ts",
     "**/*.d.ts",
   ];
@@ -148,7 +151,7 @@ export function buildEslintOptions(repoRoot) {
   };
 
   overrideConfig.push({
-    files: ["**/*.ts", "**/*.tsx"],
+    files: ["**/*.ts", "**/*.tsx", "**/*.vue"],
     ignores: CONVENTION_IGNORES,
     plugins: conventionPlugin,
     rules: { "convention/destructure-object-reads": "error" },
@@ -156,7 +159,7 @@ export function buildEslintOptions(repoRoot) {
 
   if (enforceConfig.fileHeaders === true) {
     overrideConfig.push({
-      files: ["**/*.ts", "**/*.tsx"],
+      files: ["**/*.ts", "**/*.tsx", "**/*.vue"],
       ignores: CONVENTION_IGNORES,
       rules: { "convention/file-header-comment": "error" },
     });

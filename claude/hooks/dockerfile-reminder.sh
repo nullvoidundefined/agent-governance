@@ -87,7 +87,7 @@ if [ "$is_dockerfile" -eq 0 ]; then
       artifact="service entry file" ;;
     */main.py | */app.py | */manage.py | */wsgi.py | */asgi.py | */main.go | */config.ru)
       artifact="service entry file" ;;
-    */next.config.js | */next.config.mjs | */next.config.ts | */vite.config.js | */vite.config.mjs | */vite.config.ts)
+    */next.config.js | */next.config.mjs | */next.config.ts | */vite.config.js | */vite.config.mjs | */vite.config.ts | */nuxt.config.js | */nuxt.config.mjs | */nuxt.config.ts)
       artifact="frontend build config" ;;
     */railway.toml | */railway.json | */fly.toml | */render.yaml | */Procfile | */app.yaml | */nixpacks.toml)
       artifact="platform deploy config" ;;
