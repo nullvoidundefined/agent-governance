@@ -64,7 +64,7 @@
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:42c8270ebcb1510dd654af638e0cb8ea7e88a1e6aaff2d7d0d9667bd0c4a9ea1",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:022d45f3d51621360d4e545705aff29868d53031610b3fc3eaeadce863557035",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:e3cd93813d6d30b4226b0ddf7b4de5f9411423d0b846f43235d9bdc5c246c878",
-    "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:0aadbca79d110a0abeb3fa0068df63fed3dcbd497cece21e3a72d3035c52d1fc",
+    "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:b8738f045794b688cb0349e069b676d1db2e0c212606ed36dc4c17304956e183",
     "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:0e42f61b0920b600ea96da360d9a50beaeeb4f5e486112cdcbf6ec5ac2d018a7",
     "rules/structure-conventions.mdc": "sha256:4351ae26e58068347efb8898386cacfed002e9b587ee04bfa7abb2e2e9533a0f",
     "rules/styling.mdc": "sha256:16884fbee74cb563d917cb9582230f5dcc6e209f5c3cfe980d572a4db650557b",
@@ -107,7 +107,7 @@
     "skills/task-start/SKILL.md": "sha256:4d25c3d16d7269a2c24f674ca2bb26d25325549fb9b1ecd4a2218280e6539412",
     "skills/task-start/scripts/task-tier.sh": "sha256:b1c452692dcc750ee3accf9f48b4a56125ce324e66cdf6fd69379122e66908cb",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:f52878cb343e05448f746e42a7ff9c16f785963162faa7d1028c9f884b60e56a",
-    "skills/ticket-lifecycle/SKILL.md": "sha256:cf10235f801f089bc402975be0d35cfa91cbdee98db6d80a9a3e492495cf62ed"
+    "skills/ticket-lifecycle/SKILL.md": "sha256:8f921dbd865081f87b37c6dee0f26b51252d146b72aa1fdfa8a0600100c4b7ca"
   },
   "classes": {
     ".gitignore": "generated",
