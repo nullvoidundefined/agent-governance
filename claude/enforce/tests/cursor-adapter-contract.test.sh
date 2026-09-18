@@ -157,11 +157,13 @@ cp "$REPO_TOP/claude/hooks/session-start.sh" "$SANDBOX_CLAUDE/hooks/session-star
 chmod +x "$SANDBOX_CLAUDE/hooks/session-start.sh"
 
 session_payload() {
-  # $1 = conversation_id; "" omits the field entirely.
+  # $1 = conversation_id; "" omits the field entirely. $2 = workspace root,
+  # defaulting to $WORK.
+  local root="${2:-$WORK}"
   if [ -n "$1" ]; then
-    jq -n --arg id "$1" --arg cwd "$WORK" '{cwd:$cwd, workspace_roots:[$cwd], conversation_id:$id}'
+    jq -n --arg id "$1" --arg cwd "$root" '{cwd:$cwd, workspace_roots:[$cwd], conversation_id:$id}'
   else
-    jq -n --arg cwd "$WORK" '{cwd:$cwd, workspace_roots:[$cwd]}'
+    jq -n --arg cwd "$root" '{cwd:$cwd, workspace_roots:[$cwd]}'
   fi
 }
 context_mentions() { printf '%s' "$2" | jq -r '.additional_context // ""' 2>/dev/null | grep -qF -- "$1"; }
@@ -190,6 +192,21 @@ check "a payload with no conversation_id gets no R-503 block" not context_mentio
 OUT=$(run_adapter "$(session_payload default)" sessionStart session-start)
 check "the conversation_id \"default\" gets no R-503 block" not context_mentions "## Session start (R-503)" "$OUT"
 check "neither unkeyed start writes a record" record_count_is 2
+
+# Two ids that sanitize to the same filename characters stay two records: a
+# shared record would hand the second conversation the first one's start.
+run_adapter "$(session_payload "conv/gamma")" sessionStart session-start >/dev/null
+run_adapter "$(session_payload "conv_gamma")" sessionStart session-start >/dev/null
+check "ids that differ only in unsafe characters get distinct records" record_count_is 4
+
+# The workspace is part of the key: the same conversation id under a second
+# root lands in a different cursor-<hash> directory with its own record.
+WORK_OTHER="$SANDBOX/work-other"
+mkdir -p "$WORK_OTHER"
+run_adapter "$(session_payload conv-alpha "$WORK_OTHER")" sessionStart session-start >/dev/null
+cursor_key_dirs_are() { [ "$(start_records | sed -E 's#/session-start\.[^/]*$##' | sort -u | grep -c .)" -eq "$1" ]; }
+check "a second workspace gets its own cursor-<hash> directory" cursor_key_dirs_are 2
+check "the second workspace's conv-alpha record is separate from the first's" record_count_is 5
 
 [ "$fail" -eq 0 ] && echo "cursor-adapter-contract.test.sh PASS"
 exit "$fail"

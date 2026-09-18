@@ -49,3 +49,8 @@ The implementation commit landed at 2026-09-18T10:49:15Z, and this document was 
 
 - This work was merged into the `feat/session-start-timestamp` branch after #36 had already been squash-merged from an earlier head, so it never reached `main`. It is re-landed here as the two original commits cherry-picked onto `main`.
 - #36 also merged before the R-503 Spec line and the manifest note were updated for the narrowed clock fallback in `17652f1` (the clock is used only on a `startup` or `clear` start whose transcript file does not exist yet). This PR carries that wording fix, which also describes the Cursor path correctly: the synthetic transcript never exists on disk, so a Cursor conversation records the clock once and re-reads that record afterwards.
+
+## Review round 1 (Copilot)
+
+- **Lossy session id.** The synthetic path reused `SAFE_ID`, the findings-file name component, which maps every unsafe character to `_`, so `conv/a` and `conv_a` named one write-once record and the second conversation would have inherited the first one's start. An id that sanitizing leaves unchanged is still used as it is, so the context block stays readable; an id that sanitizing changed gets a digest of the raw id appended. The digest helper is shared with the workspace hash.
+- **Workspace isolation untested.** The contract exercised one workspace only. It now starts the same conversation id under a second root and asserts a second `cursor-<hash>` directory and a separate record. That case passed before the fix, since the workspace hash was already correct; it is there so a constant hash cannot slip in later. The collision case failed before the fix and passes after it.
