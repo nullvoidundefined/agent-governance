@@ -121,6 +121,7 @@ Severity levels: CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL.
 
 Write to `docs/audits/YYYY-MM-DD-security.md` with at minimum:
 
+- **Coverage**: a table with one row per surface in scope and three columns: the surface, how it was checked (`executed`, `read only`, or `not covered`), and the reason when it was not executed or not covered. A guard that fails open reads as correct on the page and behaves as absent at runtime, so a control described as present but never exercised is reported as `read only`, never as verified.
 - **Executive Summary**: overall risk posture and top 3 critical findings
 - **Threat Model**: trust boundaries, attacker personas, attack trees for the 3 most likely attack vectors, blast radius
 - **Authentication & Session Management**

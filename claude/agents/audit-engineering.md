@@ -49,6 +49,35 @@ Catch problems that will degrade the engineering organization's ability to ship 
 
 ## Scope of review
 
+**Generated trees are in scope by default, and their hand-authored files are the
+first thing you read.** Twelve consecutive audits of this repository declared
+`codex/` and `cursor/` out of scope on the reasoning that they are generated
+projections of an audited source, so auditing the source covered them. That
+reasoning was false in the place it mattered: both tool adapters
+(`codex/hooks/codex-hook-adapter.sh`, `cursor/hooks/claude-hook-adapter.sh`) are
+classified hand-authored in the port maps because no generator can write them, and
+both carried a defect that made the entire mirrored permission layer inert while
+every freshness check passed green (2026-09-18 external audit). Excluding a
+generated tree is permitted, but only with a stated reason naming which files in it
+are hand-authored and why those specific files are safe to skip. "It is generated"
+is not that reason.
+
+**Ask the absence questions.** A defect can be a missing file in a directory nobody
+listed, which no amount of reading existing files will surface. At minimum ask: does
+every tool this repository supports have an equivalent entry point, and does every
+guarantee the canonical source makes actually hold in each projection of it? The
+project-local Cursor bootstrap this repository lacked, and the drift check that
+compared one payload while the sync wrote three, were both found by that question
+rather than by reading a file.
+
+**Separate what you executed from what you read, in the report.** A silently
+degrading guard reads as correct: `source ... || true` and
+`type fn >/dev/null || return 0` look like defensive programming and behave like a
+disabled gate. The two adapter defects above were invisible to reading and took one
+execution each to expose. Every report therefore carries a coverage block naming,
+per surface, whether it was executed, read only, or not covered, and a finding that
+rests on reading alone says so in its evidence line.
+
 Read every engineering surface:
 
 - All source code (`server/`, `web-client/`, `packages/`, or whatever the project uses)
@@ -56,6 +85,7 @@ Read every engineering surface:
 - Tests at every level (unit, integration, E2E). Read them critically, verify they are actually running in CI, and if safe, run them yourself
 - CI / CD configuration, GitHub Actions workflows, deployment configuration (`Dockerfile`, `railway.toml`, `vercel.json`, etc.)
 - Dependency manifests, lockfiles, outdated packages, known CVEs
+- Generated or ported trees, and specifically every file in them the build cannot write: run the real artifact, do not infer its behavior from the generator that did not produce it
 - Observability setup (Sentry, logs, metrics, health endpoints)
 - Convention files at `~/.claude/CLAUDE-BACKEND.md`, `~/.claude/CLAUDE-DATABASE.md`, `~/.claude/CLAUDE-FRONTEND.md`, `~/.claude/CLAUDE-FRONTEND-REACT.md`, `~/.claude/CLAUDE-FRONTEND-NEXT.md`, `~/.claude/CLAUDE-FRONTEND-VITE.md`, `~/.claude/CLOUD-DEPLOYMENT.md`, `~/.claude/KNOWN-ISSUES.md`
 - The project's own `CLAUDE.md`, `docs/FULL_APPLICATION_SPEC.md`, and `docs/USER_STORIES.md` if they exist
@@ -64,6 +94,7 @@ Read every engineering surface:
 
 Write to `docs/audits/YYYY-MM-DD-engineering.md` with at minimum:
 
+- **Coverage**: a table with one row per surface in scope and three columns: the surface, how it was checked (`executed`, `read only`, or `not covered`), and the reason when it was not executed or not covered. An excluded generated tree names which of its files are hand-authored and why skipping them is safe. This section exists because a report that is silent about what it did not check reads exactly like a report that checked everything and found it clean, and twelve reports of this repository read that way while a disabled permission layer sat in an out-of-scope tree.
 - **Executive Summary**: high-level assessment and top 3 priorities
 - **Operational Basics**: do tests run? Is CI green? Are E2E tests wired up and actually executing? Is monitoring in place? Is there a rollback plan? Each of these is a yes / no and a blocker if no.
 - **Architecture & Design**: layering, separation of concerns, coupling, monorepo hygiene
