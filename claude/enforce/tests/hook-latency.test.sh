@@ -33,6 +33,16 @@ BUDGET_MULTIPLIER=6
 BUDGET_FLOOR_MS=250
 ROUNDS=3
 
+# The SessionStart chain below runs with a sandboxed HOME, and harness-sync.sh
+# falls back to $CLAUDE_PROJECT_DIR to find a checkout. Inherited from a Claude
+# Code hook (the R-509 Stop gate sets it to this repo), it made harness-sync see
+# an empty sandbox ~/.claude as drift and run a full ./sync.sh into it on every
+# timed round: about 1.4s per event, on main as on any branch (2026-09-18,
+# reproduced by setting the variable by hand). That times a first-install sync,
+# not the steady-state chain this budget is for, so the fixture measures the
+# same environment whichever process launched it.
+unset CLAUDE_PROJECT_DIR CLAUDE_CODE_REMOTE HARNESS_SYNC_HOME
+
 # SessionStart:resume own floor (final review, MUST-FIX): the shared 250ms
 # floor flapped on this chain. Four consecutive runs against the sandboxed
 # resume payload below measured 258, 271, 306, and 264ms per round, all
