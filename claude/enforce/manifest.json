@@ -553,6 +553,22 @@
             "note": "active only in repos setting fileHeaders:true in .enforce.json; adoption cost is repo-wide"
         },
         {
+            "id": "R-320",
+            "tier": "ast",
+            "enforcer": "ruff:D100",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (module docstring) via push-ruff-gate; active only in repos setting fileHeaders:true in .enforce.json, the same switch as eslint:file-header-comment"
+        },
+        {
+            "id": "R-320",
+            "tier": "ast",
+            "enforcer": "ruff:D103",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog (public-function docstring) via push-ruff-gate; active only in repos setting fileHeaders:true in .enforce.json, the same switch as eslint:file-header-comment"
+        },
+        {
             "id": "R-325",
             "tier": "ast",
             "enforcer": "eslint:destructure-object-reads",
