@@ -79,7 +79,9 @@ fi
 # always exit 0, even when they have a finding: the finding travels as
 # hookSpecificOutput.additionalContext JSON on stdout (a plain-text verifier
 # is also tolerated). Branch on OUTPUT content, not exit status, or a
-# tampered/failing hook reads as "clean".
+# tampered/failing hook reads as "clean". Each verifier runs with stdin
+# closed: enforcement-guard-check.sh drains stdin with cat, which blocks
+# forever on an inherited stdin that never closes.
 LIVE_CLAUDE="$HOME/.claude"
 for verifier in enforcement-guard-check hook-integrity-check; do
   V="$LIVE_CLAUDE/hooks/$verifier.sh"
@@ -89,7 +91,7 @@ for verifier in enforcement-guard-check hook-integrity-check; do
     *) NAME="$verifier" ;;
   esac
   if [ -x "$V" ]; then
-    OUT=$(bash "$V" 2>&1); ST=$?
+    OUT=$(bash "$V" </dev/null 2>&1); ST=$?
     if [ "$ST" -ne 0 ]; then
       report fail "$NAME" "verifier errored: $(head -1 <<<"$OUT")"
     else
@@ -186,7 +188,7 @@ fi
 check_port_freshness() {
   local target="$1" rel="$2" translator="$ROOT_DIR/$2"
   if [ -f "$translator" ]; then
-    if node "$translator" --check --root "$ROOT_DIR" >/dev/null 2>&1; then
+    if node "$translator" --check --root "$ROOT_DIR" </dev/null >/dev/null 2>&1; then
       report pass "port-freshness-$target" "$target port matches its sources"
     else
       report fail "port-freshness-$target" "$rel --check reports drift; run --write"
@@ -214,7 +216,7 @@ if [ "$MODE_FULL" = 1 ]; then
       fi
       SUITES_OK=""; break
     fi
-    bash "$suite" >/dev/null 2>&1 || { report fail fixture-suites "$suite is red"; SUITES_OK=0; break; }
+    bash "$suite" </dev/null >/dev/null 2>&1 || { report fail fixture-suites "$suite is red"; SUITES_OK=0; break; }
   done
   [ "$SUITES_OK" = 1 ] && report pass fixture-suites "both suites green"
 fi

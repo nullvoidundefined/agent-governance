@@ -124,6 +124,29 @@ check "silent zero-exit verifier passes as hook-registration" grep -q "^pass hoo
 OUT=$(HOME="$STUB_FAIL" bash "$DOCTOR" --root "$SANDBOX" 2>&1)
 check "verifier nonzero exit fails as hook-registration" grep -q "^fail hook-registration: verifier errored:.*boom" <<<"$OUT"
 
+# Verifier stdin isolation: the live enforcement-guard-check.sh drains stdin
+# with cat, so a verifier that inherits doctor.sh's stdin blocks forever when
+# the caller holds stdin open (a suite started from a background shell). The
+# stub drains stdin the same way; doctor.sh runs with a FIFO kept open by a
+# sleeping writer, and a portable watchdog (macOS ships no timeout) polls for
+# exit. Killing the writer afterwards closes the FIFO, so a hung run unwinds
+# instead of outliving the suite.
+STUB_DRAIN=$(mktemp -d); STDIN_FIFO_DIR=$(mktemp -d)
+mkdir -p "$STUB_DRAIN/.claude/hooks"
+printf '%s\n' '#!/usr/bin/env bash' 'cat >/dev/null 2>&1 || true' 'exit 0' >"$STUB_DRAIN/.claude/hooks/enforcement-guard-check.sh"
+chmod +x "$STUB_DRAIN/.claude/hooks/enforcement-guard-check.sh"
+mkfifo "$STDIN_FIFO_DIR/stdin"
+sleep 60 >"$STDIN_FIFO_DIR/stdin" & STDIN_HOLDER=$!
+HOME="$STUB_DRAIN" bash "$DOCTOR" --root "$SANDBOX" <"$STDIN_FIFO_DIR/stdin" >/dev/null 2>&1 & DOCTOR_PID=$!
+DOCTOR_EXITED=0
+for _ in $(seq 1 40); do
+  kill -0 "$DOCTOR_PID" 2>/dev/null || { DOCTOR_EXITED=1; break; }
+  sleep 0.25
+done
+kill "$STDIN_HOLDER" 2>/dev/null; wait "$DOCTOR_PID" 2>/dev/null; wait "$STDIN_HOLDER" 2>/dev/null
+rm -rf "$STUB_DRAIN" "$STDIN_FIFO_DIR"
+check "verifiers never block on an inherited stdin that stays open" test "$DOCTOR_EXITED" -eq 1
+
 # Task 4: environment probes (B-6). HOME_SANDBOX keeps this invocation off
 # the live ~/.claude (finding 3): it drives the full script past option
 # parsing, and its Task-3 hook-wiring section would otherwise read the real
