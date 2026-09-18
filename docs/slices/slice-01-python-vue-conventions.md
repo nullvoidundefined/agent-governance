@@ -136,6 +136,8 @@ The `structure-conventions` skill gains the Nuxt vocabulary in R-305 and the Pyt
 
 **Size:** 4 files, about 200 lines.
 
+**Outcome (2026-09-18):** the approach above is the original plan. The merged branch keys the Nuxt walk on a `nuxt` dependency only, rooted at the package's own `app/` and `server/` (PRs #45 and #47), and the `.vue` extension keys only the R-305 folder check. Row 6 of the execution record has the reasons.
+
 ## PR 7: Sync, hashes, README, handoff
 
 **Context:** PRs 1 to 6 have landed on the slice branch. The live `~/.claude` still runs the old files, and the hook-hash manifest does not cover the changed hooks.
