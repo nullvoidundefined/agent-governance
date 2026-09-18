@@ -602,7 +602,7 @@ R-512: Squash-merge feature branches: `git merge --squash`; one commit per featu
   - Never bundle a deletion, security, sync, or migration change; those ship as their own squash-merged PR so each can be reviewed and reverted alone.
   - Rebase merging must be enabled on the repository. `repo-setup` sets product repositories to squash only, so a bundle there needs the owner to enable rebase merging first.
   - Merge commits (`--merge`) are never allowed.
-  Enforcement: hook:git-workflow-guard (denies `gh pr merge --merge`; denies `--rebase` unless `gh pr view <n> --json labels,commits` shows the `bundle` label and every commit message has a `Refs: [A-Z][A-Z0-9]+-[0-9]+` line, failing closed when `gh` cannot answer; the 2-to-5 size and the excluded change kinds are manual)
+  Enforcement: hook:git-workflow-guard (denies `gh pr merge --merge` or `-m`; denies `--rebase` or `-r` unless `gh pr view <n> --json labels,commits` shows the `bundle` label and every commit message has a `Refs: [A-Z][A-Z0-9]+-[0-9]+` line naming a ticket no other commit names; fails closed when `gh` errors or exceeds `CLAUDE_GH_TIMEOUT_SECONDS`, and when the command runs `cd`/`pushd` or sets `GH_REPO`/`GH_HOST`, since the hook cannot see the PR such a command merges; the 2-to-5 size and the excluded change kinds are manual)
 
 R-513: Grep the test suite for a changed constant's old value before pushing; update every stale assertion in the same commit as the source change.
   Scope: any push (not just pre-PR) that changes a named constant's value: palette colors, status strings, limits, URLs, error messages.

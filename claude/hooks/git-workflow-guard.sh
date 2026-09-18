@@ -3,10 +3,10 @@
 # command plus the index. One PreToolUse(Bash) hook, four rules:
 #   R-514  a push whose target branch is main/master asks first, and so does
 #          `gh pr merge` (authorization is per turn, never standing)
-#   R-512  `gh pr merge --merge` is denied, and so is `--rebase` unless the PR
-#          is a bundle (the `bundle` label, a `Refs:` trailer on every commit,
-#          read from `gh pr view`); feature branches squash-merge into one
-#          commit per feature
+#   R-512  `gh pr merge --merge` (`-m`) is denied, and so is `--rebase` (`-r`)
+#          unless the PR is a bundle (the `bundle` label, a distinct `Refs:`
+#          trailer on every commit, read from `gh pr view`); feature branches
+#          squash-merge into one commit per feature
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -65,7 +65,11 @@ if [ -n "$GIT_DIRECTORY" ]; then
   case "$GIT_DIRECTORY" in /*) CWD="$GIT_DIRECTORY" ;; *) CWD="$CWD/$GIT_DIRECTORY" ;; esac
 fi
 
-grep -qE '(^|[;&|])[[:space:]]*(git[[:space:]]+(push|commit)|gh[[:space:]]+pr[[:space:]]+merge)([[:space:]]|$)' <<< "$CMD" || exit 0
+# A `gh pr merge` may follow leading environment assignments
+# (`GH_REPO=o/r gh pr merge ...`), which run the same merge.
+GH_MERGE_PATTERN='(^|[;&|])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+(push|commit)([[:space:]]|$)' <<< "$CMD" ||
+  grep -qE "$GH_MERGE_PATTERN" <<< "$CMD" || exit 0
 
 ask() {
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
@@ -85,45 +89,98 @@ deny() {
   exit 0
 }
 
-# read_merge_target_arguments: fills the caller's view_arguments array with
-# the `gh pr view` arguments naming the same PR the merge names: the first
-# positional argument after `merge` (a number, URL, or branch), plus any
-# --repo/-R. The values of merge's other value-taking flags are skipped so a
-# subject or head SHA is never mistaken for the PR. Word splitting is on
-# whitespace only; a quoted value holding a space can at worst name the wrong
-# PR, which gh then fails to find or reports without the bundle label.
-read_merge_target_arguments() {
-  local merge_arguments merge_token skip_next=0 repo_next=0 pr_selector=""
+# parse_merge_arguments: reads the `gh pr merge` arguments in $CMD and sets
+# MERGE_HAS_MERGE_FLAG and MERGE_HAS_REBASE_FLAG (long, short, and bundled
+# short forms such as `-dr`) plus MERGE_VIEW_ARGUMENTS, the `gh pr view`
+# arguments naming the same PR: the first positional argument (a number, URL,
+# or branch) and any --repo/-R. The values of merge's value-taking flags are
+# skipped so a subject or head SHA is never mistaken for the PR or a strategy.
+# Word splitting is on whitespace only, so a quoted value holding a space can
+# at worst read as an extra strategy flag or the wrong PR, and both of those
+# end in a deny.
+parse_merge_arguments() {
+  local merge_arguments merge_token short_flags short_flag skip_next=0 repo_next=0 pr_selector=""
+  MERGE_HAS_MERGE_FLAG=0
+  MERGE_HAS_REBASE_FLAG=0
+  MERGE_VIEW_ARGUMENTS=()
   merge_arguments=$(printf '%s' "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[^;&|]*' | head -1 |
     sed -E 's/^gh[[:space:]]+pr[[:space:]]+merge[[:space:]]*//' || true)
-  for merge_token in $merge_arguments; do
-    if [ "$repo_next" -eq 1 ]; then view_arguments+=(--repo "$merge_token"); repo_next=0; continue; fi
+  local -a merge_tokens=()
+  read -r -a merge_tokens <<< "$merge_arguments"
+  for merge_token in ${merge_tokens[@]+"${merge_tokens[@]}"}; do
+    if [ "$repo_next" -eq 1 ]; then MERGE_VIEW_ARGUMENTS+=(--repo "$merge_token"); repo_next=0; continue; fi
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
     case "$merge_token" in
-      -R | --repo) repo_next=1 ;;
-      --repo=*) view_arguments+=("$merge_token") ;;
-      -t | --subject | -b | --body | -F | --body-file | -A | --author-email | --match-head-commit) skip_next=1 ;;
-      -*) ;;
+      --merge | --merge=*) MERGE_HAS_MERGE_FLAG=1 ;;
+      --rebase | --rebase=*) MERGE_HAS_REBASE_FLAG=1 ;;
+      --repo) repo_next=1 ;;
+      --repo=*) MERGE_VIEW_ARGUMENTS+=("$merge_token") ;;
+      --subject | --body | --body-file | --author-email | --match-head-commit) skip_next=1 ;;
+      --*) ;;
+      -?*)
+        short_flags="${merge_token#-}"
+        while [ -n "$short_flags" ]; do
+          short_flag="${short_flags:0:1}"
+          short_flags="${short_flags:1}"
+          case "$short_flag" in
+            m) MERGE_HAS_MERGE_FLAG=1 ;;
+            r) MERGE_HAS_REBASE_FLAG=1 ;;
+            R) if [ -n "$short_flags" ]; then MERGE_VIEW_ARGUMENTS+=(--repo "$short_flags"); else repo_next=1; fi; break ;;
+            t | b | F | A) [ -z "$short_flags" ] && skip_next=1; break ;;
+          esac
+        done ;;
       *) [ -z "$pr_selector" ] && pr_selector="$merge_token" ;;
     esac
   done
-  [ -n "$pr_selector" ] && view_arguments=("$pr_selector" ${view_arguments[@]+"${view_arguments[@]}"})
+  [ -n "$pr_selector" ] && MERGE_VIEW_ARGUMENTS=("$pr_selector" ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"})
   return 0
+}
+
+# run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $CWD
+# and prints its output, returning non-zero when gh fails or outlives
+# CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
+# fail-closed: a hook killed by the harness timeout prints nothing, and an
+# empty PreToolUse output is an allow. Polls in 0.2s steps rather than using a
+# `sleep N` watchdog, for the orphaned-sleep reason verification-gate.sh
+# records beside its run_with_timeout.
+run_gh_view_with_deadline() {
+  local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
+  deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
+  view_output_file=$(mktemp) || return 1
+  (cd "$CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits) >"$view_output_file" 2>/dev/null &
+  gh_pid=$!
+  while kill -0 "$gh_pid" 2>/dev/null; do
+    if [ "$waited_steps" -ge "$deadline_steps" ]; then
+      kill -KILL "$gh_pid" 2>/dev/null
+      wait "$gh_pid" 2>/dev/null
+      rm -f "$view_output_file"
+      return 124
+    fi
+    sleep 0.2
+    waited_steps=$((waited_steps + 1))
+  done
+  wait "$gh_pid"
+  gh_status=$?
+  cat "$view_output_file"
+  rm -f "$view_output_file"
+  return "$gh_status"
 }
 
 # read_bundle_verdict: prints "ok" when the PR being merged is a bundle PR
 # (R-512's exception): it carries the `bundle` label and every commit message
-# holds a `Refs: <KEY>` trailer line. Otherwise prints the sentence naming the
-# first missing condition. The PR is the first positional argument after
-# `merge`, or the current branch's PR when none is given, the same resolution
-# gh itself uses. Fail-closed: a gh that errors or answers with anything jq
-# cannot read is reported as unverifiable, never as a bundle. CLAUDE_GH_CMD
+# holds a `Refs: <KEY>` trailer line naming a ticket no other commit names.
+# Otherwise prints the sentence naming the first missing condition. A command
+# that changes directory or sets GH_REPO/GH_HOST merges a PR the hook's own
+# gh view cannot see, so it is reported as unverifiable, as is a gh that
+# errors, hangs, or answers with anything jq cannot read. CLAUDE_GH_CMD
 # replaces gh for the fixture.
 read_bundle_verdict() {
-  local gh_command="${CLAUDE_GH_CMD:-gh}" pr_json
-  local -a view_arguments=()
-  read_merge_target_arguments
-  if ! pr_json=$(cd "$CWD" 2>/dev/null && "$gh_command" pr view ${view_arguments[@]+"${view_arguments[@]}"} --json labels,commits 2>/dev/null) ||
+  local pr_json
+  if grep -qE '(^|[;&|(])[[:space:]]*(cd|pushd)([[:space:]]|$)|(^|[[:space:]])GH_(REPO|HOST)=' <<< "$CMD"; then
+    echo "the command changes directory or sets GH_REPO/GH_HOST, so the hook cannot check the PR it merges; run the merge from the repository's own directory with no cd."
+    return 0
+  fi
+  if ! pr_json=$(run_gh_view_with_deadline) ||
     ! printf '%s' "$pr_json" | jq -e '(.labels | type == "array") and (.commits | type == "array")' >/dev/null 2>&1; then
     echo "gh pr view could not confirm the PR's labels and commits, so the bundle conditions are unverified."
     return 0
@@ -137,6 +194,11 @@ read_bundle_verdict() {
     echo "at least one commit has no \`Refs: <KEY>\` trailer line."
     return 0
   fi
+  if ! printf '%s' "$pr_json" | jq -e '[.commits[] | ((.messageHeadline // "") + "\n" + (.messageBody // ""))
+      | capture("(^|\n)Refs: (?<key>[A-Z][A-Z0-9]+-[0-9]+)").key] | length == (unique | length)' >/dev/null 2>&1; then
+    echo "two or more commits name the same ticket in their \`Refs:\` trailer, which is one ticket's history rather than a bundle."
+    return 0
+  fi
   echo ok
 }
 
@@ -144,11 +206,12 @@ read_bundle_verdict() {
 # no repository context: the command alone carries both the strategy and the
 # fact that a merge is imminent. Only a rebase consults gh, from the command's
 # working directory, to check the bundle conditions.
-if grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' <<< "$CMD"; then
-  if grep -qE '[[:space:]]--merge([[:space:]]|=|$)' <<< "$CMD"; then
+if grep -qE "$GH_MERGE_PATTERN" <<< "$CMD"; then
+  parse_merge_arguments
+  if [ "$MERGE_HAS_MERGE_FLAG" -eq 1 ]; then
     deny "This merges the PR with a strategy R-512 does not allow. Feature branches squash-merge: one commit per feature on main, so the branch's work-in-progress history stays off the trunk. Re-run with --squash."
   fi
-  if grep -qE '[[:space:]]--rebase([[:space:]]|=|$)' <<< "$CMD"; then
+  if [ "$MERGE_HAS_REBASE_FLAG" -eq 1 ]; then
     BUNDLE_VERDICT=$(read_bundle_verdict)
     [ "$BUNDLE_VERDICT" = "ok" ] ||
       deny "This rebase-merges the PR, which R-512 allows only for a bundle PR, and $BUNDLE_VERDICT A bundle carries the \`bundle\` label and one commit per ticket, each with its own \`Refs: <KEY>\` trailer line, so every ticket keeps exactly one commit on main. Otherwise re-run with --squash."

@@ -68,6 +68,29 @@ chmod +x "$SELECTOR_STUB"
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SELECTOR_STUB")" = "deny" ]   # --repo dropped: a different PR
 [ "$(stubbed_decision 'gh pr merge 42 --merge' "$BUNDLE_OK")" = "deny" ]      # merge commits stay denied, bundle or not
 [ "$(stubbed_decision 'gh pr merge 42 --merge --rebase' "$BUNDLE_OK")" = "deny" ]  # --merge wins over a bundle --rebase
+# Short and bundled flags carry the same strategy as the long ones.
+[ "$(stubbed_decision 'gh pr merge 42 -r' "$NO_LABEL")" = "deny" ]           # -r is --rebase
+[ "$(stubbed_decision 'gh pr merge 42 -dr' "$NO_LABEL")" = "deny" ]          # bundled with -d
+[ "$(stubbed_decision 'gh pr merge 42 -r' "$BUNDLE_OK")" = "ask" ]           # -r on a real bundle
+[ "$(stubbed_decision 'gh pr merge 42 -m' "$BUNDLE_OK")" = "deny" ]          # -m is --merge
+[ "$(stubbed_decision 'gh pr merge 42 -dm' "$BUNDLE_OK")" = "deny" ]         # bundled with -d
+# A cd or GH_REPO in the command moves the merge somewhere the hook's gh view
+# does not look, so the bundle check cannot vouch for it.
+[ "$(stubbed_decision 'cd ../other && gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
+[ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
+[ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]  # env prefix still reaches R-514
+# Two commits naming the same ticket are one ticket's history, not a bundle.
+SAME_TICKET=$(write_gh_stub same-ticket '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(a): wip","messageBody":"Refs: IAN-1"}]}')
+[ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SAME_TICKET")" = "deny" ]
+# A gh that hangs is cut off and denied, never left for the hook timeout (an
+# empty hook output is an allow).
+SLOW_GH="$STUB_DIR/slow-gh"
+printf '#!/usr/bin/env bash\nsleep 30\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SLOW_GH"
+chmod +x "$SLOW_GH"
+SLOW_START=$(date +%s)
+SLOW_OUT=$(payload 'gh pr merge 42 --rebase' "$STUB_DIR" | CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_GH_TIMEOUT_SECONDS=1 "$HOOK" 2>/dev/null)
+[ "$(printf '%s' "$SLOW_OUT" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
+[ $(($(date +%s) - SLOW_START)) -lt 10 ] || { echo "a hung gh must be cut off at the deadline" >&2; exit 1; }
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]       # squash never consults gh
 [ "$(decision 'gh pr merge 42 --merge')" = "deny" ]        # wrong strategy (R-512)
 [ "$(decision 'gh pr merge 42 --squash')" = "ask" ]        # right strategy, still needs authorization (R-514)
