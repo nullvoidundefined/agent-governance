@@ -459,6 +459,72 @@ expect none 'git commit -m "alias git to nothing"'
 
 # --- end B-8 ---------------------------------------------------------------
 
+# --- B-9: .git/hooks tampering through other path spellings and tools, and
+# hooks-directory housekeeping that removes or disables no real hook --------
+
+# a doubled slash, a ./ segment, a glob, a quoted segment, or a path that git
+# itself resolves still names the hooks directory
+expect deny 'rm .git//hooks/pre-commit'
+expect deny 'rm ./.git/hooks/pre-commit'
+expect deny 'rm .git/./hooks/pre-commit'
+expect deny 'rm -rf .git/ho*'
+expect deny 'rm .git/hooks*/pre-*'
+expect deny "rm .git/'hooks'/pre-commit"
+expect deny 'rm "$(git rev-parse --git-path hooks)/pre-commit"'
+expect deny 'rm $(git rev-parse --git-dir)/hooks/pre-commit'
+expect deny 'rm "$(git rev-parse --git-common-dir)/hooks/pre-push"'
+
+# changing into .git or .git/hooks first, in the same command, and then
+# removing or disabling a hook by its relative name
+expect deny 'cd .git/hooks && rm pre-commit'
+expect deny 'cd .git && rm -rf hooks'
+expect deny 'cd .git/hooks; chmod -x pre-push'
+
+# other tools that empty, overwrite, rewrite in place, delete, or strip the
+# execute bit from a hook file, including recursive chmod on .git or the hooks
+expect deny 'dd if=/dev/null of=.git/hooks/pre-commit'
+expect deny 'rsync /tmp/empty .git/hooks/pre-commit'
+expect deny ': >| .git/hooks/pre-commit'
+expect deny 'perl -pi -e "s/exit 1/exit 0/" .git/hooks/pre-commit'
+expect deny 'sed -Ei "s/exit 1/exit 0/" .git/hooks/pre-commit'
+expect deny 'sed --in-place "s/exit 1/exit 0/" .git/hooks/pre-commit'
+expect deny 'find .git -name pre-commit -delete'
+expect deny 'find . -path "*/.git/hooks/*" -delete'
+expect deny 'chmod -R a-x .git'
+expect deny 'chmod -R 644 .git/hooks'
+
+# adding the execute bit re-enables a hook rather than disabling it
+expect none 'chmod +x .git/hooks/pre-commit'
+expect none 'chmod 755 .git/hooks/pre-push'
+expect none 'chmod u+x .git/hooks/pre-commit'
+
+# git never runs a .sample file, so removing one disables nothing
+expect none 'rm .git/hooks/pre-commit.sample'
+expect none 'rm .git/hooks/*.sample'
+expect none 'find .git/hooks -name "*.sample" -delete'
+
+# copying a hook to a backup beside it leaves the hook in place, and moving a
+# hook aside immediately before the harness installer reinstalls it is the
+# installer's own upgrade path
+expect none 'cp .git/hooks/pre-commit .git/hooks/pre-commit.bak'
+expect none 'mv .git/hooks/pre-push .git/hooks/pre-push.legacy.bak && bash claude/hooks/install-git-hooks.sh'
+
+# installing a hook from a tracked template and making it executable
+expect none 'cp claude/hooks/pre-push.sample .git/hooks/pre-push && chmod +x .git/hooks/pre-push'
+
+# find with an -exec that only reads a hook changes nothing
+expect none 'find .git/hooks -type f -exec head -1 {} \;'
+expect none 'find .git/hooks -type f -exec ls -l {} +'
+
+# entering .git to run a read, and paths that only resemble .git/hooks, must
+# keep working
+expect none 'cd .git && git status'
+expect none 'rm -rf .github/hooks'
+expect none 'rm .githooks/pre-commit.bak'
+expect none 'chmod -R a-x build'
+
+# --- end B-9 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1

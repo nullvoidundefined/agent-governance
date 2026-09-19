@@ -1,21 +1,20 @@
 {
-  "slice": "B-8 deny indirect hook-skipping config: include, alias, config-file redirection, a git function, and git config writes in any spelling",
-  "phase": "green",
+  "slice": "B-9 recognize .git/hooks tampering in more path spellings and tools, and stop the hooks-directory false positives",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "90dd29e0784fc3e85aa3b0d2c5b911ea4a4c5574e2b8510385eb5424475d7f21",
+      "sha256": "44ffb9fff73d8e5cea35109c6bb87768743a7e0b7cda45e26212df028e3723ff",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T13:08:27Z",
+  "openedAt": "2026-09-19T13:49:24Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T13:18:31Z",
-  "greenAt": "2026-09-19T13:49:24Z"
+  "redAt": "2026-09-19T14:00:03Z"
 }
