@@ -1,6 +1,6 @@
 {
   "slice": "B-1 deny git --no-verify in every accepted spelling and -n on commit",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T10:34:47Z"
+  "redAt": "2026-09-19T10:34:47Z",
+  "greenAt": "2026-09-19T10:42:14Z"
 }

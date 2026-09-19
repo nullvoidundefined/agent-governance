@@ -4,6 +4,7 @@
 #   - `gh api` with a mutating method, in any flag spelling
 #   - curl/wget piped into an interpreter
 #   - writes to git core.hooksPath
+#   - skipping git hooks with --no-verify (any accepted spelling) or commit -n
 #   - credential readout (gh auth token, macOS keychain)
 #   - tampering with ~/.claude/hooks
 #
@@ -78,6 +79,71 @@ if grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]"
     || grep -Eqi "${AT}git config[^|;&]*--unset[^|;&]*core\.hooksPath" <<< "$norm"; then
     emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
 fi
+
+# --- skipping git hooks with --no-verify or commit -n ---------------------
+
+# settings.json could only ask on `git commit --no-verify*`, a literal prefix
+# that missed abbreviations, flags placed before the subcommand, and other
+# subcommands (2026-09-19 ECC audit). Quoted text is blanked before splitting,
+# so a commit message that mentions a flag never reads as the flag itself.
+GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
+[ -f "$GIT_INVOCATION_HELPER" ] && . "$GIT_INVOCATION_HELPER"
+
+# Prints one line per git invocation in the command: quoted runs replaced by
+# Q, split on separators, leading VAR=value assignments dropped, and global
+# options stripped so the subcommand follows `git` directly.
+list_git_invocations() {
+    printf '%s' "$1" | tr '\n' ';' \
+        | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" \
+        | tr ';&|()' '\n\n\n\n\n' \
+        | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//' \
+        | grep -E '^git([[:space:]]|$)' \
+        | if declare -F strip_git_global_options >/dev/null; then strip_git_global_options; else cat; fi
+}
+
+# True when the argument is --no-verify or a prefix git accepts for it:
+# --no-veri is the shortest, because --no-ve also matches --no-verbose.
+is_no_verify_spelling() {
+    [ "${#1}" -ge 9 ] || return 1
+    case "--no-verify" in "$1"*) return 0 ;; esac
+    return 1
+}
+
+# True when a short-flag cluster such as -an sets -n before any flag whose
+# argument is attached (-mn is the message "n", -uno the mode "no").
+is_commit_no_verify_cluster() {
+    local cluster="${1#-}" index
+    for ((index = 0; index < ${#cluster}; index++)); do
+        case "${cluster:index:1}" in
+            n) return 0 ;;
+            m | F | C | c | t | u | S) return 1 ;;
+        esac
+    done
+    return 1
+}
+
+# True when one `git <subcommand> <args>` line skips the hooks it would run.
+skips_git_hooks() {
+    local subcommand arg
+    set -f
+    set -- $1
+    set +f
+    subcommand="${2:-}"
+    shift 2 2>/dev/null || return 1
+    case "$subcommand" in commit | push | merge | rebase | am) ;; *) return 1 ;; esac
+    for arg in "$@"; do
+        is_no_verify_spelling "$arg" && return 0
+        [ "$subcommand" = commit ] && [[ "$arg" =~ ^-[A-Za-z]+$ ]] \
+            && is_commit_no_verify_cluster "$arg" && return 0
+    done
+    return 1
+}
+
+while IFS= read -r git_invocation; do
+    if skips_git_hooks "$git_invocation"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it skips git hooks (--no-verify, an abbreviation of it, or commit -n), which turns off the pre-commit and pre-push gates for this change (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
+    fi
+done < <(list_git_invocations "$cmd")
 
 # --- credential readout ---------------------------------------------------
 
