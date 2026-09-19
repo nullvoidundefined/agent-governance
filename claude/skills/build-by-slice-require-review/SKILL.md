@@ -29,7 +29,7 @@ Size PRs to the reader: go smaller for dense, concurrent, or security-sensitive 
 2. Plan the next slice: write its slice plan document (below) listing its PRs, each PR's single concern described in the PR description format.
 3. **Gate 1:** present the slice plan document and get explicit user approval before building.
 4. Build each PR as a sequence of TDD tasks (below).
-5. Open the PR, then run the blocking pre-merge Codex review (below) alongside the Copilot review; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; protect the branch so merge requires manual approval wherever the host supports it, and hold the same discipline manually where it does not.
+5. Open the PR, then run the blocking pre-merge Codex review (below), plus one Copilot round only when R-514's Copilot budget allows it; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; protect the branch so merge requires manual approval wherever the host supports it, and hold the same discipline manually where it does not.
 6. After merge, update the spec, the tracker, and the slice plan document, then start the next PR or slice.
 
 For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge, and offer to send it to a third-party AI review (for example Copilot) in addition to the Codex review every PR already gets.
