@@ -267,6 +267,75 @@ expect none 'git commit -m "issue #12 and --no-verify"'
 
 # --- end B-5 ---------------------------------------------------------------
 
+# --- B-6: git recognized however the program is spelled or wrapped ----------
+
+# the program name spelled with a backslash, an absolute path, quotes, or any
+# letter case (macOS resolves commands case-insensitively) is still git
+expect deny '\git commit --no-verify -m x'
+expect deny '/usr/bin/git commit --no-verify -m x'
+expect deny '"git" commit --no-verify -m x'
+expect deny 'Git commit --no-verify -m x'
+expect deny 'GIT commit -n -m x'
+
+# a wrapper in front of git, with or without its own options and arguments,
+# does not hide the skip flag, the hook-manager variable, or the hooks path
+expect deny 'exec git commit --no-verify -m x'
+expect deny 'nohup git commit -n -m x'
+expect deny 'time git commit -n -m x'
+expect deny 'nice git commit --no-verify -m x'
+expect deny 'nice -n 10 git push --no-verify'
+expect deny 'timeout 60 git push --no-verify'
+expect deny 'timeout -s KILL 60 git push --no-verify'
+expect deny 'HUSKY=0 exec git commit -m x'
+expect deny 'env -i PATH=/usr/bin:/bin HUSKY=0 git commit -m x'
+expect deny 'env -u FOO HUSKY=0 git commit -m x'
+expect deny 'command env HUSKY=0 git commit -m x'
+expect deny 'sudo HUSKY=0 git commit -m x'
+expect deny 'sudo -E rm .git/hooks/pre-commit'
+expect deny 'sudo -u root git commit --no-verify -m x'
+
+# xargs runs its arguments as the command, so git or rm behind it counts
+expect deny 'echo x | xargs git commit --no-verify -m'
+expect deny 'xargs -0 git commit --no-verify -m < /dev/null'
+expect deny 'ls .git/hooks/* | xargs rm'
+
+# a shell or eval given a command string runs that string as a command
+expect deny 'bash -c "git commit --no-verify -m x"'
+expect deny "sh -c 'git commit -n -m x'"
+expect deny 'zsh -c "HUSKY=0 git push"'
+expect deny 'bash -lc "git commit --no-verify -m x"'
+expect deny 'eval "git commit --no-verify -m x"'
+expect deny 'eval git commit --no-verify -m x'
+
+# compound-command keywords and ! put git in command position
+expect deny '{ git commit --no-verify -m x; }'
+expect deny 'if true; then git commit -n -m x; fi'
+expect deny 'for i in 1; do git commit -n -m x; done'
+expect deny 'while false; do :; done; ! git commit --no-verify -m x'
+expect deny 'if git commit --no-verify -m x; then :; fi'
+
+# the same wrappers around ordinary commands must keep working
+expect none 'nohup git push'
+expect none 'time git commit -m x'
+expect none 'timeout 60 git push'
+expect none 'bash -c "git status"'
+expect none 'eval "git log -n 5"'
+expect none '{ git commit -m x; }'
+expect none 'xargs rm < files.txt'
+expect none 'sudo -E npm install'
+expect none 'env -i PATH=/usr/bin git status'
+
+# a wrapper's own flag that looks like a skip flag belongs to the wrapper
+expect none 'nice -n 10 git push'
+expect none 'time -p git commit -m x'
+
+# other programs whose name contains git are not git
+expect none 'gitk --all'
+expect none 'git-lfs push --no-verify'
+expect none 'legit commit --no-verify'
+
+# --- end B-6 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
