@@ -55,10 +55,25 @@ fi
 # read_substituted_heredoc <word>: prints the body of a `$(cat <<'EOF' ...
 # EOF)` substitution, the form a multi-line -m message usually takes; prints
 # nothing for any other substitution, whose value the scan never computes.
+# Exits 3 when the delimiter is unquoted and the body holds a `$`, backtick,
+# or backslash, since the shell expands those before cat reads the body, so
+# the printed text is not the message git receives.
 read_substituted_heredoc() {
   printf '%s' "$1" | perl -0777 -ne '
-    if (/\A\$\(\s*cat\s*<<-?\s*['\''"]?([A-Za-z_][A-Za-z0-9_]*)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*\n?\s*\)\s*\z/s) { print $2; }
+    if (/\A\$\(\s*cat\s*<<-?\s*(['\''"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\n(.*?)\n[ \t]*\2[ \t]*\n?\s*\)\s*\z/s) {
+      print $3;
+      exit(($1 eq "" && $3 =~ /[\$`\\]/) ? 3 : 0);
+    }
   '
+}
+
+# has_shell_expansion <text>: true when the text holds a parameter expansion,
+# a command substitution, or a backtick, the shapes an unquoted heredoc
+# expands. The scan does not record whether a `-F -` heredoc's delimiter was
+# quoted, so such a body is treated as expanded either way.
+has_shell_expansion() {
+  # shellcheck disable=SC2016  # the literal `$` and backtick being looked for
+  grep -qE '\$[({A-Za-z_]|`' <<< "$1"
 }
 
 # read_short_option_cluster <word> <next word>: reads one bundled short-option
@@ -124,6 +139,7 @@ join_commit_messages() {
     case "$message" in
       '$('* | '`'*)
         message=$(read_substituted_heredoc "$message")
+        [ "$?" -eq 3 ] && IS_MESSAGE_UNCOUNTABLE=1
         if [ -z "$message" ]; then
           IS_MESSAGE_UNCOUNTABLE=1
           [ "$index" -eq 0 ] && return 0
@@ -193,7 +209,12 @@ judge_simple_command() {
   if is_git_commit_command "$@"; then
     collect_commit_messages ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}
     IS_MESSAGE_UNCOUNTABLE=0
-    if [ "$IS_STDIN_MESSAGE" -eq 1 ] && [ "${#MESSAGES[@]}" -eq 0 ]; then MSG="$INVOCATION_STDIN"; else join_commit_messages; fi
+    if [ "$IS_STDIN_MESSAGE" -eq 1 ] && [ "${#MESSAGES[@]}" -eq 0 ]; then
+      MSG="$INVOCATION_STDIN"
+      has_shell_expansion "$MSG" && IS_MESSAGE_UNCOUNTABLE=1
+    else
+      join_commit_messages
+    fi
     [ -n "$MSG" ] && judge_commit_message
     if [ "$IS_MESSAGE_UNCOUNTABLE" -eq 1 ] && [ -z "$PENDING_ASK_REASON" ]; then
       PENDING_ASK_REASON="commit-message-guard (R-505, R-506): the message holds a command substitution whose output this hook cannot read, so it cannot check the subject or count the body. Confirm to proceed if the resulting message has a conventional subject and a short body."
