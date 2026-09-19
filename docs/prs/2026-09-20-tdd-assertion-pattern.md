@@ -13,9 +13,9 @@ Refs: IAN-161
   - The stack frame of a Vitest wrapper that rethrows an assertion as a plain `Error`: `__VITEST_RESOLVES__`, `__VITEST_REJECTS__`, `__VITEST_POLL_CHAIN__` (`expect.poll`), and `__VITEST_EXTEND_ASSERTION__` (an `expect.extend` matcher).
   - A snapshot mismatch (``Snapshot `name 1` mismatched``), which every Vitest snapshot matcher reports.
   - Vitest's own messages for an unmet `expect.assertions(n)` and `expect.hasAssertions()`.
-  - A Jest matcher hint: `expect(...)` followed by an optional `.not`, `.resolves`, or `.rejects` and any matcher call, which covers `expect(received).toBe(expected)`, the spy aliases such as `expect(jest.fn()).lastCalledWith(...expected)`, and Vitest's Jest-style `toSatisfy` hint.
+  - A Jest matcher hint: `expect(...)` followed by an optional `.not`, `.resolves`, or `.rejects` and a call to any matcher whose name is a JavaScript identifier, which covers `expect(received).toBe(expected)`, the spy aliases such as `expect(jest.fn()).lastCalledWith(...expected)`, and Vitest's Jest-style `toSatisfy` hint.
   - Jest's `expect.assertions(` and `expect.hasAssertions(` hints, and jest-circus's reformatting of a `node:assert` failure as `assert.strictEqual(received, expected)` at the start of a line.
-  - The `Object.toX` stack frame of a Jest `expect.extend` matcher, whose message carries no hint of its own.
+  - The `Object.toX` stack frame of a Jest `expect.extend` matcher, whose message carries no hint of its own. Digits, `_`, and `$` are allowed in the name (`toBeWithinRange_2`).
 - **Colour.** `JQ_FAILURE_RESULT` strips ANSI colour codes from each failure message before it is classified. Under `FORCE_COLOR`, which jest-worker forwards, Jest splits every hint with escape codes (`expect(…received…).…toBe`), and Vitest's `toSatisfy` hint is coloured even without it.
 - **Docs.** The `tdd.sh red` paragraph in `claude/enforce/README.md` lists what the assertion RED is under Vitest and Jest, and says that a plain `Error` mentioning "expected" is not one. `claude/enforce/hook-hashes.txt` is regenerated. The Codex and Cursor ports were regenerated as well and did not change, because neither carries `tdd.sh` or the enforce README.
 
@@ -52,6 +52,10 @@ Codex was out of quota (its CLI reported the usage limit until 2026-09-21), so t
 - LOW, fixed: the pattern comment, the README, and the fixture header overstated what the first version covered. All three are rewritten, and the fixture now covers each lost shape.
 - LOW, accepted: a plain error whose message contains a marker verbatim is still accepted. See the accepted residual above.
 - LOW, no change: the pattern is plain POSIX ERE with no BSD and GNU divergence. `[A-Z]` also matches lowercase under BSD grep in a single-byte locale, which only widens a stack-frame match.
+
+## Copilot review
+
+Copilot's first round left one inline finding. The matcher name after a Jest hint and in the `Object.toX` frame was limited to letters, so a custom matcher named with digits or `_` (`toBeWithinRange2`) was refused. Both fragments now accept any JavaScript identifier, and two Jest-stub modes cover a hint and a frame with such a name; the hint case failed first, as expected. Its summary also mentioned two documentation statements that needed qualification without naming them; the one statement that was affected, "any matcher call", now says the name must be a JavaScript identifier.
 
 ## Reflection
 

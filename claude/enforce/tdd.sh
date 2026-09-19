@@ -371,8 +371,9 @@ PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse e
 # `expect(jest.fn()).lastCalledWith(...expected)`, `expect.assertions(1)`,
 # node:assert reformatted as `assert.strictEqual(received, expected)`), and an
 # expect.extend matcher without a hint fails in its own `Object.toX` frame.
+# Matcher names are any JavaScript identifier (`toBeWithinRange_2`).
 # Colour is stripped before matching (JQ_FAILURE_RESULT).
-ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION)__|Snapshot `.*` mismatched|expected number of assertions to be|expected any number of assertion|expect\(.*\)(\.(not|resolves|rejects))*\.[A-Za-z]+\(|expect\.(assertions|hasAssertions)\(|^assert(\.[A-Za-z]+)?\(|at Object\.to[A-Z][A-Za-z]* \('
+ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION)__|Snapshot `.*` mismatched|expected number of assertions to be|expected any number of assertion|expect\(.*\)(\.(not|resolves|rejects))*\.[A-Za-z_$][A-Za-z0-9_$]*\(|expect\.(assertions|hasAssertions)\(|^assert(\.[A-Za-z]+)?\(|at Object\.to[A-Z0-9_$][A-Za-z0-9_$]* \('
 # Shell fixtures: bash's own message for a script or command that does not
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
