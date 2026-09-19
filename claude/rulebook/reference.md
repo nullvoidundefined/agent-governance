@@ -533,7 +533,7 @@ R-412: Work in slices, each one behavior: open, failing test, red, implementatio
   Spec, in order:
   1. `bash ~/.claude/enforce/tdd.sh open "<slice>" [--spec <path>]` writes the lock in phase `open`: production paths are read-only, test and spec paths are writable.
   2. Write the failing test for this one behavior.
-  3. `tdd.sh red <test file...>`: the named tests must fail for an assertion or missing-module reason (a syntax error in the test, no tests found, or a skip is rejected); the rest of the suite must be green; the pass count and the test-file hashes are recorded and the phase becomes `red`: test paths are read-only, production opens up.
+  3. `tdd.sh red <test file...>`: the named tests must fail for an assertion or missing-module reason (a syntax error in the test, no tests found, or a skip is rejected); the rest of the suite must be green; the pass count and the test-file hashes are recorded and the phase becomes `red`: test paths are read-only, production opens up. A new test in a file that already holds passing tests is named by id, `<test file>::<test id>` (the pytest node id, or the Vitest or Jest full name); the file's other tests must keep passing. Bash fixtures stay file-level.
   4. Write the minimum implementation. `tdd.sh green`: the named tests pass, the suite count is at or above the baseline, the hashes match the lock and the RED commit; phase becomes `green`.
   5. Refactor under the same lock; `tdd.sh green` again if anything changed.
   6. Commit; `tdd.sh close` removes the lock. The RED commit (`test:`) precedes the GREEN commit (`feat:`, `fix:`, or `refactor:`).

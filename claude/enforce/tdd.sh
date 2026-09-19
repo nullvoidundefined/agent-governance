@@ -13,18 +13,30 @@
 #       every locked test file (every test file the suite ran when none is
 #       named), and starts in phase "refactor", which locks tests like "red".
 #       `tdd.sh green` then works unchanged: hashes, counts, no failures.
-#   tdd.sh red <test file>...
-#       runs the whole suite once and requires: every test in the named files
-#       fails for an assertion or a missing-module reason (a syntax error, a
-#       file with no tests, a passing test, or a skipped test is refused); no
-#       other file fails. Records the pass count outside the named files as the
-#       baseline, the sha256 of every named file, and moves to phase "red".
+#   tdd.sh red <test file | test file::test id>...
+#       runs the whole suite once and requires: every named test fails for an
+#       assertion or a missing-module reason (a syntax error, a file with no
+#       tests, a passing test, or a skipped test is refused); no other test
+#       fails. A bare file names every test in it. A test id names tests in a
+#       file that already holds passing ones, such as a review fix adding a
+#       case: `path::test_x`, `path::TestA::test_x`, or `path::test_x[1-2]`
+#       under pytest (a bare parametrized name covers every parameter set, a
+#       class every test in it), and `path::<full name>` under Vitest and Jest
+#       (describe titles and the test title joined by spaces, the name their
+#       -t filter matches). The file's other tests must keep passing and the
+#       file must still load, so a new test imports an unwritten unit inside
+#       its body. Bash fixtures stay file-level: a fixture is one test, so a
+#       test id on a *.test.sh path is refused. Records the pass count outside
+#       the named tests as the baseline (the unnamed tests of an id-named file
+#       count toward it), the sha256 of every containing file with its ids,
+#       and moves to phase "red".
 #   tdd.sh green
-#       requires the named files to be byte-identical to the lock and, when the
-#       lock is committed, to the commit that introduced it (the RED commit);
-#       runs the suite and requires every named test to pass, none skipped,
-#       no other failure, and the outside-file pass count at or above the
-#       baseline. Moves to phase "green". Re-run after every refactor.
+#       requires the containing files to be byte-identical to the lock and,
+#       when the lock is committed, to the commit that introduced it (the RED
+#       commit); runs the suite and requires every named test to pass, none
+#       skipped, no other failure, and the pass count outside the named tests
+#       at or above the baseline. Moves to phase "green". Re-run after every
+#       refactor.
 #   tdd.sh close
 #       removes the lock; refused unless the phase is green, or the phase is
 #       open and no test was ever locked (nothing could have been written
@@ -282,6 +294,18 @@ try:
     testcases = list(ElementTree.parse(xml_path).iter("testcase"))
 except (OSError, ElementTree.ParseError):
     sys.exit(1)
+
+
+def node_title(testcase):
+    """The test node id inside its file, as pytest would take it after `path::`:
+    xunit1 writes the classname as the file path dotted (no .py) followed by any
+    class names, and the name as the function plus any parameter set."""
+    module = os.path.splitext(testcase.get("file", ""))[0].replace(os.sep, ".").replace("/", ".")
+    classname = testcase.get("classname", "")
+    classes = classname[len(module) + 1:].split(".") if module and classname.startswith(module + ".") else []
+    return "::".join(classes + [testcase.get("name", "")])
+
+
 records = {}
 for testcase in testcases:
     file_name = os.path.normpath(os.path.join(project_dir, testcase.get("file", "")))
@@ -298,7 +322,7 @@ for testcase in testcases:
         status, failure_messages = "skipped", []
     else:
         status, failure_messages = "passed", []
-    record["assertionResults"].append({"title": testcase.get("name", ""), "status": status, "failureMessages": failure_messages})
+    record["assertionResults"].append({"title": node_title(testcase), "status": status, "failureMessages": failure_messages})
 for file_name in named_files:
     records.setdefault(file_name, {"name": file_name, "status": "passed", "message": "", "assertionResults": []})
 print(json.dumps({"testResults": list(records.values())}))
@@ -384,19 +408,109 @@ classify_red() {
   fi
 }
 
-# Files in the report other than the named ones: dies on any failure, prints
-# the pass count.
-outside_pass_count() {
-  local names="$1" failing
-  failing=$(jq -r --argjson names "$names" '.testResults[] | select((.name as $n | $names | index($n)) == null) | select(.status == "failed" or ([.assertionResults[] | select(.status == "failed")] | length > 0)) | .name' "$REPORT")
-  [ -z "$failing" ] || die "the rest of the suite is red, so nothing here is a clean RED: $(printf '%s' "$failing" | sed "s#^$ROOT_PHYSICAL/##" | tr '\n' ' ')"
-  jq --argjson names "$names" '[.testResults[] | select((.name as $n | $names | index($n)) == null) | .assertionResults[] | select(.status == "passed")] | length' "$REPORT"
+# Test node ids. A report test's key is its full name: Vitest's and Jest's
+# fullName (describe titles and the test title joined by spaces, the string
+# their -t filter matches), or the pytest converter's title (the node id after
+# `path::`). A named id matches its key exactly; under pytest it also matches
+# every parameter set of a bare function name (`test_x` for `test_x[1]`) and
+# every test inside a named class (`TestA` for `TestA::test_y`), as pytest's
+# own `path::id` selection does. `in_scope($ids)` is true for every test of a
+# file named whole ($ids null) and for the matched tests of a file named by id.
+JQ_TEST_IDS='
+def test_key: (.fullName // .title);
+def matches_id($id; $kind): test_key as $k
+  | $k == $id or ($kind == "pytest" and (($k | startswith($id + "[")) or ($k | startswith($id + "::"))));
+def named_by($ids; $kind): . as $test | any($ids[]; . as $id | $test | matches_id($id; $kind));
+def in_scope($ids; $kind): $ids == null or named_by($ids; $kind);
+def entry_for($named): .name as $n | ($named | map(select(.name == $n)) | first);
+'
+
+# classify_named <rel> <ids json>: classify_red for a file named by test ids.
+# Every id must match a test; the matched tests must each run and fail for an
+# assertion or a missing-module reason; every other test in the file must not
+# fail (they keep passing beside the new ones), and a file that no longer
+# loads is refused, since its other tests stopped running. Prints the class.
+classify_named() {
+  local rel="$1" ids="$2" record message id listed
+  record=$(file_record "$rel")
+  [ -n "$record" ] || die "$rel was not run by $RUNNER_KIND (is it under a test tree the config includes?)"
+  if [ "$(printf '%s' "$record" | jq '.assertionResults | length')" -eq 0 ]; then
+    message=$(printf '%s' "$record" | jq -r '.message // ""' | head -1)
+    grep -qE "$PARSE_FAILURE" <<< "$message" && die "$rel does not parse; a broken test is not a RED test. First line: $message"
+    die "$rel fails to load, so the tests already in it stopped running${message:+: $message}. With test ids named the file's other tests must keep passing: import what is not written yet inside the new test, or name the whole file"
+  fi
+  while IFS= read -r id; do
+    printf '%s' "$record" | jq -e --arg id "$id" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'any(.assertionResults[]; matches_id($id; $kind))' >/dev/null && continue
+    listed=$(printf '%s' "$record" | jq -r "$JQ_TEST_IDS"'[.assertionResults[] | test_key] | .[:10] | join(", ")')
+    die "no test in $rel matches $id; name a test by $(id_form) as the report lists them: $listed"
+  done < <(printf '%s' "$ids" | jq -r '.[]')
+  local named_filter="$JQ_TEST_IDS"'[.assertionResults[] | select(named_by($ids; $kind))]'
+  local offenders
+  offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$named_filter"' | map(select(.status == "skipped" or .status == "pending" or .status == "todo") | $rel + "::" + test_key) | join(", ")')
+  [ -z "$offenders" ] || die "$offenders is skipped; a RED test must run and fail (R-401)"
+  offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$named_filter"' | map(select(.status == "passed") | $rel + "::" + test_key) | join(", ")')
+  [ -z "$offenders" ] || die "$offenders already passes. A RED test fails before the implementation exists; remove or sharpen it"
+  offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$JQ_TEST_IDS"'[.assertionResults[] | select(.status == "failed" and (named_by($ids; $kind) | not)) | $rel + "::" + test_key] | join(", ")')
+  [ -z "$offenders" ] || die "$offenders fails but was not named; the tests beside the named ones must keep passing. Name it too if it is part of this slice, or fix it first"
+  local failures
+  failures=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$named_filter"' | [.[].failureMessages[]] | join("\n")')
+  if grep -qE "$MISSING_MODULE" <<< "$failures"; then printf 'missing-module'
+  elif grep -qE "$ASSERTION" <<< "$failures"; then printf 'assertion'
+  else die "$rel fails for a reason this script does not classify: $(printf '%s' "$failures" | head -1)"
+  fi
 }
 
+# How a test id is written for the current runner, for refusal messages.
+id_form() {
+  case "$RUNNER_KIND" in
+    pytest) printf 'its pytest node id after the path (test_name, Class::test_name, or test_name[params])' ;;
+    *) printf 'its full name (describe titles and the test title joined by spaces, as -t matches it)' ;;
+  esac
+}
+
+# named_count <rel> <ids json>: how many tests the lock records for a file,
+# every test when it is named whole ($ids null), the matched ones otherwise.
+named_count() {
+  file_record "$1" | jq --argjson ids "$2" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.assertionResults[] | select(in_scope($ids; $kind))] | length'
+}
+
+# outside_pass_count <named json>: <named json> lists {name, ids} per named
+# file. Everything outside the named tests (whole files outside the list, and
+# the unnamed tests of a file named by id) must not fail, and a file named by
+# id must still load; dies on a failure, prints the outside pass count.
+outside_pass_count() {
+  local named="$1" failing
+  failing=$(jq -r --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.testResults[] | entry_for($named) as $e
+    | if $e == null then select(.status == "failed" or any(.assertionResults[]; .status == "failed"))
+      elif $e.ids == null then empty
+      else select((.status == "failed" and (.assertionResults | length) == 0) or any(.assertionResults[]; .status == "failed" and (named_by($e.ids; $kind) | not)))
+      end | .name' "$REPORT")
+  [ -z "$failing" ] || die "the rest of the suite is red, so nothing here is a clean RED: $(printf '%s' "$failing" | sed "s#^$ROOT_PHYSICAL/##" | tr '\n' ' ')"
+  jq --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.testResults[] | entry_for($named) as $e
+    | if $e == null then .assertionResults[] elif $e.ids == null then empty else .assertionResults[] | select(named_by($e.ids; $kind) | not) end
+    | select(.status == "passed")] | length' "$REPORT"
+}
+
+# names_json <rel>...: the named-file list for whole files.
 names_json() {
   local rel out='[]'
-  for rel in "$@"; do out=$(printf '%s' "$out" | jq -c --arg n "$(report_name "$rel")" '. + [$n]'); done
+  for rel in "$@"; do out=$(printf '%s' "$out" | jq -c --arg n "$(report_name "$rel")" '. + [{name: $n, ids: null}]'); done
   printf '%s' "$out"
+}
+
+# spec_named <spec json>: the named-file list for a red or lock spec, whose
+# entries carry a root-relative path and ids (null for a whole file).
+spec_named() { jq -c --arg root "$ROOT_PHYSICAL" 'map({name: ($root + "/" + .path), ids: (.ids // null)})' <<< "$1"; }
+
+# add_named <spec json> <rel> <id or "">: merges one red argument into the
+# spec. A file named whole anywhere in the arguments stays whole; ids named
+# for one file collect on one entry, without duplicates.
+add_named() {
+  jq -c --arg p "$2" --arg i "$3" '(map(.path) | index($p)) as $at
+    | if $at == null then . + [{path: $p, ids: (if $i == "" then null else [$i] end)}]
+      elif $i == "" or .[$at].ids == null then .[$at].ids = null
+      elif (.[$at].ids | index($i)) != null then .
+      else .[$at].ids += [$i] end' <<< "$1"
 }
 
 # --- subcommands -------------------------------------------------------------
@@ -463,28 +577,35 @@ cmd_red() {
   require_lock
   case "$(phase)" in open | red) ;; refactor) die "this is a refactor slice; a new behavior is a new slice: 'tdd.sh green', 'tdd.sh close', then 'tdd.sh open'" ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
   esac
-  [ $# -gt 0 ] || die "usage: tdd.sh red <test file>..."
-  local tests_pattern rels=() rel
+  [ $# -gt 0 ] || die "usage: tdd.sh red <test file | test file::test id>..."
+  local tests_pattern spec='[]' rels=() rel file id
   tests_pattern=$(jq -r '.patterns.tests' "$POLICY")
   for f in "$@"; do
-    rel=$(relative "$f")
+    file="$f"; id=""
+    case "$f" in *::*) file="${f%%::*}"; id="${f#*::}"; [ -n "$id" ] || die "$f names an empty test id" ;; esac
+    case "$file" in *.test.sh) [ -z "$id" ] || die "$file is a bash fixture, which is one test: name the fixture file, not a test inside it (test ids apply to pytest, Vitest, and Jest)" ;; esac
+    rel=$(relative "$file")
     grep -qE "$tests_pattern" <<< "$rel" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
-    rels+=("$rel")
+    spec=$(add_named "$spec" "$rel" "$id")
   done
+  while IFS= read -r rel; do rels+=("$rel"); done < <(jq -r '.[].path' <<< "$spec")
   run_suite "${rels[@]}"
-  local entries='[]' class
+  local entries='[]' class ids
   for rel in "${rels[@]}"; do
-    class=$(classify_red "$rel") || exit 1
-    entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" --arg c "$class" \
-      --argjson n "$(file_record "$rel" | jq '.assertionResults | length')" '. + [{path:$p, sha256:$h, failureClass:$c, tests:$n}]')
+    ids=$(jq -c --arg p "$rel" '.[] | select(.path == $p) | .ids' <<< "$spec")
+    if [ "$ids" = null ]; then class=$(classify_red "$rel") || exit 1
+    else class=$(classify_named "$rel" "$ids") || exit 1
+    fi
+    entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" --arg c "$class" --argjson ids "$ids" \
+      --argjson n "$(named_count "$rel" "$ids")" '. + [{path:$p, sha256:$h, failureClass:$c, tests:$n} + (if $ids == null then {} else {ids:$ids} end)]')
   done
   local baseline
-  baseline=$(outside_pass_count "$(names_json "${rels[@]}")") || exit 1
+  baseline=$(outside_pass_count "$(spec_named "$spec")") || exit 1
   jq --argjson t "$entries" --argjson b "$baseline" --arg k "$RUNNER_KIND" --arg at "$(now)" \
     '.phase = "red" | .tests = $t | .baseline = {passed: $b, runner: $k} | .redAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
   local summary
-  summary=$(printf '%s' "$entries" | jq -r '[.[] | .path + " [" + .failureClass + ", " + (.tests | tostring) + " test(s)]"] | join(", ")')
+  summary=$(printf '%s' "$entries" | jq -r '[.[] | .path + (if .ids then "::{" + (.ids | join(", ")) + "}" else "" end) + " [" + .failureClass + ", " + (.tests | tostring) + " test(s)]"] | join(", ")')
   say "RED: $summary; baseline $baseline passing outside. Tests are locked; implement, then 'tdd.sh green'."
 }
 
@@ -516,23 +637,32 @@ cmd_green() {
   rels=$(jq -r '.tests[].path' "$LOCK")
   while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$rels"
   run_suite "${locked_rels[@]+"${locked_rels[@]}"}"
-  names='[]'
+  names=$(spec_named "$(jq -c '.tests' "$LOCK")")
+  local ids id
   while IFS= read -r rel; do
     [ -n "$rel" ] || continue
-    names=$(printf '%s' "$names" | jq -c --arg n "$(report_name "$rel")" '. + [$n]')
+    ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
     record=$(file_record "$rel")
     [ -n "$record" ] || die "$rel was not run"
     # A file with no test results failed to load; one with results failed a
-    # test, and the refusal names it with the first line of its failure; one
-    # whose tests all passed but is still marked failed hit a suite-level
-    # error (a throwing afterAll), and the refusal carries the file message.
+    # named test (every test of a file named whole), and the refusal names it
+    # with the first line of its failure; one whose tests all passed but is
+    # still marked failed hit a suite-level error (a throwing afterAll), and
+    # the refusal carries the file message. A failing unnamed test in a file
+    # named by id is left to outside_pass_count, which names the file.
     printf '%s' "$record" | jq -e '.status == "failed" and (.assertionResults | length) == 0' >/dev/null && die "$rel failed to run: $(printf '%s' "$record" | jq -r '.message' | head -1)"
-    printf '%s' "$record" | jq -e '[.assertionResults[] | select(.status != "passed")] | length == 0' >/dev/null \
-      || die "$rel is not green: $(printf '%s' "$record" | jq -r '[.assertionResults[] | select(.status != "passed") | "\(.title) (\(.status))" + (((.failureMessages // [])[0] // "") | split("\n") | map(select(test("\\S"))) | if length > 0 then ": " + .[0] else "" end)] | join(", ")')"
-    printf '%s' "$record" | jq -e '.status == "failed"' >/dev/null && die "$rel failed outside its tests: $(printf '%s' "$record" | jq -r '.message' | head -1)"
+    if [ "$ids" != null ]; then
+      while IFS= read -r id; do
+        printf '%s' "$record" | jq -e --arg id "$id" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'any(.assertionResults[]; matches_id($id; $kind))' >/dev/null \
+          || die "$rel::$id did not run; RED recorded it (R-401)"
+      done < <(jq -r '.[]' <<< "$ids")
+    fi
+    printf '%s' "$record" | jq -e --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.assertionResults[] | select(in_scope($ids; $kind)) | select(.status != "passed")] | length == 0' >/dev/null \
+      || die "$rel is not green: $(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.assertionResults[] | select(in_scope($ids; $kind)) | select(.status != "passed") | "\(test_key) (\(.status))" + (((.failureMessages // [])[0] // "") | split("\n") | map(select(test("\\S"))) | if length > 0 then ": " + .[0] else "" end)] | join(", ")')"
+    printf '%s' "$record" | jq -e '.status == "failed" and all(.assertionResults[]; .status != "failed")' >/dev/null && die "$rel failed outside its tests: $(printf '%s' "$record" | jq -r '.message' | head -1)"
     local expected
     expected=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .tests' "$LOCK")
-    [ "$(printf '%s' "$record" | jq '.assertionResults | length')" -ge "$expected" ] || die "$rel ran fewer tests than RED recorded ($expected)"
+    [ "$(named_count "$rel" "$ids")" -ge "$expected" ] || die "$rel ran fewer named tests than RED recorded ($expected)"
   done <<< "$rels"
   local baseline passed
   baseline=$(jq -r '.baseline.passed // 0' "$LOCK")
