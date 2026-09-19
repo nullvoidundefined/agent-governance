@@ -84,7 +84,7 @@ Check if the spec and plan are fully shipped (all tasks done, all acceptance cri
 
 Run the project's test, build, and lint commands (whatever `package.json`, `Makefile`, or the project `CLAUDE.md` defines). All three must pass before any merge decision.
 
-**PR loop** (R-514, R-515, R-517; skip the `/code-review` and Copilot steps on the trivial tier, never the Codex review):
+**PR loop** (R-514, R-515, R-517; skip the `/code-review`, Copilot, and Codex steps on a trivial tier recorded in the task-tier ledger for this branch):
 1. Run `/code-review` on the branch diff, or dispatch a fresh reviewer subagent given only the diff, before opening the PR. Fix every real finding test-first (failing case, then fix) and record what the review found in the PR document.
 2. Open the PR and request the Copilot review.
 3. Run the blocking pre-merge Codex review (below) alongside Copilot, not instead of it.
@@ -93,7 +93,7 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 6. Request a second Copilot round only when round one changed behavior (code or tests). Wording, docs, and PR-description fixes merge on green CI without a re-review. The same holds for Codex: a later behavior-changing commit means re-running its review on the new range.
 7. For 2 to 5 small related tickets, one bundle PR may replace separate PRs: label it `bundle`, keep one commit per ticket with its own `Refs:` trailer, and merge with `--rebase` (R-512). Never bundle deletion, security, sync, or migration changes.
 
-**Pre-merge Codex review** (R-517, blocking, every PR in every tier):
+**Pre-merge Codex review** (R-517, blocking, every PR above the trivial tier; a trivial PR is exempt only when `.claude/task-tier.json` records the trivial tier for its head branch):
 
 Codex (OpenAI's coding agent, run through its CLI as a separate process, so the reviewer is a different model from the one that wrote the code) reviews the PR's diff against the spec and the acceptance criteria the PR claims, before merge.
 
@@ -189,7 +189,7 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 
 | Tier | Adds |
 |---|---|
-| **Trivial** | Commit, open the PR, run the pre-merge Codex review and add its section (R-517), merge on green CI: no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
+| **Trivial** | Commit, open the PR, merge on green CI with no Codex review (R-517 exempts a branch the task-tier ledger records as trivial): no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
 | **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch; ticket closed with actuals |
 | **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; ticket closed with actuals and the recalibration line; handoff if the session is ending |
 | **Saga** | Every surface tested; handoff is mandatory; ticket closed with actuals per stage that shipped; consider whether enough shipped to warrant an engineering audit |

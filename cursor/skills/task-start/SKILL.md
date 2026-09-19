@@ -62,15 +62,16 @@ Ticket:         No (only when the user asks)
 TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
 Branch:         Yes, its own branch and PR (never a direct push to main)
-PR ceremony:    Minimal: no ticket, no PR document, no Copilot review request. The pre-merge Codex review
-                (R-517) still runs, because it blocks every merge; its `## Codex review` section can be one line.
+PR ceremony:    Minimal: no ticket, no PR document, no Copilot review request, and no pre-merge Codex
+                review: R-517 exempts the trivial tier, and the merge guard reads the exemption from the
+                task-tier ledger, never from the PR body.
 Worktree:       No
 Subagents:      No
 Execution:      Inline, immediate
 Skills invoked: None (just do it)
 ```
 
-Execute the change on its own branch, open the PR, run the Codex review and add its section to the PR body (R-517), and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). Done.
+Create the branch, then record the tier on it with `bash ~/.claude/skills/task-start/scripts/task-tier.sh set trivial "<reason>"` so the ledger names that branch; `git-workflow-guard.sh` lets the PR merge without a `## Codex review` section only when that untracked ledger, in the checkout the merge runs from, records the trivial tier for the PR's head branch (a trivial marker typed into the PR body counts for nothing). Execute the change, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). If the change grows past trivial, reclassify (`task-tier.sh set standard ...`), and the Codex review is required again. Done.
 
 ### Standard
 
@@ -169,7 +170,7 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 
 | Tier | Setup sequence |
 |---|---|
-| **Trivial** | Branch, do the work, open the PR, run the Codex review (R-517), merge on green CI. |
+| **Trivial** | Branch, record the trivial tier on it (`task-tier.sh set trivial`), do the work, open the PR, merge on green CI; no Codex review (R-517's ledger-verified exemption). |
 | **Investigation** | Write the scope line, gather evidence, report. No branch unless the report is a file. |
 | **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, add the product docs when the task adds user-facing behavior (below), then tdd-gated-dispatch's single-session loop |
 | **Complex** | Spec (superpowers:brainstorming if none exists), then the adversarial spec review (below) with every finding fixed or answered, then the owner's spec approval, then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
@@ -257,7 +258,7 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Implementation (inline) | Sonnet |
 | Implementation (subagent) | Sonnet (implementer), Opus (slice critic, and the test-author agent when it is the Codex fallback) |
 | Failing tests, every tier | Codex through `codex exec` (R-907); account default model, no `-m` |
-| Adversarial spec review (Complex, Saga) and pre-merge PR review (every PR, R-517) | Codex through `codex exec -s read-only`; fallback a separate Claude agent on `fable` (else `opus`), never this session |
+| Adversarial spec review (Complex, Saga) and pre-merge PR review (every non-trivial PR, R-517) | Codex through `codex exec -s read-only`; fallback a separate Claude agent on `fable` (else `opus`), never this session |
 | Audit/review | Per the role file: Opus for the standing roles (engineering, security, criticism) and the customer walkthrough, Sonnet for the rubric roles (design, UX, financial, legal, marketing); `all-hands` overrides every role to Sonnet for its weekly scan |
 | Doc edits, file moves, config | Haiku or Sonnet |
 
