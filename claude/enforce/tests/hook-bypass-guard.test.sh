@@ -605,6 +605,61 @@ expect_under none "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'echo digit'
 
 # --- end B-10 --------------------------------------------------------------
 
+# --- B-11: git run from substitutions in double quotes and heredoc bodies,
+# shell strings behind shell options, text fed to a shell, a substituted
+# program name, and a shell alias under any name ------------------------------
+
+# bash runs a command substitution inside double quotes, in either spelling
+expect deny 'echo "$(git commit --no-verify -m x)"'
+expect deny 'echo "`git commit -n -m x`"'
+expect deny 'x="$(HUSKY=0 git push)"'
+
+# bash expands substitutions in the body of a heredoc whose marker is unquoted
+expect deny $'cat <<EOF\n$(git commit --no-verify -m x)\nEOF'
+expect deny $'git commit -F - <<EOF\nfeat: x `git push --no-verify`\nEOF'
+
+# shell options in front of -c do not hide the command string that -c runs
+expect deny 'bash -o pipefail -c "git commit --no-verify -m x"'
+expect deny 'bash --norc -c "git commit --no-verify -m x"'
+expect deny "bash -euo pipefail -c 'git commit -n -m x'"
+expect deny "sh -e -c 'HUSKY=0 git push'"
+
+# text fed to a shell on stdin, by here-string, pipe, or heredoc, runs as a
+# command, even when the heredoc marker is quoted
+expect deny 'bash <<< "git commit --no-verify -m x"'
+expect deny "sh <<< 'HUSKY=0 git push'"
+expect deny 'echo "git commit --no-verify -m x" | bash'
+expect deny "printf 'git push --no-verify\\n' | sh"
+expect deny $'cat <<\'EOF\' | bash\ngit commit -n -m x\nEOF'
+
+# a program name produced by a substitution that locates git is git
+expect deny '$(which git) commit -n -m x'
+expect deny '$(command -v git) push --no-verify'
+expect deny '`which git` commit --no-verify -m x'
+
+# a shell alias under any name whose value skips hooks, whether or not the
+# same command goes on to use it
+expect deny $'shopt -s expand_aliases\nalias gc=\'git commit --no-verify\'\ngc -m x'
+expect deny 'alias gp="HUSKY=0 git push"'
+
+# a quoted heredoc marker keeps the body literal, so nothing in it runs
+expect none $'cat <<\'EOF\'\n$(git commit --no-verify -m x)\nEOF'
+expect none $'git commit -F - <<\'EOF\'\nfeat: x mentions git push --no-verify\nEOF'
+
+# ordinary commands in the same shapes must keep working
+expect none 'echo "$(git rev-parse HEAD)"'
+expect none 'bash -o pipefail -c "npm test"'
+expect none 'bash <<< "echo hi"'
+expect none 'echo "npm test" | bash'
+expect none '$(which git) status'
+expect none "alias gs='git status'"
+expect none "alias ll='ls -la'"
+
+# text piped into a program that is not a shell is data, not a command
+expect none 'echo "git commit --no-verify is banned" | grep banned'
+
+# --- end B-11 --------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
