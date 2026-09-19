@@ -1,6 +1,6 @@
 {
   "slice": "B-8 deny indirect hook-skipping config: include, alias, config-file redirection, a git function, and git config writes in any spelling",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T13:18:31Z"
+  "redAt": "2026-09-19T13:18:31Z",
+  "greenAt": "2026-09-19T13:49:24Z"
 }

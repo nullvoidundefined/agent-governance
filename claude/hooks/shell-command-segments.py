@@ -18,7 +18,9 @@ dropped along with their own options, and the program name is reduced to its
 basename, with any capitalization of git printed as `git` (macOS resolves
 commands case-insensitively). The words piped into xargs become arguments of
 the program it runs. The command string given to `sh -c` (any shell) or to
-`eval` is parsed as more segments. A command bash itself would reject (an
+`eval` is parsed as more segments. A function definition `name() {` is
+printed as the segment `function name`, the form `function name {` already
+has. A command bash itself would reject (an
 unclosed quote) prints nothing, because it never runs."""
 import os
 import sys
@@ -309,12 +311,22 @@ def plain_words(words):
             and not (index and words[index - 1].startswith(OPERATOR_MARK))]
 
 
+def is_function_definition(tokens, index, current):
+    """True when the token at index opens the `()` of `name()`."""
+    return (tokens[index] == ("separator", "(") and len(current) == 1
+            and index + 1 < len(tokens) and tokens[index + 1] == ("separator", ")"))
+
+
 def split_segments(text):
     """Returns the command's segments as normalized lists of printable words."""
     segments, current, previous = [], [], []
     separator_before = None
-    for kind, value in Tokenizer(text).run() + [("separator", None)]:
-        if kind == "separator":
+    tokens = Tokenizer(text).run() + [("separator", None)]
+    for index, (kind, value) in enumerate(tokens):
+        if is_function_definition(tokens, index, current):
+            segments.append(["function", current[0]])
+            current = []
+        elif kind == "separator":
             if current:
                 piped = plain_words(previous[1:]) if separator_before in ("|", "|&") else []
                 segments.extend(expand_segment(normalize_segment(current, piped)))

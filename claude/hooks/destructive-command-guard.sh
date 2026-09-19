@@ -73,15 +73,11 @@ fi
 
 # --- git core.hooksPath ---------------------------------------------------
 
-# Reads are fine; hookspath-drift-check.sh and the R-107 investigation depend
-# on them. A write is the key followed by a value token (or an --unset); a
-# read leaves core.hooksPath as the final token, whatever read flag spelling
-# precedes it (2026-09-16 audit P2-2: the old flag-spelling exemption denied
-# the bare `git config core.hooksPath` read the rule itself mandates).
-if grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]" <<< "$norm" \
-    || grep -Eqi "${AT}git config[^|;&]*--unset[^|;&]*core\.hooksPath" <<< "$norm"; then
-    emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
-fi
+# Writes to core.hooksPath, include.path, and hook-skipping aliases are denied
+# in the git-hook section below, on the parsed command, so a global option, a
+# quoted key, or the `git config set` form cannot slip past, and a read
+# followed by a redirect (`2>/dev/null`) is not mistaken for a value.
+# hookspath-drift-check.sh and the R-107 investigation depend on the reads.
 
 # --- skipping or removing git hooks ---------------------------------------
 
@@ -176,6 +172,15 @@ is_hook_skip_assignment() {
 is_hookspath_env_assignment() {
     case "$(to_lowercase "$1")" in
         git_config_key_[0-9]*=core.hookspath | git_config_parameters=*core.hookspath*) return 0 ;;
+    esac
+    return 1
+}
+
+# True when a VAR=value word points git at a different config file, which
+# can set core.hooksPath or an include without touching this repository.
+is_config_file_assignment() {
+    case "$1" in
+        GIT_CONFIG_GLOBAL=* | GIT_CONFIG_SYSTEM=* | GIT_CONFIG=* | HOME=* | XDG_CONFIG_HOME=*) return 0 ;;
     esac
     return 1
 }
@@ -330,6 +335,132 @@ tampers_with_git_hooks() {
     esac
 }
 
+# Prints the value of a leading NAME=value assignment for the named variable.
+print_leading_value() {
+    local index
+    for ((index = 0; index < COMMAND_START; index++)); do
+        case "${WORDS[index]}" in "$1="*) printf '%s' "${WORDS[index]#*=}"; return 0 ;; esac
+    done
+}
+
+# Sets CONFIG_SETTINGS to the key=value settings this one git command
+# receives through -c and the GIT_CONFIG_KEY_n/GIT_CONFIG_VALUE_n pairs.
+collect_config_settings() {
+    local index=$((COMMAND_START + 1)) key_number key
+    CONFIG_SETTINGS=()
+    while [ "$index" -lt "$SUBCOMMAND_INDEX" ]; do
+        [ "${WORDS[index]}" = -c ] && CONFIG_SETTINGS+=("${WORDS[index + 1]:-}")
+        index=$((index + 1))
+    done
+    for ((index = 0; index < COMMAND_START; index++)); do
+        [[ "${WORDS[index]}" =~ ^GIT_CONFIG_KEY_([0-9]+)=(.*)$ ]] || continue
+        key_number="${BASH_REMATCH[1]}"
+        key="${BASH_REMATCH[2]}"
+        CONFIG_SETTINGS+=("$key=$(print_leading_value "GIT_CONFIG_VALUE_$key_number")")
+    done
+}
+
+# True when a config key (any case) is one that changes which hooks run.
+is_include_key() {
+    case "$(to_lowercase "$1")" in include.path | includeif.*.path) return 0 ;; esac
+    return 1
+}
+
+# True when this git command receives an include.path or includeIf setting.
+has_include_setting() {
+    local setting
+    for setting in ${CONFIG_SETTINGS[@]+"${CONFIG_SETTINGS[@]}"}; do
+        is_include_key "${setting%%=*}" && return 0
+    done
+    return 1
+}
+
+# Prints the value of an alias the git command defines for the named
+# subcommand, if it defines one.
+print_alias_value() {
+    local setting wanted
+    wanted="alias.$(to_lowercase "$1")"
+    for setting in ${CONFIG_SETTINGS[@]+"${CONFIG_SETTINGS[@]}"}; do
+        [ "$(to_lowercase "${setting%%=*}")" = "$wanted" ] && { printf '%s' "${setting#*=}"; return 0; }
+    done
+}
+
+# True when this guard denies the given command text. An alias is judged by
+# what it expands to, so its expansion is run through the guard itself; the
+# depth cap stops an alias that expands into an alias from looping, and
+# treats that depth as a deny.
+is_denied_command() {
+    local depth="${GUARD_RECURSION_DEPTH:-0}"
+    [ "$depth" -lt 3 ] || return 0
+    jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' \
+        | GUARD_RECURSION_DEPTH=$((depth + 1)) bash "${BASH_SOURCE[0]}" \
+        | grep -q '"permissionDecision": *"deny"'
+}
+
+# True when running an alias value skips hooks: a `!` alias runs its text in
+# the shell, any other alias runs as `git <value>`.
+is_hook_skipping_alias() {
+    case "$1" in
+        '!'*) is_denied_command "${1#!}" ;;
+        *) is_denied_command "git $1" ;;
+    esac
+}
+
+# Sets CONFIG_KEY and CONFIG_VALUE when the git config command writes, and
+# returns 1 for a read. Handles the flag forms (--unset, --add) and the
+# subcommand forms (set, unset, get, list) of git 2.46 and later.
+parse_git_config_write() {
+    local index=$((SUBCOMMAND_INDEX + 1)) word is_unset=0 positionals=()
+    while [ "$index" -lt "${#WORDS[@]}" ]; do
+        word="${WORDS[index]}"
+        index=$((index + 1))
+        case "$word" in
+            "$REDIRECT_MARK"*) index=$((index + 1)) ;;
+            --get | --get-all | --get-regexp | --get-urlmatch | --list | -l | --get-color | --get-colorbool | --edit | -e) return 1 ;;
+            --unset | --unset-all) is_unset=1 ;;
+            -f | --file | --blob | --type | --default | --comment | --value) index=$((index + 1)) ;;
+            -*) ;;
+            *) positionals+=("$word") ;;
+        esac
+    done
+    case "${positionals[0]:-}" in
+        get | list | get-regexp | get-urlmatch | get-color | get-colorbool | edit) return 1 ;;
+        set) positionals=("${positionals[@]:1}") ;;
+        unset) is_unset=1; positionals=("${positionals[@]:1}") ;;
+    esac
+    CONFIG_KEY="${positionals[0]:-}"
+    CONFIG_VALUE="${positionals[1]:-}"
+    [ -n "$CONFIG_KEY" ] && { [ "$is_unset" -eq 1 ] || [ "${#positionals[@]}" -ge 2 ]; }
+}
+
+# True when a git config write changes which hooks run: core.hooksPath and the
+# include keys in any write, an alias only when its value skips hooks.
+is_protected_config_write() {
+    local key
+    key="$(to_lowercase "$CONFIG_KEY")"
+    case "$key" in
+        core.hookspath) return 0 ;;
+        alias.*) [ -n "$CONFIG_VALUE" ] && is_hook_skipping_alias "$CONFIG_VALUE" ;;
+        *) is_include_key "$key" ;;
+    esac
+}
+
+# True when the segment defines a shell function or alias named git, which
+# would put arbitrary text in front of every later git command.
+defines_git_command() {
+    local index
+    case "${WORDS[COMMAND_START]}" in
+        function) [ "${WORDS[COMMAND_START + 1]:-}" = git ] ;;
+        alias)
+            for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
+                case "${WORDS[index]}" in git=*) return 0 ;; esac
+            done
+            return 1
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 # True when the segment's program exports what it assigns: export, or
 # declare and typeset with -x.
 is_export_program() {
@@ -361,6 +492,7 @@ is_allexport_set() {
 note_exported_assignment() {
     is_hook_skip_assignment "$1" && exported_hook_skip=1
     is_hookspath_env_assignment "$1" && exported_hookspath=1
+    is_config_file_assignment "$1" && exported_config_file=1
     return 0
 }
 
@@ -408,6 +540,7 @@ apply_assignment_segment() {
 # so it is remembered across segments; a bare prefix reaches only its own.
 exported_hook_skip=0
 exported_hookspath=0
+exported_config_file=0
 exported_names=" "
 auto_export=0
 plain_assignments=()
@@ -430,9 +563,26 @@ while IFS=$'\037' read -r -a WORDS; do
     if tampers_with_git_hooks; then
         emit deny "destructive-command-guard hook BLOCKED this call: it deletes, moves, disables, or overwrites a file under .git/hooks, which silently removes the pre-commit and pre-push gates (R-203). Reading the hooks is fine; reinstall them with the harness installer rather than editing them by hand."
     fi
+    if defines_git_command; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it defines a shell function or alias named git, which can add a hook-skipping option to every later git command without it appearing in the command text (R-203). Call git directly."
+    fi
     [ "$program" = git ] || continue
     find_git_subcommand
+    collect_config_settings
+    alias_value="$(print_alias_value "${WORDS[SUBCOMMAND_INDEX]:-}")"
+    if [ -n "$alias_value" ] && is_hook_skipping_alias "$alias_value"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it runs a git alias, defined for this command, whose expansion skips git hooks (R-203). Run the underlying command without the skip."
+    fi
+    if [ "${WORDS[SUBCOMMAND_INDEX]:-}" = config ] && parse_git_config_write && is_protected_config_write; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it writes a git config key that changes which hooks run (core.hooksPath, include.path, includeIf, or a hook-skipping alias), redirecting or disabling git hooks for every later command (R-107, R-203). Change it manually if the move is deliberate."
+    fi
     is_hook_running_git || continue
+    if has_include_setting; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it passes an include.path or includeIf setting to a git command that runs hooks, which can load a config file that sets core.hooksPath (R-107, R-203). Run the command without the include."
+    fi
+    if [ "$exported_config_file" -eq 1 ] || has_leading_assignment is_config_file_assignment; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it points a git command that runs hooks at a different config file (GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, or XDG_CONFIG_HOME), which can set core.hooksPath without touching this repository (R-107, R-203). Run the command in the normal environment."
+    fi
     if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment || has_hookspath_option; then
         emit deny "destructive-command-guard hook BLOCKED this call: it overrides core.hooksPath for this git command (-c, --config-env, GIT_CONFIG_KEY_n, or GIT_CONFIG_PARAMETERS), which redirects or disables every git hook without touching git config (R-107, R-203). Run the command without the override."
     fi
