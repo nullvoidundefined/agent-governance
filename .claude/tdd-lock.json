@@ -1,6 +1,6 @@
 {
   "slice": "B-2 deny hook-skipping environment variables on git commands",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T10:50:46Z"
+  "redAt": "2026-09-19T10:50:46Z",
+  "greenAt": "2026-09-19T10:56:33Z"
 }

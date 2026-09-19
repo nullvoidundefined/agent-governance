@@ -4,7 +4,8 @@
 #   - `gh api` with a mutating method, in any flag spelling
 #   - curl/wget piped into an interpreter
 #   - writes to git core.hooksPath
-#   - skipping git hooks with --no-verify (any accepted spelling) or commit -n
+#   - skipping git hooks with --no-verify (any accepted spelling), commit -n,
+#     or a hook-manager variable (HUSKY=0, SKIP, LEFTHOOK=0)
 #   - credential readout (gh auth token, macOS keychain)
 #   - tampering with ~/.claude/hooks
 #
@@ -80,7 +81,7 @@ if grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]"
     emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
 fi
 
-# --- skipping git hooks with --no-verify or commit -n ---------------------
+# --- skipping git hooks: flags and hook-manager variables ----------------
 
 # settings.json could only ask on `git commit --no-verify*`, a literal prefix
 # that missed abbreviations, flags placed before the subcommand, and other
@@ -89,16 +90,61 @@ fi
 GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 [ -f "$GIT_INVOCATION_HELPER" ] && . "$GIT_INVOCATION_HELPER"
 
-# Prints one line per git invocation in the command: quoted runs replaced by
-# Q, split on separators, leading VAR=value assignments dropped, and global
-# options stripped so the subcommand follows `git` directly.
-list_git_invocations() {
+# Prints one line per simple command in the input: newlines join as `;`,
+# quoted runs become Q, and the text splits on separators, leading space
+# trimmed. awk ends every line with a newline, which `read` needs: it drops an
+# unterminated last line.
+list_command_segments() {
     printf '%s' "$1" | tr '\n' ';' \
         | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" \
         | tr ';&|()' '\n\n\n\n\n' \
-        | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//' \
+        | awk '{ sub(/^[[:space:]]+/, ""); print }'
+}
+
+# Prints the git invocation a segment runs once its leading `env` and
+# VAR=value words are dropped and global options stripped, so the subcommand
+# follows `git` directly; prints nothing for a segment that does not run git.
+extract_git_invocation() {
+    printf '%s\n' "$1" \
+        | sed -E 's/^((env[[:space:]]+)|([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+))*//' \
         | grep -E '^git([[:space:]]|$)' \
         | if declare -F strip_git_global_options >/dev/null; then strip_git_global_options; else cat; fi
+}
+
+# True when a git invocation's subcommand runs hooks.
+is_hook_running_git() {
+    set -f
+    set -- $1
+    set +f
+    [ "${1:-}" = git ] || return 1
+    case "${2:-}" in commit | push | merge | rebase | am) return 0 ;; esac
+    return 1
+}
+
+# True when one VAR=value word turns a hook manager off: husky, the
+# pre-commit framework's SKIP list, or lefthook.
+is_hook_skip_assignment() {
+    case "$1" in
+        HUSKY=0 | HUSKY_SKIP_HOOKS=* | SKIP=* | LEFTHOOK=0 | LEFTHOOK=false | LEFTHOOK_EXCLUDE=*) return 0 ;;
+    esac
+    return 1
+}
+
+# True when an assignment ahead of the segment's command name (bare, after
+# env, or after export) turns a hook manager off.
+has_leading_hook_skip() {
+    local word
+    set -f
+    set -- $1
+    set +f
+    for word in "$@"; do
+        case "$word" in
+            env | export) continue ;;
+            *=*) is_hook_skip_assignment "$word" && return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+    return 1
 }
 
 # True when the argument is --no-verify or a prefix git accepts for it:
@@ -122,15 +168,15 @@ is_commit_no_verify_cluster() {
     return 1
 }
 
-# True when one `git <subcommand> <args>` line skips the hooks it would run.
+# True when one hook-running `git <subcommand> <args>` line skips its hooks
+# through a flag.
 skips_git_hooks() {
     local subcommand arg
     set -f
     set -- $1
     set +f
     subcommand="${2:-}"
-    shift 2 2>/dev/null || return 1
-    case "$subcommand" in commit | push | merge | rebase | am) ;; *) return 1 ;; esac
+    shift 2
     for arg in "$@"; do
         is_no_verify_spelling "$arg" && return 0
         [ "$subcommand" = commit ] && [[ "$arg" =~ ^-[A-Za-z]+$ ]] \
@@ -139,11 +185,23 @@ skips_git_hooks() {
     return 1
 }
 
-while IFS= read -r git_invocation; do
+# An export earlier in the command reaches every later git in the same call,
+# so it is remembered across segments; a bare prefix reaches only its own.
+exported_hook_skip=0
+while IFS= read -r segment; do
+    if [[ "$segment" =~ ^export[[:space:]] ]]; then
+        has_leading_hook_skip "$segment" && exported_hook_skip=1
+        continue
+    fi
+    git_invocation="$(extract_git_invocation "$segment")"
+    is_hook_running_git "$git_invocation" || continue
+    if [ "$exported_hook_skip" -eq 1 ] || has_leading_hook_skip "$segment"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it sets an environment variable that turns the hook manager off (HUSKY=0, HUSKY_SKIP_HOOKS, SKIP, LEFTHOOK=0, or LEFTHOOK_EXCLUDE) for a git command that runs hooks (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
+    fi
     if skips_git_hooks "$git_invocation"; then
         emit deny "destructive-command-guard hook BLOCKED this call: it skips git hooks (--no-verify, an abbreviation of it, or commit -n), which turns off the pre-commit and pre-push gates for this change (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
-done < <(list_git_invocations "$cmd")
+done < <(list_command_segments "$cmd")
 
 # --- credential readout ---------------------------------------------------
 
