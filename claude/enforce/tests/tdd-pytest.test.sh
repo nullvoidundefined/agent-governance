@@ -2,43 +2,52 @@
 # Shard: slow
 # Verifies the pytest runner in enforce/tdd.sh (R-412): a *.py test path runs
 # the whole pytest suite of the nearest project above it holding
-# pyproject.toml, as `uv run pytest` when uv is on PATH and as
-# `<python> -m pytest` with a warning otherwise, and the JUnit XML pytest
-# writes is converted into the report shape red and green already read. Red
-# accepts an assertion failure and a missing module and refuses a passing
-# test, a skipped test, a syntax error, a file with no tests, and a slice that
-# mixes runners; green accepts the fixed implementation and refuses a still
-# failing test (also when stale bytecode in the tree holds the passing
-# version), a skipped test, and a dropped baseline; the JUnit converter runs
-# through the project's .venv interpreter when one exists. Drives the REAL pytest
-# (on PATH, as CI installs it pinned, or through uvx at the same pin) behind a
-# stub uv and a stub .venv python that record how they were called, so the
-# JUnit parsing is exercised against live output and the invocation choice is
-# observed rather than assumed.
+# pyproject.toml, through `uv run python` when uv is on PATH and through the
+# project's .venv interpreter with a warning otherwise, in both cases via the
+# bootstrap that confines bytecode to a per-run cache, and the JUnit XML
+# pytest writes is converted into the report shape red and green already
+# read. Red accepts an assertion failure and a missing module and refuses a
+# passing test, a skipped test, a syntax error, a file with no tests, and a
+# slice that mixes runners; green accepts the fixed implementation and
+# refuses a still failing test (also when stale bytecode in the tree holds
+# the passing version), a skipped test, and a dropped baseline; the JUnit
+# converter runs through the project's .venv interpreter when one exists.
+# Drives the REAL pytest (the interpreter behind a pytest on PATH, as CI
+# installs it pinned with pipx, or uvx at the same pin) behind a stub uv and a
+# stub .venv python that record how they were called, so the JUnit parsing is
+# exercised against live output and the invocation choice is observed rather
+# than assumed.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"
 
+# PYTEST_PYTHON is an interpreter that can import the real pytest. A pytest on
+# PATH is a console script inside its own environment, so the interpreter
+# beside the resolved script is that environment's.
 # Keep in step with the pytest pin in .github/workflows/enforce.yml.
 PYTEST_PIN="9.1.1"
-if command -v pytest >/dev/null 2>&1; then PYTEST_COMMAND="pytest"
-elif command -v uvx >/dev/null 2>&1; then PYTEST_COMMAND="uvx --quiet --from pytest==$PYTEST_PIN pytest"
-else echo "FAIL: neither pytest nor uvx is on PATH; install pytest==$PYTEST_PIN (CI does it with pipx)"; exit 1
+PYTEST_PYTHON=""
+if command -v pytest >/dev/null 2>&1; then
+  PYTEST_PYTHON="$(dirname "$(readlink -f "$(command -v pytest)")")/python"
+  "$PYTEST_PYTHON" -c 'import pytest' >/dev/null 2>&1 || PYTEST_PYTHON=""
 fi
+if [ -z "$PYTEST_PYTHON" ] && command -v uvx >/dev/null 2>&1; then PYTEST_PYTHON="uvx --quiet --from pytest==$PYTEST_PIN python"; fi
+[ -n "$PYTEST_PYTHON" ] || { echo "FAIL: neither pytest nor uvx is on PATH; install pytest==$PYTEST_PIN (CI does it with pipx)"; exit 1; }
 
 P=$(cd "$(mktemp -d)" && pwd -P)
 STUBS=$(mktemp -d)
 CALLS="$STUBS/calls.log"
 trap 'cd / && rm -rf "$P" "$STUBS"' EXIT
 
-# The stub uv accepts only `uv run pytest ...` and hands the rest of the
-# arguments to the real pytest, logging its working directory and arguments.
+# The stub uv accepts only `uv run python ...` and hands the rest of the
+# arguments to the real pytest's interpreter, logging its working directory
+# and the first arguments (the bootstrap itself spans lines).
 cat > "$STUBS/uv" <<STUB
 #!/usr/bin/env bash
-printf 'uv %s | %s\n' "\$PWD" "\$*" >> "$CALLS"
-[ "\${1:-}" = run ] && [ "\${2:-}" = pytest ] || { echo "stub uv: unexpected arguments: \$*" >&2; exit 97; }
+printf 'uv %s | %s %s %s\n' "\$PWD" "\${1:-}" "\${2:-}" "\${3:-}" >> "$CALLS"
+[ "\${1:-}" = run ] && [ "\${2:-}" = python ] || { echo "stub uv: unexpected arguments: \$*" >&2; exit 97; }
 shift 2
-exec $PYTEST_COMMAND "\$@"
+exec $PYTEST_PYTHON "\$@"
 STUB
 chmod +x "$STUBS/uv"
 export PATH="$STUBS:$PATH"
@@ -96,7 +105,7 @@ bash "$TDD" red "$TEST" >/dev/null || { echo "FAIL: pytest red on a missing modu
 [ "$(lock_field '.baseline.passed')" = "1" ] || { echo "FAIL: the pytest baseline must count the passing test outside the RED file, got $(lock_field '.baseline.passed')"; exit 1; }
 [ "$(lock_field '.baseline.runner')" = "pytest" ] || { echo "FAIL: the pytest runner must be recorded, got $(lock_field '.baseline.runner')"; exit 1; }
 [ "$(lock_field '.tests[0].sha256' | wc -c | tr -d ' ')" = "65" ] || { echo "FAIL: pytest red must record a sha256"; exit 1; }
-grep -q "^uv $SERVER | run pytest " "$CALLS" || { echo "FAIL: pytest must run as 'uv run pytest' from the pyproject.toml directory; calls: $(cat "$CALLS")"; exit 1; }
+grep -q "^uv $SERVER | run python -c$" "$CALLS" || { echo "FAIL: pytest must run through 'uv run python' from the pyproject.toml directory; calls: $(cat "$CALLS")"; exit 1; }
 
 # red again: a wrong answer is the assertion RED.
 impl 1
@@ -110,19 +119,10 @@ bash "$TDD" red "$TEST" >/dev/null
 # compiled in place, then replaced by the failing one with the same size and
 # the same mtime. tdd.sh must still run the source on disk and refuse.
 impl 2; touch -t 202001010000 apps/server/app/score.py
-(cd apps/server && env -u PYTHONDONTWRITEBYTECODE $PYTEST_COMMAND -q -p no:cacheprovider >/dev/null 2>&1 || true)
+(cd apps/server && env -u PYTHONDONTWRITEBYTECODE -u PYTHONPYCACHEPREFIX $PYTEST_PYTHON -m pytest -q -p no:cacheprovider >/dev/null 2>&1 || true)
 [ -n "$(find apps/server/app -name 'score*.pyc')" ] || { echo "FAIL: setup: the direct pytest run must leave app bytecode in the tree"; exit 1; }
 impl 1; touch -t 202001010000 apps/server/app/score.py
-DIAG_OUT=$(bash "$TDD" green 2>&1) && DIAG_STATUS=0 || DIAG_STATUS=$?
-if [ "$DIAG_STATUS" -eq 0 ] || ! grep -q 'test_scores_a_job_at_2' <<< "$DIAG_OUT"; then
-  echo "FAIL: pytest green must run the source on disk, not a stale in-tree .pyc"
-  echo "FAIL DIAG status=$DIAG_STATUS out=$(printf "%s" "$DIAG_OUT" | tr "\n" "~")"
-  echo "FAIL DIAG src=$(cat apps/server/app/score.py | tr "\n" "~") pyc=$(find "$P" -name '*.pyc' | tr "\n" "~")"
-  echo "FAIL DIAG pytest=$(command -v pytest) shebang=$(head -1 "$(command -v pytest)" 2>/dev/null || true) cmd=$PYTEST_COMMAND"
-  echo "FAIL DIAG env=$(env | grep -iE '^(python|pip|uv)' | tr '\n' ' ' || true)"
-  echo "FAIL DIAG py=$(cd apps/server && PYTHONPYCACHEPREFIX=/tmp/diagprefix PYTHONDONTWRITEBYTECODE=1 "$(dirname "$(readlink -f "$(command -v pytest)")")/python" -c 'import sys, app.score; print(sys.version.split()[0], sys.flags.ignore_environment, sys.flags.isolated, sys.dont_write_bytecode, sys.pycache_prefix, app.score.__cached__, app.score.score())' 2>&1 | tr '\n' '~')"
-  exit 1
-fi
+expect_fail "pytest green over stale in-tree bytecode" bash "$TDD" green | grep -q 'test_scores_a_job_at_2' || { echo "FAIL: pytest green must run the source on disk, not a stale in-tree .pyc"; exit 1; }
 find apps/server -name __pycache__ -type d -prune -exec rm -rf {} +
 
 # green: still failing is refused by test name; the phase stays red.
@@ -150,27 +150,24 @@ bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
 git add -A && git commit -qm "feat(score): PY-1 score returns 2"
 
 # Without uv the runner falls back to the project's .venv python with a
-# warning. The stub interpreter hands `-m pytest ...` to the real pytest and
-# anything else (the JUnit converter's `-c`) to the real python3, logging
-# which, so the converter's use of the project interpreter is observed too
-# (PR #72 review).
-REAL_PYTHON=$(command -v python3)
+# warning. The stub interpreter hands everything to the real pytest's
+# interpreter and logs whether it was asked to run the pytest bootstrap or the
+# JUnit converter, so the converter's use of the project interpreter is
+# observed too (PR #72 review).
 mkdir -p apps/server/.venv/bin
 cat > apps/server/.venv/bin/python <<STUB
 #!/usr/bin/env bash
-if [ "\${1:-}" = -m ] && [ "\${2:-}" = pytest ]; then
-  printf 'python %s | %s\n' "\$PWD" "\$*" >> "$CALLS"
-  shift 2
-  exec $PYTEST_COMMAND "\$@"
-fi
-printf 'python-convert %s\n' "\${1:-}" >> "$CALLS"
-exec "$REAL_PYTHON" "\$@"
+case "\${2:-}" in
+  *console_main*) printf 'python %s | pytest\n' "\$PWD" >> "$CALLS" ;;
+  *) printf 'python-convert %s\n' "\${1:-}" >> "$CALLS" ;;
+esac
+exec $PYTEST_PYTHON "\$@"
 STUB
 chmod +x apps/server/.venv/bin/python
 : > "$CALLS"
 out=$(CLAUDE_TDD_UV=no-such-uv bash "$TDD" open --refactor "PY-2 tidy score" --lock "$TEST" 2>&1) || { echo "FAIL: open --refactor through the python fallback must succeed; output: $out"; exit 1; }
 grep -q "uv is not on PATH" <<< "$out" || { echo "FAIL: the python fallback must warn that uv is missing; output: $out"; exit 1; }
-grep -q "^python $SERVER | -m pytest " "$CALLS" || { echo "FAIL: without uv pytest must run through the project's .venv python; calls: $(cat "$CALLS")"; exit 1; }
+grep -q "^python $SERVER | pytest$" "$CALLS" || { echo "FAIL: without uv pytest must run through the project's .venv python; calls: $(cat "$CALLS")"; exit 1; }
 grep -q "^python-convert -c" "$CALLS" || { echo "FAIL: the JUnit converter must run through the project's .venv python; calls: $(cat "$CALLS")"; exit 1; }
 [ "$(lock_field '.baseline.runner')" = "pytest" ] || { echo "FAIL: a pytest refactor must record the pytest runner"; exit 1; }
 CLAUDE_TDD_UV=no-such-uv bash "$TDD" green >/dev/null 2>&1 && bash "$TDD" close >/dev/null || { echo "FAIL: green and close through the python fallback must succeed"; exit 1; }

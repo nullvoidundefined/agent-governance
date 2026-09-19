@@ -44,11 +44,14 @@
 # A `*.py` path (test_*.py or *_test.py in practice) is a pytest test: the
 # suite is the whole pytest run of the Python project that owns the named
 # files, which is the nearest directory above them holding pyproject.toml. It
-# runs there as `uv run pytest` when uv is on PATH, and otherwise as
-# `python -m pytest` through the project's .venv interpreter, python3, or
-# python, with a warning. pytest writes its built-in --junitxml report (the
-# xunit1 family, which names each test's file), and an inline Python converter
-# turns it into the JSON report shape below; a collection error is a file with
+# runs there in the environment `uv run pytest` would use (`uv run python`)
+# when uv is on PATH, and otherwise through the project's .venv interpreter,
+# python3, or python, with a warning; either way a short bootstrap starts
+# pytest with bytecode confined to a fresh per-run cache, so a stale .pyc in
+# the tree can never stand in for the source. pytest writes its built-in
+# --junitxml report (the xunit1 family, which names each test's file), and an
+# inline Python converter turns it into the JSON report shape below; a
+# collection error is a file with
 # no tests carrying the error text, so a SyntaxError is refused as a parse
 # failure and an ImportError or ModuleNotFoundError is the missing-module RED.
 # Any other path, or no path, uses Vitest or Jest resolved from the project's
@@ -66,6 +69,21 @@ LOCK_RELATIVE=".claude/tdd-lock.json"
 # The uv binary the pytest runner prefers; the fixture points it at a name that
 # does not exist to exercise the python -m pytest fallback.
 UV_BIN="${CLAUDE_TDD_UV:-uv}"
+# How the pytest runner starts pytest: `<python> -c "$PYTEST_BOOTSTRAP"
+# <bytecode dir> <pytest args>...`. It sets the bytecode cache prefix and
+# disables bytecode writes from inside the interpreter, because environment
+# variables are not enough: a pytest console script whose shebang carries -E
+# (pipx's do) ignores PYTHONPYCACHEPREFIX and PYTHONDONTWRITEBYTECODE. It
+# drops the current directory that -c puts at the front of sys.path, so
+# imports resolve as they do under the pytest console script, then runs
+# pytest's own entry point.
+PYTEST_BOOTSTRAP='import sys
+if not getattr(sys.flags, "safe_path", False):
+    del sys.path[0]
+sys.pycache_prefix = sys.argv.pop(1)
+sys.dont_write_bytecode = True
+import pytest
+sys.exit(pytest.console_main())'
 
 die() { printf 'tdd.sh: %s\n' "$*" >&2; exit 1; }
 say() { printf 'tdd.sh: %s\n' "$*"; }
@@ -138,9 +156,10 @@ select_runner() {
 # resolve_pytest <test rel>...: sets PYTEST_DIR to the physical path of the one
 # Python project owning every named file (the nearest directory above each
 # that holds pyproject.toml, never above the repository root), and PYTEST_CMD
-# to `uv run pytest`, or to `<python> -m pytest` with a warning when uv is not
-# on PATH. Named files from two projects are refused, since one run cannot
-# report both.
+# to pytest started through PYTEST_BOOTSTRAP under `uv run python` (the
+# project environment `uv run pytest` would use), or under project_python with
+# a warning when uv is not on PATH. Named files from two projects are refused,
+# since one run cannot report both.
 resolve_pytest() {
   local rel dir project=""
   for rel in "$@"; do
@@ -154,14 +173,15 @@ resolve_pytest() {
   if [ "$project" = "." ]; then PYTEST_DIR="$ROOT_PHYSICAL"; else PYTEST_DIR="$ROOT_PHYSICAL/$project"; fi
   RUNNER_KIND=pytest
   if command -v "$UV_BIN" >/dev/null 2>&1; then
-    PYTEST_CMD=("$UV_BIN" run pytest)
+    PYTEST_CMD=("$UV_BIN" run python -c "$PYTEST_BOOTSTRAP")
+    RUNNER="$UV_BIN run pytest (in $project)"
   else
     local python
     python=$(project_python) || die "pytest needs uv on PATH, a .venv in $project, or python3 or python on PATH, and none was found"
-    PYTEST_CMD=("$python" -m pytest)
-    say "warning: uv is not on PATH; running '${PYTEST_CMD[*]}' in $project instead of 'uv run pytest'" >&2
+    PYTEST_CMD=("$python" -c "$PYTEST_BOOTSTRAP")
+    RUNNER="$python -m pytest (in $project)"
+    say "warning: uv is not on PATH; running pytest through '$python' in $project instead of through 'uv run'" >&2
   fi
-  RUNNER="${PYTEST_CMD[*]} (in $project)"
 }
 
 # project_python: prints the project's own .venv interpreter, else python3 or
@@ -213,21 +233,21 @@ run_shell_suite() {
 # run_pytest_suite <test rel>...: runs the whole pytest suite of PYTEST_DIR
 # once and prints the Vitest-shaped report. --continue-on-collection-errors
 # keeps one unimportable file from hiding every other file's result, which the
-# baseline counts. The cache plugin is off, and bytecode goes to a fresh
-# PYTHONPYCACHEPREFIX that is deleted after the run, with writes disabled as
-# well: the run leaves nothing untracked for `tdd.sh validate` to attribute to
-# a role, and, more importantly, it never reads a .pyc from the tree. Python
-# trusts a cached .pyc whose recorded source mtime and size match, so bytecode
-# left by an earlier run (the developer's own, or a RED run) could otherwise
-# outlive a same-size edit made within the same second and turn a failing
-# implementation GREEN. When no report can be built, pytest's last output
-# lines go to stderr and nothing is printed, so run_suite refuses with the
-# reason in view.
+# baseline counts. The cache plugin is off, and PYTEST_BOOTSTRAP points the
+# bytecode cache at a fresh directory deleted after the run, with writes
+# disabled as well: the run leaves nothing untracked for `tdd.sh validate` to
+# attribute to a role, and, more importantly, it never reads a .pyc from the
+# tree. Python trusts a cached .pyc whose recorded source mtime and size
+# match, so bytecode left by an earlier run (the developer's own, or a RED
+# run) could otherwise outlive a same-size edit made within the same second
+# and turn a failing implementation GREEN. When no report can be built,
+# pytest's last output lines go to stderr and nothing is printed, so run_suite
+# refuses with the reason in view.
 run_pytest_suite() {
   local xml log bytecode rel names=()
   xml=$(mktemp); log=$(mktemp); bytecode=$(mktemp -d)
   for rel in "$@"; do names+=("$(report_name "$rel")"); done
-  (cd "$PYTEST_DIR" && PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX="$bytecode" "${PYTEST_CMD[@]}" \
+  (cd "$PYTEST_DIR" && "${PYTEST_CMD[@]}" "$bytecode" \
     --rootdir="$PYTEST_DIR" -o junit_family=xunit1 --junitxml="$xml" --continue-on-collection-errors \
     -p no:cacheprovider -q > "$log" 2>&1) || true
   pytest_report "$xml" "$PYTEST_DIR" "${names[@]}" || tail -15 "$log" >&2
