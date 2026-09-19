@@ -116,9 +116,12 @@ returns, prove what it did rather than trusting its summary:
    it and later let `green` trust the tampered lock. The prompt tells Codex
    not to run `tdd.sh`, because `tdd.sh red` itself rewrites the lock (phase
    `open` to `red`); this check therefore runs before step 3, never after it.
-3. Only then does the orchestrator run `tdd.sh red <test file>` until it
-   prints `RED:`, then `tdd.sh validate test-author`, proving every changed
-   path is a test or fixture path.
+3. Only then does the orchestrator run `tdd.sh red` until it prints `RED:`,
+   naming a new test file whole (`tdd.sh red <test file>`) and each new test
+   in a file that already held passing tests by id (`tdd.sh red
+   '<test file>::<test id>'`, one argument per new test, using the ids Codex
+   reported), then `tdd.sh validate test-author`, proving every changed path
+   is a test or fixture path.
 
 Codex runs outside Claude's hooks, so these three checks are the only proof.
 If any fails, discard the run: reset to the recorded commit if Codex
@@ -176,7 +179,7 @@ B-n: <behavior line from the spec>
 Write only test and fixture files. Read only the spec entry, the conventions file, and the existing code the test must call; do not scan the rest of the repository.
 
 ## Definition of done
-Codex: write the test and run it once with the project's test runner to see it fail for the right reason, but do not run `tdd.sh` (the orchestrator runs `tdd.sh red`, which moves the lock, after checking the lock is untouched). The `test-author` agent, as the fallback: `bash ~/.claude/enforce/tdd.sh red <test file>` prints RED: (name `<test file>::<test id>` for each new test when the file already holds passing tests). Either way, report the test file path, the failure you saw, the failure class, every interface the test assumes, and any spec ambiguity you resolved. Do not implement. Do not commit.
+Codex: write the test and run it once with the project's test runner to see it fail for the right reason, but do not run `tdd.sh` (the orchestrator runs `tdd.sh red`, which moves the lock, after checking the lock is untouched). The `test-author` agent, as the fallback: `bash ~/.claude/enforce/tdd.sh red <test file>` prints RED: (name `<test file>::<test id>` for each new test when the file already holds passing tests). Either way, report the test file path, whether the file is new or already held passing tests, and for an existing file the id of every test you added (the pytest node id after `::`, or the Vitest or Jest full name), then the failure you saw, the failure class, every interface the test assumes, and any spec ambiguity you resolved. Do not implement. Do not commit.
 ```
 
 **Implementer prompt** (after the RED commit):
