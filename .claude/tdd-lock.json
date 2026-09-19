@@ -1,0 +1,20 @@
+{
+  "slice": "B-10 fail closed when the parser fails, and deny a bare redirect into .git/hooks",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
+      "sha256": "d40eab13603398631ffdbf80200d2938979d4328894baca84462fc027fb0331e",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-19T15:59:19Z",
+  "baseline": {
+    "passed": 87,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-19T16:10:03Z"
+}

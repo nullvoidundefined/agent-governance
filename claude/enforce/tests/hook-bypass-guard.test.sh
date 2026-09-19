@@ -525,6 +525,86 @@ expect none 'chmod -R a-x build'
 
 # --- end B-9 ---------------------------------------------------------------
 
+# --- B-10: the guard fails closed when its command parser cannot give a
+# complete answer, and a bare redirect into .git/hooks is a write ------------
+
+# bash runs the earlier lines before it reaches a syntax error on a later line,
+# so an unclosed quote or backtick further down does not excuse the lines above
+expect deny $'git commit --no-verify -m x\necho "'
+expect deny $'git commit -n -m x\nls `'
+expect deny $'HUSKY=0 git commit -m x\nfoo="'
+
+# the runnable part of a command with a later syntax error has nothing to deny
+expect none $'git status\necho "'
+
+# a redirect with no program in front of it still creates or truncates the file
+expect deny '> .git/hooks/pre-commit'
+expect deny '>.git/hooks/pre-push'
+expect deny 'exec > .git/hooks/pre-commit'
+expect deny '>> .git/hooks/pre-commit'
+
+# a bare redirect to any other path must keep working
+expect none '> /tmp/out.txt'
+expect none 'exec > /tmp/log.txt'
+
+# runs the guard at the given path with the given directory placed ahead of the
+# existing PATH, so jq and the ordinary tools stay reachable, and prints the
+# permission decision the same way decision does
+decision_under() {
+  B10_OUT=$(jq -n --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}' \
+    | PATH="$2:$PATH" "$1" 2>/dev/null) || true
+  if [ -z "$B10_OUT" ]; then echo none; else printf '%s' "$B10_OUT" | jq -r '.hookSpecificOutput.permissionDecision // "none"'; fi
+}
+
+# compares the decision of the guard at the given path, run with the given
+# directory ahead of PATH, against the expected decision, counting a mismatch
+# in FAILURES exactly as expect does
+expect_under() {
+  B10_GOT=$(decision_under "$2" "$3" "$4")
+  if [ "$B10_GOT" != "$1" ]; then
+    echo "FAIL: expected $1, got $B10_GOT for: $4 (guard $2, PATH prefix $3)"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+B10_SHIM_DIR=$(mktemp -d)
+B10_COPY_DIR=$(mktemp -d)
+B10_EMPTY_DIR=$(mktemp -d)
+trap 'rm -rf "$B10_SHIM_DIR" "$B10_COPY_DIR" "$B10_EMPTY_DIR"' EXIT
+
+# a python3 that exists but fails, as the macOS stub does when the developer
+# tools are not installed
+printf '%s\n' '#!/bin/sh' \
+  'echo "xcode-select: note: No developer tools were found" >&2' \
+  'exit 1' > "$B10_SHIM_DIR/python3"
+chmod +x "$B10_SHIM_DIR/python3"
+
+# the guard copied alone, so its sibling shell-command-segments.py is missing
+cp "$HOOK" "$B10_COPY_DIR/destructive-command-guard.sh"
+chmod +x "$B10_COPY_DIR/destructive-command-guard.sh"
+
+# with a failing python3, a command that could reach git or its hooks is denied
+expect_under deny "$HOOK" "$B10_SHIM_DIR" 'git commit --no-verify -m x'
+expect_under deny "$HOOK" "$B10_SHIM_DIR" 'git status'
+expect_under deny "$HOOK" "$B10_SHIM_DIR" 'rm .git/hooks/pre-commit'
+
+# with a failing python3, a command that cannot reach git or its hooks is not;
+# git and hooks match as whole words or as .git/, never as substrings
+expect_under none "$HOOK" "$B10_SHIM_DIR" 'ls -la'
+expect_under none "$HOOK" "$B10_SHIM_DIR" 'legit --help'
+expect_under none "$HOOK" "$B10_SHIM_DIR" 'echo digit'
+
+# with the parser file missing, the same commands get the same decisions
+B10_COPY_HOOK="$B10_COPY_DIR/destructive-command-guard.sh"
+expect_under deny "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'git commit --no-verify -m x'
+expect_under deny "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'git status'
+expect_under deny "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'rm .git/hooks/pre-commit'
+expect_under none "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'ls -la'
+expect_under none "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'legit --help'
+expect_under none "$B10_COPY_HOOK" "$B10_EMPTY_DIR" 'echo digit'
+
+# --- end B-10 --------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
