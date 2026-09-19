@@ -487,5 +487,37 @@ write_ledger "$X_Y" "{\"tier\":\"standard\",\"branch\":\"feat/y\",\"ticket\":\"I
 bash_gate 'git switch feat/y && git commit -m x' "$X_Y"
 check "X-2 switch to the ledger's ticketed branch then commit allows" is_silent
 
+# --- IAN-149 review round 7 -----------------------------------------------------
+# Y-1: `-` names the previous branch (@{-1}).
+# make_repo leaves the repo on feat/x having come from main, so @{-1} is main.
+Y_FROM_MAIN=$(make_ticketed y1-on-feat-x)
+bash_gate 'git switch - && git commit -m x' "$Y_FROM_MAIN"
+check "Y-1 switch - to main (ledger for feat/x) then commit denies" is_deny
+check "Y-1 switch - deny names main" reason_has "main"
+bash_gate 'git checkout - && git commit -m x' "$Y_FROM_MAIN"
+check "Y-1 checkout - to main then commit denies" is_deny
+check "Y-1 checkout - deny names main" reason_has "main"
+bash_gate 'git switch main && git pull --ff-only 2>/dev/null; git switch - && git commit -m x' "$Y_FROM_MAIN"
+check "Y-1 switch main, then switch - back to feat/x, then commit allows" is_silent
+
+# The repo on main having come from feat/x: @{-1} is feat/x, whose ledger carries the ticket.
+Y_FROM_FEAT=$(make_ticketed y1-on-main)
+git -C "$Y_FROM_FEAT" switch -q main
+bash_gate 'git switch - && git commit -m x' "$Y_FROM_FEAT"
+check "Y-1 switch - back to feat/x (ticketed) then commit allows" is_silent
+
+# Y-2: restore forms of checkout change no branch.
+Y2=$(make_ticketed y2-ticketed)
+printf 'two\n' >> "$Y2/README.md"; git -C "$Y2" commit -qam "docs: second line"
+while IFS= read -r command; do
+  bash_gate "$command" "$Y2"
+  check "Y-2 '$command' from a ticketed repo allows" is_silent
+done <<'SHAPES'
+git checkout main README.md && git commit -m x
+git checkout HEAD~1 README.md && git commit -m x
+git checkout . && git commit -m x
+git checkout README.md && git commit -m x
+SHAPES
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

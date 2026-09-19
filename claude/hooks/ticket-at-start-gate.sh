@@ -263,33 +263,55 @@ record_git_commit_directory() {
 # or checkout earlier in the command, so a later commit in the same repository
 # is judged against the branch it lands on: a created branch (-b, -c, and
 # their forms) by its name, an existing local or remote-tracking branch by its
-# name. A file restore (`checkout -- <path>`) changes nothing; a target built
-# by expansion, a --detach, or a target that is no known branch makes the
-# branch unknown, so a later commit denies as unreadable.
+# name, and `-` by the previous branch (the one before an earlier switch in
+# this command, else git's @{-1}). A checkout that restores files changes
+# nothing: `-- <path>`, a tree-ish followed by a path, `.`, or a target that is
+# an existing path rather than a branch. A target built by expansion, a
+# --detach, or anything else that is no known branch makes the branch unknown,
+# so a later commit denies as unreadable.
 record_branch_switch() {
-  local directory="$1" subcommand="$2" new_branch="" target="" switch_top
+  local directory="$1" subcommand="$2" new_branch="" target="" switch_top current_branch
+  local positional_count=0 is_create=0
   shift 2
   if [ "$subcommand" = "checkout" ]; then case " $* " in *" -- "*) return 0 ;; esac; fi
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      -b | -B | -c | -C | --create | --force-create | --orphan) new_branch="${2:-}"; shift 2 2>/dev/null || shift ;;
-      --create=* | --force-create=* | --orphan=*) new_branch="${1#*=}"; shift ;;
+      -b | -B | -c | -C | --create | --force-create | --orphan) new_branch="${2:-}"; is_create=1; shift 2 2>/dev/null || shift ;;
+      --create=* | --force-create=* | --orphan=*) new_branch="${1#*=}"; is_create=1; shift ;;
       -d | --detach) IS_BRANCH_UNKNOWN=1; return 0 ;;
+      -) [ -z "$target" ] && target="-"; positional_count=$((positional_count + 1)); shift ;;
       -*) shift ;;
-      *) [ -z "$target" ] && target="$1"; shift ;;
+      *) [ -z "$target" ] && target="$1"; positional_count=$((positional_count + 1)); shift ;;
     esac
   done
+  if [ "$subcommand" = "checkout" ] && [ "$is_create" -eq 0 ]; then
+    [ "$positional_count" -ge 2 ] && return 0
+    [ "$target" = "." ] && return 0
+  fi
   [ -n "$new_branch" ] || new_branch="$target"
   [ -n "$new_branch" ] || return 0
   if is_expanded_word "$new_branch"; then IS_BRANCH_UNKNOWN=1; return 0; fi
   switch_top=$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null) || { IS_BRANCH_UNKNOWN=1; return 0; }
   switch_top=$(cd "$switch_top" && pwd -P)
-  if [ "$new_branch" = "$target" ] &&
+  current_branch=$(git -C "$switch_top" branch --show-current 2>/dev/null)
+  [ -n "$SWITCHED_BRANCH" ] && [ "$SWITCHED_TOP" = "$switch_top" ] && current_branch="$SWITCHED_BRANCH"
+  if [ "$is_create" -eq 0 ] && [ "$target" = "-" ]; then
+    if [ -n "$SWITCHED_BRANCH" ] && [ "$SWITCHED_TOP" = "$switch_top" ]; then
+      target="$PREVIOUS_BRANCH"
+    else
+      target=$(git -C "$switch_top" rev-parse --abbrev-ref '@{-1}' 2>/dev/null) || target=""
+    fi
+    case "$target" in "" | HEAD) IS_BRANCH_UNKNOWN=1; return 0 ;; esac
+    new_branch="$target"
+  fi
+  if [ "$is_create" -eq 0 ] &&
     ! git -C "$switch_top" show-ref --verify --quiet "refs/heads/$target" &&
     [ -z "$(git -C "$switch_top" for-each-ref --format='%(refname)' "refs/remotes/*/$target" 2>/dev/null)" ]; then
+    [ "$subcommand" = "checkout" ] && [ -e "$directory/$target" ] && return 0
     IS_BRANCH_UNKNOWN=1
     return 0
   fi
+  PREVIOUS_BRANCH="$current_branch"
   SWITCHED_TOP="$switch_top"
   SWITCHED_BRANCH="$new_branch"
   IS_BRANCH_UNKNOWN=0
@@ -371,6 +393,7 @@ collect_commit_directories() {
   IS_BRANCH_UNKNOWN=0
   SWITCHED_TOP=""
   SWITCHED_BRANCH=""
+  PREVIOUS_BRANCH=""
   COMMIT_SWITCH_TOPS=()
   COMMIT_SWITCH_BRANCHES=()
   HEREDOC_BODY=""
