@@ -189,6 +189,33 @@ CODEX_LINE_COMMENT=$(write_gh_stub codex-line-comment '{"body":"## Codex review\
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_LINE_COMMENT")" = "ask" ]
 CODEX_CODE_SPAN=$(write_gh_stub codex-code-span '{"body":"## Codex review\nReviewer: Codex. Fixed the `<!--` handling.\n## Testing\nGreen.","labels":[],"commits":[]}')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_CODE_SPAN")" = "ask" ]
+# Round four: a merge fed to a shell on stdin, a backtick substitution, and a
+# merge spelled through an expansion are unreadable, so they deny.
+for hidden in $'bash <<\'EOF\'\ngh pr merge 42 --squash\nEOF' $'sh -s <<EOF\ngh pr merge 42 --squash\nEOF' \
+  'echo "gh pr merge 42 --squash" | bash' 'x=`gh pr merge 42 --squash`' "gh pr \$'merge' 42 --squash" \
+  'gh pr mer${x:-}ge 42 --squash' 'gh pr ${m:-merge} 42 --squash' 'g=gh; $g pr merge 42 --squash' \
+  'cmd="gh pr merge 42 --squash"; $cmd'; do
+  [ "$(stubbed_decision "$hidden" "$CODEX_OK")" = "deny" ] || { echo "FAIL: hidden merge not denied: $hidden" >&2; exit 1; }
+done
+# The flags come from the merge that runs, never from a quoted mention before it.
+[ "$(stubbed_decision "echo 'x gh pr merge 41 y'; gh pr merge 42 --merge" "$CODEX_OK")" = "deny" ]
+for mention in 'git merge highlight-branch' 'echo "through merged"' 'bash scripts/run.sh --gh-merge-check'; do
+  [ "$(stubbed_decision "$mention" "$CODEX_MISSING")" != "deny" ] || { echo "FAIL: a mention was read as a merge: $mention" >&2; exit 1; }
+done
+# With the shell scan helper missing, the hook still denies a real merge and
+# leaves an ordinary command alone.
+NO_HELPER_HOOKS=$(mktemp -d)
+cp "$CLAUDE_HARNESS_ROOT"/hooks/*.sh "$NO_HELPER_HOOKS/"
+rm -f "$NO_HELPER_HOOKS/shell-command-tokens.sh"
+no_helper_decision() {
+  local out
+  out=$(payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$CODEX_OK" bash "$NO_HELPER_HOOKS/git-workflow-guard.sh" 2>/dev/null)
+  if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+[ "$(no_helper_decision 'gh pr merge 42 --squash')" = "deny" ]
+[ "$(no_helper_decision 'git merge highlight-branch')" = "none" ]
+[ "$(no_helper_decision 'echo "through merged"')" = "none" ]
+rm -rf "$NO_HELPER_HOOKS"
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.

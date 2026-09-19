@@ -38,9 +38,16 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 LINE_CONTINUATION=$'\\\n'
 ESCAPED_BACKSLASH_NEWLINE=$'\\\\\n'
 ESCAPED_BACKSLASH_MARK=$'\\\\\001'
+NEWLINE_CHARACTER=$'\n'
+# bash 5.2 turns on patsub_replacement, which processes backslashes and `&`
+# in a replacement string; that turned the two-backslash mark back into a
+# continuation on the Linux runners. Quoting the replacement is no fix, since
+# bash 3.2 on macOS then inserts the quotes literally, so the option is
+# switched off instead (bash before 5.2 has no such option and ignores this).
+shopt -u patsub_replacement 2>/dev/null || true
 CMD="${CMD//"$ESCAPED_BACKSLASH_NEWLINE"/$ESCAPED_BACKSLASH_MARK}"
 CMD="${CMD//"$LINE_CONTINUATION"/ }"
-CMD="${CMD//$'\001'/$'\n'}"
+CMD="${CMD//$'\001'/$NEWLINE_CHARACTER}"
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
@@ -96,8 +103,12 @@ if [ -f "$SHELL_TOKENS_HELPER" ]; then
   source "$SHELL_TOKENS_HELPER" && IS_SHELL_TOKENS_LOADED=1
 fi
 UNQUOTED_CMD="${CMD//[\"\'\\]/}"
-IS_MERGE_CANDIDATE=0
-[[ "$UNQUOTED_CMD" == *gh* && "$UNQUOTED_CMD" == *merge* ]] && IS_MERGE_CANDIDATE=1
+IS_MERGE_MENTIONED=0
+[[ "$UNQUOTED_CMD" == *gh* && "$UNQUOTED_CMD" == *merge* ]] && IS_MERGE_MENTIONED=1
+# A `merge` word built by expansion (`gh pr mer${x}ge`) never spells "merge",
+# so gh and pr beside a `$` or backtick also start the scan.
+IS_MERGE_CANDIDATE="$IS_MERGE_MENTIONED"
+[[ "$UNQUOTED_CMD" == *gh* && "$UNQUOTED_CMD" == *pr* && "$UNQUOTED_CMD" == *[\$\`]* ]] && IS_MERGE_CANDIDATE=1
 grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+(push|commit)([[:space:]]|$)' <<< "$CMD" ||
   [ "$IS_MERGE_CANDIDATE" -eq 1 ] || exit 0
 
@@ -119,24 +130,22 @@ deny() {
   exit 0
 }
 
-# parse_merge_arguments: reads the `gh pr merge` arguments in $CMD and sets
+# parse_merge_arguments: reads the arguments of the one canonical merge the
+# shell scan found (MERGE_WORDS, the words after `merge`), never a regex match
+# in $CMD that a quoted mention could supply, and sets
 # MERGE_HAS_MERGE_FLAG and MERGE_HAS_REBASE_FLAG (long, short, and bundled
 # short forms such as `-dr`) plus MERGE_VIEW_ARGUMENTS, the `gh pr view`
 # arguments naming the same PR: the first positional argument (a number, URL,
 # or branch) and any --repo/-R. The values of merge's value-taking flags are
 # skipped so a subject or head SHA is never mistaken for the PR or a strategy.
-# Word splitting is on whitespace only, so a quoted value holding a space can
-# at worst read as an extra strategy flag or the wrong PR, and both of those
-# end in a deny.
+# The words come from the quote-aware scan, so a quoted value holding a space
+# is one word, as the shell passes it.
 parse_merge_arguments() {
-  local merge_arguments merge_token short_flags short_flag skip_next=0 repo_next=0 pr_selector=""
+  local merge_token short_flags short_flag skip_next=0 repo_next=0 pr_selector=""
   MERGE_HAS_MERGE_FLAG=0
   MERGE_HAS_REBASE_FLAG=0
   MERGE_VIEW_ARGUMENTS=()
-  merge_arguments=$(printf '%s' "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[^;&|]*' | head -1 |
-    sed -E 's/^gh[[:space:]]+pr[[:space:]]+merge[[:space:]]*//' || true)
-  local -a merge_tokens=()
-  read -r -a merge_tokens <<< "$merge_arguments"
+  local -a merge_tokens=(${MERGE_WORDS[@]+"${MERGE_WORDS[@]}"})
   for merge_token in ${merge_tokens[@]+"${merge_tokens[@]}"}; do
     if [ "$repo_next" -eq 1 ]; then MERGE_VIEW_ARGUMENTS+=(--repo "$merge_token"); repo_next=0; continue; fi
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
@@ -327,7 +336,11 @@ classify_merge_commands() {
   scan_command_tokens "$command_text"
   command_tokens=(${TOKENS[@]+"${TOKENS[@]}"})
   for token in ${command_tokens[@]+"${command_tokens[@]}"}; do
-    if [ "$is_heredoc_next" -eq 1 ]; then is_heredoc_next=0; continue; fi
+    if [ "$is_heredoc_next" -eq 1 ]; then
+      is_heredoc_next=0
+      is_shell_consumer "${words[@]+"${words[@]}"}" && classify_merge_commands "$token" 1
+      continue
+    fi
     case "$token" in
       "$HEREDOC_TOKEN") is_heredoc_next=1 ;;
       "$SEPARATOR_TOKEN") classify_simple_command "$is_nested" ${words[@]+"${words[@]}"}; words=() ;;
@@ -338,8 +351,27 @@ classify_merge_commands() {
   CLASSIFY_DEPTH=$((CLASSIFY_DEPTH - 1))
 }
 
+# is_shell_consumer <word>...: true when the simple command, past its leading
+# assignments, is a shell or eval that would run a heredoc fed to it.
+is_shell_consumer() {
+  while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do shift; done
+  case "${1:-}" in */*) set -- "${1##*/}" ;; esac
+  case "${1:-}" in bash | sh | zsh | eval | source | .) return 0 ;; esac
+  return 1
+}
+
+# count_unreadable_merge: records a merge the scan cannot read (a script fed
+# on stdin, or a word built by expansion); it is never canonical, so the
+# merge path denies it.
+count_unreadable_merge() {
+  MERGE_TOTAL=$((MERGE_TOTAL + 1))
+}
+
 # classify_simple_command <is-nested> <word>...: the per-command half of
-# classify_merge_commands.
+# classify_merge_commands. A subcommand or `merge` slot of a gh command built
+# by expansion ($, or a backtick) is counted as an unreadable merge rather
+# than trusted, and so, when the command mentions merge at all, is a command
+# word built by expansion or a shell reading its script from stdin.
 classify_simple_command() {
   local is_wrapped="$1" word script=""
   shift
@@ -350,22 +382,35 @@ classify_simple_command() {
     esac
   done
   [ "$#" -gt 0 ] || return 0
+  if [ "$IS_MERGE_MENTIONED" -eq 1 ]; then
+    case "$1" in *'$'* | *'`'*) count_unreadable_merge; return 0 ;; esac
+  fi
   case "${1##*/}" in
     cd | pushd | popd) HAS_DIRECTORY_CHANGE=1; return 0 ;;
     eval) shift; classify_merge_commands "$*" 1; return 0 ;;
     bash | sh | zsh)
       shift
       while [ "$#" -gt 0 ]; do
-        case "$1" in -*c*) script="${2:-}"; break ;; esac
-        shift
+        case "$1" in
+          -*c*) script="${2:-}"; break ;;
+          -*) shift ;;
+          *) return 0 ;;
+        esac
       done
-      [ -n "$script" ] && classify_merge_commands "$script" 1
+      if [ -n "$script" ]; then
+        classify_merge_commands "$script" 1
+      elif [ "$IS_MERGE_MENTIONED" -eq 1 ]; then
+        count_unreadable_merge
+      fi
       return 0 ;;
     env | command | exec | sudo | nohup | nice | timeout | xargs | stdbuf | caffeinate)
       is_wrapped=1
       while [ "$#" -gt 0 ] && [ "${1##*/}" != "gh" ]; do shift; done
       [ "$#" -gt 0 ] || return 0 ;;
   esac
+  if [ "$IS_MERGE_MENTIONED" -eq 1 ]; then
+    case "$1" in *'$'* | *'`'*) count_unreadable_merge; return 0 ;; esac
+  fi
   [ "${1##*/}" = "gh" ] || return 0
   [ "$1" = "gh" ] || is_wrapped=1
   shift
@@ -374,6 +419,7 @@ classify_simple_command() {
     case "$1" in -R | --repo) shift ;; esac
     shift
   done
+  case "${1:-}" in *'$'* | *'`'*) count_unreadable_merge; return 0 ;; esac
   [ "${1:-}" = "pr" ] || return 0
   shift
   while [ "$#" -gt 0 ] && [ "${1#-}" != "$1" ]; do
@@ -381,9 +427,14 @@ classify_simple_command() {
     case "$1" in -R | --repo) shift ;; esac
     shift
   done
+  case "${1:-}" in *'$'* | *'`'*) count_unreadable_merge; return 0 ;; esac
   [ "${1:-}" = "merge" ] || return 0
+  shift
   MERGE_TOTAL=$((MERGE_TOTAL + 1))
-  [ "$is_wrapped" -eq 0 ] && MERGE_CANONICAL=$((MERGE_CANONICAL + 1))
+  if [ "$is_wrapped" -eq 0 ]; then
+    MERGE_CANONICAL=$((MERGE_CANONICAL + 1))
+    MERGE_WORDS=("$@")
+  fi
   return 0
 }
 
@@ -393,11 +444,12 @@ classify_simple_command() {
 # conditions, and every merge for the Codex review section in the PR body.
 MERGE_TOTAL=0
 MERGE_CANONICAL=0
+MERGE_WORDS=()
 HAS_DIRECTORY_CHANGE=0
 if [ "$IS_MERGE_CANDIDATE" -eq 1 ]; then
   if [ "$IS_SHELL_TOKENS_LOADED" -eq 1 ]; then
     classify_merge_commands "$CMD" 0
-  else
+  elif grep -qE 'gh[^;&|]*[[:space:]]pr[^;&|]*[[:space:]]merge([[:space:]]|$)' <<< "$UNQUOTED_CMD"; then
     MERGE_TOTAL=1
   fi
 fi

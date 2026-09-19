@@ -9,7 +9,7 @@
 #
 # scan_command_tokens <command> fills TOKENS with the words of each simple
 # command, SEPARATOR_TOKEN between simple commands (at an unquoted ; & | ( )
-# or newline), and HEREDOC_TOKEN followed by the body for a heredoc fed to a
+# backtick or newline), and HEREDOC_TOKEN followed by the body for a heredoc fed to a
 # command. Quotes are honored and removed, a backslash escapes the next
 # character, and a backslash-newline is a line continuation. Nothing is
 # expanded or evaluated: the input is an untrusted tool-call string.
@@ -82,7 +82,7 @@ scan_command_tokens() {
     else
       case "$char" in
         ' '|$'\t') flush_word ;;
-        $'\n'|';'|'&'|'|'|'('|')') push_separator ;;
+        $'\n'|';'|'&'|'|'|'('|')'|'`') push_separator ;;
         "'") quote="'"; HAS_WORD=1 ;;
         *) WORD="$WORD$char"; HAS_WORD=1 ;;
       esac
