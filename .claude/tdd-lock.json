@@ -1,6 +1,6 @@
 {
   "slice": "B-3 deny core.hooksPath overrides through -c, --config-env, and GIT_CONFIG variables",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T11:04:54Z"
+  "redAt": "2026-09-19T11:04:54Z",
+  "greenAt": "2026-09-19T11:09:55Z"
 }

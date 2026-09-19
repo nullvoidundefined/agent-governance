@@ -3,7 +3,8 @@
 # prefix globs cannot express:
 #   - `gh api` with a mutating method, in any flag spelling
 #   - curl/wget piped into an interpreter
-#   - writes to git core.hooksPath
+#   - writes to git core.hooksPath, and one-command overrides of it (-c,
+#     --config-env, GIT_CONFIG_KEY_n, GIT_CONFIG_PARAMETERS)
 #   - skipping git hooks with --no-verify (any accepted spelling), commit -n,
 #     or a hook-manager variable (HUSKY=0, SKIP, LEFTHOOK=0)
 #   - credential readout (gh auth token, macOS keychain)
@@ -90,24 +91,41 @@ fi
 GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 [ -f "$GIT_INVOCATION_HELPER" ] && . "$GIT_INVOCATION_HELPER"
 
-# Prints one line per simple command in the input: newlines join as `;`,
-# quoted runs become Q, and the text splits on separators, leading space
-# trimmed. awk ends every line with a newline, which `read` needs: it drops an
-# unterminated last line.
+# Prints one line per simple command in the input: newlines join as `;`, the
+# text splits on separators, and leading space is trimmed. A quoted run stays
+# one word: its quote marks become a leading Q, so `-m "--no-verify"` is not
+# the flag, while separators and spaces inside it become `_`, so quoted text
+# never starts a command. The content survives for checks that need it, such
+# as `git -c "core.hooksPath=x"`. awk ends every line with a newline, which
+# `read` needs: it drops an unterminated last line.
 list_command_segments() {
-    printf '%s' "$1" | tr '\n' ';' \
-        | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" \
-        | tr ';&|()' '\n\n\n\n\n' \
-        | awk '{ sub(/^[[:space:]]+/, ""); print }'
+    printf '%s' "$1" | tr '\n' ';' | awk '{
+        text = ""; quote = ""
+        for (i = 1; i <= length($0); i++) {
+            c = substr($0, i, 1)
+            if (quote != "") {
+                if (c == quote) { quote = ""; continue }
+                if (c ~ /[;&|() \t]/) c = "_"
+                text = text c; continue
+            }
+            if (c == "\"" || c == "\047") { quote = c; text = text "Q"; continue }
+            text = text c
+        }
+        print text
+    }' | tr ';&|()' '\n\n\n\n\n' | awk '{ sub(/^[[:space:]]+/, ""); print }'
 }
 
-# Prints the git invocation a segment runs once its leading `env` and
-# VAR=value words are dropped and global options stripped, so the subcommand
-# follows `git` directly; prints nothing for a segment that does not run git.
-extract_git_invocation() {
+# Prints the command a segment runs once its leading `env` and VAR=value
+# words are dropped.
+drop_command_prefix() {
     printf '%s\n' "$1" \
-        | sed -E 's/^((env[[:space:]]+)|([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+))*//' \
-        | grep -E '^git([[:space:]]|$)' \
+        | sed -E 's/^((env[[:space:]]+)|([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+))*//'
+}
+
+# Prints a git command with its global options stripped, so the subcommand
+# follows `git` directly.
+strip_git_options() {
+    printf '%s\n' "$1" \
         | if declare -F strip_git_global_options >/dev/null; then strip_git_global_options; else cat; fi
 }
 
@@ -130,17 +148,59 @@ is_hook_skip_assignment() {
     return 1
 }
 
-# True when an assignment ahead of the segment's command name (bare, after
-# env, or after export) turns a hook manager off.
-has_leading_hook_skip() {
-    local word
+# True when a VAR=value word sets core.hooksPath through git's environment
+# config channels: GIT_CONFIG_KEY_n or GIT_CONFIG_PARAMETERS.
+is_hookspath_env_assignment() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        git_config_key_[0-9]*=core.hookspath | git_config_key_[0-9]*=qcore.hookspath) return 0 ;;
+        git_config_parameters=*core.hookspath*) return 0 ;;
+    esac
+    return 1
+}
+
+# True when a `key=value` config setting (quote marker allowed) sets
+# core.hooksPath; the caller has lowercased it.
+is_hookspath_setting() {
+    case "${1#q}" in core.hookspath=*) return 0 ;; esac
+    return 1
+}
+
+# True when the global options of one git command override core.hooksPath
+# through -c or --config-env; options that take a separate argument skip it.
+has_hookspath_option() {
+    local word pending=""
     set -f
-    set -- $1
+    set -- $(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    set +f
+    shift
+    for word in "$@"; do
+        if [ -n "$pending" ]; then
+            [ "$pending" = setting ] && is_hookspath_setting "$word" && return 0
+            pending=""
+            continue
+        fi
+        case "$word" in
+            -c | --config-env) pending=setting ;;
+            --config-env=*) is_hookspath_setting "${word#--config-env=}" && return 0 ;;
+            -C | --git-dir | --work-tree | --namespace | --super-prefix) pending=argument ;;
+            -*) ;;
+            *) return 1 ;;
+        esac
+    done
+    return 1
+}
+
+# True when an assignment ahead of the segment's command name (bare, after
+# env, or after export) satisfies the named predicate.
+has_leading_assignment() {
+    local predicate="$1" word
+    set -f
+    set -- $2
     set +f
     for word in "$@"; do
         case "$word" in
             env | export) continue ;;
-            *=*) is_hook_skip_assignment "$word" && return 0 ;;
+            *=*) "$predicate" "$word" && return 0 ;;
             *) return 1 ;;
         esac
     done
@@ -188,14 +248,22 @@ skips_git_hooks() {
 # An export earlier in the command reaches every later git in the same call,
 # so it is remembered across segments; a bare prefix reaches only its own.
 exported_hook_skip=0
+exported_hookspath=0
 while IFS= read -r segment; do
     if [[ "$segment" =~ ^export[[:space:]] ]]; then
-        has_leading_hook_skip "$segment" && exported_hook_skip=1
+        has_leading_assignment is_hook_skip_assignment "$segment" && exported_hook_skip=1
+        has_leading_assignment is_hookspath_env_assignment "$segment" && exported_hookspath=1
         continue
     fi
-    git_invocation="$(extract_git_invocation "$segment")"
+    git_command="$(drop_command_prefix "$segment")"
+    [[ "$git_command" =~ ^git([[:space:]]|$) ]] || continue
+    if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment "$segment" \
+        || has_hookspath_option "$git_command"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it overrides core.hooksPath for this git command (-c, --config-env, GIT_CONFIG_KEY_n, or GIT_CONFIG_PARAMETERS), which redirects or disables every git hook without touching git config (R-107, R-203). Run the command without the override."
+    fi
+    git_invocation="$(strip_git_options "$git_command")"
     is_hook_running_git "$git_invocation" || continue
-    if [ "$exported_hook_skip" -eq 1 ] || has_leading_hook_skip "$segment"; then
+    if [ "$exported_hook_skip" -eq 1 ] || has_leading_assignment is_hook_skip_assignment "$segment"; then
         emit deny "destructive-command-guard hook BLOCKED this call: it sets an environment variable that turns the hook manager off (HUSKY=0, HUSKY_SKIP_HOOKS, SKIP, LEFTHOOK=0, or LEFTHOOK_EXCLUDE) for a git command that runs hooks (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
     if skips_git_hooks "$git_invocation"; then
