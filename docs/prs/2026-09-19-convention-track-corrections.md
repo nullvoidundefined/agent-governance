@@ -1,6 +1,6 @@
 # Convention tracks corrected from the FastAPI and Nuxt template build
 
-Refs: none yet. The Linear connector was not loaded in this session, so no ticket could be searched or opened (R-605); the intended fields are listed under Ticket below.
+Refs: IAN-145
 
 ## Summary
 
@@ -55,7 +55,7 @@ Two of these (1 and 4) also apply to the template spec, whose idempotency row an
 
 ## Ticket
 
-The fields to open once the Linear connector is available: title "Correct the Python and Vue convention tracks from the FastAPI and Nuxt template build"; tier standard; assist llm; repo agent-governance; branch `chore/convention-track-corrections`; started_at 2026-09-19T09:13:40Z.
+IAN-145, opened when the Linear connector came up mid-session; `started_at` is 2026-09-19T09:13:40Z from the session-start record.
 
 ## Reflection
 
