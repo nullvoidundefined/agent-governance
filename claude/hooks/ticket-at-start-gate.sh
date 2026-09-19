@@ -176,38 +176,10 @@ is_expanded_word() {
   return 1
 }
 
-# strip_command_prefixes <word>...: prints, one per line, the words left once
-# shell keywords and command wrappers (env, time, nice, nohup, sudo, exec,
-# command, builtin, timeout, xargs) and their options, assignments, and
-# durations are removed from the front, so `env A=1 time git commit` reads as
-# the `git commit` it runs.
-strip_command_prefixes() {
-  local wrapper="" is_duration_pending=0
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | exec | command | builtin)
-        wrapper=""; shift; continue ;;
-      env | nice | sudo | xargs | time) wrapper="$1"; shift; continue ;;
-      timeout) wrapper="timeout"; is_duration_pending=1; shift; continue ;;
-    esac
-    if [ -n "$wrapper" ]; then
-      case "$wrapper:$1" in
-        env:-u | env:-C | env:-S | env:--unset | env:--chdir | env:--split-string | nice:-n | nice:--adjustment | \
-        sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | \
-        sudo:--user | sudo:--group | sudo:--host | sudo:--prompt | sudo:--close-from | sudo:--chdir | sudo:--role | sudo:--type | sudo:--other-user | \
-        timeout:-s | timeout:-k | timeout:--signal | timeout:--kill-after | \
-        xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E | \
-        xargs:--max-args | xargs:--max-chars | xargs:--max-lines | xargs:--max-procs | xargs:--delimiter | xargs:--arg-file)
-          shift 2 2>/dev/null || shift; continue ;;
-      esac
-      case "$1" in -* | [A-Za-z_]*=*) shift; continue ;; esac
-      if [ "$is_duration_pending" -eq 1 ]; then is_duration_pending=0; shift; continue; fi
-    fi
-    break
-  done
-  [ "$#" -gt 0 ] && printf '%s\n' "$@"
-  return 0
-}
+# strip_command_prefixes, which removes shell keywords, command wrappers, their
+# options, redirections, and assignments ahead of the command word, is the
+# shared one in shell-command-scan.sh (sourced below); a local copy here was
+# silently replaced by it at runtime once both existed (IAN-152).
 
 # record_git_commit_directory <directory> <word>...: when the words run
 # `git ... commit`, appends the repository it commits to (after -C,
@@ -414,7 +386,16 @@ inspect_commit_words() {
   done
   [ "$#" -gt 0 ] || return 0
   case "$1" in cd | pushd) shift; replay_directory_change "$@"; return 0 ;; esac
-  while IFS= read -r stripped_word; do command_words+=("$stripped_word"); done < <(strip_command_prefixes "$@")
+  strip_command_prefixes "$@"
+  command_words=(${STRIPPED_WORDS[@]+"${STRIPPED_WORDS[@]}"})
+  # A GIT_* assignment the strip removed after a keyword, wrapper, or
+  # redirection (`if GIT_DIR=x git commit`, `env GIT_DIR=x git commit`) still
+  # names the repository the commit lands in. Only removed assignments count:
+  # a redirection target named `GIT_DIR=x` is a file, not an assignment.
+  local assignment_word
+  for assignment_word in ${STRIPPED_ASSIGNMENTS[@]+"${STRIPPED_ASSIGNMENTS[@]}"}; do
+    case "$assignment_word" in GIT_DIR=* | GIT_WORK_TREE=* | GIT_INDEX_FILE=* | GIT_COMMON_DIR=*) HAS_GIT_ENVIRONMENT=1 ;; esac
+  done
   [ "${#command_words[@]}" -gt 0 ] || return 0
   case "${command_words[0]}" in cd | pushd) replay_directory_change "${command_words[@]:1}"; return 0 ;; esac
   case "$(basename -- "${command_words[0]}")" in

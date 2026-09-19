@@ -45,7 +45,8 @@ set -uo pipefail
 PREFILTER_PATTERN='git[[:space:]].*push'
 PR_URL_PATTERN='https?://[^[:space:]]+/pull/[0-9]+'
 PUSH_FAILURE_PATTERN='error: failed to push|! \[rejected\]|! \[remote rejected\]|^fatal:'
-REDIRECTION_PATTERN='^[0-9]*(<|>|>>|>\|)(.*)$'
+# REDIRECTION_PATTERN comes from shell-command-scan.sh, sourced below; a local
+# copy here was replaced by the helper's at runtime (IAN-152).
 MAX_LISTED_COMMITS=20
 ATTRIBUTION_LINE='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"

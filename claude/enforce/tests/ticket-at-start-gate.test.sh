@@ -422,6 +422,34 @@ check "W-4 GIT_DIR and GIT_WORK_TREE naming a ledgerless repo deny from a ticket
 bash_gate "GIT_DIR=$W_LL/.git git commit -m x" "$W_TK"
 check "W-4 GIT_DIR naming a ledgerless repo denies from a ticketed cwd" is_deny
 
+# W-4: a GIT_DIR assignment after a shell keyword, wrapper, or leading redirection
+# still names the judged repository (the shared strip removes it before the command).
+while IFS= read -r command; do
+  bash_gate "$command" "$W_TK"
+  check "W-4 '$command' from a ticketed cwd denies" is_deny
+done <<SHAPES
+if GIT_DIR=$W_LL/.git git commit -m x; then :; fi
+{ GIT_DIR=$W_LL/.git git commit -m x; }
+! GIT_DIR=$W_LL/.git git commit -m x
+env GIT_DIR=$W_LL/.git git commit -m x
+time GIT_DIR=$W_LL/.git git commit -m x
+< /dev/null GIT_DIR=$W_LL/.git git commit -m x
+SHAPES
+
+# W-4: a redirection whose target file is named like a GIT_* assignment is a file name,
+# not an assignment, so a commit from a ticketed cwd still allows (the control above,
+# '< /dev/null GIT_DIR=... git commit', keeps a real assignment after a redirection denying).
+bash_gate 'git commit -m x' "$W_TK"
+check "W-4 plain commit from the ticketed cwd allows (baseline for the redirection cases)" is_silent
+while IFS= read -r command; do
+  bash_gate "$command" "$W_TK"
+  check "W-4 '$command' (GIT_* is a redirection target) from a ticketed cwd allows" is_silent
+done <<'SHAPES'
+< GIT_DIR=/tmp git commit -m x
+2> GIT_WORK_TREE=/tmp git commit -m x
+> GIT_INDEX_FILE=x git commit -m x
+SHAPES
+
 # W-5: a shell -c payload holding an expansion, in a command that mentions commit, is unreadable.
 bash_gate 'SCRIPT='"'"'git commit -m x'"'"'; bash -c "$SCRIPT"' "$W_TK"
 check "W-5 bash -c \"\$SCRIPT\" with a commit in SCRIPT denies from a ticketed cwd" is_deny
