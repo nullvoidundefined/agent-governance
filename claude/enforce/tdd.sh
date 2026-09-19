@@ -361,7 +361,14 @@ file_record() { jq -c --arg n "$(report_name "$1")" '.testResults[] | select(.na
 
 MISSING_MODULE='Cannot find module|Failed to resolve import|does not provide an export|is not a function|is not defined|Cannot read propert'
 PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse error|syntax error'
-ASSERTION='AssertionError|expected|toBe|toEqual|toMatch|toThrow|toHaveBeen'
+# Vitest and Jest: the markers their own assertion failures carry, never a bare
+# word a plain Error could say. Vitest writes AssertionError for every matcher
+# and assert call, except that `.resolves` rethrows as a plain Error from its
+# __VITEST_RESOLVES__ frame and expect.assertions / expect.hasAssertions fail
+# with their own messages; Jest heads each failure with the matcher hint
+# (`expect(received).toBe(expected)`, `expect(jest.fn()).toHaveBeenCalled()`,
+# `expect.assertions(1)`).
+ASSERTION='AssertionError|expect\(.*\)(\.(not|resolves|rejects))*\.to[A-Z]|expect\.(assertions|hasAssertions)\(|__VITEST_RESOLVES__|expected number of assertions to be|expected any number of assertion'
 # Shell fixtures: bash's own message for a script or command that does not
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'

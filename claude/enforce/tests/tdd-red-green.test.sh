@@ -252,6 +252,33 @@ out=$(bash "$TDD" green 2>&1) || { echo "FAIL: node green must pass once the nam
 bash "$TDD" close >/dev/null
 cd / && rm -rf "$N"
 
+# --- the assertion class is Vitest's own assertion output, not a word ----------
+# A plain Error whose message happens to say "expected" or name a matcher is
+# not an assertion RED (IAN-161): it is refused as unclassified. Every shape
+# real Vitest writes for a failed assertion stays the assertion RED, including
+# the three that arrive as a plain Error: `.resolves`, `expect.assertions`, and
+# `expect.hasAssertions`.
+A=$(new_project); cd "$A"
+bash "$TDD" open "A-1 assertion markers" >/dev/null
+for body in 'throw new Error("timeout: expected reply");' \
+            'throw new Error("expected reply to arrive");' \
+            'throw new Error("toBe or not toBe");'; do
+  printf 'import { it } from "vitest";\nit("plain", () => { %s });\n' "$body" > src/__tests__/marker.test.ts
+  expect_fail "red on a plain error: $body" bash "$TDD" red src/__tests__/marker.test.ts | grep -q 'does not classify' || { echo "FAIL: a plain error is not an assertion RED: $body"; exit 1; }
+done
+[ "$(lock_field . .phase)" = "open" ] || { echo "FAIL: a refused plain-error red must leave the phase open"; exit 1; }
+for body in 'expect(1).toBe(2);' \
+            'expect(vi.fn()).toHaveBeenCalled();' \
+            'assert.equal(1, 2);' \
+            'await expect(Promise.resolve(1)).resolves.toBe(2);' \
+            'expect.assertions(1);' \
+            'expect.hasAssertions();'; do
+  printf 'import { it, expect, assert, vi } from "vitest";\nit("marker", async () => { %s });\n' "$body" > src/__tests__/marker.test.ts
+  out=$(bash "$TDD" red src/__tests__/marker.test.ts 2>&1) || { echo "FAIL: a Vitest assertion failure must be accepted: $body; output: $out"; exit 1; }
+  [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: $body must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
+done
+cd / && rm -rf "$A"
+
 # --- a file-level failure with every assertion passed -------------------------
 # Vitest and Jest mark a file failed for a suite-level error (a throwing
 # afterAll, for instance) while each assertion in it passed. Green must refuse
@@ -308,6 +335,13 @@ case "$(cat "$PWD/.stub-mode")" in
   red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
   duplicate) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: thrown: Exceeded timeout of 5000 ms\"]}]}]}" ;;
   unreadable) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:null}]}]}" ;;
+  plain|mock|assertions)
+    case "$(cat "$PWD/.stub-mode")" in
+      plain) failure='Error: timeout: expected reply' ;;
+      mock) failure='Error: expect(jest.fn()).toHaveBeenCalledWith(...expected)' ;;
+      assertions) failure='Error: expect.assertions(1)' ;;
+    esac
+    jq -n --arg n "$name" --arg f "$failure" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\$f]}]}]}" ;;
   green) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"passed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"passed\", failureMessages:[]}]}]}" ;;
 esac > "$report"
 STUB
@@ -328,6 +362,16 @@ expect_fail "jest node red with a duplicate-named unclassified failure" bash "$T
 # (IAN-160 review, PR #81 Copilot review).
 echo unreadable > .stub-mode
 expect_fail "jest node red with unreadable failure messages" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'src/__tests__/score.test.js::boost doubles failed with no failure message to classify' || { echo "FAIL: a failing result with unreadable messages must be refused by name, not locked on the other result's assertion"; exit 1; }
+# A plain Error mentioning "expected" is not the assertion RED under Jest
+# either; Jest's matcher hints for a mock and for expect.assertions are
+# (IAN-161).
+echo plain > .stub-mode
+expect_fail "jest node red on a plain error" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'does not classify: Error: timeout: expected reply' || { echo "FAIL: under Jest a plain error mentioning expected must be refused as unclassified"; exit 1; }
+for mode in mock assertions; do
+  echo "$mode" > .stub-mode
+  out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: the Jest $mode matcher hint must be the assertion RED; output: $out"; exit 1; }
+  [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: the Jest $mode matcher hint must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
+done
 echo red > .stub-mode
 expect_fail "jest node red on a bare title" bash "$TDD" red "src/__tests__/score.test.js::doubles" | grep -q 'no test in src/__tests__/score.test.js matches doubles' || { echo "FAIL: under Jest a bare title must be refused; the id is the full name"; exit 1; }
 out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: jest node red must accept the named failing test; output: $out"; exit 1; }
