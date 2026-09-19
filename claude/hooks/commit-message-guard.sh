@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# commit-message-guard.sh: PreToolUse gate on `git commit -m` messages.
+# commit-message-guard.sh: PreToolUse gate on the messages of the `git commit`
+# invocations a Bash command really runs (-m, or -F - fed by a heredoc).
 # Denies a non-conventional subject or more than two triage IDs in the scope
 # (R-505); asks on a body longer than three non-trailer lines (R-506, whose
 # multi-line exemption is a user judgment). Unparseable commands fail open.
@@ -12,11 +13,7 @@ set -uo pipefail
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
-grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' <<< "$CMD" || exit 0
-# Either message-bearing form: `-m` or `-F -` fed by a heredoc. `-F <file>`
-# keeps the message on disk rather than in the command, so it stays out of
-# reach and out of this gate (2026-09-17 audit P2-7).
-grep -qE '(^|[[:space:]])(-m|-F[[:space:]]+-)([[:space:]]|$)' <<< "$CMD" || exit 0
+case "$CMD" in *commit*) ;; *) exit 0 ;; esac
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
@@ -33,48 +30,66 @@ ask() {
   exit 0
 }
 
-# Narrow the command to the `git commit` invocation before reading a message
-# out of it. Everything before the `git commit` token belongs to some other
-# command in the same Bash call (a `git add`, a python or jq heredoc payload),
-# and reading a message out of that text is how the guard came to deny its own
-# well-formed commit over a line of someone else's heredoc body (2026-09-17,
-# reported on PR #8). An empty tail means no `git commit` token survived the
-# earlier grep, which fails open exactly as an unparseable command does.
-COMMIT_TAIL=$(printf '%s' "$CMD" | perl -0777 -ne 'if (/(git\s+commit\b.*)/s) { print $1; }')
-[ -z "$COMMIT_TAIL" ] && exit 0
-
-# Extract the first -m argument. Handles "..."/'...' spanning newlines and the
-# heredoc form -m "$(cat <<'EOF' ... EOF)". Anything else fails open.
-# Any heredoc delimiter word, not the literal EOF alone: `<<MSG` and `<<'ANY'`
-# fell through to the -m extractor and out, which is how every heredoc commit
-# in this repo escaped both R-505 and R-506 (audit P2-7). The delimiter search
-# runs from the `git commit` token to the first command separator, so a heredoc
-# opened by a later command on the same line (`git commit -m "..." && cat >
-# file <<EOF`) is not mistaken for this commit's message, and the closing
-# delimiter ends the message at its own line so further commands may follow it.
-if printf '%s' "$COMMIT_TAIL" | perl -0777 -ne 'exit(/\Agit\s+commit\b[^\n;&|]*<<-?\s*['\''"]?[A-Za-z_][A-Za-z0-9_]*/ms ? 0 : 1)'; then
-  MSG=$(printf '%s' "$COMMIT_TAIL" | perl -0777 -ne '
-    if (/\Agit\s+commit\b[^\n;&|]*?<<-?\s*['\''"]?([A-Za-z_][A-Za-z0-9_]*)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*(?:\)|"|$)/ms) { print $2; }
-  ')
-else
-  MSG=$(printf '%s' "$COMMIT_TAIL" | awk '
-    BEGIN { RS = "\x01" }
-    {
-      s = $0
-      i = match(s, /(^|[[:space:]])-m[[:space:]]*/)
-      if (i == 0) exit
-      rest = substr(s, i + RLENGTH)
-      q = substr(rest, 1, 1)
-      if (q == "\"" || q == "\x27") {
-        rest = substr(rest, 2)
-        j = index(rest, q)
-        if (j > 0) { print substr(rest, 1, j - 1) } else { print rest }
-      } else {
-        j = match(rest, /[[:space:]]/)
-        if (j > 0) { print substr(rest, 1, j - 1) } else { print rest }
-      }
-    }')
+# Find the commit the way the shell would run it, through the quote-aware scan
+# in shell-command-scan.sh (shared with pr-ticket-ref-gate.sh). A grep over the
+# raw text read `git commit -m ...` written as data, inside a quoted argument
+# or a heredoc fed to cat, as a commit, and denied a subagent writing a test
+# file on 2026-09-19 (IAN-149). The scan also reads a real commit behind env
+# assignments, wrappers (env, time, nice, timeout, command), and git's global
+# options (-C, -c).
+SHELL_COMMAND_SCAN_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-scan.sh"
+# shellcheck source=shell-command-scan.sh
+[ -f "$SHELL_COMMAND_SCAN_HELPER" ] && source "$SHELL_COMMAND_SCAN_HELPER"
+if ! type scan_command_tokens >/dev/null 2>&1 || ! type is_git_commit_command >/dev/null 2>&1; then
+  deny "commit-message-guard (R-505): a helper this hook sources (shell-command-scan.sh or shell-command-tokens.sh) is missing, so this hook cannot read the command; re-run ./sync.sh to restore it."
 fi
+scan_command_tokens "$CMD"
+find_simple_command "$PWD" is_git_commit_command || exit 0
+
+# read_substituted_heredoc <word>: prints the body of a `$(cat <<'EOF' ...
+# EOF)` substitution, the form a multi-line -m message usually takes; prints
+# nothing for any other substitution, whose value the scan never computes.
+read_substituted_heredoc() {
+  printf '%s' "$1" | perl -0777 -ne '
+    if (/\A\$\(\s*cat\s*<<-?\s*['\''"]?([A-Za-z_][A-Za-z0-9_]*)['\''"]?[ \t]*\n(.*?)\n[ \t]*\1[ \t]*\n?\s*\)\s*\z/s) { print $2; }
+  '
+}
+
+# read_commit_message: sets MSG from the commit's own arguments: every -m
+# (git joins several with a blank line), or the heredoc behind `-F -`. `-F
+# <file>` keeps the message on disk rather than in the command, so it stays out
+# of reach and out of this gate (2026-09-17 audit P2-7). The values of options
+# that take one are skipped, so `--author "-m x"` is not a message.
+read_commit_message() {
+  local message
+  local -a messages=()
+  MSG=''
+  set -- ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -m | --message) [ "$#" -ge 2 ] && messages+=("$2"); shift 2 2>/dev/null || shift ;;
+      --message=*) messages+=("${1#--message=}"); shift ;;
+      -m?*) messages+=("${1#-m}"); shift ;;
+      -F | --file) [ "${2:-}" = "-" ] && MSG="$INVOCATION_STDIN"; shift 2 2>/dev/null || shift ;;
+      -F- | --file=-) MSG="$INVOCATION_STDIN"; shift ;;
+      -C | -c | -t | --author | --date | --template | --fixup | --squash | --cleanup | --trailer | --reuse-message | --reedit-message | --pathspec-from-file)
+        shift 2 2>/dev/null || shift ;;
+      --) break ;;
+      *) shift ;;
+    esac
+  done
+  [ "${#messages[@]}" -gt 0 ] || return 0
+  MSG=''
+  for message in "${messages[@]}"; do
+    # shellcheck disable=SC2016  # the literal `$(` of a substitution, not an expansion
+    case "$message" in
+      *'$('* | *'`'*) message=$(read_substituted_heredoc "$message"); [ -n "$message" ] || { MSG=''; return 0; } ;;
+    esac
+    MSG="${MSG:+$MSG$'\n\n'}$message"
+  done
+}
+
+read_commit_message
 [ -z "$MSG" ] && exit 0
 
 SUBJECT=$(printf '%s\n' "$MSG" | head -1)

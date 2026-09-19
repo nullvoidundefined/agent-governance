@@ -80,3 +80,58 @@ is_pr_create_command() {
   INVOCATION_STDIN="$stdin"
   return 0
 }
+
+# strip_command_prefixes <word>...: sets STRIPPED_WORDS to the words left once
+# shell keywords and command wrappers (env, time, nice, nohup, sudo, exec,
+# command, builtin, timeout, xargs) and their options, assignments, and
+# durations are removed from the front, so `env A=1 time git commit` reads as
+# the `git commit` it runs. An array rather than printed lines, so a word
+# holding a newline (a multi-line commit message) survives intact.
+strip_command_prefixes() {
+  local wrapper="" is_duration_pending=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      if | then | else | elif | do | while | until | '!' | '{' | '}' | time | nohup | exec | command | builtin)
+        wrapper=""; shift; continue ;;
+      env | nice | sudo | xargs) wrapper="$1"; shift; continue ;;
+      timeout) wrapper="timeout"; is_duration_pending=1; shift; continue ;;
+    esac
+    if [ -n "$wrapper" ]; then
+      case "$wrapper:$1" in
+        env:-u | env:-C | env:-S | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E)
+          shift 2 2>/dev/null || shift; continue ;;
+      esac
+      case "$1" in -* | [A-Za-z_]*=*) shift; continue ;; esac
+      if [ "$is_duration_pending" -eq 1 ]; then is_duration_pending=0; shift; continue; fi
+    fi
+    break
+  done
+  STRIPPED_WORDS=("$@")
+}
+
+# is_git_commit_command <stdin> <word>...: a matcher for `git ... commit`
+# behind any wrapper strip_command_prefixes removes and any git global option
+# (-C, -c, --git-dir, and the rest), so `git log --grep commit` is not a
+# commit; records the words after `commit` in INVOCATION_ARGS and its heredoc
+# in INVOCATION_STDIN.
+is_git_commit_command() {
+  local stdin="$1"
+  shift
+  strip_command_prefixes "$@"
+  [ "${#STRIPPED_WORDS[@]}" -gt 0 ] && [ "$(basename -- "${STRIPPED_WORDS[0]}")" = "git" ] || return 1
+  set -- "${STRIPPED_WORDS[@]:1}"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -C | -c | --git-dir | --work-tree | --namespace | --super-prefix | --config-env) shift 2 2>/dev/null || shift ;;
+      -*) shift ;;
+      *) break ;;
+    esac
+  done
+  [ "${1:-}" = "commit" ] || return 1
+  shift
+  # shellcheck disable=SC2034
+  INVOCATION_ARGS=("$@")
+  # shellcheck disable=SC2034
+  INVOCATION_STDIN="$stdin"
+  return 0
+}
