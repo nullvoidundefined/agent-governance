@@ -143,6 +143,10 @@ is_pr_create_command() {
   [ "${1:-}" = "gh" ] && [ "${2:-}" = "pr" ] || return 1
   case "${3:-}" in create|new) ;; *) return 1 ;; esac
   shift 3
-  INVOCATION_ARGS=("$@"); INVOCATION_STDIN="$stdin"
+  # Both are read by the hook that sources this helper.
+  # shellcheck disable=SC2034
+  INVOCATION_ARGS=("$@")
+  # shellcheck disable=SC2034
+  INVOCATION_STDIN="$stdin"
   return 0
 }
