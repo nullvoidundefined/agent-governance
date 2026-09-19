@@ -1,6 +1,6 @@
 # Codex pre-merge PR review prompt
 
-**Purpose:** the prompt sent to the Codex CLI (OpenAI's coding agent, run as a separate process so the reviewer is a different model from the one that wrote the code) for the blocking pre-merge review R-517 requires on every PR. Codex reviews the PR's diff against the spec and the slice's acceptance criteria. The review runs alongside the Copilot review, not instead of it. Each finding is fixed or answered with a reason in the PR before merge, and the PR body carries a `## Codex review` section summarizing the findings and their dispositions, which `hooks/git-workflow-guard.sh` checks before `gh pr merge`.
+**Purpose:** the prompt sent to the Codex CLI (OpenAI's coding agent, run as a separate process so the reviewer is a different model from the one that wrote the code) for the blocking pre-merge review R-517 requires on every PR. Codex reviews the PR's diff against the spec and the slice's acceptance criteria. It is the review every PR above trivial gets; there is no Copilot review (R-514). Each finding is fixed or answered with a reason in the PR before merge, and the PR body carries a `## Codex review` section summarizing the findings and their dispositions, which `hooks/git-workflow-guard.sh` checks before `gh pr merge`.
 
 **How to use:**
 
