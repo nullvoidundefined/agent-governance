@@ -93,7 +93,13 @@ SLOW_START=$(date +%s)
 SLOW_OUT=$(payload 'gh pr merge 42 --rebase' "$STUB_DIR" | CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_GH_TIMEOUT_SECONDS=1 "$HOOK" 2>/dev/null)
 [ "$(printf '%s' "$SLOW_OUT" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
 [ $(($(date +%s) - SLOW_START)) -lt 10 ] || { echo "a hung gh must be cut off at the deadline" >&2; exit 1; }
-[ "$(decision 'gh pr merge 42 --merge')" = "deny" ]        # wrong strategy (R-512), decided before any gh call
+# A merge-commit strategy is denied before any gh call: this stub leaves a
+# marker file when consulted, and answers with a body that would pass R-517.
+MARKER_GH="$STUB_DIR/marker-gh"
+printf '#!/usr/bin/env bash\ntouch "%s"\ncat "%s"\n' "$STUB_DIR/gh-was-called" "$STUB_DIR/bundle-ok.json" >"$MARKER_GH"
+chmod +x "$MARKER_GH"
+[ "$(stubbed_decision 'gh pr merge 42 --merge' "$MARKER_GH")" = "deny" ]   # wrong strategy (R-512)
+[ ! -e "$STUB_DIR/gh-was-called" ] || { echo "a --merge deny must not consult gh" >&2; exit 1; }
 
 # Codex pre-merge review (R-517): every merge, squash included, reads the PR
 # body and passes only when a Markdown heading named "Codex review" is followed
@@ -115,6 +121,18 @@ case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_MISSING")" in *R-517*Co
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_GARBAGE")" = "deny" ]     # unparseable answer: fail closed
 [ "$(stubbed_decision 'cd ../other && gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ]  # the hook cannot see that PR
 [ "$(stubbed_decision 'gh pr merge 42 -r' "$CODEX_OK")" = "deny" ]             # R-517 never waives R-512's bundle check
+# A section quoted inside a fenced code block (a PR template's example) is not
+# the section.
+CODEX_FENCED=$(write_gh_stub codex-fenced '{"body":"## Summary\nTemplate:\n```\n## Codex review\nexample text\n```\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCED")" = "deny" ]
+# One gh view vouches for one PR, so a command that merges two is denied.
+[ "$(stubbed_decision 'gh pr merge 42 --squash && gh pr merge 43 --squash' "$CODEX_OK")" = "deny" ]
+# --repo placed before the merge subcommand still merges; the hook cannot
+# parse that shape, so it is denied (fail closed) rather than allowed unseen.
+[ "$(stubbed_decision 'gh pr -R o/r merge 42 --squash' "$CODEX_OK")" = "deny" ]
+[ "$(stubbed_decision 'gh --repo o/r pr merge 42 --squash' "$CODEX_OK")" = "deny" ]
+[ "$(stubbed_decision 'gh pr --repo=o/r merge 42 --squash' "$CODEX_OK")" = "deny" ]
+[ "$(stubbed_decision 'gh pr list --search merge' "$CODEX_OK")" = "none" ]      # not a merge
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.

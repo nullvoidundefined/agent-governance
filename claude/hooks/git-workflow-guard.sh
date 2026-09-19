@@ -71,8 +71,13 @@ fi
 # A `gh pr merge` may follow leading environment assignments
 # (`GH_REPO=o/r gh pr merge ...`), which run the same merge.
 GH_MERGE_PATTERN='(^|[;&|])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+# gh also accepts its --repo/-R flag before the subcommand (`gh pr -R o/r
+# merge 42`, `gh --repo o/r pr merge 42`), which runs the same merge in a
+# shape parse_merge_arguments does not read; it is denied outright.
+GH_REPO_FLAG='([[:space:]]+(-R|--repo)[[:space:]]+[^[:space:];&|]+|[[:space:]]+--repo=[^[:space:];&|]+|[[:space:]]+-R[^[:space:];&|]+)'
+GH_SPLIT_MERGE_PATTERN="(^|[;&|])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*gh${GH_REPO_FLAG}*[[:space:]]+pr${GH_REPO_FLAG}*[[:space:]]+merge([[:space:]]|\$)"
 grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+(push|commit)([[:space:]]|$)' <<< "$CMD" ||
-  grep -qE "$GH_MERGE_PATTERN" <<< "$CMD" || exit 0
+  grep -qE "$GH_SPLIT_MERGE_PATTERN" <<< "$CMD" || exit 0
 
 ask() {
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
@@ -221,9 +226,13 @@ read_bundle_verdict() {
 # has_codex_review_section <body>: true when the PR body holds a Markdown
 # heading (any level, any case) whose text starts with "Codex review" and at
 # least one non-blank line follows it before the next heading. A mention in
-# prose is not a section, and a bare heading records no findings.
+# prose is not a section, and a bare heading records no findings. Lines inside
+# a fenced code block count as neither heading nor content, so a template that
+# quotes the section as an example does not pass for it.
 has_codex_review_section() {
   printf '%s\n' "$1" | tr -d '\r' | awk '
+    /^[ \t]*(```|~~~)/ { in_fence = !in_fence; next }
+    in_fence { next }
     /^[ \t]*#+[ \t]/ {
       heading = tolower($0)
       sub(/^[ \t]*#+[ \t]+/, "", heading)
@@ -254,7 +263,12 @@ read_codex_review_verdict() {
 # from the command alone, before any gh call. Every other merge consults gh
 # once, from the command's working directory: a rebase for the bundle
 # conditions, and every merge for the Codex review section in the PR body.
-if grep -qE "$GH_MERGE_PATTERN" <<< "$CMD"; then
+if grep -qE "$GH_SPLIT_MERGE_PATTERN" <<< "$CMD"; then
+  grep -qE "$GH_MERGE_PATTERN" <<< "$CMD" ||
+    deny "R-517: this merge passes --repo/-R before the merge subcommand, a shape the hook cannot parse, so it cannot check the PR's Codex review section (R-517), strategy (R-512), or authorization (R-514). Re-run it as \`gh pr merge <n> --squash --repo <owner/repo>\`."
+  MERGE_COUNT=$(grep -oE "$GH_MERGE_PATTERN" <<< "$CMD" | wc -l | tr -d ' ')
+  [ "$MERGE_COUNT" -le 1 ] ||
+    deny "R-517: this command runs $MERGE_COUNT merges, and the hook reads one PR's body per merge command, so the others would merge without their Codex review being checked. Merge one PR per command."
   parse_merge_arguments
   if [ "$MERGE_HAS_MERGE_FLAG" -eq 1 ]; then
     deny "This merges the PR with a strategy R-512 does not allow. Feature branches squash-merge: one commit per feature on main, so the branch's work-in-progress history stays off the trunk. Re-run with --squash."
