@@ -369,12 +369,12 @@ PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse e
 # expect.hasAssertions fail with their own messages. Jest heads each failure
 # with a matcher hint (`expect(received).toBe(expected)`,
 # `expect(jest.fn()).lastCalledWith(...expected)`, `expect.assertions(1)`,
-# node:assert reformatted as `assert.strictEqual(received, expected)`), and an
-# expect.extend matcher without a hint fails in its own `Object.toX` frame.
-# Matcher names are any JavaScript identifier (`toBeWithinRange_2`), and a
-# frame-only matcher is recognized by Jest's `to` prefix convention.
-# Colour is stripped before matching (JQ_FAILURE_RESULT).
-ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION)__|Snapshot `.*` mismatched|expected number of assertions to be|expected any number of assertion|expect\(.*\)(\.(not|resolves|rejects))*\.[A-Za-z_$][A-Za-z0-9_$]*\(|expect\.(assertions|hasAssertions)\(|^assert(\.[A-Za-z]+)?\(|at Object\.to[A-Za-z0-9_$]+ \('
+# node:assert reformatted as `assert.strictEqual(received, expected)`), where
+# the matcher name is any JavaScript identifier (`toBeWithinRange_2`). A Jest
+# expect.extend matcher whose message has no hint is refused: its only trace is
+# an `Object.toX` frame, which a plain Error thrown by a helper method of that
+# name carries too. Colour is stripped before matching (JQ_FAILURE_RESULT).
+ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION)__|Snapshot `.*` mismatched|expected number of assertions to be|expected any number of assertion|expect\(.*\)(\.(not|resolves|rejects))*\.[A-Za-z_$][A-Za-z0-9_$]*\(|expect\.(assertions|hasAssertions)\(|^assert(\.[A-Za-z]+)?\('
 # Shell fixtures: bash's own message for a script or command that does not
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
