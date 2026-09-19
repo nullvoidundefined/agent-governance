@@ -342,7 +342,7 @@ case "$(cat "$PWD/.stub-mode")" in
   red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
   duplicate) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: thrown: Exceeded timeout of 5000 ms\"]}]}]}" ;;
   unreadable) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:null}]}]}" ;;
-  plain|mock|assertions|alias|nodeassert|colour|custom|identhint|helper)
+  plain|mock|assertions|alias|nodeassert|colour|custom|identhint|unicodehint|helper)
     case "$(cat "$PWD/.stub-mode")" in
       plain) failure='Error: timeout: expected reply' ;;
       mock) failure='Error: expect(jest.fn()).toHaveBeenCalledWith(...expected)' ;;
@@ -352,6 +352,7 @@ case "$(cat "$PWD/.stub-mode")" in
       colour) failure=$'Error: \e[2mexpect(\e[22m\e[31mreceived\e[39m\e[2m).\e[22mtoBe\e[2m(\e[22m\e[32mexpected\e[39m\e[2m) // Object.is equality\e[22m' ;;
       custom) failure=$'Error: expected 10 to be within range 1 - 3\n    at Object.toBeWithinRange (/src/__tests__/score.test.js:4:35)' ;;
       identhint) failure='Error: expect(received).toBe_close2(expected)' ;;
+      unicodehint) failure='Error: expect(received).toBeé(expected)' ;;
       helper) failure=$'Error: boom\n    at Object.toBeWithinRange (/src/__tests__/score.test.js:10:67)\n    at Object.toBeWithinRange (/src/__tests__/score.test.js:10:98)' ;;
     esac
     jq -n --arg n "$name" --arg f "$failure" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\$f]}]}]}" ;;
@@ -380,7 +381,7 @@ expect_fail "jest node red with unreadable failure messages" bash "$TDD" red "sr
 # matcher hint (a mock matcher, a spy alias such as lastCalledWith, the hint
 # ANSI-coloured under FORCE_COLOR), expect.assertions, node:assert reformatted
 # by jest-circus, and a custom matcher's hint, including a matcher named
-# with digits and underscores (IAN-161, PR #85 review).
+# with digits, underscores, or non-ASCII letters (IAN-161, PR #85 review).
 echo plain > .stub-mode
 expect_fail "jest node red on a plain error" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'does not classify: Error: timeout: expected reply' || { echo "FAIL: under Jest a plain error mentioning expected must be refused as unclassified"; exit 1; }
 # A plain error thrown by a helper method named like a matcher carries the same
@@ -391,7 +392,7 @@ for mode in helper custom; do
   echo "$mode" > .stub-mode
   expect_fail "jest node red on a frame-only $mode failure" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'does not classify' || { echo "FAIL: under Jest a $mode failure with no matcher hint must be refused as unclassified"; exit 1; }
 done
-for mode in mock assertions alias nodeassert colour identhint; do
+for mode in mock assertions alias nodeassert colour identhint unicodehint; do
   echo "$mode" > .stub-mode
   out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: the Jest $mode matcher hint must be the assertion RED; output: $out"; exit 1; }
   [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: the Jest $mode matcher hint must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
