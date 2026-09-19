@@ -36,6 +36,9 @@ scan_command_tokens "$CMD"
 find_simple_command "$SESSION_DIR" is_pr_create_command || exit 0
 
 STDOUT=$(jq -r '.tool_response.stdout // .tool_response.output // "" | strings' 2>/dev/null <<< "$INPUT" || true)
+# gh's "a pull request ... already exists: <url>" failure goes to stderr,
+# but a `2>&1` or a merged tool response can carry it into stdout.
+grep -q -- 'already exists' <<< "$STDOUT" && exit 0
 PR_URL=$(grep -Eo -- "$PR_URL_PATTERN" <<< "$STDOUT" | tail -1 || true)
 [ -n "$PR_URL" ] || exit 0
 

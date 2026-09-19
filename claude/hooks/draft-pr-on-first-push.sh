@@ -40,9 +40,12 @@ set -uo pipefail
 PREFILTER_PATTERN='git[[:space:]].*push'
 PR_URL_PATTERN='https?://[^[:space:]]+/pull/[0-9]+'
 PUSH_FAILURE_PATTERN='error: failed to push|! \[rejected\]|! \[remote rejected\]|^fatal:'
+REDIRECTION_PATTERN='^[0-9]*(<|>|>>|>\|)(.*)$'
 MAX_LISTED_COMMITS=20
 ATTRIBUTION_LINE='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
+GH_TIMEOUT_SECONDS="${CLAUDE_GH_TIMEOUT_SECONDS:-15}"
+[[ "$GH_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || GH_TIMEOUT_SECONDS=15
 
 # record_fire <decision>: logs one R-517 fire through the telemetry helper.
 record_fire() {
@@ -102,15 +105,22 @@ is_git_push_command() {
 # returns 1 for a push that is not a push of a branch (dry run, delete, tags
 # only, all, mirror).
 parse_push_arguments() {
-  local arg is_value_next=0 is_tags=0
+  local arg is_value_next=0 is_remote_next=0 is_tags=0
   PUSH_REMOTE=''; PUSH_REFSPECS=()
   for arg in ${PUSH_ARGS[@]+"${PUSH_ARGS[@]}"}; do
     if [ "$is_value_next" -eq 1 ]; then is_value_next=0; continue; fi
+    if [ "$is_remote_next" -eq 1 ]; then PUSH_REMOTE="$arg"; is_remote_next=0; continue; fi
+    # A redirection is the shell's, not a push argument: `2>` (the scanner
+    # ends the command at the & of 2>&1), `>/dev/null`, or `>` then a target.
+    if [[ "$arg" =~ $REDIRECTION_PATTERN ]]; then
+      [ -z "${BASH_REMATCH[2]}" ] && is_value_next=1
+      continue
+    fi
     case "$arg" in
       --dry-run|--delete|--all|--branches|--mirror|--prune) return 1 ;;
       --tags) is_tags=1 ;;
       -o|--push-option|--receive-pack|--exec) is_value_next=1 ;;
-      --repo) is_value_next=1 ;;
+      --repo) is_remote_next=1 ;;
       --repo=*) PUSH_REMOTE="${arg#--repo=}" ;;
       --) ;;
       --*) ;;
@@ -143,6 +153,8 @@ resolve_pushed_branch() {
     if [[ "$spec" == *:* ]]; then destination="${spec#*:}"; else destination="$source"; fi
     is_tag_name "$dir" "$source" && continue
     source="${source#refs/heads/}"
+    [ "$destination" = "@" ] && destination="HEAD"
+    [ "$source" = "@" ] && source="HEAD"
     [ "$source" = "HEAD" ] && source="$current" && [ "$destination" = "HEAD" ] && destination="$current"
     [ "$source" = "$current" ] || continue
     PUSHED_BRANCH="${destination#refs/heads/}"
@@ -186,7 +198,7 @@ is_opted_out() {
 run_gh() {
   local output_file="$1" gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 gh_pid
   shift
-  deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
+  deadline_steps=$(( $GH_TIMEOUT_SECONDS * 5 ))
   (cd "$TOP" && exec "$gh_command" "$@") >"$output_file" 2>/dev/null </dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
@@ -203,7 +215,7 @@ run_gh() {
 
 # describe_gh_failure <status>: the note's reason for a failed gh call.
 describe_gh_failure() {
-  if [ "$1" -eq 124 ]; then printf 'gh %s did not answer within %ss' "$2" "${CLAUDE_GH_TIMEOUT_SECONDS:-15}"
+  if [ "$1" -eq 124 ]; then printf 'gh %s did not answer within %ss' "$2" "$GH_TIMEOUT_SECONDS"
   else printf 'gh %s failed (exit %s; unauthenticated, offline, or not a GitHub remote)' "$2" "$1"; fi
 }
 

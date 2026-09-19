@@ -68,13 +68,13 @@ gh_logged() { grep -qF -- "$1" "$GH_LOG"; }
 # default branch is main, checked out on feat/x with one commit per message,
 # each adding <path> content; prints its path.
 make_repo() {
-  local dir="$SB/$1" path="$2" message index=0; shift 2
-  git init -q --bare -b main "$SB/$1-origin.git"
+  local dir="$SB/$1" origin="$SB/$1-origin.git" path="$2" message index=0; shift 2
+  git init -q --bare -b main "$origin"
   mkdir -p "$dir"
   git -C "$dir" init -q -b main
   git -C "$dir" config user.email t@example.invalid; git -C "$dir" config user.name t
   printf '# app\n' > "$dir/README.md"; git -C "$dir" add -A; git -C "$dir" commit -qm init
-  git -C "$dir" remote add origin "$SB/$1-origin.git"
+  git -C "$dir" remote add origin "$origin"
   git -C "$dir" push -q origin main 2>/dev/null
   git -C "$dir" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   git -C "$dir" switch -q -c feat/x
@@ -121,6 +121,23 @@ check "context forbids unasked auto-merge" output_has "Never call mcp__ccd_pr__s
 # A cd prefix and the default refspec form still count.
 run_hook "$SB" "cd $R && git push"
 check "cd-prefixed bare git push opens a draft" was_draft_opened
+
+# Redirections are not push arguments, and @ is HEAD.
+run_hook "$R" "git push 2>&1 | tail -3"
+check "push with 2>&1 piped opens a draft" was_draft_opened
+run_hook "$R" "git push origin feat/x >/dev/null 2>&1"
+check "push with redirections opens a draft" was_draft_opened
+run_hook "$R" "git push origin @"
+check "push of @ opens a draft" was_draft_opened
+
+# --repo in its space form names the remote the push went to.
+git -C "$R" remote add mirror "$SB/first-origin.git"
+run_hook "$R" "git push --repo mirror"
+check "--repo naming an unfetched remote opens nothing" not was_draft_opened
+git -C "$R" fetch -q mirror
+run_hook "$R" "git push --repo mirror"
+check "--repo naming a fetched remote opens a draft" was_draft_opened
+git -C "$R" remote remove mirror
 
 # An open PR already exists: nothing is created.
 GH_STUB_EXISTING_URL="https://github.com/example/app/pull/3" run_hook "$R" "git push"
@@ -201,6 +218,10 @@ GH_STUB_FAIL=1 run_hook "$R" "git push"
 check "gh failure opens nothing" not was_draft_opened
 check "gh failure leaves a one-line note" output_has "no draft pull request was opened"
 check "gh failure note is one line" test "$(jq -r '.hookSpecificOutput.additionalContext' <<< "$OUT" | wc -l | tr -d ' ')" -le 1
+
+# A malformed timeout falls back to the default rather than erroring.
+CLAUDE_GH_TIMEOUT_SECONDS=abc run_hook "$R" "git push"
+check "malformed timeout still opens the draft" was_draft_opened
 
 # No gh on PATH at all: exit 0 with a note, never an error.
 OUT=$(cd "$R" && jq -nc --arg c "git push" '{tool_name:"Bash",tool_input:{command:$c},tool_response:{stdout:"",stderr:"",interrupted:false}}' \

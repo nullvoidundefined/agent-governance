@@ -50,6 +50,11 @@ check "cd-prefixed heredoc create emits the instruction" output_has "$URL"
 run_hook "gh pr create --title x --body y" ""
 check "failed gh pr create is silent" is_silent
 
+# gh's "already exists" failure, merged into stdout by 2>&1: nothing.
+run_hook "gh pr create --title x --body y 2>&1" "a pull request for branch \"feat/x\" into branch \"main\" already exists:
+$URL"
+check "already-exists failure is silent" is_silent
+
 # An interrupted create: nothing.
 run_hook "gh pr create --title x --body y" "$URL" true
 check "interrupted gh pr create is silent" is_silent
