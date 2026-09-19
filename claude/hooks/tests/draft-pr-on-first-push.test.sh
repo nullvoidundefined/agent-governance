@@ -181,6 +181,21 @@ run_hook "$R" "git push"
 check "push whose tracking ref lags HEAD opens nothing" not was_draft_opened
 push_branch "$R"
 
+# The Cursor adapter hands tool_response over as a plain string (the whole
+# shell output). A rejected push whose tracking ref still equals HEAD from an
+# earlier push opens nothing; a clean string response still opens the draft.
+run_string_hook() {
+  local payload
+  payload=$(jq -nc --arg c "$2" --arg d "$1" --arg o "$3" \
+    '{tool_name:"Bash",cwd:$d,tool_input:{command:$c},tool_response:$o}')
+  rm -f "$GH_LOG" "$GH_BODY"
+  OUT=$(cd "$1" && printf '%s' "$payload" | HOME="$TRACKED_HOME" PATH="$STUB_PATH" bash "$HOOK" 2>/dev/null)
+}
+run_string_hook "$R" "git push" "$(printf 'To origin\n ! [rejected]        feat/x -> feat/x (fetch first)\nerror: failed to push some refs to origin\n')"
+check "string-shaped rejected push opens nothing" not was_draft_opened
+run_string_hook "$R" "git push" "Everything up-to-date"
+check "string-shaped successful push opens a draft" was_draft_opened
+
 # Not a push of the branch: dry run, delete, tag-only.
 run_hook "$R" "git push --dry-run origin feat/x"
 check "--dry-run opens nothing" not was_draft_opened

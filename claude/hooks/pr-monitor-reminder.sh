@@ -10,10 +10,10 @@
 #
 # The command is read as shell words (shell-command-scan.sh), so "gh pr
 # create" quoted inside a commit message or an echo is not an invocation.
-# Success is read from the tool response: the call was not interrupted and
-# its stdout carries the pull request URL gh prints on success. A gh that
-# failed ("a pull request already exists") prints no URL on stdout, so it
-# emits nothing. Advisory: never blocks, always exits 0.
+# Success is read from the tool response, Claude Code's object or the Cursor
+# adapter's string (tool-response-output.sh): the call was not interrupted
+# and its output carries the pull request URL gh prints on success. A gh that
+# failed with "a pull request already exists" emits nothing. Advisory: never blocks, always exits 0.
 set -uo pipefail
 
 PREFILTER_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)'
@@ -23,24 +23,25 @@ HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
 INPUT=$(cat)
 CMD=$(jq -r '.tool_input.command // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 grep -Eq -- "$PREFILTER_PATTERN" <<< "$CMD" || exit 0
-for helper in shell-command-scan.sh pr-monitor-instruction.sh; do
+for helper in shell-command-scan.sh pr-monitor-instruction.sh tool-response-output.sh; do
   [ -f "$HOOK_DIR/$helper" ] || exit 0
   # shellcheck source=/dev/null
   source "$HOOK_DIR/$helper"
 done
 type scan_command_tokens >/dev/null 2>&1 || exit 0
 
-jq -e '.tool_response.interrupted == true' >/dev/null 2>&1 <<< "$INPUT" && exit 0
+is_tool_interrupted "$INPUT" && exit 0
 SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 [ -n "$SESSION_DIR" ] && [ -d "$SESSION_DIR" ] || SESSION_DIR="$PWD"
 scan_command_tokens "$CMD"
 find_simple_command "$SESSION_DIR" is_pr_create_command || exit 0
 
-STDOUT=$(jq -r '.tool_response.stdout // .tool_response.output // "" | strings' 2>/dev/null <<< "$INPUT" || true)
-# gh's "a pull request ... already exists: <url>" failure goes to stderr,
-# but a `2>&1` or a merged tool response can carry it into stdout.
-grep -q -- 'already exists' <<< "$STDOUT" && exit 0
-PR_URL=$(grep -Eo -- "$PR_URL_PATTERN" <<< "$STDOUT" | tail -1 || true)
+# The response's whole output, object or string (the Cursor adapter passes a
+# string). gh's "a pull request ... already exists: <url>" failure carries a
+# URL too, so that text rules the call out first.
+TOOL_OUTPUT=$(read_tool_output "$INPUT")
+grep -q -- 'already exists' <<< "$TOOL_OUTPUT" && exit 0
+PR_URL=$(grep -Eo -- "$PR_URL_PATTERN" <<< "$TOOL_OUTPUT" | tail -1 || true)
 [ -n "$PR_URL" ] || exit 0
 
 helper="$HOOK_DIR/log-rule-fire.sh"

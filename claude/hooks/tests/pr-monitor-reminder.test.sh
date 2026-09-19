@@ -46,6 +46,14 @@ check "instruction says to skip without the tools" output_has "skip this silentl
 run_hook "$(printf 'cd /tmp && gh pr create --title x --body "$(cat <<'"'"'EOF'"'"'\nBody.\nEOF\n)"')" "$URL"
 check "cd-prefixed heredoc create emits the instruction" output_has "$URL"
 
+# The Cursor adapter hands tool_response over as a plain string.
+OUT=$(jq -nc --arg c "gh pr create --title x --body y" --arg o "$URL" \
+  '{tool_name:"Bash",tool_input:{command:$c},tool_response:$o}' | bash "$HOOK" 2>/dev/null)
+check "string-shaped successful create emits the instruction" output_has "url \"$URL\""
+OUT=$(jq -nc --arg c "gh pr create --title x --body y" --arg o "a pull request for branch \"feat/x\" into branch \"main\" already exists:
+$URL" '{tool_name:"Bash",tool_input:{command:$c},tool_response:$o}' | bash "$HOOK" 2>/dev/null)
+check "string-shaped already-exists failure is silent" is_silent
+
 # A failed create prints no URL on stdout: nothing.
 run_hook "gh pr create --title x --body y" ""
 check "failed gh pr create is silent" is_silent

@@ -22,11 +22,12 @@ Before this change, a pushed branch sat without a pull request until the session
 - **No `if: "Bash(git *)"` filter on the registration.** A `cd <repo> && git push` would never match a prefix filter, which is the same reason `pr-ticket-ref-gate.sh` carries none. The hook's own prefilter exits after one `jq` and one `grep`.
 - **Pushes of a branch other than the checked-out one are skipped.** The shared range checks read `base..HEAD`, so acting on another branch would build the draft from the wrong commits.
 - **A branch that has ever had a PR opens no draft** (owner decision after review). The hook lists the branch's PRs in every state. An open PR means silence, as before. A merged or closed PR, with none open, means the branch name is being reused, so the hook opens nothing and emits one line naming the earlier PR's number, state, and URL, saying a deliberate `gh pr create` is needed. This closes the reviewer's sixth finding: a squash-merged branch pushed again would otherwise have opened a duplicate draft for work that had already shipped.
+- **The tool response is read in both shapes.** Claude Code passes `tool_response` as an object with `stdout` and `stderr`; the Cursor adapter passes the whole shell output as a string. Copilot's review found that both hooks read only the object fields, so under Cursor a rejected push showed no failure text and a successful `gh pr create` showed no URL. `hooks/tool-response-output.sh` now normalizes both shapes for both hooks, and a push counts as successful only when the output carries no rejection text and the tracking-ref check passes.
 - **The monitor instruction also names `mcp__ccd_pr__bind_pr`.** `set_monitor` works on the session's bound PR, so the instruction says to bind first if the call reports that no PR is bound.
 
 ## Testing
 
-`claude/hooks/tests/draft-pr-on-first-push.test.sh` (57 assertions) stubs `gh` on PATH and uses real git against local bare remotes, so nothing reaches GitHub. It covers:
+`claude/hooks/tests/draft-pr-on-first-push.test.sh` (59 assertions) stubs `gh` on PATH and uses real git against local bare remotes, so nothing reaches GitHub. It covers:
 - a first push with Refs opening a draft, including the exact title, the body, and the monitor instruction;
 - an existing open PR, a merged or closed earlier PR on the branch, a push of main, and failed, interrupted, and lagging pushes;
 - dry-run, `-n`, delete, and tag pushes;
@@ -37,7 +38,7 @@ Before this change, a pushed branch sat without a pull request until the session
 - gh failing, gh missing, and a malformed timeout;
 - redirections, `@`, and `--repo`.
 
-`claude/hooks/tests/pr-monitor-reminder.test.sh` (14 assertions) covers a successful create, including a `cd`-prefixed heredoc form. It also covers a failed, interrupted, and already-exists create, a quoted `gh pr create`, and unrelated commands.
+`claude/hooks/tests/pr-monitor-reminder.test.sh` (16 assertions) covers a successful create, including a `cd`-prefixed heredoc form. It also covers a failed, interrupted, and already-exists create, a quoted `gh pr create`, and unrelated commands.
 
 Both full suites pass: `bash claude/hooks/tests/run-tests.sh` (22 fixtures) and `bash claude/enforce/tests/run-tests.sh` (86 fixtures). These include `pr-ticket-ref-gate.test.sh`, the manifest and hash closures, `guard-fail-closed.test.sh`, and `deny-tier-set-convention.test.sh`. `node translate/codex.mjs --check` and `node translate/cursor.mjs --check` pass, and `shellcheck --severity=warning` is clean on every new file.
 

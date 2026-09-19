@@ -28,7 +28,8 @@
 # -n, --delete or a `:branch` refspec, a tag-only push (--tags, or refspecs
 # naming only tags), --all, --mirror, a push naming a branch other than the
 # checked-out one, and a push to a URL rather than a named remote. Success is
-# read from the tool response (not interrupted, no rejection on stderr) and
+# read from the tool response (not interrupted, no rejection text in it,
+# whether Claude Code's object or the Cursor adapter's string) and
 # confirmed from git state: the remote-tracking ref for the pushed branch must
 # equal HEAD.
 #
@@ -177,14 +178,15 @@ resolve_push_remote() {
   printf '%s' "${remote:-origin}"
 }
 
-# is_push_successful <dir> <remote>: true when the tool response shows no
-# interruption or rejection and the remote-tracking ref for the pushed branch
-# now equals HEAD.
+# is_push_successful <dir> <remote>: true when the tool response, object or
+# string (tool-response-output.sh), shows no interruption or rejection AND
+# the remote-tracking ref for the pushed branch now equals HEAD. Both are
+# needed: a rejected push leaves a tracking ref that may still equal HEAD
+# from an earlier push.
 is_push_successful() {
   local dir="$1" remote="$2" tracking head
-  jq -e '.tool_response.interrupted == true' >/dev/null 2>&1 <<< "$INPUT" && return 1
-  jq -e '(.tool_response.exit_code // .tool_response.exitCode // 0) != 0' >/dev/null 2>&1 <<< "$INPUT" && return 1
-  grep -Eq -- "$PUSH_FAILURE_PATTERN" <<< "$(jq -r '.tool_response.stderr // "" | strings' 2>/dev/null <<< "$INPUT")" && return 1
+  is_tool_interrupted "$INPUT" && return 1
+  grep -Eq -- "$PUSH_FAILURE_PATTERN" <<< "$(read_tool_output "$INPUT")" && return 1
   tracking=$(git -C "$dir" rev-parse -q --verify "refs/remotes/$remote/$PUSHED_BRANCH" 2>/dev/null) || return 1
   head=$(git -C "$dir" rev-parse -q --verify HEAD 2>/dev/null) || return 1
   [ "$tracking" = "$head" ]
@@ -269,7 +271,7 @@ is_ticket_requirement_met() {
 INPUT=$(cat)
 CMD=$(jq -r '.tool_input.command // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 grep -Eq -- "$PREFILTER_PATTERN" <<< "$CMD" || exit 0
-for helper in shell-command-scan.sh pr-range-checks.sh pr-monitor-instruction.sh; do
+for helper in shell-command-scan.sh pr-range-checks.sh pr-monitor-instruction.sh tool-response-output.sh; do
   [ -f "$HOOK_DIR/$helper" ] || { record_fire "error"; exit 0; }
   # shellcheck source=/dev/null
   source "$HOOK_DIR/$helper"
