@@ -576,5 +576,54 @@ bash_gate 'git commit -m x' "$AA3"
 check "AA-3 commit staging the ledger removal plus README.md denies" is_deny
 check "AA-3 deny names tracked" reason_has "tracked"
 
+# --- IAN-149 review round 10 ----------------------------------------------------
+# BB state: ledger in HEAD, its removal staged, .gitignore updated and staged,
+# README.md modified in the working tree but not staged.
+BB=$(make_committed_ledger_repo bb-recovery)
+printf '.claude/task-tier.json\n' >> "$BB/.gitignore"; git -C "$BB" add .gitignore
+printf 'unstaged\n' >> "$BB/README.md"
+
+# BB-1: a commit that would also carry README.md denies as tracked.
+while IFS= read -r command; do
+  bash_gate "$command" "$BB"
+  check "BB-1 '$command' denies" is_deny
+  check "BB-1 '$command' reason names tracked" reason_has "tracked"
+done <<'SHAPES'
+git commit -am x
+git commit -a -m x
+git commit --all -m x
+git commit README.md -m x
+git commit --include README.md -m x
+git commit -o README.md -m x
+git add README.md && git commit -m x
+git add -A && git commit -m x
+SHAPES
+
+# BB-2: commits carrying only the ledger removal and .gitignore allow.
+while IFS= read -r command; do
+  bash_gate "$command" "$BB"
+  check "BB-2 '$command' allows" is_silent
+done <<'SHAPES'
+git commit -m "chore: untrack the ledger"
+git commit --amend --no-edit
+SHAPES
+
+# BB-2: the same state with .gitignore modified but not staged.
+BB_UNSTAGED_IGNORE=$(make_committed_ledger_repo bb-ignore-unstaged)
+printf '.claude/task-tier.json\n' >> "$BB_UNSTAGED_IGNORE/.gitignore"
+printf 'unstaged\n' >> "$BB_UNSTAGED_IGNORE/README.md"
+bash_gate 'git add .gitignore && git commit -m x' "$BB_UNSTAGED_IGNORE"
+check "BB-2 'git add .gitignore && git commit -m x' allows" is_silent
+
+# BB-2: from before the removal was staged (ledger in HEAD and the index), the whole recovery in one command.
+BB_PRE=$(make_repo bb-pre-removal)
+printf 'ignored/\n' > "$BB_PRE/.gitignore"; git -C "$BB_PRE" commit -qam "chore: stop ignoring the ledger"
+write_ledger "$BB_PRE" "{\"tier\":\"standard\",\"branch\":\"feat/x\",\"ticket\":\"IAN-7\",$STARTED}"
+git -C "$BB_PRE" add .claude/task-tier.json && git -C "$BB_PRE" commit -qm "chore: ledger"
+printf '.claude/task-tier.json\n' >> "$BB_PRE/.gitignore"
+printf 'unstaged\n' >> "$BB_PRE/README.md"
+bash_gate 'git rm --cached .claude/task-tier.json && git add .gitignore && git commit -m x' "$BB_PRE"
+check "BB-2 'git rm --cached <ledger> && git add .gitignore && git commit -m x' allows" is_silent
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

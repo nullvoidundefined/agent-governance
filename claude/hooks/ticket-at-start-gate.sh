@@ -244,6 +244,7 @@ record_git_commit_directory() {
   if is_expanded_word "${1:-}"; then IS_COMMIT_UNREADABLE=1; return 0; fi
   case "${1:-}" in
     switch | checkout) record_branch_switch "$directory" "$@"; return 0 ;;
+    add | rm | mv | stage) record_staging_words "$@"; return 0 ;;
   esac
   [ "${1:-}" = "commit" ] || return 0
   [ "$IS_BRANCH_UNKNOWN" -eq 0 ] || { IS_COMMIT_UNREADABLE=1; return 0; }
@@ -261,9 +262,55 @@ record_git_commit_directory() {
   elif [ -n "$work_tree" ]; then
     directory=$(resolve_relative_directory "$directory" "$work_tree")
   fi
+  shift
   COMMIT_DIRECTORIES+=("$directory")
+  COMMIT_IS_PLAIN+=("$(read_commit_plainness "$@")")
   COMMIT_SWITCH_TOPS+=("$SWITCHED_TOP")
   COMMIT_SWITCH_BRANCHES+=("$SWITCHED_BRANCH")
+}
+
+# read_commit_plainness <word>...: prints 1 when the commit's own arguments
+# stage nothing (no -a/--all, --include, --only, --patch, or pathspec), so what
+# it records is exactly what the index held beforehand; prints 0 otherwise.
+read_commit_plainness() {
+  local short_flags
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -m | -F | -c | -C | -t | --message | --file | --author | --date | --template | --fixup | --squash | --reuse-message | --reedit-message | --cleanup | --trailer)
+        shift 2 2>/dev/null || shift ;;
+      -a | --all | -i | --include | -o | --only | -p | --patch | --interactive | --) echo 0; return 0 ;;
+      --*) shift ;;
+      -?*)
+        short_flags="${1#-}"
+        case "$short_flags" in *a* | *i* | *o* | *p*) echo 0; return 0 ;; esac
+        case "$short_flags" in *m | *F | *c | *C | *t) shift 2 2>/dev/null || shift ;; *) shift ;; esac ;;
+      *) echo 0; return 0 ;;
+    esac
+  done
+  echo 1
+}
+
+# record_staging_words <subcommand> <word>...: notes a git add, rm, mv, or
+# stage earlier in the command. Staging anything but .gitignore (or the
+# ledger's own `rm --cached`) sets OTHER_STAGING, and a `git rm --cached` of
+# the ledger sets LEDGER_UNSTAGED_IN_COMMAND, for the untracking exemption.
+record_staging_words() {
+  local staging_subcommand="$1" staging_word is_ledger_named=0 is_cached=0
+  shift
+  for staging_word in "$@"; do
+    case "$staging_word" in
+      --cached) is_cached=1 ;;
+      -A | --all | -u | --update | -p | --patch | -i | --interactive) OTHER_STAGING=1 ;;
+      -*) ;;
+      .claude/task-tier.json | ./.claude/task-tier.json) is_ledger_named=1 ;;
+      .gitignore | ./.gitignore) ;;
+      *) OTHER_STAGING=1 ;;
+    esac
+  done
+  if [ "$is_ledger_named" -eq 1 ]; then
+    if [ "$staging_subcommand" = "rm" ] && [ "$is_cached" -eq 1 ]; then LEDGER_UNSTAGED_IN_COMMAND=1; else OTHER_STAGING=1; fi
+  fi
+  return 0
 }
 
 # record_branch_switch <directory> <subcommand> <word>...: replays a git switch
@@ -402,6 +449,9 @@ collect_commit_directories() {
   SWITCHED_TOP=""
   SWITCHED_BRANCH=""
   PREVIOUS_BRANCH=""
+  OTHER_STAGING=0
+  LEDGER_UNSTAGED_IN_COMMAND=0
+  COMMIT_IS_PLAIN=()
   COMMIT_SWITCH_TOPS=()
   COMMIT_SWITCH_BRANCHES=()
   HEREDOC_BODY=""
@@ -460,7 +510,7 @@ esac
 # judge_work_directory <directory>: denies when the directory sits in a git
 # work tree on a branch whose ledger does not carry the ticket.
 judge_work_directory() {
-  local top branch problem switch_top="${2:-}" switch_branch="${3:-}"
+  local top branch problem switch_top="${2:-}" switch_branch="${3:-}" is_plain_commit="${4:-0}"
   [ -n "$1" ] || return 0
   if ! top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null); then
     [ "$TOOL" = "Bash" ] && deny "R-605 (ticket at task start): this command commits in '$1', which is not a git work tree before the command runs (a repository created in the same command), so the hook cannot check its ticket. Create the repository first, record its ledger, then commit in a separate command."
@@ -468,7 +518,7 @@ judge_work_directory() {
   fi
   top=$(cd "$top" && pwd -P)
   if [ "$TOOL" != "Bash" ] && is_exempt_edit_path "$top" "$FILE_PATH"; then return 0; fi
-  is_ledger_untracking_step "$top" && return 0
+  is_ledger_untracking_step "$top" "$is_plain_commit" && return 0
   branch=$(git -C "$top" branch --show-current 2>/dev/null)
   [ -n "$switch_branch" ] && [ "$top" = "$switch_top" ] && branch="$switch_branch"
   [ -n "$branch" ] || return 0
@@ -477,20 +527,26 @@ judge_work_directory() {
   deny_without_ticket "$branch" "$problem"
 }
 
-# is_ledger_untracking_step <top>: true for the one recovery a committed
-# ledger needs. While the ledger is still in HEAD but its removal is staged
-# (`git rm --cached`), the gate lets through an edit of the repository's
-# .gitignore and a commit whose staged changes are only that removal and
-# .gitignore, so the deny's own advice can be carried out; any other work
-# stays refused until the removal is committed.
+# is_ledger_untracking_step <top> <is-plain-commit>: true for the one
+# recovery a committed ledger needs. While the ledger is still in HEAD but its
+# removal is staged (`git rm --cached`, before or earlier in the same
+# command), the gate lets through an edit of the repository's .gitignore and a
+# commit that stages nothing of its own (no -a, --include, --only, --patch, or
+# pathspec, and no git add, rm, or mv of other paths in the command) whose
+# staged changes are only that removal and .gitignore, so the deny's own
+# advice can be carried out; any other work stays refused until the removal
+# is committed.
 is_ledger_untracking_step() {
-  local top="$1" staged_path
+  local top="$1" is_plain_commit="${2:-0}" staged_path
   git -C "$top" cat-file -e HEAD:.claude/task-tier.json 2>/dev/null || return 1
-  git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1 && return 1
+  if git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1; then
+    [ "$TOOL" = "Bash" ] && [ "${LEDGER_UNSTAGED_IN_COMMAND:-0}" -eq 1 ] || return 1
+  fi
   if [ "$TOOL" != "Bash" ]; then
     [ "$(resolve_edit_path "$FILE_PATH")" = "$top/.gitignore" ]
     return
   fi
+  [ "$is_plain_commit" = "1" ] && [ "${OTHER_STAGING:-1}" -eq 0 ] || return 1
   while IFS= read -r staged_path; do
     case "$staged_path" in .claude/task-tier.json | .gitignore) ;; *) return 1 ;; esac
   done < <(git -C "$top" diff --cached --name-only 2>/dev/null)
@@ -506,7 +562,7 @@ deny_without_ticket() {
 
 if [ "$TOOL" = "Bash" ]; then
   for ((commit_index = 0; commit_index < ${#COMMIT_DIRECTORIES[@]}; commit_index++)); do
-    judge_work_directory "${COMMIT_DIRECTORIES[commit_index]}" "${COMMIT_SWITCH_TOPS[commit_index]}" "${COMMIT_SWITCH_BRANCHES[commit_index]}"
+    judge_work_directory "${COMMIT_DIRECTORIES[commit_index]}" "${COMMIT_SWITCH_TOPS[commit_index]}" "${COMMIT_SWITCH_BRANCHES[commit_index]}" "${COMMIT_IS_PLAIN[commit_index]}"
   done
 else
   judge_work_directory "$WORK_DIRECTORY"

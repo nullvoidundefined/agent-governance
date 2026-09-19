@@ -67,7 +67,7 @@
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:0a5b5fcb579ad11114516767d7400d2e0f706d1a7bdf1c880ea03615aca97f56",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:38f071e2ca5260c7831258e4818be4d545922d989b1b2c40ba1e45758a78b13d",
     "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:688af1409f7f0d80995295f510a255ad89a2cdf137e36ec8b67ef78197cf6acd",
-    "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:4842def07b85207f3f3ca35508506c59a02a899123bef0cbb3c7e113a204537c",
+    "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:a60d0aeabc823b8aa825131323a9b7bf0ea9c1f4429ecd0c9ddb35b6d0bfa26a",
     "rules/structure-conventions.mdc": "sha256:34ee01f6b9f3ab95d8dc02b456c2255b330089c85cfca2b9ef88c5f1ce16772e",
     "rules/styling.mdc": "sha256:098f09fc330ca1fce2ad5d1e4d605b9588bb3806bd9cc3ffd31499b33e08689e",
     "skills/add-stack-track/SKILL.md": "sha256:c807f131cfff21ac11361c1f9ec43e5b37f6dd2a39fa2cb91d29d2099f063e01",
