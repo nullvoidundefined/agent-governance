@@ -86,102 +86,88 @@ fi
 # --- skipping or removing git hooks ---------------------------------------
 
 # settings.json could only ask on `git commit --no-verify*`, a literal prefix
-# that missed abbreviations, flags placed before the subcommand, and other
-# subcommands (2026-09-19 ECC audit). Quoted text is blanked before splitting,
-# so a commit message that mentions a flag never reads as the flag itself.
-GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
-[ -f "$GIT_INVOCATION_HELPER" ] && . "$GIT_INVOCATION_HELPER"
+# that missed abbreviations, flags placed before the subcommand, other
+# subcommands, and every non-flag way to skip a hook (2026-09-19 ECC audit).
+# shell-command-segments.py splits the command into simple commands the way
+# bash does, with quotes, escapes, continuations, and comments resolved, so a
+# flag cannot hide inside quotes and a commit message that mentions one is
+# still just the value of -m.
+SHELL_SEGMENTS_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-segments.py"
+REDIRECT_MARK=$'\036'
 
-# Prints one line per simple command in the input: newlines join as `;`, the
-# text splits on separators, and leading space is trimmed. A quoted run stays
-# one word: its quote marks become a leading Q, so `-m "--no-verify"` is not
-# the flag, while separators, redirects, and spaces inside it become `_`, so
-# quoted text
-# never starts a command or a redirect. The content survives for checks that need it, such
-# as `git -c "core.hooksPath=x"`. awk ends every line with a newline, which
-# `read` needs: it drops an unterminated last line.
+# Fails closed: without the parser the git checks below cannot run, so any
+# command that could reach git or its hooks is refused.
+if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$SHELL_SEGMENTS_HELPER" ]; then
+    if grep -Eq 'git|hooks' <<< "$cmd"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: its command parser (python3 and hooks/shell-command-segments.py) is unavailable, so git hook skips cannot be checked (R-203). Restore the harness with sync.sh."
+    fi
+fi
+
+# Prints the command's simple commands, one per line, words separated by \037
+# and redirect operators prefixed with \036.
 list_command_segments() {
-    printf '%s' "$1" | tr '\n' ';' | awk '{
-        text = ""; quote = ""
-        for (i = 1; i <= length($0); i++) {
-            c = substr($0, i, 1)
-            if (quote != "") {
-                if (c == quote) { quote = ""; continue }
-                if (c ~ /[;&|()<> \t]/) c = "_"
-                text = text c; continue
-            }
-            if (c == "\"" || c == "\047") { quote = c; text = text "Q"; continue }
-            text = text c
-        }
-        print text
-    }' | tr ';&|()' '\n\n\n\n\n' | awk '{ sub(/^[[:space:]]+/, ""); print }'
+    python3 "$SHELL_SEGMENTS_HELPER" <<< "$1" 2>/dev/null
 }
 
-# Prints the command a segment runs once its leading `env`, `sudo`,
-# `command`, and VAR=value words are dropped.
-drop_command_prefix() {
-    printf '%s\n' "$1" \
-        | sed -E 's/^(((env|sudo|command)[[:space:]]+)|([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+))*//'
+# True when a word is a shell variable assignment (NAME=value).
+is_assignment_word() {
+    [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]
 }
 
-# True when a path word (quote marker allowed) names the .git/hooks directory
-# or a file under it, relative or absolute.
-is_git_hooks_path() {
-    case "${1#Q}" in
-        .git/hooks | .git/hooks/* | */.git/hooks | */.git/hooks/*) return 0 ;;
-    esac
-    return 1
+# Prints the argument lowercased (bash 3.2 has no ${var,,}).
+to_lowercase() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
-# True when any of the arguments is a .git/hooks path.
-has_git_hooks_argument() {
-    local word
-    for word in "$@"; do
-        is_git_hooks_path "$word" && return 0
+# Sets COMMAND_START to the index in WORDS of the program name, past leading
+# VAR=value assignments and the env, sudo, and command wrappers.
+find_command_start() {
+    local index=0
+    while [ "$index" -lt "${#WORDS[@]}" ]; do
+        case "${WORDS[index]}" in
+            env | sudo | command) ;;
+            *) is_assignment_word "${WORDS[index]}" || break ;;
+        esac
+        index=$((index + 1))
+    done
+    COMMAND_START=$index
+}
+
+# True when an assignment ahead of the program name satisfies the predicate.
+has_leading_assignment() {
+    local predicate="$1" index
+    for ((index = 0; index < COMMAND_START; index++)); do
+        "$predicate" "${WORDS[index]}" && return 0
     done
     return 1
 }
 
-# True when the segment redirects output (>, >>, 2>) into a .git/hooks path.
-has_redirect_into_git_hooks() {
-    grep -Eq '>{1,2}[[:space:]]*Q?([^[:space:]]*/)?\.git/hooks(/|[[:space:]]|$)' <<< "$1"
+# True when an assignment after `export` satisfies the predicate.
+has_exported_assignment() {
+    local predicate="$1" index
+    for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
+        "$predicate" "${WORDS[index]}" && return 0
+    done
+    return 1
 }
 
-# True when one command deletes, moves, disables, or overwrites .git/hooks or
-# a file in it: removal and permission tools on any argument, copy and link
-# tools on their destination, in-place editors, and find with a delete action.
-tampers_with_git_hooks() {
-    local program arguments
-    has_redirect_into_git_hooks "$1" && return 0
-    set -f
-    set -- $1
-    set +f
-    program="${1:-}"
-    shift || return 1
-    arguments="$*"
-    case "$program" in
-        rm | unlink | mv | chmod | chown | truncate | shred | tee) has_git_hooks_argument "$@" ;;
-        cp | ln | install) [ "$#" -gt 0 ] && is_git_hooks_path "${!#}" ;;
-        sed | perl) [[ " $arguments" =~ \ -i ]] && has_git_hooks_argument "$@" ;;
-        find) [[ " $arguments " =~ \ -(delete|exec|execdir|ok)\  ]] && has_git_hooks_argument "$@" ;;
-        *) return 1 ;;
-    esac
+# Sets SUBCOMMAND_INDEX to the index of git's subcommand, past its global
+# options; the options that take a separate argument skip it.
+find_git_subcommand() {
+    local index=$((COMMAND_START + 1))
+    while [ "$index" -lt "${#WORDS[@]}" ]; do
+        case "${WORDS[index]}" in
+            -C | -c | --git-dir | --work-tree | --namespace | --super-prefix | --config-env) index=$((index + 2)) ;;
+            -*) index=$((index + 1)) ;;
+            *) break ;;
+        esac
+    done
+    SUBCOMMAND_INDEX=$index
 }
 
-# Prints a git command with its global options stripped, so the subcommand
-# follows `git` directly.
-strip_git_options() {
-    printf '%s\n' "$1" \
-        | if declare -F strip_git_global_options >/dev/null; then strip_git_global_options; else cat; fi
-}
-
-# True when a git invocation's subcommand runs hooks.
+# True when git's subcommand runs hooks.
 is_hook_running_git() {
-    set -f
-    set -- $1
-    set +f
-    [ "${1:-}" = git ] || return 1
-    case "${2:-}" in commit | push | merge | rebase | am) return 0 ;; esac
+    case "${WORDS[SUBCOMMAND_INDEX]:-}" in commit | push | merge | rebase | am) return 0 ;; esac
     return 1
 }
 
@@ -197,58 +183,29 @@ is_hook_skip_assignment() {
 # True when a VAR=value word sets core.hooksPath through git's environment
 # config channels: GIT_CONFIG_KEY_n or GIT_CONFIG_PARAMETERS.
 is_hookspath_env_assignment() {
-    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-        git_config_key_[0-9]*=core.hookspath | git_config_key_[0-9]*=qcore.hookspath) return 0 ;;
-        git_config_parameters=*core.hookspath*) return 0 ;;
+    case "$(to_lowercase "$1")" in
+        git_config_key_[0-9]*=core.hookspath | git_config_parameters=*core.hookspath*) return 0 ;;
     esac
     return 1
 }
 
-# True when a `key=value` config setting (quote marker allowed) sets
-# core.hooksPath; the caller has lowercased it.
+# True when a key=value config setting sets core.hooksPath.
 is_hookspath_setting() {
-    case "${1#q}" in core.hookspath=*) return 0 ;; esac
+    case "$(to_lowercase "$1")" in core.hookspath=*) return 0 ;; esac
     return 1
 }
 
-# True when the global options of one git command override core.hooksPath
-# through -c or --config-env; options that take a separate argument skip it.
+# True when git's global options override core.hooksPath through -c or
+# --config-env.
 has_hookspath_option() {
-    local word pending=""
-    set -f
-    set -- $(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-    set +f
-    shift
-    for word in "$@"; do
-        if [ -n "$pending" ]; then
-            [ "$pending" = setting ] && is_hookspath_setting "$word" && return 0
-            pending=""
-            continue
-        fi
+    local index=$((COMMAND_START + 1)) word
+    while [ "$index" -lt "$SUBCOMMAND_INDEX" ]; do
+        word="${WORDS[index]}"
         case "$word" in
-            -c | --config-env) pending=setting ;;
+            -c | --config-env) is_hookspath_setting "${WORDS[index + 1]:-}" && return 0 ;;
             --config-env=*) is_hookspath_setting "${word#--config-env=}" && return 0 ;;
-            -C | --git-dir | --work-tree | --namespace | --super-prefix) pending=argument ;;
-            -*) ;;
-            *) return 1 ;;
         esac
-    done
-    return 1
-}
-
-# True when an assignment ahead of the segment's command name (bare, after
-# env, or after export) satisfies the named predicate.
-has_leading_assignment() {
-    local predicate="$1" word
-    set -f
-    set -- $2
-    set +f
-    for word in "$@"; do
-        case "$word" in
-            env | export) continue ;;
-            *=*) "$predicate" "$word" && return 0 ;;
-            *) return 1 ;;
-        esac
+        index=$((index + 1))
     done
     return 1
 }
@@ -274,48 +231,132 @@ is_commit_no_verify_cluster() {
     return 1
 }
 
-# True when one hook-running `git <subcommand> <args>` line skips its hooks
-# through a flag.
+# True when an option of the subcommand takes the next word as its value, so
+# `commit -m --no-verify` is a message, not the flag.
+takes_separate_value() {
+    case "$1:$2" in
+        commit:-m | commit:--message | commit:-F | commit:--file | commit:-C | commit:--reuse-message \
+            | commit:-c | commit:--reedit-message | commit:--fixup | commit:--squash | commit:--author \
+            | commit:--date | commit:-t | commit:--template | commit:--trailer | commit:--cleanup) return 0 ;;
+        merge:-m | merge:-F | merge:--file | merge:-s | merge:--strategy | merge:-X | merge:--strategy-option) return 0 ;;
+        push:-o | push:--push-option | push:--repo | push:--receive-pack | push:--exec) return 0 ;;
+        rebase:-s | rebase:--strategy | rebase:-X | rebase:--strategy-option | rebase:--onto | rebase:-x | rebase:--exec) return 0 ;;
+    esac
+    return 1
+}
+
+# True when a commit short-flag cluster ends in a flag whose value is the next
+# word (-am "message").
+cluster_ends_with_value() {
+    [ "$1" = commit ] || return 1
+    case "${2: -1}" in m | F | C | c | t) return 0 ;; esac
+    return 1
+}
+
+# True when the subcommand's arguments skip its hooks through a flag. Values
+# of value-taking options, redirect targets, and everything after `--` are
+# not flags.
 skips_git_hooks() {
-    local subcommand arg
-    set -f
-    set -- $1
-    set +f
-    subcommand="${2:-}"
-    shift 2
-    for arg in "$@"; do
-        is_no_verify_spelling "$arg" && return 0
-        [ "$subcommand" = commit ] && [[ "$arg" =~ ^-[A-Za-z]+$ ]] \
-            && is_commit_no_verify_cluster "$arg" && return 0
+    local subcommand="${WORDS[SUBCOMMAND_INDEX]}" index=$((SUBCOMMAND_INDEX + 1)) word
+    while [ "$index" -lt "${#WORDS[@]}" ]; do
+        word="${WORDS[index]}"
+        index=$((index + 1))
+        case "$word" in "$REDIRECT_MARK"*) index=$((index + 1)); continue ;; --) return 1 ;; esac
+        is_no_verify_spelling "$word" && return 0
+        takes_separate_value "$subcommand" "$word" && { index=$((index + 1)); continue; }
+        [[ "$word" =~ ^-[A-Za-z]+$ ]] || continue
+        [ "$subcommand" = commit ] && is_commit_no_verify_cluster "$word" && return 0
+        cluster_ends_with_value "$subcommand" "$word" && index=$((index + 1))
     done
     return 1
+}
+
+# True when a path word names the .git/hooks directory or a file under it,
+# relative or absolute.
+is_git_hooks_path() {
+    case "$1" in
+        .git/hooks | .git/hooks/* | */.git/hooks | */.git/hooks/*) return 0 ;;
+    esac
+    return 1
+}
+
+# Sets ARGUMENTS to the program's words after COMMAND_START with redirect
+# operators and their targets removed, and REDIRECT_TARGETS to the targets of
+# output redirects.
+collect_arguments() {
+    local index=$((COMMAND_START + 1)) word
+    ARGUMENTS=()
+    REDIRECT_TARGETS=()
+    while [ "$index" -lt "${#WORDS[@]}" ]; do
+        word="${WORDS[index]}"
+        case "$word" in
+            "$REDIRECT_MARK"'>'* | "$REDIRECT_MARK"'&>'*) REDIRECT_TARGETS+=("${WORDS[index + 1]:-}"); index=$((index + 2)) ;;
+            "$REDIRECT_MARK"*) index=$((index + 2)) ;;
+            *) ARGUMENTS+=("$word"); index=$((index + 1)) ;;
+        esac
+    done
+}
+
+# True when any argument is a .git/hooks path.
+has_git_hooks_word() {
+    local word
+    for word in "$@"; do
+        is_git_hooks_path "$word" && return 0
+    done
+    return 1
+}
+
+# True when any argument matches the extended regular expression.
+has_word_matching() {
+    local pattern="$1" word
+    for word in ${ARGUMENTS[@]+"${ARGUMENTS[@]}"}; do
+        [[ "$word" =~ $pattern ]] && return 0
+    done
+    return 1
+}
+
+# True when the segment deletes, moves, disables, or overwrites .git/hooks or
+# a file in it: removal and permission tools on any argument, copy and link
+# tools on their destination, in-place editors, find with a delete action,
+# and any output redirect into the directory.
+tampers_with_git_hooks() {
+    collect_arguments
+    has_git_hooks_word ${REDIRECT_TARGETS[@]+"${REDIRECT_TARGETS[@]}"} && return 0
+    case "${WORDS[COMMAND_START]:-}" in
+        rm | unlink | mv | chmod | chown | truncate | shred | tee) has_git_hooks_word ${ARGUMENTS[@]+"${ARGUMENTS[@]}"} ;;
+        cp | ln | install) [ "${#ARGUMENTS[@]}" -gt 0 ] && is_git_hooks_path "${ARGUMENTS[${#ARGUMENTS[@]} - 1]}" ;;
+        sed | perl) has_word_matching '^-i' && has_git_hooks_word "${ARGUMENTS[@]}" ;;
+        find) has_word_matching '^-(delete|exec|execdir|ok)$' && has_git_hooks_word "${ARGUMENTS[@]}" ;;
+        *) return 1 ;;
+    esac
 }
 
 # An export earlier in the command reaches every later git in the same call,
 # so it is remembered across segments; a bare prefix reaches only its own.
 exported_hook_skip=0
 exported_hookspath=0
-while IFS= read -r segment; do
-    if [[ "$segment" =~ ^export[[:space:]] ]]; then
-        has_leading_assignment is_hook_skip_assignment "$segment" && exported_hook_skip=1
-        has_leading_assignment is_hookspath_env_assignment "$segment" && exported_hookspath=1
+while IFS=$'\037' read -r -a WORDS; do
+    [ "${#WORDS[@]}" -gt 0 ] || continue
+    find_command_start
+    program="${WORDS[COMMAND_START]:-}"
+    if [ "$program" = export ]; then
+        has_exported_assignment is_hook_skip_assignment && exported_hook_skip=1
+        has_exported_assignment is_hookspath_env_assignment && exported_hookspath=1
         continue
     fi
-    git_command="$(drop_command_prefix "$segment")"
-    if tampers_with_git_hooks "$git_command"; then
+    if tampers_with_git_hooks; then
         emit deny "destructive-command-guard hook BLOCKED this call: it deletes, moves, disables, or overwrites a file under .git/hooks, which silently removes the pre-commit and pre-push gates (R-203). Reading the hooks is fine; reinstall them with the harness installer rather than editing them by hand."
     fi
-    [[ "$git_command" =~ ^git([[:space:]]|$) ]] || continue
-    if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment "$segment" \
-        || has_hookspath_option "$git_command"; then
+    [ "$program" = git ] || continue
+    find_git_subcommand
+    if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment || has_hookspath_option; then
         emit deny "destructive-command-guard hook BLOCKED this call: it overrides core.hooksPath for this git command (-c, --config-env, GIT_CONFIG_KEY_n, or GIT_CONFIG_PARAMETERS), which redirects or disables every git hook without touching git config (R-107, R-203). Run the command without the override."
     fi
-    git_invocation="$(strip_git_options "$git_command")"
-    is_hook_running_git "$git_invocation" || continue
-    if [ "$exported_hook_skip" -eq 1 ] || has_leading_assignment is_hook_skip_assignment "$segment"; then
+    is_hook_running_git || continue
+    if [ "$exported_hook_skip" -eq 1 ] || has_leading_assignment is_hook_skip_assignment; then
         emit deny "destructive-command-guard hook BLOCKED this call: it sets an environment variable that turns the hook manager off (HUSKY=0, HUSKY_SKIP_HOOKS, SKIP, LEFTHOOK=0, or LEFTHOOK_EXCLUDE) for a git command that runs hooks (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
-    if skips_git_hooks "$git_invocation"; then
+    if skips_git_hooks; then
         emit deny "destructive-command-guard hook BLOCKED this call: it skips git hooks (--no-verify, an abbreviation of it, or commit -n), which turns off the pre-commit and pre-push gates for this change (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
 done < <(list_command_segments "$cmd")

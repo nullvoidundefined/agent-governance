@@ -1,6 +1,6 @@
 {
   "slice": "B-5 see through quoting, escaping, line continuations, and comments",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T12:02:31Z"
+  "redAt": "2026-09-19T12:02:31Z",
+  "greenAt": "2026-09-19T12:16:08Z"
 }
