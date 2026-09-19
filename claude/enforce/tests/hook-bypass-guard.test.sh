@@ -809,6 +809,39 @@ expect_within_bound deny 'cp of 800 sources into the hooks directory' "$B13_CP_C
 
 # --- end B-13 --------------------------------------------------------------
 
+# --- B-14: a substitution ends where bash ends it, and a heredoc body is a
+# command only when the heredoc feeds a shell ---------------------------------
+
+# a quoted or escaped ) inside a substitution does not end it, so the command
+# after it still runs inside the substitution
+expect deny "echo \$(printf ')'; git commit --no-verify -m x)"
+expect deny 'x=$(echo "a)b"; git push --no-verify)'
+expect deny $'echo "$(printf \'%s\' \')\' ; HUSKY=0 git push)"'
+expect deny 'echo $(echo \); git commit -n -m x)'
+
+# a heredoc whose reader is a shell, directly, behind a wrapper, or at the end
+# of a pipe, runs its body as commands
+expect deny $'bash <<EOF\ngit commit --no-verify -m x\nEOF'
+expect deny $'sudo bash <<\'EOF\'\ngit commit -n -m x\nEOF'
+expect deny $'env X=1 sh <<EOF\nHUSKY=0 git push\nEOF'
+expect deny $'cat <<\'EOF\' | bash\ngit commit --no-verify -m x\nEOF'
+expect deny $'cat <<\'EOF\' | tee /tmp/x | sh\ngit push --no-verify\nEOF'
+
+# a heredoc read by a program that is not a shell is data, even when a shell
+# name appears among that program's arguments
+expect none $'cat bash <<\'EOF\'\ngit commit --no-verify -m x\nEOF'
+expect none $'grep sh <<\'EOF\'\nHUSKY=0 git push\nEOF'
+expect none $'echo run bash later <<\'EOF\'\ngit commit -n -m x\nEOF'
+
+# a heredoc piped into a program that is not a shell is data
+expect none $'cat <<\'EOF\' | grep bash\ngit commit --no-verify -m x\nEOF'
+
+# a substitution holding a quoted ) and nothing to deny must keep working
+expect none "echo \$(printf ')')"
+expect none 'x=$(echo "a)b")'
+
+# --- end B-14 --------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1

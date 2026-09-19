@@ -1,0 +1,8 @@
+{
+  "slice": "B-14 respect quotes when finding a substitution's end, and parse a heredoc body only when it feeds a shell",
+  "phase": "open",
+  "spec": null,
+  "locked": [],
+  "tests": [],
+  "openedAt": "2026-09-19T18:03:35Z"
+}
