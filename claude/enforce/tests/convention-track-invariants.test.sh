@@ -133,7 +133,24 @@ done
 # a settled decision, carries a level-two heading for each of the spec's 40
 # outline rows, and sits in the 800 to 1000 line band that matches the Express file.
 python_track="$real_tree/CLAUDE-PYTHON.md"
-banned_python_terms=$(grep -nE 'Django|Celery|\bRQ\b|pip install|stdlib' "$python_track")
+# find_banned_python_terms prints each line of the named file that names a rejected
+# alternative. `structlog.stdlib` is structlog's own API (ProcessorFormatter), not the
+# rejected standard-library logging, so it is blanked before the match; every other
+# `stdlib` still counts.
+find_banned_python_terms() {
+  sed 's/structlog\.stdlib//g' "$1" | grep -nE 'Django|Celery|\bRQ\b|pip install|stdlib'
+}
+stdlib_probe_directory=$(mktemp -d)
+temp_directories+=("$stdlib_probe_directory")
+stdlib_probe="$stdlib_probe_directory/stdlib-probe.md"
+printf 'handler = structlog.stdlib.ProcessorFormatter()\nlog through stdlib logging\n' > "$stdlib_probe"
+if [ "$(find_banned_python_terms "$stdlib_probe" | cut -d: -f1)" = '2' ]; then
+  echo 'PASS: P1a the banned-term match skips structlog.stdlib and still catches a bare stdlib'
+else
+  echo 'FAIL: P1a the banned-term match mishandles structlog.stdlib or a bare stdlib'
+  failure=1
+fi
+banned_python_terms=$(find_banned_python_terms "$python_track")
 if [ -z "$banned_python_terms" ]; then
   echo 'PASS: P1 Python track names no rejected alternative'
 else

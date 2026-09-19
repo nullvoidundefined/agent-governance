@@ -44,6 +44,7 @@ Some rules are repo-specific. A repo may place an optional `.enforce.json` at it
 
 - `importZones` (R-303): drives ESLint `import/no-restricted-paths`. Files under `target` may not import from `from`. Paths are relative to the repo root. With no zones, import-direction is not enforced.
 - `singleFileFolderExemptions` (R-309): folders that are allowed to hold a single source module (e.g. the portfolio project's intentional single-file service folders, which override R-309 by project convention).
+- `autoDraftPr` (R-518): `false` stops `hooks/draft-pr-on-first-push.sh` from opening a draft pull request after a push. Absent or any other value leaves the hook on.
 
 ## Push gate scope
 
@@ -299,6 +300,10 @@ Four interchangeable read verbs is a four-way drift surface, so the registry bin
 Retarget any of this per repo: `scopeVerbs` maps a directory to the verb its group must use, `defaultVerbs` sets the fallback, `verbGroups` says which verbs form a substitutable set, and `verbScopes` restricts a single verb to named directories with a fallback suggestion.
 
 A top-level list (`verbs`, `bannedVerbs`, `bareAdjectives`, `irregularPlurals`) replaces the shipped one; map-valued fields (`bannedVerbs`, `defaultVerbs`, `scopeVerbs`, `verbGroups`, `verbScopes`) merge key by key, so retargeting one verb does not mean restating the table; `extend` adds to any of them. Omitting `glossary` skips head-noun checking rather than passing it. A repo with no `naming` key gets exactly the behavior it had before the rule existed. Tests, fixtures, mocks, `e2e/`, and `.d.ts` are exempt. PascalCase is skipped, so React components and classes are untouched.
+
+## The draft PR and monitor hooks (R-518)
+
+`hooks/draft-pr-on-first-push.sh` runs after every Bash call. It reads the command as shell words through `hooks/shell-command-tokens.sh` and walks it with `hooks/shell-command-scan.sh`, the same pair `pr-ticket-ref-gate.sh` uses, and acts only on a `git push` of the checked-out branch that is not a dry run, a delete, or a tag-only push, whose tool response shows no rejection, and whose remote-tracking ref now equals HEAD. The response is read through `hooks/tool-response-output.sh`, which accepts both Claude Code's object and the plain string the Cursor adapter passes. For a branch other than the default, `main`, `master`, or `staging`, that has never had a PR on GitHub (`gh pr list --state all`; a merged or closed one gets a one-line note naming it and opens nothing), it runs `gh pr create --draft` against the default branch, title from the oldest commit, body of the commit subjects, the distinct `Refs:` lines, and the attribution line. R-605 is checked first through `hooks/pr-range-checks.sh`, the same functions the PreToolUse gate uses: no Refs line outside the docs-only and trivial exemptions means no draft and a note naming `/ticket-lifecycle`. Every `gh` call is bounded by `CLAUDE_GH_TIMEOUT_SECONDS` (default 15) and `CLAUDE_GH_CMD` replaces `gh`; any failure exits 0 with at most a one-line note, since the push has already happened. `hooks/pr-monitor-reminder.sh` emits the `mcp__ccd_pr__set_monitor` instruction (text in `hooks/pr-monitor-instruction.sh`) after a successful `gh pr create`; the draft hook emits the same text for the drafts it opens, because its own `gh` call is not a tool call and no other hook sees it. Fixtures: `hooks/tests/draft-pr-on-first-push.test.sh`, `hooks/tests/pr-monitor-reminder.test.sh`.
 
 ## The ratchet (long-term enforcement)
 

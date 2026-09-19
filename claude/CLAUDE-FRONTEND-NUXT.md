@@ -44,7 +44,7 @@ app/
 ├── components/               # Shared UI components (see core)
 ├── features/                 # Feature slices (see core)
 ├── composables/              # useX functions (see the Vue file)
-├── stores/                   # Pinia stores (see the Vue file)
+├── stores/                   # Pinia stores, only when a project adopts Pinia (see the Vue file)
 ├── api/                      # Own-backend fetch wrappers (see core)
 ├── clients/                  # Third-party SDK wrappers (see core)
 ├── services/                 # Domain logic (see core)
@@ -92,10 +92,10 @@ Next gates protected routes with edge middleware. Nitro server middleware is not
 
 1. **`server/middleware/sessionCookieGate.ts`**: on a full page request for a protected path prefix with no session cookie, `sendRedirect(event, '/login', 302)`. Presence only; it never calls the backend and never parses the cookie. It skips `/api/**` and asset paths.
 2. **`app/middleware/requireSession.ts`**: named route middleware on every protected page. It reads the session through `useSessionQuery()` and returns `navigateTo('/login')` when the backend answers 401. It covers client-side navigation, which never reaches Nitro middleware, and an expired cookie that step 1 let through.
-3. **`app/layouts/protected.vue`**: renders only after the session query resolves, and the auth store's `clearSession()` on logout invalidates that query.
+3. **`app/layouts/protected.vue`**: renders only after the session query resolves, and the logout mutation's `onSuccess` removes that query from the cache (corrected 2026-09-19: the session lives in the query cache, not in an auth store, now that app state is `useState` composables rather than Pinia).
 
 - The session cookie is `httpOnly`; the browser never reads it, so no client code checks `document.cookie`
-- During SSR, `api/apiFetch.ts` builds on `useRequestFetch()` so the incoming request's cookie reaches the backend; a bare `$fetch` during SSR drops it
+- `api/apiClient.ts` exports `createApiClient()`, never a module-level client, and a `useApiClient()` composable memoizes one client per request on `useNuxtApp()` (the Vue file); a module-scope client would capture the first request's cookie and send it on every later user's SSR calls. During SSR it passes the incoming cookie with `headers: useRequestHeaders(['cookie'])`, so the request reaches the backend authenticated; a client created without it drops the cookie. openapi-fetch's `fetch` option takes a standard `fetch`, and `useRequestFetch()` returns Nuxt's `$fetch`, whose call and return shapes differ, so it is not passed there (corrected 2026-09-19: the typed client moved from a hand-written `apiFetch` to openapi-fetch)
 
 ---
 
@@ -103,7 +103,7 @@ Next gates protected routes with edge middleware. Nitro server middleware is not
 
 The browser calls only its own origin. Two Nitro catch-all routes forward the rest:
 
-- `server/api/[...path].ts` proxies `/api/**` to the backend with h3's `proxyRequest(event, target)`, the target built from `runtimeConfig.apiBaseUrl` (server-only); cookies, the `X-Requested-With` header, and the request ID pass through
+- `server/api/[...path].ts` proxies `/api/**` to the backend with h3's `proxyRequest(event, target)`, the target built from `runtimeConfig.apiBaseUrl` (server-only); cookies, the `X-Requested-With` header, and the request ID pass through. Before `proxyRequest`, the route rewrites `X-Forwarded-For` to its last entry, the client address the edge appended, because every earlier entry is client-supplied and h3 forwards the header unchanged (added 2026-09-19: the backend's rate limiter keys on the address this chain resolves, `CLAUDE-PYTHON.md` Rate Limiting)
 - `server/api/ingest/[...path].ts` proxies PostHog ingestion to `runtimeConfig.posthogHost`, so ad blockers do not drop analytics
 - `server/api/health.get.ts` answers the container `HEALTHCHECK` without touching the backend; the specific route wins over the catch-all
 - No `routeRules` proxy for the backend: a Nitro route file is visible, testable, and logs through the one logger
@@ -129,8 +129,8 @@ The browser calls only its own origin. Two Nitro catch-all routes forward the re
 
 ## Theme
 
-- `stores/themeStore.ts` holds the theme (`light`, `dark`, `system`), persisted to `localStorage` by `plugins/theme.client.ts`
-- The store sets the `data-theme` attribute on `<html>`; tokens in `assets/css/main.scss` switch on it (`CLAUDE-STYLING.md`)
+- `composables/useThemePreference.ts` holds the theme (`light`, `dark`, `system`, which follows the operating system through a media-query listener) in `useState`, persisted to `localStorage` by `plugins/theme.client.ts` (corrected 2026-09-19: a `useState` composable replaces the Pinia theme store)
+- The composable sets the `data-theme` attribute on `<html>`; tokens in `assets/css/main.scss` switch on it (`CLAUDE-STYLING.md`)
 - An inline script in `app.head`, added through `useHead` with `tagPosition: 'head'`, reads `localStorage` and sets `data-theme` before first paint so SSR output never flashes the wrong theme
 
 ---

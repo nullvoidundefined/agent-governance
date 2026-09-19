@@ -15,7 +15,7 @@
     ],
     "afterShellExecution": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterShellExecution redact-output",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterShellExecution redact-output draft-pr-on-first-push pr-monitor-reminder",
         "timeout": 30
       }
     ],

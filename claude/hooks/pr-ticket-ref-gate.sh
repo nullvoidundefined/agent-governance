@@ -28,80 +28,23 @@
 # (2026-09-16 audit P2-8; convention documented in enforce/README.md).
 set -uo pipefail
 
-KEY_PATTERN='[A-Z][A-Z0-9]+-[0-9]+'
-REFS_LINE_PATTERN="^[[:space:]\"']*Refs:[[:space:]]*${KEY_PATTERN}([^A-Za-z0-9-]|\$)"
+# The shell word scan lives in shell-command-tokens.sh (shared with
+# git-workflow-guard.sh), and the command walk and the R-605 range checks in
+# shell-command-scan.sh and pr-range-checks.sh (shared with
+# draft-pr-on-first-push.sh, IAN-137). Each is sourced behind an [ -f ] guard;
+# a missing helper is a deny once the command is known to be a gh pr create,
+# never a silent allow.
+HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
+HELPERS_LOADED=1
+for helper in shell-command-scan.sh pr-range-checks.sh; do
+  # shellcheck source=/dev/null
+  if [ -f "$HOOK_DIR/$helper" ]; then source "$HOOK_DIR/$helper"; else HELPERS_LOADED=0; fi
+done
+type scan_command_tokens >/dev/null 2>&1 || HELPERS_LOADED=0
+
 # A cheap prefilter only: a command that mentions the words reaches the
 # shell-aware scan below, which decides whether gh pr create really runs.
 PREFILTER_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)'
-
-# has_refs_line <text>: true when some line of the text is a Refs trailer
-# naming a ticket key, optionally preceded by an opening quote.
-has_refs_line() {
-  grep -Eq -- "$REFS_LINE_PATTERN" <<< "$1"
-}
-
-# The shell word scan (scan_command_tokens, SEPARATOR_TOKEN, HEREDOC_TOKEN)
-# lives in shell-command-tokens.sh, shared with git-workflow-guard.sh. A
-# missing helper is a deny, never a silent allow.
-SHELL_TOKENS_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-tokens.sh"
-IS_SHELL_TOKENS_LOADED=0
-if [ -f "$SHELL_TOKENS_HELPER" ]; then
-  # shellcheck source=shell-command-tokens.sh
-  source "$SHELL_TOKENS_HELPER" && IS_SHELL_TOKENS_LOADED=1
-fi
-
-# apply_cd <word>...: replays one cd onto TARGET_DIR, skipping its options;
-# a target that does not exist leaves the directory unchanged, as the shell
-# would after the failed cd, and `cd -` is not followed.
-apply_cd() {
-  local target=""
-  while [ "$#" -gt 0 ]; do case "$1" in -?*) shift ;; *) target="$1"; break ;; esac; done
-  case "$target" in
-    ""|"~") target="$HOME" ;;
-    "~"/*) target="$HOME/${target#\~/}" ;;
-    -) return 0 ;;
-    /*) ;;
-    *) target="$TARGET_DIR/$target" ;;
-  esac
-  [ -d "$target" ] && TARGET_DIR="$target"
-  return 0
-}
-
-# inspect_simple_command <stdin> <word>...: for a cd, moves TARGET_DIR; for
-# gh pr create (or its alias new), records its arguments in INVOCATION_ARGS
-# and its heredoc in INVOCATION_STDIN and returns 0. Leading VAR=value
-# assignments are skipped.
-inspect_simple_command() {
-  local stdin="$1"; shift
-  while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do shift; done
-  [ "$#" -gt 0 ] || return 1
-  if [ "$1" = "cd" ]; then shift; apply_cd "$@"; return 1; fi
-  [ "$1" = "gh" ] && [ "${2:-}" = "pr" ] || return 1
-  case "${3:-}" in create|new) ;; *) return 1 ;; esac
-  shift 3
-  INVOCATION_ARGS=("$@"); INVOCATION_STDIN="$stdin"
-  return 0
-}
-
-# find_pr_invocation <session-dir>: walks TOKENS one simple command at a
-# time from the session's directory, replaying each cd, and stops at the
-# first gh pr create; returns 1 when the command never runs one.
-find_pr_invocation() {
-  local token stdin='' is_heredoc_next=0
-  local -a words=()
-  TARGET_DIR="$1"
-  for token in ${TOKENS[@]+"${TOKENS[@]}"}; do
-    if [ "$is_heredoc_next" -eq 1 ]; then stdin="$token"; is_heredoc_next=0; continue; fi
-    case "$token" in
-      "$HEREDOC_TOKEN") is_heredoc_next=1 ;;
-      "$SEPARATOR_TOKEN")
-        inspect_simple_command "$stdin" ${words[@]+"${words[@]}"} && return 0
-        words=(); stdin='' ;;
-      *) words+=("$token") ;;
-    esac
-  done
-  return 1
-}
 
 # parse_invocation_flags: reads the body, body file, and base out of
 # INVOCATION_ARGS word by word, so a flag spelled inside another argument's
@@ -136,49 +79,6 @@ body_has_reference() {
   case "$file" in "~"/*) file="$HOME/${file#\~/}" ;; /*) ;; *) file="$TARGET_DIR/$file" ;; esac
   [ -f "$file" ] && has_refs_line "$(cat "$file" 2>/dev/null)"
 }
-
-# resolve_pr_base <base-name> <repo-top>: prints the merge base of HEAD with
-# the pull request's base branch; empty when none of the candidates exist.
-resolve_pr_base() {
-  local named="$1" dir="$2" default="" candidate merge_base
-  if [ -n "${CLAUDE_ENFORCE_BASE:-}" ]; then printf '%s' "$CLAUDE_ENFORCE_BASE"; return; fi
-  default=$(git -C "$dir" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)
-  for candidate in ${named:+"origin/$named" "$named"} ${default:+"$default"} origin/main main origin/master master; do
-    git -C "$dir" rev-parse --verify -q "$candidate" >/dev/null 2>&1 || continue
-    merge_base=$(git -C "$dir" merge-base "$candidate" HEAD 2>/dev/null || true)
-    [ -n "$merge_base" ] && { printf '%s' "$merge_base"; return; }
-  done
-}
-
-# commits_have_reference <target-dir> <base>: true when a commit message in
-# base..HEAD carries a Refs line.
-commits_have_reference() {
-  local dir="$1" base="$2"
-  [ -n "$base" ] || return 1
-  has_refs_line "$(git -C "$dir" log --format=%B "$base..HEAD" 2>/dev/null)"
-}
-
-# is_docs_only_range <target-dir> <base>: true when the range changes at
-# least one path and every changed path is *.md or under docs/. An empty or
-# unreadable range is not docs-only, so it cannot exempt anything.
-is_docs_only_range() {
-  local dir="$1" base="$2" changed
-  [ -n "$base" ] || return 1
-  changed=$(git -C "$dir" diff --name-only "$base...HEAD" 2>/dev/null) || return 1
-  [ -n "$changed" ] || return 1
-  ! grep -Evq '(\.md$|^docs/)' <<< "$changed"
-}
-
-# is_trivial_tier <repo-top>: true when task-start's ledger records the
-# trivial tier for the branch currently checked out (a ledger left from an
-# earlier branch does not count).
-is_trivial_tier() {
-  local top="$1" ledger="$1/.claude/task-tier.json" branch
-  [ -f "$ledger" ] || return 1
-  branch=$(git -C "$top" branch --show-current 2>/dev/null || true)
-  jq -e --arg b "$branch" '.tier == "trivial" and ((.branch // "") == "" or .branch == $b)' "$ledger" >/dev/null 2>&1
-}
-
 # record_fire <decision>: logs one R-605 fire through the shared telemetry
 # helper when it is present.
 record_fire() {
@@ -210,8 +110,8 @@ emit_deny() {
 INPUT=$(cat)
 CMD=$(jq -r '.tool_input.command // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 grep -Eq -- "$PREFILTER_PATTERN" <<< "$CMD" || exit 0
-if [ "$IS_SHELL_TOKENS_LOADED" -ne 1 ]; then
-  jq -nc '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"R-605 (ticket reference): hooks/shell-command-tokens.sh is missing, so this hook cannot read the command; re-run ./sync.sh to restore it."}}'
+if [ "$HELPERS_LOADED" -ne 1 ]; then
+  jq -nc '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"R-605 (ticket reference): a helper this hook sources (shell-command-tokens.sh, shell-command-scan.sh, or pr-range-checks.sh) is missing, so this hook cannot read the command; re-run ./sync.sh to restore it."}}'
   exit 0
 fi
 
@@ -222,7 +122,7 @@ SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 # so quoted text, an earlier `-b`, or a later command's heredoc or `-F` is
 # never taken for the pull request's.
 scan_command_tokens "$CMD"
-find_pr_invocation "$SESSION_DIR" || exit 0
+find_simple_command "$SESSION_DIR" is_pr_create_command || exit 0
 parse_invocation_flags
 
 body_has_reference && exit 0
