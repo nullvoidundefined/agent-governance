@@ -6,7 +6,7 @@ so a quoted ">" never reads as a redirect.
 
 Quotes, backslash escapes, $'...' strings, backslash-newline continuations, and
 unquoted comments are resolved as bash resolves them. An fd number glued to a
-redirect (2>) is folded into the operator. A heredoc body is skipped, except
+redirect (2>) is dropped, leaving the bare operator. A heredoc body is skipped, except
 when the line that opens it names a shell (bash <<EOF), in which case the body
 is parsed as more commands. A command substitution's inner text becomes its own
 segment.
@@ -20,8 +20,9 @@ commands case-insensitively). The words piped into xargs become arguments of
 the program it runs. The command string given to `sh -c` (any shell) or to
 `eval` is parsed as more segments. A function definition `name() {` is
 printed as the segment `function name`, the form `function name {` already
-has. A command bash itself would reject (an
-unclosed quote) prints nothing, because it never runs."""
+has. Text bash would reject partway (an unclosed quote on a later line) is
+parsed up to that point, because bash runs the complete lines before it. Any
+other failure exits non-zero, which the guard treats as a deny."""
 import os
 import sys
 
@@ -62,8 +63,14 @@ class Tokenizer:
         self.expect_heredoc_delimiter = None
 
     def run(self):
-        while self.position < len(self.text):
-            self.step(self.text[self.position])
+        """Returns the tokens. Text bash would reject (an unclosed quote or
+        backtick) ends the scan early rather than failing it: bash runs every
+        complete line before the one it cannot parse, so those tokens count."""
+        try:
+            while self.position < len(self.text):
+                self.step(self.text[self.position])
+        except ValueError:
+            self.word, self.in_word = [], False
         self.end_word()
         return self.tokens
 
@@ -343,10 +350,7 @@ def split_segments(text):
 
 def main():
     """Prints the segments of the command read from stdin."""
-    try:
-        segments = split_segments(sys.stdin.read())
-    except (ValueError, StopIteration):
-        return
+    segments = split_segments(sys.stdin.read())
     for segment in segments:
         sys.stdout.write(WORD_SEPARATOR.join(segment) + "\n")
 

@@ -91,19 +91,27 @@ fi
 SHELL_SEGMENTS_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-segments.py"
 REDIRECT_MARK=$'\036'
 
-# Fails closed: without the parser the git checks below cannot run, so any
-# command that could reach git or its hooks is refused.
-if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$SHELL_SEGMENTS_HELPER" ]; then
-    if grep -Eq 'git|hooks' <<< "$cmd"; then
-        emit deny "destructive-command-guard hook BLOCKED this call: its command parser (python3 and hooks/shell-command-segments.py) is unavailable, so git hook skips cannot be checked (R-203). Restore the harness with sync.sh."
+# Fails closed: when the parser is missing or fails (a python3 that exists
+# but exits non-zero, such as the macOS stub without developer tools, or an
+# exception in the helper), the git checks below cannot run, so any command
+# that could reach git or its hooks is refused. git and hooks match as words
+# or as .git/, never inside another word such as legit.
+deny_when_unparsed() {
+    if grep -Eq '(^|[^A-Za-z0-9_-])git([^A-Za-z0-9_-]|$)|\.git/|(^|[^A-Za-z0-9_-])hooks([^A-Za-z0-9_-]|$)' <<< "$cmd"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: its command parser (python3 and hooks/shell-command-segments.py) is unavailable or failed, so git hook skips cannot be checked (R-203). Restore the harness with sync.sh, or install the developer tools that provide python3."
     fi
-fi
+    COMMAND_SEGMENTS=""
+}
 
 # Prints the command's simple commands, one per line, words separated by \037
-# and redirect operators prefixed with \036.
+# and redirect operators prefixed with \036; exits non-zero when the parser
+# is missing or fails.
 list_command_segments() {
+    command -v python3 >/dev/null 2>&1 && [ -f "$SHELL_SEGMENTS_HELPER" ] || return 1
     python3 "$SHELL_SEGMENTS_HELPER" <<< "$1" 2>/dev/null
 }
+
+COMMAND_SEGMENTS="$(list_command_segments "$cmd")" || deny_when_unparsed
 
 # True when a word is a shell variable assignment (NAME=value).
 is_assignment_word() {
@@ -308,6 +316,9 @@ is_git_directory() {
 # output redirects.
 collect_arguments() {
     local index=$((COMMAND_START + 1)) word
+    # A segment that is only a redirect (`> file`, or `exec > file` once the
+    # parser drops exec) has no program, so its first word is the operator.
+    case "${WORDS[COMMAND_START]:-}" in "$REDIRECT_MARK"*) index=$COMMAND_START ;; esac
     ARGUMENTS=()
     REDIRECT_TARGETS=()
     while [ "$index" -lt "${#WORDS[@]}" ]; do
@@ -720,7 +731,7 @@ while IFS=$'\037' read -r -a WORDS; do
     if skips_git_hooks; then
         emit deny "destructive-command-guard hook BLOCKED this call: it skips git hooks (--no-verify, an abbreviation of it, or commit and am -n), which turns off the git hooks for this change (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
-done < <(list_command_segments "$cmd")
+done <<< "$COMMAND_SEGMENTS"
 
 # --- credential readout ---------------------------------------------------
 

@@ -1,6 +1,6 @@
 {
   "slice": "B-10 fail closed when the parser fails, and deny a bare redirect into .git/hooks",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T16:10:03Z"
+  "redAt": "2026-09-19T16:10:03Z",
+  "greenAt": "2026-09-19T16:15:35Z"
 }
