@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Covers: hook:pr-monitor-reminder
-# Verifies hooks/pr-monitor-reminder.sh (R-517): after a Bash call that
+# Verifies hooks/pr-monitor-reminder.sh (R-518): after a Bash call that
 # really ran `gh pr create` and printed the new pull request's URL, the hook
 # tells the session to call mcp__ccd_pr__set_monitor with auto_fix,
 # address_comments, and auto_archive_on_close for that URL, never to enable

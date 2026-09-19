@@ -61,14 +61,15 @@ Ticket:         No (only when the user asks)
 TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
 Branch:         Yes, its own branch and PR (never a direct push to main)
-PR ceremony:    None: no ticket, no PR document, no Copilot review request
+PR ceremony:    Minimal: no ticket, no PR document, no Copilot review request. The pre-merge Codex review
+                (R-517) still runs, because it blocks every merge; its `## Codex review` section can be one line.
 Worktree:       No
 Subagents:      No
 Execution:      Inline, immediate
 Skills invoked: None (just do it)
 ```
 
-Execute the change on its own branch, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). Done.
+Execute the change on its own branch, open the PR, run the Codex review and add its section to the PR body (R-517), and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). Done.
 
 ### Standard
 
@@ -76,7 +77,9 @@ Execute the change on its own branch, open the PR, and merge once CI is green un
 Spec:           No (unless the user asks for one)
 Plan:           No (inline mental model is sufficient)
 Ticket:         Yes. Opened at classification, closed with actuals (R-605).
+Spec review:    No. There is no spec to review; the pre-merge Codex review (R-517) still runs on the PR.
 TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh red, implement, tdd.sh green, close (R-412).
+                Codex writes each failing test through `codex exec` (R-907); the test-author agent only as the recorded fallback.
                 Open the slice WITHOUT --spec: that flag is optional in tdd.sh, and this tier has no spec by
                 design. The behavior named in the slice title and the ticket is the requirement the test
                 argues from. tdd-gated-dispatch's spec-driven flow (its step 1 shows --spec, and its role
@@ -122,10 +125,13 @@ plainly where the confidence stops.
 
 ```
 Spec:           Yes. One spec. Written inline or via brainstorming skill.
+Spec review:    Yes. Adversarial Codex review of the spec, including the stack and build-versus-buy audit, before the
+                owner approves it and before writing-plans (below). Every finding fixed or answered first.
 Plan:           Yes. One plan. Written via writing-plans skill.
 Ticket:         Yes. Advanced through specced and planned as each lands (R-605).
-TDD:            Yes, slices; tdd-gated-dispatch with the three role agents when using subagents.
-Model:          Opus for planning, the test author, and the critic. Sonnet for the implementer.
+TDD:            Yes, slices; tdd-gated-dispatch, with Codex writing every failing test (R-907), the test-author agent
+                only as the recorded fallback, and the implementer and slice-critic agents when using subagents.
+Model:          Opus for planning and the critic. Codex for the test author. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
 Subagents:      Optional (if 5+ independent tasks)
@@ -139,10 +145,13 @@ One spec. One plan. One branch. Never split a complex task into multiple plans.
 
 ```
 Spec:           Yes. ONE spec covering all subsystems.
+Spec review:    Yes. Adversarial Codex review of the spec, including the stack and build-versus-buy audit, before the
+                owner approves it and before writing-plans (below). Every finding fixed or answered first.
 Plan:           Yes. ONE plan with staged sections (not multiple plan files).
 Ticket:         Yes. One ticket for the saga; one per stage when a stage ships alone.
-TDD:            Yes, slices; tdd-gated-dispatch with the three role agents for every slice.
-Model:          Opus for planning, the test author, and the critic. Sonnet for the implementer.
+TDD:            Yes, slices; tdd-gated-dispatch for every slice, with Codex writing every failing test (R-907), the
+                test-author agent only as the recorded fallback, and the implementer and slice-critic agents.
+Model:          Opus for planning and the critic. Codex for the test author. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
 Subagents:      Yes, with tdd-gated-dispatch skill
@@ -159,11 +168,63 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 
 | Tier | Setup sequence |
 |---|---|
-| **Trivial** | Branch, do the work, open the PR, merge on green CI. |
+| **Trivial** | Branch, do the work, open the PR, run the Codex review (R-517), merge on green CI. |
 | **Investigation** | Write the scope line, gather evidence, report. No branch unless the report is a file. |
 | **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, add the product docs when the task adds user-facing behavior (below), then tdd-gated-dispatch's single-session loop |
-| **Complex** | Spec (superpowers:brainstorming if none exists) then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
+| **Complex** | Spec (superpowers:brainstorming if none exists), then the adversarial spec review (below) with every finding fixed or answered, then the owner's spec approval, then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
 | **Saga** | As Complex, plus: Opus for all planning and review, tdd-gated-dispatch for every subagent, and a review checkpoint after each stage. No stage starts until the prior stage's tests are green. |
+
+### Adversarial spec review (Complex and Saga)
+
+After the spec is written, and before the owner approves it and before
+writing-plans starts, Codex (OpenAI's coding agent, run through its CLI as a
+separate process, so the reviewer is a different model from the one that
+wrote the spec) reviews the spec adversarially. Standard tier has no spec and
+skips this step. The review looks for parity gaps, acceptance criteria that
+would not fail if a feature were missing, contradictions with the convention
+files, security and data-integrity gaps, and slice-ordering problems, every
+finding citing file and line evidence. It also runs a two-sided stack and
+build-versus-buy audit: for each major component, whether a different
+language, framework, queue, datastore, or library fits better and why; for
+each piece the spec builds by hand, whether a mature existing tool already
+does it; and for every suggestion, whether it removes more code, risk, or
+maintenance than the dependency adds (R-331). "Keep the current choice" is a
+valid, expected answer, and the goal is never library soup.
+
+1. Copy `~/.claude/prompts/codex-spec-review-prompt.md` below its line into a
+   scratch file and fill every placeholder. Name specific files: the spec, the
+   reference implementation's directories when the spec claims parity, and only
+   the convention files the spec touches. The owner's Codex account is a $20
+   ChatGPT plan with tight usage limits, and one unfocused review used 115k
+   tokens and hit the limit on 2026-09-19.
+2. Run it read-only, in the background (the Bash tool's `run_in_background`),
+   and poll the log file until the process exits:
+
+   ```bash
+   codex exec -s read-only -C <repo root> --skip-git-repo-check \
+     -o <scratch>/codex-spec-review-final.md "$(cat <scratch>/codex-spec-review-prompt.md)" \
+     </dev/null > <scratch>/codex-spec-review.log 2>&1
+   ```
+
+   Close stdin with `</dev/null`, or codex blocks on "Reading additional input
+   from stdin". Never pipe it through `tail`, which buffers until exit and looks
+   like a hang. Omit `-m`: `gpt-5.1-codex-mini` is rejected on the owner's
+   ChatGPT account, so the account default applies. R-908's billing guard
+   applies to the call.
+3. **Fallback.** When Codex is missing, unauthenticated, or out of quota, do not
+   wait for the quota to reset and do not review the spec in this session:
+   dispatch a separate Claude agent in a fresh context, on a model at least as
+   strong as this session's and ideally stronger (the Agent tool's
+   `model: "fable"` when available, else `opus`), with the same filled prompt,
+   and use its final message as the review.
+4. Fix each finding in the spec, or answer it with a reason. Present the stack
+   and build-versus-buy options to the owner as choices to accept or reject
+   (one question per turn, R-211); never apply one silently.
+5. Record the outcome in a `## Spec review` section of the spec: the reviewer
+   and model that ran and why (for example `Reviewer: Codex` or
+   `Reviewer: Claude subagent (fable), fallback: Codex usage limit reached`),
+   one line per finding with its disposition, and the owner's answer to each
+   stack option. Only then ask for the owner's spec approval.
 
 ### Product docs at task start (R-607)
 
@@ -193,7 +254,9 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Brainstorming, spec writing | Opus for complex/saga, Sonnet for standard |
 | Plan writing, plan review | Opus for complex/saga, Sonnet for standard |
 | Implementation (inline) | Sonnet |
-| Implementation (subagent) | Sonnet (implementer), Opus (test author, slice critic) |
+| Implementation (subagent) | Sonnet (implementer), Opus (slice critic, and the test-author agent when it is the Codex fallback) |
+| Failing tests, every tier | Codex through `codex exec` (R-907); account default model, no `-m` |
+| Adversarial spec review (Complex, Saga) and pre-merge PR review (every PR, R-517) | Codex through `codex exec -s read-only`; fallback a separate Claude agent on `fable` (else `opus`), never this session |
 | Audit/review | Per the role file: Opus for the standing roles (engineering, security, criticism) and the customer walkthrough, Sonnet for the rubric roles (design, UX, financial, legal, marketing); `all-hands` overrides every role to Sonnet for its weekly scan |
 | Doc edits, file moves, config | Haiku or Sonnet |
 
@@ -215,5 +278,6 @@ If you discover the scope is smaller:
 
 - **Replaces:** ad-hoc decisions about brainstorming, planning, and execution
 - **Composes with:** all superpowers skills (brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, feature-create, tdd-gated-dispatch)
+- **Uses:** `prompts/codex-spec-review-prompt.md` for the adversarial spec review
 - **Calls:** ticket-lifecycle (`estimate <tier>` for the number, then `open` for the ticket)
 - **Paired with:** task-cleanup (run at the end of every task)

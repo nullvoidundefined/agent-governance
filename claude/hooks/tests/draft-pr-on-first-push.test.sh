@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shard: slow
 # Covers: hook:draft-pr-on-first-push
-# Verifies hooks/draft-pr-on-first-push.sh (R-517): after a successful Bash
+# Verifies hooks/draft-pr-on-first-push.sh (R-518): after a successful Bash
 # `git push` of a non-default branch with no open pull request, the hook
 # opens a draft with `gh pr create --draft` (title from the oldest commit,
 # body listing the subjects, the distinct Refs lines, and the attribution

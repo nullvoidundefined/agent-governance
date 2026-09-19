@@ -28,16 +28,19 @@
 # (2026-09-16 audit P2-8; convention documented in enforce/README.md).
 set -uo pipefail
 
-# The shell scanner and the R-605 range checks live in two sourced helpers
-# shared with draft-pr-on-first-push.sh (IAN-137). Each is sourced behind an
-# [ -f ] guard; a missing helper is reported as an ask once the command is
-# known to be a gh pr create, so the gate never fails open in silence.
+# The shell word scan lives in shell-command-tokens.sh (shared with
+# git-workflow-guard.sh), and the command walk and the R-605 range checks in
+# shell-command-scan.sh and pr-range-checks.sh (shared with
+# draft-pr-on-first-push.sh, IAN-137). Each is sourced behind an [ -f ] guard;
+# a missing helper is a deny once the command is known to be a gh pr create,
+# never a silent allow.
 HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
 HELPERS_LOADED=1
 for helper in shell-command-scan.sh pr-range-checks.sh; do
   # shellcheck source=/dev/null
   if [ -f "$HOOK_DIR/$helper" ]; then source "$HOOK_DIR/$helper"; else HELPERS_LOADED=0; fi
 done
+type scan_command_tokens >/dev/null 2>&1 || HELPERS_LOADED=0
 
 # A cheap prefilter only: a command that mentions the words reaches the
 # shell-aware scan below, which decides whether gh pr create really runs.
@@ -108,8 +111,7 @@ INPUT=$(cat)
 CMD=$(jq -r '.tool_input.command // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 grep -Eq -- "$PREFILTER_PATTERN" <<< "$CMD" || exit 0
 if [ "$HELPERS_LOADED" -ne 1 ]; then
-  jq -nc --arg r "R-605 (ticket reference): pr-ticket-ref-gate.sh could not load its helpers (shell-command-scan.sh, pr-range-checks.sh) beside it, so this pull request's ticket reference is unchecked. Re-run ./sync.sh, or confirm the PR carries a \`Refs: <KEY>\` line." \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  jq -nc '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"R-605 (ticket reference): a helper this hook sources (shell-command-tokens.sh, shell-command-scan.sh, or pr-range-checks.sh) is missing, so this hook cannot read the command; re-run ./sync.sh to restore it."}}'
   exit 0
 fi
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# draft-pr-on-first-push.sh: PostToolUse Bash hook (R-517). When a Bash call
+# draft-pr-on-first-push.sh: PostToolUse Bash hook (R-518). When a Bash call
 # really ran `git push` for the checked-out branch, the push succeeded, the
 # branch is not the default branch (nor main, master, or staging), and GitHub
 # has never had a pull request (open, merged, or closed) whose head is that
@@ -51,12 +51,12 @@ HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
 GH_TIMEOUT_SECONDS="${CLAUDE_GH_TIMEOUT_SECONDS:-15}"
 [[ "$GH_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || GH_TIMEOUT_SECONDS=15
 
-# record_fire <decision>: logs one R-517 fire through the telemetry helper.
+# record_fire <decision>: logs one R-518 fire through the telemetry helper.
 record_fire() {
   local helper="$HOOK_DIR/log-rule-fire.sh"
   # shellcheck source=log-rule-fire.sh
   [ -f "$helper" ] && source "$helper"
-  type log_rule_fire >/dev/null 2>&1 && log_rule_fire "R-517" "draft-pr-on-first-push" "$1"
+  type log_rule_fire >/dev/null 2>&1 && log_rule_fire "R-518" "draft-pr-on-first-push" "$1"
   return 0
 }
 
@@ -69,7 +69,7 @@ emit_context() {
 # and ends the hook without touching the push.
 give_up_with_note() {
   record_fire "error"
-  emit_context "R-517 (draft PR): no draft pull request was opened for ${PUSHED_BRANCH:-this branch}: $1. Open one with \`gh pr create --draft\` if it is wanted."
+  emit_context "R-518 (draft PR): no draft pull request was opened for ${PUSHED_BRANCH:-this branch}: $1. Open one with \`gh pr create --draft\` if it is wanted."
   exit 0
 }
 
@@ -274,6 +274,7 @@ for helper in shell-command-scan.sh pr-range-checks.sh pr-monitor-instruction.sh
   # shellcheck source=/dev/null
   source "$HOOK_DIR/$helper"
 done
+type scan_command_tokens >/dev/null 2>&1 || { record_fire "error"; exit 0; }
 
 SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 [ -n "$SESSION_DIR" ] && [ -d "$SESSION_DIR" ] || SESSION_DIR="$PWD"
@@ -303,7 +304,7 @@ jq -e 'any(.[]; .state == "OPEN")' >/dev/null 2>&1 <<< "$BRANCH_PRS" && exit 0
 EARLIER_PR=$(jq -r 'first(.[]) | "#\(.number) (\(.state)) \(.url)"' 2>/dev/null <<< "$BRANCH_PRS" || true)
 if [ -n "$EARLIER_PR" ]; then
   record_fire "branch-reused"
-  emit_context "R-517 (draft PR): no draft pull request was opened for $PUSHED_BRANCH, because the branch already had pull request $EARLIER_PR; reusing a branch name needs a deliberate \`gh pr create\`."
+  emit_context "R-518 (draft PR): no draft pull request was opened for $PUSHED_BRANCH, because the branch already had pull request $EARLIER_PR; reusing a branch name needs a deliberate \`gh pr create\`."
   exit 0
 fi
 
@@ -316,7 +317,7 @@ DEGRADED_NOTE=''
 if ! is_ticket_requirement_met "$BASE"; then
   if [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
     record_fire "ticket-missing"
-    emit_context "R-517 (draft PR) with R-605 (ticket reference): no draft pull request was opened for $PUSHED_BRANCH, because no commit in $DEFAULT_BRANCH..$PUSHED_BRANCH carries a \`Refs: <KEY>\` line and the range is neither docs-only nor trivial tier. Open the ticket with /ticket-lifecycle, add \`Refs: <KEY>\` as a commit trailer, and push again; the draft opens on that push."
+    emit_context "R-518 (draft PR) with R-605 (ticket reference): no draft pull request was opened for $PUSHED_BRANCH, because no commit in $DEFAULT_BRANCH..$PUSHED_BRANCH carries a \`Refs: <KEY>\` line and the range is neither docs-only nor trivial tier. Open the ticket with /ticket-lifecycle, add \`Refs: <KEY>\` as a commit trailer, and push again; the draft opens on that push."
     exit 0
   fi
   DEGRADED_NOTE=" R-605's degraded path applies: the range carries no \`Refs: <KEY>\` line and no tracker is configured (~/.claude/TICKET-TRACKER.json is absent), so record the ticket field set (title, tier, assist, model, estimate, repo, branch) in docs/session-handoff/session-handoff.md."
@@ -330,5 +331,5 @@ PR_URL=$(grep -Eo -- "$PR_URL_PATTERN" "$SCRATCH/created" | tail -1 || true)
 [ -n "$PR_URL" ] || give_up_with_note "gh pr create printed no pull request URL"
 
 if [ -n "$DEGRADED_NOTE" ]; then record_fire "degraded"; else record_fire "opened"; fi
-emit_context "R-517 (draft PR): opened draft pull request $PR_URL for $PUSHED_BRANCH against $DEFAULT_BRANCH. Write the docs/prs/ document and finish review before marking it ready with \`gh pr ready\`.${DEGRADED_NOTE} $(print_monitor_instruction "$PR_URL")"
+emit_context "R-518 (draft PR): opened draft pull request $PR_URL for $PUSHED_BRANCH against $DEFAULT_BRANCH. Write the docs/prs/ document and finish review before marking it ready with \`gh pr ready\`.${DEGRADED_NOTE} $(print_monitor_instruction "$PR_URL")"
 exit 0

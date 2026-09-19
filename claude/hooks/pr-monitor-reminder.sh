@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-monitor-reminder.sh: PostToolUse Bash hook (R-517). After a Bash call
+# pr-monitor-reminder.sh: PostToolUse Bash hook (R-518). After a Bash call
 # that really ran `gh pr create` (or its alias `gh pr new`) and succeeded,
 # tells the session to turn on the desktop app's PR monitor for the new pull
 # request (mcp__ccd_pr__set_monitor with auto_fix, address_comments, and
@@ -28,6 +28,7 @@ for helper in shell-command-scan.sh pr-monitor-instruction.sh; do
   # shellcheck source=/dev/null
   source "$HOOK_DIR/$helper"
 done
+type scan_command_tokens >/dev/null 2>&1 || exit 0
 
 jq -e '.tool_response.interrupted == true' >/dev/null 2>&1 <<< "$INPUT" && exit 0
 SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
@@ -45,7 +46,7 @@ PR_URL=$(grep -Eo -- "$PR_URL_PATTERN" <<< "$STDOUT" | tail -1 || true)
 helper="$HOOK_DIR/log-rule-fire.sh"
 # shellcheck source=log-rule-fire.sh
 [ -f "$helper" ] && source "$helper"
-type log_rule_fire >/dev/null 2>&1 && log_rule_fire "R-517" "pr-monitor-reminder" "remind"
+type log_rule_fire >/dev/null 2>&1 && log_rule_fire "R-518" "pr-monitor-reminder" "remind"
 jq -nc --arg m "$(print_monitor_instruction "$PR_URL")" \
   '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
 exit 0

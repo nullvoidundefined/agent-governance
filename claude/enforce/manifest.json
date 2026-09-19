@@ -434,6 +434,14 @@
             "note": "denies gh pr merge --merge/-m, and --rebase/-r unless gh pr view shows the bundle label and a distinct Refs: trailer on every commit (fail-closed on gh error, timeout, cd, or GH_REPO)"
         },
         {
+            "id": "R-517",
+            "tier": "regex",
+            "enforcer": "hook:git-workflow-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block; fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on any merge the hook cannot parse. Merges are found by the quote-aware shell scan in hooks/shell-command-tokens.sh (braces, subshells, backticks, control flow, eval and sh -c strings, heredocs fed to a shell, wrappers, quoting, and escapes are all seen; a shell reading its script from stdin and a gh, pr, or merge word built by expansion count as unreadable merges; a mention inside a quoted argument or a heredoc fed to anything but a shell is not a merge), and only a bare gh pr merge on its own simple command is parseable; its flags are read from the scanned words. Fenced code, indented code, and HTML comments do not count as the section. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh"
+        },
+        {
             "id": "R-511",
             "tier": "advisory",
             "enforcer": "hook:git-workflow-guard",
@@ -473,7 +481,7 @@
             "note": "ConfigChange: refuses a user settings.json that drops a manifest-required hook or does not parse"
         },
         {
-            "id": "R-517",
+            "id": "R-518",
             "tier": "advisory",
             "enforcer": "hook:draft-pr-on-first-push",
             "severity": "warn",
@@ -481,7 +489,7 @@
             "note": "PostToolUse Bash git push: after a successful push of a non-default branch that has never had a PR (open, merged, or closed; a merged or closed one gets a one-line note naming it), opens a draft with gh pr create --draft (title from the oldest commit, body of subjects, Refs lines, and attribution) and emits the PR monitor instruction; R-605 is applied through the shared pr-range-checks.sh, so a range with no Refs line outside the docs-only and trivial exemptions opens nothing and names /ticket-lifecycle; .enforce.json autoDraftPr false opts out; every error exits 0 with at most a one-line note. Fixture: hooks/tests/draft-pr-on-first-push.test.sh"
         },
         {
-            "id": "R-517",
+            "id": "R-518",
             "tier": "advisory",
             "enforcer": "hook:pr-monitor-reminder",
             "severity": "warn",
