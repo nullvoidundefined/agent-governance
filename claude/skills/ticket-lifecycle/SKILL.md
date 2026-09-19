@@ -61,8 +61,8 @@ Run at the end of `task-start` Step 1, after the tier is announced and before se
 3. Search the tracker for an open ticket carrying this `branch` value. One hit: report the key and stop, no second ticket. Several hits: ask which is live, open nothing.
 4. Read `started_at` from the `## Session start (R-503)` block that `hooks/session-start.sh` injects at every session start, compaction included, whenever the SessionStart payload carries a transcript path (Claude Code passes the real one; the Cursor adapter passes a synthetic one per conversation, so under Cursor the value is the first start's hook clock). Block summarized away: read the file its `Record:` line names, `session-start.<session-id>` in the session's project directory under the Claude home. Neither present: leave `started_at` empty and say so in the report. Never estimate it, never round it, and never substitute the current time.
 5. Create the ticket in state `backlog`, or `in-progress` when work starts in the same turn. Write every known field. Sanitize the body first: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]` (R-104).
-6. Report the ticket key and URL. Write the key onto the spec's `**Ticket:**` line when a spec exists, and into the handoff doc.
-7. Record the key in task-start's ledger on the task's branch: `bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<reason>" --ticket <ticket-key>`. `ticket-at-start-gate.sh` denies edits and commits until it is there.
+6. Record the key in task-start's ledger on the task's branch before any file edit: `bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<reason>" --ticket <ticket-key>`. `ticket-at-start-gate.sh` denies edits and commits until it is there, so writing the spec or handoff first would be refused.
+7. Report the ticket key and URL. Write the key onto the spec's `**Ticket:**` line when a spec exists, and into the handoff doc.
 8. Add `Refs: <ticket-key>` as a trailer on every commit for this task.
 
 ## Operation: advance

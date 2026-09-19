@@ -519,5 +519,30 @@ git checkout . && git commit -m x
 git checkout README.md && git commit -m x
 SHAPES
 
+# --- IAN-149 Copilot round 3 ------------------------------------------------------
+# reason_lacks <text>: true when the last output is a deny whose reason does not contain the text.
+reason_lacks() { is_deny && ! reason_has "$1"; }
+
+# Z-1: a cd inside an if condition moves the judged repository.
+Z_TK=$(make_ticketed z1-ticketed); Z_LL=$(make_repo z1-ledgerless)
+bash_gate "if cd $Z_LL; then git commit -m x; fi" "$Z_TK"
+check "Z-1 'if cd <ledgerless>; then git commit' from a ticketed cwd denies" is_deny
+check "Z-1 deny carries the ticket reason (R-605)" reason_has "R-605"
+check "Z-1 deny is not the unreadable reason" reason_lacks "cannot"
+bash_gate "if cd $Z_TK; then git commit -m x; fi" "$Z_LL"
+check "Z-1 'if cd <ticketed>; then git commit' from a ledgerless cwd allows" is_silent
+
+# Z-2: a ledger still in HEAD is tracked even after a staged git rm --cached.
+Z2=$(make_repo z2-ledger-in-head)
+write_ledger "$Z2" "{\"tier\":\"standard\",\"branch\":\"feat/x\",\"ticket\":\"IAN-7\",$STARTED}"
+git -C "$Z2" add -f .claude/task-tier.json; git -C "$Z2" commit -qm "chore: ledger"
+git -C "$Z2" rm -q --cached .claude/task-tier.json
+file_gate Edit "$Z2/README.md" "$Z2"
+check "Z-2 ledger removed from the index but still in HEAD denies" is_deny
+check "Z-2 deny names git rm --cached or tracked" bash -c 'jq -r ".hookSpecificOutput.permissionDecisionReason // \"\"" <<< "$0" | grep -qE "git rm --cached|tracked"' "$OUT"
+git -C "$Z2" commit -qm "chore: untrack ledger"
+file_gate Edit "$Z2/README.md" "$Z2"
+check "Z-2 ledger out of HEAD and the index, still on disk and ignored, allows" is_silent
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

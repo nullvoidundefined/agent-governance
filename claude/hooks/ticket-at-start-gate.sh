@@ -19,6 +19,13 @@
 # `git commit` is gated as well. Only `git commit` is: cherry-pick, revert, am,
 # and merge also write commits and are not read here.
 #
+# Threat model (owner decision, 2026-09-19): the gate exists to catch a
+# forgotten ticket, not a session set on hiding a commit. It reads the shapes
+# ordinary work produces and denies what it cannot read; deliberately hidden
+# commits (coproc, env -S payloads, a commit inside "$(...)", popd, a script
+# held in an inherited variable) are out of scope, and the R-605 PR gate at
+# `gh pr create` still backstops them.
+#
 # Commits are found by the quote-aware shell scan shared with the other R-605
 # hooks (shell-command-scan.sh), never by a regex over the raw text: every
 # commit in the command is judged against the repository it really runs in,
@@ -357,6 +364,7 @@ inspect_commit_words() {
   case "$1" in cd | pushd) shift; replay_directory_change "$@"; return 0 ;; esac
   while IFS= read -r stripped_word; do command_words+=("$stripped_word"); done < <(strip_command_prefixes "$@")
   [ "${#command_words[@]}" -gt 0 ] || return 0
+  case "${command_words[0]}" in cd | pushd) replay_directory_change "${command_words[@]:1}"; return 0 ;; esac
   case "$(basename -- "${command_words[0]}")" in
     sh | bash | zsh | dash | ksh | eval)
       has_git_commit_in_string "${command_words[@]:1}" "$HEREDOC_BODY" && IS_COMMIT_UNREADABLE=1
@@ -412,7 +420,8 @@ collect_commit_directories() {
 read_ledger_problem() {
   local top="$1" branch="$2" ledger="$1/.claude/task-tier.json" ledger_branch
   [ -f "$ledger" ] || { echo "no task-start ledger (.claude/task-tier.json) is recorded in this checkout"; return 0; }
-  if git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1; then
+  if git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1 ||
+    git -C "$top" cat-file -e HEAD:.claude/task-tier.json 2>/dev/null; then
     echo "the ledger .claude/task-tier.json is tracked or staged in git, so it is not this session's task-start state (unstage it with \`git rm --cached .claude/task-tier.json\` and add that path to .gitignore)"
     return 0
   fi
