@@ -20,7 +20,7 @@
   },
   "files": {
     ".gitignore": "sha256:e13fac8cba0a1ac6018a923f1c4fbaf5feaefff821e7cb3f5d6fb4326e34ac8b",
-    "AGENTS.md": "sha256:37edd8632f36641718a64c8b5a0f8ebb275cc35ed29643fc841f00bac2542a74",
+    "AGENTS.md": "sha256:5dad7d6365c781a6160dc1d329bbc7e84217e2c33468bb6b1066eafed8dffe71",
     "PORT-STATUS.md": "sha256:b84f133530640cbc99833d1440d1b09b43e245fd592876eb3346b275ea33813e",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
@@ -80,9 +80,9 @@
     "skills/spec-grounding/SKILL.md": "sha256:642ad6d80ed48739acaa7b7de980e0ed89fb9b4364f660f976af323632298ea3",
     "skills/spec-grounding/scripts/check.sh": "sha256:cba4fbe2e6a64e553b557c65d79233523414ec78e7abe77c924fca84dd8c3ddb",
     "skills/structure-conventions/SKILL.md": "sha256:de4a1b39d783afcb671ee42ee5407c43a3b8f3fb42c9a698ecb3a7001b08c41a",
-    "skills/task-cleanup/SKILL.md": "sha256:dd9062760689d849f7203030aa38d910ea35197b68627686ded80002f6dde270",
+    "skills/task-cleanup/SKILL.md": "sha256:3f1cb83dd01708accff864134172ebbcc3986b07b75a57ad34401211c28b8a54",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
-    "skills/task-start/SKILL.md": "sha256:97a45fa0089064ab25a8f914559f9538701566846c75395db0abd50b206384a4",
+    "skills/task-start/SKILL.md": "sha256:fd1e073335fc28314d39feab9df48c304e214f41029775726f47d1d6744c89a6",
     "skills/task-start/scripts/task-tier.sh": "sha256:b1c452692dcc750ee3accf9f48b4a56125ce324e66cdf6fd69379122e66908cb",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:106ab0b2666002805e623e3a0f41acf8370eb68d77a9dd5db828d5b34e31e103",
     "skills/ticket-lifecycle/SKILL.md": "sha256:e08ac0b3d58465c360b41f83795cc196bcc7ff6c9bac7dbadf0d1bd4ebefae51"
