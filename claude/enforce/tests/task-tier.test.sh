@@ -4,6 +4,11 @@
 # R-503 start timestamp; an invalid tier is refused; get and summary read it
 # back; a second set records the reclassification; clear removes it; the
 # gitignore note fires only when the project does not ignore the ledger.
+# IAN-149 (R-605 at task start): --ticket <KEY> records the tracker ticket; with
+# the tracker configured a non-trivial tier needs one (a same-branch ledger's
+# ticket carries over on reclassification); a malformed key is refused; the
+# summary names the ticket. HOME is always a sandbox: the cases above the
+# IAN-149 block run with the tracker NOT configured.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TIER="$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh"
@@ -11,9 +16,14 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 fail=0
 check() { local name="$1"; shift; if "$@"; then echo "PASS: $name"; else echo "FAIL: $name"; fail=1; fi; }
-reports() { grep -qF "$1" <<< "$OUT"; }
+reports() { grep -qF -- "$1" <<< "$OUT"; }
 
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
+TRACKED_HOME="$SB/home"
+UNTRACKED_HOME="$SB/home-without-tracker"
+mkdir -p "$TRACKED_HOME/.claude" "$UNTRACKED_HOME/.claude"
+printf '{}\n' > "$TRACKED_HOME/.claude/TICKET-TRACKER.json"
+export HOME="$UNTRACKED_HOME"
 REPO="$SB/repo"; mkdir -p "$REPO"
 git -C "$REPO" init -q -b feat/presets
 git -C "$REPO" config user.email t@example.invalid; git -C "$REPO" config user.name t
@@ -68,6 +78,92 @@ check "clear is idempotent" test "$ST" -eq 0
 
 OUT=$(cd "$SB" && bash "$TIER" get 2>&1); ST=$?
 check "outside a repo refused" test "$ST" -eq 1
+
+# --- IAN-149: the ticket key on the ledger -----------------------------------
+T="$SB/tickets"; mkdir -p "$T"
+git -C "$T" init -q -b feat/tickets
+git -C "$T" config user.email t@example.invalid; git -C "$T" config user.name t
+printf 'a\n' > "$T/a.txt"; printf '.claude/task-tier.json\n' > "$T/.gitignore"
+git -C "$T" add -A; git -C "$T" commit -qm "init"
+TLEDGER="$T/.claude/task-tier.json"
+# field <jq filter>: prints one field of the IAN-149 sandbox ledger.
+field() { jq -r "$1" "$TLEDGER"; }
+# tier_set <home> <args...>: runs task-tier.sh set in the sandbox repo; sets OUT and ST.
+tier_set() { local home="$1"; shift; OUT=$(cd "$T" && HOME="$home" bash "$TIER" set "$@" 2>&1); ST=$?; }
+# ledger_unchanged: true when the ledger still matches the snapshot taken before the call.
+ledger_unchanged() { cmp -s "$TLEDGER" "$SB/ledger-before.json"; }
+
+# T-1: --ticket is recorded, alone and alongside --share in either order.
+tier_set "$TRACKED_HOME" standard "multi-file change" --ticket IAN-7
+check "T-1 set with --ticket exits 0" test "$ST" -eq 0
+check "T-1 ledger carries the ticket" test "$(field .ticket)" = "IAN-7"
+tier_set "$TRACKED_HOME" standard "multi-file change" --ticket IAN-8 --share 30
+check "T-1 --ticket then --share exits 0" test "$ST" -eq 0
+check "T-1 --ticket then --share records the ticket" test "$(field .ticket)" = "IAN-8"
+check "T-1 --ticket then --share records the share" test "$(field .sharePercent)" = "30"
+tier_set "$TRACKED_HOME" standard "multi-file change" --share 25 --ticket IAN-9
+check "T-1 --share then --ticket exits 0" test "$ST" -eq 0
+check "T-1 --share then --ticket records the ticket" test "$(field .ticket)" = "IAN-9"
+check "T-1 --share then --ticket records the share" test "$(field .sharePercent)" = "25"
+
+# T-2: tracker configured, non-trivial tier, no --ticket, no ledger: refused, nothing written.
+for tier in standard complex saga investigation; do
+  rm -f "$TLEDGER"
+  tier_set "$TRACKED_HOME" "$tier" "needs a ticket"
+  check "T-2 $tier without --ticket exits 1" test "$ST" -eq 1
+  check "T-2 $tier refusal names --ticket" reports "--ticket"
+  check "T-2 $tier refusal writes no ledger" test ! -e "$TLEDGER"
+done
+
+# T-3: tracker configured, trivial tier needs no ticket.
+rm -f "$TLEDGER"
+tier_set "$TRACKED_HOME" trivial "one-line typo"
+check "T-3 trivial without --ticket exits 0" test "$ST" -eq 0
+check "T-3 trivial recorded" test "$(field .tier)" = "trivial"
+
+# T-2: an existing ledger without a ticket is left byte-for-byte unchanged by the refusal.
+cp "$TLEDGER" "$SB/ledger-before.json"
+tier_set "$TRACKED_HOME" complex "grew past trivial"
+check "T-2 reclassify from an unticketed ledger without --ticket exits 1" test "$ST" -eq 1
+check "T-2 refusal names --ticket" reports "--ticket"
+check "T-2 refusal leaves the existing ledger unchanged" ledger_unchanged
+
+# T-4: tracker NOT configured, non-trivial tier without --ticket succeeds (degraded path).
+rm -f "$TLEDGER"
+tier_set "$UNTRACKED_HOME" complex "no tracker on this machine"
+check "T-4 untracked non-trivial without --ticket exits 0" test "$ST" -eq 0
+check "T-4 untracked non-trivial recorded" test "$(field .tier)" = "complex"
+
+# T-5: a value that is not a ticket key is refused and writes nothing.
+tier_set "$TRACKED_HOME" standard "baseline" --ticket IAN-10
+cp "$TLEDGER" "$SB/ledger-before.json"
+for bad in "ian-7" "R-605x" ""; do
+  tier_set "$TRACKED_HOME" complex "bad key" --ticket "$bad"
+  check "T-5 --ticket '$bad' exits 1" test "$ST" -eq 1
+  check "T-5 --ticket '$bad' leaves the ledger unchanged" ledger_unchanged
+done
+rm -f "$TLEDGER"
+tier_set "$TRACKED_HOME" standard "bad key, no ledger" --ticket "ian-7"
+check "T-5 bad key with no ledger exits 1" test "$ST" -eq 1
+check "T-5 bad key with no ledger writes nothing" test ! -e "$TLEDGER"
+
+# T-6: reclassifying on the same branch keeps the ledger's ticket and satisfies T-2.
+tier_set "$TRACKED_HOME" standard "first read" --ticket IAN-11
+tier_set "$TRACKED_HOME" complex "bigger than it looked"
+check "T-6 same-branch reclassify without --ticket exits 0" test "$ST" -eq 0
+check "T-6 reclassify keeps the ticket" test "$(field .ticket)" = "IAN-11"
+check "T-6 reclassify records the new tier" test "$(field .tier)" = "complex"
+check "T-6 reclassify records the previous tier" test "$(field .reclassifiedFrom)" = "standard"
+
+# T-7: summary names the ticket.
+OUT=$(cd "$T" && HOME="$TRACKED_HOME" bash "$TIER" summary 2>&1)
+check "T-7 summary names the ticket" reports "IAN-11"
+
+# T-6 boundary: a ticket recorded for another branch does not carry over.
+git -C "$T" switch -q -c feat/other
+tier_set "$TRACKED_HOME" complex "new task on another branch"
+check "T-6 other-branch ledger ticket does not carry over (exits 1)" test "$ST" -eq 1
+check "T-6 other-branch refusal names --ticket" reports "--ticket"
 
 [ "$fail" -eq 0 ] && echo "task-tier.test.sh PASS"
 exit "$fail"

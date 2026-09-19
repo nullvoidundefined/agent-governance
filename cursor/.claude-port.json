@@ -20,7 +20,7 @@
   },
   "files": {
     ".gitignore": "sha256:9c049eedac80898303fac883d176fefe16fac500224058875a2fb2a4ff9bddc7",
-    "PORT-STATUS.md": "sha256:212f3b5ae76aba6245c11a9cbdf2198a046f48622b695d58c9c9814f015d0a94",
+    "PORT-STATUS.md": "sha256:fdb5f546d1324673cfd37d6cd7c6cf8066c890d2a55a14e5c11ecbac56f1f531",
     "agents/audit-criticism.md": "sha256:d2c130cb9ec0f35995a7aadb6786b0e5e0a176f91731df0dbc64a6dc7c1419cb",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",
     "agents/audit-design.md": "sha256:86f8aa6d608e6f7cecada777dca12fd35ba751e57875d8f30e80685c22d1673b",
@@ -41,8 +41,8 @@
     "commands/audit-security.md": "sha256:0b91845bae44ecf29e11ab31841b97d81fb08bfc4d43b70e39f3d118c0f8b0a8",
     "commands/audit-ux.md": "sha256:8a131255913384b5184c22b447da75792555bf84eafcac7961162e545012fbaa",
     "commands/spec-conformance-review.md": "sha256:292c3d0e222778fac5340b0f15c1e4b3239ae44c6f8902b4d05ad1e25b8ae1f0",
-    "hooks.json": "sha256:d341e513135d1f45cf23f9edd9af9f9157990aaffece5fc7d13b708e303a55cd",
-    "rules/000-global-rules.mdc": "sha256:bb0a22d43293c0d4c64c5691381a5111c0bb06fbcbe1b7ded512a5687a9b52aa",
+    "hooks.json": "sha256:0243854153ae735e7069e89f664ea6c784e2bbadcc9d919cda73b81a0adc0bba",
+    "rules/000-global-rules.mdc": "sha256:64dc410e4535bc535987c869ed9f2d2df2cf31dfb79396a6cfee06a5cdc0dfce",
     "rules/001-session-types.mdc": "sha256:8e866354f41ca4958f2817bf67e9468441ae8eb62be79af9342be3b056fb5ed6",
     "rules/002-global-memory-index.mdc": "sha256:f87fcc12b6580008110f71ca587f26429e7d8d85adf721408cdbbf2447e84183",
     "rules/backend.mdc": "sha256:4687fd81fba9a29a23c6ba15209a7bc22d7911729290161748f2ec2b146bdaa7",
@@ -67,7 +67,7 @@
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:0a5b5fcb579ad11114516767d7400d2e0f706d1a7bdf1c880ea03615aca97f56",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:7228d4b6aef763194a53ea87e8844795e3d0ebba950c6bcbe1ee4f0496c73b08",
     "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:688af1409f7f0d80995295f510a255ad89a2cdf137e36ec8b67ef78197cf6acd",
-    "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:65370904ee550a5bb1df796b89b2d52a52fe265b176f19a24e6796f5e68e410f",
+    "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:98a33895372c01770c010e0459feaafdca19967820af4d51bf57d5db8df00a24",
     "rules/structure-conventions.mdc": "sha256:34ee01f6b9f3ab95d8dc02b456c2255b330089c85cfca2b9ef88c5f1ce16772e",
     "rules/styling.mdc": "sha256:098f09fc330ca1fce2ad5d1e4d605b9588bb3806bd9cc3ffd31499b33e08689e",
     "skills/add-stack-track/SKILL.md": "sha256:c807f131cfff21ac11361c1f9ec43e5b37f6dd2a39fa2cb91d29d2099f063e01",
@@ -106,10 +106,10 @@
     "skills/structure-conventions/SKILL.md": "sha256:5f3cf394d9ef20b1bc4e05ad005c3e7e07b9910441295b5d2ae64720d714a8b6",
     "skills/task-cleanup/SKILL.md": "sha256:69e7919f5a73248ad824297c0288eb7b9a4116641267da25e2a9e7434b1e1538",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
-    "skills/task-start/SKILL.md": "sha256:38dec06672e66f9a3ed11cfd5f911d09b9784d8df90a82ed5f4822c213cc7e6d",
-    "skills/task-start/scripts/task-tier.sh": "sha256:b1c452692dcc750ee3accf9f48b4a56125ce324e66cdf6fd69379122e66908cb",
+    "skills/task-start/SKILL.md": "sha256:66e9fc2ee9555a25842975b30fd191b8e48e67999c59bf82c8112058dcf6a550",
+    "skills/task-start/scripts/task-tier.sh": "sha256:b451f434701aa6ddb9c88b83187ee3983b3aed19c199aa35ddad8c0b4a7e689f",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:dde64a65a937dae8c72ff2ecbebd38aa64839545d359a0d7134a85cf664139d8",
-    "skills/ticket-lifecycle/SKILL.md": "sha256:a5ef85b53ad9ceefe6527dcb54623fcc736d7d9338526aa652f21072db979918"
+    "skills/ticket-lifecycle/SKILL.md": "sha256:c6fca0f88930cf97b158982723fc4eeed5e3a7e59cf49dbc1f4cf7b7bb7d1b1d"
   },
   "classes": {
     ".gitignore": "generated",

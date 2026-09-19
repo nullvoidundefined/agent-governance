@@ -7,7 +7,12 @@
 # scan reads them and post-compact-rules.sh re-injects them.
 #
 # Usage:
-#   task-tier.sh set <trivial|standard|complex|saga|investigation> "<reason>" [--share <percent>]
+#   task-tier.sh set <trivial|standard|complex|saga|investigation> "<reason>" [--ticket <KEY>] [--share <percent>]
+#                             above trivial, --ticket is required whenever a tracker is
+#                             configured (~/.claude/TICKET-TRACKER.json), so the ticket
+#                             exists before the work: ticket-at-start-gate.sh denies
+#                             edits and commits until the ledger carries it (R-605,
+#                             IAN-149); a reclassification on the same branch keeps it
 #   task-tier.sh get          prints the ledger as JSON (exit 1 when none)
 #   task-tier.sh summary      one line: tier, reason, elapsed, branch
 #   task-tier.sh clear        removes the ledger (task-cleanup's last step)
@@ -20,20 +25,42 @@ die() { printf 'task-tier: %s\n' "$*" >&2; exit 1; }
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository"
 LEDGER="$ROOT/$LEDGER_RELATIVE"
 
+# read_previous_ticket <branch>: prints the ticket an existing ledger holds for
+# the same branch, so a reclassification keeps the key without restating it.
+read_previous_ticket() {
+  [ -f "$LEDGER" ] || return 0
+  jq -r --arg b "$1" 'select(.branch == $b) | .ticket // "" | strings' "$LEDGER" 2>/dev/null
+}
+
 cmd_set() {
-  local tier="${1:-}" reason="${2:-}" share=""
+  local tier="${1:-}" reason="${2:-}" share="" ticket="" has_ticket_flag=0 branch
   shift 2 2>/dev/null || true
-  if [ "${1:-}" = "--share" ]; then share="${2:-}"; fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --share) share="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --ticket) ticket="${2:-}"; has_ticket_flag=1; shift 2 2>/dev/null || shift ;;
+      *) die "unknown option '$1' (expected --ticket <KEY> or --share <percent>)" ;;
+    esac
+  done
   case "$tier" in trivial|standard|complex|saga|investigation) ;; *) die "tier must be trivial, standard, complex, saga, or investigation (got '${tier}')" ;; esac
   [ -n "$reason" ] || die "give the one-sentence reason for the tier as the second argument"
+  if [ "$has_ticket_flag" -eq 1 ] && ! printf '%s' "$ticket" | grep -qE '^[A-Z][A-Z0-9]+-[0-9]+$'; then
+    die "--ticket takes a tracker key such as IAN-149 (got '${ticket}')"
+  fi
+  branch=$(git -C "$ROOT" branch --show-current 2>/dev/null)
+  [ "$has_ticket_flag" -eq 1 ] || ticket=$(read_previous_ticket "$branch")
+  if [ "$tier" != "trivial" ] && [ -z "$ticket" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
+    die "a $tier task needs its ticket before the work starts (R-605): open it with /ticket-lifecycle, then re-run with --ticket <KEY>"
+  fi
   local previous=""
   [ -f "$LEDGER" ] && previous=$(jq -r '.tier // ""' "$LEDGER" 2>/dev/null)
   mkdir -p "$ROOT/.claude"
-  jq -n --arg tier "$tier" --arg reason "$reason" --arg share "$share" \
-        --arg branch "$(git -C "$ROOT" branch --show-current 2>/dev/null)" \
+  jq -n --arg tier "$tier" --arg reason "$reason" --arg share "$share" --arg ticket "$ticket" \
+        --arg branch "$branch" \
         --arg previous "$previous" --argjson started "$(date +%s)" \
         --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
     {tier: $tier, reason: $reason, branch: $branch, startedAt: $started, startedAtIso: $iso}
+    + (if $ticket != "" then {ticket: $ticket} else {} end)
     + (if $share != "" then {sharePercent: ($share | tonumber)} else {} end)
     + (if $previous != "" and $previous != $tier then {reclassifiedFrom: $previous} else {} end)
   ' > "$LEDGER" || die "could not write $LEDGER_RELATIVE"
@@ -57,9 +84,10 @@ cmd_summary() {
   local started elapsed
   started=$(jq -r '.startedAt' "$LEDGER")
   elapsed=$(( $(date +%s) - started ))
-  printf 'task-tier: %s | %s | started %s, %dh%02dm elapsed | branch %s\n' \
+  printf 'task-tier: %s | %s | started %s, %dh%02dm elapsed | branch %s | ticket %s\n' \
     "$(jq -r .tier "$LEDGER")" "$(jq -r .reason "$LEDGER")" "$(jq -r .startedAtIso "$LEDGER")" \
-    $((elapsed / 3600)) $(((elapsed % 3600) / 60)) "$(jq -r '.branch // "?"' "$LEDGER")"
+    $((elapsed / 3600)) $(((elapsed % 3600) / 60)) "$(jq -r '.branch // "?"' "$LEDGER")" \
+    "$(jq -r '.ticket // "none"' "$LEDGER")"
 }
 
 cmd_clear() {
@@ -72,5 +100,5 @@ case "${1:-}" in
   get) cmd_get ;;
   summary) cmd_summary ;;
   clear) cmd_clear ;;
-  *) die "usage: task-tier.sh set <tier> \"<reason>\" [--share <percent>] | get | summary | clear" ;;
+  *) die "usage: task-tier.sh set <tier> \"<reason>\" [--ticket <KEY>] [--share <percent>] | get | summary | clear" ;;
 esac

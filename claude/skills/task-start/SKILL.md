@@ -29,11 +29,13 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 | **Saga** | Multi-surface, multi-package, multiple independent subsystems that must ship together | Extension + web + server feature, full feature with spec + plan + E2E + docs |
 | **Investigation** | The deliverable is an answer, not a change: audit, research, debugging a cause, reading code to explain it, evaluating an approach | Run a security audit, find why a hook fires, compare two libraries, answer "how does X work here" |
 
-**Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then record it, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, and the task's share of the work when it is one of several):
+**Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then estimate and open the ticket (below), create the branch or worktree, and record all of it on that branch, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, the ticket key, and the task's share of the work when it is one of several):
 
 ```bash
-bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--share <percent>]
+bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" --ticket <KEY> [--share <percent>]
 ```
+
+The ticket comes before the work, mechanically (R-605): with a tracker configured, `task-tier.sh set` refuses a tier above trivial without `--ticket <KEY>`, and `ticket-at-start-gate.sh` denies the first Write or Edit, and every `git commit`, until the ledger names the checked-out branch and carries the key (a trivial ledger needs no key). Record the ledger after the branch exists, because the ledger names the branch it was written on. When work already happened without a ticket, open one retroactively with its actuals and record it; never leave the work unticketed.
 
 `task-tier.sh summary` prints the tier and the elapsed time at any point; `post-compact-rules.sh` re-injects the ledger after a compaction; task-cleanup clears it at the end. The ledger is `.claude/task-tier.json`, session state like the slice lock: gitignore it in the project.
 
@@ -46,7 +48,7 @@ Then estimate and open the ticket, in that order (R-605, R-606):
 1. Ask `/ticket-lifecycle` for `estimate <tier>`. Five or more comparable closed tickets: take the median for a task that resembles them, the 80th percentile for one with an unknown dependency. Fewer than five: use the R-906 heuristic and say it is a heuristic.
 2. Announce the estimate in minutes with its basis: "Estimate: N minutes (median of n=M closed [tier] tickets)" or "Estimate: N minutes (heuristic, n=M is too small a sample)".
 3. Open the ticket through `/ticket-lifecycle` with `title`, `tier`, `assist`, `model`, `estimate_minutes`, `repo`, and the branch once it exists. Skip for the trivial tier unless the user asks for one.
-4. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Announce the ticket key, and carry it in a `Refs: <key>` trailer on every commit for this task.
+4. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Announce the ticket key, record it in the ledger with `task-tier.sh set <tier> "<reason>" --ticket <KEY>` once the branch exists, and carry it in a `Refs: <key>` trailer on every commit for this task.
 
 ## Step 2: Determine Process Requirements
 
@@ -266,7 +268,7 @@ This is the most important rule in this skill. Splitting one feature across seve
 If you discover mid-task that the scope is larger than classified:
 1. Stop implementation
 2. Announce: "This is bigger than I thought. Reclassifying from [old] to [new] because [reason]."
-3. Record it: `task-tier.sh set <new tier> "<reason>"` (the ledger keeps the previous tier as `reclassifiedFrom`)
+3. Record it: `task-tier.sh set <new tier> "<reason>"` (the ledger keeps the previous tier as `reclassifiedFrom`, and keeps the ticket key on the same branch; a trivial task reclassified upward needs `--ticket <KEY>` once its ticket is open)
 4. Set up the process requirements for the new tier
 5. Do not lose work already done; commit it to the branch first
 6. Update the ticket's `tier` and re-estimate for the new tier, recording the original estimate in a transition comment. A reclassified ticket whose estimate still names the old tier corrupts both tiers' samples.
