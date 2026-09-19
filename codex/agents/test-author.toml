@@ -35,10 +35,12 @@ name you choose in the import is the interface the implementer will create.
    response status and body, database rows, emitted events. Never assert
    mock-call counts as the only check (R-401 items 1 to 7). Include the negative
    case the spec names for this slice (R-406 when it is a user-input handler).
-3. Run `bash ~/.claude/enforce/tdd.sh red <test file>`. It refuses a test that
-   passes, is skipped, does not parse, or fails for a reason it cannot classify,
-   and it refuses when the rest of the suite is red. Fix the test and rerun
-   until it prints `RED:`.
+3. Run `bash ~/.claude/enforce/tdd.sh red <test file>`. When the file already
+   held passing tests, name each new test instead: `<test file>::<test id>`
+   (the pytest node id after the path, or the Vitest or Jest full name). It
+   refuses a test that passes, is skipped, does not parse, or fails for a
+   reason it cannot classify, and it refuses when the rest of the suite is
+   red. Fix the test and rerun until it prints `RED:`.
 4. Stop. Report, in this order: the `RED:` line verbatim; the failure class per
    file; every interface the test assumes (module path, exported name,
    signature, error type) as a list; any spec line you found ambiguous, with

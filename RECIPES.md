@@ -20,14 +20,14 @@ These recipes describe existing harness workflows. Begin with [setup](claude/SET
 
 ```text
 tdd.sh open "<slice>" --spec <spec-path>
-tdd.sh red <test-path>
+tdd.sh red <test-path>            # or <test-path>::<test id> for a new test in a file that already passes
 tdd.sh green
 tdd.sh close
 ```
 
 Invoke the installed script as `bash "$HOME/.claude/enforce/tdd.sh"` followed by the arguments shown. The test author writes the failing test between `open` and `red`; the implementation author works between `red` and `green`. Follow the skill's authorship boundaries and commit requirements.
 
-**Success:** RED establishes the intended failure, GREEN verifies the implementation with locked tests unchanged, and close accepts the completed slice. On refusal, inspect the lock with `tdd.sh status` and resolve the reported cause. The current runner supports Vitest/Jest; consult the script before using another stack.
+**Success:** RED establishes the intended failure, GREEN verifies the implementation with locked tests unchanged, and close accepts the completed slice. On refusal, inspect the lock with `tdd.sh status` and resolve the reported cause. The runner supports Vitest, Jest, pytest, and bash `*.test.sh` fixtures; consult the script before using another stack.
 
 ## Dispatch a reviewer
 
