@@ -1,0 +1,57 @@
+# tdd.sh red accepts test node ids
+
+Refs: IAN-139
+
+## Summary
+
+`enforce/tdd.sh red <test file>...` proves a slice's RED by requiring every test in each named file to fail. That fits a slice that adds a new test file, but not a slice that adds tests to a file which already holds passing ones. On 2026-09-19 the review fixes on `templates/template-fastapi-nuxt` PR #6 added failing tests to existing pytest files, `tdd.sh red` refused every one of those files because of the passing tests beside the new ones, and the RED had to be recorded by hand in a commit message. That leaves the lock and the protected-path guard (R-410, R-412) out of the loop. This change lets `red` name individual tests as well as whole files, so review fixes run under the same lock as any other slice.
+
+## What changed
+
+- **Argument form.** `tdd.sh red` accepts `<test file>::<test id>` beside plain file paths. Under pytest the id is the node id after the path: `test_x`, `TestA::test_x`, or `test_x[1-2]`. A bare parametrized name covers every parameter set and a class name covers every test in the class, as pytest's own `path::id` selection does. Under Vitest and Jest the id is the test's full name: the describe titles and the test title joined by spaces, which is the `fullName` field in both runners' JSON reports and the string their `-t` filter matches. Bash `*.test.sh` fixtures stay file-level. A fixture file is one test in the report, so a test id on a `*.test.sh` path is refused with a message saying so. Several ids for one file collect on one lock entry, and a file named both whole and by id in one call is refused.
+- **Red for a file named by id.** Every id must match at least one test in the run, otherwise the refusal lists the tests the report does contain. Every matched test must fail for an assertion or a missing-module reason. A matched test that passes or is skipped is refused. Every other test in the file must neither fail nor be skipped, and a file that no longer loads (a collection or import error) is refused, because its other tests stopped running. So a new test that needs an unwritten unit imports it inside its body. The lock entry keeps the file path and its sha256 as before, adds an `ids` array, and records in `tests` the number of matched tests.
+- **Baseline and outside count.** `outside_pass_count` now takes a list of `{name, ids}` entries instead of plain file names. A file named whole is excluded from the count, as before. For a file named by id, the unnamed tests are counted and must not fail. So the passing test beside a new one contributes to the baseline, and a later regression in it drops the count below the baseline at green.
+- **Green.** The hash checks are unchanged: they compare the containing files against the lock and the RED commit. For a file named by id, green requires every recorded id to still match a test, the matched tests to pass, and the matched count to reach the RED count. A regression among the unnamed tests is refused by `outside_pass_count`, which names the file.
+- **pytest titles.** The JUnit converter now titles each test with its node id inside the file (`TestA::test_x[1-2]`), which it rebuilds from the xunit1 `classname` minus the dotted module path. Before this change the title was the bare function name, so a class prefix was lost. Function-level tests keep the same title as before.
+- **Docs.** The `tdd.sh` header comment, the `tdd-gated-dispatch` skill (a new "Naming the RED tests" paragraph, loop step 2, and the test-author prompt), the `test-author` agent, R-412 step 3 in `rulebook/reference.md`, `enforce/README.md`, and `RECIPES.md` all describe the id form and the file-level behavior of bash fixtures. The skill's stack line now includes pytest, which it had omitted since PR #72. The Codex and Cursor ports and `enforce/hook-hashes.txt` are regenerated.
+
+## Architectural decisions
+
+- **Chosen: select tests in the report, not in the run.** `red` still runs the whole suite once and picks the named tests out of the report. **Alternative:** pass the ids to the runner (`pytest path::id`, `vitest -t`). **Why not:** red and green need the status of every other test, in the named file and outside it, to enforce "no other failure" and to count the baseline. A filtered run would need a second, unfiltered run to get that.
+- **Chosen: one `::` separator for every runner.** pytest already uses it, and neither Vitest nor Jest has a path-plus-name syntax of its own, so the same form works everywhere and splits on the first `::`. A Vitest full name that contains `::` still works, because only the first occurrence separates path from id.
+- **Chosen: exact full-name match for Vitest and Jest.** `-t` treats its argument as a regular expression, and a regex id could match more tests than intended. An exact match on `fullName` is predictable, and when an id matches nothing the refusal lists the full names the report has.
+- **Chosen: pytest prefix matching for parameter sets and classes.** `test_x` matching `test_x[...]` and `TestA` matching `TestA::...` is what pytest does with the same argument, so an id that works on pytest's command line works here too.
+- **Chosen: refuse a file that fails to load when ids are named.** A module-level import of an unwritten unit makes the whole file error, which would silently turn the passing tests beside the new ones into failures. Refusing it, with a hint to import inside the test body, keeps the rule that the file's other tests keep their current pass status.
+- **Chosen: bash fixtures stay file-level.** `run-fixture-shards.sh` reports one verdict per fixture file, so there is no sub-file test to name. Refusing the id with a clear message is better than silently widening it to the whole file.
+
+## Testing
+
+- `claude/enforce/tests/tdd-pytest.test.sh` gains a node-id section. It writes a file holding a passing test, a class-scoped test, and a two-case parametrized test. It then checks that file-level red still refuses the file and names the passing test. It checks that red refuses an unknown id, a named passing test, an unnamed failing parameter set (`test_scales[3-6]` left out while `test_scales[2-4]` is named), and a file whose module-level import fails. It checks that red accepts `TestBoost::test_boosted` plus the bare `test_scales`, with one lock entry carrying both ids, class `missing-module`, three tests, and a baseline of two. After the RED commit, it checks that green refuses a still-failing named test, refuses a regression in the file's unnamed test, and accepts the finished implementation.
+- `claude/enforce/tests/tdd-red-green.test.sh` gains the same shape against the real Vitest. A `describe("boost")` test is added beside a passing one, a bare title that is not the full name is refused, the missing function is classed `missing-module`, green refuses a wrong implementation and a regression in the neighbour, and green then accepts. The shell section checks that `tests/score.test.sh::expected 2` is refused with "name the fixture file".
+- Both fixtures were committed first (`984d19e`) and failed against `origin/main`'s `tdd.sh` at their first new assertion, the unknown-id refusal. Both pass on the implementation commit.
+- `claude/enforce/tests/run-tests.sh` and `claude/hooks/tests/run-tests.sh` both pass, with HOME pointed at a temporary directory whose `.claude` links to the worktree's `claude/`. `shellcheck --severity=error` is clean on `tdd.sh`. `node translate/codex.mjs --check` and `node translate/cursor.mjs --check` both exit 0.
+- No Jest is bundled, so `tdd-red-green.test.sh` drives the Jest id path through a stub `node_modules/.bin/jest` that writes Jest's JSON report shape. It checks that a bare title is refused, that the full name is accepted with the runner recorded as `jest` and the neighbour counted in the baseline, and that green accepts the passing run.
+
+## Review
+
+Codex was out of quota (its CLI reported the usage limit), so the pre-merge review ran as a separate Claude agent on fable with the same prompt. It reported four findings, all fixed test-first on this branch:
+
+- MEDIUM: a skipped unnamed test in an id-named file was accepted at RED and then hash-locked, although the whole-file path refuses any skip. `classify_named` now refuses a skip anywhere in the file, and both fixtures cover it.
+- LOW: the green regression cases grepped only for the file path, which any refusal naming the file would satisfy. They now require the `outside_pass_count` refusal text.
+- LOW: no Vitest case covered an unnamed failing test, and Jest is not driven. A Vitest case now covers it, and the fixture header says Jest is not driven and why.
+- LOW: naming a file whole and by id in one call dropped the ids silently. That call is now refused with a message naming the two forms.
+
+Copilot's first round left two comments, both fixed test-first:
+
+- Red on an id-named file accepted a suite-level error, such as a throwing `afterAll`, when the file still had results. The file is then marked failed and carries its own message. `classify_named` now refuses a failed file with a message and quotes the message. A Jest-stub case covers it.
+- The Jest id path had no fixture. The Jest stub case described under Testing now covers it.
+
+Copilot's second round confirmed both fixes and raised one finding it had missed before. `classify_named` classified the joined failure text of every named test, so a named test failing for an unclassified reason (a `RuntimeError`) was accepted when another named test failed with a missing module. Each named test is now classified on its own, and an unclassified one is refused by its id; the pytest fixture covers it. The whole-file path in `classify_red` still classifies the joined text, as it did before this PR, and is left for a separate change so that file-level behavior stays unchanged here.
+
+Copilot's third round found that the per-test loop re-selected results by full name, and Vitest and Jest allow two tests with the same full name, so a timeout could still ride on its namesake's assertion. The loop now walks each matched result on its own; a Jest-stub case with two tests named `boost doubles` covers it.
+
+Copilot's fourth round noted that the Codex orchestration step in the `tdd-gated-dispatch` skill and the matching line in `rulebook/cost.md` still told the orchestrator to run `tdd.sh red <test file>`, which a new test added to an existing file cannot pass. Both now say to name a new file whole and each new test in an existing file by id, and the test-author prompt asks Codex to report those ids.
+
+## Reflection
+
+The part that needed the most thought was the baseline, not the id parsing. The existing rule excludes named files from the baseline entirely. Kept for id-named files, that rule would still catch a neighbour that starts failing, but not a neighbour that stops running: the locked file cannot be edited, yet a `conftest.py` or a Vitest setup file outside the lock can still skip a test. Counting the unnamed tests of an id-named file toward the baseline makes that visible as a drop below the baseline. What I had not expected was the pytest title. The converter had used the bare JUnit `name`, which drops the class, so a class-scoped id could not have matched anything until the title was rebuilt from the classname. Time from the RED commit (16:18 local) to the first version of this document (16:27) was about ten minutes.

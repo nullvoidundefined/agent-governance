@@ -7,9 +7,12 @@
 # commit, close removes the lock only from green. Drives the REAL Vitest
 # bundled in enforce/node_modules (pinned in enforce/package.json), linked into
 # a throwaway project, so the JSON-reporter parsing is exercised against live
-# output rather than a stub. A second throwaway project drives the bash
-# *.test.sh runner through the real run-fixture-shards.sh, and close from open
-# before any test is locked.
+# output rather than a stub. A test node id (`path::<full test name>`) REDs a
+# new test in a file that already holds a passing one; no Jest is bundled, so
+# a stub writing Jest's report shape drives the same id path under Jest. A second throwaway
+# project drives the bash *.test.sh runner through the real
+# run-fixture-shards.sh, where a test id is refused because a fixture file is
+# one test, and close from open before any test is locked.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"
@@ -192,6 +195,57 @@ bash "$TDD" status | grep -qi 'no slice' || { echo "FAIL: status without a lock 
 
 cd / && rm -rf "$P"
 
+# --- test node ids: a new failing test in a file that already holds a passing one
+# `path::<full test name>` names one test by the full name Vitest and Jest
+# report and filter on with -t (describe titles and the test title joined by
+# spaces). The file as a whole cannot be RED, since one of its tests passes.
+N=$(new_project); cd "$N"
+mkdir -p src/services && impl src/services/score.ts 2
+cat > src/__tests__/score.test.ts <<'TS'
+import { describe, it, expect } from "vitest";
+import * as scoring from "../services/score";
+it("scores a job at 2", () => { expect(scoring.score()).toBe(2); });
+describe("boost", () => {
+  it("doubles the score", () => { expect((scoring as any).boost()).toBe(4); });
+});
+TS
+git add -A && git commit -qm "chore: score exists"
+NODE="src/__tests__/score.test.ts::boost doubles the score"
+bash "$TDD" open "B-3 boost doubles the score" >/dev/null
+expect_fail "file-level red on a file with a passing test" bash "$TDD" red src/__tests__/score.test.ts | grep -q 'scores a job at 2' || { echo "FAIL: file-level red must still refuse a file holding a passing test"; exit 1; }
+expect_fail "node red on an unknown name" bash "$TDD" red "src/__tests__/score.test.ts::doubles the score" | grep -q 'no test in src/__tests__/score.test.ts matches doubles the score' || { echo "FAIL: a bare title that is not the full name must be refused as matching no test"; exit 1; }
+expect_fail "node red on a passing test" bash "$TDD" red "src/__tests__/score.test.ts::scores a job at 2" | grep -q 'already passes' || { echo "FAIL: a named passing test must be refused as passing"; exit 1; }
+# An unnamed test that fails, or is skipped, beside the named one is refused
+# by its full name (PR review): the file's other tests keep their status.
+cp src/__tests__/score.test.ts "$N/score.test.ts.saved"
+sed -i.bak 's/toBe(2)/toBe(5)/' src/__tests__/score.test.ts && rm -f src/__tests__/score.test.ts.bak
+expect_fail "node red beside a failing unnamed test" bash "$TDD" red "$NODE" | grep -q 'src/__tests__/score.test.ts::scores a job at 2 fails but was not named' || { echo "FAIL: a failing unnamed test in an id-named file must be refused by its full name"; exit 1; }
+cp "$N/score.test.ts.saved" src/__tests__/score.test.ts
+sed -i.bak 's/^it("scores/it.skip("scores/' src/__tests__/score.test.ts && rm -f src/__tests__/score.test.ts.bak
+expect_fail "node red beside a skipped unnamed test" bash "$TDD" red "$NODE" | grep -q 'src/__tests__/score.test.ts::scores a job at 2 is skipped' || { echo "FAIL: a skipped unnamed test in an id-named file must be refused by its full name"; exit 1; }
+cp "$N/score.test.ts.saved" src/__tests__/score.test.ts && rm "$N/score.test.ts.saved"
+out=$(bash "$TDD" red "$NODE" 2>&1) || { echo "FAIL: node red on the new failing test must succeed; output: $out"; exit 1; }
+[ "$(lock_field . '.tests[0].path')" = "src/__tests__/score.test.ts" ] || { echo "FAIL: the lock must carry the containing file"; exit 1; }
+[ "$(lock_field . '.tests[0].ids[0]')" = "boost doubles the score" ] || { echo "FAIL: the lock must record the named test, got $(lock_field . '.tests[0].ids')"; exit 1; }
+[ "$(lock_field . '.tests[0].failureClass')" = "missing-module" ] || { echo "FAIL: a function not written yet must be the missing-module RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
+[ "$(lock_field . '.tests[0].tests')" = "1" ] || { echo "FAIL: node red must count the one named test, got $(lock_field . '.tests[0].tests')"; exit 1; }
+[ "$(lock_field . '.baseline.passed')" = "2" ] || { echo "FAIL: the baseline must count the passing test beside the named one, got $(lock_field . '.baseline.passed')"; exit 1; }
+git add -A && git commit -qm "test(score): B-3 boost doubles the score"
+printf 'export function score() { return 2; }
+export function boost() { return 3; }
+' > src/services/score.ts
+expect_fail "node green with the named test failing" bash "$TDD" green | grep -q 'doubles the score' || { echo "FAIL: node green must name the still-failing named test"; exit 1; }
+printf 'export function score() { return 1; }
+export function boost() { return 4; }
+' > src/services/score.ts
+expect_fail "node green with the unnamed test regressed" bash "$TDD" green | grep -q 'the rest of the suite is red.*src/__tests__/score.test.ts' || { echo "FAIL: node green must refuse a regression in the named file's other test"; exit 1; }
+printf 'export function score() { return 2; }
+export function boost() { return 4; }
+' > src/services/score.ts
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: node green must pass once the named test passes; output: $out"; exit 1; }
+bash "$TDD" close >/dev/null
+cd / && rm -rf "$N"
+
 # --- a file-level failure with every assertion passed -------------------------
 # Vitest and Jest mark a file failed for a suite-level error (a throwing
 # afterAll, for instance) while each assertion in it passed. Green must refuse
@@ -226,6 +280,51 @@ expect_fail "green with a file-level failure" bash "$TDD" green | grep -q 'teard
 echo green > .stub-mode
 bash "$TDD" green >/dev/null || { echo "FAIL: the stub GREEN must be accepted once the file passes"; exit 1; }
 cd / && rm -rf "$T"
+
+# --- test node ids under Jest, and a suite-level error beside them ------------
+# No Jest is bundled, so a stub writes Jest's JSON report shape (fullName is
+# the describe titles and the title joined by spaces) for each step from a
+# mode file (PR #74 review). With ids named, a file whose own message carries
+# a suite-level error (a throwing afterAll) is refused at red even though its
+# results look like a clean RED beside a passing neighbour.
+J=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$J" init -q
+git -C "$J" config user.email t@t; git -C "$J" config user.name t
+mkdir -p "$J/src/__tests__" "$J/node_modules/.bin"
+printf 'test("scores", () => {});\ndescribe("boost", () => { test("doubles", () => {}); });\n' > "$J/src/__tests__/score.test.js"
+cat > "$J/node_modules/.bin/jest" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do case "$arg" in --outputFile=*) report="${arg#--outputFile=}" ;; esac; done
+name="$PWD/src/__tests__/score.test.js"
+scores='{title:"scores", fullName:"scores", ancestorTitles:[], status:"passed", failureMessages:[]}'
+case "$(cat "$PWD/.stub-mode")" in
+  teardown) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"Error: teardown broke\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
+  red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
+  duplicate) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: thrown: Exceeded timeout of 5000 ms\"]}]}]}" ;;
+  green) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"passed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"passed\", failureMessages:[]}]}]}" ;;
+esac > "$report"
+STUB
+chmod +x "$J/node_modules/.bin/jest"
+printf 'node_modules\n.stub-mode\n' > "$J/.gitignore"
+git -C "$J" add -A && git -C "$J" commit -qm "chore: init"
+cd "$J"
+bash "$TDD" open "J-1 boost doubles" >/dev/null
+echo teardown > .stub-mode
+expect_fail "jest node red with a suite-level error" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'teardown broke' || { echo "FAIL: node red must refuse a file whose suite-level message carries an error, naming it"; exit 1; }
+# Two tests may share one full name; each result is classified on its own, so
+# a timeout beside an assertion under the same name is refused (PR #74 review).
+echo duplicate > .stub-mode
+expect_fail "jest node red with a duplicate-named unclassified failure" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'boost doubles fails for a reason this script does not classify: Error: thrown: Exceeded timeout' || { echo "FAIL: each result sharing a full name must be classified on its own"; exit 1; }
+echo red > .stub-mode
+expect_fail "jest node red on a bare title" bash "$TDD" red "src/__tests__/score.test.js::doubles" | grep -q 'no test in src/__tests__/score.test.js matches doubles' || { echo "FAIL: under Jest a bare title must be refused; the id is the full name"; exit 1; }
+out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: jest node red must accept the named failing test; output: $out"; exit 1; }
+[ "$(lock_field . '.baseline.runner')" = "jest" ] || { echo "FAIL: the jest runner must be recorded, got $(lock_field . '.baseline.runner')"; exit 1; }
+[ "$(lock_field . '.tests[0].ids[0]')" = "boost doubles" ] || { echo "FAIL: the jest id must be recorded, got $(lock_field . '.tests[0].ids')"; exit 1; }
+[ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: a Jest expect failure must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
+[ "$(lock_field . '.baseline.passed')" = "1" ] || { echo "FAIL: the jest baseline must count the passing neighbour, got $(lock_field . '.baseline.passed')"; exit 1; }
+echo green > .stub-mode
+bash "$TDD" green >/dev/null 2>&1 || { echo "FAIL: jest node green must accept once the named test passes"; exit 1; }
+cd / && rm -rf "$J"
 
 # --- shell fixtures: a *.test.sh path runs with bash --------------------------
 # The verdict is the fixture suite's own (enforce/run-fixture-shards.sh): exit
@@ -272,6 +371,10 @@ git checkout -q -- tests/baseline.test.sh
 printf 'it("x", () => {});\n' > tests/mixed.test.ts
 expect_fail "red mixing runners" bash "$TDD" red tests/score.test.sh tests/mixed.test.ts | grep -q 'test.sh' || { echo "FAIL: mixing shell and JavaScript tests must be refused naming the shell kind"; exit 1; }
 rm tests/mixed.test.ts
+
+# red: a bash fixture is one test, so a test id after the path is refused;
+# the fixture file itself is the unit.
+expect_fail "shell red with a test id" bash "$TDD" red "tests/score.test.sh::expected 2" | grep -q 'name the fixture file' || { echo "FAIL: a test id on a bash fixture must be refused, saying the file is the unit"; exit 1; }
 
 # red: a missing script is the missing-module RED; the failing fixture in
 # other/tests is outside the suite, so the baseline counts tests/ alone.

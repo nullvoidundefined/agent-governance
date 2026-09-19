@@ -34,7 +34,7 @@
     "agents/implementer.toml": "sha256:a568f376b32d3f712ea27f1a0d4c540e95de8d2caaa8691f814d57d764e33796",
     "agents/slice-critic.toml": "sha256:583a13776f84973cae852233d1d1cf58bdad35a73ad9a8759af9f3ab4b0fed05",
     "agents/spec-conformance-review.toml": "sha256:1d5b1cb324078a5753bcb5cf9f9d0d973499e52e1b6e26b74ddb95b255b5f567",
-    "agents/test-author.toml": "sha256:4e8e3fb616479238d64465d83068f1a4c5bf3906d23470fdd0eb87e04ec83374",
+    "agents/test-author.toml": "sha256:3e2420a598c51dcc0ace758012c9fe6154f2c70e3b2d5714374ffca019a0ef0d",
     "hooks.json": "sha256:16230798039987baaa988942e0e2159c87461a0b545311be0c3e683a7d4cb371",
     "skills/add-stack-track/SKILL.md": "sha256:1c713e4633aed6e30493a6f98ac07a987944f912b54d93d4a828646837af9584",
     "skills/all-hands/SKILL.md": "sha256:0d470818244fe82c6c0c0e760f766b6d28fb0a9ecc7acecd342351a57961212a",
@@ -84,7 +84,7 @@
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
     "skills/task-start/SKILL.md": "sha256:fd1e073335fc28314d39feab9df48c304e214f41029775726f47d1d6744c89a6",
     "skills/task-start/scripts/task-tier.sh": "sha256:b1c452692dcc750ee3accf9f48b4a56125ce324e66cdf6fd69379122e66908cb",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:106ab0b2666002805e623e3a0f41acf8370eb68d77a9dd5db828d5b34e31e103",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:52eb2bb56b0e0039ac65baf6c3f27ad174ca457c823b2f7406c13abfdc8ea34f",
     "skills/ticket-lifecycle/SKILL.md": "sha256:e08ac0b3d58465c360b41f83795cc196bcc7ff6c9bac7dbadf0d1bd4ebefae51"
   },
   "classes": {
