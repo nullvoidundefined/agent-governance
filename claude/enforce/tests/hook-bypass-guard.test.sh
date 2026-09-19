@@ -224,6 +224,49 @@ expect none 'rm docs/git/hooks.md'
 
 # --- end B-4 ---------------------------------------------------------------
 
+# --- B-5: shell quoting, escaping, continuations, and comments read as bash --
+
+# a quoted or escaped flag is the real flag once bash unquotes it
+expect deny 'git commit "--no-verify" -m x'
+expect deny "git commit '--no-verify' -m x"
+expect deny "git commit --no-ver'ify' -m x"
+expect deny 'git commit --no-verif\y -m x'
+expect deny "git commit \$'--no-verify' -m x"
+expect deny 'git commit ""--no-verify -m x'
+expect deny 'git commit "-n" -m x'
+expect deny 'git push "--no-verify"'
+
+# a partly quoted config key inside -c still names core.hooksPath
+expect deny "git -c core.hooks'Path'=/dev/null commit -m x"
+
+# a message whose quoting carries an escaped quote does not swallow the real
+# flag that follows it
+expect deny "git commit -m 'don'\\''t break' --no-verify"
+expect deny 'git commit -m "it\"s" --no-verify'
+
+# a backslash-newline continuation joins the lines into one command
+expect deny $'git commit \\\n  --no-verify -m x'
+expect deny $'HUSKY=0 \\\ngit commit -m x'
+
+# the flag spelled inside the message is the message, not the flag
+expect none 'git commit -m "--no-verify"'
+expect none "git commit -m '-n'"
+expect none 'git commit -m "fix: --no-verify is banned"'
+
+# an escaped quote inside a message with no flag must keep working
+expect none "git commit -m 'don'\\''t break'"
+expect none 'git commit -m "it\"s fine"'
+
+# a trailing shell comment is not part of the command
+expect none 'git commit -m x # TODO: drop --no-verify from CI'
+expect none 'git commit -m x # see -n'
+expect none 'git push # HUSKY=0 would skip'
+
+# a # inside a quoted word does not start a comment, and the text stays quoted
+expect none 'git commit -m "issue #12 and --no-verify"'
+
+# --- end B-5 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1

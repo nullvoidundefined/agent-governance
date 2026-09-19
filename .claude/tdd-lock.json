@@ -1,0 +1,20 @@
+{
+  "slice": "B-5 see through quoting, escaping, line continuations, and comments",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
+      "sha256": "18f8a7c724339cf6faecaa52b1f6c1dd5958e7a75c6d70bb77fd09b0fe73a6dc",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-19T11:52:38Z",
+  "baseline": {
+    "passed": 87,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-19T12:02:31Z"
+}
