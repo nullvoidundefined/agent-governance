@@ -22,7 +22,7 @@ Framework-specific rules for Nuxt 4 clients. Read together with `~/.claude/CLAUD
 
 - **Nuxt 4** with the `app/` source root, the Nitro server engine, and SSR on (the default); no `ssr: false` for a whole app
 - Nuxt's own `compatibilityDate` pinned in `nuxt.config.ts`, bumped deliberately in its own commit
-- Nitro code under `server/` runs only on the server and never imports from `app/`; shared types live in `shared/types/`
+- Nitro code under `server/` runs only on the server and never imports from `app/`; what both sides import lives in `shared/`: types in `shared/types/`, and pure functions both sides must apply identically in `shared/services/` (imported through `#shared`), such as `resolveClientAddress` (added 2026-09-19: the SSR API client in `app/` and the Nitro proxy in `server/` must share one implementation of the client-IP trust rule, and two copies of a security rule drift)
 
 ---
 
@@ -57,7 +57,9 @@ server/
 ├── api/                      # Nitro routes: health.get.ts, the proxies
 ├── middleware/               # Nitro request middleware (sessionCookieGate.ts)
 └── plugins/                  # Nitro plugins (Sentry server init)
-shared/types/                 # Types imported by both app/ and server/
+shared/
+├── types/                    # Types imported by both app/ and server/
+└── services/                 # Pure functions both sides apply (resolveClientAddress.ts)
 ```
 
 ### Rules
@@ -95,7 +97,7 @@ Next gates protected routes with edge middleware. Nitro server middleware is not
 3. **`app/layouts/protected.vue`**: renders only after the session query resolves, and the logout mutation's `onSuccess` removes that query from the cache (corrected 2026-09-19: the session lives in the query cache, not in an auth store, now that app state is `useState` composables rather than Pinia).
 
 - The session cookie is `httpOnly`; the browser never reads it, so no client code checks `document.cookie`
-- `api/apiClient.ts` exports `createApiClient()`, never a module-level client, and a `useApiClient()` composable memoizes one client per request on `useNuxtApp()` (the Vue file); a module-scope client would capture the first request's cookie and send it on every later user's SSR calls. During SSR it passes the incoming cookie with `headers: useRequestHeaders(['cookie'])`, so the request reaches the backend authenticated; a client created without it drops the cookie. openapi-fetch's `fetch` option takes a standard `fetch`, and `useRequestFetch()` returns Nuxt's `$fetch`, whose call and return shapes differ, so it is not passed there (corrected 2026-09-19: the typed client moved from a hand-written `apiFetch` to openapi-fetch)
+- `api/apiClient.ts` exports `createApiClient()`, never a module-level client, and a `useApiClient()` composable memoizes one client per request on `useNuxtApp()` (the Vue file); a module-scope client would capture the first request's cookie and send it on every later user's SSR calls. Every client sets `X-Requested-With: XMLHttpRequest` as a base header, since the proxy only passes it through and the backend's CSRF guard rejects a state-changing request without it. The generated paths already carry the backend's `/v1` prefix, so no base URL adds it: in the browser the base URL is `/api`, and on the server it is `runtimeConfig.apiBaseUrl`, the backend reached directly over the private network. The server-side client reads only `useRequestHeaders(['cookie', 'x-request-id', 'x-forwarded-for'])` and forwards the cookie, so the request reaches the backend authenticated; the `X-Request-Id` (R-341); and, in place of the raw chain, the single-value `X-Forwarded-For` that `resolveClientAddress(forwardedFor, socketAddress)` returns (the edge-appended last entry when it is a bare IP address, else the socket's peer address), so the backend rate-limits the user rather than Nitro's own address (added 2026-09-19: a relative `/api` base cannot resolve under a standard `fetch` on the server, and a direct call without these headers loses the session, the correlation, and the client's rate-limit bucket). openapi-fetch's `fetch` option takes a standard `fetch`, and `useRequestFetch()` returns Nuxt's `$fetch`, whose call and return shapes differ, so it is not passed there (corrected 2026-09-19: the typed client moved from a hand-written `apiFetch` to openapi-fetch)
 
 ---
 
@@ -103,7 +105,7 @@ Next gates protected routes with edge middleware. Nitro server middleware is not
 
 The browser calls only its own origin. Two Nitro catch-all routes forward the rest:
 
-- `server/api/[...path].ts` proxies `/api/**` to the backend with h3's `proxyRequest(event, target)`, the target built from `runtimeConfig.apiBaseUrl` (server-only); cookies, the `X-Requested-With` header, and the request ID pass through. Before `proxyRequest`, the route rewrites `X-Forwarded-For` to its last entry, the client address the edge appended, because every earlier entry is client-supplied and h3 forwards the header unchanged (added 2026-09-19: the backend's rate limiter keys on the address this chain resolves, `CLAUDE-PYTHON.md` Rate Limiting)
+- `server/api/[...path].ts` proxies `/api/<rest>` to the backend's `/<rest>` with h3's `proxyRequest(event, target)`, the target built from `runtimeConfig.apiBaseUrl` (server-only) plus the request's query string (`getRequestURL(event).search`), because `proxyRequest` uses the target verbatim and the catch-all's path parameter excludes the query, so `/api/v1/trips?page=2` reaches `/v1/trips?page=2`; cookies, the `X-Requested-With` header, and the request ID pass through. Before `proxyRequest`, the route rewrites `X-Forwarded-For` through `resolveClientAddress` to its last entry, the client address the edge appended, because every earlier entry is client-supplied and h3 forwards the header unchanged (added 2026-09-19: the backend's rate limiter keys on the address this chain resolves, `CLAUDE-PYTHON.md` Rate Limiting)
 - `server/api/ingest/[...path].ts` proxies PostHog ingestion to `runtimeConfig.posthogHost`, so ad blockers do not drop analytics
 - `server/api/health.get.ts` answers the container `HEALTHCHECK` without touching the backend; the specific route wins over the catch-all
 - No `routeRules` proxy for the backend: a Nitro route file is visible, testable, and logs through the one logger
