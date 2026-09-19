@@ -5,7 +5,9 @@
 # Denies a non-conventional subject or more than two triage IDs in the scope
 # (R-505); asks on a body longer than three non-trailer lines (R-506, whose
 # multi-line exemption is a user judgment), and a deny on any commit in the
-# command wins over an ask on another. Unparseable messages fail open.
+# command wins over an ask on another. A message holding a command
+# substitution whose output the hook cannot read is an ask; `-F <file>` is out
+# of reach and allowed.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
 # allow; a guard fails closed by structure, never open by accident
@@ -108,20 +110,26 @@ collect_commit_messages() {
 }
 
 # join_commit_messages: sets MSG to the MESSAGES git would join with a blank
-# line, each `$(cat <<EOF ...)` value read from its heredoc. Any other value
-# that starts with a substitution is unreadable and dropped; when that is the
-# first value, which carries the subject, MSG stays empty and the commit fails
-# open. A substitution later in a value is kept as literal text, since the
-# subject's conventional prefix is literal either way.
+# line, each `$(cat <<EOF ...)` value read from its heredoc. Any other command
+# substitution's output is unknown, so it sets IS_MESSAGE_UNCOUNTABLE: a value
+# that starts with one is dropped, and when that is the first value, which
+# carries the subject, MSG stays empty; a substitution later in a value is kept
+# as literal text, since the subject's conventional prefix is literal either
+# way, but its output may add body lines (Copilot on PR #79).
 join_commit_messages() {
   local message index=0
-  MSG=''
+  MSG=''; IS_MESSAGE_UNCOUNTABLE=0
   for message in ${MESSAGES[@]+"${MESSAGES[@]}"}; do
     # shellcheck disable=SC2016  # the literal `$(` of a substitution, not an expansion
     case "$message" in
       '$('* | '`'*)
         message=$(read_substituted_heredoc "$message")
-        if [ -z "$message" ]; then [ "$index" -eq 0 ] && return 0; index=$((index + 1)); continue; fi ;;
+        if [ -z "$message" ]; then
+          IS_MESSAGE_UNCOUNTABLE=1
+          [ "$index" -eq 0 ] && return 0
+          index=$((index + 1)); continue
+        fi ;;
+      *'$('* | *'`'*) IS_MESSAGE_UNCOUNTABLE=1 ;;
     esac
     MSG="${MSG:+$MSG$'\n\n'}$message"
     index=$((index + 1))
@@ -167,8 +175,9 @@ read_shell_script() {
   esac
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      -O | +O | -o | +o | --rcfile | --init-file) shift 2 2>/dev/null || shift ;;
       -*c) SHELL_SCRIPT="${2:-}"; return 0 ;;
-      -*) shift ;;
+      -* | +*) shift ;;
       *) return 1 ;;
     esac
   done
@@ -183,8 +192,12 @@ read_shell_script() {
 judge_simple_command() {
   if is_git_commit_command "$@"; then
     collect_commit_messages ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}
+    IS_MESSAGE_UNCOUNTABLE=0
     if [ "$IS_STDIN_MESSAGE" -eq 1 ] && [ "${#MESSAGES[@]}" -eq 0 ]; then MSG="$INVOCATION_STDIN"; else join_commit_messages; fi
     [ -n "$MSG" ] && judge_commit_message
+    if [ "$IS_MESSAGE_UNCOUNTABLE" -eq 1 ] && [ -z "$PENDING_ASK_REASON" ]; then
+      PENDING_ASK_REASON="commit-message-guard (R-505, R-506): the message holds a command substitution whose output this hook cannot read, so it cannot check the subject or count the body. Confirm to proceed if the resulting message has a conventional subject and a short body."
+    fi
     return 1
   fi
   local stdin="$1"

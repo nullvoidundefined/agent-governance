@@ -81,15 +81,29 @@ is_pr_create_command() {
   return 0
 }
 
+# A redirection word: an optional fd number, the operator, and the target when
+# it is written attached (`2>/dev/null`); group 2 is empty when the target is
+# the next word (`< /dev/null`). A heredoc never reaches here, since the scan
+# consumes it.
+REDIRECTION_PATTERN='^[0-9]*(<<<|<>|<&|>&|>>|>\||<|>)(.*)$'
+
 # strip_command_prefixes <word>...: sets STRIPPED_WORDS to the words left once
 # shell keywords and command wrappers (env, time, nice, nohup, sudo, exec,
 # command, builtin, timeout, xargs) and their options, assignments, and
 # durations are removed from the front, so `env A=1 time git commit` reads as
-# the `git commit` it runs. An array rather than printed lines, so a word
+# the `git commit` it runs. Redirections (`< /dev/null`, `2>/dev/null`) and
+# assignments ahead of the command word are removed too, and a wrapper's long
+# options that take a separate value (`sudo --user root`, `env --chdir /tmp`)
+# are skipped with their value. An array rather than printed lines, so a word
 # holding a newline (a multi-line commit message) survives intact.
 strip_command_prefixes() {
   local wrapper="" is_duration_pending=0
   while [ "$#" -gt 0 ]; do
+    if [[ "$1" =~ $REDIRECTION_PATTERN ]]; then
+      if [ -z "${BASH_REMATCH[2]}" ]; then shift 2 2>/dev/null || shift; else shift; fi
+      continue
+    fi
+    if [ -z "$wrapper" ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then shift; continue; fi
     case "$1" in
       if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | exec | command | builtin)
         wrapper=""; shift; continue ;;
@@ -98,7 +112,11 @@ strip_command_prefixes() {
     esac
     if [ -n "$wrapper" ]; then
       case "$wrapper:$1" in
-        env:-u | env:-C | env:-S | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E)
+        env:-u | env:-C | env:-S | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E | xargs:-a \
+          | env:--unset | env:--chdir | env:--split-string | nice:--adjustment \
+          | sudo:--user | sudo:--group | sudo:--host | sudo:--prompt | sudo:--close-from | sudo:--chdir | sudo:--role | sudo:--type | sudo:--other-user | sudo:--command-timeout | sudo:--chroot \
+          | timeout:--signal | timeout:--kill-after \
+          | xargs:--max-args | xargs:--max-chars | xargs:--max-lines | xargs:--max-procs | xargs:--delimiter | xargs:--eof | xargs:--arg-file)
           shift 2 2>/dev/null || shift; continue ;;
       esac
       case "$1" in -* | [A-Za-z_]*=*) shift; continue ;; esac
