@@ -32,9 +32,15 @@ TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 # A backslash-newline is a line continuation: join it first, so a command
 # split across lines (`gh pr \<newline> merge 42`) reads as the one command
-# the shell runs.
+# the shell runs. An escaped backslash before the newline (`echo x\\`) is a
+# literal backslash and ends the line, so it is set aside before the join and
+# restored after it.
 LINE_CONTINUATION=$'\\\n'
+ESCAPED_BACKSLASH_NEWLINE=$'\\\\\n'
+ESCAPED_BACKSLASH_MARK=$'\\\\\001'
+CMD="${CMD//"$ESCAPED_BACKSLASH_NEWLINE"/$ESCAPED_BACKSLASH_MARK}"
 CMD="${CMD//"$LINE_CONTINUATION"/ }"
+CMD="${CMD//$'\001'/$'\n'}"
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
@@ -76,15 +82,21 @@ fi
 # A `gh pr merge` may follow leading environment assignments
 # (`GH_REPO=o/r gh pr merge ...`), which run the same merge.
 GH_MERGE_PATTERN='(^|[;&|])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-# GH_ANY_MERGE_PATTERN is the broad shape of a merge: gh named by path or
-# behind a wrapper (env, command, exec, sudo, nohup, time), or with options
-# such as --repo/-R before `pr` or `merge`. Every such shape runs a merge,
-# but only GH_MERGE_PATTERN is one parse_merge_arguments reads, so a command
-# where the two counts differ is denied outright rather than judged by the
-# wrong PR or not at all.
+# GH_ANY_MERGE_PATTERN is the broad shape of a merge: gh escaped (\gh),
+# quoted, named by path, or behind a common wrapper (env, command, exec, sudo,
+# nohup, time, timeout, nice, xargs, eval, or bash/sh/zsh -c, each with its
+# options and their values), or with options such as --repo/-R before `pr` or
+# `merge`. Every such shape runs a merge, but only GH_MERGE_PATTERN is one
+# parse_merge_arguments reads, so a command where the two counts differ is
+# denied outright rather than judged by the wrong PR or not at all. The
+# wrapper list is a denylist and cannot be complete; a subshell `(gh pr
+# merge)` is deliberately not matched, as before, so a parenthesized mention
+# in a commit message is never read as a merge.
 GH_OPTION='([[:space:]]+-[^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?)'
-GH_WRAPPER='(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|command|exec|sudo|nohup|time)([[:space:]]+-[^[:space:];&|]*)*[[:space:]]+)'
-GH_ANY_MERGE_PATTERN="(^|[;&|(])[[:space:]]*${GH_WRAPPER}*([^[:space:];&|]*/)?gh${GH_OPTION}*[[:space:]]+pr${GH_OPTION}*[[:space:]]+merge([[:space:]]|\$)"
+GH_WRAPPER_WORD='([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|command|exec|sudo|nohup|time|timeout|nice|xargs|eval|bash|sh|zsh)'
+GH_WRAPPER="(${GH_WRAPPER_WORD}([[:space:]]+(-[^[:space:];&|]*|[^-[:space:];&|][^[:space:];&|]*))*[[:space:]]+)"
+GH_COMMAND_WORD="[\\\"']?([^[:space:];&|]*/)?gh[\"']?"
+GH_ANY_MERGE_PATTERN="(^|[;&|])[[:space:]]*${GH_WRAPPER}*${GH_COMMAND_WORD}${GH_OPTION}*[[:space:]]+pr${GH_OPTION}*[[:space:]]+merge([[:space:]]|\$)"
 grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+(push|commit)([[:space:]]|$)' <<< "$CMD" ||
   grep -qE "$GH_ANY_MERGE_PATTERN" <<< "$CMD" || exit 0
 
@@ -243,12 +255,18 @@ read_bundle_verdict() {
 # indented code block. No regex intervals: older mawk lacks them.
 has_codex_review_section() {
   printf '%s\n' "$1" | tr -d '\r' | awk '
+    !in_fence && in_comment { if (index($0, "-->")) in_comment = 0; next }
     /^( |  |   )?(```|~~~)/ && match($0, /(`+|~+)/) && RLENGTH >= 3 {
       run = substr($0, RSTART, RLENGTH)
       if (!in_fence) { in_fence = 1; fence = run; next }
-      if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence)) { in_fence = 0; next }
+      if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence) && $0 ~ /^( |  |   )?(`+|~+)[ \t]*$/) { in_fence = 0; next }
     }
     in_fence { next }
+    index($0, "<!--") {
+      rest = substr($0, index($0, "<!--") + 4)
+      if (!index(rest, "-->")) in_comment = 1
+      next
+    }
     /^( |  |   )?#+[ \t]/ {
       heading = tolower($0)
       sub(/^[ \t]*#+[ \t]+/, "", heading)

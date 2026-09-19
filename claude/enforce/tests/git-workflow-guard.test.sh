@@ -148,6 +148,20 @@ CODEX_INDENTED=$(write_gh_stub codex-indented '{"body":"## Summary\nExample:\n\n
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INDENTED")" = "deny" ]
 CODEX_THREE_SPACES=$(write_gh_stub codex-three-spaces '{"body":"   ## Codex review\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_THREE_SPACES")" = "ask" ]      # up to three spaces is still a heading
+# Round-two review: a parenthesized mention is not a merge, and more wrapper
+# shapes are recognized.
+[ "$(stubbed_decision 'git commit -m "feat(enforce): deny (gh pr merge behind wrappers)"' "$CODEX_MISSING")" != "deny" ]
+for wrapped in '\gh pr merge 42 --squash' '"gh" pr merge 42 --squash' 'timeout 30 gh pr merge 42 --squash' \
+  'nice gh pr merge 42 --squash' 'bash -c "gh pr merge 42 --squash"' 'eval "gh pr merge 42 --squash"' \
+  'echo 42 | xargs gh pr merge --squash' 'sudo -u me gh pr merge 42 --squash' 'env -C /tmp gh pr merge 42 --squash'; do
+  [ "$(stubbed_decision "$wrapped" "$CODEX_OK")" = "deny" ] || { echo "wrapped merge not denied: $wrapped" >&2; exit 1; }
+done
+[ "$(stubbed_decision $'echo x\\\\\ngh pr merge 42 --squash' "$CODEX_MISSING")" = "deny" ]   # an escaped backslash does not join lines
+# An HTML comment is not the section, and a fence does not close on a line with trailing text.
+CODEX_COMMENTED=$(write_gh_stub codex-commented '{"body":"## Summary\n\n<!--\n## Codex review\n<reviewer>, <range>, findings\n-->\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_COMMENTED")" = "deny" ]
+CODEX_FENCE_TRAILING=$(write_gh_stub codex-fence-trailing '{"body":"```\ncode\n``` trailing\n## Codex review\nreal content\n```","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCE_TRAILING")" = "deny" ]
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.
