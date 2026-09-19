@@ -7,6 +7,7 @@
 # bootstrap that confines bytecode to a per-run cache, and the JUnit XML
 # pytest writes is converted into the report shape red and green already
 # read. Red accepts an assertion failure and a missing module and refuses a
+# test failing for an unclassified reason beside an assertion failure, a
 # passing test, a skipped test, a syntax error, a file with no tests, and a
 # slice that mixes runners; green accepts the fixed implementation and
 # refuses a still failing test (also when stale bytecode in the tree holds
@@ -92,6 +93,11 @@ printf 'def test_broken(:\n    pass\n' > "$TEST"
 expect_fail "pytest red on a syntax error" bash "$TDD" red "$TEST" | grep -q 'does not parse' || { echo "FAIL: a pytest syntax error must be refused as not parsing"; exit 1; }
 printf 'NOTHING = 1\n' > "$TEST"
 expect_fail "pytest red on a file with no tests" bash "$TDD" red "$TEST" | grep -q 'contains no tests' || { echo "FAIL: a pytest file with no tests must be refused as containing none"; exit 1; }
+# Each test of a file named whole is classified on its own (IAN-160): one
+# failing for an unclassified reason is refused by id even though the other
+# test's assertion failure would classify the file's joined messages.
+printf 'def test_asserts():\n    assert 1 == 2\n\n\ndef test_raises():\n    raise RuntimeError("boom")\n' > "$TEST"
+expect_fail "pytest red with one unclassified failure in the file" bash "$TDD" red "$TEST" | grep -q "$TEST::test_raises fails for a reason this script does not classify" || { echo "FAIL: a test failing for an unclassified reason must be refused by its id beside an assertion failure"; exit 1; }
 [ "$(lock_field .phase)" = "open" ] || { echo "FAIL: refused pytest reds must leave the phase open"; exit 1; }
 
 # red: a pytest file named beside a JavaScript test is refused; one runner per slice.
