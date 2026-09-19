@@ -30,7 +30,7 @@ Refs: IAN-139
 - `claude/enforce/tests/tdd-red-green.test.sh` gains the same shape against the real Vitest. A `describe("boost")` test is added beside a passing one, a bare title that is not the full name is refused, the missing function is classed `missing-module`, green refuses a wrong implementation and a regression in the neighbour, and green then accepts. The shell section checks that `tests/score.test.sh::expected 2` is refused with "name the fixture file".
 - Both fixtures were committed first (`984d19e`) and failed against `origin/main`'s `tdd.sh` at their first new assertion, the unknown-id refusal. Both pass on the implementation commit.
 - `claude/enforce/tests/run-tests.sh` and `claude/hooks/tests/run-tests.sh` both pass, with HOME pointed at a temporary directory whose `.claude` links to the worktree's `claude/`. `shellcheck --severity=error` is clean on `tdd.sh`. `node translate/codex.mjs --check` and `node translate/cursor.mjs --check` both exit 0.
-- Jest is not exercised by a fixture, as before this change. Its JSON report carries the same `fullName` field that the Vitest path reads.
+- No Jest is bundled, so `tdd-red-green.test.sh` drives the Jest id path through a stub `node_modules/.bin/jest` that writes Jest's JSON report shape. It checks that a bare title is refused, that the full name is accepted with the runner recorded as `jest` and the neighbour counted in the baseline, and that green accepts the passing run.
 
 ## Review
 
@@ -40,6 +40,11 @@ Codex was out of quota (its CLI reported the usage limit), so the pre-merge revi
 - LOW: the green regression cases grepped only for the file path, which any refusal naming the file would satisfy. They now require the `outside_pass_count` refusal text.
 - LOW: no Vitest case covered an unnamed failing test, and Jest is not driven. A Vitest case now covers it, and the fixture header says Jest is not driven and why.
 - LOW: naming a file whole and by id in one call dropped the ids silently. That call is now refused with a message naming the two forms.
+
+Copilot's first round left two comments, both fixed test-first:
+
+- Red on an id-named file accepted a suite-level error, such as a throwing `afterAll`, when the file still had results. The file is then marked failed and carries its own message. `classify_named` now refuses a failed file with a message and quotes the message. A Jest-stub case covers it.
+- The Jest id path had no fixture. The Jest stub case described under Testing now covers it.
 
 ## Reflection
 

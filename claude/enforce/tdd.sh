@@ -440,6 +440,11 @@ classify_named() {
     grep -qE "$PARSE_FAILURE" <<< "$message" && die "$rel does not parse; a broken test is not a RED test. First line: $message"
     die "$rel fails to load, so the tests already in it stopped running${message:+: $message}. With test ids named the file's other tests must keep passing: import what is not written yet inside the new test, or name the whole file"
   fi
+  # A suite-level error (a throwing afterAll or teardown) marks the file failed
+  # with its own message while the results still look like a clean RED; the
+  # tests beside the named ones are then not clean, so it is refused.
+  message=$(printf '%s' "$record" | jq -r 'if .status == "failed" then (.message // "") else "" end' | head -1)
+  [ -z "$message" ] || die "$rel failed outside its tests: $message. With test ids named the file's other tests must keep passing; fix the suite-level error first"
   while IFS= read -r id; do
     printf '%s' "$record" | jq -e --arg id "$id" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'any(.assertionResults[]; matches_id($id; $kind))' >/dev/null && continue
     listed=$(printf '%s' "$record" | jq -r "$JQ_TEST_IDS"'[.assertionResults[] | test_key] | .[:10] | join(", ")')

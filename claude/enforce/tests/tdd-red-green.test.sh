@@ -8,8 +8,8 @@
 # bundled in enforce/node_modules (pinned in enforce/package.json), linked into
 # a throwaway project, so the JSON-reporter parsing is exercised against live
 # output rather than a stub. A test node id (`path::<full test name>`) REDs a
-# new test in a file that already holds a passing one. Jest is not driven: no
-# Jest is bundled, and its JSON report carries the same fullName field. A second throwaway
+# new test in a file that already holds a passing one; no Jest is bundled, so
+# a stub writing Jest's report shape drives the same id path under Jest. A second throwaway
 # project drives the bash *.test.sh runner through the real
 # run-fixture-shards.sh, where a test id is refused because a fixture file is
 # one test, and close from open before any test is locked.
@@ -280,6 +280,46 @@ expect_fail "green with a file-level failure" bash "$TDD" green | grep -q 'teard
 echo green > .stub-mode
 bash "$TDD" green >/dev/null || { echo "FAIL: the stub GREEN must be accepted once the file passes"; exit 1; }
 cd / && rm -rf "$T"
+
+# --- test node ids under Jest, and a suite-level error beside them ------------
+# No Jest is bundled, so a stub writes Jest's JSON report shape (fullName is
+# the describe titles and the title joined by spaces) for each step from a
+# mode file (PR #74 review). With ids named, a file whose own message carries
+# a suite-level error (a throwing afterAll) is refused at red even though its
+# results look like a clean RED beside a passing neighbour.
+J=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$J" init -q
+git -C "$J" config user.email t@t; git -C "$J" config user.name t
+mkdir -p "$J/src/__tests__" "$J/node_modules/.bin"
+printf 'test("scores", () => {});\ndescribe("boost", () => { test("doubles", () => {}); });\n' > "$J/src/__tests__/score.test.js"
+cat > "$J/node_modules/.bin/jest" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do case "$arg" in --outputFile=*) report="${arg#--outputFile=}" ;; esac; done
+name="$PWD/src/__tests__/score.test.js"
+scores='{title:"scores", fullName:"scores", ancestorTitles:[], status:"passed", failureMessages:[]}'
+case "$(cat "$PWD/.stub-mode")" in
+  teardown) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"Error: teardown broke\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
+  red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
+  green) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"passed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"passed\", failureMessages:[]}]}]}" ;;
+esac > "$report"
+STUB
+chmod +x "$J/node_modules/.bin/jest"
+printf 'node_modules\n.stub-mode\n' > "$J/.gitignore"
+git -C "$J" add -A && git -C "$J" commit -qm "chore: init"
+cd "$J"
+bash "$TDD" open "J-1 boost doubles" >/dev/null
+echo teardown > .stub-mode
+expect_fail "jest node red with a suite-level error" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'teardown broke' || { echo "FAIL: node red must refuse a file whose suite-level message carries an error, naming it"; exit 1; }
+echo red > .stub-mode
+expect_fail "jest node red on a bare title" bash "$TDD" red "src/__tests__/score.test.js::doubles" | grep -q 'no test in src/__tests__/score.test.js matches doubles' || { echo "FAIL: under Jest a bare title must be refused; the id is the full name"; exit 1; }
+out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: jest node red must accept the named failing test; output: $out"; exit 1; }
+[ "$(lock_field . '.baseline.runner')" = "jest" ] || { echo "FAIL: the jest runner must be recorded, got $(lock_field . '.baseline.runner')"; exit 1; }
+[ "$(lock_field . '.tests[0].ids[0]')" = "boost doubles" ] || { echo "FAIL: the jest id must be recorded, got $(lock_field . '.tests[0].ids')"; exit 1; }
+[ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: a Jest expect failure must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
+[ "$(lock_field . '.baseline.passed')" = "1" ] || { echo "FAIL: the jest baseline must count the passing neighbour, got $(lock_field . '.baseline.passed')"; exit 1; }
+echo green > .stub-mode
+bash "$TDD" green >/dev/null 2>&1 || { echo "FAIL: jest node green must accept once the named test passes"; exit 1; }
+cd / && rm -rf "$J"
 
 # --- shell fixtures: a *.test.sh path runs with bash --------------------------
 # The verdict is the fixture suite's own (enforce/run-fixture-shards.sh): exit
