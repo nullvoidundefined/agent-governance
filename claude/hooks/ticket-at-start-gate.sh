@@ -422,7 +422,7 @@ read_ledger_problem() {
   [ -f "$ledger" ] || { echo "no task-start ledger (.claude/task-tier.json) is recorded in this checkout"; return 0; }
   if git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1 ||
     git -C "$top" cat-file -e HEAD:.claude/task-tier.json 2>/dev/null; then
-    echo "the ledger .claude/task-tier.json is tracked or staged in git, so it is not this session's task-start state (unstage it with \`git rm --cached .claude/task-tier.json\` and add that path to .gitignore)"
+    echo "the ledger .claude/task-tier.json is tracked or staged in git, so it is not this session's task-start state (unstage it with \`git rm --cached .claude/task-tier.json\`, add that path to .gitignore, and commit just those two changes, which the gate lets through)"
     return 0
   fi
   jq -e 'type == "object"' "$ledger" >/dev/null 2>&1 || { echo "the ledger .claude/task-tier.json is unreadable (not the JSON task-tier.sh writes)"; return 0; }
@@ -468,12 +468,33 @@ judge_work_directory() {
   fi
   top=$(cd "$top" && pwd -P)
   if [ "$TOOL" != "Bash" ] && is_exempt_edit_path "$top" "$FILE_PATH"; then return 0; fi
+  is_ledger_untracking_step "$top" && return 0
   branch=$(git -C "$top" branch --show-current 2>/dev/null)
   [ -n "$switch_branch" ] && [ "$top" = "$switch_top" ] && branch="$switch_branch"
   [ -n "$branch" ] || return 0
   problem=$(read_ledger_problem "$top" "$branch")
   [ -z "$problem" ] && return 0
   deny_without_ticket "$branch" "$problem"
+}
+
+# is_ledger_untracking_step <top>: true for the one recovery a committed
+# ledger needs. While the ledger is still in HEAD but its removal is staged
+# (`git rm --cached`), the gate lets through an edit of the repository's
+# .gitignore and a commit whose staged changes are only that removal and
+# .gitignore, so the deny's own advice can be carried out; any other work
+# stays refused until the removal is committed.
+is_ledger_untracking_step() {
+  local top="$1" staged_path
+  git -C "$top" cat-file -e HEAD:.claude/task-tier.json 2>/dev/null || return 1
+  git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1 && return 1
+  if [ "$TOOL" != "Bash" ]; then
+    [ "$(resolve_edit_path "$FILE_PATH")" = "$top/.gitignore" ]
+    return
+  fi
+  while IFS= read -r staged_path; do
+    case "$staged_path" in .claude/task-tier.json | .gitignore) ;; *) return 1 ;; esac
+  done < <(git -C "$top" diff --cached --name-only 2>/dev/null)
+  return 0
 }
 
 # deny_without_ticket <branch> <problem>: the R-605 deny naming what is missing

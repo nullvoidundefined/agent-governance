@@ -544,5 +544,37 @@ git -C "$Z2" commit -qm "chore: untrack ledger"
 file_gate Edit "$Z2/README.md" "$Z2"
 check "Z-2 ledger out of HEAD and the index, still on disk and ignored, allows" is_silent
 
+# --- IAN-149 review round 9 -----------------------------------------------------
+# make_committed_ledger_repo <name>: a repo on feat/x whose .gitignore does not list the
+# ledger, with a ticketed feat/x ledger committed and then staged for removal
+# (git rm --cached: still in HEAD, still on disk); prints its path.
+make_committed_ledger_repo() {
+  local repo; repo=$(make_repo "$1")
+  printf 'ignored/\n' > "$repo/.gitignore"; git -C "$repo" commit -qam "chore: stop ignoring the ledger"
+  write_ledger "$repo" "{\"tier\":\"standard\",\"branch\":\"feat/x\",\"ticket\":\"IAN-7\",$STARTED}"
+  git -C "$repo" add .claude/task-tier.json && git -C "$repo" commit -qm "chore: ledger"
+  git -C "$repo" rm -q --cached .claude/task-tier.json
+  printf '%s' "$repo"
+}
+
+AA=$(make_committed_ledger_repo aa-recovery)
+# AA-4: in the staged-removal state an Edit of README.md still denies.
+file_gate Edit "$AA/README.md" "$AA"
+check "AA-4 staged-removal state: Edit of README.md denies" is_deny
+# AA-1: the recovery step, an Edit of .gitignore, is allowed.
+file_gate Edit "$AA/.gitignore" "$AA"
+check "AA-1 staged-removal state: Edit of .gitignore allows" is_silent
+# AA-2: committing only the ledger removal and the .gitignore change is allowed.
+printf '.claude/task-tier.json\n' >> "$AA/.gitignore"; git -C "$AA" add .gitignore
+bash_gate 'git commit -m "chore: untrack the ledger"' "$AA"
+check "AA-2 commit staging only the ledger removal and .gitignore allows" is_silent
+
+# AA-3: the same staged removal plus a staged README.md change denies as tracked.
+AA3=$(make_committed_ledger_repo aa3-mixed)
+printf 'more\n' >> "$AA3/README.md"; git -C "$AA3" add README.md
+bash_gate 'git commit -m x' "$AA3"
+check "AA-3 commit staging the ledger removal plus README.md denies" is_deny
+check "AA-3 deny names tracked" reason_has "tracked"
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"
