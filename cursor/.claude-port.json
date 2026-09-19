@@ -109,7 +109,7 @@
     "skills/task-start/SKILL.md": "sha256:5152e966a7fe8dadf5cde4c094f6f8a56c5740f6eb0c17fbe473b1bb3a22fd9f",
     "skills/task-start/scripts/task-tier.sh": "sha256:14c952eeb4356282ae9290da6ae4646eadf9da5efefad27a9c5bc6d68cf93426",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:b4d16d7cc0924b1069b95aa315d49dba1d65b2120bc8381472648a7b91e83b53",
-    "skills/ticket-lifecycle/SKILL.md": "sha256:5d2910a3616cd8625a31b901a6a215b004f12c5595b48e26ca399a3b4e8ee9e1"
+    "skills/ticket-lifecycle/SKILL.md": "sha256:57138366fe1bcecce3437af44d8f046b3ca224fb6e96ef9d20947bcc8474dba4"
   },
   "classes": {
     ".gitignore": "generated",

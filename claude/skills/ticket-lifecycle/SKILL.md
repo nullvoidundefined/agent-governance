@@ -43,6 +43,7 @@ Trivial and standard tiers go `backlog` to `in-progress` directly. `blocked` ret
 | `assist` | `llm` when Claude drove the implementation, `human` otherwise. |
 | `model` | Routing decision (R-903). |
 | `estimate_minutes` | The estimate after the R-906 division. From `estimate <tier>` below when history allows. |
+| `human_estimate_minutes` | How long a senior engineer who knows the repository would take to do the task alone, with tests, set at `open` before any work starts and never revised afterwards. Write `n/a` for work that only exists because agents do the work (harness process, handoffs, agent guards). |
 | `repo` | Repository name only. Never a local filesystem path (R-106). |
 | `branch` | `feat/<slug>`, or the branch the work lands on. |
 | `spec_link`, `plan_link` | Repo-relative doc paths, when the tier produced them. |
@@ -51,13 +52,14 @@ Trivial and standard tiers go `backlog` to `in-progress` directly. `blocked` ret
 | `actual_minutes` | Attributable working minutes inside the sessions that worked the task. Never calendar elapsed time between open and close. |
 | `rework_count` | Times a green slice went back to red, or a review sent the work back. |
 | `estimate_ratio` | `actual_minutes / estimate_minutes`, computed at close. |
+| `human_speedup` | `human_estimate_minutes / actual_minutes`, computed at close; `n/a` when the human estimate is `n/a`. |
 
 ## Operation: open
 
 Run at the end of `task-start` Step 1, after the tier is announced and before setup.
 
 1. Skip entirely for the trivial tier unless the user asks for a ticket. A typo fix does not earn a work item.
-2. Require `title`, `tier`, `assist`, `estimate_minutes`, and `repo`. Any missing: name the missing field and stop.
+2. Require `title`, `tier`, `assist`, `estimate_minutes`, `human_estimate_minutes`, and `repo`. Any missing: name the missing field and stop.
 3. Search the tracker for an open ticket carrying this `branch` value. One hit: report the key and stop, no second ticket. Several hits: ask which is live, open nothing.
 4. Read `started_at` from the `## Session start (R-503)` block that `hooks/session-start.sh` injects at every session start, compaction included, whenever the SessionStart payload carries a transcript path (Claude Code passes the real one; the Cursor adapter passes a synthetic one per conversation, so under Cursor the value is the first start's hook clock). Block summarized away: read the file its `Record:` line names, `session-start.<session-id>` in the session's project directory under the Claude home. Neither present: leave `started_at` empty and say so in the report. Never estimate it, never round it, and never substitute the current time.
 5. Create the ticket in state `backlog`, or `in-progress` when work starts in the same turn. Write every known field. Sanitize the body first: secrets to `[REDACTED]`, PII to `[PII]`, internal URLs to `[INTERNAL_URL]` (R-104).
@@ -82,8 +84,8 @@ Run inside `task-cleanup` Step 2, after the verification gate and the merge deci
 
 1. Refuse while tests, build, or lint are not green (R-509). A `done` ticket asserts the work shipped.
 2. Compute `actual_minutes` from the R-503 start timestamp and the working time in any prior session recorded on the ticket. Exclude wall-clock gaps where nothing was running.
-3. Compute `estimate_ratio` as `actual_minutes / estimate_minutes`.
-4. Write `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `pr_link`, and the `done` status in one update. Never leave a `done` ticket with actuals missing.
+3. Compute `estimate_ratio` as `actual_minutes / estimate_minutes`, and `human_speedup` as `human_estimate_minutes / actual_minutes`.
+4. Write `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `human_speedup`, `pr_link`, and the `done` status in one update. Never leave a `done` ticket with actuals missing.
 5. Report the ratio in the `task-cleanup` table, and state the recalibration R-906 asks for: which direction the tier's estimate moves next time.
 
 ## Operation: report
@@ -92,7 +94,7 @@ Invoked as `report <day|week|month> <range>`; "what did I ship this week" means 
 
 1. Query tickets whose `completed_at` falls in the range.
 2. Bucket by the requested granularity.
-3. Per bucket: ticket count, summed `actual_minutes`, count by tier, median `estimate_ratio`.
+3. Per bucket: ticket count, summed `actual_minutes`, count by tier, median `estimate_ratio`, and median `human_speedup` over the tickets that have one.
 4. Count tickets with no `completed_at` separately as open. Never fold them into a bucket.
 5. Output one table, newest bucket last, and one line naming the largest single contributor to the total.
 
