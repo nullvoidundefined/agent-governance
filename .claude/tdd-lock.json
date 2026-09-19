@@ -1,21 +1,20 @@
 {
-  "slice": "B-12 deny hooks tampering through braces, find exclusions, a .bak rename before a commit, direct config-file edits, and the remaining short spellings",
-  "phase": "green",
+  "slice": "B-13 keep the guard fast on long commands",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "f9cbfcab0aa27a5ac1253a92d5058a856d5ab293edfb1df1cfd632d6f76be84d",
+      "sha256": "872a7b9e5a0f521989d73595d08d53c32b44271573ad741b907ee07c06f3b24e",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T16:30:26Z",
+  "openedAt": "2026-09-19T16:47:27Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T16:37:59Z",
-  "greenAt": "2026-09-19T16:46:20Z"
+  "redAt": "2026-09-19T17:25:12Z"
 }

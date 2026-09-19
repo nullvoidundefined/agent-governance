@@ -733,6 +733,82 @@ expect none 'rm -rf "$TMPDIR/repo/.git"'
 
 # --- end B-12 --------------------------------------------------------------
 
+# --- B-13: the guard decides a long command well inside the harness hook
+# timeout, because a timed-out hook makes no decision and lets the call through
+
+# the most milliseconds one run of the guard may take on any command below
+B13_BOUND_MS=1500
+
+# prints the current wall-clock time in milliseconds
+read_clock_ms() {
+  python3 -c 'import time; print(int(time.time()*1000))'
+}
+
+# builds the payload before the clock starts, times one run of the guard on the
+# given command, and counts a wrong decision or an over-bound run in FAILURES,
+# naming the case, the elapsed milliseconds, and the bound
+expect_within_bound() {
+  B13_PAYLOAD=$(jq -n --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}')
+  B13_START_MS=$(read_clock_ms)
+  B13_OUT=$(printf '%s' "$B13_PAYLOAD" | "$HOOK") || true
+  B13_END_MS=$(read_clock_ms)
+  B13_ELAPSED_MS=$((B13_END_MS - B13_START_MS))
+  if [ -z "$B13_OUT" ]; then
+    B13_GOT=none
+  else
+    B13_GOT=$(printf '%s' "$B13_OUT" | jq -r '.hookSpecificOutput.permissionDecision // "none"')
+  fi
+  echo "B-13 $2: ${B13_ELAPSED_MS}ms (bound ${B13_BOUND_MS}ms), decision $B13_GOT"
+  if [ "$B13_GOT" != "$1" ]; then
+    echo "FAIL: B-13 $2: expected $1, got $B13_GOT (${B13_ELAPSED_MS}ms)"
+    FAILURES=$((FAILURES + 1))
+  fi
+  if [ "$B13_ELAPSED_MS" -ge "$B13_BOUND_MS" ]; then
+    echo "FAIL: B-13 $2: took ${B13_ELAPSED_MS}ms, bound is under ${B13_BOUND_MS}ms"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+# rm with 1500 plain directories and one hook path last is denied, quickly
+B13_RM_COMMAND='rm -rf'
+B13_INDEX=0
+while [ "$B13_INDEX" -lt 1500 ]; do
+  B13_RM_COMMAND="$B13_RM_COMMAND dir$B13_INDEX"
+  B13_INDEX=$((B13_INDEX + 1))
+done
+B13_RM_COMMAND="$B13_RM_COMMAND .git/hooks/pre-commit"
+expect_within_bound deny 'rm of 1500 directories then a hook path' "$B13_RM_COMMAND"
+
+# git add of 1500 source files runs no hook and is allowed, quickly
+B13_ADD_COMMAND='git add'
+B13_INDEX=0
+while [ "$B13_INDEX" -lt 1500 ]; do
+  B13_ADD_COMMAND="$B13_ADD_COMMAND src/file$B13_INDEX.ts"
+  B13_INDEX=$((B13_INDEX + 1))
+done
+expect_within_bound none 'git add of 1500 files' "$B13_ADD_COMMAND"
+
+# echo of 3000 words touches nothing and is allowed, quickly
+B13_ECHO_COMMAND='echo'
+B13_INDEX=0
+while [ "$B13_INDEX" -lt 3000 ]; do
+  B13_ECHO_COMMAND="$B13_ECHO_COMMAND w$B13_INDEX"
+  B13_INDEX=$((B13_INDEX + 1))
+done
+expect_within_bound none 'echo of 3000 words' "$B13_ECHO_COMMAND"
+
+# cp of 800 sources into the hooks directory is denied, quickly
+B13_CP_COMMAND='cp -r'
+B13_INDEX=0
+while [ "$B13_INDEX" -lt 800 ]; do
+  B13_CP_COMMAND="$B13_CP_COMMAND a$B13_INDEX"
+  B13_INDEX=$((B13_INDEX + 1))
+done
+B13_CP_COMMAND="$B13_CP_COMMAND .git/hooks/"
+expect_within_bound deny 'cp of 800 sources into the hooks directory' "$B13_CP_COMMAND"
+
+# --- end B-13 --------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
