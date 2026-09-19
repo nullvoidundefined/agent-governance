@@ -109,7 +109,7 @@ expect_fail "pytest green while failing" bash "$TDD" green | grep -q 'test_score
 # green: the fixed implementation passes and the phase becomes green.
 git add -A && git commit -qm "test(score): PY-1 score returns 2"
 impl 2
-bash "$TDD" green >/dev/null || { echo "FAIL: pytest green must pass once score returns 2"; exit 1; }
+bash "$TDD" green >/dev/null || { echo "FAIL: pytest green must pass once score returns 2"; echo "DIAG pyc: $(find "$P" -name '*.pyc' -not -path '*/.venv/*' | tr '\n' ' ')"; echo "DIAG shebang: $(head -1 "$(command -v pytest)" 2>/dev/null || true)"; echo "DIAG cmd: $PYTEST_COMMAND"; echo "DIAG env: $(env | grep -i '^python' | tr '\n' ' ' || true)"; exit 1; }
 [ "$(lock_field .phase)" = "green" ] || { echo "FAIL: pytest green must move the phase to green"; exit 1; }
 
 # green: a skipped RED test is refused. The skip comes from a conftest.py, so
@@ -127,20 +127,28 @@ bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
 git add -A && git commit -qm "feat(score): PY-1 score returns 2"
 
 # Without uv the runner falls back to the project's .venv python with a
-# warning; the stub interpreter accepts only `-m pytest ...`.
+# warning. The stub interpreter hands `-m pytest ...` to the real pytest and
+# anything else (the JUnit converter's `-c`) to the real python3, logging
+# which, so the converter's use of the project interpreter is observed too
+# (PR #72 review).
+REAL_PYTHON=$(command -v python3)
 mkdir -p apps/server/.venv/bin
 cat > apps/server/.venv/bin/python <<STUB
 #!/usr/bin/env bash
-printf 'python %s | %s\n' "\$PWD" "\$*" >> "$CALLS"
-[ "\${1:-}" = -m ] && [ "\${2:-}" = pytest ] || { echo "stub python: unexpected arguments: \$*" >&2; exit 97; }
-shift 2
-exec $PYTEST_COMMAND "\$@"
+if [ "\${1:-}" = -m ] && [ "\${2:-}" = pytest ]; then
+  printf 'python %s | %s\n' "\$PWD" "\$*" >> "$CALLS"
+  shift 2
+  exec $PYTEST_COMMAND "\$@"
+fi
+printf 'python-convert %s\n' "\${1:-}" >> "$CALLS"
+exec "$REAL_PYTHON" "\$@"
 STUB
 chmod +x apps/server/.venv/bin/python
 : > "$CALLS"
 out=$(CLAUDE_TDD_UV=no-such-uv bash "$TDD" open --refactor "PY-2 tidy score" --lock "$TEST" 2>&1) || { echo "FAIL: open --refactor through the python fallback must succeed; output: $out"; exit 1; }
 grep -q "uv is not on PATH" <<< "$out" || { echo "FAIL: the python fallback must warn that uv is missing; output: $out"; exit 1; }
 grep -q "^python $SERVER | -m pytest " "$CALLS" || { echo "FAIL: without uv pytest must run through the project's .venv python; calls: $(cat "$CALLS")"; exit 1; }
+grep -q "^python-convert -c" "$CALLS" || { echo "FAIL: the JUnit converter must run through the project's .venv python; calls: $(cat "$CALLS")"; exit 1; }
 [ "$(lock_field '.baseline.runner')" = "pytest" ] || { echo "FAIL: a pytest refactor must record the pytest runner"; exit 1; }
 CLAUDE_TDD_UV=no-such-uv bash "$TDD" green >/dev/null 2>&1 && bash "$TDD" close >/dev/null || { echo "FAIL: green and close through the python fallback must succeed"; exit 1; }
 

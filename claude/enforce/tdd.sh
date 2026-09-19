@@ -157,20 +157,22 @@ resolve_pytest() {
     PYTEST_CMD=("$UV_BIN" run pytest)
   else
     local python
-    python=$(pytest_python) || exit 1
+    python=$(project_python) || die "pytest needs uv on PATH, a .venv in $project, or python3 or python on PATH, and none was found"
     PYTEST_CMD=("$python" -m pytest)
     say "warning: uv is not on PATH; running '${PYTEST_CMD[*]}' in $project instead of 'uv run pytest'" >&2
   fi
   RUNNER="${PYTEST_CMD[*]} (in $project)"
 }
 
-# pytest_python: the interpreter for the python -m pytest fallback, the
-# project's own virtual environment first.
-pytest_python() {
+# project_python: prints the project's own .venv interpreter, else python3 or
+# python from PATH; returns 1 when none exists. It runs pytest when uv is
+# absent and always runs the JUnit converter, so a project that relies on its
+# .venv without a global Python still gets a report.
+project_python() {
   if [ -x "$PYTEST_DIR/.venv/bin/python" ]; then printf '%s' "$PYTEST_DIR/.venv/bin/python"
   elif command -v python3 >/dev/null 2>&1; then printf 'python3'
   elif command -v python >/dev/null 2>&1; then printf 'python'
-  else die "pytest needs uv or a Python interpreter on PATH, and neither was found"
+  else return 1
   fi
 }
 
@@ -235,12 +237,17 @@ run_pytest_suite() {
 # record with no tests and the error text as its message; a failure or error
 # element is a failed test, and a skipped element (skip or xfail) a skipped
 # one. A named file pytest reported nothing for is a record with no tests and
-# no message, which red refuses as a file with no tests. Returns non-zero when
-# the XML is missing or unreadable, or no interpreter can read it.
+# no message, which red refuses as a file with no tests. The converter runs
+# under project_python, the project's .venv interpreter first, and under
+# `uv run --no-project python` when no interpreter exists outside uv. Returns
+# non-zero when the XML is missing or unreadable, or no interpreter can read it.
 pytest_report() {
-  local python
-  python=$(command -v python3 || command -v python) || { printf 'tdd.sh: no python3 on PATH to read the pytest report\n' >&2; return 1; }
-  "$python" -c '
+  local python converter=()
+  if python=$(project_python); then converter=("$python")
+  elif command -v "$UV_BIN" >/dev/null 2>&1; then converter=("$UV_BIN" run --no-project python)
+  else printf 'tdd.sh: no Python interpreter (a .venv in the project, python3, python, or uv) to read the pytest report\n' >&2; return 1
+  fi
+  "${converter[@]}" -c '
 import json
 import os
 import sys
