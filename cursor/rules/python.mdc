@@ -18,9 +18,9 @@ The Python track for API services, workers, and scheduled jobs. It mirrors `CLAU
 - **PostgreSQL** through **SQLAlchemy 2 Core** with the async engine on the **asyncpg** driver; no ORM models, no `Session.add`, tables are `Table` objects on one `MetaData`
 - **Alembic** for migrations
 - **Pydantic v2** for request and response schemas, **pydantic-settings** for configuration
-- **redis.asyncio** for rate limits, the circuit breaker, and the job queue
-- **arq** for background jobs
-- **structlog** for all logging
+- **redis.asyncio** for rate limits and the job queue
+- **arq** for background jobs and scheduled jobs
+- **structlog** for all logging; **asgi-correlation-id** for request IDs
 - **Anthropic Python SDK** (`anthropic.AsyncAnthropic`) for LLM calls and **httpx** (`httpx.AsyncClient`) for every other outbound call, both wrapped in `clients/`
 - **uv** for environments, dependencies, and the lockfile
 - **pytest** with **pytest-asyncio** for tests; **ruff**, **black**, and **mypy --strict** for quality
@@ -221,11 +221,14 @@ def create_app() -> FastAPI:
 ```python
 """Liveness and readiness probes, registered before every application router."""
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+READINESS_TIMEOUT_SECONDS = 2
 router = APIRouter(tags=["health"])
 
 
@@ -239,9 +242,10 @@ async def read_liveness() -> dict[str, str]:
 async def read_readiness(request: Request, response: Response) -> dict[str, str]:
     """Answer 200 when the database answers, 503 when it does not, including a failed connect."""
     try:
-        async with request.app.state.engine.connect() as connection:
-            await connection.execute(text("SELECT 1"))
-    except (OSError, SQLAlchemyError) as err:
+        async with asyncio.timeout(READINESS_TIMEOUT_SECONDS):
+            async with request.app.state.engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+    except (OSError, SQLAlchemyError, TimeoutError) as err:
         structlog.get_logger().warning("readiness_db_failed", exc_info=err)
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "degraded", "db": "disconnected"}
@@ -249,7 +253,7 @@ async def read_readiness(request: Request, response: Response) -> dict[str, str]
 ```
 
 - `/health` is the Railway healthcheck path and the Docker `HEALTHCHECK` target
-- `/health/ready` runs in post-deploy smoke tests
+- `/health/ready` runs in post-deploy smoke tests. Readiness is bounded by `asyncio.timeout` (corrected 2026-09-19: without a client-side deadline, a hanging connect stalled the probe instead of answering 503)
 - The health router is included first and outside the `/v1` prefix (R-345). Router order cannot bypass global middleware, so the rate limiter and the CSRF guard each skip `/health` and `/health/ready` by path, and readiness opens its own connection so a failed connect still answers 503
 
 ---
@@ -332,8 +336,10 @@ COPY --from=builder --chown=app:app /app /app
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
 ```
+
+- `--proxy-headers` trusts `X-Forwarded-For` only from the addresses in `FORWARDED_ALLOW_IPS` (uvicorn's `--forwarded-allow-ips` read from the environment), set at run time to the reverse proxy's private network as a CIDR, so a redeploy that changes the proxy's address still matches; Rate Limiting below depends on it. Never `*`, which makes uvicorn take the first, client-forgeable entry, and settings refuse to start production without it, because a missing value keys every proxied request on the proxy's address and puts the whole site in one bucket. The right-to-left walk past trusted addresses needs uvicorn 0.53 or later, the pinned floor
 
 - **Multi-stage**, with base images pinned to a version tag, never `latest`
 - **Non-root** `app` user in the runtime stage
@@ -380,11 +386,13 @@ async def verify_password(candidate: str, stored_hash: str | None) -> bool:
 
 - **Table** `user_sessions` (R-334): `id uuid PK`, `user_id uuid FK -> users ON DELETE CASCADE`, `token_hash text UNIQUE NOT NULL`, `expires_at timestamptz NOT NULL`, `created_at`, `last_seen_at`, and an index on `expires_at`
 - **Cookie**: `httponly=True`, `secure=True` outside development, `samesite="lax"`, `max_age` from `SESSION_TTL`, `path="/"`, set with `response.set_cookie`
+- **Email** is trimmed and lowercased before every insert and lookup, and `users` carries a unique index on `lower(email)` (added 2026-09-19: without both, `A@x.com` and `a@x.com` register as two accounts and login depends on case)
 - **Login** looks up the user, runs `verify_password` even when the user is missing (the dummy hash equalizes timing), and answers `AUTH_INVALID_CREDENTIALS` in both cases
+- **Password reset** (`user_password_resets`, token stored as its SHA-256 hash): 1-hour expiry; issuing a reset deletes the user's earlier unused resets; consumption is one atomic `UPDATE ... SET used_at = now() WHERE token_hash = :hash AND used_at IS NULL AND expires_at > now() RETURNING user_id`, and success deletes every session of the user (added 2026-09-19: a select-then-update lets two concurrent submissions of one token both succeed)
 - **Resolution**: the `get_current_user` dependency hashes the cookie value, selects the session joined to its user where `expires_at > now()`, raises `AUTH_REQUIRED` or `AUTH_SESSION_EXPIRED`, and binds `user_id` into the structlog context
 - **Admin**: `require_admin` depends on `get_current_user` and raises `AUTH_ADMIN_REQUIRED` unless `user.role == "admin"`
 - **Logout** deletes the session row and clears the cookie; a password change deletes every other session of that user
-- **Cleanup**: expired rows are deleted hourly (pg_cron Cleanup Jobs below)
+- **Cleanup**: expired rows are deleted hourly by the arq cron job (pg_cron Cleanup Jobs below)
 - bcrypt always runs inside `asyncio.to_thread`, for verification as above and for hashing at registration, so it never blocks the event loop
 
 ---
@@ -402,8 +410,9 @@ Cookie sessions need a CSRF guard. The API requires a custom header that a brows
 
 ## Rate Limiting
 
-- A Redis-backed fixed-window limiter in `middleware/rate_limit.py`, keyed by client IP (the first hop of `X-Forwarded-For` behind Railway's proxy)
-- Global limit: 100 requests per 15 minutes; auth routes (`/v1/auth/login`, `/v1/auth/register`, password reset): 10 per 15 minutes
+- A Redis-backed fixed-window limiter in `middleware/rate_limit.py`, keyed on `scope["client"]` (`request.client.host`), the client IP uvicorn resolved through the trusted-proxy chain (Containers above); the limiter never parses `X-Forwarded-For` itself
+- The trust chain: the edge (Railway) appends the connecting address as the last `X-Forwarded-For` entry, and every earlier entry is client-supplied; the reverse proxy in front of the API (the Nitro proxy in a Nuxt stack) forwards only that last entry, and uvicorn honors it only from the proxy's private address, so a direct request is keyed on its peer address (corrected 2026-09-19: the first `X-Forwarded-For` hop is client-forgeable, so keying on it let one client rotate buckets at will)
+- Global limit: 100 requests per 15 minutes; auth routes, matched on the full `/v1` path the middleware sees (`/v1/auth/login`, `/v1/auth/register`, `/v1/auth/forgot-password`, `/v1/auth/reset-password`): 10 per 15 minutes (corrected 2026-09-19: the list names every limited path in full, because a pattern written without the `/v1` mount prefix never matches and leaves the route on the global limit)
 - Over the limit: 429 with `RATE_LIMIT_EXCEEDED` and a `Retry-After` header
 - Without `REDIS_URL` the limiter falls back to an in-process counter and logs one `rate_limiter_in_memory` warning, in development and test only: settings refuse to start production without `REDIS_URL`, because per-process counters let an attacker rotate across instances past the auth limit
 - Skipped when `settings.environment == "test"`; the rate-limit tests turn it back on explicitly
@@ -413,9 +422,9 @@ Cookie sessions need a CSRF guard. The API requires a custom header that a brows
 ## Idempotency Keys
 
 - `middleware/idempotency.py` handles `POST` and `PUT` requests that carry an `Idempotency-Key` header from an authenticated user; everything else passes through
-- A key seen within 24 hours replays the stored status code and body without running the handler
-- A new key claims a row in `request_idempotency_keys` (`key`, `user_id`, `status_code`, `response_body jsonb`, `created_at`, unique on `(key, user_id)`), runs the handler, and stores the status and body
-- A second request that arrives while the first still holds the claim answers 409. When the handler raises or answers 5xx, the middleware deletes the claim in a `finally` block, so the client's retry runs again instead of meeting 409 until cleanup
+- A new key claims a row in `request_idempotency_keys` (`key`, `user_id`, `request_method`, `request_path`, `request_body_hash`, `state` in `in_progress` or `completed`, `locked_until`, `claim_token uuid`, `status_code` and `response_body jsonb` null until completed, `created_at`, unique on `(key, user_id)`), runs the handler, and stores the status and body with `state = 'completed'`
+- A `completed` key seen within 24 hours replays the stored status code and body without running the handler, but only when method, path, and SHA-256 body hash all match; any mismatch answers 422 `IDEMPOTENCY_KEY_REUSED` and runs nothing (corrected 2026-09-19: scoping by `(key, user_id)` alone let a key sent to one endpoint replay its response into another)
+- A claim takes a 60-second lease (`locked_until`). A second request that meets an `in_progress` claim inside its lease answers 409; one that meets an expired lease takes the claim over with one `UPDATE ... SET locked_until = now() + interval '60 seconds', claim_token = :mine WHERE key = :key AND user_id = :user_id AND state = 'in_progress' AND locked_until < now() RETURNING key`, so two takeovers cannot both win, and runs the handler (corrected 2026-09-19: a process that crashed between claim and completion stranded the key until cleanup). The completion `UPDATE` and the `finally` `DELETE` that releases a claim after a raise or a 5xx both carry `AND claim_token = :mine`, so a slow original process can neither overwrite nor delete the claim that took it over, and the client's retry runs again
 - Rows older than 24 hours are deleted by the hourly cleanup job
 
 ---
@@ -446,12 +455,15 @@ class Settings(BaseSettings):
     database_url: SecretStr
     redis_url: SecretStr | None = None
     cors_origin: str | None = None
+    database_ca_cert: str | None = None
+    forwarded_allow_ips: str | None = None
 
     @model_validator(mode="after")
     def require_production_values(self) -> "Settings":
         """Refuse to start in production without the values production needs."""
-        if self.environment == "production" and not (self.cors_origin and self.redis_url):
-            raise ValueError("CORS_ORIGIN and REDIS_URL are required in production")
+        required_values = (self.cors_origin, self.redis_url, self.forwarded_allow_ips)
+        if self.environment == "production" and not all(required_values):
+            raise ValueError("CORS_ORIGIN, REDIS_URL, and FORWARDED_ALLOW_IPS are required in production")
         return self
 
 
@@ -486,12 +498,13 @@ def register_middleware(app: FastAPI, settings: Settings) -> None:
         allow_headers=["Content-Type", "X-Requested-With", "Idempotency-Key", "X-Request-Id"],
     )                                                            # 3
     app.add_middleware(SecurityHeadersMiddleware)                # 2
-    app.add_middleware(RequestContextMiddleware)                 # 1
+    app.add_middleware(RequestContextMiddleware)                 # 1b
+    app.add_middleware(CorrelationIdMiddleware, header_name="X-Request-Id", validator=is_valid_request_id)  # 1a
 ```
 
 The request passes them in this order:
 
-1. **Request context**: honor or mint the request ID, bind it to structlog, echo it on the response, and reject a body over 100 KB with 413 unless the route is on the upload allowlist
+1. **Request ID and body limit**: asgi-correlation-id (1a, outermost, so every response carries the ID, 413s included) keeps a valid inbound `X-Request-Id` or mints one; `RequestContextMiddleware` (1b) binds it into structlog and rejects a body over 100 KB with 413 `INPUT_PAYLOAD_TOO_LARGE` unless the route is on the upload allowlist
 2. **Security headers**: the Helmet equivalents (`X-Content-Type-Options`, `Referrer-Policy`, and `Strict-Transport-Security` in production)
 3. **CORS**, so preflights answer before anything else can reject them
 4. **Rate limit**
@@ -624,7 +637,7 @@ def create_database_engine(settings: Settings) -> AsyncEngine:
         pool_timeout=5,
         pool_recycle=1800,
         pool_pre_ping=True,
-        connect_args={"server_settings": {"statement_timeout": "10000"}},
+        connect_args=build_connect_args(settings),
     )
 
 
@@ -639,7 +652,7 @@ async def get_connection(request: Request) -> AsyncIterator[AsyncConnection]:
 - A service that needs its own transaction boundary inside a request uses `async with connection.begin_nested():`
 - A connection is never shared across `asyncio` tasks; `asyncio.gather` over repository calls opens one connection per task
 - Workers and scripts open connections from the engine in `ctx` the same way, one transaction per job
-- TLS is required in production through the URL's `ssl=require` parameter
+- `build_connect_args` returns the connect `timeout` and `server_settings` (`statement_timeout` 10000 ms) always, plus the `ssl` context in staging and production. TLS with certificate verification, the `sslmode=verify-full` semantics: `ssl.create_default_context(cafile=settings.database_ca_cert)` passed as asyncpg's `ssl` connect argument checks the chain and the hostname, and the optional `DATABASE_CA_CERT` names a private CA's file (corrected 2026-09-19: `require` encrypts without verifying the server, so a man in the middle passes)
 
 ---
 
@@ -718,6 +731,8 @@ class ErrorCode(StrEnum):
     AUTH_REQUIRED = "AUTH_REQUIRED"
     AUTH_SESSION_EXPIRED = "AUTH_SESSION_EXPIRED"
     CSRF_HEADER_MISSING = "CSRF_HEADER_MISSING"
+    IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
+    INPUT_PAYLOAD_TOO_LARGE = "INPUT_PAYLOAD_TOO_LARGE"
     INPUT_VALIDATION_ERROR = "INPUT_VALIDATION_ERROR"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     ROUTING_METHOD_NOT_ALLOWED = "ROUTING_METHOD_NOT_ALLOWED"
@@ -741,7 +756,7 @@ class ErrorCode(StrEnum):
 - `POST /v1/billing/webhook` reads `await request.body()` as raw bytes before anything parses it, and verifies with `stripe.Webhook.construct_event(raw_body, signature_header, settings.stripe_webhook_secret)`
 - A missing signature or secret answers 400 `BILLING_WEBHOOK_MISCONFIGURED`; a failed verification answers 400 `BILLING_WEBHOOK_INVALID_SIGNATURE`
 - Only allowlisted event types are handled; the rest are acknowledged with 200 and ignored
-- The ledger table `billing_webhook_events` (R-334; `stripe_event_id` unique, `event_type`, `status` in `claimed`, `processed`, `failed`, `attempted_at`) makes delivery idempotent: insert with `ON CONFLICT DO NOTHING` to claim, skip if already `processed`, mark `processed` or `failed` in the same transaction as the side effect
+- The ledger table `billing_webhook_events` (R-334; `id uuid PK`, `stripe_event_id` unique, `event_type`, `status` in `claimed`, `processed`, `failed`, `attempted_at`) makes delivery idempotent: claim with `INSERT ... ON CONFLICT (stripe_event_id) DO UPDATE SET status = 'claimed', attempted_at = now() WHERE billing_webhook_events.status = 'failed' OR (billing_webhook_events.status = 'claimed' AND billing_webhook_events.attempted_at < now() - interval '10 minutes') RETURNING id`, skip when no row returns (already `processed`, or claimed within 10 minutes), and mark `processed` or `failed` in the same transaction as the side effect (corrected 2026-09-19: `ON CONFLICT DO NOTHING` never reclaimed a `failed` event or a claim left by a crash, so Stripe's redelivery was skipped and the event lost for good)
 - A failed handler answers 500 with `BILLING_WEBHOOK_PROCESSING_FAILED` so Stripe retries
 - The route is exempt from CSRF and rate limiting and carries no session dependency
 
@@ -776,88 +791,78 @@ class ErrorCode(StrEnum):
 
 ## Circuit Breaker
 
-- `services/circuit_breaker.py` guards calls to a flaky provider: after 5 failures inside 60 seconds the circuit opens for 30 seconds, and calls fail fast with a typed `CircuitOpenError` the caller handles
-- State (failure count, opened-at time) lives in Redis under `circuit:{provider}` so every instance shares it
-- Without Redis the breaker fails open: it never blocks a call, and it logs one `circuit_breaker_disabled` warning at startup
-- The breaker wraps the client call inside `with_client_telemetry`, so an open circuit still logs its outcome
+- Optional, not part of the default stack (owner decision, 2026-09-19 stack audit: a breaker no provider needs is unused code, R-309); add one only when a provider's failures are shown to cascade. `services/circuit_breaker.py` opens after 5 failures inside 60 seconds for 30 seconds, failing fast with a typed `CircuitOpenError`; state lives in Redis under `circuit:{provider}` so every instance shares it, without Redis it fails open, and it wraps the client call inside `with_client_telemetry` so an open circuit still logs its outcome
 
 ---
 
 ## Logging (structlog)
 
 ```python
-"""Configures structlog once per process: JSON in deployed environments, console locally."""
+"""Configures structlog once per process; standard-library records share the renderer."""
 
 import logging
+import sys
 
 import structlog
+from structlog.tracebacks import ExceptionDictTransformer
 
 from app.core.settings import Settings
 
+SHARED_PROCESSORS: list[structlog.typing.Processor] = [
+    structlog.contextvars.merge_contextvars,
+    structlog.processors.add_log_level,
+    structlog.processors.TimeStamper(fmt="iso", utc=True),
+    structlog.processors.ExceptionRenderer(ExceptionDictTransformer(show_locals=False)),
+]
+
 
 def configure_logging(settings: Settings) -> None:
-    """Install the processor chain and renderer for this environment."""
+    """Install the structlog chain, then route standard-library records through it."""
     renderer = (
         structlog.dev.ConsoleRenderer()
         if settings.environment == "development"
         else structlog.processors.JSONRenderer()
     )
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.dict_tracebacks,
-            renderer,
-        ],
+        processors=[*SHARED_PROCESSORS, renderer],
         wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     )
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=SHARED_PROCESSORS,
+        processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
+    ))
+    logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "asgi_correlation_id"):
+        logging.getLogger(logger_name).handlers.clear()
+        logging.getLogger(logger_name).propagate = True
 ```
 
 - Every module gets its logger with `logger = structlog.get_logger()` at module level
 - Event name first as a `snake_case` string, values as keyword fields: `logger.info("trip_created", trip_id=trip.id)` (R-342); never an f-string with values in the event
-- Errors pass as `exc_info=err`, which `dict_tracebacks` renders as a structured field, the Python form of `{ err }`
-- uvicorn's access and error loggers are routed through the same renderer, so every line in production is JSON. No secrets, tokens, passwords, emails, or other PII in any field (R-104); log IDs instead
+- Errors pass as `exc_info=err`, rendered as a structured field (the Python form of `{ err }`) by `ExceptionRenderer(ExceptionDictTransformer(show_locals=False))` (corrected 2026-09-19: the earlier `dict_tracebacks` renders frame locals by default, and a probe showed it writing the database password from asyncpg's connect frame into a readiness log line)
+- Standard-library records (uvicorn, asgi-correlation-id, SQLAlchemy) reach the same renderer through `ProcessorFormatter` on the root handler; uvicorn installs its own handlers before it calls the factory, so the loop clears them and lets the records propagate, so every production line is JSON (corrected 2026-09-19: the track claimed this routing without showing it, and those records printed as plain text). No secrets, tokens, passwords, emails, or other PII in any field (R-104); log IDs instead
 
 ---
 
 ## Observability (R-341 to R-346)
 
-**Request ID (R-341).** One ID per request, honored from the caller, echoed back, and bound to the context so nothing passes it by hand:
+**Request ID (R-341).** One ID per request, honored from the caller only when it is safe, echoed back, and bound to the context so nothing passes it by hand. asgi-correlation-id does the honoring, minting, and echoing (owner decision, 2026-09-19 stack audit: a maintained package replaces about 40 hand-written lines):
 
 ```python
-"""Binds a request ID to every log line and echoes it on the response."""
+import re
 
-import uuid
-
-import structlog
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
-
-REQUEST_ID_HEADER = b"x-request-id"
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
-class RequestContextMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Honor an inbound X-Request-Id or mint one, bind it, and echo it."""
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-        inbound_id = dict(scope["headers"]).get(REQUEST_ID_HEADER, b"").decode()
-        request_id = inbound_id or str(uuid.uuid4())
-        structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(request_id=request_id)
-
-        async def send_with_request_id(message: Message) -> None:
-            if message["type"] == "http.response.start":
-                message["headers"] = [*message.get("headers", []), (REQUEST_ID_HEADER, request_id.encode())]
-            await send(message)
-
-        await self.app(scope, receive, send_with_request_id)
+def is_valid_request_id(candidate: str) -> bool:
+    """Accept an inbound request ID only when it is 1 to 64 safe characters."""
+    return REQUEST_ID_PATTERN.fullmatch(candidate) is not None
 ```
 
+- The validator rejects an inbound ID outside the pattern and a fresh UUID takes its place (corrected 2026-09-19: the hand-written middleware echoed any inbound value, so a client could inject newlines or megabytes into every log line and response header)
+- `RequestContextMiddleware` binds `correlation_id.get()` with `structlog.contextvars.bound_contextvars(...)`, which restores the previous context when the request ends; the library never resets its own context variable, and `clear_contextvars()` would also wipe an outer caller's binding
+- The body limit covers a streamed body as well as `Content-Length`: the middleware reads the body up to 100 KB before calling the app and replays it, and anything larger gets a 413 it sends itself as raw ASGI messages, so the app never runs (corrected 2026-09-19: raising from `receive` becomes a 400, because FastAPI converts an exception raised while it reads a Pydantic body, and counting bytes only as the app reads them misses a route that never reads its body)
 - Services and repositories log through their module logger and inherit `request_id` from the context automatically; workers bind `job_id` the same way
 
 **Analytics (R-343).** One client, one registry, no literals at the call site:
@@ -900,16 +905,13 @@ async def with_client_telemetry[T](provider: str, operation: str, call: Callable
 
 - The one broad `except Exception` in the codebase is here, and it re-raises. Every client sets an explicit timeout (`httpx.AsyncClient(timeout=10.0)`, `AsyncAnthropic(timeout=60.0, max_retries=2)`); a client without one is a defect
 - Outbound HTTP forwards the request ID: an `httpx` event hook adds `X-Request-Id` from `structlog.contextvars.get_contextvars()`
-- Health endpoints (R-345) are the two under Health Endpoints; workers answer through `arq --check`
+- Health endpoints (R-345) are the two under Health Endpoints; workers answer on `WORKER_PORT` (Worker Pattern above)
 
 ---
 
 ## pg_cron Cleanup Jobs
 
-- A migration runs `CREATE EXTENSION IF NOT EXISTS pg_cron` inside a `DO` block that catches `insufficient_privilege` and `undefined_file`, so it succeeds where the extension is unavailable
-- Where pg_cron exists, the same migration schedules hourly deletes: expired `user_sessions`, `request_idempotency_keys` older than 24 hours, and `billing_webhook_events` older than 30 days
-- Where it does not, an arq cron job (`cron(delete_expired_rows, minute=0)`) runs the same deletes; the job checks `cron.job` first and exits when pg_cron already owns the work
-- Deletes run in batches of 1000 so a large backlog never holds a long lock
+- The scheduled cleanup is one arq cron job, `cron(delete_expired_rows, minute=0)` in `WorkerSettings.cron_jobs`: hourly, it deletes expired `user_sessions`, `request_idempotency_keys` older than 24 hours, and `billing_webhook_events` older than 30 days, in batches of 1000 so a large backlog never holds a long lock. No pg_cron extension and no migration-scheduled job (owner decision, 2026-09-19 stack audit: one code path replaces the pg_cron migration and its arq fallback, and the worker exists anyway; the heading keeps its name for the invariant test). While the worker is down, rows accumulate until it returns, and nothing else is affected
 
 ---
 
