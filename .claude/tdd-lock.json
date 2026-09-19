@@ -1,21 +1,20 @@
 {
-  "slice": "B-2 deny hook-skipping environment variables on git commands",
-  "phase": "green",
+  "slice": "B-3 deny core.hooksPath overrides through -c, --config-env, and GIT_CONFIG variables",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "4e77a74fea15b875f5177eaa8d673f250df30b2398b92bea8cb5909bb507fc50",
+      "sha256": "931a949dba98e0dd70feab6f84ae9e8475c6770bca21f7f500d11cd9739df15d",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T10:42:26Z",
+  "openedAt": "2026-09-19T10:57:11Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T10:50:46Z",
-  "greenAt": "2026-09-19T10:56:33Z"
+  "redAt": "2026-09-19T11:04:54Z"
 }

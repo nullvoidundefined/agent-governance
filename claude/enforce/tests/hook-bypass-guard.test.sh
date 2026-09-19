@@ -124,6 +124,53 @@ expect none 'echo HUSKY=0 git commit'
 
 # --- end B-2 ---------------------------------------------------------------
 
+# --- B-3: core.hooksPath overridden for one invocation, without git config --
+
+# the -c global option, in any key case, quoted, empty-valued, and on any
+# subcommand, not only commit
+expect deny 'git -c core.hooksPath=/dev/null commit -m x'
+expect deny 'git -c core.hookspath=/tmp/h push'
+expect deny 'git -c CORE.HOOKSPATH=/dev/null commit -m x'
+expect deny 'git -c "core.hooksPath=/dev/null" commit -m x'
+expect deny 'git -c core.hooksPath= commit -m x'
+expect deny 'git -c core.hooksPath=/dev/null rebase main'
+expect deny 'git -C /tmp/r -c core.hooksPath=/dev/null commit -m x'
+
+# the --config-env global option, attached and separate
+expect deny 'git --config-env=core.hooksPath=EVIL_HOOKS commit -m x'
+expect deny 'git --config-env core.hooksPath=EVIL_HOOKS push'
+
+# the GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n variables, as
+# prefixes, through env, and exported earlier in the same command
+expect deny 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x'
+expect deny 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hookspath GIT_CONFIG_VALUE_0=/dev/null git push'
+expect deny 'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x'
+expect deny 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null; git commit -m x'
+expect deny $'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null\ngit commit -m x'
+
+# the GIT_CONFIG_PARAMETERS variable
+expect deny "GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/dev/null'\" git commit -m x"
+
+# a real override after an unrelated command on a later line or after &&
+expect deny $'git status\ngit -c core.hooksPath=/dev/null commit -m x'
+expect deny 'git add . && git -c core.hooksPath=/dev/null commit -m x'
+expect deny 'git add . && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x'
+
+# other config keys, hooksPath reads, quoted or echoed text, searches, and an
+# export with no git command in the call must keep working
+expect none 'git -c user.name=x commit -m x'
+expect none 'git -c core.editor=vim commit'
+expect none 'git config core.hooksPath'
+expect none 'git config --get core.hooksPath'
+expect none 'git commit -m "set core.hooksPath=/dev/null later"'
+expect none 'git commit -m "git -c core.hooksPath=x push"'
+expect none 'grep -rn core.hooksPath .'
+expect none 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x'
+expect none 'echo GIT_CONFIG_KEY_0=core.hooksPath'
+expect none 'export GIT_CONFIG_KEY_0=core.hooksPath'
+
+# --- end B-3 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
