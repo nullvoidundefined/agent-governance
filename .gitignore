@@ -11,3 +11,6 @@ node_modules/
 # task-start's per-repo ledger (claude/skills/task-start/scripts/task-tier.sh):
 # session-local state, never a fixture or a tracked artifact.
 .claude/task-tier.json
+
+# Python bytecode from running hook helpers such as hooks/shell-command-segments.py.
+__pycache__/
