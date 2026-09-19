@@ -63,7 +63,7 @@ class Tokenizer:
         self.in_word = False
         self.word_quoted = False
         self.pending_heredocs = []
-        self.line_names_shell = False
+        self.line_start = 0
         self.expect_heredoc_delimiter = None
 
     def run(self):
@@ -197,22 +197,21 @@ class Tokenizer:
             self.pending_heredocs.append(
                 (value, self.expect_heredoc_delimiter == "<<-", self.word_quoted))
             self.expect_heredoc_delimiter = None
-        elif os.path.basename(value) in SHELLS:
-            self.line_names_shell = True
         self.word, self.in_word, self.word_quoted = [], False, False
 
     def end_line(self):
         self.end_word()
+        feeds_shell = heredoc_feeds_shell(self.tokens[self.line_start:])
         self.tokens.append(("separator", "\n"))
         self.position += 1
         for delimiter, strips_tabs, is_literal in self.pending_heredocs:
             body = self.read_heredoc_body(delimiter, strips_tabs)
-            if self.line_names_shell:
+            if feeds_shell:
                 self.tokens.append(("substitution", body))
             elif not is_literal:
                 self.tokens.extend(("substitution", inner) for inner in find_substitutions(body))
         self.pending_heredocs = []
-        self.line_names_shell = False
+        self.line_start = len(self.tokens)
 
     def read_heredoc_body(self, delimiter, strips_tabs):
         lines = []
@@ -229,19 +228,72 @@ class Tokenizer:
 
 def find_substitution_end(text, start):
     """Returns the index of the character that closes the $( or backtick
-    substitution opening at start; an unclosed one raises ValueError."""
+    substitution opening at start; an unclosed one raises ValueError. A
+    parenthesis inside quotes or after a backslash does not count, as in bash:
+    `$(printf ')'; git ...)` runs the git command."""
     if text[start] == "`":
         end = text.find("`", start + 1)
     else:
-        depth, end = 0, start + 1
+        depth, end, quote = 0, start + 1, ""
         while end < len(text):
-            depth += {"(": 1, ")": -1}.get(text[end], 0)
-            if depth == 0:
-                break
+            char = text[end]
+            if char == "\\" and quote != "'":
+                end += 2
+                continue
+            if quote:
+                quote = "" if char == quote else quote
+            elif char in "'\"":
+                quote = char
+            else:
+                depth += {"(": 1, ")": -1}.get(char, 0)
+                if depth == 0:
+                    break
             end += 1
     if end < 0 or end >= len(text):
         raise ValueError("unclosed substitution")
     return end
+
+
+def split_line_segments(line_tokens):
+    """Returns one line's tokens as (words, separator after) pairs, with
+    redirect operators marked, for deciding what a heredoc feeds."""
+    segments, current = [], []
+    for kind, value in line_tokens:
+        if kind == "separator":
+            segments.append((current, value))
+            current = []
+        elif kind == "redirect":
+            current.append(OPERATOR_MARK + value)
+        elif kind == "word":
+            current.append(value)
+    segments.append((current, None))
+    return segments
+
+
+def runs_shell(words):
+    """True when the program a segment runs, past assignments and wrappers,
+    is a shell."""
+    normalized = normalize_segment(words, [])
+    program_index = find_program_index(normalized)
+    return program_index < len(normalized) and normalized[program_index] in SHELLS
+
+
+def heredoc_feeds_shell(line_tokens):
+    """True when a heredoc opened on this line is read by a shell: the command
+    that opens it is a shell, or a later command in the same pipeline is. A
+    shell name that is only an argument (`cat bash <<EOF`) does not count."""
+    segments = split_line_segments(line_tokens)
+    for index, (words, _) in enumerate(segments):
+        if OPERATOR_MARK + "<<" not in words and OPERATOR_MARK + "<<-" not in words:
+            continue
+        chain = index
+        while chain < len(segments):
+            if runs_shell(segments[chain][0]):
+                return True
+            if segments[chain][1] not in ("|", "|&"):
+                break
+            chain += 1
+    return False
 
 
 def substitution_inner(text, start, end):

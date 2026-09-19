@@ -1,6 +1,6 @@
 {
   "slice": "B-14 respect quotes when finding a substitution's end, and parse a heredoc body only when it feeds a shell",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 94,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T18:12:29Z"
+  "redAt": "2026-09-19T18:12:29Z",
+  "greenAt": "2026-09-19T18:17:43Z"
 }
