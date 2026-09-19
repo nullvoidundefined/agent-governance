@@ -17,7 +17,8 @@ The Vue half of the frontend track. Read together with `~/.claude/CLAUDE-FRONTEN
 - **Vue 3.5 or later** (reactive props destructure and `useTemplateRef` below need it; Nuxt 4 already requires it) with the Composition API and `<script setup lang="ts">` only; no Options API, no `defineComponent({ setup() })` objects, no plain `<script>` blocks without `setup`
 - **TypeScript**; strict mode, no `any`, `vue-tsc --noEmit` in CI next to `tsc`
 - **TanStack Query for Vue** (`@tanstack/vue-query`) for all server state; no `fetch` inside `onMounted` or a `watch`
-- **Pinia** for app state that outlives one component
+- **Nuxt `useState` composables** for app state that outlives one component; **Pinia** only when a project needs a real store (many interdependent actions, store plugins, or a Vue app without Nuxt) (corrected 2026-09-19, owner decision in the stack audit: the template's only app state, the theme and the modal stack, needs no store dependency)
+- **openapi-fetch** as the typed own-backend client, over the types `openapi-typescript` generates from the backend's committed OpenAPI document, so every call's path, parameters, and response type come from the document with no hand-written types (corrected 2026-09-19, owner decision in the stack audit)
 - **Reka UI** (the Vue port of the Radix headless primitives) for dialogs, toasts, menus, popovers, and tabs
 - **SCSS Modules** in a sibling `.module.scss` file and CSS custom properties for all styling (see `CLAUDE-STYLING.md`); no Tailwind, no `<style>` block inside the SFC
 
@@ -28,7 +29,7 @@ The Vue half of the frontend track. Read together with `~/.claude/CLAUDE-FRONTEN
 The shared vocabulary lives in the core. Under Nuxt the source root is `app/`, and Vue replaces the React `state/` directory with two directories:
 
 - `composables/` holds every `useX` function: query wrappers, reactive helpers, DOM behavior. It is the Vue analog of React hooks and is never named `hooks/`.
-- `stores/` holds Pinia stores, one store per file, one domain per store.
+- `stores/` holds Pinia stores, one store per file, one domain per store, and exists only in a project that adopted Pinia; `useState` app state lives in `composables/`.
 - `utils/` is banned here as everywhere (R-306), even though Nuxt auto-imports from `app/utils/`; pure functions go to `services/`.
 
 ---
@@ -39,7 +40,8 @@ The shared vocabulary lives in the core. Under Nuxt the source root is `app/`, a
 |------|-----------|---------|
 | Components | `PascalCase.vue`, multi-word | `ChatBox.vue`, `AppHeader.vue` |
 | Composables | `camelCase.ts`, `use` prefix | `useTripsQuery.ts`, `useToast.ts` |
-| Pinia stores | `camelCase.ts`, `Store` suffix; the store's id is the noun | `themeStore.ts` exporting `useThemeStore`, id `'theme'` |
+| App-state composables | `camelCase.ts`, `use` prefix, over one `useState` key named for the noun | `useThemePreference.ts`, key `'theme-preference'` |
+| Pinia stores (when adopted) | `camelCase.ts`, `Store` suffix; the store's id is the noun | `themeStore.ts` exporting `useThemeStore`, id `'theme'` |
 | Component tests | `PascalCase.test.ts` beside the component | `ChatBox.test.ts` |
 
 A component folder repeats the component name (`components/ChatBox/ChatBox.vue`); Nuxt's component auto-registration collapses the duplicated segment, so the tag is `<ChatBox>`, not `<ChatBoxChatBox>`.
@@ -124,7 +126,7 @@ import { useRuntimeConfig } from '#imports';
 
 // 2. Third-party packages
 import { useQuery } from '@tanstack/vue-query';
-import { storeToRefs } from 'pinia';
+import createClient from 'openapi-fetch';
 
 // 3. Local imports (@ alias paths)
 import { fetchTrips } from '@/api/fetchTrips';
@@ -143,8 +145,9 @@ import styles from './TripList.module.scss';
 
 - **TanStack Query for Vue** for all server state (fetching, caching, mutations); the `QueryClient` config lives in `config/queryClient.ts` and is installed once by a Nuxt plugin
 - Every query is wrapped in a composable (`composables/useTripsQuery.ts`) that owns the query key and calls the `api/` function; components never build query keys inline
-- **Pinia** setup stores (`defineStore('theme', () => { ... })`) for app state: theme, UI state shared across routes. Never copy query data into a store; the query cache is the only copy of server state
-- Reading several store fields destructures through `storeToRefs(store)` so the fields stay reactive (R-325); actions are called on the store, never destructured off it
+- **`useState` composables** for app state (theme, the modal stack, UI state shared across routes): each composable owns one SSR-safe `useState('<key>', () => initial)` and exports named functions that change it, so no component writes the state directly. Never copy query data into app state; the query cache is the only copy of server state
+- **Pinia**, when a project adopts it, uses setup stores (`defineStore('theme', () => { ... })`); reading several store fields destructures through `storeToRefs(store)` so the fields stay reactive (R-325), and actions are called on the store, never destructured off it
+- **Own-backend calls** go through an openapi-fetch client that `api/apiClient.ts` builds in `createApiClient()` (`createClient<paths>()` over the generated `paths` type) and `useApiClient()` memoizes per Nuxt app instance, never a module-level singleton; each `api/` module stays one function per backend route and calls the client, which replaces the core's hand-typed `apiFetch` transport
 - **`ref` and `computed`** for component-local state (form inputs, open panels, toggles)
 - Template refs through `useTemplateRef('name')`; timers and `EventSource` handles in a plain `let` cleared in `onBeforeUnmount`
 - No Vuex, no event bus, no global mutable module state
@@ -188,5 +191,5 @@ The shared rules are in the core. Vue adds, through `eslint-plugin-vue` and `vue
 
 - **Vitest** with `happy-dom`, `@vue/test-utils`, and `@testing-library/vue` for component tests; `@nuxt/test-utils` with `mountSuspended` for any component that needs the Nuxt runtime (auto-imports, `useRuntimeConfig`, route)
 - Query the DOM by role and accessible name, never by class or test id, except through the `data-test-id` a Playwright test also uses
-- Pinia stores are tested through `createTestingPinia` only when the store is a collaborator; a store under test uses a real `createPinia()`
+- App-state composables are tested through their exported functions against a fresh Nuxt app from `@nuxt/test-utils`; Pinia stores, where adopted, through `createTestingPinia` only when the store is a collaborator, and a store under test uses a real `createPinia()`
 - Storybook (`@storybook/vue3-vite`) stories for shared components (`components/ui/*`), with visual-regression snapshots run by the Playwright `visual-regression` project
