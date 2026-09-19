@@ -842,6 +842,37 @@ expect none 'x=$(echo "a)b")'
 
 # --- end B-14 --------------------------------------------------------------
 
+# --- B-15: export state tracked the way bash tracks it within one command:
+# set -a and set +a, set -o and set +o allexport, and export -n ------------------
+
+# set -a, set -o allexport, and a bundled -a turn automatic export on, so a
+# plain assignment that follows reaches git
+expect deny 'set -a; HUSKY=0; git commit -m x'
+expect deny 'set -o allexport; HUSKY=0; git commit -m x'
+expect deny 'set -ea; HUSKY=0; git commit -m x'
+
+# the last set wins: allexport turned off and then on again is on
+expect deny 'set +a; set -a; HUSKY=0; git commit -m x'
+expect deny 'set -a; set +a; set -a; HUSKY=0; git commit -m x'
+
+# export -n removes the attribute, and a later export NAME restores it
+expect deny 'export HUSKY=0; export -n HUSKY; export HUSKY; git commit -m x'
+
+# set +a and set +o allexport turn automatic export off, so a plain assignment
+# after them stays a shell variable that git never sees
+expect none 'set +o allexport; HUSKY=0; git commit -m x'
+expect none 'set +a; HUSKY=0; git commit -m x'
+expect none 'set -a; set +a; HUSKY=0; git commit -m x'
+expect none 'set -o allexport; set +o allexport; HUSKY=0; git commit -m x'
+
+# a bundle of set flags without a leaves allexport off
+expect none 'set -euo pipefail; HUSKY=0; git commit -m x'
+
+# export -n unexports a name exported earlier in the same command
+expect none 'export HUSKY=0; export -n HUSKY; git commit -m x'
+
+# --- end B-15 --------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1

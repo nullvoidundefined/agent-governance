@@ -1,0 +1,20 @@
+{
+  "slice": "B-15 track set +a, set +o allexport, and export -n as turning export off",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
+      "sha256": "513967ae89b2ac093eb6a62e8a143b97a42c34bcb5d89827b02505d6cbd93fee",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-19T18:24:42Z",
+  "baseline": {
+    "passed": 94,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-19T18:28:08Z"
+}
