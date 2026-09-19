@@ -1,6 +1,6 @@
 {
   "slice": "B-4 deny deleting, moving, or rewriting files under .git/hooks",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T11:23:51Z"
+  "redAt": "2026-09-19T11:23:51Z",
+  "greenAt": "2026-09-19T11:34:48Z"
 }

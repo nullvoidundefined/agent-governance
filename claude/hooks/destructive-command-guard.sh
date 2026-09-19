@@ -7,6 +7,7 @@
 #     --config-env, GIT_CONFIG_KEY_n, GIT_CONFIG_PARAMETERS)
 #   - skipping git hooks with --no-verify (any accepted spelling), commit -n,
 #     or a hook-manager variable (HUSKY=0, SKIP, LEFTHOOK=0)
+#   - deleting, disabling, or overwriting files under .git/hooks
 #   - credential readout (gh auth token, macOS keychain)
 #   - tampering with ~/.claude/hooks
 #
@@ -82,7 +83,7 @@ if grep -Eqi "${AT}git config[^|;&]*core\.hooksPath[[:space:]]+[^-[:space:];&|]"
     emit deny "destructive-command-guard hook BLOCKED this call: writing core.hooksPath redirects or disables every git hook in one command (R-107, R-203). Change it manually if the move is deliberate."
 fi
 
-# --- skipping git hooks: flags and hook-manager variables ----------------
+# --- skipping or removing git hooks ---------------------------------------
 
 # settings.json could only ask on `git commit --no-verify*`, a literal prefix
 # that missed abbreviations, flags placed before the subcommand, and other
@@ -94,8 +95,9 @@ GIT_INVOCATION_HELPER="$(dirname "${BASH_SOURCE[0]}")/git-invocation.sh"
 # Prints one line per simple command in the input: newlines join as `;`, the
 # text splits on separators, and leading space is trimmed. A quoted run stays
 # one word: its quote marks become a leading Q, so `-m "--no-verify"` is not
-# the flag, while separators and spaces inside it become `_`, so quoted text
-# never starts a command. The content survives for checks that need it, such
+# the flag, while separators, redirects, and spaces inside it become `_`, so
+# quoted text
+# never starts a command or a redirect. The content survives for checks that need it, such
 # as `git -c "core.hooksPath=x"`. awk ends every line with a newline, which
 # `read` needs: it drops an unterminated last line.
 list_command_segments() {
@@ -105,7 +107,7 @@ list_command_segments() {
             c = substr($0, i, 1)
             if (quote != "") {
                 if (c == quote) { quote = ""; continue }
-                if (c ~ /[;&|() \t]/) c = "_"
+                if (c ~ /[;&|()<> \t]/) c = "_"
                 text = text c; continue
             }
             if (c == "\"" || c == "\047") { quote = c; text = text "Q"; continue }
@@ -115,11 +117,55 @@ list_command_segments() {
     }' | tr ';&|()' '\n\n\n\n\n' | awk '{ sub(/^[[:space:]]+/, ""); print }'
 }
 
-# Prints the command a segment runs once its leading `env` and VAR=value
-# words are dropped.
+# Prints the command a segment runs once its leading `env`, `sudo`,
+# `command`, and VAR=value words are dropped.
 drop_command_prefix() {
     printf '%s\n' "$1" \
-        | sed -E 's/^((env[[:space:]]+)|([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+))*//'
+        | sed -E 's/^(((env|sudo|command)[[:space:]]+)|([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+))*//'
+}
+
+# True when a path word (quote marker allowed) names the .git/hooks directory
+# or a file under it, relative or absolute.
+is_git_hooks_path() {
+    case "${1#Q}" in
+        .git/hooks | .git/hooks/* | */.git/hooks | */.git/hooks/*) return 0 ;;
+    esac
+    return 1
+}
+
+# True when any of the arguments is a .git/hooks path.
+has_git_hooks_argument() {
+    local word
+    for word in "$@"; do
+        is_git_hooks_path "$word" && return 0
+    done
+    return 1
+}
+
+# True when the segment redirects output (>, >>, 2>) into a .git/hooks path.
+has_redirect_into_git_hooks() {
+    grep -Eq '>{1,2}[[:space:]]*Q?([^[:space:]]*/)?\.git/hooks(/|[[:space:]]|$)' <<< "$1"
+}
+
+# True when one command deletes, moves, disables, or overwrites .git/hooks or
+# a file in it: removal and permission tools on any argument, copy and link
+# tools on their destination, in-place editors, and find with a delete action.
+tampers_with_git_hooks() {
+    local program arguments
+    has_redirect_into_git_hooks "$1" && return 0
+    set -f
+    set -- $1
+    set +f
+    program="${1:-}"
+    shift || return 1
+    arguments="$*"
+    case "$program" in
+        rm | unlink | mv | chmod | chown | truncate | shred | tee) has_git_hooks_argument "$@" ;;
+        cp | ln | install) [ "$#" -gt 0 ] && is_git_hooks_path "${!#}" ;;
+        sed | perl) [[ " $arguments" =~ \ -i ]] && has_git_hooks_argument "$@" ;;
+        find) [[ " $arguments " =~ \ -(delete|exec|execdir|ok)\  ]] && has_git_hooks_argument "$@" ;;
+        *) return 1 ;;
+    esac
 }
 
 # Prints a git command with its global options stripped, so the subcommand
@@ -256,6 +302,9 @@ while IFS= read -r segment; do
         continue
     fi
     git_command="$(drop_command_prefix "$segment")"
+    if tampers_with_git_hooks "$git_command"; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it deletes, moves, disables, or overwrites a file under .git/hooks, which silently removes the pre-commit and pre-push gates (R-203). Reading the hooks is fine; reinstall them with the harness installer rather than editing them by hand."
+    fi
     [[ "$git_command" =~ ^git([[:space:]]|$) ]] || continue
     if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment "$segment" \
         || has_hookspath_option "$git_command"; then
