@@ -323,7 +323,7 @@
             "enforcer": "hook:destructive-command-guard",
             "severity": "error",
             "autofix": false,
-            "note": "blocks core.hooksPath writes; the drift check only reports after the fact"
+            "note": "blocks core.hooksPath writes, and one-command overrides through -c, --config-env, GIT_CONFIG_KEY_n, and GIT_CONFIG_PARAMETERS; the drift check only reports after the fact"
         },
         {
             "id": "R-203",
@@ -339,7 +339,7 @@
             "enforcer": "hook:destructive-command-guard",
             "severity": "error",
             "autofix": false,
-            "note": "blocks hooks-directory tampering and gh alias rule evasion"
+            "note": "blocks hooks-directory tampering, gh alias rule evasion, and every git-hook skip: --no-verify in any accepted spelling, commit -n, hook-manager variables (HUSKY=0, SKIP, LEFTHOOK=0), and deleting or overwriting files under .git/hooks; enforce/tests/hook-bypass-guard.test.sh covers the skip forms"
         },
         {
             "id": "R-207",
