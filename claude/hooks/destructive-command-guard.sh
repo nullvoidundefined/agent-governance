@@ -152,7 +152,7 @@ find_git_subcommand() {
     local index=$((COMMAND_START + 1))
     while [ "$index" -lt "${#WORDS[@]}" ]; do
         case "${WORDS[index]}" in
-            -C | -c | --git-dir | --work-tree | --namespace | --super-prefix | --config-env) index=$((index + 2)) ;;
+            -C | -c | --git-dir | --work-tree | --namespace | --super-prefix | --config-env | --attr-source) index=$((index + 2)) ;;
             -*) index=$((index + 1)) ;;
             *) break ;;
         esac
@@ -290,10 +290,34 @@ skips_git_hooks() {
 resolve_path() {
     local path
     path="$(printf '%s' "$1" | sed -E \
-        -e 's#\$\(git rev-parse --git-path hooks\)|`git rev-parse --git-path hooks`#.git/hooks#g' \
+        -e 's#\$\(git rev-parse --git-path ([^)]*)\)#.git/\1#g' \
+        -e 's#`git rev-parse --git-path ([^`]*)`#.git/\1#g' \
         -e 's#\$\(git rev-parse --(absolute-git|git-common|git)-dir\)|`git rev-parse --(absolute-git|git-common|git)-dir`#.git#g')"
     case "$path" in /*) ;; *) [ -n "$CD_PREFIX" ] && path="$CD_PREFIX/$path" ;; esac
-    printf '%s' "$path" | sed -E -e 's#/+#/#g' -e 's#(^|/)\./#\1#g' -e 's#/\.$##'
+    path="$(printf '%s' "$path" | sed -E -e 's#/+#/#g' -e 's#(^|/)\./#\1#g' -e 's#/\.$##')"
+    while [[ "$path" =~ ^(.*/)?([^/]+)/\.\.(/.*)?$ ]] && [ "${BASH_REMATCH[2]}" != ".." ]; do
+        path="${BASH_REMATCH[1]}${BASH_REMATCH[3]#/}"
+    done
+    printf '%s' "$path"
+}
+
+# Prints each word brace expansion makes of the argument, one per line
+# ({a,b} groups, expanded one at a time; capped at 64 results).
+expand_braces() {
+    local pending=("$1") results=() word parts alternative prefix suffix
+    while [ "${#pending[@]}" -gt 0 ] && [ "${#results[@]}" -lt 64 ]; do
+        word="${pending[0]}"
+        pending=(${pending[@]+"${pending[@]:1}"})
+        if [[ "$word" =~ ^(.*)\{([^{}]*,[^{}]*)\}(.*)$ ]]; then
+            prefix="${BASH_REMATCH[1]}"
+            suffix="${BASH_REMATCH[3]}"
+            IFS=, read -r -a parts <<< "${BASH_REMATCH[2]},"
+            for alternative in "${parts[@]}"; do pending+=("$prefix$alternative$suffix"); done
+        else
+            results+=("$word")
+        fi
+    done
+    printf '%s\n' "${results[@]}"
 }
 
 # True when a resolved path is the .git/hooks directory or a file under it,
@@ -306,9 +330,28 @@ is_hook_path() {
     [[ hooks == $component ]]
 }
 
-# True when a resolved path is a .git directory, which holds the hooks.
+# True when a resolved path is this repository's .git directory, which holds
+# the hooks: a relative path, since an absolute .git elsewhere (a throwaway
+# fixture repository) is not this repository's.
 is_git_directory() {
+    case "$1" in /* | '$'* | '~'*) return 1 ;; esac
     [[ "$1" =~ (^|/)\.git$ ]]
+}
+
+# True when a path is a git config file (repository, worktree, global, or
+# XDG), where core.hooksPath, include, and alias settings live.
+is_git_config_path() {
+    case "$1" in
+        .git/config | */.git/config | .git/config.worktree | */.git/config.worktree) return 0 ;;
+        '~/.gitconfig' | */.gitconfig | */.config/git/config | '$XDG_CONFIG_HOME/git/config') return 0 ;;
+    esac
+    return 1
+}
+
+# True when writing the path changes which hooks run: a hook, or a git config
+# file.
+is_write_protected_path() {
+    is_hook_path "$1" || is_git_config_path "$1"
 }
 
 # Sets ARGUMENTS to the program's words after COMMAND_START with redirect
@@ -331,13 +374,25 @@ collect_arguments() {
     done
 }
 
-# Sets TARGETS to the resolved non-option arguments.
+# Sets TARGETS to the resolved non-option arguments, brace-expanded.
 collect_targets() {
-    local word
+    local word expanded
     TARGETS=()
     for word in ${ARGUMENTS[@]+"${ARGUMENTS[@]}"}; do
-        case "$word" in -*) ;; *) TARGETS+=("$(resolve_path "$word")") ;; esac
+        case "$word" in -*) continue ;; esac
+        while IFS= read -r expanded; do
+            TARGETS+=("$(resolve_path "$expanded")")
+        done < <(expand_braces "$word")
     done
+}
+
+# True when any target is a hook or a git config file.
+has_write_protected_target() {
+    local target
+    for target in ${TARGETS[@]+"${TARGETS[@]}"}; do
+        is_write_protected_path "$target" && return 0
+    done
+    return 1
 }
 
 # True when any target is a hook path, or, for a recursive operation ($1 = 1),
@@ -351,11 +406,11 @@ has_hook_target() {
     return 1
 }
 
-# True when any output redirect writes into a hook path.
+# True when any output redirect writes into a hook or a git config file.
 has_hook_redirect() {
     local target
     for target in ${REDIRECT_TARGETS[@]+"${REDIRECT_TARGETS[@]}"}; do
-        is_hook_path "$(resolve_path "$target")" && return 0
+        is_write_protected_path "$(resolve_path "$target")" && return 0
     done
     return 1
 }
@@ -370,37 +425,45 @@ has_word_matching() {
 }
 
 # True when mv moves a hook anywhere but to a .bak backup beside it, or moves
-# something over a hook.
+# something over a hook or a git config file. A .bak rename is allowed, since
+# the installer's recovery uses it, but it sets HOOK_RENAMED_TO_BACKUP so a
+# hook-running git command later in the same call is denied.
 moves_hook() {
     local last=$((${#TARGETS[@]} - 1)) index destination
     [ "$last" -ge 1 ] || return 1
     destination="${TARGETS[last]}"
-    is_hook_path "$destination" && return 0
+    is_write_protected_path "$destination" && return 0
     for ((index = 0; index < last; index++)); do
         if is_hook_path "${TARGETS[index]}"; then
             [[ "$destination" == *.bak ]] && [[ "$destination" =~ (^|/)\.git/hooks/ ]] || return 0
+            HOOK_RENAMED_TO_BACKUP=1
         fi
     done
     return 1
 }
 
-# True when a copy or link tool writes onto a hook from anything other than a
-# tracked *.sample template, which is how a hook is installed.
+# True when a copy or link tool writes onto a git config file, or onto a hook
+# from anything other than a tracked *.sample template, which is how a hook
+# is installed.
 overwrites_hook() {
     local last=$((${#TARGETS[@]} - 1))
     [ "$last" -ge 1 ] || return 1
+    is_git_config_path "${TARGETS[last]}" && return 0
     is_hook_path "${TARGETS[last]}" || return 1
     [[ "${TARGETS[last - 1]}" != *.sample ]]
 }
 
 # True when a chmod mode removes the owner's execute permission: a symbolic
-# mode that subtracts x, `=` without x, or an octal mode with an even owner
-# digit.
+# mode that subtracts x, `=` without x, an octal mode whose owner digit is
+# even (a mode shorter than three digits has owner digit 0), or --reference,
+# whose mode is unknown here.
 removes_execute() {
     case "$1" in
-        *-*x* | *=[!x]* ) return 0 ;;
+        --reference=* | *-*x* | *=[!x]* ) return 0 ;;
     esac
-    [[ "$1" =~ ^[0-7]*([0-7])[0-7][0-7]$ ]] && [ $((BASH_REMATCH[1] % 2)) -eq 0 ]
+    [[ "$1" =~ ^[0-7]{1,4}$ ]] || return 1
+    [ "${#1}" -lt 3 ] && return 0
+    [ $(( ${1: -3:1} % 2 )) -eq 0 ]
 }
 
 # True when chmod takes execute permission away from a hook, directly or
@@ -410,13 +473,13 @@ disables_hook_mode() {
     for ((index = 0; index < ${#ARGUMENTS[@]}; index++)); do
         case "${ARGUMENTS[index]}" in
             -R | --recursive) is_recursive=1 ;;
-            -[rwxXst]* | [0-7]* | [ugoa+=]* | -[ugoa]*) mode="${ARGUMENTS[index]}"; break ;;
+            --reference=* | -[rwxXst]* | [0-7]* | [ugoa+=]* | -[ugoa]*) mode="${ARGUMENTS[index]}"; break ;;
         esac
     done
     [ -n "$mode" ] && removes_execute "$mode" || return 1
     # A mode such as 644 or u-x is the first non-option word, so it heads
     # TARGETS; a mode such as -x is option-shaped and never entered it.
-    case "$mode" in -*) ;; *) TARGETS=("${TARGETS[@]:1}") ;; esac
+    case "$mode" in -*) ;; *) TARGETS=(${TARGETS[@]+"${TARGETS[@]:1}"}) ;; esac
     has_hook_target "$is_recursive"
 }
 
@@ -424,21 +487,35 @@ disables_hook_mode() {
 dd_writes_hook() {
     local word
     for word in ${ARGUMENTS[@]+"${ARGUMENTS[@]}"}; do
-        case "$word" in of=*) is_hook_path "$(resolve_path "${word#of=}")" && return 0 ;; esac
+        case "$word" in of=*) is_write_protected_path "$(resolve_path "${word#of=}")" && return 0 ;; esac
     done
     return 1
 }
 
 # True when find deletes, or runs a modifying command on, files under the
-# hooks or .git directory, other than sample files.
+# hooks or .git directory, unless its name tests select only sample files.
 find_modifies_hooks() {
     has_word_matching '^-delete$' \
         || { has_word_matching '^-(exec|execdir|ok)$' \
             && has_word_matching '^(rm|unlink|mv|chmod|chown|truncate|shred|tee|dd|cp|ln|sed|perl|sh|bash)$'; } \
         || return 1
-    has_word_matching '\.sample' && return 1
+    selects_only_samples && return 1
     has_word_matching '(^|/)\.git/hooks' && return 0
     has_hook_target 1
+}
+
+# True when find's name tests all select *.sample files and nothing negates
+# or widens them (!, -not, -o, -or).
+selects_only_samples() {
+    local word previous="" has_name_test=0
+    for word in ${ARGUMENTS[@]+"${ARGUMENTS[@]}"}; do
+        case "$word" in '!' | -not | -o | -or) return 1 ;; esac
+        case "$previous" in
+            -name | -iname) [[ "$word" == *.sample ]] || return 1; has_name_test=1 ;;
+        esac
+        previous="$word"
+    done
+    [ "$has_name_test" -eq 1 ]
 }
 
 # True when rm, unlink, shred, or truncate removes a hook, or rm -r removes a
@@ -450,22 +527,27 @@ removes_hook() {
 }
 
 # True when the segment deletes, moves, disables, or overwrites a hook in
-# .git/hooks, in any path spelling, through any of the tools below or an
-# output redirect.
+# .git/hooks, or writes a git config file, in any path spelling, through any
+# of the tools below or an output redirect. Targets are resolved only for
+# those tools, so an ordinary command costs no path work.
 tampers_with_git_hooks() {
     collect_arguments
-    collect_targets
     has_hook_redirect && return 0
     case "${WORDS[COMMAND_START]:-}" in
+        rm | unlink | shred | truncate | mv | cp | ln | install | rsync | tee | chown | chmod | dd | sed | perl | find) ;;
+        *) return 1 ;;
+    esac
+    collect_targets
+    case "${WORDS[COMMAND_START]}" in
         rm | unlink | shred | truncate) removes_hook ;;
         mv) moves_hook ;;
         cp | ln | install | rsync) overwrites_hook ;;
-        tee | chown) has_hook_target 0 ;;
+        tee) has_write_protected_target ;;
+        chown) has_hook_target 0 ;;
         chmod) disables_hook_mode ;;
         dd) dd_writes_hook ;;
-        sed | perl) has_word_matching '^-[A-Za-z]*i|^--in-place' && has_hook_target 0 ;;
+        sed | perl) has_word_matching '^-[A-Za-z]*i|^--in-place' && has_write_protected_target ;;
         find) find_modifies_hooks ;;
-        *) return 1 ;;
     esac
 }
 
@@ -510,13 +592,17 @@ has_include_setting() {
 }
 
 # Prints the value of an alias the git command defines for the named
-# subcommand, if it defines one.
+# subcommand, if it defines one; git uses the last -c for a key, so the last
+# definition wins.
 print_alias_value() {
     local setting wanted
     wanted="alias.$(to_lowercase "$1")"
+    local value="" found=0
     for setting in ${CONFIG_SETTINGS[@]+"${CONFIG_SETTINGS[@]}"}; do
-        [ "$(to_lowercase "${setting%%=*}")" = "$wanted" ] && { printf '%s' "${setting#*=}"; return 0; }
+        [ "$(to_lowercase "${setting%%=*}")" = "$wanted" ] && { value="${setting#*=}"; found=1; }
     done
+    [ "$found" -eq 1 ] && printf '%s' "$value"
+    return 0
 }
 
 # True when this guard denies the given command text. An alias is judged by
@@ -684,6 +770,7 @@ exported_names=" "
 auto_export=0
 plain_assignments=()
 CD_PREFIX=""
+HOOK_RENAMED_TO_BACKUP=0
 while IFS=$'\037' read -r -a WORDS; do
     [ "${#WORDS[@]}" -gt 0 ] || continue
     find_command_start
@@ -700,12 +787,12 @@ while IFS=$'\037' read -r -a WORDS; do
         auto_export=1
         continue
     fi
-    if [ "$program" = cd ]; then
+    if [ "$program" = cd ] || [ "$program" = pushd ]; then
         CD_PREFIX="$(resolve_path "${WORDS[COMMAND_START + 1]:-}")"
         continue
     fi
     if tampers_with_git_hooks; then
-        emit deny "destructive-command-guard hook BLOCKED this call: it deletes, moves, disables, or overwrites a file under .git/hooks, which silently removes the pre-commit and pre-push gates (R-203). Reading the hooks is fine; reinstall them with the harness installer rather than editing them by hand."
+        emit deny "destructive-command-guard hook BLOCKED this call: it deletes, moves, disables, or overwrites a file under .git/hooks, or writes a git config file (where core.hooksPath, includes, and aliases live), which can silently remove the pre-commit and pre-push gates (R-107, R-203). Reading them is fine; reinstall hooks with the harness installer, and change git config with git config, which this guard checks."
     fi
     if defines_git_command; then
         emit deny "destructive-command-guard hook BLOCKED this call: it defines a shell function or alias named git, or an alias whose value skips git hooks, which hides the skip from every later command that uses it (R-203). Call git directly."
@@ -721,6 +808,9 @@ while IFS=$'\037' read -r -a WORDS; do
         emit deny "destructive-command-guard hook BLOCKED this call: it writes a git config key that changes which hooks run (core.hooksPath, include.path, includeIf, or a hook-skipping alias), redirecting or disabling git hooks for every later command (R-107, R-203). Change it manually if the move is deliberate."
     fi
     is_hook_running_git || continue
+    if [ "$HOOK_RENAMED_TO_BACKUP" -eq 1 ]; then
+        emit deny "destructive-command-guard hook BLOCKED this call: it renames a hook to a .bak backup and then runs a git command that would have run that hook, which disables it for this change (R-203). Reinstall the hooks with the harness installer first."
+    fi
     if has_include_setting; then
         emit deny "destructive-command-guard hook BLOCKED this call: it passes an include.path or includeIf setting to a git command that runs hooks, which can load a config file that sets core.hooksPath (R-107, R-203). Run the command without the include."
     fi

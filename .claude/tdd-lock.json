@@ -1,6 +1,6 @@
 {
   "slice": "B-12 deny hooks tampering through braces, find exclusions, a .bak rename before a commit, direct config-file edits, and the remaining short spellings",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T16:37:59Z"
+  "redAt": "2026-09-19T16:37:59Z",
+  "greenAt": "2026-09-19T16:46:20Z"
 }
