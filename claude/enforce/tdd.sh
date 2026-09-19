@@ -401,7 +401,9 @@ classify_red() {
   if printf '%s' "$record" | jq -e '[.assertionResults[] | select(.status == "passed")] | length > 0' >/dev/null; then
     die "$rel has a test that already passes: $(printf '%s' "$record" | jq -r '[.assertionResults[] | select(.status == "passed") | .title] | join(", ")'). A RED test fails before the implementation exists; remove or sharpen it"
   fi
-  classify_failures "$rel" < <(printf '%s' "$record" | jq -c "$JQ_TEST_IDS"'.assertionResults[] | {key: test_key, failures: (.failureMessages | join("\n"))}')
+  local results
+  results=$(printf '%s' "$record" | jq -c "$JQ_TEST_IDS$JQ_FAILURE_RESULT"'.assertionResults[] | failure_result') || die "$rel: the report's test results could not be read"
+  classify_failures "$rel" "$results"
 }
 
 # Test node ids. A report test's key is its full name: Vitest's and Jest's
@@ -421,26 +423,36 @@ def in_scope($ids; $kind): $ids == null or named_by($ids; $kind);
 def entry_for($named): .name as $n | ($named | map(select(.name == $n)) | first);
 '
 
-# classify_failures <rel>: reads one {key, failures} object per line on stdin,
-# one per failing test in scope, and prints the RED class. Each result is
+# One {key, failures} object per failing test for classify_failures. A null
+# failureMessages becomes an empty message, which is refused by name, instead
+# of a jq error that would end the stream early and leave the tests before it
+# to classify the file alone (PR #81 review).
+JQ_FAILURE_RESULT='
+def failure_result: {key: test_key, failures: ((.failureMessages // []) | map(tostring) | join("\n"))};
+'
+
+# classify_failures <rel> <results>: <results> holds one {key, failures} object
+# per line, one per failing test in scope; prints the RED class. Each result is
 # classified on its own, so one failing for a reason outside both classes
 # cannot ride on another's classified message (PR #74 for named tests, IAN-160
 # for a file named whole); results are walked one by one, not re-selected by
 # name, because Vitest and Jest allow two tests with one full name. The class
-# is missing-module when any test is, assertion otherwise. No result at all
-# (a report the producer's jq could not read) is refused, never an assertion.
+# is missing-module when any test is, assertion otherwise. A test with no
+# failure message, or no result at all, is refused, never an assertion.
 classify_failures() {
-  local rel="$1" result key failures class=assertion count=0
+  local rel="$1" results="$2" result key failures class=assertion count=0
   while IFS= read -r result; do
+    [ -n "$result" ] || continue
     count=$((count + 1))
     key=$(jq -r '.key' <<< "$result")
     failures=$(jq -r '.failures' <<< "$result")
+    [ -n "$(tr -d '[:space:]' <<< "$failures")" ] || die "$rel::$key failed with no failure message to classify"
     if grep -qE "$MISSING_MODULE" <<< "$failures"; then class=missing-module
     elif ! grep -qE "$ASSERTION" <<< "$failures"; then
       die "$rel::$key fails for a reason this script does not classify: $(printf '%s' "$failures" | grep -m1 . || true)"
     fi
-  done
-  [ "$count" -gt 0 ] || die "$rel has no failing test result to classify; the report's failure messages could not be read"
+  done <<< "$results"
+  [ "$count" -gt 0 ] || die "$rel has no failing test result to classify"
   printf '%s' "$class"
 }
 
@@ -478,7 +490,9 @@ classify_named() {
   [ -z "$offenders" ] || die "$offenders already passes. A RED test fails before the implementation exists; remove or sharpen it"
   offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$JQ_TEST_IDS"'[.assertionResults[] | select(.status == "failed" and (named_by($ids; $kind) | not)) | $rel + "::" + test_key] | join(", ")')
   [ -z "$offenders" ] || die "$offenders fails but was not named; the tests beside the named ones must keep passing. Name it too if it is part of this slice, or fix it first"
-  classify_failures "$rel" < <(printf '%s' "$record" | jq -c --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$named_filter"' | .[] | {key: test_key, failures: (.failureMessages | join("\n"))}')
+  local results
+  results=$(printf '%s' "$record" | jq -c --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS$JQ_FAILURE_RESULT"'.assertionResults[] | select(named_by($ids; $kind)) | failure_result') || die "$rel: the report's test results could not be read"
+  classify_failures "$rel" "$results"
 }
 
 # How a test id is written for the current runner, for refusal messages.

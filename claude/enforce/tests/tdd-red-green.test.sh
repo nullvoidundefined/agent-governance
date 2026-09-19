@@ -307,7 +307,7 @@ case "$(cat "$PWD/.stub-mode")" in
   teardown) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"Error: teardown broke\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
   red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
   duplicate) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: thrown: Exceeded timeout of 5000 ms\"]}]}]}" ;;
-  unreadable) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:null}]}]}" ;;
+  unreadable) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:null}]}]}" ;;
   green) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"passed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"passed\", failureMessages:[]}]}]}" ;;
 esac > "$report"
 STUB
@@ -322,11 +322,12 @@ expect_fail "jest node red with a suite-level error" bash "$TDD" red "src/__test
 # a timeout beside an assertion under the same name is refused (PR #74 review).
 echo duplicate > .stub-mode
 expect_fail "jest node red with a duplicate-named unclassified failure" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'boost doubles fails for a reason this script does not classify: Error: thrown: Exceeded timeout' || { echo "FAIL: each result sharing a full name must be classified on its own"; exit 1; }
-# A failing result whose messages cannot be read (failureMessages null) leaves
-# the classifier nothing to classify; that is refused rather than defaulting to
-# the assertion RED (IAN-160 review).
+# A failing result whose messages cannot be read (failureMessages null) is
+# refused by name rather than left out, even after a classified result under
+# the same name, so the file cannot be locked on the readable result alone
+# (IAN-160 review, PR #81 Copilot review).
 echo unreadable > .stub-mode
-expect_fail "jest node red with unreadable failure messages" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'no failing test result to classify' || { echo "FAIL: a failing result with unreadable messages must be refused, not locked as an assertion RED"; exit 1; }
+expect_fail "jest node red with unreadable failure messages" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'src/__tests__/score.test.js::boost doubles failed with no failure message to classify' || { echo "FAIL: a failing result with unreadable messages must be refused by name, not locked on the other result's assertion"; exit 1; }
 echo red > .stub-mode
 expect_fail "jest node red on a bare title" bash "$TDD" red "src/__tests__/score.test.js::doubles" | grep -q 'no test in src/__tests__/score.test.js matches doubles' || { echo "FAIL: under Jest a bare title must be refused; the id is the full name"; exit 1; }
 out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: jest node red must accept the named failing test; output: $out"; exit 1; }
