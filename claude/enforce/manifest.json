@@ -323,7 +323,7 @@
             "enforcer": "hook:destructive-command-guard",
             "severity": "error",
             "autofix": false,
-            "note": "blocks core.hooksPath writes, and one-command overrides through -c, --config-env, GIT_CONFIG_KEY_n, and GIT_CONFIG_PARAMETERS; the drift check only reports after the fact"
+            "note": "blocks core.hooksPath writes in any spelling, and overrides through -c, --config-env, GIT_CONFIG_KEY_n, GIT_CONFIG_PARAMETERS, includes, and another config file (GIT_CONFIG_GLOBAL, HOME); the drift check only reports after the fact"
         },
         {
             "id": "R-203",
@@ -339,7 +339,7 @@
             "enforcer": "hook:destructive-command-guard",
             "severity": "error",
             "autofix": false,
-            "note": "blocks hooks-directory tampering, gh alias rule evasion, and every git-hook skip: --no-verify in any accepted spelling, commit -n, hook-manager variables (HUSKY=0, SKIP, LEFTHOOK=0), and deleting or overwriting files under .git/hooks; enforce/tests/hook-bypass-guard.test.sh covers the skip forms"
+            "note": "blocks hooks-directory tampering, gh alias rule evasion, and the common git-hook skips on a bash-style parse of the command (hooks/shell-command-segments.py): --no-verify in any accepted spelling, commit and am -n, hook-manager variables (HUSKY=0, SKIP, LEFTHOOK=0), config includes, hook-skipping aliases, a git shell function, and deleting, disabling, or overwriting files under .git/hooks; enforce/tests/hook-bypass-guard.test.sh covers the skip forms. Not complete against a determined shell; IAN-155 adds a spelling-independent backstop"
         },
         {
             "id": "R-207",
