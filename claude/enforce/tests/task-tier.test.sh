@@ -165,5 +165,15 @@ tier_set "$TRACKED_HOME" complex "new task on another branch"
 check "T-6 other-branch ledger ticket does not carry over (exits 1)" test "$ST" -eq 1
 check "T-6 other-branch refusal names --ticket" reports "--ticket"
 
+# V-3: HOME unset means no tracker is reachable: the degraded path, not an unbound-variable crash.
+V3="$SB/home-unset"; mkdir -p "$V3"
+git -C "$V3" init -q -b feat/no-home
+git -C "$V3" config user.email t@example.invalid; git -C "$V3" config user.name t
+printf 'a\n' > "$V3/a.txt"; git -C "$V3" add -A; git -C "$V3" commit -qm "init"
+OUT=$(cd "$V3" && env -u HOME bash "$TIER" set standard "r" 2>&1); ST=$?
+check "V-3 HOME unset set standard exits 0" test "$ST" -eq 0
+check "V-3 HOME unset writes the standard ledger" test "$(jq -r .tier "$V3/.claude/task-tier.json" 2>/dev/null)" = "standard"
+check "V-3 HOME unset prints no unbound variable" bash -c '! grep -qF "unbound variable" <<< "$0"' "$OUT"
+
 [ "$fail" -eq 0 ] && echo "task-tier.test.sh PASS"
 exit "$fail"

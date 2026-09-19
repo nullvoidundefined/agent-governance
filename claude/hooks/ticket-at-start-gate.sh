@@ -108,14 +108,32 @@ is_commit_subcommand() {
 }
 
 # has_git_commit_in_string <word>...: true when a shell string (the words of
-# sh -c or eval, quotes dropped) runs `git ... commit` anywhere in it.
+# sh -c or eval, quotes dropped) runs `git ... commit` anywhere in it, on any
+# of its lines; a `\n` or `\t` escape (an ANSI-C $'...' string) splits words
+# the way the child shell's newline would.
 has_git_commit_in_string() {
   local -a string_words=()
   local word_index
-  read -r -a string_words <<< "$(printf '%s ' "$@" | tr -d "\"'" | tr ';&|(){}' '      ')"
+  read -r -a string_words <<< "$(printf '%s ' "$@" | sed 's/\\[nt]/ /g' | tr -d "\"'" | tr ';&|(){}\n\r\t' '          ')"
   for ((word_index = 0; word_index < ${#string_words[@]}; word_index++)); do
     [ "$(basename -- "${string_words[word_index]}")" = "git" ] || continue
     is_commit_subcommand "${string_words[@]:word_index+1}" && return 0
+  done
+  return 1
+}
+
+# has_git_commit_word <word>...: true when some word is git (by basename) and
+# the words after it run commit. The backstop for a wrapper whose options the
+# prefix table does not know: once a wrapper was stripped and what is left does
+# not start with git, a git commit further along is not read as a guess, it
+# denies as unreadable. Whole words only, so a quoted "git commit" argument is
+# one word and never matches.
+has_git_commit_word() {
+  local word_index
+  local -a candidate_words=("$@")
+  for ((word_index = 0; word_index < ${#candidate_words[@]}; word_index++)); do
+    [ "$(basename -- "${candidate_words[word_index]}")" = "git" ] || continue
+    is_commit_subcommand "${candidate_words[@]:word_index+1}" && return 0
   done
   return 1
 }
@@ -143,7 +161,12 @@ strip_command_prefixes() {
     esac
     if [ -n "$wrapper" ]; then
       case "$wrapper:$1" in
-        env:-u | env:-C | env:-S | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E)
+        env:-u | env:-C | env:-S | env:--unset | env:--chdir | env:--split-string | nice:-n | nice:--adjustment | \
+        sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | \
+        sudo:--user | sudo:--group | sudo:--host | sudo:--prompt | sudo:--close-from | sudo:--chdir | sudo:--role | sudo:--type | sudo:--other-user | \
+        timeout:-s | timeout:-k | timeout:--signal | timeout:--kill-after | \
+        xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E | \
+        xargs:--max-args | xargs:--max-chars | xargs:--max-lines | xargs:--max-procs | xargs:--delimiter | xargs:--arg-file)
           shift 2 2>/dev/null || shift; continue ;;
       esac
       case "$1" in -* | [A-Za-z_]*=*) shift; continue ;; esac
@@ -246,6 +269,10 @@ inspect_commit_words() {
   esac
   if is_expanded_word "${command_words[0]}"; then
     is_commit_subcommand "${command_words[@]:1}" && IS_COMMIT_UNREADABLE=1
+    return 0
+  fi
+  if [ "$(basename -- "${command_words[0]}")" != "git" ] && [ "${#command_words[@]}" -lt "$#" ] && has_git_commit_word "${command_words[@]}"; then
+    IS_COMMIT_UNREADABLE=1
     return 0
   fi
   record_git_commit_directory "$TARGET_DIR" "${command_words[@]}"

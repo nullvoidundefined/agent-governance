@@ -370,5 +370,31 @@ check "U-3 '\$EDITOR notes.md # commit later' from a ticketed repo allows" is_si
 bash_gate '$GIT -C . commit -m x' "$U2_LL"
 check "U-3 '\$GIT -C . commit -m x' from a ledgerless repo denies" is_deny
 
+# --- IAN-149 Copilot round (PR #78) ----------------------------------------------
+# V-1: a commit on the second line of a shell string is still a commit.
+V1_LL=$(make_repo v1-ledgerless); V1_TK=$(make_ticketed v1-ticketed)
+# The hook receives the ANSI-C quoted text as written: bash -c $'echo ok\ngit commit -m x'
+V1_ANSI="bash -c \$'echo ok\\ngit commit -m x'"
+bash_gate "$V1_ANSI" "$V1_LL"
+check "V-1 bash -c \$'echo ok\\ngit commit -m x' denies" is_deny
+bash_gate $'sh -c \'echo ok\ngit commit -m x\'' "$V1_LL"
+check "V-1 sh -c single-quoted string with the commit on its second line denies" is_deny
+bash_gate $'bash -c \'echo ok\ngit log --oneline\'' "$V1_TK"
+check "V-1 bash -c two-line read-only string from a ticketed repo allows" is_silent
+
+# V-2: timeout with its option forms before git commit denies.
+V2_LL=$(make_repo v2-ledgerless)
+while IFS= read -r command; do
+  bash_gate "$command" "$V2_LL"
+  check "V-2 '$command' denies" is_deny
+done <<'SHAPES'
+timeout --signal TERM 10 git commit -m x
+timeout --signal=TERM 10 git commit -m x
+timeout -s TERM 10 git commit -m x
+timeout --kill-after=5 10 git commit -m x
+timeout --preserve-status 10 git commit -m x
+timeout 10s git commit -m x
+SHAPES
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

@@ -49,7 +49,7 @@ cmd_set() {
   fi
   branch=$(git -C "$ROOT" branch --show-current 2>/dev/null)
   [ "$has_ticket_flag" -eq 1 ] || ticket=$(read_previous_ticket "$branch")
-  if [ "$tier" != "trivial" ] && [ -z "$ticket" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
+  if [ "$tier" != "trivial" ] && [ -z "$ticket" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
     die "a $tier task needs its ticket before the work starts (R-605): open it with /ticket-lifecycle, then re-run with --ticket <KEY>"
   fi
   local previous=""

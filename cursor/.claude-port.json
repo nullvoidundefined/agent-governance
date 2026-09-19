@@ -106,8 +106,8 @@
     "skills/structure-conventions/SKILL.md": "sha256:5f3cf394d9ef20b1bc4e05ad005c3e7e07b9910441295b5d2ae64720d714a8b6",
     "skills/task-cleanup/SKILL.md": "sha256:91711e308c44a60130b2c02c211f44d62534c402a079b112bab0a4451a407710",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
-    "skills/task-start/SKILL.md": "sha256:66e9fc2ee9555a25842975b30fd191b8e48e67999c59bf82c8112058dcf6a550",
-    "skills/task-start/scripts/task-tier.sh": "sha256:b451f434701aa6ddb9c88b83187ee3983b3aed19c199aa35ddad8c0b4a7e689f",
+    "skills/task-start/SKILL.md": "sha256:5152e966a7fe8dadf5cde4c094f6f8a56c5740f6eb0c17fbe473b1bb3a22fd9f",
+    "skills/task-start/scripts/task-tier.sh": "sha256:14c952eeb4356282ae9290da6ae4646eadf9da5efefad27a9c5bc6d68cf93426",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:dde64a65a937dae8c72ff2ecbebd38aa64839545d359a0d7134a85cf664139d8",
     "skills/ticket-lifecycle/SKILL.md": "sha256:c6fca0f88930cf97b158982723fc4eeed5e3a7e59cf49dbc1f4cf7b7bb7d1b1d"
   },

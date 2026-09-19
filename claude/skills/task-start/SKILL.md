@@ -32,8 +32,10 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 **Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then estimate and open the ticket (below), create the branch or worktree, and record all of it on that branch, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, the ticket key, and the task's share of the work when it is one of several):
 
 ```bash
-bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" --ticket <KEY> [--share <percent>]
+bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--ticket <KEY>] [--share <percent>]
 ```
+
+`--ticket <KEY>` is required above trivial whenever a tracker is configured; a trivial task opens no ticket and records `task-tier.sh set trivial "<reason>"` without it.
 
 The ticket comes before the work, mechanically (R-605): with a tracker configured, `task-tier.sh set` refuses a tier above trivial without `--ticket <KEY>`, and `ticket-at-start-gate.sh` denies the first Write or Edit, and every `git commit`, until the ledger names the checked-out branch and carries the key (a trivial ledger needs no key). Record the ledger after the branch exists, because the ledger names the branch it was written on. When work already happened without a ticket, open one retroactively with its actuals and record it; never leave the work unticketed.
 
@@ -48,7 +50,7 @@ Then estimate and open the ticket, in that order (R-605, R-606):
 1. Ask `/ticket-lifecycle` for `estimate <tier>`. Five or more comparable closed tickets: take the median for a task that resembles them, the 80th percentile for one with an unknown dependency. Fewer than five: use the R-906 heuristic and say it is a heuristic.
 2. Announce the estimate in minutes with its basis: "Estimate: N minutes (median of n=M closed [tier] tickets)" or "Estimate: N minutes (heuristic, n=M is too small a sample)".
 3. Open the ticket through `/ticket-lifecycle` with `title`, `tier`, `assist`, `model`, `estimate_minutes`, `repo`, and the branch once it exists. Skip for the trivial tier unless the user asks for one.
-4. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Announce the ticket key, record it in the ledger with `task-tier.sh set <tier> "<reason>" --ticket <KEY>` once the branch exists, and carry it in a `Refs: <key>` trailer on every commit for this task.
+4. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Above trivial (or whenever a ticket was opened on request), announce the ticket key, record it in the ledger with `task-tier.sh set <tier> "<reason>" --ticket <KEY>` once the branch exists, and carry it in a `Refs: <key>` trailer on every commit for this task.
 
 ## Step 2: Determine Process Requirements
 
