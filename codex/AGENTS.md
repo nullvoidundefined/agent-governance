@@ -103,6 +103,7 @@ R-513: Before pushing a changed constant, grep the test suite for the old value 
 R-514: Never merge a PR without explicit user authorization in the current turn ("merge when ready" is not authorization); direct pushes to `main` only on express request after naming the risks. [hook:git-workflow-guard]
 R-515: Resolve every addressed reviewer thread on GitHub (GraphQL API) in the same turn as the fix commit, replying with the SHA. [manual]
 R-516: Register every mechanizable rule in `~/.claude/enforce/manifest.json` with tier and enforcer, and ship a fixture test; a rule with no manifest entry depends on recall. [hook:enforcement-guard-check]
+R-517: Before any PR merges, have Codex review its diff against the spec and the acceptance criteria (a separate Claude agent on an equal or stronger model when Codex is out of quota), fix or answer every finding in the PR, and summarize findings and dispositions in a `## Codex review` section of the PR body; this runs alongside Copilot, never instead. [hook:git-workflow-guard]
 
 ## Lifecycle and memory (R-6xx)
 

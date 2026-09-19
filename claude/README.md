@@ -161,6 +161,8 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   └── ...                          # bug-hunt, feature-create, task-cleanup, etc.
 ├── prompts/
 │   ├── subagent-branch-setup.md     # Reusable worktree snippet for agent dispatches.
+│   ├── codex-spec-review-prompt.md  # Adversarial Codex spec review, run by task-start.
+│   ├── codex-pr-review-prompt.md    # Blocking pre-merge Codex PR review (R-517).
 │   └── spec-template.md             # The fixed spec headings the slice loop reads from.
 ├── global-memory/                   # Cross-project lessons and running logs.
 │   ├── INDEX.md                     # Entry point. Auto-loaded by SessionStart.

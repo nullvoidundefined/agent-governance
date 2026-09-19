@@ -434,6 +434,14 @@
             "note": "denies gh pr merge --merge/-m, and --rebase/-r unless gh pr view shows the bundle label and a distinct Refs: trailer on every commit (fail-closed on gh error, timeout, cd, or GH_REPO)"
         },
         {
+            "id": "R-517",
+            "tier": "regex",
+            "enforcer": "hook:git-workflow-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies every gh pr merge whose PR body (gh pr view --json body) lacks a Markdown heading starting with Codex review followed by at least one non-blank line; fail-closed on gh error, timeout, cd, or GH_REPO. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh"
+        },
+        {
             "id": "R-511",
             "tier": "advisory",
             "enforcer": "hook:git-workflow-guard",

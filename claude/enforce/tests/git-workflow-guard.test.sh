@@ -2,7 +2,8 @@
 # Covers: hook:git-workflow-guard
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
 # merge (R-514), denies a non-squash merge (R-512) except a rebase of a PR
-# labeled bundle whose every commit carries a Refs: trailer, and warns on a cross-cutting
+# labeled bundle whose every commit carries a Refs: trailer, denies any merge
+# whose PR body lacks a non-empty Codex review section (R-517), and warns on a cross-cutting
 # commit to main (R-511) and a surface-adding commit with no README (R-508),
 # whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
@@ -44,7 +45,8 @@ stubbed_decision() {
 stubbed_reason() {
   payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason'
 }
-BUNDLE_OK=$(write_gh_stub bundle-ok '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
+CODEX_BODY='## Summary\nWork.\n\n## Codex review\nTwo findings: one fixed in abc1234, one answered in the thread.\n\n## Testing\nGreen.'
+BUNDLE_OK=$(write_gh_stub bundle-ok '{"body":"'"$CODEX_BODY"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
 NO_LABEL=$(write_gh_stub no-label '{"labels":[{"name":"enhancement"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"Refs: IAN-2"}]}')
 MISSING_REFS=$(write_gh_stub missing-refs '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"No trailer here, Refs: IAN-2 inline only"}]}')
 GH_FAILS=$(write_gh_stub gh-fails '' 1)
@@ -61,8 +63,8 @@ case "$(stubbed_reason 'gh pr merge 42 --rebase' "$MISSING_REFS")" in *Refs:*) ;
 # The PR selector is the first positional argument, never a flag's value, and
 # --repo is forwarded: this stub answers as a bundle only for `42 --repo o/r`.
 SELECTOR_STUB="$STUB_DIR/selector"
-printf '%s\n' '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
-printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
+printf '%s\n' '{"body":"'"$CODEX_BODY"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
+printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits,body" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
 chmod +x "$SELECTOR_STUB"
 [ "$(stubbed_decision 'gh pr merge --subject 7 -R o/r --rebase 42' "$SELECTOR_STUB")" = "ask" ]
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SELECTOR_STUB")" = "deny" ]   # --repo dropped: a different PR
@@ -78,7 +80,7 @@ chmod +x "$SELECTOR_STUB"
 # does not look, so the bundle check cannot vouch for it.
 [ "$(stubbed_decision 'cd ../other && gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
 [ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
-[ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]  # env prefix still reaches R-514
+[ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --squash' "$BUNDLE_OK")" = "deny" ]  # R-517 cannot read that PR's body either
 # Two commits naming the same ticket are one ticket's history, not a bundle.
 SAME_TICKET=$(write_gh_stub same-ticket '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(a): wip","messageBody":"Refs: IAN-1"}]}')
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SAME_TICKET")" = "deny" ]
@@ -91,9 +93,28 @@ SLOW_START=$(date +%s)
 SLOW_OUT=$(payload 'gh pr merge 42 --rebase' "$STUB_DIR" | CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_GH_TIMEOUT_SECONDS=1 "$HOOK" 2>/dev/null)
 [ "$(printf '%s' "$SLOW_OUT" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
 [ $(($(date +%s) - SLOW_START)) -lt 10 ] || { echo "a hung gh must be cut off at the deadline" >&2; exit 1; }
-[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]       # squash never consults gh
-[ "$(decision 'gh pr merge 42 --merge')" = "deny" ]        # wrong strategy (R-512)
-[ "$(decision 'gh pr merge 42 --squash')" = "ask" ]        # right strategy, still needs authorization (R-514)
+[ "$(decision 'gh pr merge 42 --merge')" = "deny" ]        # wrong strategy (R-512), decided before any gh call
+
+# Codex pre-merge review (R-517): every merge, squash included, reads the PR
+# body and passes only when a Markdown heading named "Codex review" is followed
+# by at least one non-blank line before the next heading.
+CODEX_OK=$(write_gh_stub codex-ok '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[]}')
+CODEX_LOWER=$(write_gh_stub codex-lower '{"body":"Intro.\r\n\r\n### codex review\r\nNo findings; checked the spec criteria B-1 to B-4.\r\n","labels":[],"commits":[]}')
+CODEX_MISSING=$(write_gh_stub codex-missing '{"body":"## Summary\nWork.\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_INLINE=$(write_gh_stub codex-inline '{"body":"## Summary\nCodex review is pending.","labels":[],"commits":[]}')
+CODEX_EMPTY=$(write_gh_stub codex-empty '{"body":"## Codex review\n\n   \n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_NULL=$(write_gh_stub codex-null '{"body":null,"labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_OK")" = "ask" ]       # section present: on to R-514's ask
+[ "$(stubbed_decision 'gh pr merge 42 --squash --delete-branch' "$CODEX_LOWER")" = "ask" ]  # any heading level, any case, CRLF
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_MISSING")" = "deny" ]  # no section
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_MISSING")" in *R-517*Codex\ review*) ;; *) echo "missing-section deny must name R-517 and the Codex review section" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INLINE")" = "deny" ]   # a mention in prose is not a section
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_EMPTY")" = "deny" ]    # a heading with nothing under it
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NULL")" = "deny" ]     # no body at all
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "deny" ]       # gh cannot answer: fail closed
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_GARBAGE")" = "deny" ]     # unparseable answer: fail closed
+[ "$(stubbed_decision 'cd ../other && gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ]  # the hook cannot see that PR
+[ "$(stubbed_decision 'gh pr merge 42 -r' "$CODEX_OK")" = "deny" ]             # R-517 never waives R-512's bundle check
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.

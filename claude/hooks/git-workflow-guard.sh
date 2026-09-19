@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # git-workflow-guard.sh: the R-5xx rules that are decidable from a git or gh
-# command plus the index. One PreToolUse(Bash) hook, four rules:
+# command plus the index. One PreToolUse(Bash) hook, five rules:
 #   R-514  a push whose target branch is main/master asks first, and so does
 #          `gh pr merge` (authorization is per turn, never standing)
 #   R-512  `gh pr merge --merge` (`-m`) is denied, and so is `--rebase` (`-r`)
 #          unless the PR is a bundle (the `bundle` label, a distinct `Refs:`
 #          trailer on every commit, read from `gh pr view`); feature branches
 #          squash-merge into one commit per feature
+#   R-517  `gh pr merge` is denied unless the PR body, read from `gh pr view`,
+#          carries a Markdown heading named "Codex review" with at least one
+#          non-blank line under it (the blocking pre-merge Codex review)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -136,8 +139,8 @@ parse_merge_arguments() {
   return 0
 }
 
-# run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $CWD
-# and prints its output, returning non-zero when gh fails or outlives
+# run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $CWD,
+# asking for the labels, commits, and body, and prints its output, returning non-zero when gh fails or outlives
 # CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
 # fail-closed: a hook killed by the harness timeout prints nothing, and an
 # empty PreToolUse output is an allow. Polls in 0.2s steps rather than using a
@@ -147,7 +150,7 @@ run_gh_view_with_deadline() {
   local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
   deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
   view_output_file=$(mktemp) || return 1
-  (cd "$CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits) >"$view_output_file" 2>/dev/null &
+  (cd "$CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body) >"$view_output_file" 2>/dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
     if [ "$waited_steps" -ge "$deadline_steps" ]; then
@@ -166,23 +169,36 @@ run_gh_view_with_deadline() {
   return "$gh_status"
 }
 
+# read_merge_pr_view: fetches the merged PR's view once and sets PR_JSON on
+# success or PR_VIEW_PROBLEM to the sentence saying why it could not be read.
+# A command that changes directory or sets GH_REPO/GH_HOST merges a PR the
+# hook's own gh view cannot see, so it is reported as unverifiable, as is a gh
+# that errors, hangs, or answers with anything jq cannot read. CLAUDE_GH_CMD
+# replaces gh for the fixture.
+read_merge_pr_view() {
+  PR_JSON=""
+  PR_VIEW_PROBLEM=""
+  if grep -qE '(^|[;&|(])[[:space:]]*(cd|pushd)([[:space:]]|$)|(^|[[:space:]])GH_(REPO|HOST)=' <<< "$CMD"; then
+    PR_VIEW_PROBLEM="the command changes directory or sets GH_REPO/GH_HOST, so the hook cannot check the PR it merges; run the merge from the repository's own directory with no cd."
+    return 0
+  fi
+  if ! PR_JSON=$(run_gh_view_with_deadline) ||
+    ! printf '%s' "$PR_JSON" | jq -e '(.labels | type == "array") and (.commits | type == "array")' >/dev/null 2>&1; then
+    PR_JSON=""
+    PR_VIEW_PROBLEM="gh pr view could not return the PR's labels, commits, and body, so the PR is unverified."
+  fi
+  return 0
+}
+
 # read_bundle_verdict: prints "ok" when the PR being merged is a bundle PR
 # (R-512's exception): it carries the `bundle` label and every commit message
 # holds a `Refs: <KEY>` trailer line naming a ticket no other commit names.
-# Otherwise prints the sentence naming the first missing condition. A command
-# that changes directory or sets GH_REPO/GH_HOST merges a PR the hook's own
-# gh view cannot see, so it is reported as unverifiable, as is a gh that
-# errors, hangs, or answers with anything jq cannot read. CLAUDE_GH_CMD
-# replaces gh for the fixture.
+# Otherwise prints the sentence naming the first missing condition, or the
+# reason read_merge_pr_view could not read the PR.
 read_bundle_verdict() {
-  local pr_json
-  if grep -qE '(^|[;&|(])[[:space:]]*(cd|pushd)([[:space:]]|$)|(^|[[:space:]])GH_(REPO|HOST)=' <<< "$CMD"; then
-    echo "the command changes directory or sets GH_REPO/GH_HOST, so the hook cannot check the PR it merges; run the merge from the repository's own directory with no cd."
-    return 0
-  fi
-  if ! pr_json=$(run_gh_view_with_deadline) ||
-    ! printf '%s' "$pr_json" | jq -e '(.labels | type == "array") and (.commits | type == "array")' >/dev/null 2>&1; then
-    echo "gh pr view could not confirm the PR's labels and commits, so the bundle conditions are unverified."
+  local pr_json="$PR_JSON"
+  if [ -n "$PR_VIEW_PROBLEM" ]; then
+    echo "$PR_VIEW_PROBLEM"
     return 0
   fi
   if ! printf '%s' "$pr_json" | jq -e 'any(.labels[]; .name == "bundle")' >/dev/null 2>&1; then
@@ -202,20 +218,56 @@ read_bundle_verdict() {
   echo ok
 }
 
-# R-512 and R-514 on the merge path. A squash or merge-commit decision needs
-# no repository context: the command alone carries both the strategy and the
-# fact that a merge is imminent. Only a rebase consults gh, from the command's
-# working directory, to check the bundle conditions.
+# has_codex_review_section <body>: true when the PR body holds a Markdown
+# heading (any level, any case) whose text starts with "Codex review" and at
+# least one non-blank line follows it before the next heading. A mention in
+# prose is not a section, and a bare heading records no findings.
+has_codex_review_section() {
+  printf '%s\n' "$1" | tr -d '\r' | awk '
+    /^[ \t]*#+[ \t]/ {
+      heading = tolower($0)
+      sub(/^[ \t]*#+[ \t]+/, "", heading)
+      in_section = (index(heading, "codex review") == 1)
+      next
+    }
+    in_section && /[^ \t]/ { found = 1 }
+    END { exit found ? 0 : 1 }'
+}
+
+# read_codex_review_verdict: prints "ok" when the merged PR's body carries the
+# R-517 Codex review section, otherwise the sentence naming what is missing.
+read_codex_review_verdict() {
+  local pr_body
+  if [ -n "$PR_VIEW_PROBLEM" ]; then
+    echo "$PR_VIEW_PROBLEM"
+    return 0
+  fi
+  pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
+  if has_codex_review_section "$pr_body"; then
+    echo ok
+    return 0
+  fi
+  echo "the PR body has no \`## Codex review\` section with content under it."
+}
+
+# R-512, R-517, and R-514 on the merge path. A merge-commit strategy is denied
+# from the command alone, before any gh call. Every other merge consults gh
+# once, from the command's working directory: a rebase for the bundle
+# conditions, and every merge for the Codex review section in the PR body.
 if grep -qE "$GH_MERGE_PATTERN" <<< "$CMD"; then
   parse_merge_arguments
   if [ "$MERGE_HAS_MERGE_FLAG" -eq 1 ]; then
     deny "This merges the PR with a strategy R-512 does not allow. Feature branches squash-merge: one commit per feature on main, so the branch's work-in-progress history stays off the trunk. Re-run with --squash."
   fi
+  read_merge_pr_view
   if [ "$MERGE_HAS_REBASE_FLAG" -eq 1 ]; then
     BUNDLE_VERDICT=$(read_bundle_verdict)
     [ "$BUNDLE_VERDICT" = "ok" ] ||
       deny "This rebase-merges the PR, which R-512 allows only for a bundle PR, and $BUNDLE_VERDICT A bundle carries the \`bundle\` label and one commit per ticket, each with its own \`Refs: <KEY>\` trailer line, so every ticket keeps exactly one commit on main. Otherwise re-run with --squash."
   fi
+  CODEX_REVIEW_VERDICT=$(read_codex_review_verdict)
+  [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
+    deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body summarizing the findings and their dispositions; then merge again."
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
 
