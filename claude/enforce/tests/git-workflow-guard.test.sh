@@ -229,12 +229,34 @@ set_tier trivial
 # The ledger covers only its own branch, repository, and non-fork head.
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$OTHER_BRANCH_PR")" = "deny" ]
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$FORK_PR")" = "deny" ]
+NO_FORK_FLAG_PR=$(write_gh_stub no-fork-flag-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"url":"https://github.com/o/r/pull/42"}')
+[ "$(trivial_decision 'gh pr merge 42 --squash' "$NO_FORK_FLAG_PR")" = "deny" ]    # an unknown fork flag is not "not a fork"
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$OTHER_REPO_PR")" = "deny" ]
 # The exemption never waives R-512 or the fail-closed reads.
 [ "$(trivial_decision 'gh pr merge 42 --merge' "$TRIVIAL_PR")" = "deny" ]
 [ "$(trivial_decision 'gh pr merge 42 -r' "$TRIVIAL_PR")" = "deny" ]
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "deny" ]
 [ "$(trivial_decision 'cd . && gh pr merge 42 --squash' "$TRIVIAL_PR")" = "deny" ]
+# A `git -C` redirect elsewhere in the command never selects whose ledger,
+# origin, or PR view the merge is judged by: the merge runs from the payload's
+# cwd, whose ledger here records the standard tier.
+OTHER_TRIVIAL_REPO=$(mktemp -d)
+git -C "$OTHER_TRIVIAL_REPO" init -q
+git -C "$OTHER_TRIVIAL_REPO" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
+git -C "$OTHER_TRIVIAL_REPO" remote add origin https://github.com/o/r.git
+git -C "$OTHER_TRIVIAL_REPO" checkout -q -b fix/typo
+printf '.claude/task-tier.json\n' >"$OTHER_TRIVIAL_REPO/.gitignore"
+(cd "$OTHER_TRIVIAL_REPO" && bash "$TIER_SCRIPT" set trivial "fixture reason" >/dev/null 2>&1)
+git -C "$TRIVIAL_REPO" checkout -q -b feat/next
+set_tier standard
+[ "$(trivial_decision "git -C $OTHER_TRIVIAL_REPO push origin fix/typo && gh pr merge 42 --squash" "$TRIVIAL_PR")" = "deny" ]
+# A later task's ledger overwrote the trivial one: the deny names what the
+# ledger now holds, so the overwrite is visible.
+TRIVIAL_REASON=$(payload 'gh pr merge 42 --squash' "$TRIVIAL_REPO" | CLAUDE_GH_CMD="$TRIVIAL_PR" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason')
+case "$TRIVIAL_REASON" in *standard*feat/next*) ;; *) echo "trivial deny must name the ledger's tier and branch: $TRIVIAL_REASON" >&2; exit 1 ;; esac
+rm -rf "$OTHER_TRIVIAL_REPO"
+git -C "$TRIVIAL_REPO" checkout -q fix/typo
+set_tier trivial
 # A ledger committed to the branch is not task-start's session state.
 rm -f "$TRIVIAL_REPO/.gitignore"
 git -C "$TRIVIAL_REPO" add .claude/task-tier.json

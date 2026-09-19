@@ -89,7 +89,7 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 1. Run `/code-review` on the branch diff, or dispatch a fresh reviewer subagent given only the diff, before opening the PR. Fix every real finding test-first (failing case, then fix) and record what the review found in the PR document.
 2. Open the PR and request the Copilot review.
 3. Run the blocking pre-merge Codex review (below) alongside Copilot, not instead of it.
-4. Start the next ticket while CI, Copilot, and Codex run. Return to this PR when all three finish; do not block the session on a poll loop.
+4. Start the next ticket while CI, Copilot, and Codex run. Return to this PR when all three finish; do not block the session on a poll loop. A trivial PR's exemption from R-517 lives in the checkout's one task-tier ledger, which the next ticket's `task-tier.sh set` replaces: merge the trivial PR first, start the next ticket in another worktree, or re-record `task-tier.sh set trivial` on the trivial branch before merging.
 5. Fix each valid Copilot comment (failing case first when behavior changes), reply in its thread naming the fix commit, and resolve the thread (R-515).
 6. Request a second Copilot round only when round one changed behavior (code or tests). Wording, docs, and PR-description fixes merge on green CI without a re-review. The same holds for Codex: a later behavior-changing commit means re-running its review on the new range.
 7. For 2 to 5 small related tickets, one bundle PR may replace separate PRs: label it `bundle`, keep one commit per ticket with its own `Refs:` trailer, and merge with `--rebase` (R-512). Never bundle deletion, security, sync, or migration changes.

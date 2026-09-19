@@ -70,7 +70,7 @@ Execution:      Inline, immediate
 Skills invoked: None (just do it)
 ```
 
-Create the branch, then record the tier on it with `bash ~/.claude/skills/task-start/scripts/task-tier.sh set trivial "<reason>"` so the ledger names that branch; `git-workflow-guard.sh` lets the PR merge without a `## Codex review` section only when that untracked ledger, in the checkout the merge runs from, records the trivial tier for the PR's head branch (a trivial marker typed into the PR body counts for nothing). Execute the change, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). If the change grows past trivial, reclassify (`task-tier.sh set standard ...`), and the Codex review is required again. Done.
+Create the branch, then record the tier on it with `bash ~/.claude/skills/task-start/scripts/task-tier.sh set trivial "<reason>"` so the ledger names that branch; `git-workflow-guard.sh` lets the PR merge without a `## Codex review` section only when that untracked ledger, in the checkout the merge runs from, records the trivial tier for the PR's head branch (a trivial marker typed into the PR body counts for nothing). Execute the change, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). The ledger is one file per checkout, so merge the trivial PR before running `task-tier.sh set` for the next task on the same checkout, or check the trivial branch out again and re-record `task-tier.sh set trivial` before merging. If the change grows past trivial, reclassify (`task-tier.sh set standard ...`), and the Codex review is required again. Done.
 
 ### Standard
 

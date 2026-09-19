@@ -53,6 +53,10 @@ CMD="${CMD//$'\001'/$NEWLINE_CHARACTER}"
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
+# The directory `gh pr merge` itself runs from. A `git -C`/`--work-tree` on a
+# push or commit elsewhere in the command redirects CWD below for the git
+# rules, but never selects which PR view, ledger, or origin a merge is judged by.
+MERGE_CWD="$CWD"
 
 # `git -C <path> push` and `git --no-pager commit` are the same actions with a
 # global option in front, and matching on adjacency alone lets them through.
@@ -177,7 +181,7 @@ parse_merge_arguments() {
   return 0
 }
 
-# run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $CWD,
+# run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $MERGE_CWD,
 # asking for the labels, commits, body, and the head branch, fork flag, and
 # URL the R-517 trivial exemption checks, and prints its output, returning non-zero when gh fails or outlives
 # CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
@@ -189,7 +193,7 @@ run_gh_view_with_deadline() {
   local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
   deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
   view_output_file=$(mktemp) || return 1
-  (cd "$CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
+  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
     if [ "$waited_steps" -ge "$deadline_steps" ]; then
@@ -317,14 +321,15 @@ read_github_slug() {
 
 # is_trivial_tier_pr: true when the merge is exempt from R-517's section as a
 # trivial-tier PR. The only authority is task-start's ledger
-# (.claude/task-tier.json at the top of the checkout the merge runs from),
+# (.claude/task-tier.json at the top of the checkout the merge runs from,
+# $MERGE_CWD, never a `git -C` target elsewhere in the command),
 # which must be untracked session state, record the trivial tier, and name the
 # PR's own head branch; the PR must also live in that checkout's origin
 # repository and come from a branch of it rather than a fork. Nothing in the
 # PR body counts, since anyone can type a marker there.
 is_trivial_tier_pr() {
   local top ledger head_branch pr_slug origin_slug
-  top=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || return 1
+  top=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) || return 1
   ledger="$top/.claude/task-tier.json"
   [ -f "$ledger" ] || return 1
   git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1 && return 1
@@ -334,6 +339,16 @@ is_trivial_tier_pr() {
   pr_slug=$(read_github_slug "$(printf '%s' "$PR_JSON" | jq -r '.url // "" | strings' 2>/dev/null)")
   origin_slug=$(read_github_slug "$(git -C "$top" remote get-url origin 2>/dev/null)")
   [ -n "$pr_slug" ] && [ "$pr_slug" = "$origin_slug" ]
+}
+
+# read_ledger_state: prints the tier and branch task-start's ledger in the
+# merge's checkout now records, or "no ledger", for the deny reason, so a
+# ledger a later task overwrote is visible rather than silent.
+read_ledger_state() {
+  local top
+  top=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) &&
+    jq -r '"tier \(.tier // "?") for branch \(.branch // "?")"' "$top/.claude/task-tier.json" 2>/dev/null ||
+    echo "no ledger"
 }
 
 # read_codex_review_verdict: prints "ok" when the merged PR's body carries the
@@ -350,7 +365,7 @@ read_codex_review_verdict() {
     echo ok
     return 0
   fi
-  echo "the PR body has no \`## Codex review\` section with content under it, and task-start's ledger does not record the trivial tier for this PR's head branch."
+  echo "the PR body has no \`## Codex review\` section with content under it, and task-start's ledger does not exempt it as a trivial-tier PR (the ledger holds: $(read_ledger_state); a later task-tier.sh set on this checkout replaces it)."
 }
 
 # classify_merge_commands <command> <is-nested>: walks the command's simple
