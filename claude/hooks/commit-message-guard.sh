@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# commit-message-guard.sh: PreToolUse gate on the messages of the `git commit`
-# invocations a Bash command really runs (-m, or -F - fed by a heredoc).
+# commit-message-guard.sh: PreToolUse gate on the messages of every `git
+# commit` a Bash command really runs (-m, or -F - fed by a heredoc), including
+# one run through `bash -c`, `sh -c`, `eval`, or a heredoc fed to a shell.
 # Denies a non-conventional subject or more than two triage IDs in the scope
 # (R-505); asks on a body longer than three non-trailer lines (R-506, whose
-# multi-line exemption is a user judgment). Unparseable commands fail open.
+# multi-line exemption is a user judgment), and a deny on any commit in the
+# command wins over an ask on another. Unparseable messages fail open.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
 # allow; a guard fails closed by structure, never open by accident
@@ -13,7 +15,11 @@ set -uo pipefail
 INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
-case "$CMD" in *commit*) ;; *) exit 0 ;; esac
+# A cheap superset of every command that can run a commit: a `git` word and the
+# text `commit` somewhere after it. Everything else skips the word scan, whose
+# cost grows with the command's length.
+grep -Eq '(^|[^[:alnum:]_.-])git([^[:alnum:]_-]|$)' <<< "$CMD" || exit 0
+grep -q 'commit' <<< "$CMD" || exit 0
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
@@ -30,7 +36,7 @@ ask() {
   exit 0
 }
 
-# Find the commit the way the shell would run it, through the quote-aware scan
+# Find each commit the way the shell would run it, through the quote-aware scan
 # in shell-command-scan.sh (shared with pr-ticket-ref-gate.sh). A grep over the
 # raw text read `git commit -m ...` written as data, inside a quoted argument
 # or a heredoc fed to cat, as a commit, and denied a subagent writing a test
@@ -43,8 +49,6 @@ SHELL_COMMAND_SCAN_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-scan.sh"
 if ! type scan_command_tokens >/dev/null 2>&1 || ! type is_git_commit_command >/dev/null 2>&1; then
   deny "commit-message-guard (R-505): a helper this hook sources (shell-command-scan.sh or shell-command-tokens.sh) is missing, so this hook cannot read the command; re-run ./sync.sh to restore it."
 fi
-scan_command_tokens "$CMD"
-find_simple_command "$PWD" is_git_commit_command || exit 0
 
 # read_substituted_heredoc <word>: prints the body of a `$(cat <<'EOF' ...
 # EOF)` substitution, the form a multi-line -m message usually takes; prints
@@ -55,63 +59,153 @@ read_substituted_heredoc() {
   '
 }
 
-# read_commit_message: sets MSG from the commit's own arguments: every -m
-# (git joins several with a blank line), or the heredoc behind `-F -`. `-F
-# <file>` keeps the message on disk rather than in the command, so it stays out
-# of reach and out of this gate (2026-09-17 audit P2-7). The values of options
-# that take one are skipped, so `--author "-m x"` is not a message.
-read_commit_message() {
-  local message
-  local -a messages=()
-  MSG=''
-  set -- ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      -m | --message) [ "$#" -ge 2 ] && messages+=("$2"); shift 2 2>/dev/null || shift ;;
-      --message=*) messages+=("${1#--message=}"); shift ;;
-      -m?*) messages+=("${1#-m}"); shift ;;
-      -F | --file) [ "${2:-}" = "-" ] && MSG="$INVOCATION_STDIN"; shift 2 2>/dev/null || shift ;;
-      -F- | --file=-) MSG="$INVOCATION_STDIN"; shift ;;
-      -C | -c | -t | --author | --date | --template | --fixup | --squash | --cleanup | --trailer | --reuse-message | --reedit-message | --pathspec-from-file)
-        shift 2 2>/dev/null || shift ;;
-      --) break ;;
-      *) shift ;;
+# read_short_option_cluster <word> <next word>: reads one bundled short-option
+# word the way git does (`-am msg`, `-qm msg`, `-am"msg"`): letters before the
+# first option that takes a value are flags, and that option's value is the
+# rest of the word or, when the word ends there, the next word. Appends an -m
+# value to MESSAGES, sets IS_STDIN_MESSAGE for `-F -`, and sets
+# IS_NEXT_WORD_TAKEN when the value was the next word.
+read_short_option_cluster() {
+  local cluster="${1#-}" letter value
+  IS_NEXT_WORD_TAKEN=0
+  while [ -n "$cluster" ]; do
+    letter="${cluster:0:1}"; cluster="${cluster:1}"
+    case "$letter" in
+      m | F | C | c | t)
+        value="$cluster"
+        if [ -z "$value" ] && [ "$#" -ge 2 ]; then value="$2"; IS_NEXT_WORD_TAKEN=1; fi
+        [ "$letter" = "m" ] && MESSAGES+=("$value")
+        [ "$letter" = "F" ] && [ "$value" = "-" ] && IS_STDIN_MESSAGE=1
+        return 0 ;;
+      S | u) return 0 ;;
     esac
-  done
-  [ "${#messages[@]}" -gt 0 ] || return 0
-  MSG=''
-  for message in "${messages[@]}"; do
-    # shellcheck disable=SC2016  # the literal `$(` of a substitution, not an expansion
-    case "$message" in
-      *'$('* | *'`'*) message=$(read_substituted_heredoc "$message"); [ -n "$message" ] || { MSG=''; return 0; } ;;
-    esac
-    MSG="${MSG:+$MSG$'\n\n'}$message"
   done
 }
 
-read_commit_message
-[ -z "$MSG" ] && exit 0
+# collect_commit_messages <word>...: fills MESSAGES with every -m value of one
+# commit's arguments and sets IS_STDIN_MESSAGE for `-F -`. `-F <file>` keeps
+# the message on disk rather than in the command, so it stays out of reach and
+# out of this gate (2026-09-17 audit P2-7). The values of long options that
+# take one are skipped, so `--author "-m x"` is not a message.
+collect_commit_messages() {
+  MESSAGES=(); IS_STDIN_MESSAGE=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --message) [ "$#" -ge 2 ] && MESSAGES+=("$2"); shift 2 2>/dev/null || shift ;;
+      --message=*) MESSAGES+=("${1#--message=}"); shift ;;
+      --file) [ "${2:-}" = "-" ] && IS_STDIN_MESSAGE=1; shift 2 2>/dev/null || shift ;;
+      --file=-) IS_STDIN_MESSAGE=1; shift ;;
+      --author | --date | --template | --fixup | --squash | --cleanup | --trailer | --reuse-message | --reedit-message | --pathspec-from-file)
+        shift 2 2>/dev/null || shift ;;
+      --) break ;;
+      --*) shift ;;
+      -?*)
+        read_short_option_cluster "$@"
+        if [ "$IS_NEXT_WORD_TAKEN" -eq 1 ]; then shift 2; else shift; fi ;;
+      *) shift ;;
+    esac
+  done
+}
 
-SUBJECT=$(printf '%s\n' "$MSG" | head -1)
+# join_commit_messages: sets MSG to the MESSAGES git would join with a blank
+# line, each `$(cat <<EOF ...)` value read from its heredoc. Any other value
+# that starts with a substitution is unreadable and dropped; when that is the
+# first value, which carries the subject, MSG stays empty and the commit fails
+# open. A substitution later in a value is kept as literal text, since the
+# subject's conventional prefix is literal either way.
+join_commit_messages() {
+  local message index=0
+  MSG=''
+  for message in ${MESSAGES[@]+"${MESSAGES[@]}"}; do
+    # shellcheck disable=SC2016  # the literal `$(` of a substitution, not an expansion
+    case "$message" in
+      '$('* | '`'*)
+        message=$(read_substituted_heredoc "$message")
+        if [ -z "$message" ]; then [ "$index" -eq 0 ] && return 0; index=$((index + 1)); continue; fi ;;
+    esac
+    MSG="${MSG:+$MSG$'\n\n'}$message"
+    index=$((index + 1))
+  done
+}
 
-if ! grep -qE '^(feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert)(\([^)]*\))?!?: .+' <<< "$SUBJECT"; then
-  deny "commit-message-guard BLOCKED this commit (R-505): subject '$SUBJECT' is not in conventional form 'type(scope): summary'. Types: feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert."
-fi
-
-SCOPE=$(printf '%s' "$SUBJECT" | sed -nE 's/^[a-z]+\(([^)]*)\).*/\1/p')
-if [ -n "$SCOPE" ]; then
-  COMMAS=$(printf '%s' "$SCOPE" | tr -cd ',' | wc -c | tr -d ' ')
-  if [ "$COMMAS" -gt 1 ]; then
-    deny "commit-message-guard BLOCKED this commit (R-505): scope '($SCOPE)' carries more than two triage IDs. One commit per triage ID; two IDs max when inseparable."
+# judge_commit_message: denies the commit in MSG on an R-505 subject problem,
+# or records an R-506 ask in PENDING_ASK_REASON for after every commit is read.
+judge_commit_message() {
+  local subject scope comma_count body_line_count
+  subject=$(printf '%s\n' "$MSG" | head -1)
+  if ! grep -qE '^(feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert)(\([^)]*\))?!?: .+' <<< "$subject"; then
+    deny "commit-message-guard BLOCKED this commit (R-505): subject '$subject' is not in conventional form 'type(scope): summary'. Types: feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert."
   fi
-fi
+  scope=$(printf '%s' "$subject" | sed -nE 's/^[a-z]+\(([^)]*)\).*/\1/p')
+  if [ -n "$scope" ]; then
+    comma_count=$(printf '%s' "$scope" | tr -cd ',' | wc -c | tr -d ' ')
+    if [ "$comma_count" -gt 1 ]; then
+      deny "commit-message-guard BLOCKED this commit (R-505): scope '($scope)' carries more than two triage IDs. One commit per triage ID; two IDs max when inseparable."
+    fi
+  fi
+  body_line_count=$(printf '%s\n' "$MSG" | tail -n +2 \
+    | grep -v '^[[:space:]]*$' \
+    | grep -vE '^(Co-Authored-By|Signed-off-by|Reviewed-by|Refs):' \
+    | grep -cv "Generated with" || true)
+  if [ "${body_line_count:-0}" -gt 3 ]; then
+    PENDING_ASK_REASON="commit-message-guard (R-506): the body has $body_line_count non-trailer lines; the norm is a one-sentence body, with multi-line reserved for business-logic bugs, architectural refactors, and security changes. Confirm to proceed if this commit qualifies."
+  fi
+}
 
-BODY_LINES=$(printf '%s\n' "$MSG" | tail -n +2 \
-  | grep -v '^[[:space:]]*$' \
-  | grep -vE '^(Co-Authored-By|Signed-off-by|Reviewed-by|Refs):' \
-  | grep -cv "Generated with" || true)
-if [ "${BODY_LINES:-0}" -gt 3 ]; then
-  ask "commit-message-guard (R-506): the body has $BODY_LINES non-trailer lines; the norm is a one-sentence body, with multi-line reserved for business-logic bugs, architectural refactors, and security changes. Confirm to proceed if this commit qualifies."
-fi
+# read_shell_script <stdin> <word>...: sets SHELL_SCRIPT to the script a shell
+# command runs, when the words are a shell with `-c <string>` (or a cluster
+# ending in c, such as -lc), eval, or a shell reading a heredoc with no script
+# file; returns 1 for any other command.
+read_shell_script() {
+  local stdin="$1"
+  shift
+  SHELL_SCRIPT=''
+  case "$(basename -- "${1:-}")" in
+    eval) shift; SHELL_SCRIPT="$*"; return 0 ;;
+    sh | bash | zsh | dash | ksh) shift ;;
+    *) return 1 ;;
+  esac
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -*c) SHELL_SCRIPT="${2:-}"; return 0 ;;
+      -*) shift ;;
+      *) return 1 ;;
+    esac
+  done
+  SHELL_SCRIPT="$stdin"
+  [ -n "$SHELL_SCRIPT" ]
+}
 
+# judge_simple_command <stdin> <word>...: the find_simple_command matcher.
+# Judges a git commit's message, walks the script of a shell or eval as a
+# command of its own (to a depth of four), and always returns 1 so the walk
+# goes on to every later command.
+judge_simple_command() {
+  if is_git_commit_command "$@"; then
+    collect_commit_messages ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}
+    if [ "$IS_STDIN_MESSAGE" -eq 1 ] && [ "${#MESSAGES[@]}" -eq 0 ]; then MSG="$INVOCATION_STDIN"; else join_commit_messages; fi
+    [ -n "$MSG" ] && judge_commit_message
+    return 1
+  fi
+  local stdin="$1"
+  shift
+  strip_command_prefixes "$@"
+  [ "${#STRIPPED_WORDS[@]}" -gt 0 ] && read_shell_script "$stdin" "${STRIPPED_WORDS[@]}" || return 1
+  [ "$SHELL_DEPTH" -lt 4 ] || return 1
+  SHELL_DEPTH=$((SHELL_DEPTH + 1))
+  judge_command_text "$SHELL_SCRIPT"
+  SHELL_DEPTH=$((SHELL_DEPTH - 1))
+  return 1
+}
+
+# judge_command_text <command>: scans a command and judges every commit in it.
+judge_command_text() {
+  scan_command_tokens "$1"
+  find_simple_command "$PWD" judge_simple_command
+}
+
+PENDING_ASK_REASON=''
+SHELL_DEPTH=0
+judge_command_text "$CMD"
+[ -n "$PENDING_ASK_REASON" ] && ask "$PENDING_ASK_REASON"
 exit 0

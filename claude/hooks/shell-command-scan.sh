@@ -91,9 +91,9 @@ strip_command_prefixes() {
   local wrapper="" is_duration_pending=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      if | then | else | elif | do | while | until | '!' | '{' | '}' | time | nohup | exec | command | builtin)
+      if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | exec | command | builtin)
         wrapper=""; shift; continue ;;
-      env | nice | sudo | xargs) wrapper="$1"; shift; continue ;;
+      env | nice | sudo | xargs | time) wrapper="$1"; shift; continue ;;
       timeout) wrapper="timeout"; is_duration_pending=1; shift; continue ;;
     esac
     if [ -n "$wrapper" ]; then
