@@ -720,46 +720,80 @@ is_export_program() {
     return 1
 }
 
-# True when the segment turns on allexport (set -a, set -o allexport), after
-# which every plain assignment is exported.
-is_allexport_set() {
-    local index
-    [ "${WORDS[COMMAND_START]}" = set ] || return 1
+# Applies a `set` segment to AUTO_EXPORT: -a and -o allexport turn automatic
+# export on, +a and +o allexport turn it off, read left to right so the last
+# one wins; an option cluster ending in o (-euo) takes the next word as the
+# option name.
+apply_set_segment() {
+    local index word sign
     for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
-        [[ "${WORDS[index]}" =~ ^-[A-Za-z]*a|^allexport$ ]] && return 0
+        word="${WORDS[index]}"
+        [[ "$word" =~ ^[-+][A-Za-z]+$ ]] || continue
+        sign="${word:0:1}"
+        [[ "$word" == *a* ]] && AUTO_EXPORT=$([ "$sign" = - ] && echo 1 || echo 0)
+        if [[ "$word" == *o ]]; then
+            index=$((index + 1))
+            [ "${WORDS[index]:-}" = allexport ] && AUTO_EXPORT=$([ "$sign" = - ] && echo 1 || echo 0)
+        fi
+    done
+}
+
+# Removes NAME from the exported list; bash keeps its value as a plain,
+# unexported variable, so that value is remembered for a later `export NAME`.
+unexport_variable() {
+    local entry kept=()
+    for entry in ${EXPORTED_ASSIGNMENTS[@]+"${EXPORTED_ASSIGNMENTS[@]}"}; do
+        if [ "${entry%%=*}" = "$1" ]; then
+            PLAIN_ASSIGNMENTS+=("$entry")
+        else
+            kept+=("$entry")
+        fi
+    done
+    EXPORTED_ASSIGNMENTS=(${kept[@]+"${kept[@]}"})
+    EXPORTED_NAMES="${EXPORTED_NAMES// $1 / }"
+}
+
+# Records NAME=value as exported, replacing any earlier export of NAME.
+export_assignment() {
+    unexport_variable "${1%%=*}"
+    EXPORTED_ASSIGNMENTS+=("$1")
+}
+
+# True when a currently exported assignment satisfies the predicate; an
+# exported variable reaches every later git command in the same call.
+has_exported_assignment() {
+    local entry
+    for entry in ${EXPORTED_ASSIGNMENTS[@]+"${EXPORTED_ASSIGNMENTS[@]}"}; do
+        "$1" "$entry" && return 0
     done
     return 1
 }
 
-# Checks one assignment that reaches git's environment against the hook-skip
-# and hooksPath predicates.
-note_exported_assignment() {
-    is_hook_skip_assignment "$1" && exported_hook_skip=1
-    is_hookspath_env_assignment "$1" && exported_hookspath=1
-    is_config_file_assignment "$1" && exported_config_file=1
-    return 0
-}
-
-# Exports every earlier plain assignment of the named variable.
+# Exports the most recent earlier plain assignment of the named variable.
 export_earlier_assignment() {
-    local assignment
-    for assignment in ${plain_assignments[@]+"${plain_assignments[@]}"}; do
-        [ "${assignment%%=*}" = "$1" ] && note_exported_assignment "$assignment"
+    local assignment value=""
+    for assignment in ${PLAIN_ASSIGNMENTS[@]+"${PLAIN_ASSIGNMENTS[@]}"}; do
+        [ "${assignment%%=*}" = "$1" ] && value="$assignment"
     done
+    [ -n "$value" ] && export_assignment "$value"
     return 0
 }
 
-# Applies an export segment: its assignments are exported now, and a bare
-# name exports that variable's earlier plain assignment and any later one.
+# Applies an export segment: its assignments are exported now, a bare name
+# exports that variable's earlier plain assignment and any later one, and
+# `export -n NAME` removes the export again.
 apply_export_segment() {
-    local index word
+    local index word removes=0
     for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
         word="${WORDS[index]}"
-        case "$word" in -*) continue ;; esac
-        if is_assignment_word "$word"; then
-            note_exported_assignment "$word"
+        case "$word" in -n) removes=1; continue ;; -*) continue ;; esac
+        if [ "$removes" -eq 1 ]; then
+            unexport_variable "${word%%=*}"
+        elif is_assignment_word "$word"; then
+            export_assignment "$word"
+            EXPORTED_NAMES="$EXPORTED_NAMES ${word%%=*} "
         else
-            exported_names="$exported_names $word "
+            EXPORTED_NAMES="$EXPORTED_NAMES $word "
             export_earlier_assignment "$word"
         fi
     done
@@ -772,22 +806,20 @@ apply_assignment_segment() {
     local index word
     for ((index = 0; index < COMMAND_START; index++)); do
         word="${WORDS[index]}"
-        if [ "$auto_export" -eq 1 ] || [[ "$exported_names" == *" ${word%%=*} "* ]]; then
-            note_exported_assignment "$word"
+        if [ "$AUTO_EXPORT" -eq 1 ] || [[ "$EXPORTED_NAMES" == *" ${word%%=*} "* ]]; then
+            export_assignment "$word"
         else
-            plain_assignments+=("$word")
+            PLAIN_ASSIGNMENTS+=("$word")
         fi
     done
 }
 
 # An export earlier in the command reaches every later git in the same call,
 # so it is remembered across segments; a bare prefix reaches only its own.
-exported_hook_skip=0
-exported_hookspath=0
-exported_config_file=0
-exported_names=" "
-auto_export=0
-plain_assignments=()
+EXPORTED_ASSIGNMENTS=()
+EXPORTED_NAMES=" "
+AUTO_EXPORT=0
+PLAIN_ASSIGNMENTS=()
 CD_PREFIX=""
 HOOK_RENAMED_TO_BACKUP=0
 while IFS=$'\037' read -r -a WORDS; do
@@ -802,8 +834,8 @@ while IFS=$'\037' read -r -a WORDS; do
         apply_export_segment
         continue
     fi
-    if is_allexport_set; then
-        auto_export=1
+    if [ "$program" = set ]; then
+        apply_set_segment
         continue
     fi
     if [ "$program" = cd ] || [ "$program" = pushd ]; then
@@ -834,13 +866,13 @@ while IFS=$'\037' read -r -a WORDS; do
     if has_include_setting; then
         emit deny "destructive-command-guard hook BLOCKED this call: it passes an include.path or includeIf setting to a git command that runs hooks, which can load a config file that sets core.hooksPath (R-107, R-203). Run the command without the include."
     fi
-    if [ "$exported_config_file" -eq 1 ] || has_leading_assignment is_config_file_assignment; then
+    if has_exported_assignment is_config_file_assignment || has_leading_assignment is_config_file_assignment; then
         emit deny "destructive-command-guard hook BLOCKED this call: it points a git command that runs hooks at a different config file (GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, or XDG_CONFIG_HOME), which can set core.hooksPath without touching this repository (R-107, R-203). Run the command in the normal environment."
     fi
-    if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment || has_hookspath_option; then
+    if has_exported_assignment is_hookspath_env_assignment || has_leading_assignment is_hookspath_env_assignment || has_hookspath_option; then
         emit deny "destructive-command-guard hook BLOCKED this call: it overrides core.hooksPath for this git command (-c, --config-env, GIT_CONFIG_KEY_n, or GIT_CONFIG_PARAMETERS), which redirects or disables every git hook without touching git config (R-107, R-203). Run the command without the override."
     fi
-    if [ "$exported_hook_skip" -eq 1 ] || has_leading_assignment is_hook_skip_assignment; then
+    if has_exported_assignment is_hook_skip_assignment || has_leading_assignment is_hook_skip_assignment; then
         emit deny "destructive-command-guard hook BLOCKED this call: it sets an environment variable that turns the hook manager off (HUSKY=0, HUSKY_SKIP_HOOKS, SKIP, LEFTHOOK=0, or LEFTHOOK_EXCLUDE) for a git command that runs hooks (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
     if skips_git_hooks; then

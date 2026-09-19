@@ -1,6 +1,6 @@
 {
   "slice": "B-15 track set +a, set +o allexport, and export -n as turning export off",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 94,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T18:28:08Z"
+  "redAt": "2026-09-19T18:28:08Z",
+  "greenAt": "2026-09-19T18:48:26Z"
 }
