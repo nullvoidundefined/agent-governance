@@ -171,6 +171,59 @@ expect none 'export GIT_CONFIG_KEY_0=core.hooksPath'
 
 # --- end B-3 ---------------------------------------------------------------
 
+# --- B-4: a file under .git/hooks deleted, moved, disabled, or overwritten --
+
+# deleting or moving a hook file, or the whole hooks directory
+expect deny 'rm .git/hooks/pre-commit'
+expect deny 'rm -f .git/hooks/pre-push'
+expect deny 'rm -rf .git/hooks'
+expect deny 'unlink .git/hooks/pre-commit'
+expect deny 'mv .git/hooks/pre-commit /tmp/pc'
+expect deny 'mv .git/hooks .git/hooks.bak'
+expect deny 'find .git/hooks -type f -delete'
+expect deny 'find .git/hooks -name pre-commit -exec rm {} +'
+
+# stripping the execute bit leaves the file in place but git skips it
+expect deny 'chmod -x .git/hooks/pre-commit'
+expect deny 'chmod 644 .git/hooks/pre-push'
+
+# truncating, overwriting, or appending to a hook file, by redirect or by tool
+expect deny 'truncate -s 0 .git/hooks/pre-commit'
+expect deny ': > .git/hooks/pre-commit'
+expect deny "echo 'exit 0' > .git/hooks/pre-commit"
+expect deny "printf 'exit 0\\n' >> .git/hooks/pre-push"
+expect deny 'cp /dev/null .git/hooks/pre-commit'
+expect deny 'ln -sf /dev/null .git/hooks/pre-commit'
+expect deny 'tee .git/hooks/pre-commit < /dev/null'
+expect deny "sed -i '' 's/exit 1/exit 0/' .git/hooks/pre-commit"
+
+# an absolute path, a leading sudo, a separator, and a later line do not hide it
+expect deny 'rm /tmp/repo/.git/hooks/pre-commit'
+expect deny 'sudo rm .git/hooks/pre-commit'
+expect deny 'git status && rm .git/hooks/pre-commit'
+expect deny $'git status\nrm .git/hooks/pre-commit'
+
+# reading a hook, copying one out, and running the harness installer must keep
+# working, as must quoted or echoed text and deletions of unrelated paths that
+# merely resemble the hooks path
+expect none 'ls .git/hooks'
+expect none 'ls -la .git/hooks/'
+expect none 'cat .git/hooks/pre-commit'
+expect none 'head -5 .git/hooks/pre-push'
+expect none 'test -x .git/hooks/pre-commit'
+expect none 'grep -rn exit .git/hooks'
+expect none 'diff .git/hooks/pre-commit /tmp/other'
+expect none 'cp .git/hooks/pre-commit /tmp/backup'
+expect none 'cat .git/hooks/pre-commit > /tmp/copy'
+expect none 'bash claude/hooks/install-git-hooks.sh'
+expect none 'git commit -m "remove .git/hooks/pre-commit"'
+expect none 'echo "rm .git/hooks/pre-commit"'
+expect none 'rm -rf node_modules'
+expect none 'rm .github/workflows/old.yml'
+expect none 'rm docs/git/hooks.md'
+
+# --- end B-4 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1

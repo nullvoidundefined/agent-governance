@@ -1,21 +1,20 @@
 {
-  "slice": "B-3 deny core.hooksPath overrides through -c, --config-env, and GIT_CONFIG variables",
-  "phase": "green",
+  "slice": "B-4 deny deleting, moving, or rewriting files under .git/hooks",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "931a949dba98e0dd70feab6f84ae9e8475c6770bca21f7f500d11cd9739df15d",
+      "sha256": "24d4b177f7006981ac117c42a4769eeb6dd45dcde9fd79b1024d5aebde9ecbad",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T10:57:11Z",
+  "openedAt": "2026-09-19T11:10:01Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T11:04:54Z",
-  "greenAt": "2026-09-19T11:09:55Z"
+  "redAt": "2026-09-19T11:23:51Z"
 }
