@@ -1,6 +1,6 @@
 {
   "slice": "B-13 keep the guard fast on long commands",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T17:25:12Z"
+  "redAt": "2026-09-19T17:25:12Z",
+  "greenAt": "2026-09-19T17:37:56Z"
 }

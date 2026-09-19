@@ -283,41 +283,57 @@ skips_git_hooks() {
     return 1
 }
 
-# Prints a path word as the path it names: git rev-parse substitutions for the
+# Sets RESOLVED_PATH to the path a path word names: git rev-parse substitutions for the
 # hooks and git directories resolved, a relative path placed under the
 # directory an earlier `cd` in the same command moved to, and `./`, `/./`,
-# and repeated slashes removed.
+# `x/..`, and repeated slashes removed. It uses only bash string operations,
+# because a fork per argument made a long command take seconds and got the
+# hook process killed, which lets the call through.
 resolve_path() {
-    local path
-    path="$(printf '%s' "$1" | sed -E \
-        -e 's#\$\(git rev-parse --git-path ([^)]*)\)#.git/\1#g' \
-        -e 's#`git rev-parse --git-path ([^`]*)`#.git/\1#g' \
-        -e 's#\$\(git rev-parse --(absolute-git|git-common|git)-dir\)|`git rev-parse --(absolute-git|git-common|git)-dir`#.git#g')"
+    local path="$1" pattern
+    if [[ "$path" == *'git rev-parse'* ]]; then
+        pattern='^(.*)(\$\(|`)git rev-parse --git-path ([^)`]*)(\)|`)(.*)$'
+        while [[ "$path" =~ $pattern ]]; do
+            path="${BASH_REMATCH[1]}.git/${BASH_REMATCH[3]}${BASH_REMATCH[5]}"
+        done
+        pattern='^(.*)(\$\(|`)git rev-parse --(absolute-git|git-common|git)-dir(\)|`)(.*)$'
+        while [[ "$path" =~ $pattern ]]; do
+            path="${BASH_REMATCH[1]}.git${BASH_REMATCH[5]}"
+        done
+    fi
     case "$path" in /*) ;; *) [ -n "$CD_PREFIX" ] && path="$CD_PREFIX/$path" ;; esac
-    path="$(printf '%s' "$path" | sed -E -e 's#/+#/#g' -e 's#(^|/)\./#\1#g' -e 's#/\.$##')"
-    while [[ "$path" =~ ^(.*/)?([^/]+)/\.\.(/.*)?$ ]] && [ "${BASH_REMATCH[2]}" != ".." ]; do
+    # The patterns live in variables: bash 3.2 keeps a backslash-escaped slash
+    # literally in a replacement, so ${path//\/\//\/} would insert "\/".
+    local slash='/' double_slash='//' dot_segment='/./'
+    while [[ "$path" == *//* ]]; do path="${path//$double_slash/$slash}"; done
+    while [[ "$path" == */./* ]]; do path="${path//$dot_segment/$slash}"; done
+    while [[ "$path" == ./* ]]; do path="${path#./}"; done
+    [[ "$path" == */. ]] && path="${path%/.}"
+    pattern='^(.*/)?([^/]+)/\.\.(/.*)?$'
+    while [[ "$path" =~ $pattern ]] && [ "${BASH_REMATCH[2]}" != ".." ]; do
         path="${BASH_REMATCH[1]}${BASH_REMATCH[3]#/}"
     done
-    printf '%s' "$path"
+    RESOLVED_PATH="$path"
 }
 
-# Prints each word brace expansion makes of the argument, one per line
-# ({a,b} groups, expanded one at a time; capped at 64 results).
+# Sets EXPANDED_WORDS to the words brace expansion makes of the argument
+# ({a,b} groups, expanded one at a time; capped at 64 results). A word
+# without a brace is its own only expansion.
 expand_braces() {
-    local pending=("$1") results=() word parts alternative prefix suffix
-    while [ "${#pending[@]}" -gt 0 ] && [ "${#results[@]}" -lt 64 ]; do
+    local pending=("$1") word parts alternative prefix suffix pattern='^(.*)\{([^{}]*,[^{}]*)\}(.*)$'
+    EXPANDED_WORDS=()
+    while [ "${#pending[@]}" -gt 0 ] && [ "${#EXPANDED_WORDS[@]}" -lt 64 ]; do
         word="${pending[0]}"
         pending=(${pending[@]+"${pending[@]:1}"})
-        if [[ "$word" =~ ^(.*)\{([^{}]*,[^{}]*)\}(.*)$ ]]; then
+        if [[ "$word" == *'{'* ]] && [[ "$word" =~ $pattern ]]; then
             prefix="${BASH_REMATCH[1]}"
             suffix="${BASH_REMATCH[3]}"
             IFS=, read -r -a parts <<< "${BASH_REMATCH[2]},"
             for alternative in "${parts[@]}"; do pending+=("$prefix$alternative$suffix"); done
         else
-            results+=("$word")
+            EXPANDED_WORDS+=("$word")
         fi
     done
-    printf '%s\n' "${results[@]}"
 }
 
 # True when a resolved path is the .git/hooks directory or a file under it,
@@ -380,9 +396,11 @@ collect_targets() {
     TARGETS=()
     for word in ${ARGUMENTS[@]+"${ARGUMENTS[@]}"}; do
         case "$word" in -*) continue ;; esac
-        while IFS= read -r expanded; do
-            TARGETS+=("$(resolve_path "$expanded")")
-        done < <(expand_braces "$word")
+        expand_braces "$word"
+        for expanded in "${EXPANDED_WORDS[@]}"; do
+            resolve_path "$expanded"
+            TARGETS+=("$RESOLVED_PATH")
+        done
     done
 }
 
@@ -410,7 +428,8 @@ has_hook_target() {
 has_hook_redirect() {
     local target
     for target in ${REDIRECT_TARGETS[@]+"${REDIRECT_TARGETS[@]}"}; do
-        is_write_protected_path "$(resolve_path "$target")" && return 0
+        resolve_path "$target"
+        is_write_protected_path "$RESOLVED_PATH" && return 0
     done
     return 1
 }
@@ -487,7 +506,7 @@ disables_hook_mode() {
 dd_writes_hook() {
     local word
     for word in ${ARGUMENTS[@]+"${ARGUMENTS[@]}"}; do
-        case "$word" in of=*) is_write_protected_path "$(resolve_path "${word#of=}")" && return 0 ;; esac
+        case "$word" in of=*) resolve_path "${word#of=}"; is_write_protected_path "$RESOLVED_PATH" && return 0 ;; esac
     done
     return 1
 }
@@ -788,7 +807,8 @@ while IFS=$'\037' read -r -a WORDS; do
         continue
     fi
     if [ "$program" = cd ] || [ "$program" = pushd ]; then
-        CD_PREFIX="$(resolve_path "${WORDS[COMMAND_START + 1]:-}")"
+        resolve_path "${WORDS[COMMAND_START + 1]:-}"
+        CD_PREFIX="$RESOLVED_PATH"
         continue
     fi
     if tampers_with_git_hooks; then
