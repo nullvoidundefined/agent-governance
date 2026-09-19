@@ -1,21 +1,20 @@
 {
-  "slice": "B-11 parse substitutions in double quotes and unquoted heredocs, shell options before -c, and commands fed to a shell by herestring or pipe",
-  "phase": "green",
+  "slice": "B-12 deny hooks tampering through braces, find exclusions, a .bak rename before a commit, direct config-file edits, and the remaining short spellings",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "5166b6eb7ad63a3fbe6a353902c9fa3aefb646176b490e4bcb22e6595ba5d76c",
+      "sha256": "f9cbfcab0aa27a5ac1253a92d5058a856d5ab293edfb1df1cfd632d6f76be84d",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T16:16:10Z",
+  "openedAt": "2026-09-19T16:30:26Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T16:23:44Z",
-  "greenAt": "2026-09-19T16:30:19Z"
+  "redAt": "2026-09-19T16:37:59Z"
 }

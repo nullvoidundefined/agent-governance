@@ -660,6 +660,79 @@ expect none 'echo "git commit --no-verify is banned" | grep banned'
 
 # --- end B-11 --------------------------------------------------------------
 
+# --- B-12: the remaining habitual spellings of hook tampering and of direct
+# git config file writes, with the housekeeping forms kept allowed -----------
+
+# brace expansion that bash expands into a path naming the hooks directory
+expect deny 'rm -rf .git/{hooks,info}'
+expect deny 'rm -rf .git/hooks{,.bak}'
+expect deny 'rm -rf .{git,x}/hooks'
+
+# find that spares the .sample files but deletes the real hooks beside them
+expect deny "find .git/hooks -type f ! -name '*.sample' -delete"
+expect deny "find .git/hooks -name '*.sample' -o -name pre-commit -delete"
+expect deny "find .git/hooks -not -name '*.sample' -delete"
+
+# renaming a hook to .bak disables it, and a hook-running git command later in
+# the same call then runs without it
+expect deny 'mv .git/hooks/pre-commit .git/hooks/pre-commit.bak && git commit -m x'
+expect deny 'mv .git/hooks/pre-push .git/hooks/pre-push.bak; git push'
+
+# writing a git config file directly can set core.hooksPath, an include, or an
+# alias without ever running git config
+expect deny "echo 'hooksPath = /dev/null' >> .git/config"
+expect deny "printf '[core]\\n\\thooksPath = /dev/null\\n' >> ~/.gitconfig"
+expect deny "sed -i '' 's/x/y/' .git/config"
+expect deny 'tee -a .git/config < /tmp/snippet'
+expect deny 'cp /tmp/evil .git/config'
+expect deny 'echo x >> "$HOME/.gitconfig"'
+expect deny 'echo x >> ~/.config/git/config'
+expect deny 'echo x >> .git/config.worktree'
+
+# short spellings: pushd into the hooks, a .. segment that resolves back into
+# them, octal modes with no execute bit, a copied mode, a git global option in
+# front of commit -n, the last of two -c values for one alias key, and a hook
+# path produced by git rev-parse --git-path
+expect deny 'pushd .git/hooks && rm pre-commit && popd'
+expect deny 'rm .git/info/../hooks/pre-commit'
+expect deny 'chmod 0 .git/hooks/pre-commit'
+expect deny 'chmod 00 .git/hooks/pre-push'
+expect deny 'chmod --reference=/etc/hosts .git/hooks/pre-commit'
+expect deny 'git --attr-source HEAD commit -n -m x'
+expect deny 'git -c alias.ci=commit -c alias.ci="commit -n" ci -m x'
+expect deny 'rm "$(git rev-parse --git-path hooks/pre-commit)"'
+
+# the installer's own recovery, and a .bak rename followed only by commands
+# that run no hook, must keep working
+expect none 'mv .git/hooks/pre-push .git/hooks/pre-push.legacy.bak && bash claude/hooks/install-git-hooks.sh'
+expect none 'mv .git/hooks/pre-commit .git/hooks/pre-commit.bak && git status'
+
+# a find that deletes only .sample files removes no real hook
+expect none "find .git/hooks -name '*.sample' -delete"
+
+# reading a git config file, or copying it out, changes nothing
+expect none 'cat .git/config'
+expect none 'grep hooksPath ~/.gitconfig'
+expect none 'cp .git/config /tmp/config.backup'
+expect none "sed -n '1,5p' .git/config"
+
+# brace expansion that names no hook path
+expect none 'rm -rf {dist,build}'
+expect none 'rm -rf .git/{index.lock,ORIG_HEAD}'
+
+# an executable mode, a pushd elsewhere, and a harmless last -c value for an
+# alias key must keep working
+expect none 'chmod 755 .git/hooks/pre-commit'
+expect none 'pushd src && ls && popd'
+expect none 'git -c alias.ci="commit -n" -c alias.ci=commit ci -m x'
+
+# an absolute .git outside the current repository is a throwaway repository,
+# not this repository's hooks
+expect none 'rm -rf /tmp/fixture-repo/.git'
+expect none 'rm -rf "$TMPDIR/repo/.git"'
+
+# --- end B-12 --------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
