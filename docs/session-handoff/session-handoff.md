@@ -1,36 +1,40 @@
-# Session Handoff: 2026-09-19, convention-track corrections (#75), template spec fixes, Nuxt track client rules
+# Session Handoff: 2026-09-19, ECC audit, hook-bypass guard (#83), Copilot removed (#86)
 
 ## 1. Last commit
 
-- Last commit on `main` from this session: `45cf28a` (docs(tracks): correct the Python and Vue tracks from the FastAPI and Nuxt template build, #75). This PR's branch commits (from `f90fb3f`, IAN-159) are replaced on `main` by its squash commit. This handoff, the ISSUES.md move, and the PR document ship in the same PR, which squash-merges onto `main`.
-- Earlier this session: agent-governance PR #75 merged as `45cf28a` (IAN-145); template-fastapi-nuxt PR #8 merged as `d9baabd` (IAN-146).
+- Last commit on `main` from this session: `1f14fbe` (chore(rules): remove Copilot review; CI and the R-517 review are the checks before merge, #86). This handoff ships in its own trivial PR after it.
+- Earlier this session: #76 as `6895b25` (ECC audit and maintenance-tax answer), #84 as `2602481` (fixture HOME isolation), #83 as `3bcd846` (hook-bypass guard).
 
 ## 2. Production state
 
-- The primary checkout was fast-forwarded to `51461e9` and `./sync.sh` ran at about 17:30Z; the live `~/.claude`, `~/.cursor`, and `~/.codex` matched `main` at that point (checked with `cmp` on `CLAUDE-PYTHON.md`, `ticket-at-start-gate.sh`, and `tdd.sh`). This PR's track changes reach the live tree only after the next `git pull --ff-only && ./sync.sh`.
-- Codex was over its usage limit for this whole session; every pre-merge review ran on the fallback reviewer (a Claude subagent on fable) with `prompts/codex-pr-review-prompt.md`.
-- The Linear connector sat at "pending" until the owner enabled it mid-session; the tools load by the exact names in `~/.claude/TICKET-TRACKER.json`.
+- The primary checkout is on `main` at `1f14fbe`. `./sync.sh` has not run since #83, #84, and #86 merged, so the live `~/.claude` still has the old guard, the old Copilot rules, and the old fixtures until the owner runs `git pull --ff-only && ./sync.sh`.
+- The repository ruleset `copilot-review-main-and-slice` (id 23605283) is `disabled`, not deleted. No PR gets an automatic Copilot review any more.
+- Copilot spend for September is $21.55, all billed after the allowance ran out on the 18th. Only the owner can stop it at the source: turn off Copilot code review in GitHub settings, or set a $0 Copilot budget with "stop usage". A $2.23 Copilot Cloud Agent charge on the 18th is unexplained.
+- Codex is over quota until 2026-09-21; every review and test author this session ran on the Claude fallback.
 
 ## 3. Session metrics
 
-- Commits: #75 had 2 branch commits (13 files, +262/-172), squash `45cf28a`; template #8 had 3 commits plus a merge of `main` (3 files), squash `d9baabd`; this PR has 1 commit so far plus this handoff.
-- Rework: #75 had one fallback-review round of 7 findings (all fixed before the PR) and one Copilot round with no change needed. #8 had one review round of 8 findings and one Copilot finding, which is recorded on IAN-146 as rework 1.
-- Velocity flag: normal. Two tickets closed at estimate ratios 0.54 and 0.56.
+- PRs merged: 4 (#76, #84, #83, #86). #83 alone carried 15 TDD slices, 419 fixture cases, and about 40 commits before its squash.
+- Rework: #83 went back 4 times (two adversarial review rounds with 43 findings, two Copilot rounds with 3 findings). #76 had 16 review corrections before merge.
+- Velocity flag: over. IAN-141 closed at 519 minutes against a 120-minute estimate (ratio 4.3); IAN-163 at 17 against 45 (0.38).
 
 ## 4. What shipped
 
-- **Python, Vue, and Nuxt track corrections (#75, IAN-145).** Security and correctness fixes in `CLAUDE-PYTHON.md`'s own examples, each with its reason beside it: structlog `show_locals=False` (the old `dict_tracebacks` leaked the database password), proxy-chain rate-limit keying, idempotency binding with a lease and an owner token, webhook reclaim, email normalization, atomic reset tokens, asgi-correlation-id with a validator, a readiness timeout, the 413 body limit, and verify-full TLS. The 2026-09-19 stack decisions are applied: the breaker is optional, cleanup is an arq cron job, app state is `useState` rather than Pinia, and the client is openapi-fetch. The P1 invariant now skips `structlog.stdlib`, with a probe.
-- **Template spec (template-fastapi-nuxt #8, IAN-146).** A per-request openapi-fetch client with no `useRequestFetch()`, base URLs that do not double `/v1`, server-side cookie, `X-Request-Id`, and `X-Forwarded-For` forwarding, and a `claim_token` on idempotency claims, with claim statements in their own transactions. New criteria B-52 and B-53. A heads-up went to IAN-126 (slice 01 PR 3) and IAN-130 (the Express template idempotency work).
-- **This PR (IAN-159).** The Nuxt and Vue tracks now carry the spec's client rules: `shared/services/` for functions both `app/` and `server/` apply, the server-side base URL and headers, and `app/api/` functions taking the client as a parameter. ISSUES.md moves the `tdd.sh` per-test RED entry to Resolved, because #74 shipped the fix.
+- **ECC audit (#76).** Do not install ECC's hooks: fail-open error paths, a hook that executes a repository's own MCP config, and secret capture. 24 features ranked for porting; the P1 ports are IAN-140 and IAN-142 to IAN-144. The maintenance-tax report answers "is this bureaucracy" with numbers.
+- **Hook-bypass guard (#83, IAN-141).** `destructive-command-guard.sh` denies the common ways the agent can skip git hooks, on a bash-style parse from the new `hooks/shell-command-segments.py`. It covers skip flags, hook-manager variables, `core.hooksPath` and config channels, aliases, hook-file tampering, and wrappers. It fails closed when the parser is missing and decides a 1500-argument command in under 300ms. Known gaps are listed in `docs/prs/2026-09-19-hook-bypass-deny.md` and IAN-155.
+- **Fixture isolation (#84).** `git-workflow-guard` and `task-cleanup-scan` run `task-tier.sh` under a tracker-free `HOME`, so they pass on a machine with a tracker configured. This closes the previous handoff's pending item 2.
+- **Copilot removed (#86, IAN-163).** R-514, R-517, the task-cleanup and build-by-slice skills, and the review prompt never request Copilot. CI and the R-517 review are the checks before merge. The personal `CLAUDE.md` and the merge memory match.
 
 ## 5. Pending (by urgency)
 
-1. **Sync after this PR merges** (2 minutes): `git pull --ff-only && ./sync.sh` in the primary checkout.
-2. **Task chip: isolate `task-cleanup-scan.test.sh` from the real tracker** (about 30 minutes). It fails on every local run on clean `main`, because it reads the owner's `~/.claude/TICKET-TRACKER.json` and `task-tier.sh set standard` now requires `--ticket`. CI stays green because it has no tracker file. `git-workflow-guard.test.sh` failed once in a full local run and passed alone, so it may have the same leak.
-3. **Template spec follow-up** (10 minutes): once this PR merges, the template spec's sentence saying `shared/services/` departs from the Nuxt track is stale, and the spec's proxy description should name the query string as the track now does. Slice 01 PR 3 (#9) already built the client to the spec.
+1. **Sync** (2 minutes): `git pull --ff-only && ./sync.sh` in the primary checkout, so the live harness gets #83, #84, and #86.
+2. **Stop Copilot billing at GitHub** (owner, 5 minutes): see section 2.
+3. **IAN-157** (about 3 hours): three guards still match substrings instead of parsing. `protected-path-guard`, `push-ruff-gate`, and `ticket-at-start-gate` each denied a command this session because quoted text mentioned a path or `git commit`. Consolidate on one parser; #79 and #80 added a second quote-aware scan.
+4. **IAN-156** (about 90 minutes): the R-509 stop gate blocks a test-author subagent on its intended RED; every one of 15 test-author runs hit it.
+5. **IAN-140, IAN-142 to IAN-144**: the remaining ECC P1 ports (about 9 hours together).
 
 ## 6. Next session
 
-1. Run pending item 1. When testing locally, run the enforcement suite with `HOME` pointed at a temp directory whose `.claude` links to the checkout's `claude/`, until the fixture chip lands.
-2. For template work, read the spec's Request path paragraph and the `request_idempotency_keys` row first, then `claude/CLAUDE-FRONTEND-NUXT.md` Auth Gating and Proxies.
-3. Merge PRs with a bare `gh pr merge <n> --squash --delete-branch --repo <owner/repo>`, and run `gh pr create` in a separate call from the commit that adds `Refs:`, because the gates judge the whole command before it runs.
+1. Run pending item 1, then check `~/.claude/hooks/shell-command-segments.py` exists: the guard denies every git command when the parser is missing.
+2. Never pipe `tdd.sh red`, `green`, or `validate` through `tail` in an `&&` chain: it hides the exit status. Twice this session a commit landed past a refused step. Capture the status first (`cmd > log; rc=$?`).
+3. Classify any guard that parses untrusted shell text as Complex, and design its parser before its rules.
