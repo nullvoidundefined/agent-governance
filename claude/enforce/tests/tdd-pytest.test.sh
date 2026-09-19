@@ -116,11 +116,11 @@ impl 1; touch -t 202001010000 apps/server/app/score.py
 DIAG_OUT=$(bash "$TDD" green 2>&1) && DIAG_STATUS=0 || DIAG_STATUS=$?
 if [ "$DIAG_STATUS" -eq 0 ] || ! grep -q 'test_scores_a_job_at_2' <<< "$DIAG_OUT"; then
   echo "FAIL: pytest green must run the source on disk, not a stale in-tree .pyc"
-  echo "DIAG status=$DIAG_STATUS out=$DIAG_OUT"
-  echo "DIAG src=$(cat apps/server/app/score.py | tr '\n' ' ') pyc=$(find "$P" -name '*.pyc' | tr '\n' ' ')"
-  echo "DIAG pytest=$(command -v pytest) shebang=$(head -1 "$(command -v pytest)" 2>/dev/null || true) cmd=$PYTEST_COMMAND"
-  echo "DIAG env=$(env | grep -iE '^(python|pip|uv)' | tr '\n' ' ' || true)"
-  (cd apps/server && PYTHONPYCACHEPREFIX=/tmp/diagprefix $PYTEST_COMMAND -q -p no:cacheprovider -s -c /dev/null --rootdir=. -o pythonpath=. tests/test_score.py 2>&1 | tail -5; printf 'import sys, app.score\nprint("DIAG py", sys.flags, sys.pycache_prefix, app.score.__file__, app.score.__cached__, app.score.score())\n' > /tmp/diag.py; PYTHONPYCACHEPREFIX=/tmp/diagprefix "$(dirname "$(readlink -f "$(command -v pytest)")")/python" -c "$(cat /tmp/diag.py)" 2>&1 || true)
+  echo "FAIL DIAG status=$DIAG_STATUS out=$(printf "%s" "$DIAG_OUT" | tr "\n" "~")"
+  echo "FAIL DIAG src=$(cat apps/server/app/score.py | tr "\n" "~") pyc=$(find "$P" -name '*.pyc' | tr "\n" "~")"
+  echo "FAIL DIAG pytest=$(command -v pytest) shebang=$(head -1 "$(command -v pytest)" 2>/dev/null || true) cmd=$PYTEST_COMMAND"
+  echo "FAIL DIAG env=$(env | grep -iE '^(python|pip|uv)' | tr '\n' ' ' || true)"
+  echo "FAIL DIAG py=$(cd apps/server && PYTHONPYCACHEPREFIX=/tmp/diagprefix PYTHONDONTWRITEBYTECODE=1 "$(dirname "$(readlink -f "$(command -v pytest)")")/python" -c 'import sys, app.score; print(sys.version.split()[0], sys.flags.ignore_environment, sys.flags.isolated, sys.dont_write_bytecode, sys.pycache_prefix, app.score.__cached__, app.score.score())' 2>&1 | tr '\n' '~')"
   exit 1
 fi
 find apps/server -name __pycache__ -type d -prune -exec rm -rf {} +
