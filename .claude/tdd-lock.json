@@ -1,0 +1,20 @@
+{
+  "slice": "B-1 deny git --no-verify in every accepted spelling and -n on commit",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
+      "sha256": "9ed29ddf920957f5bdfcefd16224172ed7950e8809c50eeb58cbaa673a296a40",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-19T10:23:53Z",
+  "baseline": {
+    "passed": 87,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-19T10:34:47Z"
+}
