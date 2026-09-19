@@ -8,7 +8,9 @@
 # accepts an assertion failure and a missing module and refuses a passing
 # test, a skipped test, a syntax error, a file with no tests, and a slice that
 # mixes runners; green accepts the fixed implementation and refuses a still
-# failing test, a skipped test, and a dropped baseline. Drives the REAL pytest
+# failing test (also when stale bytecode in the tree holds the passing
+# version), a skipped test, and a dropped baseline; the JUnit converter runs
+# through the project's .venv interpreter when one exists. Drives the REAL pytest
 # (on PATH, as CI installs it pinned, or through uvx at the same pin) behind a
 # stub uv and a stub .venv python that record how they were called, so the
 # JUnit parsing is exercised against live output and the invocation choice is
@@ -102,6 +104,18 @@ bash "$TDD" red "$TEST" >/dev/null
 [ "$(lock_field '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: expected assertion for a failed assert, got $(lock_field '.tests[0].failureClass')"; exit 1; }
 [ "$(lock_field '.tests[0].tests')" = "1" ] || { echo "FAIL: the assertion RED must record one test, got $(lock_field '.tests[0].tests')"; exit 1; }
 
+# green: stale bytecode in the tree cannot fake a GREEN. A developer's own
+# pytest run leaves __pycache__ behind, and Python trusts a .pyc whose
+# recorded source mtime and size match; so the passing implementation is
+# compiled in place, then replaced by the failing one with the same size and
+# the same mtime. tdd.sh must still run the source on disk and refuse.
+impl 2; touch -t 202001010000 apps/server/app/score.py
+(cd apps/server && env -u PYTHONDONTWRITEBYTECODE $PYTEST_COMMAND -q -p no:cacheprovider >/dev/null 2>&1 || true)
+[ -n "$(find apps/server/app -name 'score*.pyc')" ] || { echo "FAIL: setup: the direct pytest run must leave app bytecode in the tree"; exit 1; }
+impl 1; touch -t 202001010000 apps/server/app/score.py
+expect_fail "pytest green over stale in-tree bytecode" bash "$TDD" green | grep -q 'test_scores_a_job_at_2' || { echo "FAIL: pytest green must run the source on disk, not a stale in-tree .pyc"; exit 1; }
+find apps/server -name __pycache__ -type d -prune -exec rm -rf {} +
+
 # green: still failing is refused by test name; the phase stays red.
 expect_fail "pytest green while failing" bash "$TDD" green | grep -q 'test_scores_a_job_at_2' || { echo "FAIL: a still-failing pytest green must name the failing test"; exit 1; }
 [ "$(lock_field .phase)" = "red" ] || { echo "FAIL: a refused pytest green must leave the phase red"; exit 1; }
@@ -109,7 +123,7 @@ expect_fail "pytest green while failing" bash "$TDD" green | grep -q 'test_score
 # green: the fixed implementation passes and the phase becomes green.
 git add -A && git commit -qm "test(score): PY-1 score returns 2"
 impl 2
-bash "$TDD" green >/dev/null || { echo "FAIL: pytest green must pass once score returns 2"; echo "DIAG pyc: $(find "$P" -name '*.pyc' -not -path '*/.venv/*' | tr '\n' ' ')"; echo "DIAG shebang: $(head -1 "$(command -v pytest)" 2>/dev/null || true)"; echo "DIAG cmd: $PYTEST_COMMAND"; echo "DIAG env: $(env | grep -i '^python' | tr '\n' ' ' || true)"; exit 1; }
+bash "$TDD" green >/dev/null || { echo "FAIL: pytest green must pass once score returns 2"; exit 1; }
 [ "$(lock_field .phase)" = "green" ] || { echo "FAIL: pytest green must move the phase to green"; exit 1; }
 
 # green: a skipped RED test is refused. The skip comes from a conftest.py, so

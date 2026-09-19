@@ -213,21 +213,25 @@ run_shell_suite() {
 # run_pytest_suite <test rel>...: runs the whole pytest suite of PYTEST_DIR
 # once and prints the Vitest-shaped report. --continue-on-collection-errors
 # keeps one unimportable file from hiding every other file's result, which the
-# baseline counts; the cache plugin and bytecode writes are off so the run
-# leaves nothing untracked for `tdd.sh validate` to attribute to a role, and
-# so a RED run's cached bytecode cannot outlive a same-size implementation
-# edit made within the same second and turn the GREEN run stale. When
-# no report can be built, pytest's last output lines go to stderr and nothing
-# is printed, so run_suite refuses with the reason in view.
+# baseline counts. The cache plugin is off, and bytecode goes to a fresh
+# PYTHONPYCACHEPREFIX that is deleted after the run, with writes disabled as
+# well: the run leaves nothing untracked for `tdd.sh validate` to attribute to
+# a role, and, more importantly, it never reads a .pyc from the tree. Python
+# trusts a cached .pyc whose recorded source mtime and size match, so bytecode
+# left by an earlier run (the developer's own, or a RED run) could otherwise
+# outlive a same-size edit made within the same second and turn a failing
+# implementation GREEN. When no report can be built, pytest's last output
+# lines go to stderr and nothing is printed, so run_suite refuses with the
+# reason in view.
 run_pytest_suite() {
-  local xml log rel names=()
-  xml=$(mktemp); log=$(mktemp)
+  local xml log bytecode rel names=()
+  xml=$(mktemp); log=$(mktemp); bytecode=$(mktemp -d)
   for rel in "$@"; do names+=("$(report_name "$rel")"); done
-  (cd "$PYTEST_DIR" && PYTHONDONTWRITEBYTECODE=1 "${PYTEST_CMD[@]}" --rootdir="$PYTEST_DIR" \
-    -o junit_family=xunit1 --junitxml="$xml" --continue-on-collection-errors \
+  (cd "$PYTEST_DIR" && PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX="$bytecode" "${PYTEST_CMD[@]}" \
+    --rootdir="$PYTEST_DIR" -o junit_family=xunit1 --junitxml="$xml" --continue-on-collection-errors \
     -p no:cacheprovider -q > "$log" 2>&1) || true
   pytest_report "$xml" "$PYTEST_DIR" "${names[@]}" || tail -15 "$log" >&2
-  rm -f "$xml" "$log"
+  rm -rf "$xml" "$log" "$bytecode"
 }
 
 # pytest_report <junit xml> <project dir> <named report name>...: converts
