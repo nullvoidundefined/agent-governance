@@ -201,8 +201,12 @@ git -C "$TRIVIAL_REPO" remote add origin https://github.com/o/r.git
 git -C "$TRIVIAL_REPO" checkout -q -b fix/typo
 printf '.claude/task-tier.json\n' >"$TRIVIAL_REPO/.gitignore"
 TIER_SCRIPT="$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh"
+# task-tier.sh requires --ticket above trivial whenever $HOME/.claude/TICKET-TRACKER.json
+# exists, so every call runs under a HOME with no tracker; with the real HOME the
+# fixture passed in CI and failed on any machine that has a tracker configured.
+TRACKERLESS_HOME=$(mktemp -d)
 # set_tier <tier>: records <tier> for the checked-out branch through task-start's own script.
-set_tier() { (cd "$TRIVIAL_REPO" && bash "$TIER_SCRIPT" set "$1" "fixture reason" >/dev/null 2>&1); }
+set_tier() { (cd "$TRIVIAL_REPO" && HOME="$TRACKERLESS_HOME" bash "$TIER_SCRIPT" set "$1" "fixture reason" >/dev/null 2>&1); }
 # trivial_decision: the hook's decision for command $1, run from TRIVIAL_REPO with gh stubbed by $2.
 trivial_decision() {
   local out
@@ -246,7 +250,7 @@ git -C "$OTHER_TRIVIAL_REPO" -c user.email=t@example.com -c user.name=T commit -
 git -C "$OTHER_TRIVIAL_REPO" remote add origin https://github.com/o/r.git
 git -C "$OTHER_TRIVIAL_REPO" checkout -q -b fix/typo
 printf '.claude/task-tier.json\n' >"$OTHER_TRIVIAL_REPO/.gitignore"
-(cd "$OTHER_TRIVIAL_REPO" && bash "$TIER_SCRIPT" set trivial "fixture reason" >/dev/null 2>&1)
+(cd "$OTHER_TRIVIAL_REPO" && HOME="$TRACKERLESS_HOME" bash "$TIER_SCRIPT" set trivial "fixture reason" >/dev/null 2>&1)
 git -C "$TRIVIAL_REPO" checkout -q -b feat/next
 set_tier standard
 [ "$(trivial_decision "git -C $OTHER_TRIVIAL_REPO push origin fix/typo && gh pr merge 42 --squash" "$TRIVIAL_PR")" = "deny" ]
