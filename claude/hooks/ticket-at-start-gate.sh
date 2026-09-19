@@ -242,6 +242,11 @@ record_git_commit_directory() {
     esac
   done
   if is_expanded_word "${1:-}"; then IS_COMMIT_UNREADABLE=1; return 0; fi
+  # Only these subcommands keep a command eligible for the ledger-untracking
+  # exemption; any other (merge --squash, cherry-pick -n, stash pop, a
+  # checkout of paths, apply --cached, read-only ones not listed) may stage
+  # content the exemption would then commit, so it is refused.
+  case "${1:-}" in add | rm | mv | stage | commit | status | diff | log | show) ;; *) OTHER_STAGING=1 ;; esac
   case "${1:-}" in
     switch | checkout) record_branch_switch "$directory" "$@"; return 0 ;;
     add | rm | mv | stage) record_staging_words "$@"; return 0 ;;
@@ -278,7 +283,7 @@ read_commit_plainness() {
     case "$1" in
       -m | -F | -c | -C | -t | --message | --file | --author | --date | --template | --fixup | --squash | --reuse-message | --reedit-message | --cleanup | --trailer)
         shift 2 2>/dev/null || shift ;;
-      -a | --all | -i | --include | -o | --only | -p | --patch | --interactive | --) echo 0; return 0 ;;
+      -a | --all | -i | --include | -o | --only | -p | --patch | --interactive | -- | --pathspec-from-file* | --pathspec-file-nul) echo 0; return 0 ;;
       --*) shift ;;
       -?*)
         short_flags="${1#-}"

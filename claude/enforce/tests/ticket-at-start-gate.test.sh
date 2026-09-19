@@ -625,5 +625,40 @@ printf 'unstaged\n' >> "$BB_PRE/README.md"
 bash_gate 'git rm --cached .claude/task-tier.json && git add .gitignore && git commit -m x' "$BB_PRE"
 check "BB-2 'git rm --cached <ledger> && git add .gitignore && git commit -m x' allows" is_silent
 
+# --- IAN-149 review round 11 ----------------------------------------------------
+# CC state: the BB state plus a branch `other` whose README.md differs. The branch is
+# built through a scratch index so the repo's own staged set is left untouched.
+CC=$(make_committed_ledger_repo cc-recovery)
+printf '.claude/task-tier.json\n' >> "$CC/.gitignore"; git -C "$CC" add .gitignore
+printf 'unstaged\n' >> "$CC/README.md"
+CC_BLOB=$(printf '# other\n' | git -C "$CC" hash-object -w --stdin)
+CC_INDEX="$SB/cc-scratch-index"
+GIT_INDEX_FILE="$CC_INDEX" git -C "$CC" read-tree HEAD
+GIT_INDEX_FILE="$CC_INDEX" git -C "$CC" update-index --cacheinfo "100644,$CC_BLOB,README.md"
+CC_TREE=$(GIT_INDEX_FILE="$CC_INDEX" git -C "$CC" write-tree)
+git -C "$CC" branch other "$(git -C "$CC" commit-tree "$CC_TREE" -p HEAD -m "docs: other readme")"
+printf 'README.md\n' > "$CC/paths.txt"
+
+# CC-1: commands that bring README.md into the commit deny as tracked.
+while IFS= read -r command; do
+  bash_gate "$command" "$CC"
+  check "CC-1 '$command' denies" is_deny
+  check "CC-1 '$command' reason names tracked" reason_has "tracked"
+done <<'SHAPES'
+git merge --squash other && git commit -m x
+git checkout other -- README.md && git commit -m x
+git cherry-pick -n other && git commit -m x
+git commit --pathspec-from-file=paths.txt -m x
+SHAPES
+
+# CC-2: read-only commands before a commit of only the recovery still allow.
+while IFS= read -r command; do
+  bash_gate "$command" "$CC"
+  check "CC-2 '$command' allows" is_silent
+done <<'SHAPES'
+git status && git commit -m x
+git diff --cached --stat && git commit -m x
+SHAPES
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"
