@@ -427,10 +427,12 @@ def entry_for($named): .name as $n | ($named | map(select(.name == $n)) | first)
 # cannot ride on another's classified message (PR #74 for named tests, IAN-160
 # for a file named whole); results are walked one by one, not re-selected by
 # name, because Vitest and Jest allow two tests with one full name. The class
-# is missing-module when any test is, assertion otherwise.
+# is missing-module when any test is, assertion otherwise. No result at all
+# (a report the producer's jq could not read) is refused, never an assertion.
 classify_failures() {
-  local rel="$1" result key failures class=assertion
+  local rel="$1" result key failures class=assertion count=0
   while IFS= read -r result; do
+    count=$((count + 1))
     key=$(jq -r '.key' <<< "$result")
     failures=$(jq -r '.failures' <<< "$result")
     if grep -qE "$MISSING_MODULE" <<< "$failures"; then class=missing-module
@@ -438,6 +440,7 @@ classify_failures() {
       die "$rel::$key fails for a reason this script does not classify: $(printf '%s' "$failures" | grep -m1 . || true)"
     fi
   done
+  [ "$count" -gt 0 ] || die "$rel has no failing test result to classify; the report's failure messages could not be read"
   printf '%s' "$class"
 }
 
