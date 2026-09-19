@@ -12,11 +12,20 @@
 # tier (R-605 asks for no ticket there) or a ticket key written by
 # `task-tier.sh set <tier> "<reason>" --ticket <KEY>`. Nothing is gated when no
 # tracker is configured (~/.claude/TICKET-TRACKER.json absent, R-605's degraded
-# path), outside a git work tree, on a detached HEAD (a rebase or bisect in
-# progress), or for a path under the repository's own .claude/ directory or one
-# git ignores. Edits made through Bash (sed, a script) skip the Write/Edit
-# matcher, which is why `git commit` is gated as well: no work reaches history
-# without the ticket.
+# path; an unset HOME reaches no tracker config and counts the same), outside a
+# git work tree, on a detached HEAD (a rebase or bisect in progress), or for a
+# path under the repository's own .claude/ directory or one git ignores. Edits
+# made through Bash (sed, a script) skip the Write/Edit matcher, which is why
+# `git commit` is gated as well. Only `git commit` is: cherry-pick, revert, am,
+# and merge also write commits and are not read here.
+#
+# Commits are found by the quote-aware shell scan shared with the other R-605
+# hooks (shell-command-scan.sh), never by a regex over the raw text: every
+# commit in the command is judged against the repository it really runs in,
+# after cd and pushd, env assignments, wrappers (env, time, nice, command,
+# sudo, timeout, xargs), shell keywords, and git's -C, --work-tree, and
+# --git-dir. A commit inside a shell string (sh -c, eval) cannot be read, so
+# it is denied rather than guessed at.
 #
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
@@ -24,7 +33,7 @@
 # (2026-09-16 audit P2-8; convention documented in enforce/README.md).
 set -uo pipefail
 INPUT=$(cat)
-[ -f "$HOME/.claude/TICKET-TRACKER.json" ] || exit 0
+[ -n "${HOME:-}" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ] || exit 0
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
@@ -72,22 +81,106 @@ is_exempt_edit_path() {
   git -C "$top" check-ignore -q -- "$physical_path" 2>/dev/null
 }
 
-# read_commit_directory: prints the directory a `git commit` in the command
-# runs against (the payload cwd, or a `git -C`/`--work-tree` target), or
-# nothing when the command runs no commit.
-read_commit_directory() {
-  local command_text target_directory=""
-  command_text=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
-  if [ -f "$HOOK_DIR/git-invocation.sh" ]; then
-    source "$HOOK_DIR/git-invocation.sh"
-    grep -qE '(^|[;&|(])[[:space:]]*git[[:space:]]+commit([[:space:]]|$)' <<< "$(printf '%s' "$command_text" | strip_git_global_options)" || return 0
-    parse_git_target_options "$command_text" commit
-    target_directory=$(read_git_target_directory)
-  else
-    grep -qE '(^|[;&|(])[[:space:]]*git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?commit([[:space:]]|$)' <<< "$command_text" || return 0
-    target_directory=$(printf '%s' "$command_text" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}')
+# resolve_relative_directory <base> <path>: prints <path> made absolute
+# against <base>.
+resolve_relative_directory() {
+  case "$2" in /*) printf '%s' "$2" ;; *) printf '%s' "$1/$2" ;; esac
+}
+
+# strip_command_prefixes <word>...: prints, one per line, the words left once
+# shell keywords and command wrappers (env, time, nice, nohup, sudo, exec,
+# command, builtin, timeout, xargs) and their options, assignments, and
+# durations are removed from the front, so `env A=1 time git commit` reads as
+# the `git commit` it runs.
+strip_command_prefixes() {
+  local is_wrapper_argument=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      if | then | else | elif | do | while | until | '!' | '{' | '}' | time | env | nice | nohup | sudo | exec | command | builtin | xargs)
+        is_wrapper_argument=1; shift; continue ;;
+      timeout) is_wrapper_argument=2; shift; continue ;;
+    esac
+    if [ "$is_wrapper_argument" -ge 1 ]; then
+      case "$1" in
+        -n | -u | -g | -s | -k) shift 2 2>/dev/null || shift; continue ;;
+        -* | [A-Za-z_]*=*) shift; continue ;;
+      esac
+      if [ "$is_wrapper_argument" -eq 2 ]; then is_wrapper_argument=1; shift; continue; fi
+    fi
+    break
+  done
+  [ "$#" -gt 0 ] && printf '%s\n' "$@"
+  return 0
+}
+
+# record_git_commit_directory <directory> <word>...: when the words run
+# `git ... commit`, appends the repository it commits to (after -C,
+# --work-tree, and a --git-dir naming <repo>/.git) to COMMIT_DIRECTORIES.
+record_git_commit_directory() {
+  local directory="$1" work_tree="" git_dir=""
+  shift
+  [ "$(basename -- "${1:-}")" = "git" ] || return 0
+  shift
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -C) directory=$(resolve_relative_directory "$directory" "${2:-}"); shift 2 2>/dev/null || shift ;;
+      -C?*) directory=$(resolve_relative_directory "$directory" "${1#-C}"); shift ;;
+      --work-tree) work_tree="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --work-tree=*) work_tree="${1#--work-tree=}"; shift ;;
+      --git-dir) git_dir="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --git-dir=*) git_dir="${1#--git-dir=}"; shift ;;
+      -c | --namespace | --super-prefix | --config-env) shift 2 2>/dev/null || shift ;;
+      -*) shift ;;
+      *) break ;;
+    esac
+  done
+  [ "${1:-}" = "commit" ] || return 0
+  if [ -n "$work_tree" ]; then
+    directory=$(resolve_relative_directory "$directory" "$work_tree")
+  elif [ -n "$git_dir" ]; then
+    git_dir=$(resolve_relative_directory "$directory" "$git_dir")
+    case "$git_dir" in */.git | */.git/) directory=$(dirname "${git_dir%/}") ;; *) directory="$git_dir" ;; esac
   fi
-  case "$target_directory" in "") printf '%s' "$CWD" ;; /*) printf '%s' "$target_directory" ;; *) printf '%s' "$CWD/$target_directory" ;; esac
+  COMMIT_DIRECTORIES+=("$directory")
+}
+
+# inspect_commit_words <word>...: replays a cd or pushd onto TARGET_DIR,
+# flags a shell string or eval that mentions git and commit as unreadable,
+# and otherwise records a git commit's repository.
+inspect_commit_words() {
+  local -a command_words=()
+  while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do shift; done
+  [ "$#" -gt 0 ] || return 0
+  case "$1" in cd | pushd) shift; apply_cd "$@"; return 0 ;; esac
+  while IFS= read -r stripped_word; do command_words+=("$stripped_word"); done < <(strip_command_prefixes "$@")
+  [ "${#command_words[@]}" -gt 0 ] || return 0
+  case "$(basename -- "${command_words[0]}")" in
+    sh | bash | zsh | dash | ksh | eval)
+      case "${command_words[*]}" in *git*commit*) IS_COMMIT_UNREADABLE=1 ;; esac
+      return 0 ;;
+  esac
+  record_git_commit_directory "$TARGET_DIR" "${command_words[@]}"
+}
+
+# collect_commit_directories <command>: fills COMMIT_DIRECTORIES with the
+# repository of every git commit the command runs, following cds from the
+# session directory, and sets IS_COMMIT_UNREADABLE when a commit sits inside
+# a shell string the scan cannot read.
+collect_commit_directories() {
+  local token is_heredoc_next=0
+  local -a words=()
+  COMMIT_DIRECTORIES=()
+  IS_COMMIT_UNREADABLE=0
+  TARGET_DIR="$CWD"
+  scan_command_tokens "$1"
+  for token in ${TOKENS[@]+"${TOKENS[@]}"} "$SEPARATOR_TOKEN"; do
+    if [ "$is_heredoc_next" -eq 1 ]; then is_heredoc_next=0; continue; fi
+    case "$token" in
+      "$HEREDOC_TOKEN") is_heredoc_next=1 ;;
+      "$SEPARATOR_TOKEN") [ "${#words[@]}" -gt 0 ] && inspect_commit_words "${words[@]}"; words=() ;;
+      *) words+=("$token") ;;
+    esac
+  done
 }
 
 # read_ledger_problem <top> <branch>: prints why the ledger does not carry the
@@ -96,12 +189,12 @@ read_ledger_problem() {
   local top="$1" branch="$2" ledger="$1/.claude/task-tier.json" ledger_branch
   [ -f "$ledger" ] || { echo "no task-start ledger (.claude/task-tier.json) is recorded in this checkout"; return 0; }
   if git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1; then
-    echo "the ledger .claude/task-tier.json is tracked by git, so it is not this session's task-start state"
+    echo "the ledger .claude/task-tier.json is tracked or staged in git, so it is not this session's task-start state (unstage it with \`git rm --cached .claude/task-tier.json\` and add that path to .gitignore)"
     return 0
   fi
   jq -e 'type == "object"' "$ledger" >/dev/null 2>&1 || { echo "the ledger .claude/task-tier.json is unreadable (not the JSON task-tier.sh writes)"; return 0; }
   ledger_branch=$(jq -r '.branch // "" | strings' "$ledger")
-  [ "$ledger_branch" = "$branch" ] || { echo "the ledger records branch '${ledger_branch}', not '${branch}', so it belongs to an earlier task"; return 0; }
+  [ "$ledger_branch" = "$branch" ] || { echo "the ledger records branch '${ledger_branch}', not '${branch}', so it belongs to another task (the ledger is one file per checkout: keep one worktree per in-flight ticket, or re-record this branch's own ticket before working on it)"; return 0; }
   jq -e '.tier == "trivial" or ((.ticket // "") | test("^[A-Z][A-Z0-9]+-[0-9]+$"))' "$ledger" >/dev/null 2>&1 ||
     echo "the ledger records the $(jq -r '.tier // "?"' "$ledger") tier with no ticket key"
 }
@@ -113,16 +206,46 @@ case "$TOOL" in
     WORK_DIRECTORY=$(resolve_edit_directory "$FILE_PATH")
     ACTION="editing $(basename "$FILE_PATH")" ;;
   Bash)
-    WORK_DIRECTORY=$(read_commit_directory)
+    COMMAND_TEXT=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
+    case "$COMMAND_TEXT" in *commit*) ;; *) exit 0 ;; esac
+    for helper in shell-command-scan.sh; do
+      # shellcheck source=/dev/null
+      [ -f "$HOOK_DIR/$helper" ] && source "$HOOK_DIR/$helper"
+    done
+    type scan_command_tokens >/dev/null 2>&1 && type apply_cd >/dev/null 2>&1 ||
+      deny "R-605 (ticket at task start): the shell scan helpers (shell-command-scan.sh, shell-command-tokens.sh) are missing, so this command's commits cannot be read; re-run ./sync.sh."
+    collect_commit_directories "$COMMAND_TEXT"
+    [ "$IS_COMMIT_UNREADABLE" -eq 0 ] ||
+      deny "R-605 (ticket at task start): this command runs git commit inside a shell string (sh -c, bash -c, eval), which the hook cannot read, so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
     ACTION="committing" ;;
   *) exit 0 ;;
 esac
-[ -n "$WORK_DIRECTORY" ] || exit 0
-TOP=$(git -C "$WORK_DIRECTORY" rev-parse --show-toplevel 2>/dev/null) || exit 0
-TOP=$(cd "$TOP" && pwd -P)
-if [ "$TOOL" != "Bash" ] && is_exempt_edit_path "$TOP" "$FILE_PATH"; then exit 0; fi
-BRANCH=$(git -C "$TOP" branch --show-current 2>/dev/null)
-[ -n "$BRANCH" ] || exit 0
-PROBLEM=$(read_ledger_problem "$TOP" "$BRANCH")
-[ -z "$PROBLEM" ] && exit 0
-deny "R-605 (ticket at task start): $ACTION on branch '$BRANCH' is refused because $PROBLEM. The ticket comes before the work: open it with /ticket-lifecycle, then record it on this branch with \`bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> \"<reason>\" --ticket <KEY>\` (a trivial task records \`task-tier.sh set trivial \"<reason>\"\` and needs no ticket). When the work already happened without a ticket, open it retroactively with its actuals and then record it."
+
+# judge_work_directory <directory>: denies when the directory sits in a git
+# work tree on a branch whose ledger does not carry the ticket.
+judge_work_directory() {
+  local top branch problem
+  [ -n "$1" ] || return 0
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 0
+  top=$(cd "$top" && pwd -P)
+  if [ "$TOOL" != "Bash" ] && is_exempt_edit_path "$top" "$FILE_PATH"; then return 0; fi
+  branch=$(git -C "$top" branch --show-current 2>/dev/null)
+  [ -n "$branch" ] || return 0
+  problem=$(read_ledger_problem "$top" "$branch")
+  [ -z "$problem" ] && return 0
+  deny_without_ticket "$branch" "$problem"
+}
+
+# deny_without_ticket <branch> <problem>: the R-605 deny naming what is missing
+# and how to record it.
+deny_without_ticket() {
+  local branch="$1" problem="$2"
+  deny "R-605 (ticket at task start): $ACTION on branch '$branch' is refused because $problem. The ticket comes before the work: open it with /ticket-lifecycle, then record it on this branch with \`bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> \"<reason>\" --ticket <KEY>\` (a trivial task records \`task-tier.sh set trivial \"<reason>\"\` and needs no ticket). When the work already happened without a ticket, open it retroactively with its actuals and then record it."
+}
+
+if [ "$TOOL" = "Bash" ]; then
+  for commit_directory in ${COMMIT_DIRECTORIES[@]+"${COMMIT_DIRECTORIES[@]}"}; do judge_work_directory "$commit_directory"; done
+else
+  judge_work_directory "$WORK_DIRECTORY"
+fi
+exit 0

@@ -202,5 +202,91 @@ for tool in Read Grep Glob; do
   check "G-15 $tool allows" is_silent
 done
 
+# --- IAN-149 review round 1 ---------------------------------------------------
+# make_ticketed <name>: a repo on feat/x with a ledger carrying IAN-7; prints its path.
+make_ticketed() { local repo; repo=$(make_repo "$1"); tier_set "$repo" "$TRACKED_HOME" standard "multi-file change" --ticket IAN-7; printf '%s' "$repo"; }
+
+# R-1: a cd/pushd before the commit moves the judged repository.
+LL=$(make_repo r1-ledgerless); TK=$(make_ticketed r1-ticketed)
+bash_gate "cd $LL && git commit -m \"feat: x\"" "$PLAIN"
+check "R-1 cd into a ledgerless repo then commit, from a non-repo cwd, denies" is_deny
+bash_gate "cd $TK && git commit -m \"feat: x\"" "$LL"
+check "R-1 cd into a ticketed repo then commit, from a ledgerless cwd, allows" is_silent
+bash_gate "pushd $LL && git commit -m x" "$PLAIN"
+check "R-1 pushd into a ledgerless repo then commit, from a non-repo cwd, denies" is_deny
+
+# R-2: wrapper, prefix, and unreadable shapes of a commit all deny from a ledgerless repo.
+R=$(make_repo r2)
+while IFS= read -r command; do
+  bash_gate "$command" "$R"
+  check "R-2 '$command' denies" is_deny
+done <<'SHAPES'
+FOO=1 git commit -m x
+env FOO=1 git commit -m x
+time git commit -m x
+command git commit -m x
+nice -n 5 git commit -m x
+if true; then git commit -m x; fi
+{ git commit -m x; }
+(git commit -m x)
+\git commit -m x
+/usr/bin/git commit -m x
+git -c user.name=a commit -m x
+git --no-pager commit -m x
+sh -c 'git commit -m x'
+bash -c "git commit -m x"
+eval "git commit -m x"
+SHAPES
+
+# R-2b: commands that mention commit without committing never deny.
+while IFS= read -r command; do
+  bash_gate "$command" "$R"
+  check "R-2b '$command' does not deny" is_not_deny
+done <<'SHAPES'
+git log --grep commit
+echo "git commit -m x"
+git status && echo commit
+grep -r commit .
+SHAPES
+
+# R-7: --work-tree/--git-dir name the judged repository.
+R=$(make_repo r7)
+bash_gate "git --work-tree=$R --git-dir=$R/.git commit -m x" "$PLAIN"
+check "R-7 --work-tree/--git-dir commit of a ledgerless repo denies" is_deny
+bash_gate "git --git-dir=$R/.git commit -m x" "$PLAIN"
+check "R-7 --git-dir commit of a ledgerless repo denies" is_deny
+
+# R-8: every commit in a compound command is judged.
+TK2=$(make_ticketed r8-ticketed-b); LL8=$(make_repo r8-ledgerless)
+bash_gate "git -C $TK commit -m a && git -C $LL8 commit -m b" "$PLAIN"
+check "R-8 ticketed then ledgerless commit denies" is_deny
+bash_gate "git -C $TK commit -m a && git -C $TK2 commit -m b" "$PLAIN"
+check "R-8 two ticketed commits allow" is_silent
+
+# R-4: the other-branch deny names the worktree recovery.
+R=$(make_repo r4)
+write_ledger "$R" "{\"tier\":\"standard\",\"branch\":\"feat/old\",\"ticket\":\"IAN-7\",$STARTED}"
+file_gate Write "$R/src/new.ts" "$R"
+check "R-4 other-branch ledger denies" is_deny
+check "R-4 reason names the worktree recovery" reason_has "worktree"
+
+# R-5: a staged (not committed) ledger is tracked: deny and name git rm --cached.
+R=$(make_repo r5)
+printf 'ignored/\n' > "$R/.gitignore"; git -C "$R" commit -qam "chore: unignore ledger"
+tier_set "$R" "$TRACKED_HOME" standard "r" --ticket IAN-7
+git -C "$R" add -A
+file_gate Edit "$R/README.md" "$R"
+check "R-5 staged ledger denies" is_deny
+check "R-5 reason names git rm --cached" reason_has "git rm --cached"
+
+# R-6: HOME unset takes the degraded path explicitly: exit 0, no output, no unbound-variable crash.
+R=$(make_repo r6)
+R6_ERR="$SB/r6.err"
+OUT=$(cd "$R" && jq -nc --arg f "$R/src/new.ts" --arg d "$R" '{tool_name:"Write",cwd:$d,tool_input:{file_path:$f,content:"x"}}' \
+  | env -u HOME "$HOOK" 2>"$R6_ERR"); R6_ST=$?
+check "R-6 HOME unset exits 0" test "$R6_ST" -eq 0
+check "R-6 HOME unset prints nothing" is_silent
+check "R-6 HOME unset has no unbound variable error" bash -c '! grep -q "unbound variable" "$0"' "$R6_ERR"
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"
