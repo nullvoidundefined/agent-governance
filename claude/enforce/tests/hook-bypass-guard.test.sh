@@ -388,6 +388,77 @@ expect none 'git pull -n'
 
 # --- end B-7 ---------------------------------------------------------------
 
+# --- B-8: indirect hook-config changes: includes, aliases, config files, a git
+# function, and git config writes to the protected keys ---------------------
+
+# a config include or a hook-skipping alias injected for one command, through
+# -c or through the GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n
+# variables, can point core.hooksPath anywhere or expand to a skip flag
+expect deny 'git -c include.path=/tmp/evil.gitconfig commit -m x'
+expect deny 'git -c includeIf.gitdir:/tmp/.path=/tmp/evil.gitconfig commit -m x'
+expect deny 'git -c alias.ci="commit --no-verify" ci -m x'
+expect deny 'git -c alias.ci="commit -n" ci -m x'
+expect deny 'git -c alias.p="!git push --no-verify" p'
+expect deny 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.ci GIT_CONFIG_VALUE_0="commit -n" git ci -m x'
+expect deny 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=include.path GIT_CONFIG_VALUE_0=/tmp/e git commit -m x'
+
+# pointing git at another global or system config file, directly or by moving
+# HOME or XDG_CONFIG_HOME, in front of a hook-running command
+expect deny 'GIT_CONFIG_GLOBAL=/tmp/evil git commit -m x'
+expect deny 'GIT_CONFIG_SYSTEM=/tmp/evil git push'
+expect deny 'HOME=/tmp/evilhome git commit -m x'
+expect deny 'XDG_CONFIG_HOME=/tmp/x git commit -m x'
+expect deny 'export GIT_CONFIG_GLOBAL=/tmp/evil; git commit -m x'
+
+# redefining git as a shell function or an alias replaces every later git call
+expect deny 'git() { command git -c core.hooksPath=/dev/null "$@"; }; git commit -m x'
+expect deny 'function git { command git "$@" --no-verify; }; git commit -m x'
+expect deny 'shopt -s expand_aliases; alias git="git -c core.hooksPath=/dev/null"; git commit -m x'
+
+# git config writes to core.hooksPath, include paths, or hook-skipping aliases,
+# however the key is quoted, the global options are placed, or the write is
+# spelled (the set and unset subcommands, --unset-all, --add, --global)
+expect deny 'git -C . config core.hooksPath /dev/null'
+expect deny 'git --git-dir=.git config core.hooksPath /dev/null'
+expect deny "git config 'core.hooksPath' /dev/null"
+expect deny 'git config "core.hooksPath" /dev/null'
+expect deny 'git config set core.hooksPath /dev/null'
+expect deny 'git config unset core.hooksPath'
+expect deny 'git config --unset-all core.hooksPath'
+expect deny 'git config --global include.path /tmp/evil.gitconfig'
+expect deny 'git config --add include.path /tmp/evil.gitconfig'
+expect deny 'git config alias.ci "commit --no-verify"'
+expect deny "git config --global alias.p '!git push --no-verify'"
+
+# reads of the protected keys, including with redirects, must keep working
+expect none 'git config core.hooksPath 2>/dev/null'
+expect none 'git config --get core.hooksPath 2>/dev/null || echo unset'
+expect none 'git config core.hooksPath > /tmp/hp.txt'
+expect none 'git config --get-regexp alias'
+expect none 'git config --list'
+expect none 'git config get core.hooksPath'
+expect none 'git config --get include.path'
+
+# ordinary config writes and aliases that skip nothing must keep working, as
+# must an include on a command that runs no hook
+expect none 'git config --global user.name x'
+expect none 'git config user.email x'
+expect none 'git config alias.st status'
+expect none 'git config alias.lg "log --oneline"'
+expect none 'git -c alias.lg="log --oneline" lg'
+expect none 'git -c include.path=/tmp/e.gitconfig status'
+
+# another config file for a command that runs no hook skips nothing
+expect none 'HOME=/tmp/h git status'
+expect none 'GIT_CONFIG_GLOBAL=/dev/null git log -n 3'
+
+# text that only mentions these forms is not an invocation
+expect none 'echo "git() {"'
+expect none 'grep -rn "alias.ci" .'
+expect none 'git commit -m "alias git to nothing"'
+
+# --- end B-8 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1

@@ -1,21 +1,20 @@
 {
-  "slice": "B-7 cover am -n, pull, and the remaining export forms, and stop the env-variable false positives",
-  "phase": "green",
+  "slice": "B-8 deny indirect hook-skipping config: include, alias, config-file redirection, a git function, and git config writes in any spelling",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "91ba10abe3a73955f5a37fc1d1f9ac3238df48edf30e790647891526d59fad45",
+      "sha256": "90dd29e0784fc3e85aa3b0d2c5b911ea4a4c5574e2b8510385eb5424475d7f21",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T12:37:18Z",
+  "openedAt": "2026-09-19T13:08:27Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T12:48:13Z",
-  "greenAt": "2026-09-19T13:04:17Z"
+  "redAt": "2026-09-19T13:18:31Z"
 }
