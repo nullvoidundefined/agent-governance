@@ -138,6 +138,21 @@ has_git_commit_word() {
   return 1
 }
 
+# is_executed_shell_text <word>...: true when a shell invocation runs text it
+# was handed (eval, `-c`, `-s`, or a heredoc), as opposed to a script path
+# whose further arguments are data.
+is_executed_shell_text() {
+  local shell_word
+  [ "$(basename -- "$1")" = "eval" ] && return 0
+  [ -n "$HEREDOC_BODY" ] && return 0
+  shift
+  for shell_word in "$@"; do
+    [[ "$shell_word" =~ ^-[A-Za-z]*[cs][A-Za-z]*$ ]] && return 0
+    case "$shell_word" in -*) ;; *) return 1 ;; esac
+  done
+  return 1
+}
+
 # has_expanded_argument <word>...: true when any word holds an expansion; a
 # shell handed `-c "$SCRIPT"` runs text the scan never sees, so in a command
 # that mentions commit it is unreadable rather than harmless.
@@ -221,11 +236,10 @@ record_git_commit_directory() {
   done
   if is_expanded_word "${1:-}"; then IS_COMMIT_UNREADABLE=1; return 0; fi
   case "${1:-}" in
-    switch) IS_BRANCH_CHANGED=1; return 0 ;;
-    checkout) case " $* " in *" -- "*) ;; *) IS_BRANCH_CHANGED=1 ;; esac; return 0 ;;
+    switch | checkout) record_branch_switch "$directory" "$@"; return 0 ;;
   esac
   [ "${1:-}" = "commit" ] || return 0
-  [ "$IS_BRANCH_CHANGED" -eq 0 ] || { IS_COMMIT_UNREADABLE=1; return 0; }
+  [ "$IS_BRANCH_UNKNOWN" -eq 0 ] || { IS_COMMIT_UNREADABLE=1; return 0; }
   [ "$has_git_environment" -eq 0 ] || { IS_COMMIT_UNREADABLE=1; return 0; }
   if [ "$has_expanded_directory" -eq 1 ] || { [ "$IS_DIRECTORY_UNKNOWN" -eq 1 ] && [ "$is_absolute_target" -eq 0 ]; }; then
     IS_COMMIT_UNREADABLE=1
@@ -241,6 +255,44 @@ record_git_commit_directory() {
     directory=$(resolve_relative_directory "$directory" "$work_tree")
   fi
   COMMIT_DIRECTORIES+=("$directory")
+  COMMIT_SWITCH_TOPS+=("$SWITCHED_TOP")
+  COMMIT_SWITCH_BRANCHES+=("$SWITCHED_BRANCH")
+}
+
+# record_branch_switch <directory> <subcommand> <word>...: replays a git switch
+# or checkout earlier in the command, so a later commit in the same repository
+# is judged against the branch it lands on: a created branch (-b, -c, and
+# their forms) by its name, an existing local or remote-tracking branch by its
+# name. A file restore (`checkout -- <path>`) changes nothing; a target built
+# by expansion, a --detach, or a target that is no known branch makes the
+# branch unknown, so a later commit denies as unreadable.
+record_branch_switch() {
+  local directory="$1" subcommand="$2" new_branch="" target="" switch_top
+  shift 2
+  if [ "$subcommand" = "checkout" ]; then case " $* " in *" -- "*) return 0 ;; esac; fi
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -b | -B | -c | -C | --create | --force-create | --orphan) new_branch="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --create=* | --force-create=* | --orphan=*) new_branch="${1#*=}"; shift ;;
+      -d | --detach) IS_BRANCH_UNKNOWN=1; return 0 ;;
+      -*) shift ;;
+      *) [ -z "$target" ] && target="$1"; shift ;;
+    esac
+  done
+  [ -n "$new_branch" ] || new_branch="$target"
+  [ -n "$new_branch" ] || return 0
+  if is_expanded_word "$new_branch"; then IS_BRANCH_UNKNOWN=1; return 0; fi
+  switch_top=$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null) || { IS_BRANCH_UNKNOWN=1; return 0; }
+  switch_top=$(cd "$switch_top" && pwd -P)
+  if [ "$new_branch" = "$target" ] &&
+    ! git -C "$switch_top" show-ref --verify --quiet "refs/heads/$target" &&
+    [ -z "$(git -C "$switch_top" for-each-ref --format='%(refname)' "refs/remotes/*/$target" 2>/dev/null)" ]; then
+    IS_BRANCH_UNKNOWN=1
+    return 0
+  fi
+  SWITCHED_TOP="$switch_top"
+  SWITCHED_BRANCH="$new_branch"
+  IS_BRANCH_UNKNOWN=0
 }
 
 # replay_directory_change <word>...: replays a cd or pushd onto TARGET_DIR
@@ -286,7 +338,9 @@ inspect_commit_words() {
   case "$(basename -- "${command_words[0]}")" in
     sh | bash | zsh | dash | ksh | eval)
       has_git_commit_in_string "${command_words[@]:1}" "$HEREDOC_BODY" && IS_COMMIT_UNREADABLE=1
-      has_expanded_argument "${command_words[@]:1}" && IS_COMMIT_UNREADABLE=1
+      if [ "$IS_COMMIT_MENTIONED" -eq 1 ] && is_executed_shell_text "${command_words[@]}" && has_expanded_argument "${command_words[@]:1}"; then
+        IS_COMMIT_UNREADABLE=1
+      fi
       return 0 ;;
   esac
   if is_expanded_word "${command_words[0]}"; then
@@ -303,9 +357,9 @@ inspect_commit_words() {
 # collect_commit_directories <command>: fills COMMIT_DIRECTORIES with the
 # repository of every git commit the command runs, following cds from the
 # session directory, and sets IS_COMMIT_UNREADABLE when a commit sits inside
-# a shell string or a heredoc fed to a shell, follows a branch switch in the
-# same command (the ledger is judged against the branch checked out before
-# the command runs), or runs under GIT_DIR/GIT_WORK_TREE assignments.
+# a shell string or a heredoc fed to a shell, follows a branch switch whose
+# target it cannot name, or runs under GIT_DIR/GIT_WORK_TREE assignments; a
+# commit after a readable switch is judged against the branch switched to.
 collect_commit_directories() {
   local token is_heredoc_next=0
   local -a words=()
@@ -314,7 +368,11 @@ collect_commit_directories() {
   IS_DIRECTORY_UNKNOWN=0
   TARGET_DIR="$CWD"
   scan_command_tokens "$1"
-  IS_BRANCH_CHANGED=0
+  IS_BRANCH_UNKNOWN=0
+  SWITCHED_TOP=""
+  SWITCHED_BRANCH=""
+  COMMIT_SWITCH_TOPS=()
+  COMMIT_SWITCH_BRANCHES=()
   HEREDOC_BODY=""
   for token in ${TOKENS[@]+"${TOKENS[@]}"} "$SEPARATOR_TOKEN"; do
     if [ "$is_heredoc_next" -eq 1 ]; then HEREDOC_BODY="$token"; is_heredoc_next=0; continue; fi
@@ -352,7 +410,8 @@ case "$TOOL" in
     COMMAND_TEXT=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
     # Scan only a command that could commit: one naming commit, or one running
     # git with an expansion, whose subcommand may be built at run time.
-    case "$COMMAND_TEXT" in *commit*) ;; *git*'$'* | *git*'`'* | *'$'*git* | *'`'*git*) ;; *) exit 0 ;; esac
+    IS_COMMIT_MENTIONED=0
+    case "$COMMAND_TEXT" in *commit*) IS_COMMIT_MENTIONED=1 ;; *git*'$'* | *git*'`'* | *'$'*git* | *'`'*git*) ;; *) exit 0 ;; esac
     for helper in shell-command-scan.sh; do
       # shellcheck source=/dev/null
       [ -f "$HOOK_DIR/$helper" ] && source "$HOOK_DIR/$helper"
@@ -361,7 +420,7 @@ case "$TOOL" in
       deny "R-605 (ticket at task start): the shell scan helpers (shell-command-scan.sh, shell-command-tokens.sh) are missing, so this command's commits cannot be read; re-run ./sync.sh."
     collect_commit_directories "$COMMAND_TEXT"
     [ "$IS_COMMIT_UNREADABLE" -eq 0 ] ||
-      deny "R-605 (ticket at task start): this command runs git commit inside a shell string or a heredoc fed to a shell (sh -c, bash -c, sh -s, eval), through a command word or subcommand built by expansion, under GIT_DIR/GIT_WORK_TREE, after a branch switch in the same command, or in a directory the hook cannot name (a cd or git -C target built from \$VAR, \$(...), or \`cd -\`, or one that does not exist), so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
+      deny "R-605 (ticket at task start): this command runs git commit inside a shell string or a heredoc fed to a shell (sh -c, bash -c, sh -s, eval), through a command word or subcommand built by expansion, under GIT_DIR/GIT_WORK_TREE, after a branch switch whose target it cannot name, or in a directory the hook cannot name (a cd or git -C target built from \$VAR, \$(...), or \`cd -\`, or one that does not exist), so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
     ACTION="committing" ;;
   *) exit 0 ;;
 esac
@@ -369,7 +428,7 @@ esac
 # judge_work_directory <directory>: denies when the directory sits in a git
 # work tree on a branch whose ledger does not carry the ticket.
 judge_work_directory() {
-  local top branch problem
+  local top branch problem switch_top="${2:-}" switch_branch="${3:-}"
   [ -n "$1" ] || return 0
   if ! top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null); then
     [ "$TOOL" = "Bash" ] && deny "R-605 (ticket at task start): this command commits in '$1', which is not a git work tree before the command runs (a repository created in the same command), so the hook cannot check its ticket. Create the repository first, record its ledger, then commit in a separate command."
@@ -378,6 +437,7 @@ judge_work_directory() {
   top=$(cd "$top" && pwd -P)
   if [ "$TOOL" != "Bash" ] && is_exempt_edit_path "$top" "$FILE_PATH"; then return 0; fi
   branch=$(git -C "$top" branch --show-current 2>/dev/null)
+  [ -n "$switch_branch" ] && [ "$top" = "$switch_top" ] && branch="$switch_branch"
   [ -n "$branch" ] || return 0
   problem=$(read_ledger_problem "$top" "$branch")
   [ -z "$problem" ] && return 0
@@ -392,7 +452,9 @@ deny_without_ticket() {
 }
 
 if [ "$TOOL" = "Bash" ]; then
-  for commit_directory in ${COMMIT_DIRECTORIES[@]+"${COMMIT_DIRECTORIES[@]}"}; do judge_work_directory "$commit_directory"; done
+  for ((commit_index = 0; commit_index < ${#COMMIT_DIRECTORIES[@]}; commit_index++)); do
+    judge_work_directory "${COMMIT_DIRECTORIES[commit_index]}" "${COMMIT_SWITCH_TOPS[commit_index]}" "${COMMIT_SWITCH_BRANCHES[commit_index]}"
+  done
 else
   judge_work_directory "$WORK_DIRECTORY"
 fi

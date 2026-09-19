@@ -450,5 +450,42 @@ check "W allow: 'git switch feat/x' alone" is_silent
 bash_gate $'bash -s <<\'EOF\'\necho hi\nEOF\ngit commit -m x' "$W_TK"
 check "W allow: bash -s heredoc without a commit, then a plain commit, from a ticketed repo" is_silent
 
+# --- IAN-149 review round 6 -----------------------------------------------------
+X_TK=$(make_ticketed x-ticketed)
+
+# X-1: expansions in commands that commit nothing never deny.
+while IFS= read -r command; do
+  bash_gate "$command" "$X_TK"
+  check "X-1 '$command' from a ticketed repo allows" is_silent
+done <<'SHAPES'
+bash scripts/lint.sh "$FILE" && git add "$FILE"
+sh -c "echo $HOME"; git status
+bash -c "$SCRIPT" && git status
+bash -c "git log -1 $SHA"
+bash ~/.claude/skills/task-start/scripts/task-tier.sh set standard "$REASON" --ticket IAN-7 && git status
+SHAPES
+
+# X-2: a branch switch before a commit is judged against the switched-to branch.
+bash_gate 'git checkout feat/x && git commit -m x' "$X_TK"
+check "X-2 checkout of the current branch then commit allows" is_silent
+bash_gate 'git checkout -b feat/new && git add -A && git commit -m x' "$X_TK"
+check "X-2 checkout -b feat/new then commit denies" is_deny
+check "X-2 checkout -b deny names feat/new" reason_has "feat/new"
+bash_gate 'git switch -c feat/new2 && git commit -m x' "$X_TK"
+check "X-2 switch -c feat/new2 then commit denies" is_deny
+check "X-2 switch -c deny names feat/new2" reason_has "feat/new2"
+bash_gate 'git checkout $BR && git commit -m x' "$X_TK"
+check "X-2 checkout \$BR then commit denies" is_deny
+check "X-2 checkout \$BR deny says cannot" reason_has "cannot"
+bash_gate 'git checkout -- README.md && git commit -m x' "$X_TK"
+check "X-2 checkout -- <path> (no branch change) then commit allows" is_silent
+
+# X-2: a ledger for feat/y while on feat/x; switching to feat/y then committing lands on the ledger's branch.
+X_Y=$(make_repo x-ledger-for-y)
+git -C "$X_Y" branch feat/y
+write_ledger "$X_Y" "{\"tier\":\"standard\",\"branch\":\"feat/y\",\"ticket\":\"IAN-7\",$STARTED}"
+bash_gate 'git switch feat/y && git commit -m x' "$X_Y"
+check "X-2 switch to the ledger's ticketed branch then commit allows" is_silent
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"
