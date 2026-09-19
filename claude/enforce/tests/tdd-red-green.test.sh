@@ -82,6 +82,12 @@ expect_fail "red on a syntax error" bash "$TDD" red src/__tests__/score.test.ts 
 printf 'export const nothing = 1;\n' > src/__tests__/score.test.ts
 expect_fail "red on an empty test file" bash "$TDD" red src/__tests__/score.test.ts | grep -qi 'no test' || { echo "FAIL: empty-file refusal must say so"; exit 1; }
 
+# red: each test of a file named whole is classified on its own (IAN-160), so
+# one throwing a plain error is refused by its full name even though the other
+# test's assertion failure would classify the file's joined messages.
+printf 'import { it, expect } from "vitest";\nit("asserts", () => { expect(1).toBe(2); });\nit("throws boom", () => { throw new Error("boom"); });\n' > src/__tests__/score.test.ts
+expect_fail "red with one unclassified failure in the file" bash "$TDD" red src/__tests__/score.test.ts | grep -q 'src/__tests__/score.test.ts::throws boom fails for a reason this script does not classify: Error: boom' || { echo "FAIL: a test failing for an unclassified reason must be refused by its full name beside an assertion failure"; exit 1; }
+
 # red: the rest of the suite being red is refused.
 red_test src/__tests__/score.test.ts
 printf 'import { it, expect } from "vitest";\nit("baseline passes", () => { expect(1).toBe(2); });\n' > src/__tests__/baseline.test.ts
