@@ -41,18 +41,31 @@
 # the suite is every `*.test.sh` in the named files' directories, run through
 # run-fixture-shards.sh beside this script with that runner's verdict (exit 0,
 # a PASS line, no FAIL line), and converted to the JSON report shape below.
+# A `*.py` path (test_*.py or *_test.py in practice) is a pytest test: the
+# suite is the whole pytest run of the Python project that owns the named
+# files, which is the nearest directory above them holding pyproject.toml. It
+# runs there as `uv run pytest` when uv is on PATH, and otherwise as
+# `python -m pytest` through the project's .venv interpreter, python3, or
+# python, with a warning. pytest writes its built-in --junitxml report (the
+# xunit1 family, which names each test's file), and an inline Python converter
+# turns it into the JSON report shape below; a collection error is a file with
+# no tests carrying the error text, so a SyntaxError is refused as a parse
+# failure and an ImportError or ModuleNotFoundError is the missing-module RED.
 # Any other path, or no path, uses Vitest or Jest resolved from the project's
 # node_modules/.bin, then the copy bundled under ~/.claude/enforce/node_modules
-# (with a warning). A slice never mixes the two. pytest, go test, and RSpec
-# arrive with the first project on that stack (2026-09-06 decision 1); until
-# then this refuses rather than guessing. Exit 1 with the reason on stderr on
-# every refusal.
+# (with a warning). A slice never mixes runners. go test and RSpec arrive with
+# the first project on that stack (2026-09-06 decision 1); until then this
+# refuses rather than guessing. Exit 1 with the reason on stderr on every
+# refusal.
 set -uo pipefail
 
 CLAUDE_DIR="${CLAUDE_TDD_HOME:-$HOME/.claude}"
 SHARD_RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-fixture-shards.sh"
 POLICY="$CLAUDE_DIR/enforce/role-policy.json"
 LOCK_RELATIVE=".claude/tdd-lock.json"
+# The uv binary the pytest runner prefers; the fixture points it at a name that
+# does not exist to exercise the python -m pytest fallback.
+UV_BIN="${CLAUDE_TDD_UV:-uv}"
 
 die() { printf 'tdd.sh: %s\n' "$*" >&2; exit 1; }
 say() { printf 'tdd.sh: %s\n' "$*"; }
@@ -91,26 +104,73 @@ resolve_runner() {
     RUNNER="$CLAUDE_DIR/enforce/node_modules/.bin/vitest"; RUNNER_KIND=vitest
     say "warning: no vitest or jest in this project's node_modules; using the harness-bundled vitest" >&2
   else
-    die "no supported test runner: Vitest or Jest under node_modules/.bin (pytest, go test, and RSpec are not wired yet)"
+    die "no supported test runner: Vitest or Jest under node_modules/.bin, *.test.sh fixtures, or *.py pytest tests (go test and RSpec are not wired yet)"
   fi
 }
 
 # select_runner <test rel>...: shell when every path is a *.test.sh fixture,
-# the JavaScript runner when none is (or none is named), a refusal when mixed.
+# pytest when every path is a *.py file, the JavaScript runner when neither is
+# (or none is named), a refusal when mixed.
 select_runner() {
-  local rel shell=0 other=0
+  local rel shell=0 python=0 other=0
   for rel in "$@"; do
-    case "$rel" in *.test.sh) shell=$((shell + 1)) ;; *) other=$((other + 1)) ;; esac
+    case "$rel" in
+      *.test.sh) shell=$((shell + 1)) ;;
+      *.py) python=$((python + 1)) ;;
+      *) other=$((other + 1)) ;;
+    esac
   done
-  if [ "$shell" -gt 0 ] && [ "$other" -gt 0 ]; then
-    die "a slice runs one runner: $shell *.test.sh fixture(s) and $other other test file(s) were named; split them into separate slices"
+  if [ $(( (shell > 0) + (python > 0) + (other > 0) )) -gt 1 ]; then
+    die "a slice runs one runner: $shell *.test.sh fixture(s), $python *.py pytest file(s), and $other other test file(s) were named; split them into separate slices"
   fi
   if [ "$shell" -gt 0 ]; then
     [ -f "$SHARD_RUNNER" ] || die "shell fixtures need $SHARD_RUNNER, which is missing"
     RUNNER="$SHARD_RUNNER"; RUNNER_KIND=shell
     MISSING_MODULE="$SHELL_MISSING"; ASSERTION="$SHELL_ASSERTION"
+  elif [ "$python" -gt 0 ]; then
+    resolve_pytest "$@"
+    MISSING_MODULE="$PYTEST_MISSING"; ASSERTION="$PYTEST_ASSERTION"; PARSE_FAILURE="$PYTEST_PARSE_FAILURE"
   else
     resolve_runner
+  fi
+}
+
+# resolve_pytest <test rel>...: sets PYTEST_DIR to the physical path of the one
+# Python project owning every named file (the nearest directory above each
+# that holds pyproject.toml, never above the repository root), and PYTEST_CMD
+# to `uv run pytest`, or to `<python> -m pytest` with a warning when uv is not
+# on PATH. Named files from two projects are refused, since one run cannot
+# report both.
+resolve_pytest() {
+  local rel dir project=""
+  for rel in "$@"; do
+    dir=$(dirname "$rel")
+    while [ "$dir" != "." ] && [ ! -f "$dir/pyproject.toml" ]; do dir=$(dirname "$dir"); done
+    [ -f "$dir/pyproject.toml" ] || die "$rel has no pyproject.toml above it inside the repository; pytest runs from the Python project that owns the test"
+    if [ -z "$project" ]; then project="$dir"
+    elif [ "$project" != "$dir" ]; then die "a slice runs one pytest project: $rel belongs to $dir, not $project; split them into separate slices"
+    fi
+  done
+  if [ "$project" = "." ]; then PYTEST_DIR="$ROOT_PHYSICAL"; else PYTEST_DIR="$ROOT_PHYSICAL/$project"; fi
+  RUNNER_KIND=pytest
+  if command -v "$UV_BIN" >/dev/null 2>&1; then
+    PYTEST_CMD=("$UV_BIN" run pytest)
+  else
+    local python
+    python=$(pytest_python) || exit 1
+    PYTEST_CMD=("$python" -m pytest)
+    say "warning: uv is not on PATH; running '${PYTEST_CMD[*]}' in $project instead of 'uv run pytest'" >&2
+  fi
+  RUNNER="${PYTEST_CMD[*]} (in $project)"
+}
+
+# pytest_python: the interpreter for the python -m pytest fallback, the
+# project's own virtual environment first.
+pytest_python() {
+  if [ -x "$PYTEST_DIR/.venv/bin/python" ]; then printf '%s' "$PYTEST_DIR/.venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then printf 'python3'
+  elif command -v python >/dev/null 2>&1; then printf 'python'
+  else die "pytest needs uv or a Python interpreter on PATH, and neither was found"
   fi
 }
 
@@ -124,6 +184,7 @@ run_suite() {
     vitest) "$RUNNER" run --reporter=json --outputFile="$REPORT" >/dev/null 2>&1 || true ;;
     jest) "$RUNNER" --json --outputFile="$REPORT" >/dev/null 2>&1 || true ;;
     shell) run_shell_suite "$@" > "$REPORT" ;;
+    pytest) run_pytest_suite "$@" > "$REPORT" ;;
   esac
   jq -e '.testResults' "$REPORT" >/dev/null 2>&1 || die "the $RUNNER_KIND run produced no JSON report; run '$RUNNER' by hand to see why"
 }
@@ -145,6 +206,72 @@ run_shell_suite() {
     rm -rf "$results" "$scratch"
   done <<< "$dirs"
   printf '%s' "$records" | jq -s '{testResults: .}'
+}
+
+# run_pytest_suite <test rel>...: runs the whole pytest suite of PYTEST_DIR
+# once and prints the Vitest-shaped report. --continue-on-collection-errors
+# keeps one unimportable file from hiding every other file's result, which the
+# baseline counts; the cache plugin and bytecode writes are off so the run
+# leaves nothing untracked for `tdd.sh validate` to attribute to a role, and
+# so a RED run's cached bytecode cannot outlive a same-size implementation
+# edit made within the same second and turn the GREEN run stale. When
+# no report can be built, pytest's last output lines go to stderr and nothing
+# is printed, so run_suite refuses with the reason in view.
+run_pytest_suite() {
+  local xml log rel names=()
+  xml=$(mktemp); log=$(mktemp)
+  for rel in "$@"; do names+=("$(report_name "$rel")"); done
+  (cd "$PYTEST_DIR" && PYTHONDONTWRITEBYTECODE=1 "${PYTEST_CMD[@]}" --rootdir="$PYTEST_DIR" \
+    -o junit_family=xunit1 --junitxml="$xml" --continue-on-collection-errors \
+    -p no:cacheprovider -q > "$log" 2>&1) || true
+  pytest_report "$xml" "$PYTEST_DIR" "${names[@]}" || tail -15 "$log" >&2
+  rm -f "$xml" "$log"
+}
+
+# pytest_report <junit xml> <project dir> <named report name>...: converts
+# pytest's JUnit XML into the report shape. Each testcase's file attribute,
+# relative to the project, names its record; a collection error (a testcase
+# with an empty classname and a "collection failure" error) makes a failed
+# record with no tests and the error text as its message; a failure or error
+# element is a failed test, and a skipped element (skip or xfail) a skipped
+# one. A named file pytest reported nothing for is a record with no tests and
+# no message, which red refuses as a file with no tests. Returns non-zero when
+# the XML is missing or unreadable, or no interpreter can read it.
+pytest_report() {
+  local python
+  python=$(command -v python3 || command -v python) || { printf 'tdd.sh: no python3 on PATH to read the pytest report\n' >&2; return 1; }
+  "$python" -c '
+import json
+import os
+import sys
+import xml.etree.ElementTree as ElementTree
+
+xml_path, project_dir, *named_files = sys.argv[1:]
+try:
+    testcases = list(ElementTree.parse(xml_path).iter("testcase"))
+except (OSError, ElementTree.ParseError):
+    sys.exit(1)
+records = {}
+for testcase in testcases:
+    file_name = os.path.normpath(os.path.join(project_dir, testcase.get("file", "")))
+    record = records.setdefault(file_name, {"name": file_name, "status": "passed", "message": "", "assertionResults": []})
+    problem = next((child for child in testcase if child.tag in ("failure", "error")), None)
+    if testcase.get("classname") == "" and problem is not None and problem.get("message") == "collection failure":
+        record["status"] = "failed"
+        record["message"] = (record["message"] + "\n" + (problem.text or "")).strip()
+        continue
+    if problem is not None:
+        record["status"] = "failed"
+        status, failure_messages = "failed", [((problem.get("message") or "") + "\n" + (problem.text or "")).strip()]
+    elif testcase.find("skipped") is not None:
+        status, failure_messages = "skipped", []
+    else:
+        status, failure_messages = "passed", []
+    record["assertionResults"].append({"title": testcase.get("name", ""), "status": status, "failureMessages": failure_messages})
+for file_name in named_files:
+    records.setdefault(file_name, {"name": file_name, "status": "passed", "message": "", "assertionResults": []})
+print(json.dumps({"testResults": list(records.values())}))
+' "$@"
 }
 
 # shell_record <fixture> <results dir>: one report record. A fixture that does
@@ -183,6 +310,12 @@ ASSERTION='AssertionError|expected|toBe|toEqual|toMatch|toThrow|toHaveBeen'
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
 SHELL_ASSERTION='FAIL'
+# pytest: an import that cannot resolve (a module or a name not written yet) is
+# the missing-module RED, a failed assert or an unmet pytest.raises is the
+# assertion RED, and any SyntaxError subclass is a test that does not parse.
+PYTEST_MISSING='ModuleNotFoundError|ImportError'
+PYTEST_ASSERTION='AssertionError|DID NOT RAISE'
+PYTEST_PARSE_FAILURE='SyntaxError|IndentationError|TabError'
 
 # Classifies one RED file from its report record. Prints the failure class or
 # dies with the refusal.
@@ -197,6 +330,8 @@ classify_red() {
       die "$rel does not parse; a broken test is not a RED test. First line: $(printf '%s' "$message" | head -1)"
     elif grep -qE "$MISSING_MODULE" <<< "$message"; then
       printf 'missing-module'
+    elif [ -z "$message" ] && [ "$RUNNER_KIND" = pytest ]; then
+      die "$rel contains no tests (or pytest did not collect it: check testpaths and python_files in pyproject.toml)"
     elif [ -z "$message" ]; then
       die "$rel contains no tests"
     else
