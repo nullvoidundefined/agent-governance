@@ -1,21 +1,20 @@
 {
-  "slice": "B-1 deny git --no-verify in every accepted spelling and -n on commit",
-  "phase": "green",
+  "slice": "B-2 deny hook-skipping environment variables on git commands",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "9ed29ddf920957f5bdfcefd16224172ed7950e8809c50eeb58cbaa673a296a40",
+      "sha256": "4e77a74fea15b875f5177eaa8d673f250df30b2398b92bea8cb5909bb507fc50",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T10:23:53Z",
+  "openedAt": "2026-09-19T10:42:26Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T10:34:47Z",
-  "greenAt": "2026-09-19T10:42:14Z"
+  "redAt": "2026-09-19T10:50:46Z"
 }

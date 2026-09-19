@@ -72,6 +72,58 @@ expect none 'git commit -m x'
 
 # --- end B-1 ---------------------------------------------------------------
 
+# --- B-2: hook managers turned off through an environment variable ---------
+
+# every hook-manager variable, set as an assignment prefix on a hook-running
+# git subcommand, turns the hooks off
+expect deny 'HUSKY=0 git commit -m x'
+expect deny 'HUSKY_SKIP_HOOKS=1 git commit -m x'
+expect deny 'HUSKY_SKIP_HOOKS=true git push'
+expect deny 'SKIP=eslint git commit -m x'
+expect deny 'SKIP=eslint,prettier git push'
+expect deny 'LEFTHOOK=0 git push'
+expect deny 'LEFTHOOK=false git commit -m x'
+expect deny 'LEFTHOOK_EXCLUDE=lint git push'
+
+# every subcommand that runs hooks is covered, not only commit
+expect deny 'HUSKY=0 git push'
+expect deny 'HUSKY=0 git merge feat/x'
+expect deny 'HUSKY=0 git rebase main'
+expect deny 'HUSKY=0 git am patch.mbox'
+
+# the variable set through env
+expect deny 'env HUSKY=0 git commit -m x'
+expect deny 'env SKIP=eslint git push'
+expect deny 'env LEFTHOOK=0 git merge feat/x'
+
+# the variable exported earlier in the same command
+expect deny 'export HUSKY=0; git commit -m x'
+expect deny 'export LEFTHOOK=0 && git push'
+expect deny 'export HUSKY_SKIP_HOOKS=1; git rebase main'
+expect deny $'export SKIP=eslint\ngit commit -m x'
+
+# several prefixes, in either order, and global options before the subcommand
+expect deny 'CI=1 HUSKY=0 git commit -m x'
+expect deny 'HUSKY=0 CI=1 git commit -m x'
+expect deny 'HUSKY=0 git -C /tmp/r commit -m x'
+
+# a prefixed invocation after a separator still trips it
+expect deny 'git add . && HUSKY=0 git commit -m x'
+
+# values that re-enable hooks, commands that are not hook-running git
+# subcommands, and quoted or echoed text must keep working
+expect none 'HUSKY=1 git commit -m x'
+expect none 'LEFTHOOK=1 git push'
+expect none 'SKIP=1 npm test'
+expect none 'HUSKY=0 npm install'
+expect none 'export HUSKY=0'
+expect none 'HUSKY=0 git status'
+expect none 'export HUSKY=0; git status'
+expect none 'git commit -m "HUSKY=0 is banned"'
+expect none 'echo HUSKY=0 git commit'
+
+# --- end B-2 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
