@@ -256,8 +256,9 @@ cd / && rm -rf "$N"
 # A plain Error whose message happens to say "expected" or name a matcher is
 # not an assertion RED (IAN-161): it is refused as unclassified. Every shape
 # real Vitest writes for a failed assertion stays the assertion RED, including
-# the three that arrive as a plain Error: `.resolves`, `expect.assertions`, and
-# `expect.hasAssertions`.
+# those that arrive as a plain Error: `.resolves`, `.rejects`, `expect.poll`,
+# an `expect.extend` matcher, a snapshot mismatch, `expect.assertions`, and
+# `expect.hasAssertions`, and the ANSI-coloured hint `toSatisfy` writes.
 A=$(new_project); cd "$A"
 bash "$TDD" open "A-1 assertion markers" >/dev/null
 for body in 'throw new Error("timeout: expected reply");' \
@@ -272,8 +273,14 @@ for body in 'expect(1).toBe(2);' \
             'assert.equal(1, 2);' \
             'await expect(Promise.resolve(1)).resolves.toBe(2);' \
             'expect.assertions(1);' \
-            'expect.hasAssertions();'; do
-  printf 'import { it, expect, assert, vi } from "vitest";\nit("marker", async () => { %s });\n' "$body" > src/__tests__/marker.test.ts
+            'expect.hasAssertions();' \
+            'await expect(Promise.reject(new Error("boom"))).rejects.toThrow("other");' \
+            'await expect(Promise.resolve(1)).rejects.toThrow();' \
+            'await expect.poll(() => 1, { timeout: 50 }).toBe(2);' \
+            '(expect(10) as any).toBeWithinRange(1, 3);' \
+            'expect(1).toMatchInlineSnapshot(`2`);' \
+            'expect(1).toSatisfy((n: number) => n > 1);'; do
+  printf 'import { it, expect, assert, vi } from "vitest";\nexpect.extend({ toBeWithinRange(r: number, a: number, b: number) { return { pass: r >= a && r <= b, message: () => `expected ${r} to be within range ${a} - ${b}` }; } });\nit("marker", async () => { %s });\n' "$body" > src/__tests__/marker.test.ts
   out=$(bash "$TDD" red src/__tests__/marker.test.ts 2>&1) || { echo "FAIL: a Vitest assertion failure must be accepted: $body; output: $out"; exit 1; }
   [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: $body must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
 done
@@ -335,11 +342,15 @@ case "$(cat "$PWD/.stub-mode")" in
   red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
   duplicate) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: thrown: Exceeded timeout of 5000 ms\"]}]}]}" ;;
   unreadable) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:null}]}]}" ;;
-  plain|mock|assertions)
+  plain|mock|assertions|alias|nodeassert|colour|custom)
     case "$(cat "$PWD/.stub-mode")" in
       plain) failure='Error: timeout: expected reply' ;;
       mock) failure='Error: expect(jest.fn()).toHaveBeenCalledWith(...expected)' ;;
       assertions) failure='Error: expect.assertions(1)' ;;
+      alias) failure='Error: expect(jest.fn()).lastCalledWith(...expected)' ;;
+      nodeassert) failure=$'assert.strictEqual(received, expected)\n\nExpected value to strictly be equal to:\n  2' ;;
+      colour) failure=$'Error: \e[2mexpect(\e[22m\e[31mreceived\e[39m\e[2m).\e[22mtoBe\e[2m(\e[22m\e[32mexpected\e[39m\e[2m) // Object.is equality\e[22m' ;;
+      custom) failure=$'Error: expected 10 to be within range 1 - 3\n    at Object.toBeWithinRange (/src/__tests__/score.test.js:4:35)' ;;
     esac
     jq -n --arg n "$name" --arg f "$failure" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\$f]}]}]}" ;;
   green) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"passed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"passed\", failureMessages:[]}]}]}" ;;
@@ -363,11 +374,13 @@ expect_fail "jest node red with a duplicate-named unclassified failure" bash "$T
 echo unreadable > .stub-mode
 expect_fail "jest node red with unreadable failure messages" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'src/__tests__/score.test.js::boost doubles failed with no failure message to classify' || { echo "FAIL: a failing result with unreadable messages must be refused by name, not locked on the other result's assertion"; exit 1; }
 # A plain Error mentioning "expected" is not the assertion RED under Jest
-# either; Jest's matcher hints for a mock and for expect.assertions are
-# (IAN-161).
+# either. Jest's own assertion output is, in the shapes real Jest 29 writes: a
+# matcher hint (a mock matcher, a spy alias such as lastCalledWith, the hint
+# ANSI-coloured under FORCE_COLOR), expect.assertions, node:assert reformatted
+# by jest-circus, and an expect.extend matcher's frame (IAN-161).
 echo plain > .stub-mode
 expect_fail "jest node red on a plain error" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'does not classify: Error: timeout: expected reply' || { echo "FAIL: under Jest a plain error mentioning expected must be refused as unclassified"; exit 1; }
-for mode in mock assertions; do
+for mode in mock assertions alias nodeassert colour custom; do
   echo "$mode" > .stub-mode
   out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: the Jest $mode matcher hint must be the assertion RED; output: $out"; exit 1; }
   [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: the Jest $mode matcher hint must be the assertion RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }

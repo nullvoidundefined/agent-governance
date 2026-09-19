@@ -362,13 +362,17 @@ file_record() { jq -c --arg n "$(report_name "$1")" '.testResults[] | select(.na
 MISSING_MODULE='Cannot find module|Failed to resolve import|does not provide an export|is not a function|is not defined|Cannot read propert'
 PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse error|syntax error'
 # Vitest and Jest: the markers their own assertion failures carry, never a bare
-# word a plain Error could say. Vitest writes AssertionError for every matcher
-# and assert call, except that `.resolves` rethrows as a plain Error from its
-# __VITEST_RESOLVES__ frame and expect.assertions / expect.hasAssertions fail
-# with their own messages; Jest heads each failure with the matcher hint
-# (`expect(received).toBe(expected)`, `expect(jest.fn()).toHaveBeenCalled()`,
-# `expect.assertions(1)`).
-ASSERTION='AssertionError|expect\(.*\)(\.(not|resolves|rejects))*\.to[A-Z]|expect\.(assertions|hasAssertions)\(|__VITEST_RESOLVES__|expected number of assertions to be|expected any number of assertion'
+# word a plain Error could say. Vitest writes AssertionError for every chai
+# matcher and assert call; the failures it rethrows as a plain Error carry the
+# frame of their wrapper (.resolves, .rejects, expect.poll, an expect.extend
+# matcher), a snapshot mismatch says so, and expect.assertions and
+# expect.hasAssertions fail with their own messages. Jest heads each failure
+# with a matcher hint (`expect(received).toBe(expected)`,
+# `expect(jest.fn()).lastCalledWith(...expected)`, `expect.assertions(1)`,
+# node:assert reformatted as `assert.strictEqual(received, expected)`), and an
+# expect.extend matcher without a hint fails in its own `Object.toX` frame.
+# Colour is stripped before matching (JQ_FAILURE_RESULT).
+ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION)__|Snapshot `.*` mismatched|expected number of assertions to be|expected any number of assertion|expect\(.*\)(\.(not|resolves|rejects))*\.[A-Za-z]+\(|expect\.(assertions|hasAssertions)\(|^assert(\.[A-Za-z]+)?\(|at Object\.to[A-Z][A-Za-z]* \('
 # Shell fixtures: bash's own message for a script or command that does not
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
@@ -433,9 +437,10 @@ def entry_for($named): .name as $n | ($named | map(select(.name == $n)) | first)
 # One {key, failures} object per failing test for classify_failures. A null
 # failureMessages becomes an empty message, which is refused by name, instead
 # of a jq error that would end the stream early and leave the tests before it
-# to classify the file alone (PR #81 review).
+# to classify the file alone (PR #81 review). ANSI colour codes are stripped,
+# since a runner under FORCE_COLOR splits a matcher hint with them (IAN-161).
 JQ_FAILURE_RESULT='
-def failure_result: {key: test_key, failures: ((.failureMessages // []) | map(tostring) | join("\n"))};
+def failure_result: {key: test_key, failures: ((.failureMessages // []) | map(tostring | gsub("\u001b\\[[0-9;]*m"; "")) | join("\n"))};
 '
 
 # classify_failures <rel> <results>: <results> holds one {key, failures} object
