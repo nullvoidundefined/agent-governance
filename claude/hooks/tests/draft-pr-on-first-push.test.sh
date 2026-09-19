@@ -28,15 +28,19 @@ printf '{"tracker":"linear"}\n' > "$TRACKED_HOME/.claude/TICKET-TRACKER.json"
 GH_LOG="$SB/gh-calls.log"
 GH_BODY="$SB/gh-body.md"
 
-# The gh stub: `pr list` prints $GH_STUB_EXISTING_URL (empty means no open
-# PR), `pr create` copies its --body-file to $GH_BODY and prints a PR URL,
+# The gh stub: `pr list` prints $GH_STUB_PRS as the JSON list of the
+# branch's PRs in every state (an open PR at $GH_STUB_EXISTING_URL when that
+# is set, else none), `pr create` copies its --body-file to $GH_BODY and prints a PR URL,
 # and $GH_STUB_FAIL set makes every call exit 1. Each call is logged.
 cat > "$SB/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_LOG"
 [ -n "${GH_STUB_FAIL:-}" ] && { echo "gh: authentication required" >&2; exit 1; }
 case "$1 $2" in
-  "pr list") printf '%s\n' "${GH_STUB_EXISTING_URL:-}" ;;
+  "pr list")
+    if [ -n "${GH_STUB_PRS:-}" ]; then printf '%s\n' "$GH_STUB_PRS"
+    elif [ -n "${GH_STUB_EXISTING_URL:-}" ]; then printf '[{"number":3,"state":"OPEN","url":"%s"}]\n' "$GH_STUB_EXISTING_URL"
+    else echo '[]'; fi ;;
   "pr create")
     previous=""
     for arg in "$@"; do [ "$previous" = "--body-file" ] && cp "$arg" "$GH_BODY"; previous="$arg"; done
@@ -143,6 +147,22 @@ git -C "$R" remote remove mirror
 GH_STUB_EXISTING_URL="https://github.com/example/app/pull/3" run_hook "$R" "git push"
 check "existing PR opens nothing" not was_draft_opened
 check "existing PR is silent" is_silent
+
+# A branch that ever had a PR: a merged or closed one opens nothing and
+# names the earlier PR; reusing the branch name needs a deliberate create.
+GH_STUB_PRS='[{"number":5,"state":"MERGED","url":"https://github.com/example/app/pull/5"}]' run_hook "$R" "git push"
+check "merged PR on the branch opens nothing" not was_draft_opened
+check "merged PR note names the number and state" output_has "#5 (MERGED)"
+check "merged PR note names the URL" output_has "https://github.com/example/app/pull/5"
+check "merged PR note names the deliberate create" output_has "deliberate \`gh pr create\`"
+check "merged PR asks all states" gh_logged "--state all"
+GH_STUB_PRS='[{"number":6,"state":"CLOSED","url":"https://github.com/example/app/pull/6"}]' run_hook "$R" "git push"
+check "closed PR on the branch opens nothing" not was_draft_opened
+check "closed PR note names the number and state" output_has "#6 (CLOSED)"
+check "closed PR note is one line" test "$(jq -r '.hookSpecificOutput.additionalContext' <<< "$OUT" | wc -l | tr -d ' ')" -le 1
+GH_STUB_PRS='[{"number":6,"state":"CLOSED","url":"https://github.com/example/app/pull/6"},{"number":8,"state":"OPEN","url":"https://github.com/example/app/pull/8"}]' run_hook "$R" "git push"
+check "an open PR beside a closed one opens nothing" not was_draft_opened
+check "an open PR beside a closed one is silent" is_silent
 
 # A push of main opens nothing and never calls gh.
 git -C "$R" switch -q main

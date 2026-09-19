@@ -478,7 +478,7 @@
             "enforcer": "hook:draft-pr-on-first-push",
             "severity": "warn",
             "autofix": true,
-            "note": "PostToolUse Bash git push: after a successful push of a non-default branch with no open PR, opens a draft with gh pr create --draft (title from the oldest commit, body of subjects, Refs lines, and attribution) and emits the PR monitor instruction; R-605 is applied through the shared pr-range-checks.sh, so a range with no Refs line outside the docs-only and trivial exemptions opens nothing and names /ticket-lifecycle; .enforce.json autoDraftPr false opts out; every error exits 0 with at most a one-line note. Fixture: hooks/tests/draft-pr-on-first-push.test.sh"
+            "note": "PostToolUse Bash git push: after a successful push of a non-default branch that has never had a PR (open, merged, or closed; a merged or closed one gets a one-line note naming it), opens a draft with gh pr create --draft (title from the oldest commit, body of subjects, Refs lines, and attribution) and emits the PR monitor instruction; R-605 is applied through the shared pr-range-checks.sh, so a range with no Refs line outside the docs-only and trivial exemptions opens nothing and names /ticket-lifecycle; .enforce.json autoDraftPr false opts out; every error exits 0 with at most a one-line note. Fixture: hooks/tests/draft-pr-on-first-push.test.sh"
         },
         {
             "id": "R-517",

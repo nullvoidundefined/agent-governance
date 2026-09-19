@@ -2,9 +2,13 @@
 # draft-pr-on-first-push.sh: PostToolUse Bash hook (R-517). When a Bash call
 # really ran `git push` for the checked-out branch, the push succeeded, the
 # branch is not the default branch (nor main, master, or staging), and GitHub
-# has no open pull request whose head is that branch, the hook opens a DRAFT
-# pull request itself with `gh pr create --draft`, then tells the session to
-# turn on the desktop app's PR monitor for it (pr-monitor-instruction.sh).
+# has never had a pull request (open, merged, or closed) whose head is that
+# branch, the hook opens a DRAFT pull request itself with `gh pr create
+# --draft`, then tells the session to turn on the desktop app's PR monitor for
+# it (pr-monitor-instruction.sh). An open PR on the branch means nothing to
+# do; a merged or closed one means the branch name is being reused, which
+# needs a deliberate `gh pr create`, so the hook names the earlier PR in one
+# line and opens nothing.
 #
 # Title: the subject of the oldest commit in base..HEAD. Body: the commit
 # subjects in the range, each distinct `Refs: <KEY>` line from the range's
@@ -229,14 +233,14 @@ resolve_default_branch() {
   tr -d '[:space:]' < "$SCRATCH/default"
 }
 
-# find_open_pr_url: prints the URL of the open PR headed by PUSHED_BRANCH,
-# empty when there is none; returns gh's status on failure.
-find_open_pr_url() {
+# list_branch_prs: prints the JSON list of every PR, in any state, whose
+# head is PUSHED_BRANCH; returns gh's status on failure, 1 on unreadable JSON.
+list_branch_prs() {
   local status
-  run_gh "$SCRATCH/existing" pr list --head "$PUSHED_BRANCH" --state open --json url --jq '.[0].url // ""'
+  run_gh "$SCRATCH/existing" pr list --head "$PUSHED_BRANCH" --state all --json number,state,url
   status=$?
   [ "$status" -eq 0 ] || return "$status"
-  tr -d '[:space:]' < "$SCRATCH/existing"
+  jq -ce 'if type == "array" then . else error end' "$SCRATCH/existing" 2>/dev/null
 }
 
 # write_pr_body <base> <file>: the draft's body, commit subjects then the
@@ -294,8 +298,14 @@ DEFAULT_BRANCH=$(resolve_default_branch "$REMOTE") || give_up_with_note "$(descr
 [ -n "$DEFAULT_BRANCH" ] || give_up_with_note "the repository's default branch could not be resolved"
 [ "$PUSHED_BRANCH" = "$DEFAULT_BRANCH" ] && exit 0
 
-EXISTING_URL=$(find_open_pr_url) || give_up_with_note "$(describe_gh_failure $? 'pr list')"
-[ -n "$EXISTING_URL" ] && exit 0
+BRANCH_PRS=$(list_branch_prs) || give_up_with_note "$(describe_gh_failure $? 'pr list')"
+jq -e 'any(.[]; .state == "OPEN")' >/dev/null 2>&1 <<< "$BRANCH_PRS" && exit 0
+EARLIER_PR=$(jq -r 'first(.[]) | "#\(.number) (\(.state)) \(.url)"' 2>/dev/null <<< "$BRANCH_PRS" || true)
+if [ -n "$EARLIER_PR" ]; then
+  record_fire "branch-reused"
+  emit_context "R-517 (draft PR): no draft pull request was opened for $PUSHED_BRANCH, because the branch already had pull request $EARLIER_PR; reusing a branch name needs a deliberate \`gh pr create\`."
+  exit 0
+fi
 
 BASE=$(resolve_pr_base "$DEFAULT_BRANCH" "$TOP")
 [ -n "$BASE" ] || give_up_with_note "no merge base with $DEFAULT_BRANCH could be found"
