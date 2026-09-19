@@ -2,7 +2,7 @@
 
 ## 1. Last commit
 
-- This session's last code commit: `f90fb3f docs(tracks): server-side API client base URL and headers, api/ functions take the client, shared/services in Nuxt`, on `chore/nuxt-track-api-client` (IAN-159). This handoff, the ISSUES.md move, and the PR document ship in the same PR, which squash-merges onto `main`.
+- Last commit on `main` from this session: `45cf28a` (docs(tracks): correct the Python and Vue tracks from the FastAPI and Nuxt template build, #75). This PR's branch commits (from `f90fb3f`, IAN-159) are replaced on `main` by its squash commit. This handoff, the ISSUES.md move, and the PR document ship in the same PR, which squash-merges onto `main`.
 - Earlier this session: agent-governance PR #75 merged as `45cf28a` (IAN-145); template-fastapi-nuxt PR #8 merged as `d9baabd` (IAN-146).
 
 ## 2. Production state
@@ -27,7 +27,7 @@
 
 1. **Sync after this PR merges** (2 minutes): `git pull --ff-only && ./sync.sh` in the primary checkout.
 2. **Task chip: isolate `task-cleanup-scan.test.sh` from the real tracker** (about 30 minutes). It fails on every local run on clean `main`, because it reads the owner's `~/.claude/TICKET-TRACKER.json` and `task-tier.sh set standard` now requires `--ticket`. CI stays green because it has no tracker file. `git-workflow-guard.test.sh` failed once in a full local run and passed alone, so it may have the same leak.
-3. **Template slice 01 PR 3 (IAN-126)** should build the client exactly as the updated spec and tracks say: `createApiClient()`, `useApiClient()`, `shared/services/resolveClientAddress.ts`.
+3. **Template spec follow-up** (10 minutes): once this PR merges, the template spec's sentence saying `shared/services/` departs from the Nuxt track is stale, and the spec's proxy description should name the query string as the track now does. Slice 01 PR 3 (#9) already built the client to the spec.
 
 ## 6. Next session
 

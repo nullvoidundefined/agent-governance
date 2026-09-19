@@ -49,7 +49,7 @@
     "rules/cloud-deployment.mdc": "sha256:ef24b5c242f6e71d99596d0648df625e3cb486ce5869ab15ab7f91611650df76",
     "rules/database.mdc": "sha256:690d47bbeaa674b0f4e6e0e7dbf0f43759b51fb56cf1d096ae8fe9a873335594",
     "rules/frontend-next.mdc": "sha256:9e7380e243dcb5ed6c0d80c978e51aca15016e2ba78551d1439e75e42ec38126",
-    "rules/frontend-nuxt.mdc": "sha256:33689eca5499224f49540b1fa0b96f45da945da69f50f3879953c4bdc9a0e5ce",
+    "rules/frontend-nuxt.mdc": "sha256:7383098f82bd87540a6fbf2cea720a28069e4b36114ab2afa1cac2be0034e0c5",
     "rules/frontend-react.mdc": "sha256:91cfe2b8866769814cb8bd57730a96d9a573579e5623a659e7b15a38e8c7f62f",
     "rules/frontend-vite.mdc": "sha256:31244b5efecba885a22d511cf31af24825538a32938ab3d21f127c51770ac7f9",
     "rules/frontend-vue.mdc": "sha256:43add8d745ec1641189fdd4b06a90c930bda45bd47020dc9abf0bd717a4fa1e5",
