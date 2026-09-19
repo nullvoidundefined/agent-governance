@@ -342,13 +342,15 @@ is_trivial_tier_pr() {
 }
 
 # read_ledger_state: prints the tier and branch task-start's ledger in the
-# merge's checkout now records, or "no ledger", for the deny reason, so a
-# ledger a later task overwrote is visible rather than silent.
+# merge's checkout now records, "no ledger", or "unreadable ledger" when the
+# file exists but is not the JSON task-tier.sh writes, for the deny reason, so
+# a ledger a later task overwrote is visible rather than silent.
 read_ledger_state() {
-  local top
-  top=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) &&
-    jq -r '"tier \(.tier // "?") for branch \(.branch // "?")"' "$top/.claude/task-tier.json" 2>/dev/null ||
-    echo "no ledger"
+  local top ledger
+  top=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) || { echo "no ledger"; return 0; }
+  ledger="$top/.claude/task-tier.json"
+  [ -f "$ledger" ] || { echo "no ledger"; return 0; }
+  jq -er '"tier \(.tier // "?") for branch \(.branch // "?")"' "$ledger" 2>/dev/null || echo "unreadable ledger"
 }
 
 # read_codex_review_verdict: prints "ok" when the merged PR's body carries the

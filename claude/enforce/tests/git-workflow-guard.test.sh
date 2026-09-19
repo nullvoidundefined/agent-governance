@@ -255,6 +255,9 @@ set_tier standard
 TRIVIAL_REASON=$(payload 'gh pr merge 42 --squash' "$TRIVIAL_REPO" | CLAUDE_GH_CMD="$TRIVIAL_PR" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason')
 case "$TRIVIAL_REASON" in *standard*feat/next*) ;; *) echo "trivial deny must name the ledger's tier and branch: $TRIVIAL_REASON" >&2; exit 1 ;; esac
 rm -rf "$OTHER_TRIVIAL_REPO"
+printf 'not json' >"$TRIVIAL_REPO/.claude/task-tier.json"
+TRIVIAL_REASON=$(payload 'gh pr merge 42 --squash' "$TRIVIAL_REPO" | CLAUDE_GH_CMD="$TRIVIAL_PR" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason')
+case "$TRIVIAL_REASON" in *unreadable\ ledger*) ;; *) echo "an unparseable ledger must be named as unreadable, not absent: $TRIVIAL_REASON" >&2; exit 1 ;; esac
 git -C "$TRIVIAL_REPO" checkout -q fix/typo
 set_tier trivial
 # A ledger committed to the branch is not task-start's session state.
