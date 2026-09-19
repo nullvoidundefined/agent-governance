@@ -1,6 +1,6 @@
 {
   "slice": "B-6 recognize git behind wrappers, other spellings, and compound-command keywords",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T12:30:41Z"
+  "redAt": "2026-09-19T12:30:41Z",
+  "greenAt": "2026-09-19T12:37:08Z"
 }

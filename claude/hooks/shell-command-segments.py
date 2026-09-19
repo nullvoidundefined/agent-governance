@@ -9,14 +9,37 @@ unquoted comments are resolved as bash resolves them. An fd number glued to a
 redirect (2>) is folded into the operator. A heredoc body is skipped, except
 when the line that opens it names a shell (bash <<EOF), in which case the body
 is parsed as more commands. A command substitution's inner text becomes its own
-segment. A command bash itself would reject (an unclosed quote) prints nothing,
-because it never runs."""
+segment.
+
+Each segment is then normalized to what actually runs: leading VAR=value
+assignments are kept first, compound-command keywords ({, !, if, then, do) and
+wrappers (env, sudo, command, exec, nohup, time, nice, timeout, xargs) are
+dropped along with their own options, and the program name is reduced to its
+basename, with any capitalization of git printed as `git` (macOS resolves
+commands case-insensitively). The words piped into xargs become arguments of
+the program it runs. The command string given to `sh -c` (any shell) or to
+`eval` is parsed as more segments. A command bash itself would reject (an
+unclosed quote) prints nothing, because it never runs."""
 import os
 import sys
 
 WORD_SEPARATOR = "\x1f"
 OPERATOR_MARK = "\x1e"
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+KEYWORDS = {"{", "}", "!", "if", "then", "do", "else", "elif", "while", "until"}
+WRAPPER_VALUE_OPTIONS = {
+    "env": {"-u", "-S", "-C", "-P", "--unset", "--split-string", "--chdir"},
+    "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U", "--user", "--group"},
+    "command": set(),
+    "exec": {"-a"},
+    "nohup": set(),
+    "time": set(),
+    "nice": {"-n", "--adjustment"},
+    "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "xargs": {"-I", "-L", "-n", "-P", "-s", "-E", "-d", "-a", "--max-args", "--max-procs",
+              "--delimiter", "--arg-file", "--replace"},
+}
+WRAPPER_POSITIONALS = {"timeout": 1}
 SEPARATOR_OPERATORS = ("&&", "||", "|&", ";;", ";", "&", "|", "(", ")")
 REDIRECT_OPERATORS = ("&>>", "&>", "<<<", "<<-", ">>", ">|", ">&", "<<", "<&", "<>", ">", "<")
 
@@ -73,6 +96,7 @@ class Tokenizer:
             self.position += 1
 
     def peek(self, offset):
+        """Returns the character offset places ahead, or an empty string."""
         index = self.position + offset
         return self.text[index] if index < len(self.text) else ""
 
@@ -197,27 +221,116 @@ class Tokenizer:
 
 
 def decode_ansi_c(body):
+    """Decodes the escapes of a $'...' string the way bash expands them."""
     return body.encode("latin-1", "backslashreplace").decode("unicode_escape")
 
 
+def is_assignment(word):
+    """True when the word is a NAME=value shell assignment."""
+    name, equals, _ = word.partition("=")
+    return bool(equals) and name.replace("_", "a").isalnum() and not name[0].isdigit()
+
+
+def program_name(word):
+    """Returns the basename of a program word, with any capitalization of git as git."""
+    name = os.path.basename(word)
+    return "git" if name.lower() == "git" else name
+
+
+def skip_wrapper_options(words, index, wrapper):
+    """Returns the index of the first word after a wrapper's own options and
+    positional arguments (timeout's duration)."""
+    while index < len(words) and words[index].startswith("-") and words[index] != "--":
+        index += 2 if words[index] in WRAPPER_VALUE_OPTIONS[wrapper] else 1
+    if index < len(words) and words[index] == "--":
+        index += 1
+    return index + WRAPPER_POSITIONALS.get(wrapper, 0)
+
+
+def normalize_segment(words, piped_words):
+    """Returns assignments, then the program and its arguments, with keywords
+    and wrappers removed and redirects in front of the program moved behind it."""
+    assignments, redirects, index, runs_xargs = [], [], 0, False
+    while index < len(words):
+        word = words[index]
+        if word.startswith(OPERATOR_MARK):
+            redirects.extend(words[index:index + 2])
+            index += 2
+        elif is_assignment(word):
+            assignments.append(word)
+            index += 1
+        elif word in KEYWORDS:
+            index += 1
+        elif program_name(word) in WRAPPER_VALUE_OPTIONS:
+            runs_xargs = runs_xargs or program_name(word) == "xargs"
+            index = skip_wrapper_options(words, index + 1, program_name(word))
+        else:
+            break
+    command = words[index:]
+    if command:
+        command[0] = program_name(command[0])
+    if runs_xargs:
+        command += piped_words
+    return assignments + command + redirects
+
+
+def find_command_string(words):
+    """Returns the text a shell runs with -c, or eval runs, or None."""
+    program_index = next((i for i, word in enumerate(words) if not is_assignment(word)), len(words))
+    if program_index >= len(words):
+        return None
+    arguments = words[program_index + 1:]
+    if words[program_index] == "eval":
+        return " ".join(arguments)
+    if words[program_index] not in SHELLS:
+        return None
+    reads_string = False
+    for word in arguments:
+        if word.startswith("-") and not word.startswith("--"):
+            reads_string = reads_string or "c" in word
+        elif reads_string:
+            return word
+        else:
+            return None
+    return None
+
+
+def expand_segment(segment):
+    """Returns the segment, followed by the segments of any command string it
+    hands to a shell or to eval."""
+    command_string = find_command_string(segment)
+    return [segment] + (split_segments(command_string) if command_string else [])
+
+
+def plain_words(words):
+    """Returns the words that are neither redirect operators nor their targets."""
+    return [word for index, word in enumerate(words)
+            if not word.startswith(OPERATOR_MARK)
+            and not (index and words[index - 1].startswith(OPERATOR_MARK))]
+
+
 def split_segments(text):
-    """Returns the command's segments as lists of printable words."""
-    segments, current = [], []
-    for kind, value in Tokenizer(text).run():
+    """Returns the command's segments as normalized lists of printable words."""
+    segments, current, previous = [], [], []
+    separator_before = None
+    for kind, value in Tokenizer(text).run() + [("separator", None)]:
         if kind == "separator":
-            segments.append(current)
-            current = []
+            if current:
+                piped = plain_words(previous[1:]) if separator_before in ("|", "|&") else []
+                segments.extend(expand_segment(normalize_segment(current, piped)))
+                previous = current
+            current, separator_before = [], value
         elif kind == "substitution":
             segments.extend(split_segments(value))
         elif kind == "redirect":
             current.append(OPERATOR_MARK + value)
         else:
             current.append(value.replace("\n", " "))
-    segments.append(current)
-    return [segment for segment in segments if segment]
+    return segments
 
 
 def main():
+    """Prints the segments of the command read from stdin."""
     try:
         segments = split_segments(sys.stdin.read())
     except (ValueError, StopIteration):
