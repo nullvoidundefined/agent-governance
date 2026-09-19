@@ -105,9 +105,9 @@ strip_command_prefixes() {
     fi
     if [ -z "$wrapper" ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then shift; continue; fi
     case "$1" in
-      if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | exec | command | builtin)
+      if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | builtin)
         wrapper=""; shift; continue ;;
-      env | nice | sudo | xargs | time) wrapper="$1"; shift; continue ;;
+      env | nice | sudo | xargs | time | exec | command) wrapper="$1"; shift; continue ;;
       timeout) wrapper="timeout"; is_duration_pending=1; shift; continue ;;
     esac
     if [ -n "$wrapper" ]; then
@@ -119,7 +119,7 @@ strip_command_prefixes() {
         env:--split-string=*) STRIPPED_WORDS=(sh -c "${1#--split-string=}${2:+ ${*:2}}"); return 0 ;;
       esac
       case "$wrapper:$1" in
-        env:-u | env:-C | env:-P | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-R | sudo:-r | sudo:-T | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E | xargs:-a \
+        env:-u | env:-C | env:-P | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-R | sudo:-r | sudo:-T | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E | xargs:-a | exec:-a \
           | env:--unset | env:--chdir | nice:--adjustment \
           | sudo:--user | sudo:--group | sudo:--host | sudo:--prompt | sudo:--close-from | sudo:--chdir | sudo:--role | sudo:--type | sudo:--other-user | sudo:--command-timeout | sudo:--chroot \
           | timeout:--signal | timeout:--kill-after \

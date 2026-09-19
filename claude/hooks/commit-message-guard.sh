@@ -18,10 +18,13 @@ INPUT=$(cat)
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
 # A cheap superset of every command that can run a commit: a `git` word and the
-# text `commit` somewhere after it. Everything else skips the word scan, whose
-# cost grows with the command's length.
-grep -Eq '(^|[^[:alnum:]_.-])git([^[:alnum:]_-]|$)' <<< "$CMD" || exit 0
-grep -q 'commit' <<< "$CMD" || exit 0
+# text `commit` somewhere after it, read with quotes and backslashes removed so
+# a word spelled `g\it` or `"g"it` still counts (Copilot on PR #79).
+# Everything else skips the word scan, whose cost grows with the command's
+# length.
+PREFILTER_TEXT=$(tr -d "\\\\\"'" <<< "$CMD")
+grep -Eq '(^|[^[:alnum:]_.-])git([^[:alnum:]_-]|$)' <<< "$PREFILTER_TEXT" || exit 0
+grep -q 'commit' <<< "$PREFILTER_TEXT" || exit 0
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"

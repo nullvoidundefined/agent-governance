@@ -15,7 +15,7 @@ Refs: IAN-152
 - A cheap prefilter (a `git` word and the text `commit`) now runs before the scan, so commands that cannot run a commit never pay the scan's cost.
 - When `shell-command-scan.sh` or `shell-command-tokens.sh` is missing, the guard denies a command that passes the prefilter and asks for `./sync.sh`, the same fail-closed behavior as `pr-ticket-ref-gate.sh`. A command with no `git` word is still allowed.
 - `claude/hooks/shell-command-scan.sh` gains two shared functions: `strip_command_prefixes`, which removes shell keywords and command wrappers and sets `STRIPPED_WORDS` as an array (so a multi-line message word survives intact), and `is_git_commit_command`, a `find_simple_command` matcher that records a commit's arguments and heredoc the way `is_pr_create_command` does.
-- Three new fixtures: `claude/enforce/tests/commit-message-guard-shell-scan.test.sh` (the data-versus-command cases from the incident, and real commits behind wrappers and global options), `claude/enforce/tests/commit-message-guard-review-cases.test.sh` (the cases the pre-merge review found), and `claude/enforce/tests/commit-message-guard-copilot-cases.test.sh` (the cases Copilot found). `claude/enforce/hook-hashes.txt` is regenerated. The Codex and Cursor ports regenerate with no changes.
+- Five new fixtures: `claude/enforce/tests/commit-message-guard-shell-scan.test.sh` (the data-versus-command cases from the incident, and real commits behind wrappers and global options), `claude/enforce/tests/commit-message-guard-review-cases.test.sh` (the cases the pre-merge review found), and `commit-message-guard-copilot-cases.test.sh`, `commit-message-guard-copilot-round2.test.sh`, and `commit-message-guard-copilot-round3.test.sh` in the same directory (the cases Copilot's three rounds found). `claude/enforce/hook-hashes.txt` is regenerated. The Codex and Cursor ports regenerate with no changes.
 
 ## Architectural decisions
 
@@ -59,6 +59,11 @@ Copilot's second round found two more escapes, fixed test-first in a fourth slic
 
 - `env -S '<command line>'` and `env --split-string` run their value as a command line. `strip_command_prefixes` now returns that value as the `sh -c` string it amounts to, which the guard already rescans. `sudo -R` and `sudo -T`, and `env -P`, now skip their values.
 - An unquoted heredoc expands `$`, backticks, and backslashes before `cat` or git reads it, so the text the scan sees is not the message git receives. An unquoted `$(cat <<EOF ...)` body holding one of those is now uncountable (an ask), while a quoted `<<'EOF'` body stays literal. The scan does not record whether a `-F -` heredoc's delimiter was quoted, so a `-F -` body holding an expansion shape is treated as expanded either way; the cost is an unnecessary ask on a quoted `-F -` heredoc whose message contains a literal `$(` or `$NAME`, which commit messages rarely do.
+
+Copilot's third round found two more, fixed test-first in a fifth slice (`claude/enforce/tests/commit-message-guard-copilot-round3.test.sh`, test-author agent):
+
+- The prefilter ran on the raw text, so a command word spelled with escapes or partial quotes (`g\it c\ommit`, `"g"it "com"mit`) skipped the scan entirely. The prefilter now reads the text with quotes and backslashes removed. The later checks already run on scanned words, from which the scan has removed quoting.
+- `command` and `exec` were treated as wrappers without options, so `command -p git commit` and `exec -a name git commit` left the option where the command word was expected. Both are now option-taking wrappers, and `exec -a` skips its value.
 
 ## Reflection
 
