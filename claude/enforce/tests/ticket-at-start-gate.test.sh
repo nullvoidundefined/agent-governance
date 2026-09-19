@@ -396,5 +396,59 @@ timeout --preserve-status 10 git commit -m x
 timeout 10s git commit -m x
 SHAPES
 
+# --- IAN-149 Copilot round 2 (PR #78) --------------------------------------------
+W_LL=$(make_repo w-ledgerless); W_TK=$(make_ticketed w-ticketed)
+git -C "$W_TK" branch other2
+
+# W-1: time with its -p option before git commit denies.
+bash_gate 'time -p git commit -m x' "$W_LL"
+check "W-1 'time -p git commit -m x' denies" is_deny
+
+# W-2: a subcommand built by expansion is unreadable: deny.
+bash_gate 'x=commit; git "$x" -m x' "$W_LL"
+check "W-2 'x=commit; git \"\$x\" -m x' denies" is_deny
+bash_gate 'git $SUB -m x' "$W_LL"
+check "W-2 'git \$SUB -m x' denies" is_deny
+
+# W-3: a commit in a directory that is not a work tree before the command runs denies.
+W3_NEW="$SB/w3-newrepo"
+bash_gate "mkdir -p $W3_NEW; git -C $W3_NEW init; git -C $W3_NEW commit --allow-empty -m x" "$PLAIN"
+check "W-3 init-then-commit in a not-yet-existing directory denies" is_deny
+check "W-3 the directory still does not exist (the hook ran nothing)" test ! -e "$W3_NEW"
+
+# W-4: GIT_DIR/GIT_WORK_TREE assignments name the judged repository.
+bash_gate "GIT_DIR=$W_LL/.git GIT_WORK_TREE=$W_LL git commit -m x" "$W_TK"
+check "W-4 GIT_DIR and GIT_WORK_TREE naming a ledgerless repo deny from a ticketed cwd" is_deny
+bash_gate "GIT_DIR=$W_LL/.git git commit -m x" "$W_TK"
+check "W-4 GIT_DIR naming a ledgerless repo denies from a ticketed cwd" is_deny
+
+# W-5: a shell -c payload holding an expansion, in a command that mentions commit, is unreadable.
+bash_gate 'SCRIPT='"'"'git commit -m x'"'"'; bash -c "$SCRIPT"' "$W_TK"
+check "W-5 bash -c \"\$SCRIPT\" with a commit in SCRIPT denies from a ticketed cwd" is_deny
+
+# W-6: a heredoc fed to a shell that commits denies.
+bash_gate $'sh -s <<\'EOF\'\ngit commit -m x\nEOF' "$W_LL"
+check "W-6 sh -s heredoc holding a commit denies" is_deny
+bash_gate $'bash -s <<\'EOF\'\ngit commit -m x\nEOF' "$W_LL"
+check "W-6 bash -s heredoc holding a commit denies" is_deny
+
+# W-7: a branch change before a commit in the same command denies (the ledger names feat/x).
+while IFS= read -r command; do
+  bash_gate "$command" "$W_TK"
+  check "W-7 '$command' from a ticketed repo denies" is_deny
+done <<'SHAPES'
+git switch -c other && git commit -m x
+git checkout other2 && git commit -m x
+git -C . switch -c third && git commit -m x
+SHAPES
+
+# Round-2 allows, from a ticketed repo cwd.
+bash_gate 'time git status && git commit -m x' "$W_TK"
+check "W allow: 'time git status && git commit -m x' from a ticketed repo" is_silent
+bash_gate 'git switch feat/x' "$W_TK"
+check "W allow: 'git switch feat/x' alone" is_silent
+bash_gate $'bash -s <<\'EOF\'\necho hi\nEOF\ngit commit -m x' "$W_TK"
+check "W allow: bash -s heredoc without a commit, then a plain commit, from a ticketed repo" is_silent
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

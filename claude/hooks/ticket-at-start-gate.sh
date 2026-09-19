@@ -138,6 +138,15 @@ has_git_commit_word() {
   return 1
 }
 
+# has_expanded_argument <word>...: true when any word holds an expansion; a
+# shell handed `-c "$SCRIPT"` runs text the scan never sees, so in a command
+# that mentions commit it is unreadable rather than harmless.
+has_expanded_argument() {
+  local argument_word
+  for argument_word in "$@"; do is_expanded_word "$argument_word" && return 0; done
+  return 1
+}
+
 # is_expanded_word <word>: true when the word holds a parameter expansion or a
 # command substitution, whose value the scan never computes.
 is_expanded_word() {
@@ -154,9 +163,9 @@ strip_command_prefixes() {
   local wrapper="" is_duration_pending=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      if | then | else | elif | do | while | until | '!' | '{' | '}' | time | nohup | exec | command | builtin)
+      if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | exec | command | builtin)
         wrapper=""; shift; continue ;;
-      env | nice | sudo | xargs) wrapper="$1"; shift; continue ;;
+      env | nice | sudo | xargs | time) wrapper="$1"; shift; continue ;;
       timeout) wrapper="timeout"; is_duration_pending=1; shift; continue ;;
     esac
     if [ -n "$wrapper" ]; then
@@ -183,6 +192,7 @@ strip_command_prefixes() {
 # --work-tree, and a --git-dir naming <repo>/.git) to COMMIT_DIRECTORIES.
 record_git_commit_directory() {
   local directory="$1" work_tree="" git_dir="" has_expanded_directory=0 is_absolute_target=0 option_value
+  local has_git_environment="$HAS_GIT_ENVIRONMENT"
   shift
   [ "$(basename -- "${1:-}")" = "git" ] || return 0
   shift
@@ -209,7 +219,14 @@ record_git_commit_directory() {
       *) break ;;
     esac
   done
+  if is_expanded_word "${1:-}"; then IS_COMMIT_UNREADABLE=1; return 0; fi
+  case "${1:-}" in
+    switch) IS_BRANCH_CHANGED=1; return 0 ;;
+    checkout) case " $* " in *" -- "*) ;; *) IS_BRANCH_CHANGED=1 ;; esac; return 0 ;;
+  esac
   [ "${1:-}" = "commit" ] || return 0
+  [ "$IS_BRANCH_CHANGED" -eq 0 ] || { IS_COMMIT_UNREADABLE=1; return 0; }
+  [ "$has_git_environment" -eq 0 ] || { IS_COMMIT_UNREADABLE=1; return 0; }
   if [ "$has_expanded_directory" -eq 1 ] || { [ "$IS_DIRECTORY_UNKNOWN" -eq 1 ] && [ "$is_absolute_target" -eq 0 ]; }; then
     IS_COMMIT_UNREADABLE=1
     return 0
@@ -257,14 +274,19 @@ replay_directory_change() {
 # and otherwise records a git commit's repository.
 inspect_commit_words() {
   local -a command_words=()
-  while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do shift; done
+  HAS_GIT_ENVIRONMENT=0
+  while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
+    case "$1" in GIT_DIR=* | GIT_WORK_TREE=* | GIT_INDEX_FILE=* | GIT_COMMON_DIR=*) HAS_GIT_ENVIRONMENT=1 ;; esac
+    shift
+  done
   [ "$#" -gt 0 ] || return 0
   case "$1" in cd | pushd) shift; replay_directory_change "$@"; return 0 ;; esac
   while IFS= read -r stripped_word; do command_words+=("$stripped_word"); done < <(strip_command_prefixes "$@")
   [ "${#command_words[@]}" -gt 0 ] || return 0
   case "$(basename -- "${command_words[0]}")" in
     sh | bash | zsh | dash | ksh | eval)
-      has_git_commit_in_string "${command_words[@]:1}" && IS_COMMIT_UNREADABLE=1
+      has_git_commit_in_string "${command_words[@]:1}" "$HEREDOC_BODY" && IS_COMMIT_UNREADABLE=1
+      has_expanded_argument "${command_words[@]:1}" && IS_COMMIT_UNREADABLE=1
       return 0 ;;
   esac
   if is_expanded_word "${command_words[0]}"; then
@@ -281,7 +303,9 @@ inspect_commit_words() {
 # collect_commit_directories <command>: fills COMMIT_DIRECTORIES with the
 # repository of every git commit the command runs, following cds from the
 # session directory, and sets IS_COMMIT_UNREADABLE when a commit sits inside
-# a shell string the scan cannot read.
+# a shell string or a heredoc fed to a shell, follows a branch switch in the
+# same command (the ledger is judged against the branch checked out before
+# the command runs), or runs under GIT_DIR/GIT_WORK_TREE assignments.
 collect_commit_directories() {
   local token is_heredoc_next=0
   local -a words=()
@@ -290,11 +314,13 @@ collect_commit_directories() {
   IS_DIRECTORY_UNKNOWN=0
   TARGET_DIR="$CWD"
   scan_command_tokens "$1"
+  IS_BRANCH_CHANGED=0
+  HEREDOC_BODY=""
   for token in ${TOKENS[@]+"${TOKENS[@]}"} "$SEPARATOR_TOKEN"; do
-    if [ "$is_heredoc_next" -eq 1 ]; then is_heredoc_next=0; continue; fi
+    if [ "$is_heredoc_next" -eq 1 ]; then HEREDOC_BODY="$token"; is_heredoc_next=0; continue; fi
     case "$token" in
       "$HEREDOC_TOKEN") is_heredoc_next=1 ;;
-      "$SEPARATOR_TOKEN") [ "${#words[@]}" -gt 0 ] && inspect_commit_words "${words[@]}"; words=() ;;
+      "$SEPARATOR_TOKEN") [ "${#words[@]}" -gt 0 ] && inspect_commit_words "${words[@]}"; words=(); HEREDOC_BODY="" ;;
       *) words+=("$token") ;;
     esac
   done
@@ -324,7 +350,9 @@ case "$TOOL" in
     ACTION="editing $(basename "$FILE_PATH")" ;;
   Bash)
     COMMAND_TEXT=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
-    case "$COMMAND_TEXT" in *commit*) ;; *) exit 0 ;; esac
+    # Scan only a command that could commit: one naming commit, or one running
+    # git with an expansion, whose subcommand may be built at run time.
+    case "$COMMAND_TEXT" in *commit*) ;; *git*'$'* | *git*'`'* | *'$'*git* | *'`'*git*) ;; *) exit 0 ;; esac
     for helper in shell-command-scan.sh; do
       # shellcheck source=/dev/null
       [ -f "$HOOK_DIR/$helper" ] && source "$HOOK_DIR/$helper"
@@ -333,7 +361,7 @@ case "$TOOL" in
       deny "R-605 (ticket at task start): the shell scan helpers (shell-command-scan.sh, shell-command-tokens.sh) are missing, so this command's commits cannot be read; re-run ./sync.sh."
     collect_commit_directories "$COMMAND_TEXT"
     [ "$IS_COMMIT_UNREADABLE" -eq 0 ] ||
-      deny "R-605 (ticket at task start): this command runs git commit inside a shell string (sh -c, bash -c, eval), through a command word built by expansion, or in a directory the hook cannot name (a cd or git -C target built from \$VAR, \$(...), or \`cd -\`, or one that does not exist), so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
+      deny "R-605 (ticket at task start): this command runs git commit inside a shell string or a heredoc fed to a shell (sh -c, bash -c, sh -s, eval), through a command word or subcommand built by expansion, under GIT_DIR/GIT_WORK_TREE, after a branch switch in the same command, or in a directory the hook cannot name (a cd or git -C target built from \$VAR, \$(...), or \`cd -\`, or one that does not exist), so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
     ACTION="committing" ;;
   *) exit 0 ;;
 esac
@@ -343,7 +371,10 @@ esac
 judge_work_directory() {
   local top branch problem
   [ -n "$1" ] || return 0
-  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 0
+  if ! top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null); then
+    [ "$TOOL" = "Bash" ] && deny "R-605 (ticket at task start): this command commits in '$1', which is not a git work tree before the command runs (a repository created in the same command), so the hook cannot check its ticket. Create the repository first, record its ledger, then commit in a separate command."
+    return 0
+  fi
   top=$(cd "$top" && pwd -P)
   if [ "$TOOL" != "Bash" ] && is_exempt_edit_path "$top" "$FILE_PATH"; then return 0; fi
   branch=$(git -C "$top" branch --show-current 2>/dev/null)
