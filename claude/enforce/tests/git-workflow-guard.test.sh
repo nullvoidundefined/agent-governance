@@ -133,6 +133,21 @@ CODEX_FENCED=$(write_gh_stub codex-fenced '{"body":"## Summary\nTemplate:\n```\n
 [ "$(stubbed_decision 'gh --repo o/r pr merge 42 --squash' "$CODEX_OK")" = "deny" ]
 [ "$(stubbed_decision 'gh pr --repo=o/r merge 42 --squash' "$CODEX_OK")" = "deny" ]
 [ "$(stubbed_decision 'gh pr list --search merge' "$CODEX_OK")" = "none" ]      # not a merge
+# Copilot round one: shapes that still merge but slipped past the matcher.
+[ "$(stubbed_decision $'gh pr \\\n  merge 42 --squash' "$CODEX_MISSING")" = "deny" ]   # line continuation
+[ "$(stubbed_decision $'gh pr \\\n  merge 42 --squash' "$CODEX_OK")" = "ask" ]         # ...and still reaches R-514 when clean
+[ "$(stubbed_decision 'env GH_DEBUG=1 gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ] # env wrapper, not parseable
+[ "$(stubbed_decision 'command gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ]       # command wrapper
+[ "$(stubbed_decision '/usr/local/bin/gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ] # gh by path
+[ "$(stubbed_decision 'gh pr merge 42 --squash && gh pr -R o/r merge 43 --squash' "$CODEX_OK")" = "deny" ]  # mixed shapes
+[ "$(stubbed_decision 'git commit -m "docs: explain gh pr merge"' "$CODEX_OK")" != "deny" ]  # quoted mention in a message
+# A fence closes only on its own delimiter, and an indented code block is not a heading.
+CODEX_MIXED_FENCE=$(write_gh_stub codex-mixed-fence '{"body":"## Summary\n~~~\n```\n## Codex review\nexample\n~~~\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_MIXED_FENCE")" = "deny" ]
+CODEX_INDENTED=$(write_gh_stub codex-indented '{"body":"## Summary\nExample:\n\n    ## Codex review\n    example text\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INDENTED")" = "deny" ]
+CODEX_THREE_SPACES=$(write_gh_stub codex-three-spaces '{"body":"   ## Codex review\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_THREE_SPACES")" = "ask" ]      # up to three spaces is still a heading
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.

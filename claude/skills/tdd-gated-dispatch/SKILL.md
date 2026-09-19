@@ -89,12 +89,23 @@ the process exits; then read the final message file.
 - R-908's billing guard fires on the command; it asks only when the call
   would bill the metered API instead of the ChatGPT plan.
 
-When Codex returns, prove what it did rather than trusting its summary: run
-`tdd.sh red <test file>` until it prints `RED:`, then `tdd.sh validate
-test-author`. Codex runs outside Claude's hooks, so validate is the only thing
-that proves it wrote nothing but test and fixture paths. If it wrote anything
-else, restore those paths, do not commit them, and re-run Codex or take the
-fallback.
+Before dispatching, record the commit and the lock's hash:
+`git rev-parse HEAD` and `shasum -a 256 .claude/tdd-lock.json`. When Codex
+returns, prove what it did rather than trusting its summary:
+
+1. `git rev-parse HEAD` still prints the recorded commit. `tdd.sh validate`
+   reads only uncommitted changes, so a commit Codex made would hide any
+   production file inside it.
+2. The lock's hash is unchanged. `tdd.sh validate` leaves the lock out of its
+   path check, so an edited lock (a narrowed protected-path list) would pass
+   it and later let `green` trust the tampered lock.
+3. `tdd.sh red <test file>` prints `RED:`, then `tdd.sh validate
+   test-author` passes, proving every changed path is a test or fixture path.
+
+Codex runs outside Claude's hooks, so these three checks are the only proof.
+If any fails, discard the run: reset to the recorded commit if Codex
+committed, restore the lock and every non-test path, commit nothing from it,
+and re-run Codex or take the fallback.
 
 **Fallback.** The owner's Codex account is a $20 ChatGPT plan with tight
 usage limits. When the CLI is missing, unauthenticated, or rate-limited (a

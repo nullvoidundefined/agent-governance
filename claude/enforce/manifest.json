@@ -439,7 +439,7 @@
             "enforcer": "hook:git-workflow-guard",
             "severity": "error",
             "autofix": false,
-            "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block; fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on --repo/-R placed before the merge subcommand. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh"
+            "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block; fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on any merge shape the parser cannot read (gh behind env/command/exec/sudo or named by path, or an option such as --repo/-R before the merge subcommand); backslash-newline continuations are joined first. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh"
         },
         {
             "id": "R-511",
