@@ -12,6 +12,11 @@
 # refuses a still failing test (also when stale bytecode in the tree holds
 # the passing version), a skipped test, and a dropped baseline; the JUnit
 # converter runs through the project's .venv interpreter when one exists.
+# Test node ids (`path::Class::test`, a bare parametrized name, or one
+# parameter set) RED new tests in a file that already holds a passing one:
+# red refuses an unknown id, a named test that passes, an unnamed test in the
+# file that fails, and a file that no longer collects; green refuses a named
+# test still failing and a regression in the file's unnamed test.
 # Drives the REAL pytest (the interpreter behind a pytest on PATH, as CI
 # installs it pinned with pipx, or uvx at the same pin) behind a stub uv and a
 # stub .venv python that record how they were called, so the JUnit parsing is
@@ -171,6 +176,67 @@ grep -q "^python $SERVER | pytest$" "$CALLS" || { echo "FAIL: without uv pytest 
 grep -q "^python-convert -c" "$CALLS" || { echo "FAIL: the JUnit converter must run through the project's .venv python; calls: $(cat "$CALLS")"; exit 1; }
 [ "$(lock_field '.baseline.runner')" = "pytest" ] || { echo "FAIL: a pytest refactor must record the pytest runner"; exit 1; }
 CLAUDE_TDD_UV=no-such-uv bash "$TDD" green >/dev/null 2>&1 && bash "$TDD" close >/dev/null || { echo "FAIL: green and close through the python fallback must succeed"; exit 1; }
+
+# --- test node ids: new failing tests in a file that already holds a passing one
+# A review fix adds tests to an existing file (template-fastapi-nuxt PR #6), so
+# the file as a whole can never be RED. `path::id` names the new tests: a
+# class-scoped test and a parametrized one, each importing its unit inside the
+# test so the passing test beside them still collects and runs.
+cat > "$TEST" <<'PY'
+import pytest
+
+from app.score import score
+
+
+def test_scores_a_job_at_2():
+    assert score() == 2
+
+
+class TestBoost:
+    def test_boosted(self):
+        from app.boost import boosted_score
+        assert boosted_score() == 4
+
+
+@pytest.mark.parametrize("factor, expected", [(2, 4), (3, 6)])
+def test_scales(factor, expected):
+    from app.score import scale
+    assert scale(factor) == expected
+PY
+bash "$TDD" open "PY-3 boost and scale" >/dev/null
+expect_fail "file-level red on a file with a passing test" bash "$TDD" red "$TEST" | grep -q 'test_scores_a_job_at_2' || { echo "FAIL: file-level red must still refuse a file holding a passing test, naming it"; exit 1; }
+expect_fail "node red on an unknown id" bash "$TDD" red "$TEST::test_no_such_test" | grep -q "no test in $TEST matches test_no_such_test" || { echo "FAIL: a node id that matches no test must be refused by name"; exit 1; }
+expect_fail "node red on a passing test" bash "$TDD" red "$TEST::test_scores_a_job_at_2" | grep -q "$TEST::test_scores_a_job_at_2 already passes" || { echo "FAIL: a named test that passes must be refused as passing"; exit 1; }
+expect_fail "node red leaving a failing test unnamed" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales[2-4]" | grep -q 'test_scales\[3-6\]' || { echo "FAIL: an unnamed failing test in a named file must be refused by its id"; exit 1; }
+[ "$(lock_field .phase)" = "open" ] || { echo "FAIL: refused node reds must leave the phase open"; exit 1; }
+cp "$TEST" "$STUBS/test_score.py.saved"
+{ printf 'from app.not_written import thing\n'; cat "$STUBS/test_score.py.saved"; } > "$TEST"
+expect_fail "node red on a file that fails to collect" bash "$TDD" red "$TEST::TestBoost::test_boosted" | grep -q 'fails to load' || { echo "FAIL: node red on an uncollectable file must be refused, since its other tests stopped running"; exit 1; }
+cp "$STUBS/test_score.py.saved" "$TEST"
+
+# A class id and a bare parametrized name (every parameter set) are RED
+# together: missing-module, three named tests, and the passing test in the
+# same file counts in the baseline beside test_baseline.
+out=$(bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" 2>&1) || { echo "FAIL: node red on the new failing tests must succeed; output: $out"; exit 1; }
+[ "$(lock_field .phase)" = "red" ] || { echo "FAIL: node red must move the phase to red"; exit 1; }
+[ "$(lock_field '.tests | length')" = "1" ] || { echo "FAIL: two ids in one file must lock one file entry, got $(lock_field '.tests | length')"; exit 1; }
+[ "$(lock_field '.tests[0].path')" = "$TEST" ] || { echo "FAIL: the lock entry must carry the containing file, got $(lock_field '.tests[0].path')"; exit 1; }
+[ "$(lock_field '.tests[0].ids | join(",")')" = "TestBoost::test_boosted,test_scales" ] || { echo "FAIL: the lock entry must record the named ids, got $(lock_field '.tests[0].ids')"; exit 1; }
+[ "$(lock_field '.tests[0].failureClass')" = "missing-module" ] || { echo "FAIL: an import inside the test must be the missing-module RED, got $(lock_field '.tests[0].failureClass')"; exit 1; }
+[ "$(lock_field '.tests[0].tests')" = "3" ] || { echo "FAIL: node red must count the named tests (1 + 2 parameter sets), got $(lock_field '.tests[0].tests')"; exit 1; }
+[ "$(lock_field '.baseline.passed')" = "2" ] || { echo "FAIL: the baseline must count the passing test beside the named ones, got $(lock_field '.baseline.passed')"; exit 1; }
+git add -A && git commit -qm "test(score): PY-3 boost and scale"
+
+# green: a named test still failing is refused by id; a regression in the
+# unnamed test of the same file is refused; all named passing is GREEN.
+printf 'def boosted_score():\n    return 4\n' > apps/server/app/boost.py
+expect_fail "node green with a named test failing" bash "$TDD" green | grep -q 'test_scales' || { echo "FAIL: node green must name the still-failing named test"; exit 1; }
+printf 'def score():\n    return 1\n\n\ndef scale(factor):\n    return 2 * factor\n' > apps/server/app/score.py
+expect_fail "node green with the unnamed test regressed" bash "$TDD" green | grep -q "$TEST" || { echo "FAIL: node green must refuse a regression in the named file's other tests"; exit 1; }
+printf 'def score():\n    return 2\n\n\ndef scale(factor):\n    return 2 * factor\n' > apps/server/app/score.py
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: node green must pass once the named tests pass; output: $out"; exit 1; }
+bash "$TDD" close >/dev/null
+git add -A && git commit -qm "feat(score): PY-3 boost and scale"
 
 # The runs leave nothing untracked: no bytecode, no .pytest_cache.
 [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "FAIL: pytest runs must leave the tree clean; found: $(git status --porcelain --untracked-files=all | tr '\n' ' ')"; exit 1; }
