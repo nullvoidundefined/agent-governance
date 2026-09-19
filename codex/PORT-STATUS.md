@@ -2,7 +2,7 @@
 
 # Codex port status
 
-52 of 56 hook registrations port, across 6 Codex events.
+54 of 58 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -17,6 +17,7 @@
 | `protected-path-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
+| `ticket-at-start-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-eslint-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-ruff-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-rubocop-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
@@ -35,6 +36,7 @@
 | `protected-path-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `codex-test-author-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
+| `ticket-at-start-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |

@@ -198,6 +198,10 @@
                     },
                     {
                         "type": "command",
+                        "command": "~/.claude/hooks/ticket-at-start-gate.sh"
+                    },
+                    {
+                        "type": "command",
                         "command": "~/.claude/hooks/push-eslint-gate.sh",
                         "if": "Bash(git *)"
                     },
@@ -282,6 +286,10 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/codex-test-author-guard.sh"
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/ticket-at-start-gate.sh"
                     }
                 ]
             },

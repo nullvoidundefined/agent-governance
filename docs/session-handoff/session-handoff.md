@@ -1,55 +1,39 @@
-# Session Handoff: 2026-09-18, IAN-98 per-task wall time (#54, #58), merged with the R-607 close-out handoff
+# Session Handoff: 2026-09-19, R-517 trivial exemption (#77) and ticket at task start (#78)
 
 ## 1. Last commit
 
-- This session: `7522be1 fix(enforce): related-test mapping falls back on unknowable or unmapped changes; per-command related note`, on `fix/pr54-review-followups` (PR #58). This handoff ships in the same PR.
-- `main` has `2135149 feat(enforce): cut per-task wall time ... (#54)`, which the owner merged at 16:12Z. This handoff replaces the R-607 close-out file and keeps every open item from it.
+- This session's last code commit: `2ec6662 fix(hooks): admit only an allowlist of git subcommands to the untracking exemption`, on `feat/ticket-at-task-start` (PR #78, IAN-149). This handoff and the PR document ship in the same PR, which squash-merges onto `main`.
+- Earlier this session: PR #77 merged as `5ff7b39` (R-517 trivial exemption, IAN-147).
 
 ## 2. Production state
 
-- The live `~/.claude`, `~/.cursor`, and `~/.codex` are synced from the primary checkout at `ab3596d` (#57), so they include #54. The judge hook is unregistered in the live `settings.json`, and `enforce/related-tests.sh` is installed.
-- The pre-push hook in the primary checkout's `.git/hooks` was reinstalled from the new sample. It runs only the port checks, and a push measured 4 s.
-- Two orphan files remain in the live tree, because `sync.sh` never deletes files and `destructive-command-guard` hard-denies removing them from a session: `~/.claude/hooks/llm-rule-judge.sh` and `~/.claude/enforce/tests/llm-rule-judge.test.sh`. They make the hook-integrity guard warn at every session start until the owner deletes them by hand.
-- The `rule-judge` CI check runs on `pull_request_target` from `main`'s workflow file. It passed on #58 with the "no secret" notice, because the `ANTHROPIC_API_KEY` repository secret is not set yet.
-- The enforce dependencies are live and locked: a `./sync.sh` from `dc636d4` ran `npm ci --prefix ~/.claude/enforce`, wrote the `node_modules/.enforce-installed-lock` stamp, and `lint.mjs` lints a `.vue` file with exit 0.
+- The live `~/.claude` is synced from the primary checkout, which was still at `1aca2e6` when this session started, before #71, #73, #74, #75, #76, #77 and #78. None of the R-517, R-518, or R-605-at-start hooks are live until the primary checkout is fast-forwarded and `./sync.sh` runs (pending item 1).
+- Carried from the 2026-09-18 handoff and still observed at this session's start: the hook-integrity guard warned about `hooks/llm-rule-judge.sh` and `enforce/tests/llm-rule-judge.test.sh` in the live tree (orphan files only the owner can delete by hand).
+- Codex is over its usage limit until 2026-09-21 02:26 local; every review this session ran on the fallback reviewer (a Claude subagent on fable).
 
 ## 3. Session metrics
 
-- Branch and PR statistics, not live session metrics: parallel sessions merged #42, #44, #46, #49 to #53, #55 to #57 into `main` during this session.
-- #54: 12 commits, including two rebases and one merge of `main`. #58: 1 commit, plus this handoff. Rework count: 3. The first Copilot review sent back 12 comments, the second sent back 7, and a pre-push fixture went red after Task 5.
-- Ticket IAN-98: closed at merge of #58 with actuals. Its estimate was a 150-minute heuristic.
-- #55 and #60 (enforce dependencies): 5 commits across two PRs. Copilot sent 4, 1, then 1 comments, all fixed test-first. Rework: #55 merged at `a404fc3` before its two review-fix commits landed, so #60 cherry-picked them. No ticket: the tracker connectors were unauthenticated.
+- `session-metrics.sh` sees only this worktree's last commit (it reported 1 commit, 6 files), so the numbers below come from git.
+- PR #77: 5 branch commits, 18 files; squash `5ff7b39`.
+- PR #78: 14 branch commits plus this handoff, 32 files, +1608/-76; 18 files touched by two or more commits (the hook, its fixture, hashes, ports, reference.md).
+- Velocity flag: HIGH rework. PR #78 went through 12 fallback-review rounds and 3 Copilot rounds; 10 of them sent work back.
 
 ## 4. What shipped
 
-- #54: the LLM rule judge moved from a push hook to `enforce/judge-diff.sh` plus `.github/workflows/rule-judge.yml`. The workflow runs on `pull_request_target`, uses a trusted checkout of the judge, and treats the PR head as data only.
-- #54: pre-push runs only the port checks, and the full suites stay the required `fixtures` CI check.
-- #54: the turn-end gate runs related tests for vitest, jest, pytest, and Go (`enforce/related-tests.sh`). The governance repository keeps #42's `--affected`.
-- #54: R-509 no longer names pre-push. R-514 gained a trivial-tier path that skips only the Copilot review. `task-start` and `task-cleanup` document it.
-- #58: the related-test mapping falls back when there is no base commit, on an unmapped non-doc file, and on a deleted file. Docs-only changes still run nothing. The "related tests only" note attaches per command. The judge fetch works in private repositories. The convention files list the five judged rules.
-- #55: `sync.sh` and the no-drift path of `harness-sync.sh` call `claude/enforce/install-enforce-dependencies.sh`, which runs a locked `npm ci` when the synced lockfile differs from the last installed one or a locked package is missing, and fails loudly naming the command when npm is missing or fails. Root cause: #43 added two ESLint dependencies that sync never installed, so the live `lint.mjs` crashed with `ERR_MODULE_NOT_FOUND`. `push-eslint-gate.sh` already denied on that crash; it now names the broken bundle instead of blaming the diff. CI runs `sync-tests/sync.test.sh`.
-- #60: the installer's lock is owned by a PID and reclaimed only when that process is gone, a failed stamp write fails the install, harness-sync tells a mid-copy failure from an install failure, and the setup docs say `npm ci`. PR docs: `docs/prs/2026-09-18-sync-enforce-node-modules.md` and `docs/prs/2026-09-18-sync-enforce-review-followups.md`.
-- Outside the repository: `personal/.claude/CLAUDE.md` exempts trivial-tier PRs from the PR document and the Copilot review, and the `claude-handles-merges` memory records the same exception.
-- Design: `claude/docs/superpowers/specs/2026-09-18-task-wall-time-design.md`. Plan: `docs/slices/slice-03-task-wall-time.md`. PR docs: `docs/prs/2026-09-18-cut-task-wall-time.md` and `docs/prs/2026-09-18-pr54-review-followups.md`.
+- **R-517 trivial exemption (#77, IAN-147, `5ff7b39`).** `git-workflow-guard.sh` lets a PR merge without a `## Codex review` section only when the untracked `.claude/task-tier.json` in the merging checkout records the trivial tier for the PR's own head branch, the PR is in the checkout's origin repo, and its head is not a fork. A marker in the PR body is never read.
+- **Ticket at task start (#78, IAN-149).** `task-tier.sh set <tier> "<reason>" --ticket <KEY>` records the key and refuses a tier above trivial without one while a tracker is configured. The new `ticket-at-start-gate.sh` denies the first Write/Edit, and every `git commit`, until the ledger names the branch and carries the key (or the trivial tier). Commits are read with the shared quote-aware scan: cd/pushd, wrappers, keywords, branch switches, git's -C/--work-tree/--git-dir, heredocs to shells, and an untracking-recovery path for a ledger committed by mistake. Threat model stated: a forgotten ticket, not deliberate hiding.
+- **Retroactive tickets:** IAN-147 (#77) and IAN-148 (#71), both of which had shipped under the unrelated IAN-101, with correction comments on the PRs.
 
-## 5. Pending, by urgency
+## 5. Pending (by urgency)
 
-- **Owner, 1 minute:** delete the two orphan judge files listed in section 2.
-- **Owner, 1 minute:** run `gh secret set ANTHROPIC_API_KEY --repo nullvoidundefined/agent-governance`. After `rule-judge` has run green with the secret, decide whether to make it a required check.
-- **`sync.sh` never deletes files removed from the repository.** A task chip, "Make sync.sh delete files removed from the repo", was offered. About 45 minutes, Standard tier.
-- **Close IAN-99** (#46, here-string conversion). It is still In Progress in Linear, although `b6a2ebc` merged. About 5 minutes.
-- **`global-memory/rule_fires.md` is tracked but written live, so the harness never matches its checkout.** `claude/hooks/session-end.sh` rolls the rule-fire log up into the live `~/.claude/global-memory/rule_fires.md`, and the same path is tracked in `claude/`. After the first roll-up, the live copy differs from the checkout for good. As a result, `harness-sync.sh` finds drift and runs a full `./sync.sh` at every SessionStart (measured at about 1.5 s per resume on 2026-09-18). Each sync also overwrites the live roll-up with the checkout's copy, which discards fires recorded since the last commit. A `./sync.sh` on 2026-09-18 left the live file identical to the checkout. Fix: stop tracking the file (gitignore it and seed it on first write), or exclude it from both the drift check and the copy; test first in `hooks/tests/harness-sync.test.sh`. This is the likely cause of the next item. About 45 minutes, Standard tier.
-- **`hook-latency.test.sh` flakes under load.** It times the installed chain, not the checkout, so a branch cannot fix or break it. This session saw it fail and pass alternately on the same installed hooks at load averages of 62 to 228. Profile the per-edit hooks rather than widen the budget (R-204). About an hour.
-- **R-607 follow-up 1: CI templates.** The four `claude/skills/repo-setup/scripts/template-ci-*.yml` files do not run `scripts/require-feature-checklist.sh`. About 30 minutes.
-- **R-607 follow-up 2: the R-508 surface list.** `claude/hooks/git-workflow-guard.sh:165` lacks the Nuxt `app/pages/**/*.vue`, `server/(api|routes)/`, and FastAPI `app/routers/*.py` patterns. About 30 minutes, test first.
-- **Carried three times:** 117 `| grep -q` pipelines under `claude/` read from `jq`, `head`, or `git`. Audit the ones whose output can exceed 64 KB under pipefail. About two hours.
-- **Voyager 2.0:** its first `feature-create` call needs `--area`.
+1. **Sync the live harness** (5 minutes): in the primary checkout run `git pull --ff-only && ./sync.sh`. After it, every session in a repo on a branch needs `task-tier.sh set ... --ticket <KEY>` (or `set trivial`) before its first edit; a session already mid-task is denied once and told the exact command.
+2. **IAN-153** (Backlog): the deliberately hidden commit shapes answered as out of scope on #78 (coproc, env -S, env GIT_DIR=, popd, "$(git commit)" in quotes, an inherited $SCRIPT, Codex `sed -i` edits, and a staging command wrapped in `bash -c` during the untracking recovery). About an hour once the tokenizer chip below lands.
+3. **Task chip: keep `$(...)` in one word in `shell-command-tokens.sh`** (about an hour): closes `$(which git) commit` here and `$(which gh) pr merge` in git-workflow-guard.
+4. **Task chip (owner started it in another session): commit-message-guard reads heredoc and argument text as a commit.** It blocked a `gh api ... -f body=` reply containing "git commit" this session; the workaround was `-F body=@file`.
+5. Carried, unverified this session: the orphan `llm-rule-judge` files in the live tree, and the `ANTHROPIC_API_KEY` repository secret for the `rule-judge` CI check.
 
 ## 6. Next session
 
-1. Confirm that the owner deleted the orphan files. `echo '{}' | bash ~/.claude/hooks/hook-integrity-check.sh` should print nothing.
-2. Close IAN-99 through `/ticket-lifecycle close`.
-3. `sync.sh` deletion: read `sync.sh` and `compute_hashes` in `claude/hooks/hook-integrity-check.sh`.
-4. The R-607 follow-ups, as listed in section 5.
-5. `rule_fires.md` drift (section 5): check `git ls-files claude/global-memory/rule_fires.md` and the roll-up in `claude/hooks/session-end.sh`, then rerun `hook-latency.test.sh` once it is fixed.
-6. A new worktree needs `npm ci --prefix claude/enforce` before the lint-backed fixtures run.
+1. Run pending item 1 and confirm the session-start hook-integrity line is clean.
+2. Pick up IAN-153 only after the tokenizer chip merges; read `claude/hooks/ticket-at-start-gate.sh` (header, then `inspect_commit_words`) and `docs/prs/2026-09-19-ticket-at-task-start.md` first.
+3. Load the Linear tools by the exact names in `~/.claude/TICKET-TRACKER.json` (a keyword search for "linear" finds nothing), and check any reused `Refs:` key with `get_issue` before trusting it.
