@@ -1,21 +1,20 @@
 {
-  "slice": "B-6 recognize git behind wrappers, other spellings, and compound-command keywords",
-  "phase": "green",
+  "slice": "B-7 cover am -n, pull, and the remaining export forms, and stop the env-variable false positives",
+  "phase": "red",
   "spec": null,
   "locked": [],
   "tests": [
     {
       "path": "claude/enforce/tests/hook-bypass-guard.test.sh",
-      "sha256": "e5d9f2e84dd2ccd6db90f8465b4c58316b33f3a653788dd2d416352282e494ff",
+      "sha256": "91ba10abe3a73955f5a37fc1d1f9ac3238df48edf30e790647891526d59fad45",
       "failureClass": "assertion",
       "tests": 1
     }
   ],
-  "openedAt": "2026-09-19T12:16:16Z",
+  "openedAt": "2026-09-19T12:37:18Z",
   "baseline": {
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T12:30:41Z",
-  "greenAt": "2026-09-19T12:37:08Z"
+  "redAt": "2026-09-19T12:48:13Z"
 }

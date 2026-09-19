@@ -336,6 +336,58 @@ expect none 'legit commit --no-verify'
 
 # --- end B-6 ---------------------------------------------------------------
 
+# --- B-7: git am and git pull skips, other exports, non-skipping values -----
+
+# -n is --no-verify on git am, alone or bundled, and because am has no
+# --no-verbose every prefix of --no-verify down to --no-v is unique
+expect deny 'git am -n patch.mbox'
+expect deny 'git am -3n patch.mbox'
+expect deny 'git am --no-v patch.mbox'
+expect deny 'git am --no-ve patch.mbox'
+expect deny 'git am --no-ver patch.mbox'
+
+# git pull runs the pre-merge-commit and commit-msg hooks, so every way of
+# skipping them on pull is a skip
+expect deny 'git pull --no-verify'
+expect deny 'git pull --no-verify origin main'
+expect deny 'git pull --rebase --no-verify'
+expect deny 'HUSKY=0 git pull'
+expect deny 'git -c core.hooksPath=/dev/null pull'
+
+# bash exports a variable through declare -x, typeset -x, export of a name
+# assigned before or after, and set -a, not only through export NAME=value
+expect deny 'declare -x HUSKY=0; git commit -m x'
+expect deny 'typeset -x HUSKY=0; git commit -m x'
+expect deny 'export HUSKY; HUSKY=0; git commit -m x'
+expect deny 'HUSKY=0; export HUSKY; git commit -m x'
+expect deny 'set -a; HUSKY=0; git commit -m x'
+expect deny 'declare -x GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null; git commit -m x'
+
+# husky v4 skips hooks only when HUSKY_SKIP_HOOKS is 1 or true
+expect deny 'HUSKY_SKIP_HOOKS=1 git commit -m x'
+expect deny 'HUSKY_SKIP_HOOKS=true git commit -m x'
+
+# values of HUSKY_SKIP_HOOKS that keep hooks on must keep working
+expect none 'HUSKY_SKIP_HOOKS=0 git commit -m x'
+expect none 'HUSKY_SKIP_HOOKS=false git commit -m x'
+
+# a core.hooksPath override on a subcommand that runs no hook skips nothing
+expect none 'git -c core.hooksPath=/tmp/h status'
+expect none 'git -c core.hooksPath=/tmp/h log -n 3'
+expect none 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=.githooks git status'
+
+# a shell variable that is never exported does not reach git
+expect none 'HUSKY=0; git commit -m x'
+expect none 'declare HUSKY=0; git commit -m x'
+
+# am and pull flags that do not skip hooks; pull -n is --no-stat
+expect none 'git am -3 patch.mbox'
+expect none 'git am --continue'
+expect none 'git pull --no-rebase origin main'
+expect none 'git pull -n'
+
+# --- end B-7 ---------------------------------------------------------------
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "hook-bypass-guard.test.sh FAIL ($FAILURES)"
   exit 1
