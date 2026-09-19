@@ -142,15 +142,6 @@ has_leading_assignment() {
     return 1
 }
 
-# True when an assignment after `export` satisfies the predicate.
-has_exported_assignment() {
-    local predicate="$1" index
-    for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
-        "$predicate" "${WORDS[index]}" && return 0
-    done
-    return 1
-}
-
 # Sets SUBCOMMAND_INDEX to the index of git's subcommand, past its global
 # options; the options that take a separate argument skip it.
 find_git_subcommand() {
@@ -167,7 +158,7 @@ find_git_subcommand() {
 
 # True when git's subcommand runs hooks.
 is_hook_running_git() {
-    case "${WORDS[SUBCOMMAND_INDEX]:-}" in commit | push | merge | rebase | am) return 0 ;; esac
+    case "${WORDS[SUBCOMMAND_INDEX]:-}" in commit | push | merge | rebase | am | pull) return 0 ;; esac
     return 1
 }
 
@@ -175,7 +166,7 @@ is_hook_running_git() {
 # pre-commit framework's SKIP list, or lefthook.
 is_hook_skip_assignment() {
     case "$1" in
-        HUSKY=0 | HUSKY_SKIP_HOOKS=* | SKIP=* | LEFTHOOK=0 | LEFTHOOK=false | LEFTHOOK_EXCLUDE=*) return 0 ;;
+        HUSKY=0 | HUSKY_SKIP_HOOKS=1 | HUSKY_SKIP_HOOKS=true | SKIP=* | LEFTHOOK=0 | LEFTHOOK=false | LEFTHOOK_EXCLUDE=*) return 0 ;;
     esac
     return 1
 }
@@ -210,23 +201,30 @@ has_hookspath_option() {
     return 1
 }
 
-# True when the argument is --no-verify or a prefix git accepts for it:
-# --no-veri is the shortest, because --no-ve also matches --no-verbose.
+# True when the word ($2) is --no-verify or a prefix the subcommand ($1)
+# accepts for it: --no-veri is the shortest where --no-verbose also exists,
+# --no-v on am, which has no --verbose.
 is_no_verify_spelling() {
-    [ "${#1}" -ge 9 ] || return 1
-    case "--no-verify" in "$1"*) return 0 ;; esac
+    local shortest=9
+    [ "$1" = am ] && shortest=6
+    [ "${#2}" -ge "$shortest" ] || return 1
+    case "--no-verify" in "$2"*) return 0 ;; esac
     return 1
 }
 
-# True when a short-flag cluster such as -an sets -n before any flag whose
-# argument is attached (-mn is the message "n", -uno the mode "no").
-is_commit_no_verify_cluster() {
-    local cluster="${1#-}" index
+# True when a short-flag cluster ($2) of commit or am ($1) sets -n, their
+# --no-verify, before any flag whose argument is attached (commit -mn is the
+# message "n", -uno the mode "no"; am -C3 and -p1 take a number).
+is_no_verify_cluster() {
+    local cluster="${2#-}" attached_value_flags index
+    case "$1" in
+        commit) attached_value_flags="mFCctuS" ;;
+        am) attached_value_flags="CpS" ;;
+        *) return 1 ;;
+    esac
     for ((index = 0; index < ${#cluster}; index++)); do
-        case "${cluster:index:1}" in
-            n) return 0 ;;
-            m | F | C | c | t | u | S) return 1 ;;
-        esac
+        [ "${cluster:index:1}" = n ] && return 0
+        case "$attached_value_flags" in *"${cluster:index:1}"*) return 1 ;; esac
     done
     return 1
 }
@@ -241,6 +239,7 @@ takes_separate_value() {
         merge:-m | merge:-F | merge:--file | merge:-s | merge:--strategy | merge:-X | merge:--strategy-option) return 0 ;;
         push:-o | push:--push-option | push:--repo | push:--receive-pack | push:--exec) return 0 ;;
         rebase:-s | rebase:--strategy | rebase:-X | rebase:--strategy-option | rebase:--onto | rebase:-x | rebase:--exec) return 0 ;;
+        pull:-s | pull:--strategy | pull:-X | pull:--strategy-option | pull:--depth | pull:--upload-pack) return 0 ;;
     esac
     return 1
 }
@@ -262,10 +261,10 @@ skips_git_hooks() {
         word="${WORDS[index]}"
         index=$((index + 1))
         case "$word" in "$REDIRECT_MARK"*) index=$((index + 1)); continue ;; --) return 1 ;; esac
-        is_no_verify_spelling "$word" && return 0
+        is_no_verify_spelling "$subcommand" "$word" && return 0
         takes_separate_value "$subcommand" "$word" && { index=$((index + 1)); continue; }
-        [[ "$word" =~ ^-[A-Za-z]+$ ]] || continue
-        [ "$subcommand" = commit ] && is_commit_no_verify_cluster "$word" && return 0
+        [[ "$word" =~ ^-[A-Za-z0-9]+$ ]] || continue
+        is_no_verify_cluster "$subcommand" "$word" && return 0
         cluster_ends_with_value "$subcommand" "$word" && index=$((index + 1))
     done
     return 1
@@ -331,17 +330,101 @@ tampers_with_git_hooks() {
     esac
 }
 
+# True when the segment's program exports what it assigns: export, or
+# declare and typeset with -x.
+is_export_program() {
+    local index
+    case "${WORDS[COMMAND_START]}" in
+        export) return 0 ;;
+        declare | typeset) ;;
+        *) return 1 ;;
+    esac
+    for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
+        [[ "${WORDS[index]}" =~ ^-[A-Za-z]*x ]] && return 0
+    done
+    return 1
+}
+
+# True when the segment turns on allexport (set -a, set -o allexport), after
+# which every plain assignment is exported.
+is_allexport_set() {
+    local index
+    [ "${WORDS[COMMAND_START]}" = set ] || return 1
+    for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
+        [[ "${WORDS[index]}" =~ ^-[A-Za-z]*a|^allexport$ ]] && return 0
+    done
+    return 1
+}
+
+# Checks one assignment that reaches git's environment against the hook-skip
+# and hooksPath predicates.
+note_exported_assignment() {
+    is_hook_skip_assignment "$1" && exported_hook_skip=1
+    is_hookspath_env_assignment "$1" && exported_hookspath=1
+    return 0
+}
+
+# Exports every earlier plain assignment of the named variable.
+export_earlier_assignment() {
+    local assignment
+    for assignment in ${plain_assignments[@]+"${plain_assignments[@]}"}; do
+        [ "${assignment%%=*}" = "$1" ] && note_exported_assignment "$assignment"
+    done
+    return 0
+}
+
+# Applies an export segment: its assignments are exported now, and a bare
+# name exports that variable's earlier plain assignment and any later one.
+apply_export_segment() {
+    local index word
+    for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
+        word="${WORDS[index]}"
+        case "$word" in -*) continue ;; esac
+        if is_assignment_word "$word"; then
+            note_exported_assignment "$word"
+        else
+            exported_names="$exported_names $word "
+            export_earlier_assignment "$word"
+        fi
+    done
+}
+
+# Applies a segment that only assigns variables: an assignment is exported
+# when allexport is on or its name was exported earlier, and is remembered
+# otherwise, since bash does not pass an unexported variable to git.
+apply_assignment_segment() {
+    local index word
+    for ((index = 0; index < COMMAND_START; index++)); do
+        word="${WORDS[index]}"
+        if [ "$auto_export" -eq 1 ] || [[ "$exported_names" == *" ${word%%=*} "* ]]; then
+            note_exported_assignment "$word"
+        else
+            plain_assignments+=("$word")
+        fi
+    done
+}
+
 # An export earlier in the command reaches every later git in the same call,
 # so it is remembered across segments; a bare prefix reaches only its own.
 exported_hook_skip=0
 exported_hookspath=0
+exported_names=" "
+auto_export=0
+plain_assignments=()
 while IFS=$'\037' read -r -a WORDS; do
     [ "${#WORDS[@]}" -gt 0 ] || continue
     find_command_start
     program="${WORDS[COMMAND_START]:-}"
-    if [ "$program" = export ]; then
-        has_exported_assignment is_hook_skip_assignment && exported_hook_skip=1
-        has_exported_assignment is_hookspath_env_assignment && exported_hookspath=1
+    if [ -z "$program" ]; then
+        apply_assignment_segment
+        continue
+    fi
+    if is_export_program; then
+        apply_export_segment
+        continue
+    fi
+    if is_allexport_set; then
+        auto_export=1
         continue
     fi
     if tampers_with_git_hooks; then
@@ -349,15 +432,15 @@ while IFS=$'\037' read -r -a WORDS; do
     fi
     [ "$program" = git ] || continue
     find_git_subcommand
+    is_hook_running_git || continue
     if [ "$exported_hookspath" -eq 1 ] || has_leading_assignment is_hookspath_env_assignment || has_hookspath_option; then
         emit deny "destructive-command-guard hook BLOCKED this call: it overrides core.hooksPath for this git command (-c, --config-env, GIT_CONFIG_KEY_n, or GIT_CONFIG_PARAMETERS), which redirects or disables every git hook without touching git config (R-107, R-203). Run the command without the override."
     fi
-    is_hook_running_git || continue
     if [ "$exported_hook_skip" -eq 1 ] || has_leading_assignment is_hook_skip_assignment; then
         emit deny "destructive-command-guard hook BLOCKED this call: it sets an environment variable that turns the hook manager off (HUSKY=0, HUSKY_SKIP_HOOKS, SKIP, LEFTHOOK=0, or LEFTHOOK_EXCLUDE) for a git command that runs hooks (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
     if skips_git_hooks; then
-        emit deny "destructive-command-guard hook BLOCKED this call: it skips git hooks (--no-verify, an abbreviation of it, or commit -n), which turns off the pre-commit and pre-push gates for this change (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
+        emit deny "destructive-command-guard hook BLOCKED this call: it skips git hooks (--no-verify, an abbreviation of it, or commit and am -n), which turns off the git hooks for this change (R-203). Fix what the hook reports instead; a human skips a hook manually if that is genuinely required."
     fi
 done < <(list_command_segments "$cmd")
 

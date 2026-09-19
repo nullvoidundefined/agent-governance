@@ -1,6 +1,6 @@
 {
   "slice": "B-7 cover am -n, pull, and the remaining export forms, and stop the env-variable false positives",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 87,
     "runner": "shell"
   },
-  "redAt": "2026-09-19T12:48:13Z"
+  "redAt": "2026-09-19T12:48:13Z",
+  "greenAt": "2026-09-19T13:04:17Z"
 }

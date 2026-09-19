@@ -336,7 +336,7 @@ def main():
     except (ValueError, StopIteration):
         return
     for segment in segments:
-        print(WORD_SEPARATOR.join(segment))
+        sys.stdout.write(WORD_SEPARATOR.join(segment) + "\n")
 
 
 if __name__ == "__main__":
