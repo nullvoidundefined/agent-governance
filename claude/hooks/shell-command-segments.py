@@ -24,6 +24,7 @@ has. Text bash would reject partway (an unclosed quote on a later line) is
 parsed up to that point, because bash runs the complete lines before it. Any
 other failure exits non-zero, which the guard treats as a deny."""
 import os
+import re
 import sys
 
 WORD_SEPARATOR = "\x1f"
@@ -43,6 +44,9 @@ WRAPPER_VALUE_OPTIONS = {
               "--delimiter", "--arg-file", "--replace"},
 }
 WRAPPER_POSITIONALS = {"timeout": 1}
+SHELL_VALUE_OPTIONS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
+STDIN_PRINTERS = {"echo", "printf"}
+SUBSTITUTED_PROGRAM = re.compile(r"^(\$\(|`)\s*(?:which|command\s+-v|type\s+-p)\s+(\S+)\s*(\)|`)$")
 SEPARATOR_OPERATORS = ("&&", "||", "|&", ";;", ";", "&", "|", "(", ")")
 REDIRECT_OPERATORS = ("&>>", "&>", "<<<", "<<-", ">>", ">|", ">&", "<<", "<&", "<>", ">", "<")
 
@@ -136,6 +140,11 @@ class Tokenizer:
                 if self.text[index + 1] != "\n":
                     content.append(self.text[index + 1])
                 index += 2
+            elif self.text.startswith("$(", index) or char == "`":
+                end = find_substitution_end(self.text, index)
+                self.tokens.append(("substitution", substitution_inner(self.text, index, end)))
+                content.append(self.text[index:end + 1])
+                index = end + 1
             else:
                 content.append(char)
                 index += 1
@@ -145,28 +154,14 @@ class Tokenizer:
         return "".join(content)
 
     def read_command_substitution(self):
-        depth = 0
-        index = self.position + 1
-        while index < len(self.text):
-            depth += {"(": 1, ")": -1}.get(self.text[index], 0)
-            if depth == 0:
-                break
-            index += 1
-        inner = self.text[self.position + 2:index]
-        self.tokens.append(("substitution", inner))
-        self.word.append(self.text[self.position:index + 1])
+        end = find_substitution_end(self.text, self.position)
+        self.tokens.append(("substitution", substitution_inner(self.text, self.position, end)))
+        self.word.append(self.text[self.position:end + 1])
         self.in_word = True
-        self.position = index + 1
+        self.position = end + 1
 
     def read_backtick_substitution(self):
-        closing = self.text.find("`", self.position + 1)
-        if closing < 0:
-            raise ValueError("unclosed backtick")
-        inner = self.text[self.position + 1:closing]
-        self.tokens.append(("substitution", inner))
-        self.word.append(self.text[self.position:closing + 1])
-        self.in_word = True
-        self.position = closing + 1
+        self.read_command_substitution()
 
     def append_quoted(self, content):
         self.word.append(content)
@@ -199,7 +194,8 @@ class Tokenizer:
         value = "".join(self.word)
         self.tokens.append(("word", value))
         if self.expect_heredoc_delimiter:
-            self.pending_heredocs.append((value, self.expect_heredoc_delimiter == "<<-"))
+            self.pending_heredocs.append(
+                (value, self.expect_heredoc_delimiter == "<<-", self.word_quoted))
             self.expect_heredoc_delimiter = None
         elif os.path.basename(value) in SHELLS:
             self.line_names_shell = True
@@ -209,10 +205,12 @@ class Tokenizer:
         self.end_word()
         self.tokens.append(("separator", "\n"))
         self.position += 1
-        for delimiter, strips_tabs in self.pending_heredocs:
+        for delimiter, strips_tabs, is_literal in self.pending_heredocs:
             body = self.read_heredoc_body(delimiter, strips_tabs)
             if self.line_names_shell:
                 self.tokens.append(("substitution", body))
+            elif not is_literal:
+                self.tokens.extend(("substitution", inner) for inner in find_substitutions(body))
         self.pending_heredocs = []
         self.line_names_shell = False
 
@@ -229,6 +227,44 @@ class Tokenizer:
         return "\n".join(lines)
 
 
+def find_substitution_end(text, start):
+    """Returns the index of the character that closes the $( or backtick
+    substitution opening at start; an unclosed one raises ValueError."""
+    if text[start] == "`":
+        end = text.find("`", start + 1)
+    else:
+        depth, end = 0, start + 1
+        while end < len(text):
+            depth += {"(": 1, ")": -1}.get(text[end], 0)
+            if depth == 0:
+                break
+            end += 1
+    if end < 0 or end >= len(text):
+        raise ValueError("unclosed substitution")
+    return end
+
+
+def substitution_inner(text, start, end):
+    """Returns the command text inside a $(...) or backtick substitution."""
+    return text[start + (1 if text[start] == "`" else 2):end]
+
+
+def find_substitutions(text):
+    """Returns the command text of every $(...) and backtick substitution in
+    text that bash expands, such as an unquoted heredoc body."""
+    inners, index = [], 0
+    while index < len(text):
+        if text[index] == "\\":
+            index += 2
+        elif text.startswith("$(", index) or text[index] == "`":
+            end = find_substitution_end(text, index)
+            inners.append(substitution_inner(text, index, end))
+            index = end + 1
+        else:
+            index += 1
+    return inners
+
+
 def decode_ansi_c(body):
     """Decodes the escapes of a $'...' string the way bash expands them."""
     return body.encode("latin-1", "backslashreplace").decode("unicode_escape")
@@ -242,7 +278,8 @@ def is_assignment(word):
 
 def program_name(word):
     """Returns the basename of a program word, with any capitalization of git as git."""
-    name = os.path.basename(word)
+    substituted = SUBSTITUTED_PROGRAM.match(word)
+    name = os.path.basename(substituted.group(2) if substituted else word)
     return "git" if name.lower() == "git" else name
 
 
@@ -283,9 +320,36 @@ def normalize_segment(words, piped_words):
     return assignments + command + redirects
 
 
-def find_command_string(words):
-    """Returns the text a shell runs with -c, or eval runs, or None."""
-    program_index = next((i for i, word in enumerate(words) if not is_assignment(word)), len(words))
+def classify_shell_input(arguments):
+    """Returns ("string", text) when a shell runs a -c string, ("script",
+    None) when it runs a file, or ("stdin", None) when it reads commands from
+    standard input. Options that take a value (-o pipefail, --rcfile) skip it."""
+    reads_string, skips_next = False, False
+    for word in arguments:
+        if skips_next or word.startswith(OPERATOR_MARK):
+            skips_next = word.startswith(OPERATOR_MARK)
+            continue
+        if word in SHELL_VALUE_OPTIONS:
+            skips_next = True
+        elif word.startswith("--"):
+            continue
+        elif word[:1] in "-+" and len(word) > 1:
+            reads_string = reads_string or "c" in word[1:]
+            skips_next = word[-1] in "oO"
+        else:
+            return ("string", word) if reads_string else ("script", None)
+    return ("stdin", None)
+
+
+def find_program_index(words):
+    """Returns the index of the first word that is not an assignment."""
+    return next((i for i, word in enumerate(words) if not is_assignment(word)), len(words))
+
+
+def find_command_string(words, piped_text):
+    """Returns the text a shell runs from -c, a herestring, or piped input,
+    or the text eval runs, or None."""
+    program_index = find_program_index(words)
     if program_index >= len(words):
         return None
     arguments = words[program_index + 1:]
@@ -293,21 +357,29 @@ def find_command_string(words):
         return " ".join(arguments)
     if words[program_index] not in SHELLS:
         return None
-    reads_string = False
-    for word in arguments:
-        if word.startswith("-") and not word.startswith("--"):
-            reads_string = reads_string or "c" in word
-        elif reads_string:
-            return word
-        else:
-            return None
-    return None
+    mode, text = classify_shell_input(arguments)
+    if mode != "stdin":
+        return text
+    herestring = OPERATOR_MARK + "<<<"
+    if herestring in arguments and arguments.index(herestring) + 1 < len(arguments):
+        return arguments[arguments.index(herestring) + 1]
+    return piped_text
 
 
-def expand_segment(segment):
-    """Returns the segment, followed by the segments of any command string it
+def printed_text(words):
+    """Returns what an echo or printf segment prints, with printf's \\n as a
+    newline, or None for any other program."""
+    program_index = find_program_index(words)
+    if program_index >= len(words) or words[program_index] not in STDIN_PRINTERS:
+        return None
+    text = " ".join(plain_words(words[program_index + 1:]))
+    return text.replace("\\n", "\n") if words[program_index] == "printf" else text
+
+
+def expand_segment(segment, piped_text):
+    """Returns the segment, followed by the segments of any command text it
     hands to a shell or to eval."""
-    command_string = find_command_string(segment)
+    command_string = find_command_string(segment, piped_text)
     return [segment] + (split_segments(command_string) if command_string else [])
 
 
@@ -335,8 +407,10 @@ def split_segments(text):
             current = []
         elif kind == "separator":
             if current:
-                piped = plain_words(previous[1:]) if separator_before in ("|", "|&") else []
-                segments.extend(expand_segment(normalize_segment(current, piped)))
+                is_piped = separator_before in ("|", "|&")
+                piped = plain_words(previous[1:]) if is_piped else []
+                piped_text = printed_text(normalize_segment(previous, [])) if is_piped else None
+                segments.extend(expand_segment(normalize_segment(current, piped), piped_text))
                 previous = current
             current, separator_before = [], value
         elif kind == "substitution":

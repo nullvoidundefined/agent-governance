@@ -580,14 +580,19 @@ is_protected_config_write() {
 }
 
 # True when the segment defines a shell function or alias named git, which
-# would put arbitrary text in front of every later git command.
+# would put arbitrary text in front of every later git command, or an alias
+# under any other name whose value this guard denies.
 defines_git_command() {
-    local index
+    local index word
     case "${WORDS[COMMAND_START]}" in
         function) [ "${WORDS[COMMAND_START + 1]:-}" = git ] ;;
         alias)
             for ((index = COMMAND_START + 1; index < ${#WORDS[@]}; index++)); do
-                case "${WORDS[index]}" in git=*) return 0 ;; esac
+                word="${WORDS[index]}"
+                case "$word" in
+                    git=*) return 0 ;;
+                    *=*) is_denied_command "${word#*=}" && return 0 ;;
+                esac
             done
             return 1
             ;;
@@ -703,7 +708,7 @@ while IFS=$'\037' read -r -a WORDS; do
         emit deny "destructive-command-guard hook BLOCKED this call: it deletes, moves, disables, or overwrites a file under .git/hooks, which silently removes the pre-commit and pre-push gates (R-203). Reading the hooks is fine; reinstall them with the harness installer rather than editing them by hand."
     fi
     if defines_git_command; then
-        emit deny "destructive-command-guard hook BLOCKED this call: it defines a shell function or alias named git, which can add a hook-skipping option to every later git command without it appearing in the command text (R-203). Call git directly."
+        emit deny "destructive-command-guard hook BLOCKED this call: it defines a shell function or alias named git, or an alias whose value skips git hooks, which hides the skip from every later command that uses it (R-203). Call git directly."
     fi
     [ "$program" = git ] || continue
     find_git_subcommand
