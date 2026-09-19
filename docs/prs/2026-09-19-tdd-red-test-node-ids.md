@@ -50,6 +50,8 @@ Copilot's second round confirmed both fixes and raised one finding it had missed
 
 Copilot's third round found that the per-test loop re-selected results by full name, and Vitest and Jest allow two tests with the same full name, so a timeout could still ride on its namesake's assertion. The loop now walks each matched result on its own; a Jest-stub case with two tests named `boost doubles` covers it.
 
+Copilot's fourth round noted that the Codex orchestration step in the `tdd-gated-dispatch` skill and the matching line in `rulebook/cost.md` still told the orchestrator to run `tdd.sh red <test file>`, which a new test added to an existing file cannot pass. Both now say to name a new file whole and each new test in an existing file by id, and the test-author prompt asks Codex to report those ids.
+
 ## Reflection
 
 The part that needed the most thought was the baseline, not the id parsing. The existing rule excludes named files from the baseline entirely. Kept for id-named files, that rule would still catch a neighbour that starts failing, but not a neighbour that stops running: the locked file cannot be edited, yet a `conftest.py` or a Vitest setup file outside the lock can still skip a test. Counting the unnamed tests of an id-named file toward the baseline makes that visible as a drop below the baseline. What I had not expected was the pytest title. The converter had used the bare JUnit `name`, which drops the class, so a class-scoped id could not have matched anything until the title was rebuilt from the classname. Time from the RED commit (16:18 local) to the first version of this document (16:27) was about ten minutes.
