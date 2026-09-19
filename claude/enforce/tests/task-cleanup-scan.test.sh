@@ -31,7 +31,11 @@ printf 'export function presets() {}\n' > "$REPO/src/routes/presets.ts"
 printf 'export function PresetPicker() { const p = useSearchParams(); return null; }\n' > "$REPO/src/components/PresetPicker/PresetPicker.tsx"
 printf '# presets design\n' > "$REPO/docs/superpowers/specs/2026-09-17-presets-design.md"
 git -C "$REPO" add -A; git -C "$REPO" commit -qm "feat(presets): route and picker"
-(cd "$REPO" && printf '.claude/\n' > .gitignore && bash "$TIER" set standard "preset picker with tests" >/dev/null 2>&1)
+# task-tier.sh requires --ticket above trivial whenever $HOME/.claude/TICKET-TRACKER.json
+# exists, so the ledger is written under a HOME with no tracker; with the real HOME
+# this passed in CI and failed on any machine that has a tracker configured.
+mkdir -p "$SB/home"
+(cd "$REPO" && printf '.claude/\n' > .gitignore && HOME="$SB/home" bash "$TIER" set standard "preset picker with tests" >/dev/null 2>&1)
 
 OUT=$(cd "$REPO" && bash "$SCAN" 2>&1); ST=$?
 check "scan exits 0" test "$ST" -eq 0
