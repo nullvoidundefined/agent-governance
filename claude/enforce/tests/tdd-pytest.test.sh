@@ -113,7 +113,16 @@ impl 2; touch -t 202001010000 apps/server/app/score.py
 (cd apps/server && env -u PYTHONDONTWRITEBYTECODE $PYTEST_COMMAND -q -p no:cacheprovider >/dev/null 2>&1 || true)
 [ -n "$(find apps/server/app -name 'score*.pyc')" ] || { echo "FAIL: setup: the direct pytest run must leave app bytecode in the tree"; exit 1; }
 impl 1; touch -t 202001010000 apps/server/app/score.py
-expect_fail "pytest green over stale in-tree bytecode" bash "$TDD" green | grep -q 'test_scores_a_job_at_2' || { echo "FAIL: pytest green must run the source on disk, not a stale in-tree .pyc"; exit 1; }
+DIAG_OUT=$(bash "$TDD" green 2>&1) && DIAG_STATUS=0 || DIAG_STATUS=$?
+if [ "$DIAG_STATUS" -eq 0 ] || ! grep -q 'test_scores_a_job_at_2' <<< "$DIAG_OUT"; then
+  echo "FAIL: pytest green must run the source on disk, not a stale in-tree .pyc"
+  echo "DIAG status=$DIAG_STATUS out=$DIAG_OUT"
+  echo "DIAG src=$(cat apps/server/app/score.py | tr '\n' ' ') pyc=$(find "$P" -name '*.pyc' | tr '\n' ' ')"
+  echo "DIAG pytest=$(command -v pytest) shebang=$(head -1 "$(command -v pytest)" 2>/dev/null || true) cmd=$PYTEST_COMMAND"
+  echo "DIAG env=$(env | grep -iE '^(python|pip|uv)' | tr '\n' ' ' || true)"
+  (cd apps/server && PYTHONPYCACHEPREFIX=/tmp/diagprefix $PYTEST_COMMAND -q -p no:cacheprovider -s -c /dev/null --rootdir=. -o pythonpath=. tests/test_score.py 2>&1 | tail -5; printf 'import sys, app.score\nprint("DIAG py", sys.flags, sys.pycache_prefix, app.score.__file__, app.score.__cached__, app.score.score())\n' > /tmp/diag.py; PYTHONPYCACHEPREFIX=/tmp/diagprefix "$(dirname "$(readlink -f "$(command -v pytest)")")/python" -c "$(cat /tmp/diag.py)" 2>&1 || true)
+  exit 1
+fi
 find apps/server -name __pycache__ -type d -prune -exec rm -rf {} +
 
 # green: still failing is refused by test name; the phase stays red.
