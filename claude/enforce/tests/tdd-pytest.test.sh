@@ -218,6 +218,12 @@ cp "$STUBS/test_score.py.saved" "$TEST"
 sed 's/^def test_scores_a_job_at_2/@pytest.mark.skip(reason="parked")\ndef test_scores_a_job_at_2/' "$STUBS/test_score.py.saved" > "$TEST"
 expect_fail "node red beside a skipped unnamed test" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" | grep -q "$TEST::test_scores_a_job_at_2 is skipped" || { echo "FAIL: a skipped unnamed test in an id-named file must be refused by its id"; exit 1; }
 cp "$STUBS/test_score.py.saved" "$TEST"
+# Each named test is classified on its own (PR #74 review): one failing for an
+# unclassified reason is refused by id even when another named test's
+# missing-module failure would classify the pair.
+sed 's/from app.boost import boosted_score/raise RuntimeError("boom")/' "$STUBS/test_score.py.saved" > "$TEST"
+expect_fail "node red with one unclassified named failure" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" | grep -q "$TEST::TestBoost::test_boosted fails for a reason this script does not classify" || { echo "FAIL: a named test failing for an unclassified reason must be refused by its id"; exit 1; }
+cp "$STUBS/test_score.py.saved" "$TEST"
 # The same file named whole and by id is ambiguous and refused, rather than
 # the ids being dropped silently (PR review).
 expect_fail "red naming a file whole and by id" bash "$TDD" red "$TEST" "$TEST::test_scales" | grep -q 'named whole and by test id' || { echo "FAIL: a file named whole and by id must be refused"; exit 1; }

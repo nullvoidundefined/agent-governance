@@ -460,12 +460,18 @@ classify_named() {
   [ -z "$offenders" ] || die "$offenders already passes. A RED test fails before the implementation exists; remove or sharpen it"
   offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$JQ_TEST_IDS"'[.assertionResults[] | select(.status == "failed" and (named_by($ids; $kind) | not)) | $rel + "::" + test_key] | join(", ")')
   [ -z "$offenders" ] || die "$offenders fails but was not named; the tests beside the named ones must keep passing. Name it too if it is part of this slice, or fix it first"
-  local failures
-  failures=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$named_filter"' | [.[].failureMessages[]] | join("\n")')
-  if grep -qE "$MISSING_MODULE" <<< "$failures"; then printf 'missing-module'
-  elif grep -qE "$ASSERTION" <<< "$failures"; then printf 'assertion'
-  else die "$rel fails for a reason this script does not classify: $(printf '%s' "$failures" | head -1)"
-  fi
+  # Each named test is classified on its own, so one failing for a reason
+  # outside both classes cannot ride on another's classified message. The
+  # slice is missing-module when any named test is, assertion otherwise.
+  local key failures class=assertion
+  while IFS= read -r key; do
+    failures=$(printf '%s' "$record" | jq -r --arg key "$key" "$JQ_TEST_IDS"'[.assertionResults[] | select(test_key == $key) | .failureMessages[]] | join("\n")')
+    if grep -qE "$MISSING_MODULE" <<< "$failures"; then class=missing-module
+    elif ! grep -qE "$ASSERTION" <<< "$failures"; then
+      die "$rel::$key fails for a reason this script does not classify: $(printf '%s' "$failures" | grep -m1 . || true)"
+    fi
+  done < <(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$named_filter"' | .[] | test_key')
+  printf '%s' "$class"
 }
 
 # How a test id is written for the current runner, for refusal messages.
