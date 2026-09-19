@@ -162,6 +162,30 @@ CODEX_COMMENTED=$(write_gh_stub codex-commented '{"body":"## Summary\n\n<!--\n##
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_COMMENTED")" = "deny" ]
 CODEX_FENCE_TRAILING=$(write_gh_stub codex-fence-trailing '{"body":"```\ncode\n``` trailing\n## Codex review\nreal content\n```","labels":[],"commits":[]}')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCE_TRAILING")" = "deny" ]
+# Round three: merges are found by a quote-aware shell scan, not a regex, so
+# control flow, quoting, and escapes cannot hide one, and a mention inside a
+# quoted argument or a heredoc is never read as one.
+for hidden in '{ gh pr merge 42 --squash; }' '( gh pr merge 42 --squash )' 'if true; then gh pr merge 42 --squash; fi' \
+  'gh "pr" merge 42 --squash' "gh pr 'merge' 42 --squash" '"gh" "pr" "merge" 42 --squash' 'g\h pr merge 42 --squash' \
+  'gh pr mer""ge 42 --squash' 'eval gh\ pr\ merge\ 42\ --squash' 'sh -c gh\ pr\ merge\ 42\ --squash' \
+  'x=$(gh pr merge 42 --squash)' '{ cd ../other; } && gh pr merge 42 --squash' 'pushd ../other && gh pr merge 42 --squash'; do
+  [ "$(stubbed_decision "$hidden" "$CODEX_OK")" = "deny" ] || { echo "hidden merge not denied: $hidden" >&2; exit 1; }
+done
+for mention in 'GIT_EDITOR=true git commit -m "fix(enforce): gh pr merge wrapper matcher"' \
+  'time git commit -m "fix: deny gh pr merge behind wrappers"' \
+  "bash -c 'git commit -m \"fix: deny gh pr merge behind wrappers\"'" \
+  'env FOO=1 gh pr comment 42 --body "deny gh pr merge behind wrappers"' \
+  'echo "; gh pr merge 42 --squash"' \
+  $'cat > notes.md <<\'EOF\'\ntimeout 30 gh pr merge 42 --squash\nEOF'; do
+  [ "$(stubbed_decision "$mention" "$CODEX_MISSING")" != "deny" ] || { echo "a mention was read as a merge: $mention" >&2; exit 1; }
+done
+# Inline HTML comments and a `<!--` in a code span do not hide a real section.
+CODEX_HEADING_COMMENT=$(write_gh_stub codex-heading-comment '{"body":"## Codex review <!-- required -->\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_HEADING_COMMENT")" = "ask" ]
+CODEX_LINE_COMMENT=$(write_gh_stub codex-line-comment '{"body":"## Codex review\nReviewer: Codex. No findings. <!-- generated -->","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_LINE_COMMENT")" = "ask" ]
+CODEX_CODE_SPAN=$(write_gh_stub codex-code-span '{"body":"## Codex review\nReviewer: Codex. Fixed the `<!--` handling.\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_CODE_SPAN")" = "ask" ]
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.

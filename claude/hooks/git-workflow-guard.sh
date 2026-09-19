@@ -82,23 +82,24 @@ fi
 # A `gh pr merge` may follow leading environment assignments
 # (`GH_REPO=o/r gh pr merge ...`), which run the same merge.
 GH_MERGE_PATTERN='(^|[;&|])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-# GH_ANY_MERGE_PATTERN is the broad shape of a merge: gh escaped (\gh),
-# quoted, named by path, or behind a common wrapper (env, command, exec, sudo,
-# nohup, time, timeout, nice, xargs, eval, or bash/sh/zsh -c, each with its
-# options and their values), or with options such as --repo/-R before `pr` or
-# `merge`. Every such shape runs a merge, but only GH_MERGE_PATTERN is one
-# parse_merge_arguments reads, so a command where the two counts differ is
-# denied outright rather than judged by the wrong PR or not at all. The
-# wrapper list is a denylist and cannot be complete; a subshell `(gh pr
-# merge)` is deliberately not matched, as before, so a parenthesized mention
-# in a commit message is never read as a merge.
-GH_OPTION='([[:space:]]+-[^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?)'
-GH_WRAPPER_WORD='([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|command|exec|sudo|nohup|time|timeout|nice|xargs|eval|bash|sh|zsh)'
-GH_WRAPPER="(${GH_WRAPPER_WORD}([[:space:]]+(-[^[:space:];&|]*|[^-[:space:];&|][^[:space:];&|]*))*[[:space:]]+)"
-GH_COMMAND_WORD="[\\\"']?([^[:space:];&|]*/)?gh[\"']?"
-GH_ANY_MERGE_PATTERN="(^|[;&|])[[:space:]]*${GH_WRAPPER}*${GH_COMMAND_WORD}${GH_OPTION}*[[:space:]]+pr${GH_OPTION}*[[:space:]]+merge([[:space:]]|\$)"
+# Whether a command runs a merge at all is decided by a quote-aware shell scan
+# (shell-command-tokens.sh), never by a regex over the raw text: a regex
+# missed merges hidden by braces, subshells, control flow, quoting, and
+# escapes, and read merges into quoted commit messages and heredocs. The scan
+# runs only when a copy of the command with quotes and backslashes removed
+# mentions both gh and merge, so ordinary commands pay nothing for it. A
+# missing helper is treated as a merge the hook cannot read, which denies.
+SHELL_TOKENS_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-tokens.sh"
+IS_SHELL_TOKENS_LOADED=0
+if [ -f "$SHELL_TOKENS_HELPER" ]; then
+  # shellcheck source=shell-command-tokens.sh
+  source "$SHELL_TOKENS_HELPER" && IS_SHELL_TOKENS_LOADED=1
+fi
+UNQUOTED_CMD="${CMD//[\"\'\\]/}"
+IS_MERGE_CANDIDATE=0
+[[ "$UNQUOTED_CMD" == *gh* && "$UNQUOTED_CMD" == *merge* ]] && IS_MERGE_CANDIDATE=1
 grep -qE '(^|[;&|])[[:space:]]*git[[:space:]]+(push|commit)([[:space:]]|$)' <<< "$CMD" ||
-  grep -qE "$GH_ANY_MERGE_PATTERN" <<< "$CMD" || exit 0
+  [ "$IS_MERGE_CANDIDATE" -eq 1 ] || exit 0
 
 ask() {
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
@@ -204,7 +205,8 @@ run_gh_view_with_deadline() {
 read_merge_pr_view() {
   PR_JSON=""
   PR_VIEW_PROBLEM=""
-  if grep -qE '(^|[;&|(])[[:space:]]*(cd|pushd)([[:space:]]|$)|(^|[[:space:]])GH_(REPO|HOST)=' <<< "$CMD"; then
+  if [ "$HAS_DIRECTORY_CHANGE" -eq 1 ] ||
+    grep -qE '(^|[;&|(])[[:space:]]*(cd|pushd)([[:space:]]|$)|(^|[[:space:]])GH_(REPO|HOST)=' <<< "$CMD"; then
     PR_VIEW_PROBLEM="the command changes directory or sets GH_REPO/GH_HOST, so the hook cannot check the PR it merges; run the merge from the repository's own directory with no cd."
     return 0
   fi
@@ -250,30 +252,47 @@ read_bundle_verdict() {
 # prose is not a section, and a bare heading records no findings. Lines inside
 # a fenced code block count as neither heading nor content, so a template that
 # quotes the section as an example does not pass for it; a fence closes only
-# on a run of its own character at least as long as the one that opened it.
+# on a line holding nothing but a run of its own character at least as long
+# as the one that opened it. HTML comments are removed the same way (inline
+# ones stripped, a multi-line one skipped to its `-->`), after code spans are
+# dropped, so a `<!--` quoted in a code span opens nothing.
 # A heading is indented by at most three spaces, since four make it an
 # indented code block. No regex intervals: older mawk lacks them.
 has_codex_review_section() {
   printf '%s\n' "$1" | tr -d '\r' | awk '
-    !in_fence && in_comment { if (index($0, "-->")) in_comment = 0; next }
-    /^( |  |   )?(```|~~~)/ && match($0, /(`+|~+)/) && RLENGTH >= 3 {
-      run = substr($0, RSTART, RLENGTH)
-      if (!in_fence) { in_fence = 1; fence = run; next }
-      if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence) && $0 ~ /^( |  |   )?(`+|~+)[ \t]*$/) { in_fence = 0; next }
-    }
-    in_fence { next }
-    index($0, "<!--") {
-      rest = substr($0, index($0, "<!--") + 4)
-      if (!index(rest, "-->")) in_comment = 1
+    in_fence {
+      if ($0 ~ /^( |  |   )?(`+|~+)[ \t]*$/) {
+        run = $0
+        gsub(/[ \t]/, "", run)
+        if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence)) in_fence = 0
+      }
       next
     }
-    /^( |  |   )?#+[ \t]/ {
-      heading = tolower($0)
+    { line = $0 }
+    in_comment {
+      comment_end = index(line, "-->")
+      if (!comment_end) next
+      in_comment = 0
+      line = substr(line, comment_end + 3)
+    }
+    line == $0 && line ~ /^( |  |   )?(```|~~~)/ && match(line, /(`+|~+)/) && RLENGTH >= 3 {
+      in_fence = 1
+      fence = substr(line, RSTART, RLENGTH)
+      next
+    }
+    {
+      gsub(/`[^`]*`/, "", line)
+      gsub(/<!--([^-]|-[^-]|--[^>])*-->/, "", line)
+      comment_start = index(line, "<!--")
+      if (comment_start) { in_comment = 1; line = substr(line, 1, comment_start - 1) }
+    }
+    line ~ /^( |  |   )?#+[ \t]/ {
+      heading = tolower(line)
       sub(/^[ \t]*#+[ \t]+/, "", heading)
       in_section = (index(heading, "codex review") == 1)
       next
     }
-    in_section && /[^ \t]/ { found = 1 }
+    in_section && line ~ /[^ \t]/ { found = 1 }
     END { exit found ? 0 : 1 }'
 }
 
@@ -293,15 +312,100 @@ read_codex_review_verdict() {
   echo "the PR body has no \`## Codex review\` section with content under it."
 }
 
+# classify_merge_commands <command> <is-nested>: walks the command's simple
+# commands and, for each that runs `gh pr merge`, adds one to MERGE_TOTAL and,
+# when its words are exactly `gh pr merge ...` with no wrapper, keyword,
+# path, or option ahead of `merge`, one to MERGE_CANONICAL. It sets
+# HAS_DIRECTORY_CHANGE for any cd, pushd, or popd, and scans the string given
+# to eval or to bash/sh/zsh -c as a nested command (depth-limited), whose
+# merges are never canonical.
+classify_merge_commands() {
+  local command_text="$1" is_nested="${2:-0}" token is_heredoc_next=0
+  local -a command_tokens=() words=()
+  [ "${CLASSIFY_DEPTH:-0}" -lt 4 ] || { MERGE_TOTAL=$((MERGE_TOTAL + 1)); return 0; }
+  CLASSIFY_DEPTH=$(( ${CLASSIFY_DEPTH:-0} + 1 ))
+  scan_command_tokens "$command_text"
+  command_tokens=(${TOKENS[@]+"${TOKENS[@]}"})
+  for token in ${command_tokens[@]+"${command_tokens[@]}"}; do
+    if [ "$is_heredoc_next" -eq 1 ]; then is_heredoc_next=0; continue; fi
+    case "$token" in
+      "$HEREDOC_TOKEN") is_heredoc_next=1 ;;
+      "$SEPARATOR_TOKEN") classify_simple_command "$is_nested" ${words[@]+"${words[@]}"}; words=() ;;
+      *) words+=("$token") ;;
+    esac
+  done
+  classify_simple_command "$is_nested" ${words[@]+"${words[@]}"}
+  CLASSIFY_DEPTH=$((CLASSIFY_DEPTH - 1))
+}
+
+# classify_simple_command <is-nested> <word>...: the per-command half of
+# classify_merge_commands.
+classify_simple_command() {
+  local is_wrapped="$1" word script=""
+  shift
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      '{' | '}' | '!' | if | then | else | elif | do | while | until | time) is_wrapped=1; shift ;;
+      *) [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || break; shift ;;
+    esac
+  done
+  [ "$#" -gt 0 ] || return 0
+  case "${1##*/}" in
+    cd | pushd | popd) HAS_DIRECTORY_CHANGE=1; return 0 ;;
+    eval) shift; classify_merge_commands "$*" 1; return 0 ;;
+    bash | sh | zsh)
+      shift
+      while [ "$#" -gt 0 ]; do
+        case "$1" in -*c*) script="${2:-}"; break ;; esac
+        shift
+      done
+      [ -n "$script" ] && classify_merge_commands "$script" 1
+      return 0 ;;
+    env | command | exec | sudo | nohup | nice | timeout | xargs | stdbuf | caffeinate)
+      is_wrapped=1
+      while [ "$#" -gt 0 ] && [ "${1##*/}" != "gh" ]; do shift; done
+      [ "$#" -gt 0 ] || return 0 ;;
+  esac
+  [ "${1##*/}" = "gh" ] || return 0
+  [ "$1" = "gh" ] || is_wrapped=1
+  shift
+  while [ "$#" -gt 0 ] && [ "${1#-}" != "$1" ]; do
+    is_wrapped=1
+    case "$1" in -R | --repo) shift ;; esac
+    shift
+  done
+  [ "${1:-}" = "pr" ] || return 0
+  shift
+  while [ "$#" -gt 0 ] && [ "${1#-}" != "$1" ]; do
+    is_wrapped=1
+    case "$1" in -R | --repo) shift ;; esac
+    shift
+  done
+  [ "${1:-}" = "merge" ] || return 0
+  MERGE_TOTAL=$((MERGE_TOTAL + 1))
+  [ "$is_wrapped" -eq 0 ] && MERGE_CANONICAL=$((MERGE_CANONICAL + 1))
+  return 0
+}
+
 # R-512, R-517, and R-514 on the merge path. A merge-commit strategy is denied
 # from the command alone, before any gh call. Every other merge consults gh
 # once, from the command's working directory: a rebase for the bundle
 # conditions, and every merge for the Codex review section in the PR body.
-if grep -qE "$GH_ANY_MERGE_PATTERN" <<< "$CMD"; then
-  MERGE_COUNT=$(grep -oE "$GH_ANY_MERGE_PATTERN" <<< "$CMD" | wc -l | tr -d ' ')
+MERGE_TOTAL=0
+MERGE_CANONICAL=0
+HAS_DIRECTORY_CHANGE=0
+if [ "$IS_MERGE_CANDIDATE" -eq 1 ]; then
+  if [ "$IS_SHELL_TOKENS_LOADED" -eq 1 ]; then
+    classify_merge_commands "$CMD" 0
+  else
+    MERGE_TOTAL=1
+  fi
+fi
+if [ "$MERGE_TOTAL" -gt 0 ]; then
+  MERGE_COUNT="$MERGE_TOTAL"
   PARSEABLE_MERGE_COUNT=$(grep -oE "$GH_MERGE_PATTERN" <<< "$CMD" | wc -l | tr -d ' ')
-  [ "$MERGE_COUNT" -eq "$PARSEABLE_MERGE_COUNT" ] ||
-    deny "R-517: this merge runs gh behind a wrapper or path, or passes an option such as --repo/-R before the merge subcommand, a shape the hook cannot parse, so it cannot check the PR's Codex review section (R-517), strategy (R-512), or authorization (R-514). Re-run it as a bare \`gh pr merge <n> --squash [--repo <owner/repo>]\`."
+  [ "$MERGE_COUNT" -le 1 ] && [ "$MERGE_CANONICAL" -eq 1 ] && [ "$PARSEABLE_MERGE_COUNT" -eq 1 ] || [ "$MERGE_COUNT" -gt 1 ] ||
+    deny "R-517: this merge runs gh inside a brace group, subshell, control-flow keyword, eval or sh -c string, behind a wrapper or path, with quoted or escaped words, or with an option such as --repo/-R before the merge subcommand, a shape the hook cannot parse, so it cannot check the PR's Codex review section (R-517), strategy (R-512), or authorization (R-514). Re-run it as a bare \`gh pr merge <n> --squash [--repo <owner/repo>]\` on its own line."
   [ "$MERGE_COUNT" -le 1 ] ||
     deny "R-517: this command runs $MERGE_COUNT merges, and the hook reads one PR's body per merge command, so the others would merge without their Codex review being checked. Merge one PR per command."
   parse_merge_arguments

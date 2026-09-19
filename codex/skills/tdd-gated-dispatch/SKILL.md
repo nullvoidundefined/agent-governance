@@ -99,9 +99,12 @@ returns, prove what it did rather than trusting its summary:
    production file inside it.
 2. The lock's hash is unchanged. `tdd.sh validate` leaves the lock out of its
    path check, so an edited lock (a narrowed protected-path list) would pass
-   it and later let `green` trust the tampered lock.
-3. `tdd.sh red <test file>` prints `RED:`, then `tdd.sh validate
-   test-author` passes, proving every changed path is a test or fixture path.
+   it and later let `green` trust the tampered lock. The prompt tells Codex
+   not to run `tdd.sh`, because `tdd.sh red` itself rewrites the lock (phase
+   `open` to `red`); this check therefore runs before step 3, never after it.
+3. Only then does the orchestrator run `tdd.sh red <test file>` until it
+   prints `RED:`, then `tdd.sh validate test-author`, proving every changed
+   path is a test or fixture path.
 
 Codex runs outside Claude's hooks, so these three checks are the only proof.
 If any fails, discard the run: reset to the recorded commit if Codex
@@ -159,7 +162,7 @@ B-n: <behavior line from the spec>
 Write only test and fixture files. Read only the spec entry, the conventions file, and the existing code the test must call; do not scan the rest of the repository.
 
 ## Definition of done
-`bash ~/.claude/enforce/tdd.sh red <test file>` prints RED:. Report the test file path, the RED line, the failure class, every interface the test assumes, and any spec ambiguity you resolved. Do not implement. Do not commit.
+Codex: write the test and run it once with the project's test runner to see it fail for the right reason, but do not run `tdd.sh` (the orchestrator runs `tdd.sh red`, which moves the lock, after checking the lock is untouched). The `test-author` agent, as the fallback: `bash ~/.claude/enforce/tdd.sh red <test file>` prints RED:. Either way, report the test file path, the failure you saw, the failure class, every interface the test assumes, and any spec ambiguity you resolved. Do not implement. Do not commit.
 ```
 
 **Implementer prompt** (after the RED commit):
