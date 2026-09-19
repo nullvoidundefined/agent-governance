@@ -288,5 +288,51 @@ check "R-6 HOME unset exits 0" test "$R6_ST" -eq 0
 check "R-6 HOME unset prints nothing" is_silent
 check "R-6 HOME unset has no unbound variable error" bash -c '! grep -q "unbound variable" "$0"' "$R6_ERR"
 
+# --- IAN-149 review round 2 ---------------------------------------------------
+# S-1: a directory the hook cannot resolve before a commit denies as unreadable.
+# The commands below carry literal shell text ($REPO, $(pwd), $HOME, cd -), never expanded here.
+while IFS= read -r command; do
+  bash_gate "$command" "$PLAIN"
+  check "S-1 '$command' denies" is_deny
+  check "S-1 '$command' reason says cannot" reason_has "cannot"
+done <<'SHAPES'
+cd $REPO && git commit -m x
+cd - && git commit -m x
+cd $(pwd) && git commit -m x
+git -C "$HOME/x" commit -m x
+git -C $REPO commit -m x
+SHAPES
+bash_gate 'cd $REPO && git status' "$PLAIN"
+check "S-1 'cd \$REPO && git status' with no commit does not deny" is_not_deny
+
+# S-1b: a tilde in a git target resolves against HOME.
+TILDE_HOME="$SB/home-tilde"
+mkdir -p "$TILDE_HOME/.claude"; printf '{}\n' > "$TILDE_HOME/.claude/TICKET-TRACKER.json"
+TILDE_REPO=$(make_repo home-tilde/r)
+bash_gate 'git -C ~/r commit -m x' "$PLAIN" "$TILDE_HOME"
+check "S-1b git -C ~/r commit of a ledgerless repo denies" is_deny
+tier_set "$TILDE_REPO" "$TILDE_HOME" standard "multi-file change" --ticket IAN-7
+bash_gate 'git -C ~/r commit -m x' "$PLAIN" "$TILDE_HOME"
+check "S-1b git -C ~/r commit of a ticketed repo allows" is_silent
+
+# S-2: read-only shell strings from a ticketed repo cwd do not deny.
+TK3=$(make_ticketed s2-ticketed)
+bash_gate 'bash -c "git log --grep=commit"' "$TK3"
+check "S-2 bash -c git log --grep=commit allows" is_silent
+bash_gate "sh -c 'git show HEAD | grep commit'" "$TK3"
+check "S-2 sh -c git show piped to grep commit allows" is_silent
+
+# S-3: --git-dir names the judged repository even when --work-tree points elsewhere.
+LL3=$(make_repo s3-ledgerless)
+bash_gate "git --git-dir=$LL3/.git --work-tree=$PLAIN commit -m x" "$PLAIN"
+check "S-3 --git-dir of a ledgerless repo with a non-repo --work-tree denies" is_deny
+
+# S-4: wrapper options and expansion-built command words before commit deny.
+LL4=$(make_repo s4-ledgerless)
+bash_gate 'sudo -k git commit -m x' "$LL4"
+check "S-4 sudo -k git commit denies" is_deny
+bash_gate 'x=git; $x commit -m x' "$LL4"
+check "S-4 expansion-built command word then commit denies" is_deny
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

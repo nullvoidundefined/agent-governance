@@ -82,9 +82,21 @@ is_exempt_edit_path() {
 }
 
 # resolve_relative_directory <base> <path>: prints <path> made absolute
-# against <base>.
+# against <base>, expanding a leading ~ as the shell would.
 resolve_relative_directory() {
-  case "$2" in /*) printf '%s' "$2" ;; *) printf '%s' "$1/$2" ;; esac
+  case "$2" in
+    "~") printf '%s' "$HOME" ;;
+    "~"/*) printf '%s/%s' "$HOME" "${2#\~/}" ;;
+    /*) printf '%s' "$2" ;;
+    *) printf '%s' "$1/$2" ;;
+  esac
+}
+
+# is_expanded_word <word>: true when the word holds a parameter expansion or a
+# command substitution, whose value the scan never computes.
+is_expanded_word() {
+  case "$1" in *'$'* | *'`'*) return 0 ;; esac
+  return 1
 }
 
 # strip_command_prefixes <word>...: prints, one per line, the words left once
@@ -93,19 +105,21 @@ resolve_relative_directory() {
 # durations are removed from the front, so `env A=1 time git commit` reads as
 # the `git commit` it runs.
 strip_command_prefixes() {
-  local is_wrapper_argument=0
+  local wrapper="" is_duration_pending=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      if | then | else | elif | do | while | until | '!' | '{' | '}' | time | env | nice | nohup | sudo | exec | command | builtin | xargs)
-        is_wrapper_argument=1; shift; continue ;;
-      timeout) is_wrapper_argument=2; shift; continue ;;
+      if | then | else | elif | do | while | until | '!' | '{' | '}' | time | nohup | exec | command | builtin)
+        wrapper=""; shift; continue ;;
+      env | nice | sudo | xargs) wrapper="$1"; shift; continue ;;
+      timeout) wrapper="timeout"; is_duration_pending=1; shift; continue ;;
     esac
-    if [ "$is_wrapper_argument" -ge 1 ]; then
-      case "$1" in
-        -n | -u | -g | -s | -k) shift 2 2>/dev/null || shift; continue ;;
-        -* | [A-Za-z_]*=*) shift; continue ;;
+    if [ -n "$wrapper" ]; then
+      case "$wrapper:$1" in
+        env:-u | env:-C | env:-S | nice:-n | sudo:-u | sudo:-g | sudo:-h | sudo:-p | sudo:-C | sudo:-D | sudo:-r | sudo:-t | sudo:-U | timeout:-s | timeout:-k | xargs:-n | xargs:-s | xargs:-I | xargs:-L | xargs:-P | xargs:-d | xargs:-E)
+          shift 2 2>/dev/null || shift; continue ;;
       esac
-      if [ "$is_wrapper_argument" -eq 2 ]; then is_wrapper_argument=1; shift; continue; fi
+      case "$1" in -* | [A-Za-z_]*=*) shift; continue ;; esac
+      if [ "$is_duration_pending" -eq 1 ]; then is_duration_pending=0; shift; continue; fi
     fi
     break
   done
@@ -117,11 +131,21 @@ strip_command_prefixes() {
 # `git ... commit`, appends the repository it commits to (after -C,
 # --work-tree, and a --git-dir naming <repo>/.git) to COMMIT_DIRECTORIES.
 record_git_commit_directory() {
-  local directory="$1" work_tree="" git_dir=""
+  local directory="$1" work_tree="" git_dir="" has_expanded_directory=0 is_absolute_target=0 option_value
   shift
   [ "$(basename -- "${1:-}")" = "git" ] || return 0
   shift
   while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -C | --work-tree | --git-dir) option_value="${2:-}" ;;
+      -C?*) option_value="${1#-C}" ;;
+      --work-tree=* | --git-dir=*) option_value="${1#*=}" ;;
+      *) option_value="" ;;
+    esac
+    if [ -n "$option_value" ]; then
+      is_expanded_word "$option_value" && has_expanded_directory=1
+      case "$option_value" in /* | "~" | "~"/*) is_absolute_target=1 ;; esac
+    fi
     case "$1" in
       -C) directory=$(resolve_relative_directory "$directory" "${2:-}"); shift 2 2>/dev/null || shift ;;
       -C?*) directory=$(resolve_relative_directory "$directory" "${1#-C}"); shift ;;
@@ -135,13 +159,39 @@ record_git_commit_directory() {
     esac
   done
   [ "${1:-}" = "commit" ] || return 0
-  if [ -n "$work_tree" ]; then
-    directory=$(resolve_relative_directory "$directory" "$work_tree")
-  elif [ -n "$git_dir" ]; then
+  if [ "$has_expanded_directory" -eq 1 ] || { [ "$IS_DIRECTORY_UNKNOWN" -eq 1 ] && [ "$is_absolute_target" -eq 0 ]; }; then
+    IS_COMMIT_UNREADABLE=1
+    return 0
+  fi
+  if [ -n "$git_dir" ]; then
     git_dir=$(resolve_relative_directory "$directory" "$git_dir")
-    case "$git_dir" in */.git | */.git/) directory=$(dirname "${git_dir%/}") ;; *) directory="$git_dir" ;; esac
+    case "$git_dir" in
+      */.git | */.git/) directory=$(dirname "${git_dir%/}") ;;
+      *) if [ -n "$work_tree" ]; then directory=$(resolve_relative_directory "$directory" "$work_tree"); else directory="$git_dir"; fi ;;
+    esac
+  elif [ -n "$work_tree" ]; then
+    directory=$(resolve_relative_directory "$directory" "$work_tree")
   fi
   COMMIT_DIRECTORIES+=("$directory")
+}
+
+# replay_directory_change <word>...: replays a cd or pushd onto TARGET_DIR
+# through apply_cd, and sets IS_DIRECTORY_UNKNOWN when the target is `-`, is
+# built by expansion, or does not exist, since a commit after it runs in a
+# directory the scan cannot name; a later cd to a literal absolute directory
+# makes it known again.
+replay_directory_change() {
+  local target=""
+  while [ "$#" -gt 0 ]; do case "$1" in -?*) shift ;; *) target="$1"; break ;; esac; done
+  if [ "$target" = "-" ] || is_expanded_word "$target"; then IS_DIRECTORY_UNKNOWN=1; return 0; fi
+  target=$(resolve_relative_directory "$TARGET_DIR" "${target:-~}")
+  if [ -d "$target" ]; then
+    apply_cd "$target"
+    case "$1" in /* | "~" | "~"/*) IS_DIRECTORY_UNKNOWN=0 ;; esac
+  else
+    IS_DIRECTORY_UNKNOWN=1
+  fi
+  return 0
 }
 
 # inspect_commit_words <word>...: replays a cd or pushd onto TARGET_DIR,
@@ -151,14 +201,18 @@ inspect_commit_words() {
   local -a command_words=()
   while [ "$#" -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do shift; done
   [ "$#" -gt 0 ] || return 0
-  case "$1" in cd | pushd) shift; apply_cd "$@"; return 0 ;; esac
+  case "$1" in cd | pushd) shift; replay_directory_change "$@"; return 0 ;; esac
   while IFS= read -r stripped_word; do command_words+=("$stripped_word"); done < <(strip_command_prefixes "$@")
   [ "${#command_words[@]}" -gt 0 ] || return 0
   case "$(basename -- "${command_words[0]}")" in
     sh | bash | zsh | dash | ksh | eval)
-      case "${command_words[*]}" in *git*commit*) IS_COMMIT_UNREADABLE=1 ;; esac
+      [[ "${command_words[*]}" =~ (^|[^A-Za-z0-9_./-])git[[:space:]]([^\;\&\|]*[[:space:]])?commit([[:space:]]|$) ]] && IS_COMMIT_UNREADABLE=1
       return 0 ;;
   esac
+  if is_expanded_word "${command_words[0]}"; then
+    case " ${command_words[*]} " in *" commit "*) IS_COMMIT_UNREADABLE=1 ;; esac
+    return 0
+  fi
   record_git_commit_directory "$TARGET_DIR" "${command_words[@]}"
 }
 
@@ -171,6 +225,7 @@ collect_commit_directories() {
   local -a words=()
   COMMIT_DIRECTORIES=()
   IS_COMMIT_UNREADABLE=0
+  IS_DIRECTORY_UNKNOWN=0
   TARGET_DIR="$CWD"
   scan_command_tokens "$1"
   for token in ${TOKENS[@]+"${TOKENS[@]}"} "$SEPARATOR_TOKEN"; do
@@ -216,7 +271,7 @@ case "$TOOL" in
       deny "R-605 (ticket at task start): the shell scan helpers (shell-command-scan.sh, shell-command-tokens.sh) are missing, so this command's commits cannot be read; re-run ./sync.sh."
     collect_commit_directories "$COMMAND_TEXT"
     [ "$IS_COMMIT_UNREADABLE" -eq 0 ] ||
-      deny "R-605 (ticket at task start): this command runs git commit inside a shell string (sh -c, bash -c, eval), which the hook cannot read, so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
+      deny "R-605 (ticket at task start): this command runs git commit inside a shell string (sh -c, bash -c, eval), through a command word built by expansion, or in a directory the hook cannot name (a cd or git -C target built from \$VAR, \$(...), or \`cd -\`, or one that does not exist), so it cannot check the ticket. Run the commit as a plain \`git commit\` (or \`git -C <repo> commit\`) of its own."
     ACTION="committing" ;;
   *) exit 0 ;;
 esac
