@@ -7,6 +7,9 @@
 # commit to main (R-511) and a surface-adding commit with no README (R-508),
 # whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
+# Name the failing assertion: under set -e a bare `[ ... ]` exits silently,
+# which left a CI failure with nothing but the file name to go on.
+trap 'echo "FAIL git-workflow-guard.test.sh line $LINENO: $BASH_COMMAND" >&2' ERR
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
 payload() { jq -nc --arg c "$1" --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}'; }
