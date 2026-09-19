@@ -33,9 +33,6 @@ REFS_LINE_PATTERN="^[[:space:]\"']*Refs:[[:space:]]*${KEY_PATTERN}([^A-Za-z0-9-]
 # A cheap prefilter only: a command that mentions the words reaches the
 # shell-aware scan below, which decides whether gh pr create really runs.
 PREFILTER_PATTERN='gh[[:space:]]+pr[[:space:]]+(create|new)'
-SEPARATOR_TOKEN=$'\001separator'
-HEREDOC_TOKEN=$'\001heredoc'
-HEREDOC_PATTERN="^<<-?[[:space:]]*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"
 
 # has_refs_line <text>: true when some line of the text is a Refs trailer
 # naming a ticket key, optionally preceded by an opening quote.
@@ -43,79 +40,15 @@ has_refs_line() {
   grep -Eq -- "$REFS_LINE_PATTERN" <<< "$1"
 }
 
-# capture_heredoc <text> <delimiter>: the text starts on the line that
-# introduces a heredoc; sets HEREDOC_BODY to the lines after that one up to
-# the terminator line, and HEREDOC_END to the offset of the newline that ends
-# the terminator line (the text's length when it never appears).
-capture_heredoc() {
-  local text="$1" delimiter="$2" offset=0 line stripped is_first=1
-  HEREDOC_BODY=''
-  while IFS= read -r line || [ -n "$line" ]; do
-    offset=$((offset + ${#line} + 1))
-    if [ "$is_first" -eq 1 ]; then is_first=0; continue; fi
-    stripped="${line#"${line%%[!$'\t']*}"}"
-    if [ "$stripped" = "$delimiter" ]; then HEREDOC_END=$((offset - 1)); return; fi
-    HEREDOC_BODY="$HEREDOC_BODY$line"$'\n'
-  done <<< "$text"
-  HEREDOC_END=${#text}
-}
-
-# flush_word: moves the word being built, if any, onto TOKENS.
-flush_word() {
-  [ "$HAS_WORD" -eq 1 ] && TOKENS+=("$WORD")
-  WORD=''; HAS_WORD=0
-}
-
-# push_separator: ends the current simple command on TOKENS, collapsing runs
-# of separators (&&, ;;, a blank line) into one.
-push_separator() {
-  flush_word
-  local count=${#TOKENS[@]}
-  [ "$count" -gt 0 ] && [ "${TOKENS[count - 1]}" = "$SEPARATOR_TOKEN" ] && return
-  TOKENS+=("$SEPARATOR_TOKEN")
-}
-
-# scan_command_tokens <command>: splits a Bash tool command into shell words
-# on TOKENS, with SEPARATOR_TOKEN between simple commands (at an unquoted ;
-# & | ( ) or newline) and HEREDOC_TOKEN plus the body for a heredoc fed to a
-# command. Quotes are honored and removed, and a heredoc inside a quoted word
-# (--body "$(cat <<'EOF' ...)") stays part of that word. Nothing is expanded
-# or evaluated: the input is an untrusted tool-call string.
-scan_command_tokens() {
-  local text="$1" index=0 length=${#1} char quote='' pending=''
-  TOKENS=(); WORD=''; HAS_WORD=0
-  while [ "$index" -lt "$length" ]; do
-    char="${text:index:1}"
-    if [ "$quote" = "'" ]; then
-      if [ "$char" = "'" ]; then quote=''; else WORD="$WORD$char"; fi
-    elif [ "$char" = '<' ] && [[ "${text:index:80}" =~ $HEREDOC_PATTERN ]]; then
-      if [ -n "$quote" ]; then
-        capture_heredoc "${text:index}" "${BASH_REMATCH[1]}"
-        WORD="$WORD${text:index:HEREDOC_END}"; index=$((index + HEREDOC_END)); continue
-      fi
-      flush_word; pending="${BASH_REMATCH[1]}"; index=$((index + ${#BASH_REMATCH[0]})); continue
-    elif [ "$char" = "\\" ]; then
-      index=$((index + 1)); [ "${text:index:1}" = $'\n' ] || { WORD="$WORD${text:index:1}"; HAS_WORD=1; }
-    elif [ "$char" = '"' ]; then
-      if [ "$quote" = '"' ]; then quote=''; else quote='"'; HAS_WORD=1; fi
-    elif [ -n "$quote" ]; then
-      WORD="$WORD$char"
-    elif [ "$char" = $'\n' ] && [ -n "$pending" ]; then
-      flush_word; capture_heredoc "${text:index}" "$pending"
-      TOKENS+=("$HEREDOC_TOKEN" "$HEREDOC_BODY"); push_separator
-      pending=''; index=$((index + HEREDOC_END)); continue
-    else
-      case "$char" in
-        ' '|$'\t') flush_word ;;
-        $'\n'|';'|'&'|'|'|'('|')') push_separator ;;
-        "'") quote="'"; HAS_WORD=1 ;;
-        *) WORD="$WORD$char"; HAS_WORD=1 ;;
-      esac
-    fi
-    index=$((index + 1))
-  done
-  push_separator
-}
+# The shell word scan (scan_command_tokens, SEPARATOR_TOKEN, HEREDOC_TOKEN)
+# lives in shell-command-tokens.sh, shared with git-workflow-guard.sh. A
+# missing helper is a deny, never a silent allow.
+SHELL_TOKENS_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-tokens.sh"
+IS_SHELL_TOKENS_LOADED=0
+if [ -f "$SHELL_TOKENS_HELPER" ]; then
+  # shellcheck source=shell-command-tokens.sh
+  source "$SHELL_TOKENS_HELPER" && IS_SHELL_TOKENS_LOADED=1
+fi
 
 # apply_cd <word>...: replays one cd onto TARGET_DIR, skipping its options;
 # a target that does not exist leaves the directory unchanged, as the shell
@@ -277,6 +210,10 @@ emit_deny() {
 INPUT=$(cat)
 CMD=$(jq -r '.tool_input.command // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 grep -Eq -- "$PREFILTER_PATTERN" <<< "$CMD" || exit 0
+if [ "$IS_SHELL_TOKENS_LOADED" -ne 1 ]; then
+  jq -nc '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"R-605 (ticket reference): hooks/shell-command-tokens.sh is missing, so this hook cannot read the command; re-run ./sync.sh to restore it."}}'
+  exit 0
+fi
 
 SESSION_DIR=$(jq -r '.cwd // "" | strings' 2>/dev/null <<< "$INPUT" || true)
 [ -n "$SESSION_DIR" ] && [ -d "$SESSION_DIR" ] || SESSION_DIR="$PWD"

@@ -30,14 +30,24 @@ Size PRs to the reader: go smaller for dense, concurrent, or security-sensitive 
 2. Plan the next slice: write its slice plan document (below) listing its PRs, each PR's single concern described in the PR description format.
 3. **Gate 1:** present the slice plan document and get explicit user approval before building.
 4. Build each PR as a sequence of TDD tasks (below).
-5. Open the PR; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; protect the branch so merge requires manual approval wherever the host supports it, and hold the same discipline manually where it does not.
+5. Open the PR, then run the blocking pre-merge Codex review (below) alongside the Copilot review; **Gate 2:** the user reviews and approves it on GitHub before merge. No auto-merge, no CLI merge; protect the branch so merge requires manual approval wherever the host supports it, and hold the same discipline manually where it does not.
 6. After merge, update the spec, the tracker, and the slice plan document, then start the next PR or slice.
 
-For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge, and offer to send it to a third-party AI review (for example Copilot).
+For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge, and offer to send it to a third-party AI review (for example Copilot) in addition to the Codex review every PR already gets.
+
+## Pre-merge Codex review (every PR, blocking)
+
+Before any PR merges, Codex (OpenAI's coding agent, run through its CLI as a separate process) reviews the PR's diff against the spec and the acceptance criteria of the PR's block in the slice plan document (R-517). It runs alongside the Copilot review, not instead of it, and before the user's Gate 2 approval, so the user reviews a PR whose Codex findings are already dispositioned.
+
+- **Prompt and invocation:** fill `~/.claude/prompts/codex-pr-review-prompt.md` with the base and head refs, the spec, the slice plan's PR block, and the convention files the diff touches, then run `codex exec -s read-only -C <repo root> --skip-git-repo-check -o <final-message file> "<prompt>" </dev/null > <log file> 2>&1` in the background and poll the log file. Close stdin, never pipe through `tail`, and pass no `-m`; `skills/task-cleanup/SKILL.md` gives the reasons.
+- **Fallback:** when Codex is unavailable or out of quota (the owner's account is a $20 ChatGPT plan with tight limits), dispatch a separate Claude agent in a fresh context on a model at least as strong as the main session's, ideally stronger (`model: "fable"` when available, else `opus`), with the same prompt. Never review in the main session and never wait for the quota.
+- **Dispositions:** fix each finding, or answer it with a reason in the PR.
+- **PR body:** a `## Codex review` section names the reviewer and model that ran and why, the range reviewed, and one line per finding with its severity and disposition. `git-workflow-guard` denies `gh pr merge` while it is missing or empty.
+- **Execution record:** note in the slice plan document, beside the PR's number and merge date, which reviewer ran the Codex review and how many findings were fixed or answered, and any test-author fallback the PR's slices took (R-907).
 
 ## Slice plan document
 
-Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice under its own `### PR <n>: <title>` heading, each in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record. `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels or the plan has no PR block at all, so Gate 1 never sees a half-described PR.
+Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file lists every PR of the slice under its own `### PR <n>: <title>` heading, each in the PR description format below; it is the artifact the user approves at Gate 1. As each PR merges, record its PR number, merge date, and any scope change in the same file. The document is the slice's execution record, including the Codex review outcome for each PR and any slice whose failing test came from the `test-author` fallback rather than Codex (R-907). `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels or the plan has no PR block at all, so Gate 1 never sees a half-described PR.
 
 ## PR description format
 
@@ -47,7 +57,7 @@ Describe every PR with these fields, in the slice plan document and in the PR bo
 - **Problem:** what this PR solves and why it lands now.
 - **Approach:** how, and why this way. Short paragraphs, 2 to 4 sentences each, one idea per paragraph, blank lines between; never one block of text.
 - **Contents:** what is in the diff.
-- **Tests:** the tests that prove it.
+- **Tests:** the tests that prove it, and who wrote them: Codex by default, or the `test-author` subagent with the fallback reason (R-907).
 - **Review focus:** where the reviewer's attention pays most.
 - **Size:** approximate files and lines.
 
@@ -59,7 +69,7 @@ This skill is portable prose: it governs the slice, PR, and review cadence in an
 
 ## TDD rules (every task)
 
-1. **Red:** write the failing test first; run it and confirm it fails.
+1. **Red:** Codex writes the failing test first (R-907; the `test-author` subagent only as the recorded fallback); run it and confirm it fails.
 2. **Green:** write the minimal implementation to pass.
 3. **Refactor:** clean up with tests green.
 
@@ -70,6 +80,7 @@ Tests cite the spec's acceptance criteria. End-to-end tests come from the spec's
 - Don't start the next task, PR, or slice before the current one is approved and merged.
 - Don't write implementation before its failing test.
 - Don't merge without explicit approval; "looks fine" in chat is not a GitHub approval.
+- Don't merge before the Codex review ran and every finding is fixed or answered in the PR (R-517).
 - Don't widen scope beyond the approved slice; defer new ideas to a Later list.
 - Don't bundle unrelated concerns into one PR.
 - No per-task stops: inside an approved PR, run task after task without asking.

@@ -2,10 +2,14 @@
 # Covers: hook:git-workflow-guard
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
 # merge (R-514), denies a non-squash merge (R-512) except a rebase of a PR
-# labeled bundle whose every commit carries a Refs: trailer, and warns on a cross-cutting
+# labeled bundle whose every commit carries a Refs: trailer, denies any merge
+# whose PR body lacks a non-empty Codex review section (R-517), and warns on a cross-cutting
 # commit to main (R-511) and a surface-adding commit with no README (R-508),
 # whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
+# Name the failing assertion: under set -e a bare `[ ... ]` exits silently,
+# which left a CI failure with nothing but the file name to go on.
+trap 'echo "FAIL git-workflow-guard.test.sh line $LINENO: $BASH_COMMAND" >&2' ERR
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
 payload() { jq -nc --arg c "$1" --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}'; }
@@ -44,7 +48,8 @@ stubbed_decision() {
 stubbed_reason() {
   payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason'
 }
-BUNDLE_OK=$(write_gh_stub bundle-ok '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
+CODEX_BODY='## Summary\nWork.\n\n## Codex review\nTwo findings: one fixed in abc1234, one answered in the thread.\n\n## Testing\nGreen.'
+BUNDLE_OK=$(write_gh_stub bundle-ok '{"body":"'"$CODEX_BODY"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
 NO_LABEL=$(write_gh_stub no-label '{"labels":[{"name":"enhancement"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"Refs: IAN-2"}]}')
 MISSING_REFS=$(write_gh_stub missing-refs '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"No trailer here, Refs: IAN-2 inline only"}]}')
 GH_FAILS=$(write_gh_stub gh-fails '' 1)
@@ -61,8 +66,8 @@ case "$(stubbed_reason 'gh pr merge 42 --rebase' "$MISSING_REFS")" in *Refs:*) ;
 # The PR selector is the first positional argument, never a flag's value, and
 # --repo is forwarded: this stub answers as a bundle only for `42 --repo o/r`.
 SELECTOR_STUB="$STUB_DIR/selector"
-printf '%s\n' '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
-printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
+printf '%s\n' '{"body":"'"$CODEX_BODY"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
+printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits,body" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
 chmod +x "$SELECTOR_STUB"
 [ "$(stubbed_decision 'gh pr merge --subject 7 -R o/r --rebase 42' "$SELECTOR_STUB")" = "ask" ]
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SELECTOR_STUB")" = "deny" ]   # --repo dropped: a different PR
@@ -78,7 +83,7 @@ chmod +x "$SELECTOR_STUB"
 # does not look, so the bundle check cannot vouch for it.
 [ "$(stubbed_decision 'cd ../other && gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
 [ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
-[ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]  # env prefix still reaches R-514
+[ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --squash' "$BUNDLE_OK")" = "deny" ]  # R-517 cannot read that PR's body either
 # Two commits naming the same ticket are one ticket's history, not a bundle.
 SAME_TICKET=$(write_gh_stub same-ticket '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(a): wip","messageBody":"Refs: IAN-1"}]}')
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SAME_TICKET")" = "deny" ]
@@ -91,9 +96,126 @@ SLOW_START=$(date +%s)
 SLOW_OUT=$(payload 'gh pr merge 42 --rebase' "$STUB_DIR" | CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_GH_TIMEOUT_SECONDS=1 "$HOOK" 2>/dev/null)
 [ "$(printf '%s' "$SLOW_OUT" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
 [ $(($(date +%s) - SLOW_START)) -lt 10 ] || { echo "a hung gh must be cut off at the deadline" >&2; exit 1; }
-[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "ask" ]       # squash never consults gh
-[ "$(decision 'gh pr merge 42 --merge')" = "deny" ]        # wrong strategy (R-512)
-[ "$(decision 'gh pr merge 42 --squash')" = "ask" ]        # right strategy, still needs authorization (R-514)
+# A merge-commit strategy is denied before any gh call: this stub leaves a
+# marker file when consulted, and answers with a body that would pass R-517.
+MARKER_GH="$STUB_DIR/marker-gh"
+printf '#!/usr/bin/env bash\ntouch "%s"\ncat "%s"\n' "$STUB_DIR/gh-was-called" "$STUB_DIR/bundle-ok.json" >"$MARKER_GH"
+chmod +x "$MARKER_GH"
+[ "$(stubbed_decision 'gh pr merge 42 --merge' "$MARKER_GH")" = "deny" ]   # wrong strategy (R-512)
+[ ! -e "$STUB_DIR/gh-was-called" ] || { echo "a --merge deny must not consult gh" >&2; exit 1; }
+
+# Codex pre-merge review (R-517): every merge, squash included, reads the PR
+# body and passes only when a Markdown heading named "Codex review" is followed
+# by at least one non-blank line before the next heading.
+CODEX_OK=$(write_gh_stub codex-ok '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[]}')
+CODEX_LOWER=$(write_gh_stub codex-lower '{"body":"Intro.\r\n\r\n### codex review\r\nNo findings; checked the spec criteria B-1 to B-4.\r\n","labels":[],"commits":[]}')
+CODEX_MISSING=$(write_gh_stub codex-missing '{"body":"## Summary\nWork.\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_INLINE=$(write_gh_stub codex-inline '{"body":"## Summary\nCodex review is pending.","labels":[],"commits":[]}')
+CODEX_EMPTY=$(write_gh_stub codex-empty '{"body":"## Codex review\n\n   \n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_NULL=$(write_gh_stub codex-null '{"body":null,"labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_OK")" = "ask" ]       # section present: on to R-514's ask
+[ "$(stubbed_decision 'gh pr merge 42 --squash --delete-branch' "$CODEX_LOWER")" = "ask" ]  # any heading level, any case, CRLF
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_MISSING")" = "deny" ]  # no section
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_MISSING")" in *R-517*Codex\ review*) ;; *) echo "missing-section deny must name R-517 and the Codex review section" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INLINE")" = "deny" ]   # a mention in prose is not a section
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_EMPTY")" = "deny" ]    # a heading with nothing under it
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NULL")" = "deny" ]     # no body at all
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_FAILS")" = "deny" ]       # gh cannot answer: fail closed
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$GH_GARBAGE")" = "deny" ]     # unparseable answer: fail closed
+[ "$(stubbed_decision 'cd ../other && gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ]  # the hook cannot see that PR
+[ "$(stubbed_decision 'gh pr merge 42 -r' "$CODEX_OK")" = "deny" ]             # R-517 never waives R-512's bundle check
+# A section quoted inside a fenced code block (a PR template's example) is not
+# the section.
+CODEX_FENCED=$(write_gh_stub codex-fenced '{"body":"## Summary\nTemplate:\n```\n## Codex review\nexample text\n```\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCED")" = "deny" ]
+# One gh view vouches for one PR, so a command that merges two is denied.
+[ "$(stubbed_decision 'gh pr merge 42 --squash && gh pr merge 43 --squash' "$CODEX_OK")" = "deny" ]
+# --repo placed before the merge subcommand still merges; the hook cannot
+# parse that shape, so it is denied (fail closed) rather than allowed unseen.
+[ "$(stubbed_decision 'gh pr -R o/r merge 42 --squash' "$CODEX_OK")" = "deny" ]
+[ "$(stubbed_decision 'gh --repo o/r pr merge 42 --squash' "$CODEX_OK")" = "deny" ]
+[ "$(stubbed_decision 'gh pr --repo=o/r merge 42 --squash' "$CODEX_OK")" = "deny" ]
+[ "$(stubbed_decision 'gh pr list --search merge' "$CODEX_OK")" = "none" ]      # not a merge
+# Copilot round one: shapes that still merge but slipped past the matcher.
+[ "$(stubbed_decision $'gh pr \\\n  merge 42 --squash' "$CODEX_MISSING")" = "deny" ]   # line continuation
+[ "$(stubbed_decision $'gh pr \\\n  merge 42 --squash' "$CODEX_OK")" = "ask" ]         # ...and still reaches R-514 when clean
+[ "$(stubbed_decision 'env GH_DEBUG=1 gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ] # env wrapper, not parseable
+[ "$(stubbed_decision 'command gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ]       # command wrapper
+[ "$(stubbed_decision '/usr/local/bin/gh pr merge 42 --squash' "$CODEX_OK")" = "deny" ] # gh by path
+[ "$(stubbed_decision 'gh pr merge 42 --squash && gh pr -R o/r merge 43 --squash' "$CODEX_OK")" = "deny" ]  # mixed shapes
+[ "$(stubbed_decision 'git commit -m "docs: explain gh pr merge"' "$CODEX_OK")" != "deny" ]  # quoted mention in a message
+# A fence closes only on its own delimiter, and an indented code block is not a heading.
+CODEX_MIXED_FENCE=$(write_gh_stub codex-mixed-fence '{"body":"## Summary\n~~~\n```\n## Codex review\nexample\n~~~\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_MIXED_FENCE")" = "deny" ]
+CODEX_INDENTED=$(write_gh_stub codex-indented '{"body":"## Summary\nExample:\n\n    ## Codex review\n    example text\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INDENTED")" = "deny" ]
+CODEX_THREE_SPACES=$(write_gh_stub codex-three-spaces '{"body":"   ## Codex review\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_THREE_SPACES")" = "ask" ]      # up to three spaces is still a heading
+# Round-two review: a parenthesized mention is not a merge, and more wrapper
+# shapes are recognized.
+[ "$(stubbed_decision 'git commit -m "feat(enforce): deny (gh pr merge behind wrappers)"' "$CODEX_MISSING")" != "deny" ]
+for wrapped in '\gh pr merge 42 --squash' '"gh" pr merge 42 --squash' 'timeout 30 gh pr merge 42 --squash' \
+  'nice gh pr merge 42 --squash' 'bash -c "gh pr merge 42 --squash"' 'eval "gh pr merge 42 --squash"' \
+  'echo 42 | xargs gh pr merge --squash' 'sudo -u me gh pr merge 42 --squash' 'env -C /tmp gh pr merge 42 --squash'; do
+  [ "$(stubbed_decision "$wrapped" "$CODEX_OK")" = "deny" ] || { echo "wrapped merge not denied: $wrapped" >&2; exit 1; }
+done
+[ "$(stubbed_decision $'echo x\\\\\ngh pr merge 42 --squash' "$CODEX_MISSING")" = "deny" ]   # an escaped backslash does not join lines
+# An HTML comment is not the section, and a fence does not close on a line with trailing text.
+CODEX_COMMENTED=$(write_gh_stub codex-commented '{"body":"## Summary\n\n<!--\n## Codex review\n<reviewer>, <range>, findings\n-->\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_COMMENTED")" = "deny" ]
+CODEX_FENCE_TRAILING=$(write_gh_stub codex-fence-trailing '{"body":"```\ncode\n``` trailing\n## Codex review\nreal content\n```","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCE_TRAILING")" = "deny" ]
+# Round three: merges are found by a quote-aware shell scan, not a regex, so
+# control flow, quoting, and escapes cannot hide one, and a mention inside a
+# quoted argument or a heredoc is never read as one.
+for hidden in '{ gh pr merge 42 --squash; }' '( gh pr merge 42 --squash )' 'if true; then gh pr merge 42 --squash; fi' \
+  'gh "pr" merge 42 --squash' "gh pr 'merge' 42 --squash" '"gh" "pr" "merge" 42 --squash' 'g\h pr merge 42 --squash' \
+  'gh pr mer""ge 42 --squash' 'eval gh\ pr\ merge\ 42\ --squash' 'sh -c gh\ pr\ merge\ 42\ --squash' \
+  'x=$(gh pr merge 42 --squash)' '{ cd ../other; } && gh pr merge 42 --squash' 'pushd ../other && gh pr merge 42 --squash'; do
+  [ "$(stubbed_decision "$hidden" "$CODEX_OK")" = "deny" ] || { echo "hidden merge not denied: $hidden" >&2; exit 1; }
+done
+for mention in 'GIT_EDITOR=true git commit -m "fix(enforce): gh pr merge wrapper matcher"' \
+  'time git commit -m "fix: deny gh pr merge behind wrappers"' \
+  "bash -c 'git commit -m \"fix: deny gh pr merge behind wrappers\"'" \
+  'env FOO=1 gh pr comment 42 --body "deny gh pr merge behind wrappers"' \
+  'echo "; gh pr merge 42 --squash"' \
+  $'cat > notes.md <<\'EOF\'\ntimeout 30 gh pr merge 42 --squash\nEOF'; do
+  [ "$(stubbed_decision "$mention" "$CODEX_MISSING")" != "deny" ] || { echo "a mention was read as a merge: $mention" >&2; exit 1; }
+done
+# Inline HTML comments and a `<!--` in a code span do not hide a real section.
+CODEX_HEADING_COMMENT=$(write_gh_stub codex-heading-comment '{"body":"## Codex review <!-- required -->\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_HEADING_COMMENT")" = "ask" ]
+CODEX_LINE_COMMENT=$(write_gh_stub codex-line-comment '{"body":"## Codex review\nReviewer: Codex. No findings. <!-- generated -->","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_LINE_COMMENT")" = "ask" ]
+CODEX_CODE_SPAN=$(write_gh_stub codex-code-span '{"body":"## Codex review\nReviewer: Codex. Fixed the `<!--` handling.\n## Testing\nGreen.","labels":[],"commits":[]}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_CODE_SPAN")" = "ask" ]
+# Round four: a merge fed to a shell on stdin, a backtick substitution, and a
+# merge spelled through an expansion are unreadable, so they deny.
+for hidden in $'bash <<\'EOF\'\ngh pr merge 42 --squash\nEOF' $'sh -s <<EOF\ngh pr merge 42 --squash\nEOF' \
+  'echo "gh pr merge 42 --squash" | bash' 'x=`gh pr merge 42 --squash`' "gh pr \$'merge' 42 --squash" \
+  'gh pr mer${x:-}ge 42 --squash' 'gh pr ${m:-merge} 42 --squash' 'g=gh; $g pr merge 42 --squash' \
+  'cmd="gh pr merge 42 --squash"; $cmd'; do
+  [ "$(stubbed_decision "$hidden" "$CODEX_OK")" = "deny" ] || { echo "FAIL: hidden merge not denied: $hidden" >&2; exit 1; }
+done
+# The flags come from the merge that runs, never from a quoted mention before it.
+[ "$(stubbed_decision "echo 'x gh pr merge 41 y'; gh pr merge 42 --merge" "$CODEX_OK")" = "deny" ]
+for mention in 'git merge highlight-branch' 'echo "through merged"' 'bash scripts/run.sh --gh-merge-check'; do
+  [ "$(stubbed_decision "$mention" "$CODEX_MISSING")" != "deny" ] || { echo "FAIL: a mention was read as a merge: $mention" >&2; exit 1; }
+done
+# With the shell scan helper missing, the hook still denies a real merge and
+# leaves an ordinary command alone.
+NO_HELPER_HOOKS=$(mktemp -d)
+cp "$CLAUDE_HARNESS_ROOT"/hooks/*.sh "$NO_HELPER_HOOKS/"
+rm -f "$NO_HELPER_HOOKS/shell-command-tokens.sh"
+no_helper_decision() {
+  local out
+  out=$(payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$CODEX_OK" bash "$NO_HELPER_HOOKS/git-workflow-guard.sh" 2>/dev/null)
+  if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+[ "$(no_helper_decision 'gh pr merge 42 --squash')" = "deny" ]
+[ "$(no_helper_decision 'git merge highlight-branch')" = "none" ]
+[ "$(no_helper_decision 'echo "through merged"')" = "none" ]
+rm -rf "$NO_HELPER_HOOKS"
 [ "$(decision 'gh pr view 42')" = "none" ]                 # read-only gh call untouched
 
 # Fixture repo on main, with a remote-free push and a feature branch to compare.
