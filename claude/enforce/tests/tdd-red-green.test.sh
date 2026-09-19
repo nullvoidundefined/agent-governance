@@ -300,6 +300,7 @@ scores='{title:"scores", fullName:"scores", ancestorTitles:[], status:"passed", 
 case "$(cat "$PWD/.stub-mode")" in
   teardown) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"Error: teardown broke\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
   red) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}]}]}" ;;
+  duplicate) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"failed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: expect(received).toBe(expected)\"]}, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"failed\", failureMessages:[\"Error: thrown: Exceeded timeout of 5000 ms\"]}]}]}" ;;
   green) jq -n --arg n "$name" "{testResults:[{name:\$n, status:\"passed\", message:\"\", assertionResults:[$scores, {title:\"doubles\", fullName:\"boost doubles\", ancestorTitles:[\"boost\"], status:\"passed\", failureMessages:[]}]}]}" ;;
 esac > "$report"
 STUB
@@ -310,6 +311,10 @@ cd "$J"
 bash "$TDD" open "J-1 boost doubles" >/dev/null
 echo teardown > .stub-mode
 expect_fail "jest node red with a suite-level error" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'teardown broke' || { echo "FAIL: node red must refuse a file whose suite-level message carries an error, naming it"; exit 1; }
+# Two tests may share one full name; each result is classified on its own, so
+# a timeout beside an assertion under the same name is refused (PR #74 review).
+echo duplicate > .stub-mode
+expect_fail "jest node red with a duplicate-named unclassified failure" bash "$TDD" red "src/__tests__/score.test.js::boost doubles" | grep -q 'boost doubles fails for a reason this script does not classify: Error: thrown: Exceeded timeout' || { echo "FAIL: each result sharing a full name must be classified on its own"; exit 1; }
 echo red > .stub-mode
 expect_fail "jest node red on a bare title" bash "$TDD" red "src/__tests__/score.test.js::doubles" | grep -q 'no test in src/__tests__/score.test.js matches doubles' || { echo "FAIL: under Jest a bare title must be refused; the id is the full name"; exit 1; }
 out=$(bash "$TDD" red "src/__tests__/score.test.js::boost doubles" 2>&1) || { echo "FAIL: jest node red must accept the named failing test; output: $out"; exit 1; }
