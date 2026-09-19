@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-48 of 54 hook registrations port, across 9 Cursor events.
+50 of 56 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -38,6 +38,8 @@
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |
+| `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `afterShellExecution` |
+| `pr-monitor-reminder` | PostToolUse (Bash) | ported: `afterShellExecution` |
 | `new-file-header-reminder` | PostToolUse (Write) | ported: `afterFileEdit` |
 | `flat-directory-reminder` | PostToolUse (Write) | ported: `afterFileEdit` |
 | `spec-glossary-check` | PostToolUse (Write) | ported: `afterFileEdit` |

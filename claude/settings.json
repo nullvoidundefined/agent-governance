@@ -309,6 +309,16 @@
                         "type": "command",
                         "command": "~/.claude/hooks/redact-output.sh",
                         "statusMessage": "Scanning output for secrets..."
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/draft-pr-on-first-push.sh",
+                        "timeout": 60
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/pr-monitor-reminder.sh",
+                        "timeout": 10
                     }
                 ]
             },

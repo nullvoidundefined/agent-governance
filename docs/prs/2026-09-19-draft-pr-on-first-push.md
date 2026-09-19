@@ -1,0 +1,56 @@
+# PR: draft pull request on first push, and the PR monitor instruction (R-518)
+
+Ticket: IAN-137. Branch: `feat/draft-pr-on-first-push`. Time from the first implementation commit to this document: about 17 minutes (14:26 to 14:43 on 2026-09-19, from `git log` and `date`).
+
+## Summary
+
+Before this change, a pushed branch sat without a pull request until the session remembered to open one, and a PR that was opened got no CI or review monitoring unless someone turned the desktop app's monitor on by hand. This PR adds rule R-518 and two PostToolUse Bash hooks. `draft-pr-on-first-push.sh` opens a draft pull request itself, with `gh pr create --draft`, after a successful push of a non-default branch that has never had a PR. It applies the same R-605 ticket check as the PreToolUse gate and never fails the push. `pr-monitor-reminder.sh` tells the session, after any successful `gh pr create`, to call `mcp__ccd_pr__set_monitor` with auto-fix, comment handling, and auto-archive switched on, and never to enable auto-merge unless the user asks.
+
+## What changed
+
+- `claude/hooks/shell-command-scan.sh` and `claude/hooks/pr-range-checks.sh` (new, sourced helpers) hold the command walk (the `cd` replay and a generic `find_simple_command <dir> <matcher>`), the `Refs:` detection, the base resolution, and the docs-only and trivial-tier checks. These were previously private to `pr-ticket-ref-gate.sh`. The word scan itself is `claude/hooks/shell-command-tokens.sh`, which main extracted from the same gate for `git-workflow-guard.sh` while this branch was open; the merge keeps that file as the one scanner and `shell-command-scan.sh` sources it. `is_pr_create_command` is the matcher the gate and the monitor hook share.
+- `claude/hooks/pr-ticket-ref-gate.sh` now sources both helpers and behaves as before. Its existing fixture passes unchanged. When a helper file is missing, the gate asks rather than failing open.
+- `claude/hooks/draft-pr-on-first-push.sh` (new) opens the draft. The title is the oldest commit subject in the range, and the body lists the commit subjects, then the distinct `Refs:` lines, then the attribution line. It exits silently for a dry run, a delete, a tag-only push, a quoted `git push`, a push of `main`/`master`/`staging` or the default branch, a branch that already has an open PR, and the `.enforce.json` `"autoDraftPr": false` opt-out. It opens nothing for a branch whose earlier PR was merged or closed, and names that PR in one line of context. It reports a missing ticket in the session context and opens nothing. Every `gh` call is bounded by `CLAUDE_GH_TIMEOUT_SECONDS`.
+- `claude/hooks/pr-monitor-reminder.sh` and `claude/hooks/pr-monitor-instruction.sh` (new) handle the monitor instruction. The instruction text lives in the helper, and the draft hook emits it too, because the draft hook's own `gh` call is not a tool call and no other hook sees it.
+- `claude/CLAUDE.md` gains the R-518 norm line, and `claude/rulebook/reference.md` gains its Spec, Scope, and Enforcement entry. `claude/enforce/manifest.json` gains two R-518 rows, and `claude/settings.json` registers both hooks in the PostToolUse Bash block, with 60-second and 10-second timeouts. `claude/README.md` and `claude/enforce/README.md` describe the hooks and the `autoDraftPr` key. The Codex and Cursor ports and `claude/enforce/hook-hashes.txt` are regenerated.
+
+## Architectural decisions
+
+- **Two hooks and three helpers, not one hook.** One script could handle both the push and the `gh pr create` event. It was split because each file then has one responsibility (R-318). The shared scanner also meant the monitor hook only needed a matcher.
+- **The command walk was factored out as well, beyond the four named range functions.** Push detection has to be shell-aware in the same way the gate's `gh pr create` detection is, so the draft hook uses the same scanner (`shell-command-tokens.sh`) and the same walk rather than a copy (R-308).
+- **Success is confirmed from git state, not only from the tool response.** The response is checked for interruption and rejection text. In addition, the remote-tracking ref for the pushed branch must equal HEAD. A rejected push, or a push of commits the remote does not have, therefore opens nothing whatever the response's format.
+- **No `if: "Bash(git *)"` filter on the registration.** A `cd <repo> && git push` would never match a prefix filter, which is the same reason `pr-ticket-ref-gate.sh` carries none. The hook's own prefilter exits after one `jq` and one `grep`.
+- **Pushes of a branch other than the checked-out one are skipped.** The shared range checks read `base..HEAD`, so acting on another branch would build the draft from the wrong commits.
+- **A branch that has ever had a PR opens no draft** (owner decision after review). The hook lists the branch's PRs in every state. An open PR means silence, as before. A merged or closed PR, with none open, means the branch name is being reused, so the hook opens nothing and emits one line naming the earlier PR's number, state, and URL, saying a deliberate `gh pr create` is needed. This closes the reviewer's sixth finding: a squash-merged branch pushed again would otherwise have opened a duplicate draft for work that had already shipped.
+- **The tool response is read in both shapes.** Claude Code passes `tool_response` as an object with `stdout` and `stderr`; the Cursor adapter passes the whole shell output as a string. Copilot's review found that both hooks read only the object fields, so under Cursor a rejected push showed no failure text and a successful `gh pr create` showed no URL. `hooks/tool-response-output.sh` now normalizes both shapes for both hooks, and a push counts as successful only when the output carries no rejection text and the tracking-ref check passes.
+- **The monitor instruction also names `mcp__ccd_pr__bind_pr`.** `set_monitor` works on the session's bound PR, so the instruction says to bind first if the call reports that no PR is bound.
+
+## Testing
+
+`claude/hooks/tests/draft-pr-on-first-push.test.sh` (59 assertions) stubs `gh` on PATH and uses real git against local bare remotes, so nothing reaches GitHub. It covers:
+- a first push with Refs opening a draft, including the exact title, the body, and the monitor instruction;
+- an existing open PR, a merged or closed earlier PR on the branch, a push of main, and failed, interrupted, and lagging pushes;
+- dry-run, `-n`, delete, and tag pushes;
+- a quoted push in a commit message and in an echo;
+- the opt-out;
+- no Refs with a tracker configured, and the degraded no-tracker path;
+- the trivial-tier and docs-only exemptions;
+- gh failing, gh missing, and a malformed timeout;
+- redirections, `@`, and `--repo`.
+
+`claude/hooks/tests/pr-monitor-reminder.test.sh` (16 assertions) covers a successful create, including a `cd`-prefixed heredoc form. It also covers a failed, interrupted, and already-exists create, a quoted `gh pr create`, and unrelated commands.
+
+Both full suites pass: `bash claude/hooks/tests/run-tests.sh` (22 fixtures) and `bash claude/enforce/tests/run-tests.sh` (86 fixtures). These include `pr-ticket-ref-gate.test.sh`, the manifest and hash closures, `guard-fail-closed.test.sh`, and `deny-tier-set-convention.test.sh`. `node translate/codex.mjs --check` and `node translate/cursor.mjs --check` pass, and `shellcheck --severity=warning` is clean on every new file.
+
+The rule was numbered R-517 on this branch and became R-518 when the merge of main brought in a different R-517 (the Codex pre-merge review). A fresh reviewer subagent read the diff before this PR opened and reported six findings. Five were fixed test-first in `a128b75`:
+- `git push 2>&1 | tail` read `2>` as the remote;
+- `git push origin @` was not treated as HEAD;
+- `--repo <name>` dropped the remote name;
+- a non-integer timeout broke the deadline arithmetic;
+- gh's "already exists" failure, merged into stdout, triggered the monitor reminder.
+
+The sixth, a merged or closed branch getting a new draft when pushed again, went to the owner. The owner decided that a branch that has ever had a PR opens no draft, and the follow-up `fix(hooks)` commit implements that test-first, with merged, closed, and open-beside-closed cases.
+
+## Reflection
+
+What I understand now: a PostToolUse hook that acts on the world has to verify the world's state rather than trust the text of the command. The tracking-ref comparison is the check that makes the hook safe against every push-failure format at once. What I got wrong first: the push-argument parser treated every non-flag word as the remote or a refspec. The first `2>&1` it met therefore became a remote named `2>`. The fixtures had not caught this, because none of them ran the push the way an agent usually does, with its output redirected. The fixture's `make_repo` also shifted its arguments before it named the bare remote, which only surfaced once a test added a second remote.

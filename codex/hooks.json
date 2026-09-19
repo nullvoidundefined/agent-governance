@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh redact-output",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh redact-output draft-pr-on-first-push pr-monitor-reminder",
             "timeout": 60,
             "statusMessage": "Scanning output for secrets..."
           }

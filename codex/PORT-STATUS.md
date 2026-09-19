@@ -2,7 +2,7 @@
 
 # Codex port status
 
-50 of 54 hook registrations port, across 6 Codex events.
+52 of 56 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -38,6 +38,8 @@
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
+| `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
+| `pr-monitor-reminder` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `new-file-header-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `flat-directory-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `spec-glossary-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
