@@ -92,6 +92,34 @@ resolve_relative_directory() {
   esac
 }
 
+# is_commit_subcommand <word>...: true when the words after `git` run
+# `commit`: git's global options (and the values of -C, -c, --git-dir,
+# --work-tree, --namespace) are skipped, and the first other word must be
+# commit, so `git log --grep commit` is not a commit.
+is_commit_subcommand() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -C | -c | --git-dir | --work-tree | --namespace | --super-prefix | --config-env) shift 2 2>/dev/null || shift ;;
+      -*) shift ;;
+      *) [ "$1" = "commit" ]; return ;;
+    esac
+  done
+  return 1
+}
+
+# has_git_commit_in_string <word>...: true when a shell string (the words of
+# sh -c or eval, quotes dropped) runs `git ... commit` anywhere in it.
+has_git_commit_in_string() {
+  local -a string_words=()
+  local word_index
+  read -r -a string_words <<< "$(printf '%s ' "$@" | tr -d "\"'" | tr ';&|(){}' '      ')"
+  for ((word_index = 0; word_index < ${#string_words[@]}; word_index++)); do
+    [ "$(basename -- "${string_words[word_index]}")" = "git" ] || continue
+    is_commit_subcommand "${string_words[@]:word_index+1}" && return 0
+  done
+  return 1
+}
+
 # is_expanded_word <word>: true when the word holds a parameter expansion or a
 # command substitution, whose value the scan never computes.
 is_expanded_word() {
@@ -176,13 +204,20 @@ record_git_commit_directory() {
 }
 
 # replay_directory_change <word>...: replays a cd or pushd onto TARGET_DIR
-# through apply_cd, and sets IS_DIRECTORY_UNKNOWN when the target is `-`, is
-# built by expansion, or does not exist, since a commit after it runs in a
+# through apply_cd, resolves the quoted repo-top idiom
+# `cd "$(git rev-parse --show-toplevel)"` itself, and sets
+# IS_DIRECTORY_UNKNOWN when the target is `-`, is otherwise built by
+# expansion, or does not exist, since a commit after it runs in a
 # directory the scan cannot name; a later cd to a literal absolute directory
 # makes it known again.
 replay_directory_change() {
   local target=""
   while [ "$#" -gt 0 ]; do case "$1" in -?*) shift ;; *) target="$1"; break ;; esac; done
+  if [ "$target" = '$(git rev-parse --show-toplevel)' ]; then
+    target=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null) || { IS_DIRECTORY_UNKNOWN=1; return 0; }
+    TARGET_DIR="$target"
+    return 0
+  fi
   if [ "$target" = "-" ] || is_expanded_word "$target"; then IS_DIRECTORY_UNKNOWN=1; return 0; fi
   target=$(resolve_relative_directory "$TARGET_DIR" "${target:-~}")
   if [ -d "$target" ]; then
@@ -206,11 +241,11 @@ inspect_commit_words() {
   [ "${#command_words[@]}" -gt 0 ] || return 0
   case "$(basename -- "${command_words[0]}")" in
     sh | bash | zsh | dash | ksh | eval)
-      [[ "${command_words[*]}" =~ (^|[^A-Za-z0-9_./-])git[[:space:]]([^\;\&\|]*[[:space:]])?commit([[:space:]]|$) ]] && IS_COMMIT_UNREADABLE=1
+      has_git_commit_in_string "${command_words[@]:1}" && IS_COMMIT_UNREADABLE=1
       return 0 ;;
   esac
   if is_expanded_word "${command_words[0]}"; then
-    case " ${command_words[*]} " in *" commit "*) IS_COMMIT_UNREADABLE=1 ;; esac
+    is_commit_subcommand "${command_words[@]:1}" && IS_COMMIT_UNREADABLE=1
     return 0
   fi
   record_git_commit_directory "$TARGET_DIR" "${command_words[@]}"

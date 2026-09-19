@@ -334,5 +334,41 @@ check "S-4 sudo -k git commit denies" is_deny
 bash_gate 'x=git; $x commit -m x' "$LL4"
 check "S-4 expansion-built command word then commit denies" is_deny
 
+# --- IAN-149 review round 3 ---------------------------------------------------
+# U-1: cd to the toplevel of the cwd's own repo is resolvable: judged by the ledger, not as unreadable.
+U1_TK=$(make_ticketed u1-ticketed); mkdir -p "$U1_TK/src"
+U1_LL=$(make_repo u1-ledgerless); mkdir -p "$U1_LL/src"
+U1_COMMAND='cd "$(git rev-parse --show-toplevel)" && git commit -m x'
+bash_gate "$U1_COMMAND" "$U1_TK/src"
+check "U-1 cd to the toplevel of a ticketed repo then commit allows" is_silent
+bash_gate "$U1_COMMAND" "$U1_LL/src"
+check "U-1 cd to the toplevel of a ledgerless repo then commit denies" is_deny
+check "U-1 ledgerless deny carries the ticket reason (R-605)" reason_has "R-605"
+check "U-1 ledgerless deny is not the unreadable reason" bash -c '! jq -r ".hookSpecificOutput.permissionDecisionReason // \"\"" <<< "$0" | grep -qF cannot' "$OUT"
+
+# U-2: shell strings are read for a real commit subcommand, not the word commit.
+U2_TK=$(make_ticketed u2-ticketed); U2_LL=$(make_repo u2-ledgerless)
+while IFS= read -r command; do
+  bash_gate "$command" "$U2_TK"
+  check "U-2 '$command' from a ticketed repo allows" is_silent
+done <<'SHAPES'
+bash -c "git log --grep commit"
+bash -c "git log --grep 'a commit here'"
+sh -c 'git -C . log --oneline commit'
+SHAPES
+while IFS= read -r command; do
+  bash_gate "$command" "$U2_LL"
+  check "U-2 '$command' from a ledgerless repo denies" is_deny
+done <<'SHAPES'
+bash -c "git -C . commit -m x"
+sh -c 'git -c a=b commit -m x'
+SHAPES
+
+# U-3: an expansion-built command word is unreadable only when commit is a real argument.
+bash_gate '$EDITOR notes.md # commit later' "$U2_TK"
+check "U-3 '\$EDITOR notes.md # commit later' from a ticketed repo allows" is_silent
+bash_gate '$GIT -C . commit -m x' "$U2_LL"
+check "U-3 '\$GIT -C . commit -m x' from a ledgerless repo denies" is_deny
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"
