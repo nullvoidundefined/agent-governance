@@ -4,7 +4,7 @@ Date: 2026-09-19
 
 ## The question
 
-A skeptical reviewer reading this repository sees 79 numbered rules, a 94 KB rulebook, a rule about how to write rules (R-206), and a commit history where much of the work is the system maintaining itself: hash-manifest regeneration, port maps conflicting on merges, and sync bugs such as reporting a failed pre-copy step as a successful copy. The fair version of the critique is not "this is bad". It is "what is the maintenance tax, and would the system survive contact with four other people's preferences?" This document answers both with numbers from the history, names what would change the answer, and says what would change in a team setting.
+A skeptical reviewer reading this repository sees 81 numbered rules, a 100 KB rulebook, a rule about how to write rules (R-206), and a commit history where much of the work is the system maintaining itself: hash-manifest regeneration, port maps conflicting on merges, and sync bugs such as a sync that discarded its own stderr, so a file it kept instead of removing was reported to nobody (fixed in `bde12cd`). The fair version of the critique is not "this is bad". It is "what is the maintenance tax, and would the system survive contact with four other people's preferences?" This document answers both with numbers from the history, names what would change the answer, and says what would change in a team setting.
 
 ## The short answer
 
@@ -12,14 +12,14 @@ About a third of all commits carry harness self-maintenance, and roughly two thi
 
 ## The numbers
 
-The history covers 282 commits from 2026-05-27 to 2026-09-19. Commits were classified by conventional type and by the files they touched.
+The history counts below were measured at commit `1aca2e6`, covering 282 commits from 2026-05-27 to 2026-09-19; later commits shift them by one or two without changing any percentage. Commits were classified by conventional type and by the files they touched.
 
 | Measure | Value |
 |---|---|
 | Commits touching `claude/enforce/hook-hashes.txt` | 89 of 282 (32%) |
 | Commits touching generated `codex/` or `cursor/` output | 42 |
 | Commits touching port maps or port status | 15 |
-| Commits touching only records (handoffs, PR docs, audits, issues, memory) | 40 (14%) |
+| Commits touching only records (`docs/session-handoff`, `docs/prs/`, `docs/audits/`, `ISSUES.md`, `TODO.md`, `global-memory/`) | 30 (11%) |
 | `fix` commits | 69 |
 | Commits since 2026-09-15 | 120 in five days, driven by two audits and their remediation |
 | Harness share of all commits across the owner's repositories, 2026-09-15 to 2026-09-18 | 85% (IAN-121 baseline) |
@@ -39,13 +39,13 @@ The 69 fixes, classified by hand from their subjects:
 
 2. **Checked-in generated ports.** `codex/` and `cursor/` are generated from `claude/` by `translate/*.mjs`, yet they are committed, so every rule change produces a second diff and every merge can conflict in generated output and in the port maps. The usual remedy is to stop committing generated output and generate it at sync time, keeping a CI `--check` that the generator runs cleanly. If committed output must stay for readability, mark it generated and resolve conflicts by regenerating rather than merging.
 
-3. **Copy-based sync into three live trees.** The sync bugs (files left behind after the repository stopped tracking them, lockfile changes that did not reinstall dependencies, a failed pre-copy step reported as success) all come from copying a checkout into live directories and then reconciling drift. Plugin packaging, which Claude Code supports natively and which ECC uses, removes the copy step for the Claude side. This is exactly the counter-hypothesis that IAN-121 is testing: if harness fixes stay high after the test-architecture work, the distribution design is the structural cost.
+3. **Copy-based sync into three live trees.** The sync bugs (files left behind after the repository stopped tracking them, lockfile changes that did not reinstall dependencies, a successful sync that discarded its stderr so a kept file was reported to nobody) all come from copying a checkout into live directories and then reconciling drift. Plugin packaging, which Claude Code supports natively and which ECC uses, removes the copy step for the Claude side. This is exactly the counter-hypothesis that IAN-121 is testing: if harness fixes stay high after the test-architecture work, the distribution design is the structural cost.
 
 4. **Fixture hermeticity.** About ten fixes made tests stop reading ambient harness state or the real repository. This source looks like one-time debt: once fixtures run from scratch directories with their own configuration, it should stop recurring.
 
 ## The bureaucracy objection, rule by rule
 
-Rule IDs are the join key between a norm, its enforcer, its fixture, and its fire log. They are what make "which rules actually fire, and which depend on recall" answerable at all: 49 of the 79 norms are enforced mechanically, 2 by the judge, and 28 depend on recall, and that split is only knowable because each rule has an ID and a manifest entry. That is the engineering answer. The presentation answer is weaker, because a reader meets the IDs before meeting the reasons.
+Rule IDs are the join key between a norm, its enforcer, its fixture, and its fire log. They are what make "which rules actually fire, and which depend on recall" answerable at all: at the time of writing, 51 of the 81 norms are enforced mechanically, 2 by the judge, and 28 depend on recall, and that split is only knowable because each rule has an ID and a manifest entry. That is the engineering answer. The presentation answer is weaker, because a reader meets the IDs before meeting the reasons.
 
 - **R-003 (synced harness at SessionStart).** This reads as process, but it is the distribution mechanism, and its bug history is the largest single source of the tax above. It is the rule most likely to be replaced rather than defended.
 - **R-105 (confirm destructive MCP actions).** This is safety floor and a team keeps it. It reads as bureaucracy mainly because its exemption for tracker writes is spelled out in the norm line; that detail belongs in the reference, not the always-loaded line.
