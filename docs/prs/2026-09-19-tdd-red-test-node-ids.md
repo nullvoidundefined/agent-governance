@@ -1,5 +1,7 @@
 # tdd.sh red accepts test node ids
 
+Refs: IAN-139
+
 ## Summary
 
 `enforce/tdd.sh red <test file>...` proves a slice's RED by requiring every test in each named file to fail. That fits a slice that adds a new test file, but not a slice that adds tests to a file which already holds passing ones. On 2026-09-19 the review fixes on `templates/template-fastapi-nuxt` PR #6 added failing tests to existing pytest files, `tdd.sh red` refused every one of those files because of the passing tests beside the new ones, and the RED had to be recorded by hand in a commit message. That leaves the lock and the protected-path guard (R-410, R-412) out of the loop. This change lets `red` name individual tests as well as whole files, so review fixes run under the same lock as any other slice.
