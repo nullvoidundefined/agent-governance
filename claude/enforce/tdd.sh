@@ -29,7 +29,8 @@
 #       test id on a *.test.sh path is refused. Records the pass count outside
 #       the named tests as the baseline (the unnamed tests of an id-named file
 #       count toward it), the sha256 of every containing file with its ids,
-#       and moves to phase "red".
+#       and moves to phase "red". A file named both whole and by id is
+#       refused, and so is a skipped test anywhere in an id-named file.
 #   tdd.sh green
 #       requires the containing files to be byte-identical to the lock and,
 #       when the lock is committed, to the commit that introduced it (the RED
@@ -446,8 +447,10 @@ classify_named() {
   done < <(printf '%s' "$ids" | jq -r '.[]')
   local named_filter="$JQ_TEST_IDS"'[.assertionResults[] | select(named_by($ids; $kind))]'
   local offenders
-  offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$named_filter"' | map(select(.status == "skipped" or .status == "pending" or .status == "todo") | $rel + "::" + test_key) | join(", ")')
-  [ -z "$offenders" ] || die "$offenders is skipped; a RED test must run and fail (R-401)"
+  # A skip anywhere in the file is refused, as a whole-file red refuses it: a
+  # named test must run, and an unnamed one skipped has lost its pass status.
+  offenders=$(printf '%s' "$record" | jq -r --arg rel "$rel" "$JQ_TEST_IDS"'[.assertionResults[] | select(.status == "skipped" or .status == "pending" or .status == "todo") | $rel + "::" + test_key] | join(", ")')
+  [ -z "$offenders" ] || die "$offenders is skipped; a RED test must run and fail, and the tests beside it must keep running (R-401)"
   offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$named_filter"' | map(select(.status == "passed") | $rel + "::" + test_key) | join(", ")')
   [ -z "$offenders" ] || die "$offenders already passes. A RED test fails before the implementation exists; remove or sharpen it"
   offenders=$(printf '%s' "$record" | jq -r --argjson ids "$ids" --arg kind "$RUNNER_KIND" --arg rel "$rel" "$JQ_TEST_IDS"'[.assertionResults[] | select(.status == "failed" and (named_by($ids; $kind) | not)) | $rel + "::" + test_key] | join(", ")')
@@ -503,14 +506,16 @@ names_json() {
 spec_named() { jq -c --arg root "$ROOT_PHYSICAL" 'map({name: ($root + "/" + .path), ids: (.ids // null)})' <<< "$1"; }
 
 # add_named <spec json> <rel> <id or "">: merges one red argument into the
-# spec. A file named whole anywhere in the arguments stays whole; ids named
-# for one file collect on one entry, without duplicates.
+# spec. Ids named for one file collect on one entry, without duplicates. A
+# file named both whole and by id is refused, since one of the two forms
+# would otherwise be dropped without a word.
 add_named() {
   jq -c --arg p "$2" --arg i "$3" '(map(.path) | index($p)) as $at
     | if $at == null then . + [{path: $p, ids: (if $i == "" then null else [$i] end)}]
-      elif $i == "" or .[$at].ids == null then .[$at].ids = null
-      elif (.[$at].ids | index($i)) != null then .
-      else .[$at].ids += [$i] end' <<< "$1"
+      elif ($i == "") != (.[$at].ids == null) then error("mixed")
+      elif $i == "" or (.[$at].ids | index($i)) != null then .
+      else .[$at].ids += [$i] end' <<< "$1" 2>/dev/null \
+    || die "$2 is named whole and by test id; name the whole file to RED every test in it, or only the ids of the new tests"
 }
 
 # --- subcommands -------------------------------------------------------------
@@ -586,7 +591,7 @@ cmd_red() {
     case "$file" in *.test.sh) [ -z "$id" ] || die "$file is a bash fixture, which is one test: name the fixture file, not a test inside it (test ids apply to pytest, Vitest, and Jest)" ;; esac
     rel=$(relative "$file")
     grep -qE "$tests_pattern" <<< "$rel" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
-    spec=$(add_named "$spec" "$rel" "$id")
+    spec=$(add_named "$spec" "$rel" "$id") || exit 1
   done
   while IFS= read -r rel; do rels+=("$rel"); done < <(jq -r '.[].path' <<< "$spec")
   run_suite "${rels[@]}"

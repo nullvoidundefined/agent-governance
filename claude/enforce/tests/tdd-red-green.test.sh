@@ -8,7 +8,8 @@
 # bundled in enforce/node_modules (pinned in enforce/package.json), linked into
 # a throwaway project, so the JSON-reporter parsing is exercised against live
 # output rather than a stub. A test node id (`path::<full test name>`) REDs a
-# new test in a file that already holds a passing one. A second throwaway
+# new test in a file that already holds a passing one. Jest is not driven: no
+# Jest is bundled, and its JSON report carries the same fullName field. A second throwaway
 # project drives the bash *.test.sh runner through the real
 # run-fixture-shards.sh, where a test id is refused because a fixture file is
 # one test, and close from open before any test is locked.
@@ -214,6 +215,15 @@ bash "$TDD" open "B-3 boost doubles the score" >/dev/null
 expect_fail "file-level red on a file with a passing test" bash "$TDD" red src/__tests__/score.test.ts | grep -q 'scores a job at 2' || { echo "FAIL: file-level red must still refuse a file holding a passing test"; exit 1; }
 expect_fail "node red on an unknown name" bash "$TDD" red "src/__tests__/score.test.ts::doubles the score" | grep -q 'no test in src/__tests__/score.test.ts matches doubles the score' || { echo "FAIL: a bare title that is not the full name must be refused as matching no test"; exit 1; }
 expect_fail "node red on a passing test" bash "$TDD" red "src/__tests__/score.test.ts::scores a job at 2" | grep -q 'already passes' || { echo "FAIL: a named passing test must be refused as passing"; exit 1; }
+# An unnamed test that fails, or is skipped, beside the named one is refused
+# by its full name (PR review): the file's other tests keep their status.
+cp src/__tests__/score.test.ts "$N/score.test.ts.saved"
+sed -i.bak 's/toBe(2)/toBe(5)/' src/__tests__/score.test.ts && rm -f src/__tests__/score.test.ts.bak
+expect_fail "node red beside a failing unnamed test" bash "$TDD" red "$NODE" | grep -q 'src/__tests__/score.test.ts::scores a job at 2 fails but was not named' || { echo "FAIL: a failing unnamed test in an id-named file must be refused by its full name"; exit 1; }
+cp "$N/score.test.ts.saved" src/__tests__/score.test.ts
+sed -i.bak 's/^it("scores/it.skip("scores/' src/__tests__/score.test.ts && rm -f src/__tests__/score.test.ts.bak
+expect_fail "node red beside a skipped unnamed test" bash "$TDD" red "$NODE" | grep -q 'src/__tests__/score.test.ts::scores a job at 2 is skipped' || { echo "FAIL: a skipped unnamed test in an id-named file must be refused by its full name"; exit 1; }
+cp "$N/score.test.ts.saved" src/__tests__/score.test.ts && rm "$N/score.test.ts.saved"
 out=$(bash "$TDD" red "$NODE" 2>&1) || { echo "FAIL: node red on the new failing test must succeed; output: $out"; exit 1; }
 [ "$(lock_field . '.tests[0].path')" = "src/__tests__/score.test.ts" ] || { echo "FAIL: the lock must carry the containing file"; exit 1; }
 [ "$(lock_field . '.tests[0].ids[0]')" = "boost doubles the score" ] || { echo "FAIL: the lock must record the named test, got $(lock_field . '.tests[0].ids')"; exit 1; }
@@ -228,7 +238,7 @@ expect_fail "node green with the named test failing" bash "$TDD" green | grep -q
 printf 'export function score() { return 1; }
 export function boost() { return 4; }
 ' > src/services/score.ts
-expect_fail "node green with the unnamed test regressed" bash "$TDD" green | grep -q 'src/__tests__/score.test.ts' || { echo "FAIL: node green must refuse a regression in the named file's other test"; exit 1; }
+expect_fail "node green with the unnamed test regressed" bash "$TDD" green | grep -q 'the rest of the suite is red.*src/__tests__/score.test.ts' || { echo "FAIL: node green must refuse a regression in the named file's other test"; exit 1; }
 printf 'export function score() { return 2; }
 export function boost() { return 4; }
 ' > src/services/score.ts

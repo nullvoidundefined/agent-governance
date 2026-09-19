@@ -213,6 +213,14 @@ cp "$TEST" "$STUBS/test_score.py.saved"
 { printf 'from app.not_written import thing\n'; cat "$STUBS/test_score.py.saved"; } > "$TEST"
 expect_fail "node red on a file that fails to collect" bash "$TDD" red "$TEST::TestBoost::test_boosted" | grep -q 'fails to load' || { echo "FAIL: node red on an uncollectable file must be refused, since its other tests stopped running"; exit 1; }
 cp "$STUBS/test_score.py.saved" "$TEST"
+# An unnamed test skipped beside the named ones has lost its pass status (PR
+# review): refused by id, as a whole-file red refuses any skip.
+sed 's/^def test_scores_a_job_at_2/@pytest.mark.skip(reason="parked")\ndef test_scores_a_job_at_2/' "$STUBS/test_score.py.saved" > "$TEST"
+expect_fail "node red beside a skipped unnamed test" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" | grep -q "$TEST::test_scores_a_job_at_2 is skipped" || { echo "FAIL: a skipped unnamed test in an id-named file must be refused by its id"; exit 1; }
+cp "$STUBS/test_score.py.saved" "$TEST"
+# The same file named whole and by id is ambiguous and refused, rather than
+# the ids being dropped silently (PR review).
+expect_fail "red naming a file whole and by id" bash "$TDD" red "$TEST" "$TEST::test_scales" | grep -q 'named whole and by test id' || { echo "FAIL: a file named whole and by id must be refused"; exit 1; }
 
 # A class id and a bare parametrized name (every parameter set) are RED
 # together: missing-module, three named tests, and the passing test in the
@@ -232,7 +240,7 @@ git add -A && git commit -qm "test(score): PY-3 boost and scale"
 printf 'def boosted_score():\n    return 4\n' > apps/server/app/boost.py
 expect_fail "node green with a named test failing" bash "$TDD" green | grep -q 'test_scales' || { echo "FAIL: node green must name the still-failing named test"; exit 1; }
 printf 'def score():\n    return 1\n\n\ndef scale(factor):\n    return 2 * factor\n' > apps/server/app/score.py
-expect_fail "node green with the unnamed test regressed" bash "$TDD" green | grep -q "$TEST" || { echo "FAIL: node green must refuse a regression in the named file's other tests"; exit 1; }
+expect_fail "node green with the unnamed test regressed" bash "$TDD" green | grep -q "the rest of the suite is red.*$TEST" || { echo "FAIL: node green must refuse a regression in the named file's other tests"; exit 1; }
 printf 'def score():\n    return 2\n\n\ndef scale(factor):\n    return 2 * factor\n' > apps/server/app/score.py
 out=$(bash "$TDD" green 2>&1) || { echo "FAIL: node green must pass once the named tests pass; output: $out"; exit 1; }
 bash "$TDD" close >/dev/null
