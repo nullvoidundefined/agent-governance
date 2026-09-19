@@ -35,7 +35,7 @@ R-605 asks for a tracker ticket at task classification, but the only mechanical 
 
 ## Testing
 
-- Red first, four times. The test-author agent wrote both fixtures as the recorded R-907 fallback (Codex was over its usage limit), and every new case failed against the absent hook and the unchanged `task-tier.sh`. Each review round then added cases that failed against the previous commit: 23 before `0e7e30d`, 17 before `2d1b2fa`, and 6 before `01b4964`.
+- Red first, every round. The test-author agent wrote both fixtures as the recorded R-907 fallback (Codex was over its usage limit), and every new case failed against the absent hook and the unchanged `task-tier.sh`. Each review round then added cases that failed against the previous commit: 23 before `0e7e30d`, 17 before `2d1b2fa`, 6 before `01b4964`, 5 before `2ef5602`, 11 before `aedb1b3`, 9 before `02fb2a1`, 10 before `fcdc320`, 6 before `744241a`, 2 before `1bc2499`, 17 checks before `ac98999`, and 8 before `2ec6662`, for 190 fixture assertions in all.
 - Both full suites pass with `HOME` pointed at a temporary directory whose `.claude` symlinks to this worktree's `claude/`: `ALL ENFORCEMENT TESTS PASS` and `ALL HOOK TESTS PASS`. `node translate/codex.mjs --check` and `node translate/cursor.mjs --check` pass.
 - This branch dogfoods the rule: its ledger was recorded with `task-tier.sh set standard ... --ticket IAN-149`, and the ticket was opened before the first edit.
 
@@ -58,6 +58,19 @@ R-605 asks for a tracker ticket at task classification, but the only mechanical 
   - Answered, accepted by the reviewer: LOW, `$(which git) commit` is missed because the shared tokenizer splits `$(`. The fix belongs in `shell-command-tokens.sh`, which git-workflow-guard's merge scan also uses, so it is filed as a follow-up task.
   - Answered, accepted by the reviewer: LOW, `env -C` is GNU-only. Both are deliberate obfuscation, and this gate targets a forgotten ticket.
 - Round 4, `2d1b2fa...01b4964`: all dispositions verified, and no new finding at MEDIUM or higher and no false denial of an ordinary command. Latency: 30 ms for a non-commit Bash call, about 100 ms for a commit, about 110 ms for a Write or Edit.
+- Copilot round 1 (four comments), fixed in `2ef5602`: a commit on a later line of a multi-line `sh -c` string, `timeout --signal TERM` and other wrapper long options (with a backstop that denies a commit behind an unrecognized wrapper option), an unset `HOME` in `task-tier.sh`, and `--ticket` shown as optional for the trivial tier. Round 5 of the fallback review, on `2ef5602`: no finding.
+- Copilot round 2 (seven comments), fixed in `aedb1b3`: `time -p`, an expanded subcommand (`git "$x"`), a repository created in the same command, `GIT_DIR`/`GIT_WORK_TREE` assignments, an expanded `bash -c` payload, a heredoc fed to `sh -s`, and a branch switch before a commit. Round 6, on `aedb1b3`, found two false denials, both fixed in `02fb2a1`:
+  - MEDIUM: script arguments holding `$VAR` were denied, including `task-tier.sh set ... "$REASON"`. The expansion check now applies only to executed text in a command that mentions commit.
+  - LOW: `git checkout -b feat/y && git commit` was denied as unreadable. A readable switch now has the later commit judged against the branch it lands on.
+- Round 7, on `02fb2a1`, found two more, both fixed in `fcdc320`:
+  - MEDIUM: `git switch -` was ignored. It now resolves to the previous branch.
+  - LOW: checkout restore forms (`checkout main README.md`, `checkout .`) were read as branch switches.
+- Round 8, on `fcdc320`: no finding.
+- Copilot round 3 (ten comments). The owner scoped the PR (2026-09-19) to fixing the three that ordinary work hits, all fixed in `744241a`: `if cd <repo>; then git commit; fi`, a ledger still in `HEAD` behind a staged `git rm --cached`, and the ticket-lifecycle `open` order, which recorded the ledger after writing the spec. The other seven hide a commit deliberately: `coproc`, `env -S`, `env GIT_DIR=`, `popd`, `"$(git commit)"`, an inherited `$SCRIPT`, and Codex `sed -i` edits. They were answered in their threads as outside the gate's stated threat model (a forgotten ticket; the PR gate still backstops them) and are tracked in IAN-153. A fourth Copilot round was not requested, by the same decision.
+- Round 9, on `744241a`, found one MEDIUM: the new HEAD check deadlocked the recovery its own deny message prescribed (the commit that untracks a committed ledger was refused). Fixed in `1bc2499`: while the ledger is in `HEAD` and its removal is staged, an edit of `.gitignore` and the untracking commit pass.
+- Round 10, on `1bc2499`, found one MEDIUM: that exemption let `git add -A && git commit` or `git commit -am` carry other work. Fixed in `ac98999`: only a commit that stages nothing of its own qualifies, and a `git rm --cached` of the ledger earlier in the same command counts as the removal.
+- Round 11, on `ac98999`, found one MEDIUM: other subcommands (`merge --squash`, `cherry-pick -n`, `stash pop`, a path checkout) could stage content before a plain commit. Fixed in `2ec6662` by turning the check into an allowlist of subcommands, and `--pathspec-from-file` now counts as staging.
+- Round 12, on `2ec6662`: no finding at MEDIUM or higher and no false denial of an ordinary command. The one observation, a staging command wrapped in `bash -c` during the untracking recovery, is in the IAN-153 class and was added to that ticket.
 
 ## Reflection
 
