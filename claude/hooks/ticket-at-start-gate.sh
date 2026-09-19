@@ -388,6 +388,13 @@ inspect_commit_words() {
   case "$1" in cd | pushd) shift; replay_directory_change "$@"; return 0 ;; esac
   strip_command_prefixes "$@"
   command_words=(${STRIPPED_WORDS[@]+"${STRIPPED_WORDS[@]}"})
+  # A GIT_* assignment the strip removed after a keyword, wrapper, or
+  # redirection (`if GIT_DIR=x git commit`, `env GIT_DIR=x git commit`) still
+  # names the repository the commit lands in.
+  local prefix_word
+  for prefix_word in "${@:1:$(($# - ${#command_words[@]}))}"; do
+    case "$prefix_word" in GIT_DIR=* | GIT_WORK_TREE=* | GIT_INDEX_FILE=* | GIT_COMMON_DIR=*) HAS_GIT_ENVIRONMENT=1 ;; esac
+  done
   [ "${#command_words[@]}" -gt 0 ] || return 0
   case "${command_words[0]}" in cd | pushd) replay_directory_change "${command_words[@]:1}"; return 0 ;; esac
   case "$(basename -- "${command_words[0]}")" in
