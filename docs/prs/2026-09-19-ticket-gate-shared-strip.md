@@ -37,6 +37,10 @@ Reviewer: Claude subagent (fable), fallback: Codex usage limit reached (resets 2
 | 5 | LOW | `env --chdir <repo>`, `env -C`, and `sudo --chdir` commit in another repository but are judged against the cwd's ledger, before and after this change. | Deferred to a follow-up task: pre-existing, and fixing it means replaying the directory change. The `GIT_*`-under-a-wrapper half is fixed by #1. |
 | 6 | LOW | The tokenizer splits `3>&1` at the `&`, so `exec 3>&1 git commit` hides the commit, before and after this change. | Deferred to the same follow-up: pre-existing tokenizer behavior. |
 
+## Copilot review
+
+Copilot found that the first fix for finding 1 read every word the strip removed, which includes redirection targets, so `< GIT_DIR=/tmp git commit` (a file named `GIT_DIR=/tmp`) was mistaken for an assignment and denied. Fixed test-first: `strip_command_prefixes` now records the assignments it removes, and only those, in `STRIPPED_ASSIGNMENTS`, and the gate reads that list. Three W-4 cases pin the allow, and the existing real-assignment case still denies.
+
 ## Reflection
 
 I checked for this collision while writing #79 and concluded it was safe, because I assumed the gate's local definition came after the `source` line and would win. It does not: the gate sources the helper inside its Bash branch at runtime, after all its functions are defined, so the helper's definition is the one that survives. The lesson is that "a local definition overrides the sourced one" depends on execution order, not file order, and it held only until the helper grew a function with the same name. After merging #79 I verified the merge on `main` by running the neighboring gate's fixture, which is how this surfaced within minutes instead of at the next commit a session tried to make. Time from finding the failure to this document was about fifteen minutes.

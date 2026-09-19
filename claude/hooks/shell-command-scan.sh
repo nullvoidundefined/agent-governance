@@ -95,15 +95,18 @@ REDIRECTION_PATTERN='^[0-9]*(<<<|<>|<&|>&|>>|>\||<|>)(.*)$'
 # assignments ahead of the command word are removed too, and a wrapper's long
 # options that take a separate value (`sudo --user root`, `env --chdir /tmp`)
 # are skipped with their value. An array rather than printed lines, so a word
-# holding a newline (a multi-line commit message) survives intact.
+# holding a newline (a multi-line commit message) survives intact. The
+# `VAR=value` assignments it removes, and only those (never a redirection
+# target), are kept in STRIPPED_ASSIGNMENTS for a caller that reads them.
 strip_command_prefixes() {
   local wrapper="" is_duration_pending=0
+  STRIPPED_ASSIGNMENTS=()
   while [ "$#" -gt 0 ]; do
     if [[ "$1" =~ $REDIRECTION_PATTERN ]]; then
       if [ -z "${BASH_REMATCH[2]}" ]; then shift 2 2>/dev/null || shift; else shift; fi
       continue
     fi
-    if [ -z "$wrapper" ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then shift; continue; fi
+    if [ -z "$wrapper" ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then STRIPPED_ASSIGNMENTS+=("$1"); shift; continue; fi
     case "$1" in
       if | then | else | elif | do | while | until | '!' | '{' | '}' | nohup | builtin)
         wrapper=""; shift; continue ;;
@@ -126,7 +129,10 @@ strip_command_prefixes() {
           | xargs:--max-args | xargs:--max-chars | xargs:--max-lines | xargs:--max-procs | xargs:--delimiter | xargs:--eof | xargs:--arg-file)
           shift 2 2>/dev/null || shift; continue ;;
       esac
-      case "$1" in -* | [A-Za-z_]*=*) shift; continue ;; esac
+      case "$1" in
+        -*) shift; continue ;;
+        [A-Za-z_]*=*) STRIPPED_ASSIGNMENTS+=("$1"); shift; continue ;;
+      esac
       if [ "$is_duration_pending" -eq 1 ]; then is_duration_pending=0; shift; continue; fi
     fi
     break
