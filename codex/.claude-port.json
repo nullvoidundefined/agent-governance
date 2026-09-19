@@ -20,7 +20,7 @@
   },
   "files": {
     ".gitignore": "sha256:e13fac8cba0a1ac6018a923f1c4fbaf5feaefff821e7cb3f5d6fb4326e34ac8b",
-    "AGENTS.md": "sha256:dfae10924bddd94e76b853bb5c6c76e3ada74b05fcdfb1adb1509b45e5b3c5ca",
+    "AGENTS.md": "sha256:41c04f99dcfc4c058ad0f1661ebcd787803fb848da7563efb69de018e0707731",
     "PORT-STATUS.md": "sha256:9558558988de4711578c487dcd4e23f4cd4291a44844ae6751d95d43f84c64eb",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
@@ -49,7 +49,7 @@
     "skills/audit-ux/SKILL.md": "sha256:58a8e3b1748b87bcd4c21933d801b284bc0625accb7b38cb3a7e0e10aef8fd9c",
     "skills/bug-hunt/SKILL.md": "sha256:6ed8d92d5c55d97dc08f0c86039a1972bdb0189fc75c239c8d0b36ada44929d6",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:4579cd0f190eeb19fe43e57ef73674f883c6af00e2924c24655012a2d312a2cd",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:99b5cb55ba7d8a0b918db26b7c6491a2cf0225003c96978538ac4f7debbe1bba",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:0414853899097a42da75e1b2e9914f1443ceefb651d9a8de4a409d090e50907b",
     "skills/cleanup-specs-plans/scripts/inventory.sh": "sha256:91417ec9bfed28e29a18b3b511cd5f2d102e6e3071a3531f8b8c9f44e5fafa5b",
     "skills/documentation-create/SKILL.md": "sha256:c2c783b2f519c341e1abfde943efd41c4432a486899aadcc86acfc085217b2d0",
