@@ -23,7 +23,9 @@ previously lived only in `AGENTS.md`.
 
 ## What changed
 
-One file, `README.md`, from 16 lines to 390.
+One file, `README.md`, which goes from 22 lines to 422. (The 16 and 406 that a `git diff --stat`
+reports for it are the deleted and added line counts, which are not the same thing as the file's
+length before and after.)
 
 The new structure, in order: a one-paragraph positioning statement and a three-line quick start; a
 table of contents; **Why this exists**, which is the failure story from `claude/PROTOCOL.md`
@@ -129,11 +131,29 @@ legible; before it, the draft kept sliding into describing `tdd-gated-dispatch` 
 of `build-by-slice-require-review`, which is wrong in a way that would have taught the reader the
 wrong model.
 
-**What I got wrong first.** Two things. The first is the absolute-claims problem described in the
-architectural decisions above, which I caught only because the skill's advisory script flagged the
-lines and I checked them rather than dismissing the flags. Left alone it would have shipped a
-landing page asserting guarantees I had not observed, on a repository whose entire premise is that
-unverified assertions are the failure mode. The second is smaller and of the same family: I wrote
-the doctor check list out of `claude/SETUP.md` without opening `doctor.sh`, and the list was wrong.
-Both errors are the same error, which is trusting a summary document because it was written by the
-same project it describes.
+**What I got wrong first.** The honest answer is more than I expected, and the interesting part is
+that every error was one error wearing different clothes: trusting a document that describes this
+repository instead of checking the repository.
+
+Before review, I caught two instances myself. The first was asserting outright that a production
+write cannot happen before its failing test and that a locked test cannot be edited to force a
+green, neither of which I had executed; the advisory pass flagged the lines and the fix was to cite
+the fixtures that prove them. The second was writing the `doctor.sh` check list out of
+`claude/SETUP.md` without opening `doctor.sh`, where the names turned out to differ.
+
+The R-517 review found eight more, including two HIGH. One was an inversion: I wrote that the
+implementer never sees the plan's code blocks, when the skill withholds them from the **test
+author** and hands them to the implementer as a suggestion. A reader following the README would have
+isolated the wrong role, which is worse than a vague sentence because it is confidently actionable
+and wrong. The other was a claim that three callers of the port-freshness check share one inventory
+"so adding a port cannot leave one caller behind", naming `doctor.sh` as one of the three.
+`doctor.sh` does not read that inventory; it hardcodes the two current translators. My own earlier
+grep had printed the correct three callers, and I wrote `doctor.sh` anyway because `SETUP.md` said
+so. That is the same error as the first two, committed a third time after I had already written a
+paragraph in this document about not making it.
+
+The lesson I am taking is narrower than "verify claims", which I already believed and still got
+wrong. It is that the moment a command's output and a prose document disagree, the disagreement
+itself is the finding, and the prose document does not get the benefit of the doubt because it lives
+in the same repository. The remaining six findings, and their dispositions, are in the `## Codex
+review` section of the pull request.

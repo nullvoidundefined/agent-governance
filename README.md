@@ -40,12 +40,15 @@ cd agent-governance
 
 The development strategy this harness replaced was the obvious one: give the agent a task, tell it
 what the task is, and let it run unsupervised. That strategy failed across roughly two weeks of real
-use, and it failed in classes rather than one-offs. Secrets reached command lines. A runbook
-described a deployment procedure the code no longer performed. A failing test was made to pass by
-relaxing the assertion that caught the bug. A "fix" shipped with no test proving the bug had ever
-existed. None of these were exotic. Each one happened because a behavioral instruction was the only
-thing standing between the agent and the mistake, and a behavioral instruction is a suggestion that
-the model is free to reason its way around.
+use, and it failed in classes rather than one-offs. Two of those incidents are recorded in
+`claude/PROTOCOL.md`: a secret reached a command line, and a runbook went on describing a deployment
+procedure the code no longer performed. Other classes have a rule but no incident narrative behind
+them, and the rules are worth reading as the shape of the risk rather than as a war story: R-405
+exists so that a protection which caught a failure is never the thing that gets relaxed to make the
+failure go away, and R-403 exists so that a fix cannot ship without a test that failed before it.
+None of these are exotic. Each is a case where a behavioral instruction was the only thing standing
+between the agent and the mistake, and a behavioral instruction is a suggestion that the model is
+free to reason its way around.
 
 Every layer in this repository was added after a specific failure, and the design discipline is not
 "follow the rules" but "add the next layer the next time a failure teaches you where one is
@@ -67,7 +70,7 @@ Every count below was taken from this checkout, not from a summary.
 |---|---|---|
 | Rules | 84 norm lines in `claude/CLAUDE.md` | One line per rule, grouped by concern: session init, secrets and trust, conduct and output, architecture and naming, testing, git and process, lifecycle and memory. Each line names its enforcer in trailing brackets. The full specification for every rule lives in `claude/rulebook/reference.md` and is read on demand. |
 | Enforcement | 114 registered entries in `claude/enforce/manifest.json` | Every mechanizable rule is registered with a tier: 43 `regex`, 37 `ast`, 29 `advisory`, and 5 `llm-judge`. A rule with no manifest entry depends on the session recalling it, and the manifest is what makes that distinction auditable rather than a matter of opinion. |
-| Hooks | 66 scripts in `claude/hooks/` | These run at Claude Code's tool-call events. A `PreToolUse` hook can refuse a `Bash` command or a `Write` before it happens; a `Stop` hook can refuse to let the turn end on a red test suite. This is the layer that catches what prose cannot. |
+| Hooks | 68 scripts in `claude/hooks/` (65 bash, one Node scanner, two Python helpers), plus the tracked `pre-push.sample` | These run at Claude Code's tool-call events. A `PreToolUse` hook can refuse a `Bash` command or a `Write` before it happens; a `Stop` hook can refuse to let the turn end on a red test suite. This is the layer that catches what prose cannot. |
 | Skills | 18 in `claude/skills/` | Procedural workflows the agent invokes by name: classifying a task, opening a ticket, running a test-first slice, reviewing a spec, cleaning up at the end. |
 | Agent roles | 13 in `claude/agents/` | Nine audit roles (engineering, security, criticism, customer, design, UX, financial, legal, marketing) plus the four build roles: `test-author`, `implementer`, `slice-critic`, and `spec-conformance-review`. |
 | Convention tracks | 12 `claude/CLAUDE-*.md` files | Stack-specific conventions for TypeScript and Node, Python, Ruby, Go, and the React, Next, Vite, Vue, and Nuxt frontend frameworks. They auto-load by file path when the work touches a matching file, so the context stays lean. |
@@ -132,8 +135,12 @@ before building starts. **Gate 2** is the pull request itself: the user reviews 
 GitHub before merge, with no auto-merge and no command-line merge.
 
 This skill is portable prose. It describes a discipline that works in any tool, including ones with
-no hook surface at all, because nothing in it depends on a script being present. The cost of that
-portability is that nothing enforces it except the session and the human at the gates.
+no hook surface at all, because nothing in it requires a script to be present. Where the hook
+surface does exist, two guards back its gates rather than replacing them:
+`hooks/spec-glossary-check.sh` reminds you on the write when a slice plan's pull request block is
+missing any of the seven labels, and `hooks/git-workflow-guard.sh` denies `gh pr merge` while the
+review section of the body is missing or empty. Neither one can tell whether a human actually read
+the pull request, which is the part that matters and the part that stays with you.
 
 **Reach for it when** the question is "how does this work reach the human, in what size pieces, and
 when do they get to say no."
@@ -172,11 +179,13 @@ job as everything else, which is the reason to believe the guards fire rather th
 hope they do.
 
 Authorship is split across separate contexts to make it structural rather than a matter of restraint.
-The test author is permitted to write only test and fixture trees. The implementer is not permitted
-to write tests, fixtures, or specs, and is never shown the plan's code blocks. The slice critic is
-permitted to write nothing at all and reviews from a fresh context that has never seen the
-implementer's transcript. `claude/enforce/role-policy.json` declares those boundaries by agent type
-and `hooks/protected-path-guard.sh` applies them.
+The test author is permitted to write only test and fixture trees, and is never shown the plan's
+code blocks, so the test argues from the stated behavior rather than from the implementation someone
+already sketched. The implementer receives those code blocks as a suggestion and is not permitted to
+write tests, fixtures, or specs. The slice critic is permitted to write nothing at all and reviews
+from a fresh context that has never seen the implementer's transcript.
+`claude/enforce/role-policy.json` declares those boundaries by agent type and
+`hooks/protected-path-guard.sh` applies them.
 
 The test runner supports Vitest, Jest, pytest, and bash `*.test.sh` fixtures. Any other runner
 refuses rather than guessing, and the cycle still applies by hand.
@@ -190,17 +199,18 @@ came first and nobody can quietly make a red thing green."
 |---|---|---|
 | Scope | A whole build: slices, then pull requests, then tasks | One behavior, one RED/GREEN cycle |
 | Governs | Cadence, review gates, human approval | Authorship boundaries, proof of RED and GREEN |
-| Enforced by | The session and the human at the gates | `tdd.sh`, the lock file, and `protected-path-guard.sh` |
+| Enforced by | The human at the gates, with two hooks backing the artifacts | `tdd.sh`, the lock file, and `protected-path-guard.sh` |
 | Unit of work | A pull request a human can read in one sitting | A single acceptance criterion a test can fail |
 | Artifact | `docs/slices/slice-<nn>-<slug>.md` | `.claude/tdd-lock.json` and one commit per phase |
-| Portability | Any tool, because it is prose | Claude Code, because it needs the hook surface |
+| Portability | Any tool, needing no script at all | Any tool with a hook surface: Claude Code, and Codex and Cursor through their adapters |
 | Fails by | A human approving without reading | A refusal you have to resolve before continuing |
 
 **They compose.** Step 4 of the outer loop, "build each pull request as a sequence of test-first
-tasks," is the inner loop. If you are running `build-by-slice-require-review` inside Claude Code,
-every one of those tasks should go through `tdd-gated-dispatch`, because the slice lock denies
-production writes outside that sequence anyway. If you are running in a tool with no hook surface,
-the outer loop still works and the inner loop becomes a discipline you keep by hand.
+tasks," is the inner loop. Every one of those tasks should go through `tdd-gated-dispatch`, because
+the slice lock denies production writes outside that sequence anyway. Both skills ship in all three
+ports, and `protected-path-guard` is ported to Codex and Cursor through their adapters, so the inner
+loop is not a Claude Code exclusive. It degrades to a discipline you keep by hand only in a tool
+with no hook surface at all, where the outer loop still works unchanged.
 
 ## The four layers
 
@@ -222,11 +232,13 @@ a red suite, a `git push` of a public repository carrying a local filesystem pat
 agent when the work matches. They are how a decision that would otherwise be an implicit judgment
 call becomes mechanical and repeatable.
 
-**Agents** are the review layer. The nine audit roles produce dated reports under `docs/audits/` and
-are deliberately autonomous: each role file instructs the agent never to soften a finding to be
-polite and never to suppress a category of findings for feeling out of scope, and to say so
-explicitly when it is unsure rather than omitting silently. The four build roles exist to keep
-authorship separated inside a slice, which the previous section describes.
+**Agents** are the review layer. The nine audit roles produce dated reports under `docs/audits/`.
+The engineering role is the one that spells out the autonomy posture in full: never soften a finding
+to be polite, never suppress a category of findings for feeling out of scope, and say so explicitly
+when unsure rather than omitting silently. The security role carries its own shorter version of the
+first clause, and the remaining seven roles state their posture in their own terms, so read the role
+file rather than assuming the engineering wording applies everywhere. The four build roles exist to
+keep authorship separated inside a slice, which the previous section describes.
 
 ## Repository layout
 
@@ -239,7 +251,7 @@ agent-governance/
 │   ├── CLAUDE-*.md        12 stack convention tracks, auto-loaded by file path
 │   ├── rulebook/          Full rule specs, plus per-session-type tier 2 reading
 │   ├── rules/             Session types and the path-scoped convention symlinks
-│   ├── hooks/             66 tool-call guards, with 22 fixtures under tests/
+│   ├── hooks/             68 tool-call guards, with 22 fixtures under tests/
 │   ├── enforce/           tdd.sh, doctor.sh, the manifest, ESLint rules, 101 fixtures
 │   ├── skills/            18 workflow skills
 │   ├── agents/            9 audit roles and 4 build roles
@@ -257,11 +269,14 @@ agent-governance/
 The shape carries an intent worth stating. `claude/` is authored and `cursor/` and `codex/` are
 generated, which means a rule is written once and lands in three tools rather than being maintained
 in three dialects that drift apart. Each exporter's `--check` mode exits nonzero when a source edit
-was never regenerated, and all three callers (the `Translator port checks` step in
-`.github/workflows/enforce.yml`, the pre-push hook, and `claude/enforce/doctor.sh`) read the same
-inventory from `claude/enforce/port-checks.sh`, so adding a port cannot leave one caller behind. The
-CI step is the binding one, because the pre-push hook can be skipped with `--no-verify` and the
-doctor check is something you choose to run.
+was never regenerated. Three callers run it from one shared inventory in
+`claude/enforce/port-checks.sh`, so adding a fourth port does not mean remembering to register it in
+three places: the turn-end gate in `claude/hooks/verification-gate.sh`, the pre-push hook, and the
+`Translator port checks` step in `.github/workflows/enforce.yml`. (`claude/enforce/doctor.sh` checks
+port freshness too, but from its own hardcoded list of the two current translators rather than from
+that inventory, so a new port does have to be added there by hand.) The CI step is the binding one,
+because the pre-push hook can be skipped with `--no-verify` and the doctor check is something you
+choose to run.
 
 ## One source, three tools
 
@@ -279,8 +294,10 @@ a fact about that tool, recorded where you will see it rather than discovered wh
 
 ## Install
 
-Full detail, including prerequisites and what does not ship, is in
-[`claude/SETUP.md`](claude/SETUP.md).
+Full detail on prerequisites, what does not ship, and the per-stack convention tracks is in
+[`claude/SETUP.md`](claude/SETUP.md). One caveat while reading it: that document's install step 1
+still says to clone the repository to `~/.claude`, which describes the layout before this became a
+monorepo. The quick start below is the current path, and `sync.sh` is the authority on it.
 
 You need `git` and `bash` (macOS or Linux; on Windows use WSL, because the hooks are bash), `jq`
 (every `PreToolUse` and `SessionStart` hook parses its input with it), `node` (the clean-code scanner
@@ -383,10 +400,19 @@ one `./sync.sh` run. The Codex CLI merges a project-level `AGENTS.md` at this ro
 The payload directories (`claude/`, `cursor/`, `codex/`, no dot) are what `sync.sh` installs.
 `cursor/` and `codex/` are generated from `claude/` by `translate/cursor.mjs` and
 `translate/codex.mjs`, and `--check` gates their freshness in CI, at push, and in
-`claude/enforce/doctor.sh`. Everything under `codex/` is generated except
-`codex/hooks/codex-hook-adapter.sh` and `codex/README.md`, which the port map classifies as
-hand-authored. Editing any other generated file is lost at the next `--write`, and `--check` fails
-until it is reverted; change the `claude/` source or the port map instead, then regenerate.
+`claude/enforce/doctor.sh`. Everything under `codex/` is generated except the paths in the port
+map's `hand_authored` key, which at the time of writing are four:
+`codex/hooks/codex-hook-adapter.sh`, `codex/README.md`, `codex/skills/session-start/SKILL.md`, and
+`codex/skills/session-handoff/SKILL.md`. Read the key rather than this list, because the list is a
+snapshot and the key is the authority. Editing any other file under `codex/` is lost at the next
+`--write`, and `--check` fails until it is reverted; change the `claude/` source or the port map
+instead, then regenerate.
+
+The root `AGENTS.md` carries an older two-entry version of that same list, and `claude/SETUP.md`
+step 1 still describes the pre-monorepo layout in which the repository was cloned directly to
+`~/.claude`. Both predate the current structure and are tracked for correction. Where either
+contradicts this file on the install path or the generated-file list, `sync.sh` and
+`translate/codex-port-map.json` are the authorities.
 
 The monorepo design is specced at
 `claude/docs/superpowers/specs/2026-09-12-agent-governance-monorepo-design.md`.
