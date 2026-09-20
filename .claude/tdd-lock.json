@@ -1,0 +1,20 @@
+{
+  "slice": "B-4 the drift toleration applies only where a RED is judged, and matches exact spellings",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/tdd-red-manifest-drift.test.sh",
+      "sha256": "1514de77a9b065be1f2ea45e3c4d5aff140a9a82f057d3406e2cc36bbfb5eb38",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-20T10:32:24Z",
+  "baseline": {
+    "passed": 96,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-20T10:36:55Z"
+}

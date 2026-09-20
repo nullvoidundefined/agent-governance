@@ -17,6 +17,19 @@
 # must not block the RED, while drift naming any other path, and any other
 # failure outside the named files, must still refuse.
 #
+# The toleration is bounded on two sides, and both bounds are checked here. It
+# applies only where a RED is being judged: by the time `tdd.sh green` runs, an
+# unhashed file under enforce/tests/ is no longer the unfinished work the red
+# command was asked to accept, and the only thing a tolerated hook-hash drift
+# could hide at that point is an edited hook, which the owner's decision of
+# 2026-09-20 refuses to accept, so green must refuse while the drift is still
+# present and must succeed once it has been cleared. It also applies only to
+# the two spellings that can really name a locked test file, the
+# harness-relative one the closure fixture prints and the repository-root one
+# tdd.sh uses; any shorter trailing run of path components (a bare basename, or
+# an intermediate suffix such as tests/score.test.sh) names some other file in
+# the tree, or no file at all, and must refuse.
+#
 # The situation is built in a throwaway git repository laid out the way this
 # one is (a repository root holding claude/enforce/tests/), never in the
 # checkout: a stand-in hook-hashes-closure.test.sh prints the real fixture's
@@ -39,7 +52,8 @@ fail() { echo "FAIL: $*"; exit 1; }
 
 # Lays out a throwaway repository mirroring this checkout: the slice's RED
 # fixture, a passing sibling, a second sibling that fails only in one mode, and
-# the stand-in closure fixture. The drift paths the stand-in prints are written
+# the stand-in closure fixture, which passes in the clean mode, standing for a
+# manifest that has caught up with the tree, and reports drift in every other. The drift paths the stand-in prints are written
 # relative to claude/, as the real fixture prints them (its paths are relative
 # to CLAUDE_DIR, which is the claude/ directory, while tdd.sh names its test
 # files relative to the repository root one level above).
@@ -66,8 +80,11 @@ STUB
   cat > "$tests/hook-hashes-closure.test.sh" <<STUB
 #!/usr/bin/env bash
 case "\$(cat "$dir/.drift-mode")" in
+  clean) echo "hook-hashes-closure.test.sh PASS"; exit 0 ;;
   foreign) drifting="enforce/tests/other.test.sh" ;;
   same-basename) drifting="hooks/tests/score.test.sh" ;;
+  basename-only) drifting="score.test.sh" ;;
+  intermediate-suffix) drifting="tests/score.test.sh" ;;
   named-exact) drifting="claude/enforce/tests/score.test.sh" ;;
   *) drifting="enforce/tests/score.test.sh" ;;
 esac
@@ -89,6 +106,14 @@ run_red_in_mode() {
   RED_OUTPUT=$(bash "$TDD" red claude/enforce/tests/score.test.sh 2>&1) || RED_STATUS=$?
 }
 
+# Runs `tdd.sh green` on the slice in one drift mode, leaving tdd.sh's combined
+# output in GREEN_OUTPUT and its exit status in GREEN_STATUS.
+run_green_in_mode() {
+  echo "$1" > "$PROJECT/.drift-mode"
+  GREEN_STATUS=0
+  GREEN_OUTPUT=$(bash "$TDD" green 2>&1) || GREEN_STATUS=$?
+}
+
 PROJECT=$(new_drift_project); cd "$PROJECT"
 bash "$TDD" open "B-1 manifest drift confined to the named tests" >/dev/null
 
@@ -104,6 +129,26 @@ grep -q 'hook-hashes-closure.test.sh' <<< "$RED_OUTPUT" || fail "the refusal mus
 run_red_in_mode same-basename
 [ "$RED_STATUS" -ne 0 ] || fail "drift naming hooks/tests/score.test.sh must refuse: it is a different file from claude/enforce/tests/score.test.sh; tdd.sh exited 0: $RED_OUTPUT"
 grep -q 'hook-hashes-closure.test.sh' <<< "$RED_OUTPUT" || fail "the basename-collision refusal must name hook-hashes-closure.test.sh; got: $RED_OUTPUT"
+[ "$(lock_field .phase)" = open ] || fail "a refused red must leave the phase open, got $(lock_field .phase)"
+
+# A drifting path that is only a trailing run of the named file's path
+# components is not a spelling of that file. A bare basename would name any
+# file of that name anywhere in the tree, so it cannot be read as the locked
+# claude/enforce/tests/score.test.sh, and it refuses.
+run_red_in_mode basename-only
+[ "$RED_STATUS" -ne 0 ] || fail "drift naming the bare basename score.test.sh does not name the locked claude/enforce/tests/score.test.sh and must refuse; tdd.sh exited 0: $RED_OUTPUT"
+grep -q 'hook-hashes-closure.test.sh' <<< "$RED_OUTPUT" || fail "the bare-basename refusal must name hook-hashes-closure.test.sh; got: $RED_OUTPUT"
+[ "$(lock_field .phase)" = open ] || fail "a refused red must leave the phase open, got $(lock_field .phase)"
+
+# An intermediate suffix is the same case one component further in:
+# tests/score.test.sh is neither the harness-relative spelling the closure
+# fixture prints nor the repository-root spelling tdd.sh uses, so it refuses
+# too. Only those two spellings are legitimate, and matching on any trailing
+# component sequence would tolerate drift in a file the red command never
+# named.
+run_red_in_mode intermediate-suffix
+[ "$RED_STATUS" -ne 0 ] || fail "drift naming tests/score.test.sh is neither legitimate spelling of the locked file and must refuse; tdd.sh exited 0: $RED_OUTPUT"
+grep -q 'hook-hashes-closure.test.sh' <<< "$RED_OUTPUT" || fail "the intermediate-suffix refusal must name hook-hashes-closure.test.sh; got: $RED_OUTPUT"
 [ "$(lock_field .phase)" = open ] || fail "a refused red must leave the phase open, got $(lock_field .phase)"
 
 # Any other failure outside the named files still refuses, even when the drift
@@ -131,6 +176,28 @@ grep -q 'RED:' <<< "$RED_OUTPUT" || fail "an accepted red must report RED:; got:
 run_red_in_mode named-exact
 [ "$RED_STATUS" -eq 0 ] || fail "a drifting path spelled from the repository root names the same file and must be tolerated; tdd.sh exited $RED_STATUS: $RED_OUTPUT"
 [ "$(lock_field .phase)" = red ] || fail "the repository-root spelling must record the RED, got $(lock_field .phase)"
+
+# With the RED recorded, the implementation the slice asked for arrives: the
+# script the locked fixture calls now exists and prints the 2 it expects, so
+# that fixture passes. The drift is still on disk and still names the locked
+# test file, but a green is not a RED being judged, and tolerating hook-hash
+# drift here would let an integrity change to the hooks ride out of the
+# implementer's turn unnoticed, so green must refuse and must say which fixture
+# is red.
+printf '#!/usr/bin/env bash\necho 2\n' > "$PROJECT/claude/enforce/scripts/score.sh"
+run_green_in_mode named
+[ "$GREEN_STATUS" -ne 0 ] || fail "green must refuse while the manifest drift tolerated at red is still present; tdd.sh exited 0: $GREEN_OUTPUT"
+grep -q 'hook-hashes-closure.test.sh' <<< "$GREEN_OUTPUT" || fail "the green refusal must name hook-hashes-closure.test.sh as the fixture that is red; got: $GREEN_OUTPUT"
+! grep -q 'GREEN:' <<< "$GREEN_OUTPUT" || fail "a refused green must not report GREEN:; got: $GREEN_OUTPUT"
+[ "$(lock_field .phase)" = red ] || fail "a refused green must leave the phase red, got $(lock_field .phase)"
+
+# Clearing the drift, which is what committing the updated manifest does, is
+# the only thing that changes, and the same green now succeeds: the refusal
+# above was about the drift and not about the implementation or the lock.
+run_green_in_mode clean
+[ "$GREEN_STATUS" -eq 0 ] || fail "with the drift cleared the same green must succeed; tdd.sh exited $GREEN_STATUS: $GREEN_OUTPUT"
+grep -q 'GREEN:' <<< "$GREEN_OUTPUT" || fail "an accepted green must report GREEN:; got: $GREEN_OUTPUT"
+[ "$(lock_field .phase)" = green ] || fail "an accepted green must move the phase to green, got $(lock_field .phase)"
 
 cd / && rm -rf "$PROJECT"
 echo "tdd-red-manifest-drift.test.sh PASS"
