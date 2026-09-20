@@ -24,20 +24,19 @@ Two sessions ran in parallel on 2026-09-20 and both wrote here; a third appended
 
 ## 4. What shipped
 
-- **IAN-156 (#91).** Test authors could never reach a RED in this repository: writing a slice's own fixture made the closure fixture red and `tdd.sh red` refused. Its R-517 review found a HIGH, the toleration also reaching `cmd_green`; fixed in slice B-4.
-- **IAN-175 (#92).** The R-334 norm line, its Spec, a 144-line fixture, both regenerated ports, the hash manifest, and the slice-lock untracking.
-- **IAN-173 spec (#94, draft).** `claude/docs/superpowers/specs/2026-09-20-database-engine-tracks-design.md`, 258 lines, adversarially reviewed and owner-approved, all 21 findings dispositioned.
-- Tickets opened: IAN-165, IAN-172, IAN-176, IAN-177, IAN-184.
+Merged 2026-09-20 (detail in `git log` and each ticket): IAN-156 (#91), which unblocked test authors from an impossible RED, and IAN-175 (#92), the R-334 engine-case amendment plus the slice-lock untracking. IAN-173's spec is open as draft #94, 258 lines, adversarially reviewed with all 21 findings dispositioned. Tickets opened: IAN-165, IAN-172, IAN-176, IAN-177, IAN-184.
 
 ## 5. Pending (by urgency)
 
-1. **Sync** (2 minutes): `git pull --ff-only && ./sync.sh` in the primary checkout.
-2. **IAN-184** (about 90 minutes): wire `verification-gate.sh` to `expected-red`, and fix the `hook-latency.test.sh` flake that blocks its RED. Until this lands, a test author still gets blocked at Stop even though `tdd.sh red` now works. The fixture is parked; see section 2. The flake is real and reproducible (330ms against a 348ms budget standalone), it already carries `# Shard: serial`, IAN-115 closed as having fixed it, and it also fires when two suites run at once. Do not widen the budget (R-204).
-3. **IAN-173** (about 2 hours): the database engine-track split. Spec approved, three slices planned, nothing built.
-4. **IAN-172** (about 4 hours, high): the employer work profile. Verified safe: the ticket gate and the Linear writes disable themselves without `~/.claude/TICKET-TRACKER.json`, which is gitignored. Open: Codex sending employer code to a personal ChatGPT plan, `settings.json` replaced at SessionStart, and `claude/global-memory/` as 30 tracked files on a public remote with only a `[manual]` rule keeping employer content out.
-5. **IAN-157** (about 3 hours): fired five times across the two sessions, refusing a `tdd.sh close`, two test-author writes, a commit against a branch `git checkout -b` had not actually created, and a scratchpad write whose path it read as production.
-6. Lower: **IAN-176** (20 minutes, and IAN-173 adds two convention files that need porting), **IAN-177** (15 minutes), **IAN-165** (45 minutes).
-7. **No ticket yet:** `tdd.sh red` exits 0 when it refuses to certify. The printed verdict is the only truth, which is worse than the existing "never pipe through tail" lesson because capturing the exit status correctly still misleads.
+Linear is authoritative for all of these; the detail lives on each ticket.
+
+1. **Sync** (2 min): `git pull --ff-only && ./sync.sh` in the primary checkout.
+2. **IAN-183 then IAN-184** (~90 min): until both land, a test author is still refused at Stop. IAN-183 is in flight, see section 7.
+3. **IAN-173** (~2 h): spec approved, three slices planned, nothing built. The only shovel-ready item.
+4. **IAN-172** (~4 h, high): employer work profile. Open risks: Codex sending employer code to a personal plan, `settings.json` replaced at SessionStart, `global-memory/` tracked on a public remote behind a `[manual]` rule.
+5. Lower: IAN-157, IAN-176, IAN-177, IAN-165, IAN-195.
+
+**No ticket yet:** `tdd.sh red` exits 0 when it refuses to certify. The printed verdict is the only truth, which is worse than the existing "never pipe through tail" lesson, because capturing the exit status correctly still misleads.
 
 ## 6. Next session
 
@@ -54,9 +53,9 @@ Two sessions ran in parallel on 2026-09-20 and both wrote here; a third appended
 Appended, not overwritten: sections 1 to 6 are still live and untouched.
 
 - **Branch:** `claude/harness-open-source-value-4mivg8`, pushed, no PR.
-- **Shipped:** `docs/tickets/2026-09-20-track-and-release-backlog.md` (sixteen work items, four workstreams) and a `linear` block in `claude/TICKET-TRACKER.template.json`.
+- **Shipped:** `docs/tickets/2026-09-20-track-and-release-backlog.md` (sixteen items) and a `linear` block in `claude/TICKET-TRACKER.template.json`.
 - **Tickets:** IAN-202 to IAN-217 opened, plus IAN-218 for this session, closed at 76 actual minutes against 90 (ratio 0.84, rework 1).
-- **The rework:** the R-605 gate was disabled all session (no `~/.claude/TICKET-TRACKER.json`) and activated the moment that file was written, refusing a commit after four had landed. A gate depending on a gitignored per-machine file is off by default on every fresh checkout.
+- **The rework:** the R-605 gate was disabled all session (no tracker config) and activated the moment that file was written, refusing a commit after four had landed. A gate depending on a gitignored per-machine file is off by default on every fresh checkout.
 - **IAN-219 (new):** the MCP permission layer does not port. Cursor runs the R-105 guard but never evaluates an `mcp__*` allow entry; whether Codex reaches the guard at all is unverified, and that decides whether it is an ergonomics or a security gap.
 - **Carried forward:** that live config was written in an ephemeral container and does not reach the laptop. Copy the `linear` block from the template and fill in team and project locally, or R-605 stays disabled there.
 
@@ -64,8 +63,23 @@ Appended, not overwritten: sections 1 to 6 are still live and untouched.
 
 1. The `linear` block never existed in the template despite Linear being the live tracker since at least IAN-121. Its convention (fields in a fenced `ticket-fields` description block, four states as labels since Linear has no custom fields) was reconstructible only by reading existing issues.
 2. `sync.sh:161` is `rsync -a --checksum` with no `--backup`, so a live file still tracked upstream and edited locally is overwritten without notice at every SessionStart. Detail in IAN-204.
-3. `CLAUDE-PYTHON.md` serves 1000 lines of FastAPI conventions to every Django repository, naming Django zero times. Detail in IAN-205, which needs an add-or-narrow decision before scheduling.
+3. `CLAUDE-PYTHON.md` serves 1000 lines of FastAPI conventions to every Django repository, naming Django zero times. IAN-205, decided 2026-09-20: add Django, re-estimated 300 to 180 from tracker history.
 
+
+### In flight when this session closed
+
+Two sibling cloud sessions were spawned on 2026-09-20 and were still working:
+
+- `session_01XHrKchQUahdxbyBtr4Tya5`: IAN-183, the hook-latency flake, on `fix/hook-latency-flake` cut from `origin/main`. Told not to widen the budget (R-204) and that IAN-115 already claimed this fix.
+- `session_018t47yhHeX319uN9Wj1hNhR`: re-baselining IAN-202 to IAN-219 estimates against tracker history, on `chore/re-baseline-estimates`. IAN-205 is its worked example.
+
+Neither had reported back. Check with `get_session` and `list_events` before redoing either.
+
+### Owner actions carried forward
+
+1. Add the seven `mcp__Linear__*` entries to `permissions.allow` in `claude/settings.json`, or every MCP call keeps prompting. An agent cannot do this; the self-modification classifier refuses it.
+2. Create `~/.claude/TICKET-TRACKER.json` from the template's new `linear` block, or R-605's gate stays off locally.
+3. `claude/harness-open-source-value-4mivg8` fails R-509 on a pre-existing `session-end.test.sh` assertion that also fails at its base commit `d426098`. `main` passes it. Merge `main` (needs `git fetch --unshallow`) rather than re-fixing it.
 
 <!-- task-state:begin -->
 ## Task state
