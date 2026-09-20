@@ -1,60 +1,65 @@
-# Session Handoff: 2026-09-20, IAN-156 (#91), R-334 (#92), IAN-173 spec (#94), R-605 ticket audit
-
-Three sessions ran today and all wrote here. This file merges them.
+# Session Handoff: 2026-09-20, README landing copy (IAN-257, #102)
 
 ## 1. Last commit
 
-- `main` is at `d426098`, `docs(handoff): record the R-334 amendment and the specced database split (#95)`. Today's merges, oldest first: `#89` (IAN-174), `#90`, `#91` (`1770b25`, IAN-156), `#92` (`1e0c8af`, IAN-175), `#93`, `#95`.
-- `./sync.sh` last ran before `#92` merged, so the live `~/.claude` carries the old R-334. Run it first next session.
-- `#94` is an open draft holding only the IAN-173 spec.
-- `chore/handoff-2026-09-20-ticket-audit` carries this file and is PR #98. `fix/ticket-gate-exemption-telemetry` is local and unpushed, empty, reserved for IAN-251.
+- `main` is at `ce44eda`, `docs(readme): rewrite the root README as adoption-facing landing copy (#102)`, squash-merged from `claude/readme-landing-page-3e7d15` (branch deleted).
+- This handoff is on `chore/handoff-2026-09-20-readme-landing`, not yet merged.
+- `./sync.sh` ran after the merge, so the live `~/.claude`, `~/.cursor`, and `~/.codex` match `ce44eda`.
 
 ## 2. Production state
 
-- **R-334 amended.** Word order fixed (base noun first, aggregate root repeated); the separator follows the engine's or language's case convention. `trip_legs` and `tripLegs` are the same name. Fixture: `enforce/tests/r334-engine-case-rule-text.test.sh`.
-- **`tdd.sh red` tolerates manifest drift** (IAN-156): a failing `hook-hashes-closure.test.sh` no longer blocks a RED when every reverse-closure line names a test file the red command named. `expected-red` answers the same question read-only. `green` tolerates nothing.
-- **`.claude/tdd-lock.json` is untracked and gitignored** as of `#92`. Verified this session with a throwaway clone of `main`: no lock file, `tdd.sh status` reports `no slice open`. IAN-188 closed on that evidence.
-- Codex over quota until 2026-09-21 02:26. Every test author and R-517 review today ran on the recorded Claude fallback. Codex exits 0 while printing its usage-limit error, so the log is the verdict, never the exit status.
-- Storage branches, not work: `park/b3-gate-expected-red-fixture` (deliberately red fixture for IAN-184, do not merge) and `docs/capability-assessment` at `43232f5`, deliberately unpushed pending the owner's R-106 call.
-- No deploy or migration. Baseline green: `pr-ticket-ref-gate.test.sh` passes all 48 directions.
+- `README.md` on `main` is 422 lines, verified by reading the file on `origin/main` rather than by the PR badge. Both HIGH review fixes are present (lines 182 and 276).
+- CI on the merged range: `fixtures` pass (3m5s), `rule-judge` pass, GitGuardian pass.
+- **Two scope gates are dead on this machine. IAN-265, urgent, full detail there.** `doctor.sh --full` reported `fail fixture-suites` locally on `ce44eda` while CI passed on the same content. Not a flake: `commit-message-guard.sh:217` and `scope-widening-gate.sh:102` both call `mapfile`, a bash 4 builtin, and `/usr/bin/env bash` here is `/bin/bash` 3.2.57. The call fails, the array is empty, and the next line is a length test that returns allow on empty, so R-212 and R-214 **fail open** on macOS while emitting nothing. CI is ubuntu with bash 5. Both calls arrived in `9218cf4` (#96).
+- `doctor.sh` exited 0 while printing `1 fail`, the same trap as `tdd.sh red` exiting 0 when it refuses to certify. The printed verdict is the truth.
+- `hook-latency.test.sh` also failed at 344ms against a 324ms budget: the known flake (IAN-184). Do not widen the budget (R-204).
+- **Codex was out of quota all session** (reset 2:26 AM local), and it exits 0 while printing the limit error, so the log is the verdict. Every R-517 review today ran on the Claude fallback. Third consecutive session; treat the fallback as the default path.
 
 ## 3. Session metrics
 
-- PRs merged today: 3 plus three handoffs. Open: `#94` (draft).
-- IAN-156: 170 actual minutes against 120 (ratio 1.42), rework 1. Overrun was scope discovery, not a wrong tier.
-- IAN-175: 130 against 60 (ratio 2.17), human estimate 45 (human_speedup 0.35), rework 1. Roughly half was the gate loop: each RED and GREEN runs the full fixture suite at 3 to 4 minutes.
-- Audit session: 1 commit (this file), 26 Linear writes, rework 0, about 35 minutes. **Not comparable** to code velocity; do not fold into the baseline.
-- Adversarial reviews: 21 findings on the IAN-173 spec, 6 on the `#92` diff, one HIGH each.
+```
+## Session metrics
+- Commits this session: 2
+- Files changed: 3
+- Files revisited (touched by 2+ commits): 0
+- Velocity flag: NORMAL
+```
+
+- The script counts 2 because the branch's three commits (`3bbbb84`, `0ca6b7d`, `4cd69e1`) squashed to one on `main`.
+- IAN-257: 28 actual against a 50-minute estimate, ratio 0.56, rework 1, human speedup 4.29.
+- **R-906 recalibration:** the 50 came from the standard/llm median (n=21), a sample dominated by hook and enforcement work whose real cost is the gate loop. Documentation-only work does not pay that cost. Estimate documentation-only standard tasks near 30 and reserve the tier median for work that runs slices through `tdd.sh`.
 
 ## 4. What shipped
 
-- **IAN-156 (#91).** Writing a slice's own fixture used to make the closure fixture red, so a test author here could never reach a RED. Its R-517 review found a HIGH: the toleration also reached `cmd_green`, recording GREEN for an edited hook plus an unhashed fixture. Fixed in B-4.
-- **IAN-175 (#92).** R-334 norm line, the Spec in `rulebook/reference.md`, a 144-line fixture, both regenerated ports, the hash manifest, and the slice-lock untracking.
-- **IAN-173 spec (#94, draft).** `claude/docs/superpowers/specs/2026-09-20-database-engine-tracks-design.md`, 258 lines, adversarially reviewed and owner-approved, 21 findings dispositioned.
-- **R-605 ticket-coverage audit.** 86 commits on `main` since `6bc9b24`. Missing a ticket key by day, total/missing: 09-17 4/4, 09-18 47/28, 09-19 21/2, 09-20 14/6, for 40 uncovered. The 11 docs-only against 29 code does **not** reproduce: the hook's own exemption (`*.md` or under `docs/`) gives 35 against 5, a `docs/`-only reading 21 against 19. Treat the split, and the backfill resting on it, as unverified; IAN-258 re-derives both.
-- **Backfill IAN-226 to IAN-249:** 24 retroactive tickets, all Done, one per uncovered code commit from 09-18 and 09-20, each carrying SHA, branch, PR and date. Tier and estimate unset, because work predating its ticket has no attributable `actual_minutes`.
-- Tickets opened: IAN-165, IAN-172, IAN-176, IAN-177, IAN-184, plus IAN-251 and IAN-252 from the audit. IAN-188 closed.
+- **IAN-257 (#102).** The root `README.md` rewritten from 22 lines to 422 as adoption-facing landing copy, with the previous contributor prose relocated to `## Working in this repository` rather than deleted. Sections: positioning and quick start, why this exists, what you get (measured counts), how a feature gets built, the two build skills, the four layers, repository layout, one source three tools, install, verification, what this does not do.
+- The two-build-skills section is the substantive addition: `build-by-slice-require-review` as the outer loop (cadence, two human gates) and `tdd-gated-dispatch` as the inner loop (one behavior, authorship boundaries, machine-proved RED and GREEN), with a seven-row comparison table and a paragraph stating that step 4 of the outer loop is the inner loop.
+- `docs/prs/2026-09-21-readme-landing-page.md`, the required PR document.
+- Tickets opened: **IAN-265** (urgent, the dead gates), **IAN-261** (three stale self-describing documents), **IAN-264** (undeclared `.enforce.json` opt-out).
 
-## 5. Pending (by urgency)
+## 5. The pattern worth carrying forward
 
-1. **Sync** (2 min): `git pull --ff-only && ./sync.sh` in the primary checkout.
-2. **IAN-184** (~90 min): wire `verification-gate.sh` to `expected-red`, fix the `hook-latency.test.sh` flake blocking its RED. Until this lands a test author is still blocked at Stop even though `tdd.sh red` works. Fixture parked (section 2). The flake it names never fired today, 308ms against a 348ms budget, so confirm it before chasing it. Do not widen the budget (R-204).
-3. **IAN-172** (~4 hours, high): employer work profile. Safe: the ticket gate and Linear writes disable themselves without `~/.claude/TICKET-TRACKER.json` (gitignored). Open: Codex sending employer code to a personal ChatGPT plan, `settings.json` replaced at SessionStart, and `claude/global-memory/` as 30 tracked files on a public remote with only a `[manual]` rule keeping employer content out.
-4. **IAN-173** (~2 hours): database engine-track split. Spec approved, three slices planned, nothing built.
-5. **IAN-157** (~3 hours): fired five times, refusing a `tdd.sh close`, two test-author writes, a commit against a branch `git checkout -b` had not created, and a scratchpad write read as production.
-6. **IAN-251** (~30-45 min): `pr-ticket-ref-gate.sh` has four allow paths, all bare `exit 0`; `record_fire` runs only from `emit_degraded_warning` and `emit_deny`, so an exemption is never recorded. With `.claude/task-tier.json` untracked, an exemption and a gate that never fired are indistinguishable afterwards. Branch cut, ledger set.
-7. **IAN-252** (~40 min): `tdd.sh close` should refuse while the lock path is tracked. Must read git's tracked state, not file existence.
-8. Lower: **IAN-176** (20 min; IAN-173 adds two files needing porting), **IAN-177** (15 min), **IAN-165** (45 min).
-9. **No ticket yet:** `tdd.sh red` exits 0 when it refuses to certify; the printed verdict is the only truth. Separately, `pr-ticket-ref-gate.test.sh` prints a bare `true` to stdout mid-run (~10 min to trace).
+Five instances in one session of one failure: **a document in this repository describing this repository, drifting from it, and being believed.** Two caught before review (unexecuted absolute claims about the slice lock; the `doctor.sh` check list copied out of `SETUP.md`). Two were the R-517 review's HIGH findings: the code-block isolation written for the wrong role, and `doctor.sh` named as a port-checks caller when it keeps its own list, where the correct three callers had already been printed by a grep earlier in the same session and `SETUP.md` was believed over that output anyway. The fifth surfaced at cleanup, `RECIPES.md` calling the handoff ignored when it is tracked.
 
-## 6. Next session
+Recorded on IAN-261: generated content is gated (`translate/*.mjs --check` fails CI on drift) and hashed content is gated (`hook-hashes.txt`), but **hand-authored prose describing the repository has no gate at all**, and agents read it as authoritative. A cheap partial answer is a fixture asserting the checkable claims those documents make: named paths exist, a file called ignored is ignored, an enumerated list matches the JSON key it mirrors.
 
-1. Run pending item 1 before anything else.
-2. Invoke `tdd.sh` as `bash claude/enforce/tdd.sh` inside this repository, never `~/.claude/enforce/tdd.sh`: the installed copy can predate the edit under test.
-3. A decision recorded in a PR document and not in an assertion is enforced by nothing. Two fixtures passed against code doing the opposite of their document; only an adversarial reviewer caught it. When a document states a bound, write the assertion in the same slice.
-4. IAN-173 starts at slice 1 (the invariants-test block), not the files. B-2's line-coverage check reads the pinned pre-split copy `git show 48f3b5c:claude/CLAUDE-DATABASE.md`; pin that sha.
-5. IAN-173's HIGH, easy to lose: `paths:` frontmatter globs are what auto-load a convention file; a dispatch table loads nothing. Engine files take disjoint globs and the shared `**/migrations/**`, `**/src/database/**`, `**/src/repositories/**` stay on the base file alone, or every project loads both engines' rules.
-6. For IAN-251 read `claude/hooks/pr-ticket-ref-gate.sh` (82-106 `record_fire`, 128-138 the allow paths), then `claude/enforce/tests/pr-ticket-ref-gate.test.sh:126-138`. For the R-605 rule text search `claude/rulebook/reference.md` by rule ID, not by line; do not re-derive the exemptions from the hook.
-7. The audit's initial claim that PRs #84 and #88 violated R-605 was **withdrawn**. The fixture covers the trivial-tier path three ways, so the gate likely exempted them correctly. The evidence is unrecoverable, which is what IAN-251 fixes. The 09-18 gap was already known: `reference.md:692` records a 2026-09-19 audit of about 14 unticketed PRs, fixed by `ticket-at-start-gate` in `6f6ca63` (#78, IAN-149). That is why 09-19 onward is near-clean.
-8. Rebase before starting and before merging. `main` moved three times today and handoffs collided here twice.
-9. The R-801 engineering-audit signal fired on every push today: 61 commits on `claude/enforce`, 38 on `claude/hooks` since the 2026-09-18 audit.
+IAN-265 is the same lesson one layer down. A gate that emits nothing when broken is indistinguishable from a gate that is allowing, so the absence of a complaint is not evidence that a guard ran.
+
+## 6. Pending (by urgency)
+
+1. **IAN-265** (50 minutes, urgent, start here): replace both `mapfile` calls with a bash 3.2 read loop, prove it with a fixture running the guard under `/bin/bash` specifically, and add a recurrence guard for bash 4 constructs generally (`declare -A`, `${var^^}`, `&>>`). Until it lands, treat R-212 and R-214 as unenforced here and honor them by hand.
+2. **IAN-261** (30 minutes, trivial): correct `SETUP.md` step 1 (pre-monorepo clone path), `AGENTS.md` (two hand-authored `codex/` paths where the port map has four), and `RECIPES.md` (handoff claimed ignored). Delete the two caveat paragraphs `ce44eda` added to `README.md` in the same change, or they become permanent.
+3. **IAN-184** (about 90 minutes): wire `verification-gate.sh` to `expected-red` and fix the `hook-latency.test.sh` flake blocking its RED. It failed again this session at 344ms against 324ms. Fixture parked on `park/b3-gate-expected-red-fixture`. Do not widen the budget (R-204).
+4. **IAN-173** (about 2 hours): the database engine-track split. Spec approved, three slices planned, nothing built. Start at slice 1 (the invariants-test block), not the files.
+5. **IAN-172** (about 4 hours, high): the employer work profile.
+6. Lower: **IAN-157** (about 3 hours), **IAN-264** (10 minutes), **IAN-176** (20 minutes), **IAN-177** (15 minutes), **IAN-165** (45 minutes).
+7. **Advisory, accumulating:** the R-801 engineering-audit signal fired on every push today. Since the 2026-09-18 audit: 26 commits on `claude/enforce`, 17 on `claude/hooks`, 15 on `cursor/rules`, 14 on `claude/rulebook`. Advisory for three sessions now.
+
+## 7. Next session
+
+1. **IAN-265 before anything else**, because until it lands two of the newest gates are inert here and every task run on this machine is unprotected by them.
+2. **Run `bash claude/enforce/doctor.sh --full` at the start of the next session, not the end.** This session found a dead guard only because a documentation task happened to run the verification gate on the way out. Had the README work not called for it, the gates would still be silently open. Worth deciding whether that run belongs in `SessionStart`, and whether CI should carry a macOS job for the hook suites, since the whole class was invisible to an ubuntu-only matrix.
+3. IAN-261 is a good follow-on: small, and it removes two caveats from the document that just became the repository's front door.
+4. Before trusting any statement in `SETUP.md`, `AGENTS.md`, or `RECIPES.md`, run the command that checks it. Three of this session's five errors came from those three files.
+5. When a command's output and a prose document disagree, **the disagreement is the finding**. The document does not get the benefit of the doubt for living in the same repository.
+6. Assume Codex is out of quota and go to the fallback agent as soon as a first attempt prints the limit error. Do not wait for a reset, and never read its exit status as the verdict.
+7. `mcp__ccd_pr__get_status` lagged real CI by minutes this session, reporting 3 passing / 0 pending while `gh pr checks` showed `fixtures` still running. Use `gh pr checks` for a merge decision.
