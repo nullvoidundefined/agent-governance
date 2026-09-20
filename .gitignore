@@ -12,5 +12,11 @@ node_modules/
 # session-local state, never a fixture or a tracked artifact.
 .claude/task-tier.json
 
+# enforce/tdd.sh's slice lock (R-410's gate input): session-local state like
+# the ledger above it. It was committed by accident in 321a9f1 (#89), which
+# left a stale phase-green lock in the repository and blocked the next
+# session's `tdd.sh open` until it was closed by hand.
+.claude/tdd-lock.json
+
 # Python bytecode from running hook helpers such as hooks/shell-command-segments.py.
 __pycache__/

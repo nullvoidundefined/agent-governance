@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-52 of 58 hook registrations port, across 9 Cursor events.
+53 of 59 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -37,6 +37,7 @@
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `codex-test-author-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `ticket-at-start-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
+| `scope-widening-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |

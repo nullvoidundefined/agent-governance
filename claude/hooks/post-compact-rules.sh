@@ -54,6 +54,8 @@ LEDGER="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.claude/task-tier.js
 if [ -f "$LEDGER" ] && jq -e . "$LEDGER" >/dev/null 2>&1; then
   CTX+=$'\n\n## Task ledger (re-injected from .claude/task-tier.json)\n\n'
   CTX+="Tier: $(jq -r '.tier' "$LEDGER"). Reason: $(jq -r '.reason' "$LEDGER"). Started: $(jq -r '.startedAtIso' "$LEDGER") on branch $(jq -r '.branch // "?"' "$LEDGER"). task-cleanup scales its work by this tier; \`task-tier.sh summary\` prints the elapsed time."
+  SCOPE=$(jq -r '(.scope // []) | if length > 0 then join(", ") else "" end' "$LEDGER" 2>/dev/null)
+  [ -n "$SCOPE" ] && CTX+=" Declared file scope (R-212): $SCOPE. Writing outside it widens the task, so put it to the user as a question first; scope-widening-gate.sh asks."
 fi
 
 jq -n --arg ctx "$CTX" '{

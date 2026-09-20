@@ -33,10 +33,12 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 **Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then estimate and open the ticket (below), create the branch or worktree, and record all of it on that branch, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, the ticket key, and the task's share of the work when it is one of several):
 
 ```bash
-bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--ticket <KEY>] [--share <percent>]
+bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--ticket <KEY>] [--share <percent>] [--scope <glob>[,<glob>...]]
 ```
 
 `--ticket <KEY>` is required above trivial whenever a tracker is configured; a trivial task opens no ticket and records `task-tier.sh set trivial "<reason>"` without it.
+
+`--scope <glob>[,<glob>...]` records the files the request implies, as repository-relative globs, and it is how R-212 stops a task from growing on its own. Write down the paths the work genuinely needs before the first edit, keeping each entry as narrow as the request really is: a bare directory covers everything beneath it, and an entry carrying a glob character is matched as a shell pattern in which `*` crosses separators, so `src/services/**` and `src/services/*` both cover that whole tree. `scope-widening-gate.sh` then turns any Write or Edit landing outside those entries into a confirm prompt naming the file and the declared scope, so a widening reaches the user as a question rather than as a larger diff they discover at review time. Session state under the repository's own `.claude/` and anything git ignores are never gated. When the request genuinely does grow, re-run `task-tier.sh set` with the wider `--scope` so the ledger matches the work; a reclassification that restates no scope keeps the one already recorded for the branch. Declaring nothing leaves the gate silent, which is the degraded path rather than the intended one.
 
 The ticket comes before the work, mechanically (R-605): with a tracker configured, `task-tier.sh set` refuses a tier above trivial without `--ticket <KEY>`, and `ticket-at-start-gate.sh` denies the first Write or Edit, and every `git commit`, until the ledger names the checked-out branch and carries the key (a trivial ledger needs no key). Record the ledger after the branch exists, because the ledger names the branch it was written on. When work already happened without a ticket, open one retroactively with its actuals and record it; never leave the work unticketed.
 

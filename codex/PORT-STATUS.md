@@ -2,7 +2,7 @@
 
 # Codex port status
 
-54 of 58 hook registrations port, across 6 Codex events.
+55 of 59 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -37,6 +37,7 @@
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `codex-test-author-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `ticket-at-start-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
+| `scope-widening-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |

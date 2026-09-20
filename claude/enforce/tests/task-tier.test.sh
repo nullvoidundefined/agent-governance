@@ -165,6 +165,37 @@ tier_set "$TRACKED_HOME" complex "new task on another branch"
 check "T-6 other-branch ledger ticket does not carry over (exits 1)" test "$ST" -eq 1
 check "T-6 other-branch refusal names --ticket" reports "--ticket"
 
+# S-1 (IAN-193, R-212): --scope records the declared file scope that
+# hooks/scope-widening-gate.sh reads, every entry of it. The first version
+# split the comma-separated list with `printf '%s'`, which emits no trailing
+# newline, so `while read` silently dropped the last entry and the gate then
+# asked about a file the task had legitimately declared.
+S1="$SB/scope"; mkdir -p "$S1"
+git -C "$S1" init -q -b feat/scope
+git -C "$S1" config user.email t@example.invalid; git -C "$S1" config user.name t
+printf 'a\n' > "$S1/a.txt"; git -C "$S1" add -A; git -C "$S1" commit -qm "init"
+scope_of() { jq -c '.scope // []' "$S1/.claude/task-tier.json" 2>/dev/null; }
+
+OUT=$(cd "$S1" && bash "$TIER" set standard "r" --scope "src/services/**,src/api/**,docs/notes.md" 2>&1); ST=$?
+check "S-1 --scope exits 0" test "$ST" -eq 0
+check "S-1 --scope keeps every entry, including the last" test "$(scope_of)" = '["src/services/**","src/api/**","docs/notes.md"]'
+
+OUT=$(cd "$S1" && bash "$TIER" set complex "grew" 2>&1)
+check "S-1 a reclassification on the same branch keeps the scope" test "$(scope_of)" = '["src/services/**","src/api/**","docs/notes.md"]'
+
+OUT=$(cd "$S1" && bash "$TIER" set standard "r" --scope "src/one/**" 2>&1)
+check "S-1 a restated scope replaces the previous one" test "$(scope_of)" = '["src/one/**"]'
+
+OUT=$(cd "$S1" && bash "$TIER" set standard "r" --scope "/etc/passwd" 2>&1); ST=$?
+check "S-1 an absolute scope entry is refused" test "$ST" -eq 1
+check "S-1 the refusal says the entry is absolute" reports "absolute"
+
+OUT=$(cd "$S1" && bash "$TIER" set standard "r" --scope "" 2>&1); ST=$?
+check "S-1 an empty scope is refused" test "$ST" -eq 1
+
+OUT=$(cd "$S1" && bash "$TIER" set standard "r" 2>&1)
+check "S-1 a ledger without --scope declares no scope" test "$(jq -r 'has("scope")' "$S1/.claude/task-tier.json")" = "true"
+
 # V-3: HOME unset means no tracker is reachable: the degraded path, not an unbound-variable crash.
 V3="$SB/home-unset"; mkdir -p "$V3"
 git -C "$V3" init -q -b feat/no-home

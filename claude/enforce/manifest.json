@@ -801,6 +801,14 @@
             "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
         },
         {
+            "id": "R-212",
+            "tier": "regex",
+            "enforcer": "hook:scope-widening-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Write|Edit: asks when the target sits outside the file scope the task-start ledger (.claude/task-tier.json) declares for the branch checked out; silent when no scope is declared, when the ledger names another branch, under the repository own .claude/, for git-ignored paths, and outside a git work tree; fixture: tests/scope-widening-gate.test.sh"
+        },
+        {
             "id": "R-334",
             "tier": "llm-judge",
             "enforcer": "ci:llm-rule-judge",
