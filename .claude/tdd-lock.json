@@ -1,0 +1,20 @@
+{
+  "slice": "B-2 tdd.sh expected-red answers whether the current failures are this slice's locked tests",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/tdd-expected-red.test.sh",
+      "sha256": "2a03f31ae42c9e41d914da7796d5e241e089ac0a3e48cbae4307a9df119313cc",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-20T09:12:47Z",
+  "baseline": {
+    "passed": 95,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-20T09:25:07Z"
+}
