@@ -36,12 +36,11 @@
 #   - git ignores the target, so scratch files and build output are out,
 #   - the target is not inside a git work tree at all.
 #
-# Matching is by path component, never by substring: an entry carrying no glob
-# character is a prefix that must end on a separator, so `claude/hooks` covers
-# `claude/hooks/a.sh` but not `claude/hooks-extra/a.sh`, and `docs/a` does not
-# cover `docs/ab.md`. An entry carrying a glob character is matched as a shell
-# pattern, in which `*` crosses separators, so `claude/hooks/**` and
-# `claude/hooks/*` both cover the whole tree beneath that directory.
+# Reading the ledger and matching a path against it live in scope-match.sh,
+# shared with commit-message-guard.sh's R-214 half, which asks the same
+# question over a staged diff. The two gates must agree, and a second copy of
+# the matcher is how that agreement ends (IAN-152), so the rules for what a
+# scope entry covers are documented there rather than restated here.
 #
 # This gate fails open rather than closed, which is the opposite of the
 # convention the deny-tier guards follow (enforce/README.md). An unreadable or
@@ -89,45 +88,22 @@ nearest_existing_directory() {
   (cd "$directory" 2>/dev/null && pwd -P)
 }
 
-# is_in_scope <relative-path> <entry>...: true when the path matches any
-# declared entry, by shell pattern for an entry holding a glob character and
-# by separator-terminated prefix for one that does not.
-is_in_scope() {
-  local rel="$1" entry
-  shift
-  for entry in "$@"; do
-    entry="${entry#./}"
-    entry="${entry%/}"
-    [ -n "$entry" ] || continue
-    case "$entry" in
-      *[\*\?\[]*) case "$rel" in $entry) return 0 ;; esac ;;
-      *) [ "$rel" = "$entry" ] && return 0
-         case "$rel" in "$entry"/*) return 0 ;; esac ;;
-    esac
-  done
-  return 1
-}
-
 TARGET=$(physical_path "$FILE_PATH")
 TOP=$(git -C "$(nearest_existing_directory "$TARGET")" rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$TOP" ] || exit 0
 TOP=$(cd "$TOP" 2>/dev/null && pwd -P) || exit 0
 
-LEDGER="$TOP/.claude/task-tier.json"
-[ -f "$LEDGER" ] || exit 0
-jq -e 'type == "object"' "$LEDGER" >/dev/null 2>&1 || exit 0
+# shellcheck source=/dev/null
+[ -f "$HOOK_DIR/scope-match.sh" ] && source "$HOOK_DIR/scope-match.sh"
+type read_declared_scope >/dev/null 2>&1 || exit 0
 
 BRANCH=$(git -C "$TOP" branch --show-current 2>/dev/null)
 [ -n "$BRANCH" ] || exit 0
-LEDGER_BRANCH=$(jq -r '.branch // "" | strings' "$LEDGER" 2>/dev/null)
-[ "$LEDGER_BRANCH" = "$BRANCH" ] || exit 0
-
-mapfile -t SCOPE < <(jq -r '(.scope // []) | if type == "array" then .[] | strings else empty end' "$LEDGER" 2>/dev/null)
+mapfile -t SCOPE < <(read_declared_scope "$TOP" "$BRANCH")
 [ "${#SCOPE[@]}" -gt 0 ] || exit 0
 
 case "$TARGET" in "$TOP"/*) REL="${TARGET#"$TOP"/}" ;; *) exit 0 ;; esac
-case "$REL" in .claude/*) exit 0 ;; esac
-git -C "$TOP" check-ignore -q -- "$TARGET" 2>/dev/null && exit 0
+is_exempt_scope_path "$TOP" "$REL" && exit 0
 
 is_in_scope "$REL" "${SCOPE[@]}" && exit 0
 

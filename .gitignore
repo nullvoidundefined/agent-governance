@@ -18,5 +18,10 @@ node_modules/
 # session's `tdd.sh open` until it was closed by hand.
 .claude/tdd-lock.json
 
+# finding.sh's per-repo ledger of work discovered mid-task (R-214): session
+# state that carries a finding from the moment of noticing to the moment its
+# tracker ticket exists. The ticket is the durable record, not this file.
+.claude/findings.json
+
 # Python bytecode from running hook helpers such as hooks/shell-command-segments.py.
 __pycache__/

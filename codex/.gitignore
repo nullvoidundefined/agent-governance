@@ -121,6 +121,7 @@
 !/skills/task-start/
 !/skills/task-start/SKILL.md
 !/skills/task-start/scripts/
+!/skills/task-start/scripts/finding.sh
 !/skills/task-start/scripts/task-provenance.sh
 !/skills/task-start/scripts/task-tier.sh
 !/skills/tdd-gated-dispatch/

@@ -80,3 +80,15 @@ R-213: Tag every task with its provenance at creation, and report the original t
   - Origin: 2026-09-20, the report that a session would run for hours and leave it unclear whether the original task had been completed, and whether the tasks that followed were required for it or self-assigned. R-212 bounds where a turn writes; this rule makes the list of what it is doing auditable.
   Scope: the session's own task list, not the tracker. R-502 still decides which workstreams become tasks at all, R-503 still governs percentage reporting, and R-605 still governs the tracker ticket; this rule adds the one field none of them carried.
   Enforcement: hook:task-provenance-gate
+
+R-214: Record every task, bug, and optimization you discover as its own ticket rather than fixing it inline.
+  Spec:
+  - The moment something is noticed, record it: `bash ~/.claude/skills/task-start/scripts/finding.sh add "<what was found>" --kind bug|task|optimization [--where <path>]`. Recording comes before deciding whether to act on it, because the decision is the user's and the record is what lets them make it.
+  - Open the tracker ticket for it (R-605) and attach the key with `finding.sh ticket <id> <KEY>`. `finding.sh open` is the list of findings still owed a ticket, and no task is finished while that list is non-empty.
+  - Never fix a discovery inline under the current task's ticket. A commit staging files outside the scope declared at task-start is denied unless its `Refs:` trailer names a ticket other than the task's own, so the work either lands separately under its own key or is recorded and left.
+  - The three kinds are distinct and the distinction is the point: a bug is behavior that is wrong, a task is work that needs doing, and an optimization is something that works and could be better. The last is the one most often fixed silently and least often worth doing now.
+  - A finding is not an excuse to stop. Name it, record it, and carry on with what was asked; the ticket is what makes leaving it safe.
+  - `.claude/findings.json` is session state like the task-start ledger and the slice lock: per checkout, gitignored, never committed. The tracker ticket is the durable record.
+  - Origin: 2026-09-20, the request for a record of every opportunity to optimize rather than ad-hoc fixes made while assigned to another task. R-212 asks before the write, R-213 says who asked for each task, and this gives the things found along the way somewhere to go.
+  Scope: work discovered while doing something else. Work the request itself implies is in scope and needs no finding, and a defect in the code the task is already changing is part of the task, not a discovery.
+  Enforcement: hook:commit-message-guard
