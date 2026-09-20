@@ -8,7 +8,8 @@ Six sessions ran today and all wrote here. This merges them; detail is on each t
 
 - `main` is at `021c8fa`, `fix(hooks): replace mapfile so the scope guards run under bash 3.2 (#105)`. Today's merges: `#89` to `#93`, `#95`, `#96`, `#98`, `#102`, `#99`, `#103`, `#105`.
 - `./sync.sh` ran from a worktree on `main` at `021c8fa`, so the live `~/.claude` carries the guard repair; both guards were re-verified firing against `~/.claude` itself.
-- Open: `#94` (IAN-173 spec), `#97` (IAN-184, two HIGH), `#100` (IAN-218), `#101` (IAN-254), `refactor/handoff-per-session-files` (IAN-260, pushed, no PR yet).
+- Open: `#94` (IAN-173 spec), `#97` (IAN-184, two HIGH), `#101` (IAN-254), `#104` (IAN-183, hook latency, CI green), `#106` (this file), `refactor/handoff-per-session-files` (IAN-260, pushed, no PR yet).
+- **`#100` was closed, not merged**, at 19:31:55Z by another session or the owner, so IAN-218's branch `claude/harness-open-source-value-4mivg8` is pushed with no PR again. Reopen or re-PR it if that work is still wanted.
 - `#100` and `#101` are siblings forked at `7b72052`, not a stack: they share six commits and both rewrite this file. Fold them, or the second conflicts.
 
 ## 2. Production state
@@ -22,7 +23,7 @@ Six sessions ran today and all wrote here. This merges them; detail is on each t
 - The primary checkout sits on `fix/ticket-gate-exemption-telemetry`, and `~/.claude/.sync-source` pointed at a worktree detached at `1ccceba`, behind `main`. `./sync.sh` installs from the checkout it runs in, so syncing from that pointer would have reinstalled the broken hooks. Check what the source is actually at before trusting it.
 - Codex over quota until 2026-09-21 02:26; every test author and R-517 review today ran on the Claude fallback. Codex exits 0 while printing its usage-limit error, so the log is the verdict, never the exit status.
 - `hook-latency.test.sh` passed the gate session (308ms vs 348ms), failed the README session (344ms vs 324ms) and failed this one at 450ms vs 378ms. The budget is derived from a bare-spawn control measured per run, so it floats with load: every reading is real and the flake is load-dependent, not absent. It now blocks `tdd.sh red` for any new slice, because a RED cannot be certified while the rest of the suite is red. Do not widen it (R-204).
-- `#100` and `#101` conflict on this file and cannot be resolved without cutting content that includes three owner actions. IAN-260 dissolves both conflicts by giving each session its own file.
+- `#101` conflicts on this file and cannot be resolved without cutting content that includes three owner actions; `#100` had the same conflict before it was closed. IAN-260 dissolves that class of conflict by giving each session its own file.
 - Another session's worktree `unruffled-gates-6647a2` holds an uncommitted `enforce/tests/bash-version-compat.test.sh`, a static-scan version of the same floor check, now redundant. It is theirs; leave it.
 - Storage branches, not work: `park/b3-gate-expected-red-fixture` (superseded), `docs/capability-assessment` at `43232f5` (unpushed, owner's R-106 call), `fix/tdd-red-commit-anchor` (empty).
 
@@ -57,7 +58,7 @@ Detail is on each ticket; these are one line apiece for traceability.
 
 ## 5. Pending (by urgency)
 
-1. **IAN-184 hook-latency** (90 min, urgent): red at 450ms against a 378ms budget, and it now blocks `tdd.sh red` for every new slice, so no TDD work can start until it is dealt with. Find the per-edit hook that grew expensive and move its work to the push boundary.
+1. **Merge `#104`** (IAN-183, 15 min): it is the hook-latency fix and its CI is green, but it is still a draft. Three hooks resolved a written file's directory by walking the path one component at a time, spawning a `dirname` or `basename` per level; the fix uses shell expansion. Until it lands, `hook-latency.test.sh` stays red at 450ms against 378ms and **blocks `tdd.sh red` for every new slice**, so no TDD work can start. Do not widen the budget (R-204); this is the root-cause fix.
 2. **`#97`'s two HIGH findings** (60 to 90 min). The IAN-184 comment of 16:5xZ carries both verbatim with the intended fixes. H-1: `is_expected_red` never reads which check failed. H-2: `exit 0` in the checks loop skips the rest. M-1 to M-3 are owed too, and `#97` needs its `## Codex review` section.
 3. **IAN-260** (75 min remaining): slice 1's fixture is written, pushed and red; `handoff-check.sh` needs the session-file path, then slices 2 to 4. Unblocks `#100` and `#101`, and retires the fold this file keeps needing.
 4. **IAN-220** (120 min): `tdd.sh green` cannot anchor its hash check to a git object (the lock is gitignored) and `fix-commit-requires-test.sh` denies every bug-fix slice's implementation commit. Both need "the locked tests are committed at HEAD".
