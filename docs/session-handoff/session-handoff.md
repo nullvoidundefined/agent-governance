@@ -43,7 +43,7 @@ Two sessions ran in parallel on 2026-09-20 and both wrote here; a third appended
 
 1. Run pending item 1 before anything else.
 2. Invoke `tdd.sh` as `bash claude/enforce/tdd.sh` inside this repository, never `~/.claude/enforce/tdd.sh`: the installed copy can predate the edit under test.
-3. A decision recorded in a PR document and not in an assertion is enforced by nothing. Two fixtures passed against code doing the opposite of their document, caught only by an adversarial reviewer; the same failure appeared in `#92`. When a document states a bound, write the assertion in the same slice.
+3. A decision recorded in a PR document and not in an assertion is enforced by nothing: two fixtures passed against code doing the opposite of their document, caught only by an adversarial reviewer. When a document states a bound, write the assertion in the same slice.
 4. IAN-173 starts at slice 1 (the invariants-test block), not at the files. B-2's line-coverage check reads `git show 48f3b5c:claude/CLAUDE-DATABASE.md`; pin that sha.
 5. IAN-173's HIGH finding, easy to lose: `paths:` frontmatter globs are what auto-load a convention file, and a dispatch table loads nothing. The engine files take disjoint globs and the shared `**/migrations/**`, `**/src/database/**`, `**/src/repositories/**` stay on the base file alone, or every project loads both engines' rules.
 6. Rebase before starting, and again before merging. `main` moved three times today under one session, and two handoffs collided in the same file.
@@ -53,21 +53,22 @@ Two sessions ran in parallel on 2026-09-20 and both wrote here; a third appended
 
 Appended, not overwritten: sections 1 to 6 are still live and untouched.
 
-- **Branch:** `claude/harness-open-source-value-4mivg8`, pushed, no PR opened.
+- **Branch:** `claude/harness-open-source-value-4mivg8`, pushed, no PR.
 - **Shipped:** `docs/tickets/2026-09-20-track-and-release-backlog.md` (sixteen work items, four workstreams) and a `linear` block in `claude/TICKET-TRACKER.template.json`.
 - **Tickets:** IAN-202 to IAN-217 opened, plus IAN-218 for this session, closed at 76 actual minutes against 90 (ratio 0.84, rework 1).
-- **The rework:** the R-605 gate was disabled all session (no `~/.claude/TICKET-TRACKER.json`) and activated the moment that file was written, refusing a commit after four had landed. A gate depending on a gitignored per-machine file is off by default on every fresh checkout and cloud container.
+- **The rework:** the R-605 gate was disabled all session (no `~/.claude/TICKET-TRACKER.json`) and activated the moment that file was written, refusing a commit after four had landed. A gate depending on a gitignored per-machine file is off by default on every fresh checkout.
+- **IAN-219 (new):** the MCP permission layer does not port. Cursor runs the R-105 guard but never evaluates an `mcp__*` allow entry; whether Codex reaches the guard at all is unverified, and that decides whether it is an ergonomics or a security gap.
 - **Carried forward:** that live config was written in an ephemeral container and does not reach the laptop. Copy the `linear` block from the template and fill in team and project locally, or R-605 stays disabled there.
 
 ### Findings worth keeping
 
-1. The `linear` block never existed in the template despite Linear being the live tracker since at least IAN-121. Its convention (canonical fields in a fenced `ticket-fields` description block, four states carried as labels since Linear has no custom fields) was reconstructible only by reading existing issues.
-2. `sync.sh:161` is `rsync -a --checksum` with no `--ignore-existing` and no `--backup`, so a live file still tracked upstream and edited locally is overwritten without notice at every SessionStart. Detail in IAN-204.
+1. The `linear` block never existed in the template despite Linear being the live tracker since at least IAN-121. Its convention (fields in a fenced `ticket-fields` description block, four states as labels since Linear has no custom fields) was reconstructible only by reading existing issues.
+2. `sync.sh:161` is `rsync -a --checksum` with no `--backup`, so a live file still tracked upstream and edited locally is overwritten without notice at every SessionStart. Detail in IAN-204.
 3. `CLAUDE-PYTHON.md` serves 1000 lines of FastAPI conventions to every Django repository, naming Django zero times. Detail in IAN-205, which needs an add-or-narrow decision before scheduling.
-4. A fresh checkout needs `npm ci --prefix claude/enforce` before the enforcement fixtures run; the R-509 gate caught it at this session's end.
+
 
 <!-- task-state:begin -->
 ## Task state
 
-- [completed] Add a linear block to TICKET-TRACKER.template.json (task 1) (updated 2026-09-20T14:35:00Z)
+- [completed] Add a linear block to TICKET-TRACKER.template.json (task 1) (updated 2026-09-20T14:33:10Z)
 <!-- task-state:end -->
