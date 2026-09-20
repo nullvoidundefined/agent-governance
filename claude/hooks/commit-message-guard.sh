@@ -194,15 +194,23 @@ message_references_other_ticket() {
 # commits whose trailer does name a separate ticket in a file this hook never
 # sees.
 #
+# The repository comes from the payload's `cwd`, never from this process's own
+# directory, and a payload carrying no `cwd` is left alone: there is no commit
+# context to judge, and reading the ambient checkout instead made the verdict
+# depend on whatever the developer happened to have staged, which broke three
+# unrelated fixtures the moment this rule shipped. Real Claude Code always
+# sends `cwd`. Following a `cd` or a `git -C` inside the command itself is
+# still not done (IAN-225).
+#
 # What it reads is the INDEX, not the commit. `git commit -a` and a trailing
 # pathspec both make those differ, and neither is handled yet (IAN-224).
-# It also resolves the repository from this process's own directory rather
-# than the one the commit runs in after a `cd` or `git -C` (IAN-225).
 judge_staged_scope() {
   type read_declared_scope >/dev/null 2>&1 || return 0
-  local top branch staged own_ticket
+  local payload_cwd top branch staged own_ticket
   local -a scope=() outside=()
-  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  payload_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
+  [ -n "$payload_cwd" ] || return 0
+  top=$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null) || return 0
   top=$(cd "$top" 2>/dev/null && pwd -P) || return 0
   branch=$(git -C "$top" branch --show-current 2>/dev/null)
   [ -n "$branch" ] || return 0

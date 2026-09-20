@@ -93,7 +93,10 @@ ledger() { # ledger <scope-json> [ticket]; an explicit empty ticket omits the ke
      + (if $t == "" then {} else {ticket: $t} end)' \
     > "$REPO/.claude/task-tier.json"
 }
-run_commit() { (cd "$REPO" && jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$HOOK"); }
+# The payload carries cwd, as every real PreToolUse payload does. The gate
+# resolves the repository from it rather than from the hook process, so a
+# fixture is hermetic instead of reading whatever the developer has staged.
+run_commit() { jq -n --arg c "$1" --arg d "$REPO" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' | bash "$HOOK"; }
 decision() { printf '%s' "$1" | jq -r '.hookSpecificOutput.permissionDecision // ""'; }
 reason() { printf '%s' "$1" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""'; }
 
