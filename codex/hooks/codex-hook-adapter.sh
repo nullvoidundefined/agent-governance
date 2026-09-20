@@ -47,9 +47,11 @@
 #      to: codex-test-author-guard (R-907) asks whenever a Write or Edit targets
 #      a test file, because tests are authored by the codex CLI and never by the
 #      model writing the implementation. Under Codex that ask becomes a deny by
-#      rule 2 above, so the guard denied Codex the very job R-907 assigns it (on
-#      2026-09-19 in template-fastapi-nuxt, new test files were created fine and
-#      every edit of an existing one was blocked). The adapter therefore exports
+#      rule 2 above, so the guard denied Codex the very job R-907 assigns it (a
+#      `codex exec -s workspace-write` run writing a test file was blocked,
+#      observed 2026-09-19 in template-fastapi-nuxt; the report's further claim
+#      that creates succeeded while edits were denied is not reproducible, and
+#      the guard's own header says why). The adapter therefore exports
 #      CLAUDE_HOOK_RUNTIME=codex, below, into every hook child it runs, on both
 #      dispatch paths: the event's own hook list and the synthesized write
 #      events of item 4. A Claude Code session sets no such variable, so its own

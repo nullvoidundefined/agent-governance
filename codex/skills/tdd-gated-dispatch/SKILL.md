@@ -110,19 +110,21 @@ the process exits; then read the final message file.
 filesystem read-only, with `$TMPDIR` and `/tmp` as the only other writable
 roots (Codex has `sandbox_workspace_write.exclude_tmpdir_env_var` and
 `exclude_slash_tmp` to close even those, and this harness sets neither). uv's
-cache sits outside all of them, at `~/.cache/uv` on Linux and
-`~/Library/Caches/uv` on macOS, so the first `uv run pytest` inside the sandbox
-fails with `Operation not permitted` on the cache directory and Codex cannot
-run the Python test it has just written. That happened on 2026-09-19 in
+cache sits outside all of them: run `uv cache dir` to see where, rather than
+assuming a path, since it is `~/.cache/uv` on this machine and uv does not put
+it under `~/Library/Caches` on macOS the way many tools do. The first
+`uv run pytest` inside the sandbox therefore fails with
+`Operation not permitted` on the cache directory and Codex cannot run the
+Python test it has just written. That happened on 2026-09-19 in
 template-fastapi-nuxt, and a test author that cannot run the test is reduced to
 guessing that it fails.
 
 Point the cache at a path the sandbox already allows, and set it inside the
-command Codex runs rather than in the shell that launches `codex exec`. Codex
-passes only a core set of variables (`HOME`, `PATH`, `SHELL`, `TMPDIR`,
-`LOGNAME` and a few more) through to the sandboxed shell, so a `UV_CACHE_DIR`
-exported by the parent never arrives, while an inline assignment on the command
-line always does:
+command Codex runs rather than in the shell that launches `codex exec`. An
+inline assignment on the command line always reaches the sandboxed shell; a
+variable exported by the parent is filtered by
+`shell_environment_policy`, whose default does not pass an arbitrary name
+through, so do not rely on exporting `UV_CACHE_DIR` before the call:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run pytest tests/services/test_score_posting.py
@@ -138,13 +140,13 @@ Two variants cover what the inline form does not:
 - `-c shell_environment_policy.set.UV_CACHE_DIR=".uv-cache"` on the `codex
   exec` command sets the variable for every command in the run, which is worth
   the extra flag when the prompt drives more than a couple of test invocations.
-- `--add-dir ~/.cache/uv` widens the sandbox to the real cache instead, which
-  keeps the cache warm between runs at the price of granting write access
+- `--add-dir "$(uv cache dir)"` widens the sandbox to the real cache instead,
+  which keeps the cache warm between runs at the price of granting write access
   outside the repository. Prefer the in-workspace cache unless a cold cache is
   genuinely the bottleneck.
 
-When uv also has to download an interpreter it writes to
-`~/.local/share/uv/python`, which the sandbox blocks the same way. Either set
+When uv also has to download an interpreter it writes to the path
+`uv python dir` prints, which the sandbox blocks the same way. Either set
 `UV_PYTHON_INSTALL_DIR` next to the cache, or run `uv python install` once
 outside the sandbox before dispatching, so the interpreter is already there.
 

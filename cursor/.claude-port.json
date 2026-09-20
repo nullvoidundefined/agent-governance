@@ -59,7 +59,7 @@
     "rules/ruby.mdc": "sha256:a7d02f89bbb30f347a1123249b167898370633cdeaaca68bac583b6c00b030b4",
     "rules/rulebook-agents.mdc": "sha256:1c1b95d4744aef6a1481cb563ff92890cbf40a87b2154005ef2b82decb1c18b0",
     "rules/rulebook-audits.mdc": "sha256:e1738fa78722e7e7bf73b3323aff4d77bc68d479147fb8e693fc8df933179235",
-    "rules/rulebook-cost.mdc": "sha256:2e77398db7424e9806148af13c615561aa532e8e8aae1c5a6967eb9098859adf",
+    "rules/rulebook-cost.mdc": "sha256:1e7248af8897676f949f2c8b8f9edf1293ee2ac4cefd0b55a73201d5f9a28587",
     "rules/rulebook-reference-convention-files.mdc": "sha256:9b6dbd631dd5e92856052fe4cb772875ff2e48e6eb726773c4780eb7d0dbbaba",
     "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:1dd09b23082bdf5ec374aa0c79d9aeb83f4e5efdadf64819a23e49c3ef6a6b27",
     "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:a13e816bf845f30e461c9efe661e64567402df21bb9a533d338c1e97f09599ce",
@@ -108,7 +108,7 @@
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
     "skills/task-start/SKILL.md": "sha256:5152e966a7fe8dadf5cde4c094f6f8a56c5740f6eb0c17fbe473b1bb3a22fd9f",
     "skills/task-start/scripts/task-tier.sh": "sha256:14c952eeb4356282ae9290da6ae4646eadf9da5efefad27a9c5bc6d68cf93426",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:eed57366e78873073174e40363856ec8500169fe0d700aa3d6873bf0f1703864",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:38d1865ff7e12f9f71699e90f77cea71640712b99f0853d0cf834fa41f2e43cf",
     "skills/ticket-lifecycle/SKILL.md": "sha256:57138366fe1bcecce3437af44d8f046b3ca224fb6e96ef9d20947bcc8474dba4"
   },
   "classes": {

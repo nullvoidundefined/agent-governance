@@ -1,6 +1,6 @@
 {
   "slice": "the guard logs a rule fire when the codex runtime silences it, and the contract fixture proves the synthesized write event is really walked",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 94,
     "runner": "shell"
   },
-  "redAt": "2026-09-20T09:35:04Z"
+  "redAt": "2026-09-20T09:35:04Z",
+  "greenAt": "2026-09-20T09:40:19Z"
 }
