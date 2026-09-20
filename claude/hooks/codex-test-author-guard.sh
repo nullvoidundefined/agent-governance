@@ -4,8 +4,20 @@
 # writing the implementation never writes or edits its own tests. When Claude's
 # Write or Edit targets a test file, ask, so touching a test is a decision the
 # user confirms (a codex-authored test believed wrong is a DISPUTE, not an
-# edit). The codex CLI writes files from its own process, not through these
-# tools, so the normal R-907 flow never trips this guard.
+# edit).
+#
+# Runtime marker: codex is not outside this guard. Its CLI runs the same hooks
+# through codex/hooks/codex-hook-adapter.sh, which registers this guard on the
+# Write|Edit matcher (codex/hooks.json) and translates an ask into a deny,
+# because Codex hooks cannot pause for a confirmation. Unmarked, the guard
+# therefore denied codex the one job R-907 gives it: on 2026-09-19 in
+# template-fastapi-nuxt, `codex exec -s workspace-write` created new test files
+# but every edit of an EXISTING test file came back blocked by this hook. The
+# adapter now exports CLAUDE_HOOK_RUNTIME=codex into every hook child it runs,
+# and this guard exits silently on exactly that value. A Claude Code session
+# sets no such variable, so its own writes to a test file still ask. The match
+# is equality, not a prefix: a neighbouring runtime name must not inherit the
+# silence.
 #
 # What counts as a test file:
 #   - basename test_*.py, *_test.py, conftest.py
@@ -27,6 +39,9 @@
 # is covered by content-gate's test-anti-pattern scan, not by this guard.
 set -uo pipefail
 [ "${CODEX_TEST_GUARD:-on}" = "off" ] && exit 0
+# The codex CLI authoring a test IS R-907's intended flow, so the guard has
+# nothing to ask about; only the adapter sets this marker (see the header).
+[ "${CLAUDE_HOOK_RUNTIME:-}" = "codex" ] && exit 0
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in Write | Edit) ;; *) exit 0 ;; esac

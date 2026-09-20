@@ -1,6 +1,6 @@
 {
   "slice": "the codex-test-author-guard passes a test-file write made under the Codex hook adapter",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -22,5 +22,6 @@
     "passed": 93,
     "runner": "shell"
   },
-  "redAt": "2026-09-20T08:48:47Z"
+  "redAt": "2026-09-20T08:48:47Z",
+  "greenAt": "2026-09-20T08:57:01Z"
 }
