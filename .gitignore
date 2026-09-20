@@ -14,3 +14,6 @@ node_modules/
 
 # Python bytecode from running hook helpers such as hooks/shell-command-segments.py.
 __pycache__/
+
+# Slice-lock session state (R-412); one per checkout, never shared.
+.claude/tdd-lock.json
