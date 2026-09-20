@@ -1,6 +1,6 @@
 {
   "slice": "B-1 tdd.sh red tolerates manifest drift confined to the named test files",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 95,
     "runner": "shell"
   },
-  "redAt": "2026-09-20T08:56:35Z"
+  "redAt": "2026-09-20T08:56:35Z",
+  "greenAt": "2026-09-20T09:02:34Z"
 }

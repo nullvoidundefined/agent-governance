@@ -524,17 +524,67 @@ named_count() {
   file_record "$1" | jq --argjson ids "$2" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.assertionResults[] | select(in_scope($ids; $kind))] | length'
 }
 
+# CLOSURE_FIXTURE is the one fixture whose failure a red may tolerate, and
+# CLOSURE_REVERSE_PATTERN is the wording it uses to name a drifting path. The
+# content-drift line it prints alongside names hooks/hook-integrity-check.sh as
+# the command to run, which is path-shaped but is not a drifting path, so only
+# the reverse-closure wording is read.
+CLOSURE_FIXTURE='hook-hashes-closure.test.sh'
+CLOSURE_REVERSE_PATTERN='^FAIL: (.+) is covered by the R-203 guard but absent from the manifest'
+
+# drift_is_confined <report entry json> <named json>: true when the entry is
+# the manifest-closure fixture and every path it names as drifting is one of
+# the test files this red command named.
+#
+# Writing a slice's own fixture is what puts an unhashed file under
+# enforce/tests/, so the closure fixture goes red as a consequence of the test
+# the author was asked to write, and outside_pass_count would refuse every RED
+# a test author could ever reach in this repository (IAN-156, owner decision
+# 2026-09-20). Drift naming any other path still refuses, and so does any other
+# failing fixture, including this one failing for a different reason: a run
+# with no reverse-closure line at all is content drift this function cannot
+# bound to the slice, and is not tolerated.
+drift_is_confined() {
+  local entry="$1" named="$2" messages path rel matched
+  [ "$(basename "$(printf '%s' "$entry" | jq -r '.name')")" = "$CLOSURE_FIXTURE" ] || return 1
+  messages=$(printf '%s' "$entry" | jq -r '[.assertionResults[]?.failureMessages[]?] | join("\n")')
+  [ -n "$messages" ] || return 1
+  local drifting
+  drifting=$(sed -nE "s#$CLOSURE_REVERSE_PATTERN.*#\1#p" <<< "$messages")
+  [ -n "$drifting" ] || return 1
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    matched=0
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      # The closure fixture prints paths relative to the harness root, which
+      # sits one directory below the repository root in this monorepo, so the
+      # same file arrives in either spelling. The suffix must start at a path
+      # boundary, or hooks/tests/x.test.sh would match enforce/tests/x.test.sh.
+      if [ "$rel" = "$path" ] || [ "${rel%"/$path"}" != "$rel" ]; then matched=1; break; fi
+    done <<< "$(printf '%s' "$named" | jq -r --arg root "$ROOT_PHYSICAL/" '.[].name | sub("^" + $root; "")')"
+    [ "$matched" -eq 1 ] || return 1
+  done <<< "$drifting"
+  return 0
+}
+
 # outside_pass_count <named json>: <named json> lists {name, ids} per named
 # file. Everything outside the named tests (whole files outside the list, and
 # the unnamed tests of a file named by id) must not fail, and a file named by
 # id must still load; dies on a failure, prints the outside pass count.
 outside_pass_count() {
-  local named="$1" failing
+  local named="$1" failing kept="" report_name
   failing=$(jq -r --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.testResults[] | entry_for($named) as $e
     | if $e == null then select(.status == "failed" or any(.assertionResults[]; .status == "failed"))
       elif $e.ids == null then empty
       else select((.status == "failed" and (.assertionResults | length) == 0) or any(.assertionResults[]; .status == "failed" and (named_by($e.ids; $kind) | not)))
       end | .name' "$REPORT")
+  while IFS= read -r report_name; do
+    [ -n "$report_name" ] || continue
+    drift_is_confined "$(jq -c --arg n "$report_name" '.testResults[] | select(.name == $n)' "$REPORT")" "$named" && continue
+    kept="${kept}${report_name}"$'\n'
+  done <<< "$failing"
+  failing=$(printf '%s' "$kept" | sed '/^$/d')
   [ -z "$failing" ] || die "the rest of the suite is red, so nothing here is a clean RED: $(printf '%s' "$failing" | sed "s#^$ROOT_PHYSICAL/##" | tr '\n' ' ')"
   jq --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.testResults[] | entry_for($named) as $e
     | if $e == null then .assertionResults[] elif $e.ids == null then empty else .assertionResults[] | select(named_by($e.ids; $kind) | not) end
