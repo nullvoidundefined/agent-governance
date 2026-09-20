@@ -36,14 +36,16 @@ Naming: the date the session ended, plus a slug naming the work, for example `20
 
 ### Index
 
-Rewritten each session, and stays under 8192 bytes. Sections, in this fixed order:
+Rewritten each session, and stays under 8192 bytes.
 
-1. `## Last commit`: the current `main` SHA and subject. Unchanged in meaning from today.
-2. `## Live warnings`: the production-state facts a next session must not miss, each naming the session file it came from. This is the one place content is still contended, and it is deliberately small.
-3. `## Pending`: the queue by urgency, one line per item, carrying ticket key, estimate and one sentence. Detail stays on the ticket.
-4. `## Sessions`: one dated row per session file, newest first, with a one-line summary and the link.
+**The index keeps R-602's existing six sections, in the existing order.** An earlier draft of this spec gave the index four sections of its own (last commit, live warnings, pending, sessions) and dropped "what shipped", "session metrics" and "next session" as per-session by nature. That was wrong for two reasons:
 
-The index does **not** carry "what shipped", "session metrics" or "next session". Those are per-session by nature and live in the session files, which is exactly why they are the sections that blew the cap.
+- It would change behaviour that `enforce/tests/handoff-check.test.sh` already pins, forcing an edit to a tracked fixture. Editing a tracked fixture emits a manifest content-drift line naming no path, which `drift_is_confined` cannot tolerate, so the slice could never reach a clean RED. Writing a new fixture beside it is the route that works.
+- Two section contracts for two file kinds is more rule surface than one contract applied twice. The cap, not the section list, is what differs.
+
+So both file kinds carry the same six sections. In the index the three per-session ones compress to a pointer ("per session, see the files listed below"), which costs about 100 bytes and keeps the invariant uniform. The index additionally carries a `## Sessions` list, one dated row per session file, newest first, with a one-line summary and the link; it sits after section 6.
+
+`## Live warnings` becomes a labelled block inside section 2, production state, rather than a section of its own. It holds the facts a next session must not miss, each naming the session file it came from. This is the one place content is still contended, and it is deliberately small.
 
 ### Retention
 
@@ -55,11 +57,13 @@ The `## Sessions` list keeps the trailing 30 days. Older rows drop off the index
 
 Today it matches one path and applies four checks. After:
 
-| Written path | Cap | Six sections in order | SHA resolves | Links resolve |
+| Written path | Cap | Six sections in order | SHA resolves | `## Sessions` present |
 |---|---|---|---|---|
-| `docs/session-handoff/session-handoff.md` | yes, 8192 | no, index sections instead | yes | yes |
-| `docs/session-handoff/YYYY-MM-DD-*.md` | no | yes | yes | not applicable |
+| `docs/session-handoff/session-handoff.md` | yes, 8192 | yes | yes | yes |
+| `docs/session-handoff/YYYY-MM-DD-*.md` | no | yes | yes | no |
 | anything else | silent, as today | | | |
+
+Every existing direction in `enforce/tests/handoff-check.test.sh` keeps passing unchanged: the index path's cap, section and SHA checks are exactly what they are today. The new directions go in a new fixture beside it.
 
 Still advisory, still exits 0 on any internal fault.
 
