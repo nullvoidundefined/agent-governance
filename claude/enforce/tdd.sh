@@ -785,6 +785,33 @@ cmd_close() {
   rm -f "$LOCK"
 }
 
+# cmd_expected_red: answers, without writing anything, whether the suite's
+# current failures are exactly the RED this slice already recorded.
+#
+# hooks/verification-gate.sh refuses to let a turn or a subagent end on a red
+# suite (R-509), which blocks a test author on the one outcome its role exists
+# to produce. The gate cannot judge that for itself without parsing four test
+# runners, and this file already normalizes all four into one report, so the
+# gate asks here instead (IAN-156, owner decision 2026-09-20). Only a slice
+# that reached `red` has an expected red suite: `open` has recorded no test
+# yet, and `green` and `refactor` are past the point where failing is correct.
+#
+# Read-only is the contract, not a convenience. The caller runs this on a tree
+# it is about to block or release, so it must not move the phase, rewrite the
+# lock, or leave a file behind; run_suite reports into a mktemp outside the
+# repository and the shard runner starts in a scratch directory.
+cmd_expected_red() {
+  require_lock
+  local current rel locked_rels=()
+  current=$(phase)
+  [ "$current" = red ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
+  while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  [ "${#locked_rels[@]}" -gt 0 ] || die "phase is red but the lock records no test file; repair or delete $LOCK_RELATIVE outside the session"
+  run_suite "${locked_rels[@]}"
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" >/dev/null
+  say "EXPECTED RED: every failure is one of the ${#locked_rels[@]} locked test file(s)"
+}
+
 cmd_status() {
   if [ -f "$LOCK" ]; then jq . "$LOCK"; else say "no slice open"; fi
 }
@@ -834,8 +861,9 @@ case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   red) shift; cmd_red "$@" ;;
   green) cmd_green ;;
+  expected-red) cmd_expected_red ;;
   close) cmd_close ;;
   status) cmd_status ;;
   validate) shift; cmd_validate "$@" ;;
-  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | close | status | validate <role>" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | expected-red | close | status | validate <role>" ;;
 esac
