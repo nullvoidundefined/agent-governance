@@ -1,0 +1,26 @@
+{
+  "slice": "the codex-test-author-guard passes a test-file write made under the Codex hook adapter",
+  "phase": "red",
+  "spec": null,
+  "locked": [],
+  "tests": [
+    {
+      "path": "claude/enforce/tests/codex-test-author-guard.test.sh",
+      "sha256": "1d452e1201df88ba70f0ba6d2d12e65619f3e95b3adbf2bba5f628d263524ab0",
+      "failureClass": "assertion",
+      "tests": 1
+    },
+    {
+      "path": "claude/enforce/tests/codex-adapter-contract.test.sh",
+      "sha256": "542ea265a1eae0e82244baa66aeeeb938200883b8e5aead0f8637e1f394f4133",
+      "failureClass": "assertion",
+      "tests": 1
+    }
+  ],
+  "openedAt": "2026-09-20T08:35:58Z",
+  "baseline": {
+    "passed": 93,
+    "runner": "shell"
+  },
+  "redAt": "2026-09-20T08:48:47Z"
+}

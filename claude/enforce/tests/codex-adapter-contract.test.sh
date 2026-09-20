@@ -97,11 +97,16 @@ chmod +x "$SANDBOX_CLAUDE/hooks/protected-path-guard.sh"
 # The synthetic hook: records every payload the adapter dispatches to it and
 # decides nothing, so a case can assert what the gates were shown.
 # One line per dispatch, so a case can count events as well as read them.
+# Each line also carries hook_runtime, the CLAUDE_HOOK_RUNTIME this hook child
+# saw in its own environment, so section 4 can assert the marker the guards read
+# rather than the marker the adapter says it sets.
 cat >"$SANDBOX_CLAUDE/hooks/record-calls.sh" <<'EOF'
 #!/usr/bin/env bash
 set -uo pipefail
 payload=$(cat 2>/dev/null || true)
-printf '%s' "$payload" | jq -c . >>"${ADAPTER_EVENT_LOG:-/dev/null}" 2>/dev/null
+printf '%s' "$payload" \
+  | jq -c --arg runtime "${CLAUDE_HOOK_RUNTIME-}" '. + {hook_runtime: $runtime}' \
+    >>"${ADAPTER_EVENT_LOG:-/dev/null}" 2>/dev/null
 exit 0
 EOF
 chmod +x "$SANDBOX_CLAUDE/hooks/record-calls.sh"
@@ -133,7 +138,10 @@ run_adapter() {
   # passes them. Every path the adapter reads is redirected into the sandbox.
   local payload="$1"
   shift
-  printf '%s' "$payload" | env \
+  # CLAUDE_HOOK_RUNTIME is unset here on purpose: section 4 asserts that the
+  # adapter itself marks its hook children, so the ambient environment of
+  # whoever runs this fixture must not be able to supply the marker.
+  printf '%s' "$payload" | env -u CLAUDE_HOOK_RUNTIME \
     HOME="$SANDBOX_HOME" \
     CLAUDE_HOME="$SANDBOX_CLAUDE" \
     CLAUDE_SETTINGS_FILE="$SANDBOX_CLAUDE/settings.json" \
@@ -330,7 +338,39 @@ a > b is not a redirection here
 DOC"
 check "a heredoc body's > is not mistaken for a second target" logged_write_target_is "docs/note.md"
 
-# --- 4. the write-target hook list, against the registration it mirrors -------
+# --- 4. the runtime marker every hook child must carry ------------------------
+
+# codex-test-author-guard.sh (R-907) exits silently when it sees
+# CLAUDE_HOOK_RUNTIME=codex, because tests are Codex's job to write and the
+# adapter turns the guard's ask into a deny, which blocked Codex from editing
+# any existing test file (observed 2026-09-19 in template-fastapi-nuxt). That
+# silence is only sound if the real adapter truly exports the marker into every
+# hook child it runs; a guard trusting a variable nothing sets would be an open
+# door rather than a fix. run_adapter sets CODEX_TEST_GUARD=off, so these cases
+# assert the marker as a hook child actually observes it, not a decision.
+
+# The distinct CLAUDE_HOOK_RUNTIME values the recording hook saw, one per line.
+logged_hook_runtimes() {
+  jq -r '.hook_runtime // ""' "$EVENT_LOG" 2>/dev/null | sort -u
+}
+
+# True when every recorded dispatch saw exactly the given runtime value.
+logged_hook_runtime_is() {
+  [ -s "$EVENT_LOG" ] && [ "$(logged_hook_runtimes)" = "$1" ]
+}
+
+reset_log
+run_adapter "$(bash_payload 'echo nothing to see here')" record-calls >/dev/null
+check "the adapter marks its hook children with the codex runtime" \
+  logged_hook_runtime_is "codex"
+
+# Both doors, since the synthesized write event is the one the Write|Edit gates
+# (codex-test-author-guard among them) are reached through.
+recorded_shell_run "printf 'x' > src/one.ts"
+check "the synthesized write event carries the codex runtime too" \
+  logged_hook_runtime_is "codex"
+
+# --- 5. the write-target hook list, against the registration it mirrors -------
 
 # The adapter names the Write|Edit gates itself, because it is handed only its
 # own matcher's hook list. These two read the same set from both sides so the
