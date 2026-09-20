@@ -123,6 +123,7 @@ be83f453c19329a8d5b4bd73ec6ad80c6b12975e43e329ac6bd6e7affe843ec3  enforce/tests/
 67144d69e3d657831d7f9b360d4a11339d1a0da388b86461605d9cfdaa2f2b4d  enforce/tests/task-cleanup-scan.test.sh
 ff95ff6b28e37c384b6cd31088c9f713a116616219fc8880172dfe5399b5e8e6  enforce/tests/task-commit-reminder.test.sh
 f2b4c2b1ef929bd1dc326841cab3866d0c202c7ea086dd68d50cf8728878e956  enforce/tests/task-tier.test.sh
+50b8f95ad98bade73dc360914ea2931827b83d01807c0c6cade6b2ab0e3eb200  enforce/tests/tdd-expected-red-integrity.test.sh
 2a03f31ae42c9e41d914da7796d5e241e089ac0a3e48cbae4307a9df119313cc  enforce/tests/tdd-expected-red.test.sh
 607146a20ce0601c465534880ce8bb5097eb2c9c858d6dad00ac3ed2cf48a1dc  enforce/tests/tdd-pytest.test.sh
 6e66a884b66f93aa63c2952ad81eb281193dff47dbbe2177e1db6d6d7f5b0aff  enforce/tests/tdd-red-green.test.sh
