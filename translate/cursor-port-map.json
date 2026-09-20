@@ -6,22 +6,62 @@
         "commands/session-start.md": "hand-authored-local",
         "commands/session-handoff.md": "hand-authored-local"
     },
-    "agents_to_subagents": ["audit-*", "spec-conformance-review"],
+    "agents_to_subagents": [
+        "audit-*",
+        "spec-conformance-review"
+    ],
     "events": {
         "PreToolUse": {
-            "Bash": ["beforeShellExecution"],
-            "Write|Edit": ["afterFileEdit", "preToolUse"],
-            "mcp__.*": ["beforeMCPExecution"]
+            "Bash": [
+                "beforeShellExecution"
+            ],
+            "Write|Edit": [
+                "afterFileEdit",
+                "preToolUse"
+            ],
+            "mcp__.*": [
+                "beforeMCPExecution"
+            ]
         },
-        "PostToolUse": { "Bash": ["afterShellExecution"], "Write": ["afterFileEdit"], "Write|Edit": ["afterFileEdit"] },
-        "SessionStart": { "*": ["sessionStart"] },
-        "SessionEnd": { "*": ["sessionEnd"] },
-        "Stop": { "*": ["stop"] },
-        "SubagentStop": { "*": [] },
-        "ConfigChange": { "*": [] },
-        "PreModelSwitch": { "*": [] }
+        "PostToolUse": {
+            "Bash": [
+                "afterShellExecution"
+            ],
+            "Write": [
+                "afterFileEdit"
+            ],
+            "Write|Edit": [
+                "afterFileEdit"
+            ]
+        },
+        "SessionStart": {
+            "*": [
+                "sessionStart"
+            ]
+        },
+        "SessionEnd": {
+            "*": [
+                "sessionEnd"
+            ]
+        },
+        "Stop": {
+            "*": [
+                "stop"
+            ]
+        },
+        "SubagentStop": {
+            "*": []
+        },
+        "ConfigChange": {
+            "*": []
+        },
+        "PreModelSwitch": {
+            "*": []
+        }
     },
-    "adapter_internal_events": ["beforeReadFile"],
+    "adapter_internal_events": [
+        "beforeReadFile"
+    ],
     "unported_reasons": {
         "settings-change-guard": "ConfigChange is a Claude Code event; Cursor does not read settings.json live.",
         "model-switch-guard": "PreModelSwitch is a Claude Code event; Cursor selects models in its own UI.",
@@ -29,7 +69,8 @@
             "SubagentStop": "SubagentStop has no Cursor equivalent; the stop event covers the main loop only. This hook's Stop registration ports (see the row above)."
         },
         "task-commit-reminder": "fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor.",
-        "post-compact-rules": "re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event."
+        "post-compact-rules": "re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event.",
+        "task-provenance-gate": "fires on Claude Code's TaskCreate tool, which Cursor lacks; a registration on that matcher would never receive an event, so R-213's provenance tag depends on recall under Cursor."
     },
     "rule_descriptions": {
         "000-global-rules.mdc": "Global rules R-001 to R-604 - the canonical rule file for every session. Always on.",

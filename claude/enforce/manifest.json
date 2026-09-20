@@ -809,6 +809,14 @@
             "note": "PreToolUse Write|Edit: asks when the target sits outside the file scope the task-start ledger (.claude/task-tier.json) declares for the branch checked out; silent when no scope is declared, when the ledger names another branch, under the repository own .claude/, for git-ignored paths, and outside a git work tree; fixture: tests/scope-widening-gate.test.sh"
         },
         {
+            "id": "R-213",
+            "tier": "regex",
+            "enforcer": "hook:task-provenance-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse TaskCreate: denies a subject whose leading tag is not [requested], [required] or [self]; case and leading whitespace tolerated, TaskUpdate never gated, an empty subject left to the tool; task-state-tracker.sh records the parsed tag and skills/task-start/scripts/task-provenance.sh folds it into the status line; fixture: tests/task-provenance-gate.test.sh"
+        },
+        {
             "id": "R-334",
             "tier": "llm-judge",
             "enforcer": "ci:llm-rule-judge",

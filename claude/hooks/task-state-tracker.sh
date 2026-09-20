@@ -22,7 +22,16 @@
 # with a bounded retry loop is real latency risk inside a PostToolUse hook.
 #
 # Line shape: {"ts":"<ISO8601 UTC>","task_id":"<id>","subject":"...",
-# "status":"created|in_progress|completed|deleted","cwd":"...","branch":"..."}.
+# "status":"created|in_progress|completed|deleted","cwd":"...","branch":"...",
+# "provenance":"requested|required|self|untagged|"}. The provenance field
+# (R-213, IAN-199) is parsed from the subject's leading tag, which
+# task-provenance-gate.sh makes mandatory at TaskCreate, and is what
+# skills/task-start/scripts/task-provenance.sh folds into the status line
+# telling the user whether the task they actually asked for is finished. It
+# is empty on a status-only TaskUpdate line that carries no subject, and the
+# fold takes a task's provenance from its FIRST line for the same reason it
+# takes the subject from there.
+#
 # Readers (session-start.sh's check_interrupted_tasks, session-end.sh's
 # render_task_state_section, both via their own fold_task_state_log copy)
 # fold the log into a snapshot: the LAST status recorded for a task id
@@ -102,7 +111,7 @@ main() (
   set -euo pipefail
 
   local tool transcript_path cwd key session_id failure_reason
-  local task_id subject status branch now state_dir log_file line
+  local task_id subject status branch now state_dir log_file line provenance
 
   tool=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
   case "$tool" in
@@ -148,6 +157,20 @@ main() (
     return 0
   fi
 
+  # Parsed here rather than by the reader so the log stays self-describing:
+  # a subject may be edited later, and what the task was opened as is a fact
+  # about that moment. Empty subject yields empty provenance, never
+  # "untagged", so a status-only line does not assert something about origin.
+  provenance=""
+  if [ -n "$subject" ]; then
+    case "$(printf '%s' "$subject" | sed 's/^[[:space:]]*//' | tr 'A-Z' 'a-z')" in
+      '[requested]'*) provenance="requested" ;;
+      '[required]'*) provenance="required" ;;
+      '[self]'*) provenance="self" ;;
+      *) provenance="untagged" ;;
+    esac
+  fi
+
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   branch=""
   if [ -n "$cwd" ] && git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -161,7 +184,8 @@ main() (
   line=$(jq -nc \
     --arg ts "$now" --arg tid "$task_id" --arg subject "$subject" \
     --arg status "$status" --arg cwd "$cwd" --arg branch "$branch" \
-    '{ts:$ts, task_id:$tid, subject:$subject, status:$status, cwd:$cwd, branch:$branch}')
+    --arg provenance "$provenance" \
+    '{ts:$ts, task_id:$tid, subject:$subject, status:$status, cwd:$cwd, branch:$branch, provenance:$provenance}')
 
   # The atomic unit is this one `printf` under O_APPEND (fix round 1, C1):
   # the line is well under any platform's atomic-write threshold, so

@@ -19,8 +19,8 @@
     "translate/render-cursor-stack-rules.mjs": "sha256:45e956eec91b77b34794f4c7d86070fc63784ed506d1f42a25d2b11a9ee718c9"
   },
   "files": {
-    ".gitignore": "sha256:9c049eedac80898303fac883d176fefe16fac500224058875a2fb2a4ff9bddc7",
-    "PORT-STATUS.md": "sha256:4d87f764e6bb852b1241372ccdf7967ac455dd26a9bc9ba2774b99f9e581713d",
+    ".gitignore": "sha256:69a7f06d3732afef9d80953bda7e5ddfc3545275f910ade9c1fa4e54733e4bf9",
+    "PORT-STATUS.md": "sha256:449585f814596f4f5c17857711517030a12b32f7f6d458dfdbc0471faef5d35f",
     "agents/audit-criticism.md": "sha256:d2c130cb9ec0f35995a7aadb6786b0e5e0a176f91731df0dbc64a6dc7c1419cb",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",
     "agents/audit-design.md": "sha256:86f8aa6d608e6f7cecada777dca12fd35ba751e57875d8f30e80685c22d1673b",
@@ -42,7 +42,7 @@
     "commands/audit-ux.md": "sha256:8a131255913384b5184c22b447da75792555bf84eafcac7961162e545012fbaa",
     "commands/spec-conformance-review.md": "sha256:292c3d0e222778fac5340b0f15c1e4b3239ae44c6f8902b4d05ad1e25b8ae1f0",
     "hooks.json": "sha256:923343aa9922ed57032a8eadd0b693a8374d2255e8ba1a1eb4c7f888a3a8a6be",
-    "rules/000-global-rules.mdc": "sha256:53b58081bb30cd7b89298586f4fbf84fcc487328c23659c73527a0c85e8bd907",
+    "rules/000-global-rules.mdc": "sha256:187244ad51279b519fe6438a73eb8593906f7b1d275e7371929de0914be018f3",
     "rules/001-session-types.mdc": "sha256:8e866354f41ca4958f2817bf67e9468441ae8eb62be79af9342be3b056fb5ed6",
     "rules/002-global-memory-index.mdc": "sha256:f87fcc12b6580008110f71ca587f26429e7d8d85adf721408cdbbf2447e84183",
     "rules/backend.mdc": "sha256:4687fd81fba9a29a23c6ba15209a7bc22d7911729290161748f2ec2b146bdaa7",
@@ -63,7 +63,7 @@
     "rules/rulebook-reference-convention-files.mdc": "sha256:9b6dbd631dd5e92856052fe4cb772875ff2e48e6eb726773c4780eb7d0dbbaba",
     "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:1dd09b23082bdf5ec374aa0c79d9aeb83f4e5efdadf64819a23e49c3ef6a6b27",
     "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:a13e816bf845f30e461c9efe661e64567402df21bb9a533d338c1e97f09599ce",
-    "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:3ba37ffca77736f0867c7e045cbe974ca2f6eabb20140ef8d13f06dd3a84f459",
+    "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:af328661deb12a101c262af3c78a4e56f145ea5d37041cc7ddfda6d05488cc58",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:0a5b5fcb579ad11114516767d7400d2e0f706d1a7bdf1c880ea03615aca97f56",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:38f071e2ca5260c7831258e4818be4d545922d989b1b2c40ba1e45758a78b13d",
     "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:9f2cfa618a7c796d9b9c58bda6d506cb50453d4ef803a208064f64f02e4037a8",
@@ -106,7 +106,8 @@
     "skills/structure-conventions/SKILL.md": "sha256:5f3cf394d9ef20b1bc4e05ad005c3e7e07b9910441295b5d2ae64720d714a8b6",
     "skills/task-cleanup/SKILL.md": "sha256:95f994c3e6040cbe1064678f89260ae6194bcc44924708a7df42b5b21fae0de3",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
-    "skills/task-start/SKILL.md": "sha256:b2bf69a25e7128ffe4956412f52093950ec9f5928c85aec8e13a381024778244",
+    "skills/task-start/SKILL.md": "sha256:494f3f40d4d819b1f47b1a11c7b477ab9a531044827883766ef26639de68e478",
+    "skills/task-start/scripts/task-provenance.sh": "sha256:c8b054be01409f1025a1ef012070327c396f25489d0a3530a25f24e97619889c",
     "skills/task-start/scripts/task-tier.sh": "sha256:2537e1932db4839aa3fc63160014ccc4fa08beeab4834ac034de401e7e829b5f",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:38d1865ff7e12f9f71699e90f77cea71640712b99f0853d0cf834fa41f2e43cf",
     "skills/ticket-lifecycle/SKILL.md": "sha256:57138366fe1bcecce3437af44d8f046b3ca224fb6e96ef9d20947bcc8474dba4"
@@ -204,6 +205,7 @@
     "skills/task-cleanup/SKILL.md": "generated",
     "skills/task-cleanup/scripts/scan.sh": "generated",
     "skills/task-start/SKILL.md": "generated",
+    "skills/task-start/scripts/task-provenance.sh": "generated",
     "skills/task-start/scripts/task-tier.sh": "generated",
     "skills/tdd-gated-dispatch/SKILL.md": "generated",
     "skills/ticket-lifecycle/SKILL.md": "generated"

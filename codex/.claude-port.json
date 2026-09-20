@@ -19,9 +19,9 @@
     "translate/render-cursor-stack-rules.mjs": "sha256:45e956eec91b77b34794f4c7d86070fc63784ed506d1f42a25d2b11a9ee718c9"
   },
   "files": {
-    ".gitignore": "sha256:e13fac8cba0a1ac6018a923f1c4fbaf5feaefff821e7cb3f5d6fb4326e34ac8b",
-    "AGENTS.md": "sha256:5254775c8bae84d3e123d3af2474f75def5b433b72c367e0af772306ffd0b143",
-    "PORT-STATUS.md": "sha256:f49853044921b31db018bb925c6b3d328230ec4be2e37705f1bb871e40fd7567",
+    ".gitignore": "sha256:e09ffcfcd7fcb0c00680bf564f08f8790c8fe713f0e5e9e58035fe6ac43cf52c",
+    "AGENTS.md": "sha256:1d66ddffdc4199db735fdec660b119f186fe4c2f840e6927ec9ba53bc520937e",
+    "PORT-STATUS.md": "sha256:f6e3528ff47b72a65b45fcbe334182f7c4bf44ee0b54fbbc80b130e4321685f8",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
     "agents/audit-design.toml": "sha256:096747f9f18673dee96a5f6d32cb17c6285a7b18d243fdbb9f85d33883b180b3",
@@ -82,7 +82,8 @@
     "skills/structure-conventions/SKILL.md": "sha256:de4a1b39d783afcb671ee42ee5407c43a3b8f3fb42c9a698ecb3a7001b08c41a",
     "skills/task-cleanup/SKILL.md": "sha256:add38750a54968873f24d525bead450baf02a6804348d4bdc97f23f6e2098923",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
-    "skills/task-start/SKILL.md": "sha256:8f411d725b4eeeb4f8c434d74c6b033cb21bbfd4578baae0e19726d0bc942d99",
+    "skills/task-start/SKILL.md": "sha256:c555f6131482f29b9bcb6b50b42a2b4693d7a7c80dc34e3fcd871ae96a8cb3ef",
+    "skills/task-start/scripts/task-provenance.sh": "sha256:c8b054be01409f1025a1ef012070327c396f25489d0a3530a25f24e97619889c",
     "skills/task-start/scripts/task-tier.sh": "sha256:2537e1932db4839aa3fc63160014ccc4fa08beeab4834ac034de401e7e829b5f",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:616c26c33392136fc269ee8751ebf030bcfc7782567e7d42b66b0136874b3788",
     "skills/ticket-lifecycle/SKILL.md": "sha256:2b6afbc90db2ab4ebf1f165520c8d4be072bd55b089947b7ca6d4f1cdb34ebf6"
@@ -156,6 +157,7 @@
     "skills/task-cleanup/SKILL.md": "generated",
     "skills/task-cleanup/scripts/scan.sh": "generated",
     "skills/task-start/SKILL.md": "generated",
+    "skills/task-start/scripts/task-provenance.sh": "generated",
     "skills/task-start/scripts/task-tier.sh": "generated",
     "skills/tdd-gated-dispatch/SKILL.md": "generated",
     "skills/ticket-lifecycle/SKILL.md": "generated"

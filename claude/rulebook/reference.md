@@ -152,6 +152,18 @@ R-212: Deliver exactly what the turn asked for; never widen the diff without ask
   Scope: writes, not reads, since R-202 already bounds what a turn may read. Session state (the repository's own `.claude/`) and git-ignored paths are never gated, because every task writes them. The confirmation gates that exist for other reasons (R-105, R-514, the destructive-action guards) are unaffected.
   Enforcement: hook:scope-widening-gate
 
+R-213: Tag every task with its provenance at creation, and report the original task's status rather than leaving it to be inferred.
+  Spec:
+  - The tag leads the subject, so a task list skimmed down its left edge is readable without opening anything: `[requested]` when the user asked for this in their own words, `[required]` when they did not ask but the requested work cannot be delivered without it, and `[self]` when you decided it was worth doing.
+  - `[self]` is permitted, not forbidden. It is the tag the user is most entitled to decline, so name it honestly; relabelling a nice-to-have as `[required]` is the failure this rule exists to make visible, not a way to satisfy it.
+  - Provenance is a fact about a task's origin, so it is set once at creation and a later `TaskUpdate` never revisits it.
+  - When a session has been running long enough that the user cannot hold the task list in their head, open the response with the status line before anything else: `bash ~/.claude/skills/task-start/scripts/task-provenance.sh summary` prints it, in the shape `Original task: NOT DONE (1 of 2 requested complete)` followed by `Since then: 1 required, 2 self`.
+  - Work that is genuinely separate from the request belongs in a tracker ticket (R-605), never in the task list as a `[self]` item. The task list is what this request is made of; the tracker is where everything else waits.
+  - `task-state-tracker.sh` records the parsed tag on every event line, and `task-provenance.sh` folds it by the same rules `fold_task_state_log` uses, so the summary, the resume path, and the handoff never report different task lists.
+  - Origin: 2026-09-20, the report that a session would run for hours and leave it unclear whether the original task had been completed, and whether the tasks that followed were required for it or self-assigned. R-212 bounds where a turn writes; this rule makes the list of what it is doing auditable.
+  Scope: the session's own task list, not the tracker. R-502 still decides which workstreams become tasks at all, R-503 still governs percentage reporting, and R-605 still governs the tracker ticket; this rule adds the one field none of them carried.
+  Enforcement: hook:task-provenance-gate
+
 ## Architecture and naming (R-3xx)
 
 Ordered macro to micro: monorepo, then application and layer boundaries, then directory taxonomy, then file, then intra-file structure.

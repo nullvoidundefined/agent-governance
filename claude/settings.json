@@ -298,6 +298,15 @@
                 ]
             },
             {
+                "matcher": "TaskCreate",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/task-provenance-gate.sh"
+                    }
+                ]
+            },
+            {
                 "matcher": "mcp__.*",
                 "hooks": [
                     {
