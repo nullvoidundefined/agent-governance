@@ -17,7 +17,7 @@ A test author in this repository could not reach a RED at all. This PR fixes tha
 
 ## What changed
 
-Two slices, each RED then GREEN, plus a README entry.
+Three slices, each RED then GREEN, plus a README entry. B-1 and B-2 are the feature; B-4 is the review fix. B-3 went to IAN-184.
 
 **B-1, `claude/enforce/tdd.sh`.** A new `drift_is_confined` helper, consulted by `outside_pass_count` when the caller opts in, treats a failing `hook-hashes-closure.test.sh` as expected when every path its reverse-closure lines name is one of the test files the red command named. A path matches in exactly two spellings, the repository-root one `tdd.sh` uses and the harness-relative one the closure fixture prints, which differ by the single directory the harness tree sits in below the repository root; a bare basename or a shorter trailing run of components is a different file and refuses.
 
@@ -29,7 +29,7 @@ The content-drift line's `hooks/hook-integrity-check.sh` token is deliberately n
 
 That is membership, not identity: it does not re-check that the locked files still fail, and it does not compare their hashes against the RED commit the way `green` does. Nothing calls the subcommand yet, so nothing depends on the difference today; IAN-184 settles which of the two it should mean before wiring the gate to it.
 
-**B-4, `claude/enforce/tdd.sh`.** The R-517 review found the toleration reached `green` and a refactor slice's opening suite as well as `red`, because all three route through `outside_pass_count` and nothing checked the phase. The caller now opts in explicitly, and only `red` and `expected-red` do.
+**B-4, `claude/enforce/tdd.sh`.** The R-517 review found the toleration reached `green` as well as `red`, because both route through `outside_pass_count` and nothing checked the phase. The caller now opts in explicitly, and only `red` and `expected-red` do. A refactor slice's opening suite was never affected, despite what the first review and an earlier draft of this document said: `open --refactor` refuses on any failing file of its own accord, before `outside_pass_count` is reached.
 
 **`claude/enforce/README.md`.** Both behaviours documented alongside the other subcommands, per R-508.
 
@@ -41,13 +41,13 @@ That is membership, not identity: it does not re-check that the locked files sti
 
 **The toleration stops at `red` and does not extend to `green`.** By the time `green` runs, the drift comes from the production file the implementer edited, which the manifest also covers. Tolerating that would mean accepting integrity drift on hooks, which is the thing the previous decision refused. Regenerating the manifest before `green` is the documented step.
 
-This decision was recorded here before the code enforced it. The first two slices shipped a toleration that `green` and a refactor slice's opening suite both reached, and no fixture asserted the difference, so both fixtures passed against code doing the opposite of what this paragraph says. The R-517 review caught it, and B-4 fixes it with three fixture directions: `green` refuses while the drift stands, `green` succeeds once it is cleared, and the shorter path spellings refuse. Recorded here rather than quietly amended, because the failure mode is the point: a decision written in a document and not in an assertion is not enforced by anything.
+This decision was recorded here before the code enforced it. The first two slices shipped a toleration that `green` reached, and no fixture asserted the difference, so both fixtures passed against code doing the opposite of what this paragraph says. The R-517 review caught it, and B-4 fixes it with four fixture directions: `green` refuses while the drift stands, `green` succeeds once it is cleared, and a bare basename and an intermediate suffix each refuse. Recorded here rather than quietly amended, because the failure mode is the point: a decision written in a document and not in an assertion is not enforced by anything.
 
 **The gate will ask `tdd.sh` rather than judge for itself.** The gate runs whole check commands and would have to parse Vitest, Jest, pytest, and shell-fixture output to know which tests failed. `tdd.sh` already normalizes all four into one report, so `expected-red` reuses that (R-308) instead of growing a second copy of it inside a hook.
 
 ## Testing
 
-`claude/enforce/tests/tdd-red-manifest-drift.test.sh` drives the real `tdd.sh` in a throwaway repository through five directions: drift confined to the named file is accepted; a foreign drifting path refuses; a path sharing the named file's basename in another tree refuses; an unrelated failing sibling refuses even when the drift itself is confined; and the repository-root spelling of the same path is accepted. It also asserts the lock's phase, recorded path, failure class, and that the tolerated fixture contributes nothing to the baseline.
+`claude/enforce/tests/tdd-red-manifest-drift.test.sh` drives the real `tdd.sh` in a throwaway repository through nine directions. Five judge the red: drift confined to the named file is accepted; a foreign drifting path refuses; a path sharing the named file's basename in another tree refuses; an unrelated failing sibling refuses even when the drift itself is confined; and the repository-root spelling of the same path is accepted. Four more were added by B-4: a bare basename refuses, an intermediate suffix refuses, `green` refuses while the tolerated drift stands, and `green` succeeds once it is cleared. It also asserts the lock's phase, recorded path, failure class, and that the tolerated fixture contributes nothing to the baseline.
 
 `claude/enforce/tests/tdd-expected-red.test.sh` drives `expected-red` through the accepted case, a failure outside the locked files, an absent lock, and the `open`, `green`, and `refactor` phases, and asserts after every invocation that the lock is byte-identical and `git status --porcelain --untracked-files=all` is unchanged.
 
@@ -63,10 +63,10 @@ Reviewer: Claude subagent (fable), fallback: Codex usage limit reached, resets 2
 
 | # | Severity | Finding | Disposition |
 |---|---|---|---|
-| 1 | High | The toleration reached `cmd_green` and a refactor slice's opening suite, so an edited hook plus an unhashed fixture recorded GREEN. The PR document recorded the opposite decision and no fixture asserted it. | Fixed in B-4 (`50de61b`, `3e427e3`) with three fixture directions. Confirmed by reading `outside_pass_count`'s call sites before acting. |
+| 1 | High | The toleration reached `cmd_green`, so an edited hook plus an unhashed fixture recorded GREEN. The PR document recorded the opposite decision and no fixture asserted it. | Fixed in B-4 (`50de61b`, `3e427e3`) with four fixture directions. The re-review found the refactor half of this finding was wrong: that path refuses on its own before the toleration is reached. Confirmed by reading `outside_pass_count`'s call sites before acting. |
 | 2 | Medium | The bound covers the reverse-closure axis only; the content-drift line names no path, so it is muted rather than bounded. | Document corrected to describe the real bound. Tightening carried to IAN-184 with the reviewer's proposed mechanism. |
 | 3 | Medium | `expected-red` never verifies the locked files still fail, so a rewritten or deleted locked fixture still answers 0. | Document corrected to say membership rather than identity. Carried to IAN-184, where wiring the gate first makes it reachable. |
-| 4 | Low | `cmd_expected_red` leaked its `mktemp` report on every call, contradicting its own comment. | Fixed in B-4: `rm -f "$REPORT"` before the success line. |
+| 4 | Low | `cmd_expected_red` leaked its `mktemp` report, contradicting its own comment. | Fixed in B-4 on the success path: `rm -f "$REPORT"` before the success line. The re-review confirmed the refusal path still leaks, which every subcommand has always done; unasserted either way. |
 | 5 | Low | The suffix match accepted any trailing run of components, so a bare `score.test.sh` matched a locked `claude/enforce/tests/score.test.sh`. | Fixed in B-4: exactly the two legitimate spellings, with fixture directions for the bare basename and an intermediate suffix. |
 | 6 | Low | `ROOT_PHYSICAL` was interpolated into a jq regex; a `(` in a repository path raised a regex error. | Fixed in B-4: `ltrimstr` strips it literally. |
 | 7 | Low | The closure fixture is recognised by basename, so a look-alike in another repository using `tdd.sh` would be tolerated. | Accepted, not fixed. The rationale is repository-specific but the code is not; in any other repository CI still sees the fixture red. Noted here rather than carried, as it needs a second consumer to be worth solving. |
