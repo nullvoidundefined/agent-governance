@@ -1,10 +1,10 @@
 # Session Handoff: 2026-09-20, four sessions: IAN-156, R-334, the R-2xx rules, the IAN-173 spec, the R-605 audit, the IAN-184 gate
 
-Four sessions ran today and all wrote here. This merges them; per-ticket detail is on Linear.
+Four sessions ran today and all wrote here. This merges them; detail is on each ticket.
 
 ## 1. Last commit
 
-- `main` is at `9218cf4`, `feat(rules): scope, provenance and findings rules plus the root-uid tdd.sh unblock (#96)`. Today's merges: `#89` to `#96` and `#98`.
+- `main` is at `ce44eda`, `docs(readme): rewrite the root README as adoption-facing landing copy (#102)`. Today's merges: `#89` to `#93`, `#95`, `#96`, `#98`, `#102`. This file is `#99` on `docs/handoff-2026-09-20-gate`.
 - `./sync.sh` last ran before `#92`, so the live `~/.claude` predates R-334 and `#96`. Run it first.
 - Open: `#94` (IAN-173 spec), `#97` (IAN-184, two HIGH), `#100` (IAN-218), `#101` (IAN-254).
 - `#100` and `#101` are siblings forked at `7b72052`, not a stack: they share six commits and both rewrite this file. Fold them, or the second conflicts.
@@ -23,26 +23,27 @@ Four sessions ran today and all wrote here. This merges them; per-ticket detail 
 
 ## 3. Session metrics
 
-- PRs merged: 4 plus three handoffs, 53 files changed, rework 3, velocity normal.
+- PRs merged: 4 code plus four handoffs, 64 paths changed, rework 3, velocity normal.
 - IAN-156: 170 actual against 120, ratio 1.42, rework 1; the overrun was scope discovery, not a wrong tier.
 - IAN-175: 130 against 60, ratio 2.17, human estimate 45 (human_speedup 0.35), rework 1. Half went to the gate loop, each RED and GREEN running the full fixture suite at 3 to 4 minutes.
-- Gate session: 71 minutes, one of three frictions partly done; `#97` is 5 files, 499 insertions. Audit session: 1 commit, 26 Linear writes, 35 minutes, **not comparable** to code velocity.
-- Adversarial reviews: 21 findings on the IAN-173 spec, 6 on `#92`, 8 on `#96`, 9 on `#97`, 9 on `#98`; a HIGH in each.
+- Gate session 71 min (`#97`, 6 files, 548 insertions); audit session 35 min, 26 Linear writes, **not comparable** to code velocity.
+- Adversarial reviews: 21 on the IAN-173 spec, 6 on `#92`, 8 on `#96`, 9 on `#97`, 9 on `#98`; a HIGH in each.
 
 ## 4. What shipped
 
-- **IAN-156 (#91).** `tdd.sh red` past manifest drift, so a test author here can reach a RED at all. Its review's HIGH, the toleration reaching `cmd_green`, fixed in B-4.
-- **IAN-175 (#92).** The R-334 norm line and Spec, a 144-line fixture, both ports, the hash manifest, the slice-lock untracking.
-- **R-212, R-213, R-214 (#96).** Scope declaration, provenance tags, findings-to-ticket, each with an enforcer, fixture and manifest row, plus `finding.sh` and `task-provenance.sh` in both ports. Also fixed the `chmod 000` fixture that asserted nothing as uid 0, which had made `tdd.sh red` unusable in cloud containers. Deferred: IAN-224, IAN-225.
-- **IAN-173 spec (#94, draft).** 258 lines, reviewed, owner-approved, 21 findings dispositioned.
-- **IAN-184 B-3a and B-3b (#97, draft).** `verification-gate.sh` asks `expected-red` after a check fails and releases on exit 0, failing closed. Nothing reached `main`.
+- **IAN-156 (#91).** `tdd.sh red` past manifest drift, so a test author here can reach a RED.
+- **IAN-175 (#92).** The R-334 norm line and Spec, a 144-line fixture, both ports, the lock untracking.
+- **R-212, R-213, R-214 (#96).** Scope declaration, provenance tags, findings-to-ticket, each with an enforcer, fixture and manifest row. Also fixed the `chmod 000` fixture that asserted nothing as uid 0, which had made `tdd.sh red` unusable in cloud containers. Deferred: IAN-224, IAN-225.
+- **IAN-173 spec (#94, draft).** `claude/docs/superpowers/specs/2026-09-20-database-engine-tracks-design.md`, 258 lines, 21 findings dispositioned.
+- **IAN-184 B-3a and B-3b (#97, draft).** The gate asks `expected-red` after a check fails and releases on exit 0, failing closed; B-3a made `expected-red` require a locked test to still be failing, closing Finding 3 of the `#91` review. Nothing reached `main`.
 - **R-605 audit (#98).** 86 commits since `6bc9b24`, 40 uncovered; by day 09-17 4/4, 09-18 47/28, 09-19 21/2, 09-20 14/6. The docs-versus-code split reproduces under no definition tried, so it and the IAN-226 to IAN-249 backfill are unverified. IAN-258 carries both, and the backfilled tickets have no tier or estimate, so R-906 is unaffected.
+- **Withdrawn:** the claim that `#84` and `#88` violated R-605. The fixture covers the trivial-tier path three ways, so the gate most likely exempted them correctly and the evidence is gone either way; IAN-251 fixes that. The 09-18 gap was already known and fixed: `reference.md` records a 2026-09-19 audit of about 14 unticketed PRs, closed by `ticket-at-start-gate` in `6f6ca63` (`#78`, IAN-149), which is why 09-19 onward is near-clean. Do not re-open either.
 - Tickets opened: IAN-165, IAN-172, IAN-176, IAN-177, IAN-184, IAN-218, IAN-220, IAN-250, IAN-251, IAN-252, IAN-254, IAN-258. IAN-188 closed.
 
 ## 5. Pending (by urgency)
 
 1. **Sync** (2 min): `git pull --ff-only && ./sync.sh` in the primary checkout.
-2. **`#97`'s two HIGH findings** (60 to 90 min). The IAN-184 comment of 16:5xZ carries both verbatim with evidence and the intended fixes. H-1: `is_expected_red` never reads which check failed. H-2: `exit 0` in the checks loop skips the rest. `#97` also needs its `## Codex review` section.
+2. **`#97`'s two HIGH findings** (60 to 90 min). The IAN-184 comment of 16:5xZ carries both verbatim with evidence and the intended fixes. H-1: `is_expected_red` never reads which check failed. H-2: `exit 0` in the checks loop skips the rest. M-1 to M-3 are on the same comment and are also owed fixes. `#97` also needs its `## Codex review` section.
 3. **IAN-220** (120 min): `tdd.sh green` cannot anchor its hash check to a git object because the lock is gitignored, and `fix-commit-requires-test.sh` denies every bug-fix slice's implementation commit. Both need the primitive "the locked tests are committed at HEAD".
 4. **IAN-172** (4 hours, high): the employer work profile. Open: Codex sending employer code to a personal ChatGPT plan, `settings.json` replaced at SessionStart, and `claude/global-memory/` public with only a `[manual]` rule holding employer content out.
 5. **IAN-173** (2 hours): the database engine-track split. Spec approved, three slices planned, nothing built.
@@ -56,12 +57,10 @@ Four sessions ran today and all wrote here. This merges them; per-ticket detail 
 
 ## 6. Next session
 
-1. Run pending item 1 first, and rebase before starting and before merging: `main` moved four times today and handoffs collided here three times.
+1. Run pending item 1 first, and rebase before starting and before merging: `main` moved eight times today and handoffs collided here three times.
 2. Read the IAN-184 thread before touching `#97`, and fix `#97` before syncing it anywhere.
-3. Invoke `tdd.sh` as `bash claude/enforce/tdd.sh` here: the installed copy can predate the edit under test.
+3. Invoke `tdd.sh` as `bash claude/enforce/tdd.sh` here: the installed copy can predate the edit.
 4. A decision in a PR document and not in an assertion is enforced by nothing. When a document states a bound, write the assertion in the same slice.
-5. Write a **new** fixture file rather than editing a tracked one: editing one emits a drift line naming no path, which `drift_is_confined` cannot tolerate. Likely root cause of IAN-162.
-6. The hash manifest's `--update` writes to `$HOME/.claude` unless `CLAUDE_INTEGRITY_ROOT=<checkout>/claude` is set. `protected-path-guard` reads shell text, not resolved paths: use the **Write tool** over a Bash heredoc.
-7. Order work by dependency, not by the order the user listed it: the gate session opened IAN-220 first and only then found every slice depends on the `test-author` subagent, which IAN-184 unblocks.
-8. IAN-173 starts at slice 1, the invariants-test block; pin `git show 48f3b5c:claude/CLAUDE-DATABASE.md` for B-2. Its HIGH: `paths:` globs auto-load a convention file and a dispatch table loads nothing, so the engine files need disjoint globs and the shared ones stay on the base file.
-9. Cite `reference.md` by rule ID, never by line range: `#96` moved R-605 from 684 to 722 and the prior citation was stale within hours.
+5. The hash manifest's `--update` writes to `$HOME/.claude` unless `CLAUDE_INTEGRITY_ROOT=<checkout>/claude` is set. `protected-path-guard` reads shell text, not resolved paths: use the **Write tool** over a Bash heredoc.
+5. Order work by dependency, not as the user listed it: the gate session opened IAN-220 first, then found every slice depends on the `test-author` subagent IAN-184 unblocks.
+7. Cite `reference.md` by rule ID, never by line range: `#96` moved R-605 from 684 to 722 and the prior citation was stale within hours.
