@@ -104,6 +104,50 @@ the process exits; then read the final message file.
 - R-908's billing guard fires on the command; it asks only when the call
   would bill the metered API instead of the ChatGPT plan.
 
+### uv and pytest inside the workspace-write sandbox
+
+`-s workspace-write` makes the repository writable and leaves the rest of the
+filesystem read-only, with `$TMPDIR` and `/tmp` as the only other writable
+roots (Codex has `sandbox_workspace_write.exclude_tmpdir_env_var` and
+`exclude_slash_tmp` to close even those, and this harness sets neither). uv's
+cache sits outside all of them, at `~/.cache/uv` on Linux and
+`~/Library/Caches/uv` on macOS, so the first `uv run pytest` inside the sandbox
+fails with `Operation not permitted` on the cache directory and Codex cannot
+run the Python test it has just written. That happened on 2026-09-19 in
+template-fastapi-nuxt, and a test author that cannot run the test is reduced to
+guessing that it fails.
+
+Point the cache at a path the sandbox already allows, and set it inside the
+command Codex runs rather than in the shell that launches `codex exec`. Codex
+passes only a core set of variables (`HOME`, `PATH`, `SHELL`, `TMPDIR`,
+`LOGNAME` and a few more) through to the sandboxed shell, so a `UV_CACHE_DIR`
+exported by the parent never arrives, while an inline assignment on the command
+line always does:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run pytest tests/services/test_score_posting.py
+```
+
+Write that form into the test-author prompt, in the same sentence that tells
+Codex how to run the test, rather than leaving it to be rediscovered. Add
+`.uv-cache/` to the project's `.gitignore`; `UV_CACHE_DIR="$TMPDIR/uv-cache"`
+works equally well and leaves nothing in the working tree at all.
+
+Two variants cover what the inline form does not:
+
+- `-c shell_environment_policy.set.UV_CACHE_DIR=".uv-cache"` on the `codex
+  exec` command sets the variable for every command in the run, which is worth
+  the extra flag when the prompt drives more than a couple of test invocations.
+- `--add-dir ~/.cache/uv` widens the sandbox to the real cache instead, which
+  keeps the cache warm between runs at the price of granting write access
+  outside the repository. Prefer the in-workspace cache unless a cold cache is
+  genuinely the bottleneck.
+
+When uv also has to download an interpreter it writes to
+`~/.local/share/uv/python`, which the sandbox blocks the same way. Either set
+`UV_PYTHON_INSTALL_DIR` next to the cache, or run `uv python install` once
+outside the sandbox before dispatching, so the interpreter is already there.
+
 Before dispatching, record the commit and the lock's hash:
 `git rev-parse HEAD` and `shasum -a 256 .claude/tdd-lock.json`. When Codex
 returns, prove what it did rather than trusting its summary:
@@ -123,8 +167,11 @@ returns, prove what it did rather than trusting its summary:
    reported), then `tdd.sh validate test-author`, proving every changed path
    is a test or fixture path.
 
-Codex runs outside Claude's hooks, so these three checks are the only proof.
-If any fails, discard the run: reset to the recorded commit if Codex
+Codex runs the harness hooks through `codex/hooks/codex-hook-adapter.sh`, but
+that adapter covers the file it is shown and not the session as a whole: it
+sees no `tdd.sh` phase transition and no commit Codex makes for itself, so
+these three checks remain the only proof of what the run actually did. If any
+fails, discard the run: reset to the recorded commit if Codex
 committed, restore the lock and every non-test path, commit nothing from it,
 and re-run Codex or take the fallback.
 
