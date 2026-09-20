@@ -1,0 +1,84 @@
+# Let a slice reach and report its intended RED
+
+Ticket: IAN-156. Branch: `fix/stop-gate-slice-red`. Follow-up: IAN-184.
+
+## Summary
+
+R-509 says that neither a turn nor a writing subagent ends on a red suite, and `hooks/verification-gate.sh` enforces it. A test author's entire job under R-412 is to end holding a failing test, so the gate blocked it every time: all fifteen test-author runs on IAN-141 ended with a "blocked, reporting" message rather than a clean return.
+
+While reproducing that, the problem turned out to sit one layer deeper. `claude/enforce/hook-hashes.txt` covers `enforce/tests/*.sh`, which is 96 of its 242 entries, so writing any fixture makes `hook-hashes-closure.test.sh` fail on both reverse closure and content drift. `outside_pass_count` in `tdd.sh` then refuses the red before the gate is ever consulted:
+
+```
+tdd.sh: the rest of the suite is red, so nothing here is a clean RED:
+  claude/enforce/tests/hook-hashes-closure.test.sh
+```
+
+A test author in this repository could not reach a RED at all. This PR fixes that layer and builds the question the gate will ask; the gate wiring itself went to IAN-184 for the reason given under Testing.
+
+## What changed
+
+Three slices, each RED then GREEN, plus a README entry. B-1 and B-2 are the feature; B-4 is the review fix. B-3 went to IAN-184.
+
+**B-1, `claude/enforce/tdd.sh`.** A new `drift_is_confined` helper, consulted by `outside_pass_count` when the caller opts in, treats a failing `hook-hashes-closure.test.sh` as expected when every path its reverse-closure lines name is one of the test files the red command named. A path matches in exactly two spellings, the repository-root one `tdd.sh` uses and the harness-relative one the closure fixture prints, which differ by the single directory the harness tree sits in below the repository root; a bare basename or a shorter trailing run of components is a different file and refuses.
+
+Note precisely what this bounds, because it is narrower than "every path it names as drifting". The closure fixture prints two kinds of line. The reverse-closure line names a path, and that is the axis the toleration bounds. The content-drift line names no path at all, because the fixture collapses content drift to a count before reporting it, so a run whose reverse-closure lines are all confined is tolerated even if the content-drift line is also present and caused by something else entirely. The manifest is never rewritten and CI still runs the closure fixture as a merge blocker, so this mutes a signal inside the slice rather than blessing anything, but it is a mute and not a bound. Tightening it to read the per-path content-drift list, which `hooks/hook-integrity-check.sh` already computes, is carried in IAN-184.
+
+The content-drift line's `hooks/hook-integrity-check.sh` token is deliberately not read as a drifting path: it is the command the fixture tells you to run, and it is path-shaped without naming drift.
+
+**B-2, `claude/enforce/tdd.sh`.** A new `expected-red` subcommand answers, read-only, whether every failure in the suite lies inside the files the lock records. It requires a lock in phase `red`, runs the suite through the same normalizing machinery as every other subcommand, and defers the judgment to `outside_pass_count`, so the B-1 toleration applies here too.
+
+That is membership, not identity: it does not re-check that the locked files still fail, and it does not compare their hashes against the RED commit the way `green` does. Nothing calls the subcommand yet, so nothing depends on the difference today; IAN-184 settles which of the two it should mean before wiring the gate to it.
+
+**B-4, `claude/enforce/tdd.sh`.** The R-517 review found the toleration reached `green` as well as `red`, because both route through `outside_pass_count` and nothing checked the phase. The caller now opts in explicitly, and only `red` and `expected-red` do. A refactor slice's opening suite was never affected, despite what the first review and an earlier draft of this document said: `open --refactor` refuses on any failing file of its own accord, before `outside_pass_count` is reached.
+
+**`claude/enforce/README.md`.** Both behaviours documented alongside the other subcommands, per R-508.
+
+## Architectural decisions
+
+**The exemption is bounded by the lock, not by the role.** Chosen over exempting `agent_type: test-author` outright, the way `slice-critic` is exempted today. The alternative is three lines and would let a test author that broke an unrelated fixture return clean. Bounding on the lock's recorded test paths means the exemption is exactly as wide as the slice, and it covers the main session too, which matters because R-907 has Codex writing the test from the main session rather than from a subagent.
+
+**Nothing regenerates the integrity manifest automatically.** Considered and rejected: having `tdd.sh red`, or the test-author role, run `hook-integrity-check.sh --update`. Either would mean the RED transition writes whatever is on disk into the R-203 manifest, so a tampered hook would be blessed automatically and only the PR diff would catch it. Tolerating a bounded failure costs nothing and cannot bless anything. The manifest is still regenerated by hand before the PR, which is the documented practice.
+
+**The toleration stops at `red` and does not extend to `green`.** By the time `green` runs, the drift comes from the production file the implementer edited, which the manifest also covers. Tolerating that would mean accepting integrity drift on hooks, which is the thing the previous decision refused. Regenerating the manifest before `green` is the documented step.
+
+This decision was recorded here before the code enforced it. The first two slices shipped a toleration that `green` reached, and no fixture asserted the difference, so both fixtures passed against code doing the opposite of what this paragraph says. The R-517 review caught it, and B-4 fixes it with four fixture directions: `green` refuses while the drift stands, `green` succeeds once it is cleared, and a bare basename and an intermediate suffix each refuse. Recorded here rather than quietly amended, because the failure mode is the point: a decision written in a document and not in an assertion is not enforced by anything.
+
+**The gate will ask `tdd.sh` rather than judge for itself.** The gate runs whole check commands and would have to parse Vitest, Jest, pytest, and shell-fixture output to know which tests failed. `tdd.sh` already normalizes all four into one report, so `expected-red` reuses that (R-308) instead of growing a second copy of it inside a hook.
+
+## Testing
+
+`claude/enforce/tests/tdd-red-manifest-drift.test.sh` drives the real `tdd.sh` in a throwaway repository through nine directions. Five judge the red: drift confined to the named file is accepted; a foreign drifting path refuses; a path sharing the named file's basename in another tree refuses; an unrelated failing sibling refuses even when the drift itself is confined; and the repository-root spelling of the same path is accepted. Four more were added by B-4: a bare basename refuses, an intermediate suffix refuses, `green` refuses while the tolerated drift stands, and `green` succeeds once it is cleared. It also asserts the lock's phase, recorded path, failure class, and that the tolerated fixture contributes nothing to the baseline.
+
+`claude/enforce/tests/tdd-expected-red.test.sh` drives `expected-red` through the accepted case, a failure outside the locked files, an absent lock, and the `open`, `green`, and `refactor` phases, and asserts after every invocation that the lock is byte-identical and `git status --porcelain --untracked-files=all` is unchanged.
+
+B-2's RED was recorded with the manifest deliberately left stale, which is the case that was impossible before B-1. That is the fix proving itself rather than a fixture asserting it.
+
+**What is not here, and why.** B-3, the gate wiring, has a written fixture but no proven RED. `enforce/tests/hook-latency.test.sh` fails inside `tdd.sh`'s suite run and passes standalone, reproducibly, twice each; standalone it measured 330ms against a 348ms budget, about 5 percent of headroom. It already carries `# Shard: serial` and the runner settles for at least 5 seconds before running it. Rather than prove that slice's RED by hand outside R-412 or widen a budget that R-204 forbids widening, the owner split it to IAN-184, which carries the fixture on the unpushed branch `park/b3-gate-expected-red-fixture`.
+
+**Test author.** `test-author` subagent on Opus for all three slices (fallback: Codex usage limit reached, resets 2026-09-21 02:26). Codex was dispatched first for B-1 and returned `ERROR: You've hit your usage limit`, writing nothing; HEAD and `git status` were both verified unchanged before the fallback ran.
+
+## Codex review
+
+Reviewer: Claude subagent (fable), fallback: Codex usage limit reached, resets 2026-09-21 02:26. Seven findings, verdict "merge after fixes". Each ran against `origin/main...HEAD` with both fixtures executed under bash 3.2.57 and `drift_is_confined` extracted and driven through adversarial cases.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | High | The toleration reached `cmd_green`, so an edited hook plus an unhashed fixture recorded GREEN. The PR document recorded the opposite decision and no fixture asserted it. | Fixed in B-4 (`50de61b`, `3e427e3`) with four fixture directions. The re-review found the refactor half of this finding was wrong: that path refuses on its own before the toleration is reached. Confirmed by reading `outside_pass_count`'s call sites before acting. |
+| 2 | Medium | The bound covers the reverse-closure axis only; the content-drift line names no path, so it is muted rather than bounded. | Document corrected to describe the real bound. Tightening carried to IAN-184 with the reviewer's proposed mechanism. |
+| 3 | Medium | `expected-red` never verifies the locked files still fail, so a rewritten or deleted locked fixture still answers 0. | Document corrected to say membership rather than identity. Carried to IAN-184, where wiring the gate first makes it reachable. |
+| 4 | Low | `cmd_expected_red` leaked its `mktemp` report, contradicting its own comment. | Fixed in B-4 on the success path: `rm -f "$REPORT"` before the success line. The re-review confirmed the refusal path still leaks, which every subcommand has always done; unasserted either way. |
+| 5 | Low | The suffix match accepted any trailing run of components, so a bare `score.test.sh` matched a locked `claude/enforce/tests/score.test.sh`. | Fixed in B-4: exactly the two legitimate spellings, with fixture directions for the bare basename and an intermediate suffix. |
+| 6 | Low | `ROOT_PHYSICAL` was interpolated into a jq regex; a `(` in a repository path raised a regex error. | Fixed in B-4: `ltrimstr` strips it literally. |
+| 7 | Low | The closure fixture is recognised by basename, so a look-alike in another repository using `tdd.sh` would be tolerated. | Accepted, not fixed. The rationale is repository-specific but the code is not; in any other repository CI still sees the fixture red. Noted here rather than carried, as it needs a second consumer to be worth solving. |
+
+Two wording points the reviewer raised are also taken: the README no longer describes `verification-gate.sh` as asking `expected-red` today, since IAN-184 is what makes that true.
+
+## Reflection
+
+Time since implementation: all commits landed 2026-09-20, so this is written the same day.
+
+What I understand now that I did not at the start: the ticket described a gate problem, and it was really a `tdd.sh` problem wearing a gate's clothes. The gate never got a chance to be wrong, because the refusal happened two steps earlier. I only found that because I wrote a scratch fixture and ran it instead of trusting the ticket's own description of its scope, and the reproduction cost about four minutes.
+
+What I got wrong first: three consecutive `tdd.sh red` attempts failed and I started looking for a bug in the toleration logic I had just written. The logic was fine. I was invoking `~/.claude/enforce/tdd.sh`, the installed copy, which predates the edit, while the fixture under test resolved the checkout's copy through `harness-root.sh`. That helper exists precisely because this confusion was diagnosed before, in the 2026-09-18 verification-integrity work, and I walked into it anyway from the one direction it does not cover: a human typing the installed path.
+
+Two process observations worth keeping. `tdd.sh validate test-author` reported a boundary violation for a manifest regeneration that the orchestrator performed, not the agent, because it judges `git status` wholesale and cannot tell the two apart. And `protected-path-guard` twice refused commands whose only offence was mentioning a path inside quoted text, once for the test author and once for me, which is IAN-157 firing live three times in one session.

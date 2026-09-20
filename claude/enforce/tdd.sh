@@ -524,17 +524,81 @@ named_count() {
   file_record "$1" | jq --argjson ids "$2" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.assertionResults[] | select(in_scope($ids; $kind))] | length'
 }
 
+# CLOSURE_FIXTURE is the one fixture whose failure a red may tolerate, and
+# CLOSURE_REVERSE_PATTERN is the wording it uses to name a drifting path. The
+# content-drift line it prints alongside names hooks/hook-integrity-check.sh as
+# the command to run, which is path-shaped but is not a drifting path, so only
+# the reverse-closure wording is read.
+CLOSURE_FIXTURE='hook-hashes-closure.test.sh'
+CLOSURE_REVERSE_PATTERN='^FAIL: (.+) is covered by the R-203 guard but absent from the manifest'
+
+# drift_is_confined <report entry json> <named json>: true when the entry is
+# the manifest-closure fixture and every path it names as drifting is one of
+# the test files this red command named.
+#
+# Writing a slice's own fixture is what puts an unhashed file under
+# enforce/tests/, so the closure fixture goes red as a consequence of the test
+# the author was asked to write, and outside_pass_count would refuse every RED
+# a test author could ever reach in this repository (IAN-156, owner decision
+# 2026-09-20). Drift naming any other path still refuses, and so does any other
+# failing fixture, including this one failing for a different reason: a run
+# with no reverse-closure line at all is content drift this function cannot
+# bound to the slice, and is not tolerated.
+drift_is_confined() {
+  local entry="$1" named="$2" messages path rel matched prefix
+  [ "$(basename "$(printf '%s' "$entry" | jq -r '.name')")" = "$CLOSURE_FIXTURE" ] || return 1
+  messages=$(printf '%s' "$entry" | jq -r '[.assertionResults[]?.failureMessages[]?] | join("\n")')
+  [ -n "$messages" ] || return 1
+  local drifting
+  drifting=$(sed -nE "s#$CLOSURE_REVERSE_PATTERN.*#\1#p" <<< "$messages")
+  [ -n "$drifting" ] || return 1
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    matched=0
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      # Exactly two spellings name the same file: the repository-root one
+      # tdd.sh uses, and the harness-relative one the closure fixture prints,
+      # which differs by the single directory the harness tree sits in below
+      # the repository root. Any shorter trailing run of components is a
+      # different file: a bare score.test.sh, or tests/score.test.sh, does not
+      # name claude/enforce/tests/score.test.sh (R-517 review of PR #91).
+      if [ "$rel" = "$path" ]; then matched=1; break; fi
+      prefix="${rel%"/$path"}"
+      if [ "$prefix" != "$rel" ] && [ -n "$prefix" ]; then
+        case "$prefix" in */*) ;; *) matched=1; break ;; esac
+      fi
+    done <<< "$(printf '%s' "$named" | jq -r --arg root "$ROOT_PHYSICAL/" '.[].name | ltrimstr($root)')"
+    [ "$matched" -eq 1 ] || return 1
+  done <<< "$drifting"
+  return 0
+}
+
 # outside_pass_count <named json>: <named json> lists {name, ids} per named
 # file. Everything outside the named tests (whole files outside the list, and
 # the unnamed tests of a file named by id) must not fail, and a file named by
 # id must still load; dies on a failure, prints the outside pass count.
+# The second argument opts one caller into the manifest-drift toleration above.
+# Only a caller judging a RED may: `red` and `expected-red` ask for it, while
+# `green` and a refactor slice's opening suite must not, because by then the
+# drift comes from the production file the implementer edited rather than from
+# the slice's own fixture, and tolerating that is the integrity drift on hooks
+# that decision 2 of 2026-09-20 refused (R-517 review of PR #91, finding 1).
 outside_pass_count() {
-  local named="$1" failing
+  local named="$1" tolerate="${2:-}" failing kept="" report_name
   failing=$(jq -r --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.testResults[] | entry_for($named) as $e
     | if $e == null then select(.status == "failed" or any(.assertionResults[]; .status == "failed"))
       elif $e.ids == null then empty
       else select((.status == "failed" and (.assertionResults | length) == 0) or any(.assertionResults[]; .status == "failed" and (named_by($e.ids; $kind) | not)))
       end | .name' "$REPORT")
+  while IFS= read -r report_name; do
+    [ -n "$report_name" ] || continue
+    if [ "$tolerate" = tolerate ]; then
+      drift_is_confined "$(jq -c --arg n "$report_name" '.testResults[] | select(.name == $n)' "$REPORT")" "$named" && continue
+    fi
+    kept="${kept}${report_name}"$'\n'
+  done <<< "$failing"
+  failing=$(printf '%s' "$kept" | sed '/^$/d')
   [ -z "$failing" ] || die "the rest of the suite is red, so nothing here is a clean RED: $(printf '%s' "$failing" | sed "s#^$ROOT_PHYSICAL/##" | tr '\n' ' ')"
   jq --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.testResults[] | entry_for($named) as $e
     | if $e == null then .assertionResults[] elif $e.ids == null then empty else .assertionResults[] | select(named_by($e.ids; $kind) | not) end
@@ -652,7 +716,7 @@ cmd_red() {
       --argjson n "$(named_count "$rel" "$ids")" '. + [{path:$p, sha256:$h, failureClass:$c, tests:$n} + (if $ids == null then {} else {ids:$ids} end)]')
   done
   local baseline
-  baseline=$(outside_pass_count "$(spec_named "$spec")") || exit 1
+  baseline=$(outside_pass_count "$(spec_named "$spec")" tolerate) || exit 1
   jq --argjson t "$entries" --argjson b "$baseline" --arg k "$RUNNER_KIND" --arg at "$(now)" \
     '.phase = "red" | .tests = $t | .baseline = {passed: $b, runner: $k} | .redAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
@@ -735,6 +799,34 @@ cmd_close() {
   rm -f "$LOCK"
 }
 
+# cmd_expected_red: answers, without writing anything, whether the suite's
+# current failures are exactly the RED this slice already recorded.
+#
+# hooks/verification-gate.sh refuses to let a turn or a subagent end on a red
+# suite (R-509), which blocks a test author on the one outcome its role exists
+# to produce. The gate cannot judge that for itself without parsing four test
+# runners, and this file already normalizes all four into one report, so the
+# gate asks here instead (IAN-156, owner decision 2026-09-20). Only a slice
+# that reached `red` has an expected red suite: `open` has recorded no test
+# yet, and `green` and `refactor` are past the point where failing is correct.
+#
+# Read-only is the contract, not a convenience. The caller runs this on a tree
+# it is about to block or release, so it must not move the phase, rewrite the
+# lock, or leave a file behind; run_suite reports into a mktemp outside the
+# repository and the shard runner starts in a scratch directory.
+cmd_expected_red() {
+  require_lock
+  local current rel locked_rels=()
+  current=$(phase)
+  [ "$current" = red ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
+  while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  [ "${#locked_rels[@]}" -gt 0 ] || die "phase is red but the lock records no test file; repair or delete $LOCK_RELATIVE outside the session"
+  run_suite "${locked_rels[@]}"
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null
+  rm -f "$REPORT"
+  say "EXPECTED RED: every failure is one of the ${#locked_rels[@]} locked test file(s)"
+}
+
 cmd_status() {
   if [ -f "$LOCK" ]; then jq . "$LOCK"; else say "no slice open"; fi
 }
@@ -784,8 +876,9 @@ case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   red) shift; cmd_red "$@" ;;
   green) cmd_green ;;
+  expected-red) cmd_expected_red ;;
   close) cmd_close ;;
   status) cmd_status ;;
   validate) shift; cmd_validate "$@" ;;
-  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | close | status | validate <role>" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | expected-red | close | status | validate <role>" ;;
 esac
