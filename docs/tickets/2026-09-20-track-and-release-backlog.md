@@ -6,10 +6,10 @@ configuration. Each item carries the canonical field set from
 `claude/skills/ticket-lifecycle/SKILL.md` so it can be opened in a tracker
 without rewriting.
 
-No tracker was configured when these were captured (`~/.claude/TICKET-TRACKER.json`
-absent), so this file is the record of origin, not the tracker. When a tracker
-exists, open each item, write its key onto the `Ticket:` line here, and treat the
-tracker as authoritative from that point.
+All sixteen are open in Linear as IAN-202 to IAN-217, in the Agent Governance
+project. Linear is authoritative from here; this file is the record of origin and
+the reasoning behind each item. Dependencies are carried as Linear blocking
+relations as well as being stated below.
 
 ## Estimates are heuristic, not history
 
@@ -35,7 +35,7 @@ The mechanism that lets someone else's stack work without a pull request here.
 
 ### A1. Register a local convention track through `.enforce.json`
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-202
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** opus (schema design plus gate wiring)
@@ -72,7 +72,7 @@ they do not write.
 
 ### A2. Drive structure-gate vocabulary from configuration
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-203
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** opus
@@ -103,7 +103,7 @@ structure enforcement behind them.
 
 ### A3. Local override contract for synced rule files
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-204
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** opus (sync semantics, prior destructive incident in this area)
@@ -147,7 +147,7 @@ These fix advice that is currently wrong, not advice that is missing.
 
 ### B1. The Python track serves FastAPI conventions to every Django repository
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-205
 - **Tier:** complex if adding Django and Flask; trivial if narrowing the claim
 - **Assist:** llm
 - **Model:** opus
@@ -184,7 +184,7 @@ absent track fails loudly.
 
 ### B2. The Go track is 145 lines and has no TDD runner
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-206
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** sonnet (well-scoped once the parity target is fixed)
@@ -212,7 +212,7 @@ same gap seen twice, so they should close together.
 
 ### B3. The Ruby track is 170 lines and has no TDD runner
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-207
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
@@ -230,7 +230,7 @@ Sidekiq 3) and the RSpec half of the same `ISSUES.md` P2.
 
 ### B4. The TypeScript backend track assumes Express
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-208
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
@@ -257,7 +257,7 @@ repository today gets layering denials for following its own framework.
 
 ### B5. ORM conventions are absent while two rules depend on them
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-209
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
@@ -287,7 +287,7 @@ file and the migration tool start.
 
 ### C0. Require a push lint gate before a track is accepted
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-210
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
@@ -317,12 +317,12 @@ Each is a separate ticket, each tier complex, each estimated at 240 minutes
 in state `backlog`, and each depending on C0 plus its own lint gate landing
 first. Ordered by adoption surface per unit of maintenance:
 
-| Id | Language | Marker | Gate | Note |
+| Ticket | Language | Marker | Gate | Note |
 |---|---|---|---|---|
-| C1 | Rust | `Cargo.toml` | clippy | Cleanest fit; strong existing conventions culture maps well onto this rule style |
-| C2 | Java / Kotlin | `pom.xml`, `build.gradle` | spotless or ktlint | Largest enterprise surface, heaviest to do properly |
-| C3 | C# / .NET | `*.csproj` | `dotnet format` plus Roslyn analyzers | |
-| C4 | PHP / Laravel | `composer.json` | Pint plus PHPStan | |
+| IAN-212 | Rust | `Cargo.toml` | clippy | Cleanest fit; strong existing conventions culture maps well onto this rule style |
+| IAN-213 | Java / Kotlin | `pom.xml`, `build.gradle` | spotless or ktlint | Largest enterprise surface, heaviest to do properly |
+| IAN-214 | C# / .NET | `*.csproj` | `dotnet format` plus Roslyn analyzers | |
+| IAN-215 | PHP / Laravel | `composer.json` | Pint plus PHPStan | |
 
 **Standing risk on all four.** None of these will be written on real work by the
 maintainer, so none gets the validation that produced the roughly 13 commits
@@ -337,7 +337,7 @@ track written by someone who writes that language.
 
 ### D1. Extract the safety floor and fixture mechanism as the publishable unit
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-217
 - **Tier:** saga
 - **Assist:** llm
 - **Model:** opus
@@ -345,8 +345,8 @@ track written by someone who writes that language.
 - **Human estimate:** 480 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/publishable-unit`
-- **State:** blocked
-- **Depends on:** the IAN-121 verdict, due 2026-09-26, and on A3
+- **State:** backlog, blocked by IAN-121 and IAN-204 as Linear relations
+- **Depends on:** the IAN-121 verdict, due 2026-09-26, and on IAN-204
 
 **Problem.** The assessment concluded that the publishable product is the safety
 floor (R-101 to R-108, with a twelve-fix bypass-closing history) plus the
@@ -369,7 +369,7 @@ replacement.
 
 ### D2. Label the three layers explicitly in the documentation
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-216
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
@@ -394,7 +394,7 @@ adopter's expectation and therefore the maintenance burden that arrives with it.
 
 ### D3. De-hardcode the governance remote id
 
-- **Ticket:** (unopened)
+- **Ticket:** IAN-211
 - **Tier:** trivial
 - **Assist:** llm
 - **Model:** haiku
