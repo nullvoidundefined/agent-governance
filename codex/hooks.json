@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate scope-widening-gate",
             "timeout": 60
           }
         ]

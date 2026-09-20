@@ -7,12 +7,17 @@
 # scan reads them and post-compact-rules.sh re-injects them.
 #
 # Usage:
-#   task-tier.sh set <trivial|standard|complex|saga|investigation> "<reason>" [--ticket <KEY>] [--share <percent>]
+#   task-tier.sh set <trivial|standard|complex|saga|investigation> "<reason>" [--ticket <KEY>] [--share <percent>] [--scope <glob>[,<glob>...]]
 #                             above trivial, --ticket is required whenever a tracker is
 #                             configured (~/.claude/TICKET-TRACKER.json), so the ticket
 #                             exists before the work: ticket-at-start-gate.sh denies
 #                             edits and commits until the ledger carries it (R-605,
 #                             IAN-149); a reclassification on the same branch keeps it
+#                             --scope records the files the request implies, as
+#                             repository-relative globs, repeatable and comma
+#                             separated; hooks/scope-widening-gate.sh reads it and
+#                             asks before a write lands outside it (R-212), and a
+#                             reclassification on the same branch keeps it
 #   task-tier.sh get          prints the ledger as JSON (exit 1 when none)
 #   task-tier.sh summary      one line: tier, reason, elapsed, branch
 #   task-tier.sh clear        removes the ledger (task-cleanup's last step)
@@ -32,14 +37,41 @@ read_previous_ticket() {
   jq -r --arg b "$1" 'select(.branch == $b) | .ticket // "" | strings' "$LEDGER" 2>/dev/null
 }
 
+# read_scope_entries <comma-separated globs>: appends each entry to the
+# caller's scope_entries array, refusing an absolute path or one climbing out
+# of the repository, since the gate matches repository-relative paths only.
+read_scope_entries() {
+  local raw="$1" entry
+  while IFS= read -r entry; do
+    entry="${entry#./}"
+    [ -n "$entry" ] || continue
+    case "$entry" in
+      /*) die "--scope takes repository-relative globs, and '$entry' is absolute" ;;
+      ..* | */../*) die "--scope entries stay inside the repository, and '$entry' climbs out of it" ;;
+    esac
+    scope_entries+=("$entry")
+  done < <(printf '%s\n' "$raw" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+}
+
+# read_previous_scope <branch>: prints the scope an existing ledger holds for
+# the same branch as a JSON array, so a reclassification keeps the declared
+# scope without restating it.
+read_previous_scope() {
+  [ -f "$LEDGER" ] || return 0
+  jq -c --arg b "$1" 'select(.branch == $b) | .scope // empty | arrays' "$LEDGER" 2>/dev/null
+}
+
 cmd_set() {
   local tier="${1:-}" reason="${2:-}" share="" ticket="" has_ticket_flag=0 branch
+  local -a scope_entries=()
+  local has_scope_flag=0 scope_json=""
   shift 2 2>/dev/null || true
   while [ $# -gt 0 ]; do
     case "$1" in
       --share) share="${2:-}"; shift 2 2>/dev/null || shift ;;
       --ticket) ticket="${2:-}"; has_ticket_flag=1; shift 2 2>/dev/null || shift ;;
-      *) die "unknown option '$1' (expected --ticket <KEY> or --share <percent>)" ;;
+      --scope) read_scope_entries "${2:-}"; has_scope_flag=1; shift 2 2>/dev/null || shift ;;
+      *) die "unknown option '$1' (expected --ticket <KEY>, --share <percent>, or --scope <glob>[,<glob>...])" ;;
     esac
   done
   case "$tier" in trivial|standard|complex|saga|investigation) ;; *) die "tier must be trivial, standard, complex, saga, or investigation (got '${tier}')" ;; esac
@@ -52,15 +84,22 @@ cmd_set() {
   if [ "$tier" != "trivial" ] && [ -z "$ticket" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
     die "a $tier task needs its ticket before the work starts (R-605): open it with /ticket-lifecycle, then re-run with --ticket <KEY>"
   fi
+  if [ "$has_scope_flag" -eq 1 ]; then
+    [ "${#scope_entries[@]}" -gt 0 ] || die "--scope takes at least one repository-relative glob, such as --scope 'src/services/**,src/api/**'"
+    scope_json=$(printf '%s\n' "${scope_entries[@]}" | jq -R . | jq -sc .)
+  else
+    scope_json=$(read_previous_scope "$branch")
+  fi
   local previous=""
   [ -f "$LEDGER" ] && previous=$(jq -r '.tier // ""' "$LEDGER" 2>/dev/null)
   mkdir -p "$ROOT/.claude"
   jq -n --arg tier "$tier" --arg reason "$reason" --arg share "$share" --arg ticket "$ticket" \
-        --arg branch "$branch" \
+        --arg branch "$branch" --argjson scope "${scope_json:-null}" \
         --arg previous "$previous" --argjson started "$(date +%s)" \
         --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
     {tier: $tier, reason: $reason, branch: $branch, startedAt: $started, startedAtIso: $iso}
     + (if $ticket != "" then {ticket: $ticket} else {} end)
+    + (if $scope == null then {} else {scope: $scope} end)
     + (if $share != "" then {sharePercent: ($share | tonumber)} else {} end)
     + (if $previous != "" and $previous != $tier then {reclassifiedFrom: $previous} else {} end)
   ' > "$LEDGER" || die "could not write $LEDGER_RELATIVE"

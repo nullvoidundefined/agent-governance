@@ -140,6 +140,44 @@ R-211: When a task carries two or more judgment calls, ask them through option t
   Scope: forks a reasonable colleague would expect to be consulted on, including scope widening, where to codify something, naming, and structure. An implementation detail with one obviously correct answer is not a judgment call, and asking about it is its own failure (`global-memory/feedback_be_proactive.md` bounds this rule on that side). The existing confirmation gates (R-105, R-514, the destructive-action guards) are not judgment calls and stay where they are.
   Enforcement: manual
 
+R-212: Deliver exactly what the turn asked for; never widen the diff without asking first.
+  Spec:
+  - Declare the task's file scope at task-start, beside the tier: `task-tier.sh set <tier> "<reason>" --ticket <KEY> --scope <glob>[,<glob>...]`. The scope is the set of paths the request itself implies, written as repository-relative globs, and a bare directory covers everything beneath it.
+  - Keep every write inside the declared scope. A write outside it is a widening, and a widening is a judgment call under R-211: put it to the user as a question before making it, never as a report afterward.
+  - The four widenings this rule exists to stop: fixing an adjacent defect noticed while reading, refactoring a file the task only needed to read, adding tests or documentation nobody asked for, and continuing into the next task once the one asked for is finished.
+  - A real defect found outside the scope is still worth raising. Name it, say where it is, and leave it there; the user decides whether it joins this task or becomes a ticket of its own.
+  - This rule never licenses an incomplete deliverable. Everything the request implies is in scope, including the tests, docs, and ports the repository's own rules already require for the files being changed (R-403, R-508, R-607). Scope discipline bounds what is added beyond the request, never what the request itself needs.
+  - Declaring no scope declares no constraint: the gate stays silent and the rule falls back to recall, which is the degraded path and not the intended one.
+  - Origin: 2026-09-20, the report that task execution had become "greedy", delivering the thing asked for and then continuing into adjacent fixes, unrequested refactors, and extra files, so the diff arrived several times the size of the request.
+  Scope: writes, not reads, since R-202 already bounds what a turn may read. Session state (the repository's own `.claude/`) and git-ignored paths are never gated, because every task writes them. The confirmation gates that exist for other reasons (R-105, R-514, the destructive-action guards) are unaffected.
+  Enforcement: hook:scope-widening-gate
+
+R-213: Tag every task with its provenance at creation, and report the original task's status rather than leaving it to be inferred.
+  Spec:
+  - The tag leads the subject, so a task list skimmed down its left edge is readable without opening anything: `[requested]` when the user asked for this in their own words, `[required]` when they did not ask but the requested work cannot be delivered without it, and `[self]` when you decided it was worth doing.
+  - `[self]` is permitted, not forbidden. It is the tag the user is most entitled to decline, so name it honestly; relabelling a nice-to-have as `[required]` is the failure this rule exists to make visible, not a way to satisfy it.
+  - Provenance is a fact about a task's origin, so it is set once at creation and a later `TaskUpdate` never revisits it.
+  - When a session has been running long enough that the user cannot hold the task list in their head, open the response with the status line before anything else: `bash ~/.claude/skills/task-start/scripts/task-provenance.sh summary` prints it, in the shape `Original task: NOT DONE (1 of 2 requested complete)` followed by `Since then: 1 required, 2 self`.
+  - Work that is genuinely separate from the request belongs in a tracker ticket (R-605), never in the task list as a `[self]` item. The task list is what this request is made of; the tracker is where everything else waits.
+  - `task-state-tracker.sh` records the parsed tag on every event line, and `task-provenance.sh` folds it by the same rules `fold_task_state_log` uses, so the summary, the resume path, and the handoff never report different task lists.
+  - Origin: 2026-09-20, the report that a session would run for hours and leave it unclear whether the original task had been completed, and whether the tasks that followed were required for it or self-assigned. R-212 bounds where a turn writes; this rule makes the list of what it is doing auditable.
+  Scope: the session's own task list, not the tracker. R-502 still decides which workstreams become tasks at all, R-503 still governs percentage reporting, and R-605 still governs the tracker ticket; this rule adds the one field none of them carried.
+  Enforcement: hook:task-provenance-gate
+
+R-214: Record every task, bug, and optimization you discover as its own ticket rather than fixing it inline.
+  Spec:
+  - The moment something is noticed, record it: `bash ~/.claude/skills/task-start/scripts/finding.sh add "<what was found>" --kind bug|task|optimization [--where <path>]`. Recording comes before deciding whether to act on it, because the decision is the user's and the record is what lets them make it.
+  - Open the tracker ticket for it (R-605) and attach the key with `finding.sh ticket <id> <KEY>`. `finding.sh open` is the list of findings still owed a ticket, and no task is finished while that list is non-empty.
+  - Never fix a discovery inline under the current task's ticket. A commit staging files outside the scope declared at task-start is denied unless its `Refs:` trailer names a ticket other than the task's own, so the work either lands separately under its own key or is recorded and left.
+  - The gate asks rather than denying when the commit's message cannot be read (`-F <file>`, a bare `git commit` opened in the editor, an amend reusing its message), because the `Refs:` escape cannot be evaluated there and refusing outright would block commits whose trailer does name a separate ticket. A ledger that declares a scope but carries no ticket cannot be satisfied by any trailer at all, since without an own key there is nothing to tell this task's work from anyone else's.
+  - What it reads is the index rather than the commit, so `git commit -a` and a trailing pathspec are not covered yet (IAN-224), and it resolves the repository from the hook process rather than the one the commit runs in (IAN-225). Both limits are named in the hook and the manifest rather than left implied.
+  - The three kinds are distinct and the distinction is the point: a bug is behavior that is wrong, a task is work that needs doing, and an optimization is something that works and could be better. The last is the one most often fixed silently and least often worth doing now.
+  - A finding is not an excuse to stop. Name it, record it, and carry on with what was asked; the ticket is what makes leaving it safe.
+  - `.claude/findings.json` is session state like the task-start ledger and the slice lock: per checkout, gitignored, never committed. The tracker ticket is the durable record.
+  - Origin: 2026-09-20, the request for a record of every opportunity to optimize rather than ad-hoc fixes made while assigned to another task. R-212 asks before the write, R-213 says who asked for each task, and this gives the things found along the way somewhere to go.
+  Scope: work discovered while doing something else. Work the request itself implies is in scope and needs no finding, and a defect in the code the task is already changing is part of the task, not a discovery.
+  Enforcement: hook:commit-message-guard
+
 ## Architecture and naming (R-3xx)
 
 Ordered macro to micro: monorepo, then application and layer boundaries, then directory taxonomy, then file, then intra-file structure.

@@ -33,10 +33,24 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 **Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then estimate and open the ticket (below), create the branch or worktree, and record all of it on that branch, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, the ticket key, and the task's share of the work when it is one of several):
 
 ```bash
-bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--ticket <KEY>] [--share <percent>]
+bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--ticket <KEY>] [--share <percent>] [--scope <glob>[,<glob>...]]
 ```
 
 `--ticket <KEY>` is required above trivial whenever a tracker is configured; a trivial task opens no ticket and records `task-tier.sh set trivial "<reason>"` without it.
+
+`--scope <glob>[,<glob>...]` records the files the request implies, as repository-relative globs, and it is how R-212 stops a task from growing on its own. Write down the paths the work genuinely needs before the first edit, keeping each entry as narrow as the request really is: a bare directory covers everything beneath it, and an entry carrying a glob character is matched as a shell pattern in which `*` crosses separators, so `src/services/**` and `src/services/*` both cover that whole tree. `scope-widening-gate.sh` then turns any Write or Edit landing outside those entries into a confirm prompt naming the file and the declared scope, so a widening reaches the user as a question rather than as a larger diff they discover at review time. Session state under the repository's own `.claude/` and anything git ignores are never gated. When the request genuinely does grow, re-run `task-tier.sh set` with the wider `--scope` so the ledger matches the work; a reclassification that restates no scope keeps the one already recorded for the branch. Declaring nothing leaves the gate silent, which is the degraded path rather than the intended one.
+
+Every task the session opens carries its provenance in the subject, as the leading tag R-213 requires: `[requested]` when the user asked for this in their own words, `[required]` when they did not ask but the requested work cannot be delivered without it, and `[self]` when you decided it was worth doing. `task-provenance-gate.sh` refuses a `TaskCreate` whose subject starts with anything else, so the list stays readable down its left edge. A `[self]` task is allowed, and it is also the one the user is most entitled to decline, so name it honestly instead of relabelling it `[required]`; work that is genuinely separate from this request belongs in a tracker ticket under R-605 rather than in this list at all.
+
+When the session has run long enough that the user can no longer hold the task list in their head, open the response with the status line rather than leaving them to infer it:
+
+```bash
+bash ~/.claude/skills/task-start/scripts/task-provenance.sh summary
+```
+
+It folds this session's task-state log and prints two lines, `Original task: NOT DONE (1 of 2 requested complete)` followed by `Since then: 1 required, 2 self`, which is the answer to the two questions a long session otherwise leaves open: whether the thing that was actually asked for is finished, and how much of everything since was optional.
+
+Anything you notice along the way that is not part of this request goes into the findings ledger rather than into the diff (R-214). The moment you spot a bug, a task that needs doing, or something that works and could be better, record it with `bash ~/.claude/skills/task-start/scripts/finding.sh add "<what was found>" --kind bug|task|optimization [--where <path>]`, open its ticket through `/ticket-lifecycle`, and attach the key with `finding.sh ticket <id> <KEY>`. Recording comes before deciding whether to act on it, because whether it is worth doing now is the user's call and the record is what lets them make it. `commit-message-guard.sh` backs this up: a commit staging files outside the declared scope is refused unless its `Refs:` trailer names a ticket other than this task's, so a discovery cannot ride along inside an unrelated commit.
 
 The ticket comes before the work, mechanically (R-605): with a tracker configured, `task-tier.sh set` refuses a tier above trivial without `--ticket <KEY>`, and `ticket-at-start-gate.sh` denies the first Write or Edit, and every `git commit`, until the ledger names the checked-out branch and carries the key (a trivial ledger needs no key). Record the ledger after the branch exists, because the ledger names the branch it was written on. When work already happened without a ticket, open one retroactively with its actuals and record it; never leave the work unticketed.
 

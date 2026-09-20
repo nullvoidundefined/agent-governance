@@ -315,11 +315,22 @@ git -C "$REPO" checkout -q -- claude/hooks/gamma.sh
 # --- git that cannot list changes ---
 # A failing status or diff means the change set is unknown, so nothing may be
 # ruled out (PR #42 review).
+#
+# The index is corrupted rather than chmod'd to 000 (IAN-196). A mode of 000
+# does not stop a read for uid 0, so the chmod version asserted nothing
+# whenever the suite ran as root: git succeeded, the runner never reported a
+# failure, and the case failed. That is every Claude Code cloud container,
+# where the resulting permanently red fixture blocked `tdd.sh red` from
+# certifying a RED on any unrelated slice, because that step refuses while
+# any other fixture in the suite is red. Corrupting the index reproduces the
+# runner's actual contract, which is that git could not produce the list,
+# and it reproduces it for every uid.
 printf 'changed\n' > "$REPO/claude/hooks/alpha.sh"
-chmod 000 "$REPO/.git/index"
+cp "$REPO/.git/index" "$SANDBOX/index.bak"
+printf 'not a git index\n' > "$REPO/.git/index"
 reset
 OUT=$(cd "$REPO" && bash "$RUNNER" "$TESTS" --affected </dev/null 2>&1); STATUS=$?
-chmod 644 "$REPO/.git/index"
+cp "$SANDBOX/index.bak" "$REPO/.git/index"
 git -C "$REPO" checkout -q -- claude/hooks/alpha.sh
 check "an unreadable change set runs everything" ran slow-c
 check "the git failure is named" out_has "git could not list"

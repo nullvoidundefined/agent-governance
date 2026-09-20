@@ -290,6 +290,19 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/ticket-at-start-gate.sh"
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/scope-widening-gate.sh"
+                    }
+                ]
+            },
+            {
+                "matcher": "TaskCreate",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/task-provenance-gate.sh"
                     }
                 ]
             },
