@@ -854,7 +854,7 @@
             "enforcer": "hook:codex-test-author-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks when Claude Write/Edit targets a test file; codex authors tests as a separate process and never trips it; CODEX_TEST_GUARD=off silences"
+            "note": "asks when Claude Write/Edit targets a test file; silent for the test-author agent and for CLAUDE_HOOK_RUNTIME=codex, the marker the codex hook adapter exports; CODEX_TEST_GUARD=off silences"
         }
     ]
 }

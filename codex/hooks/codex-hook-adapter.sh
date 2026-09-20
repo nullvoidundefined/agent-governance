@@ -43,6 +43,20 @@
 #      target to those gates, IN ADDITION to the ordinary Bash event, which
 #      still runs unchanged. See the extractor section below for exactly what
 #      that analysis catches and what it cannot.
+#   5. A hook cannot otherwise tell that its caller is Codex, and one hook needs
+#      to: codex-test-author-guard (R-907) asks whenever a Write or Edit targets
+#      a test file, because tests are authored by the codex CLI and never by the
+#      model writing the implementation. Under Codex that ask becomes a deny by
+#      rule 2 above, so the guard denied Codex the very job R-907 assigns it (a
+#      `codex exec -s workspace-write` run writing a test file was blocked,
+#      observed 2026-09-19 in template-fastapi-nuxt; the report's further claim
+#      that creates succeeded while edits were denied is not reproducible, and
+#      the guard's own header says why). The adapter therefore exports
+#      CLAUDE_HOOK_RUNTIME=codex, below, into every hook child it runs, on both
+#      dispatch paths: the event's own hook list and the synthesized write
+#      events of item 4. A Claude Code session sets no such variable, so its own
+#      writes to a test file keep asking. Any hook may read the marker; only
+#      that guard does today.
 #
 # Usage (from ~/.codex/hooks.json, one entry per hook group; this file is
 # copied to ~/.codex/hooks/ by openai/build.mjs):
@@ -61,6 +75,12 @@
 set -uo pipefail
 
 HOOK_NAMES=("$@")
+# The runtime marker of header item 5, exported so every hook child inherits
+# it through both dispatch paths. Set here rather than per dispatch so a hook
+# added to any matcher is marked without a second place to remember. Assigned,
+# never read from the caller: a marker the environment could supply would be a
+# marker a Claude Code session could inherit.
+export CLAUDE_HOOK_RUNTIME="codex"
 # The Claude Code configuration this port was generated from. Overridable so
 # the fixture tests can run against a checkout that is not at ~/.claude.
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
