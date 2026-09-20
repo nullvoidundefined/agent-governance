@@ -1,6 +1,6 @@
 # Track contract, convention correctness, new stacks, and release prep
 
-Captured 2026-09-20. Fifteen work items in four workstreams, arising from the
+Captured 2026-09-20. Sixteen work items in four workstreams, arising from the
 assessment of whether this harness has value as a shared open-source
 configuration. Each item carries the canonical field set from
 `claude/skills/ticket-lifecycle/SKILL.md` so it can be opened in a tracker
