@@ -545,7 +545,7 @@ CLOSURE_REVERSE_PATTERN='^FAIL: (.+) is covered by the R-203 guard but absent fr
 # with no reverse-closure line at all is content drift this function cannot
 # bound to the slice, and is not tolerated.
 drift_is_confined() {
-  local entry="$1" named="$2" messages path rel matched
+  local entry="$1" named="$2" messages path rel matched prefix
   [ "$(basename "$(printf '%s' "$entry" | jq -r '.name')")" = "$CLOSURE_FIXTURE" ] || return 1
   messages=$(printf '%s' "$entry" | jq -r '[.assertionResults[]?.failureMessages[]?] | join("\n")')
   [ -n "$messages" ] || return 1
@@ -557,12 +557,18 @@ drift_is_confined() {
     matched=0
     while IFS= read -r rel; do
       [ -n "$rel" ] || continue
-      # The closure fixture prints paths relative to the harness root, which
-      # sits one directory below the repository root in this monorepo, so the
-      # same file arrives in either spelling. The suffix must start at a path
-      # boundary, or hooks/tests/x.test.sh would match enforce/tests/x.test.sh.
-      if [ "$rel" = "$path" ] || [ "${rel%"/$path"}" != "$rel" ]; then matched=1; break; fi
-    done <<< "$(printf '%s' "$named" | jq -r --arg root "$ROOT_PHYSICAL/" '.[].name | sub("^" + $root; "")')"
+      # Exactly two spellings name the same file: the repository-root one
+      # tdd.sh uses, and the harness-relative one the closure fixture prints,
+      # which differs by the single directory the harness tree sits in below
+      # the repository root. Any shorter trailing run of components is a
+      # different file: a bare score.test.sh, or tests/score.test.sh, does not
+      # name claude/enforce/tests/score.test.sh (R-517 review of PR #91).
+      if [ "$rel" = "$path" ]; then matched=1; break; fi
+      prefix="${rel%"/$path"}"
+      if [ "$prefix" != "$rel" ] && [ -n "$prefix" ]; then
+        case "$prefix" in */*) ;; *) matched=1; break ;; esac
+      fi
+    done <<< "$(printf '%s' "$named" | jq -r --arg root "$ROOT_PHYSICAL/" '.[].name | ltrimstr($root)')"
     [ "$matched" -eq 1 ] || return 1
   done <<< "$drifting"
   return 0
@@ -572,8 +578,14 @@ drift_is_confined() {
 # file. Everything outside the named tests (whole files outside the list, and
 # the unnamed tests of a file named by id) must not fail, and a file named by
 # id must still load; dies on a failure, prints the outside pass count.
+# The second argument opts one caller into the manifest-drift toleration above.
+# Only a caller judging a RED may: `red` and `expected-red` ask for it, while
+# `green` and a refactor slice's opening suite must not, because by then the
+# drift comes from the production file the implementer edited rather than from
+# the slice's own fixture, and tolerating that is the integrity drift on hooks
+# that decision 2 of 2026-09-20 refused (R-517 review of PR #91, finding 1).
 outside_pass_count() {
-  local named="$1" failing kept="" report_name
+  local named="$1" tolerate="${2:-}" failing kept="" report_name
   failing=$(jq -r --argjson named "$named" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.testResults[] | entry_for($named) as $e
     | if $e == null then select(.status == "failed" or any(.assertionResults[]; .status == "failed"))
       elif $e.ids == null then empty
@@ -581,7 +593,9 @@ outside_pass_count() {
       end | .name' "$REPORT")
   while IFS= read -r report_name; do
     [ -n "$report_name" ] || continue
-    drift_is_confined "$(jq -c --arg n "$report_name" '.testResults[] | select(.name == $n)' "$REPORT")" "$named" && continue
+    if [ "$tolerate" = tolerate ]; then
+      drift_is_confined "$(jq -c --arg n "$report_name" '.testResults[] | select(.name == $n)' "$REPORT")" "$named" && continue
+    fi
     kept="${kept}${report_name}"$'\n'
   done <<< "$failing"
   failing=$(printf '%s' "$kept" | sed '/^$/d')
@@ -702,7 +716,7 @@ cmd_red() {
       --argjson n "$(named_count "$rel" "$ids")" '. + [{path:$p, sha256:$h, failureClass:$c, tests:$n} + (if $ids == null then {} else {ids:$ids} end)]')
   done
   local baseline
-  baseline=$(outside_pass_count "$(spec_named "$spec")") || exit 1
+  baseline=$(outside_pass_count "$(spec_named "$spec")" tolerate) || exit 1
   jq --argjson t "$entries" --argjson b "$baseline" --arg k "$RUNNER_KIND" --arg at "$(now)" \
     '.phase = "red" | .tests = $t | .baseline = {passed: $b, runner: $k} | .redAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
@@ -808,7 +822,8 @@ cmd_expected_red() {
   while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
   [ "${#locked_rels[@]}" -gt 0 ] || die "phase is red but the lock records no test file; repair or delete $LOCK_RELATIVE outside the session"
   run_suite "${locked_rels[@]}"
-  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" >/dev/null
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null
+  rm -f "$REPORT"
   say "EXPECTED RED: every failure is one of the ${#locked_rels[@]} locked test file(s)"
 }
 

@@ -1,6 +1,6 @@
 {
   "slice": "B-4 the drift toleration applies only where a RED is judged, and matches exact spellings",
-  "phase": "red",
+  "phase": "green",
   "spec": null,
   "locked": [],
   "tests": [
@@ -16,5 +16,6 @@
     "passed": 96,
     "runner": "shell"
   },
-  "redAt": "2026-09-20T10:36:55Z"
+  "redAt": "2026-09-20T10:36:55Z",
+  "greenAt": "2026-09-20T10:40:55Z"
 }
