@@ -59,6 +59,15 @@
 # never blocked by a red tree it cannot fix; every other subagent is gated
 # exactly like the main session. .claude/verify.sh is a gate input protected
 # by hooks/protected-path-guard.sh (R-410).
+#
+# One bounded exemption, on both events (IAN-184): a failing check whose
+# failures are exactly the test files the open slice recorded at its RED
+# releases the turn instead of blocking it. enforce/tdd.sh answers that
+# question, never this hook; see is_expected_red below for why it fails
+# closed and why the release never reaches the pass memo. It exists because
+# the test-author role's whole job is to end its turn on a red test, and
+# role-policy.json necessarily gives it a write boundary rather than
+# deny ["any"], so the older exemption above could never cover it.
 set -uo pipefail
 
 INPUT=$(cat)
@@ -268,6 +277,38 @@ block() {
 
 RETRY_DELAY_SECONDS="${CLAUDE_VERIFY_RETRY_DELAY:-10}"
 
+# is_expected_red: does the open slice already account for this red suite?
+#
+# R-509 refuses to let a turn or a writing subagent end on a red suite, which
+# is the one outcome a test author's role exists to produce: it writes the
+# failing test and stops. Before this, every such return was blocked, and the
+# only ways out were to edit the locked test (R-410), to implement the fix
+# (R-411), to weaken the assertion (R-204), or to set CLAUDE_SKIP_VERIFY=1,
+# which is a blanket skip rather than a bounded exemption. So the gate asks
+# enforce/tdd.sh instead, which already normalizes all four test runners into
+# one report and owns the slice lock: `expected-red` exits 0 only when the
+# lock is in phase "red" and every failure in the suite is one of the test
+# files that lock records (IAN-156 slice B-2, wired here by IAN-184).
+#
+# The question is asked only after a check has actually failed, so a green
+# turn never pays for a second suite run.
+#
+# tdd.sh is resolved from this hook's own BASH_SOURCE, the way RELATED_HELPER
+# and PORT_CHECKS_HELPER above already are, and it is run from $ROOT, where
+# the lock lives. Its own output goes nowhere: stdout here is the decision
+# channel, and a stray "tdd.sh: EXPECTED RED: ..." line on it would be read as
+# a malformed decision.
+#
+# Fails closed, deliberately. A tdd.sh that is absent, not executable, or
+# erroring has not answered "yes", so the red suite still blocks the turn.
+# Anything else would turn a broken or missing tdd.sh into a way to end a turn
+# on a red suite, which is the whole thing R-509 exists to prevent.
+TDD_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)/tdd.sh"
+is_expected_red() {
+  [ -x "$TDD_HELPER" ] || return 1
+  "$TDD_HELPER" expected-red >/dev/null 2>&1
+}
+
 while IFS= read -r check; do
   [ -n "$check" ] || continue
   OUTPUT=$(run_with_timeout "$check")
@@ -290,6 +331,16 @@ while IFS= read -r check; do
     OUTPUT=$(run_with_timeout "$check")
     STATUS=$?
     [ "$STATUS" -eq 0 ] && continue
+  fi
+
+  # The check really did fail, twice where a retry applied. Before blocking,
+  # ask whether this is the RED the open slice already recorded. A yes ends
+  # the turn here: silently, because stdout is the decision channel and this
+  # is a release rather than a decision, and without reaching the memo write
+  # below, because a red tree must never be remembered as a tree the checks
+  # passed on (verification-gate.test.sh invariant 8).
+  if is_expected_red; then
+    exit 0
   fi
 
   TAIL=$(printf '%s' "$OUTPUT" | tail -n "$MAX_OUTPUT_LINES" | tail -c "$MAX_OUTPUT_CHARS")

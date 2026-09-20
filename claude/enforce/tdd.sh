@@ -800,7 +800,14 @@ cmd_close() {
 }
 
 # cmd_expected_red: answers, without writing anything, whether the suite's
-# current failures are exactly the RED this slice already recorded.
+# current failures are exactly the RED this slice already recorded. Three
+# things must hold, and the first two were missing until IAN-184: the locked
+# files still match the sha256 the lock recorded for them (R-410), at least one
+# locked test is still failing, and nothing outside the locked files fails.
+# The R-517 review of PR #91 found that membership alone let a locked fixture
+# be rewritten to `echo garbage; exit 3`, deleted, or made to pass, and still
+# answered yes; harmless while nothing called this, and reachable the moment
+# hooks/verification-gate.sh began ending turns on the answer.
 #
 # hooks/verification-gate.sh refuses to let a turn or a subagent end on a red
 # suite (R-509), which blocks a test author on the one outcome its role exists
@@ -821,7 +828,35 @@ cmd_expected_red() {
   [ "$current" = red ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
   while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
   [ "${#locked_rels[@]}" -gt 0 ] || die "phase is red but the lock records no test file; repair or delete $LOCK_RELATIVE outside the session"
+  # The locked files have to be the ones the RED was proven against, before
+  # anything else is asked about them. check_hashes already makes exactly this
+  # comparison for `green` and is read-only, so it is reused rather than
+  # restated: it refuses a locked file whose bytes no longer match the sha256
+  # the lock recorded, and one that has been deleted. Cheap, and it runs ahead
+  # of the suite so a mangled lock costs nothing to reject.
+  check_hashes
   run_suite "${locked_rels[@]}"
+  # Membership ("is anything outside the locked files failing?") is necessary
+  # and not sufficient: it is satisfied vacuously by a suite in which nothing
+  # fails at all. A lock whose tests have all started passing records a RED
+  # that can no longer be shown, and a green suite needs no excusing from the
+  # gate in the first place, so at least one locked test must still be failing.
+  # Without this, a test author whose fixture began passing after its RED, or
+  # whose locked file vanished from the report, would end its turn released.
+  local rel record ids still_failing='' not_failing=''
+  for rel in "${locked_rels[@]}"; do
+    record=$(file_record "$rel")
+    ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
+    if [ -n "$record" ] && printf '%s' "$record" | jq -e --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.status == "failed" or ([.assertionResults[] | select(in_scope($ids; $kind)) | select(.status != "passed")] | length > 0)' >/dev/null; then
+      still_failing="$still_failing $rel"
+    else
+      not_failing="$not_failing $rel"
+    fi
+  done
+  if [ -z "$still_failing" ]; then
+    rm -f "$REPORT"
+    die "no locked test is failing any more, so this slice has no RED left to claim (R-412):$not_failing. A suite that is green needs no exemption; run 'tdd.sh green' instead."
+  fi
   outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null
   rm -f "$REPORT"
   say "EXPECTED RED: every failure is one of the ${#locked_rels[@]} locked test file(s)"
