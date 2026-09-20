@@ -64,7 +64,7 @@
     "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:1dd09b23082bdf5ec374aa0c79d9aeb83f4e5efdadf64819a23e49c3ef6a6b27",
     "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:a13e816bf845f30e461c9efe661e64567402df21bb9a533d338c1e97f09599ce",
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:2187087d46fb321dc667b4e0cfd4b91f6c879fcb4ea3219e876500151470bf20",
-    "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:dae9973371dc36620cfb3098ff8bc49312dfdbb5ecec60ba44c3f0f76cdd026c",
+    "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:23e5dee99999cd802f04b9e34290667c0201644815494f8517a4b12110a1ad61",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:38f071e2ca5260c7831258e4818be4d545922d989b1b2c40ba1e45758a78b13d",
     "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:9f2cfa618a7c796d9b9c58bda6d506cb50453d4ef803a208064f64f02e4037a8",
     "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:619b93d45f34892d10154de32df747a13149f792a75c7d362e7d547ecf8bcfbf",

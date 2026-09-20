@@ -23,7 +23,7 @@ The concrete trigger was the MongoDB convention track (IAN-173, blocked on this 
 
 **Forbid the stale wording, not only require the new.** A fixture that only greps for the new sentence passes on a file that says both things. Each assertion here has a matching `forbidIn` or `forbidText`, so a half-applied amendment fails.
 
-**Keep the judge as the enforcer.** No deterministic gate can decide whether `tripLegs` carries its aggregate root without the project's glossary, which is why R-334 is an `llm-judge` rule in the first place. This change gives the judge one more input (the name's case convention) rather than moving the rule to a different tier.
+**Keep the judge as the enforcer.** No deterministic gate can decide whether `tripLegs` carries its aggregate root without the project's glossary, which is why R-334 is an `llm-judge` rule in the first place. This change adds nothing to the judge's payload, which carries only the rule set, the diff, and the project vocabulary: the Spec it already receives now names the convention per engine and per language, and the changed file's extension carries the language. The review caught an earlier draft of this paragraph claiming a new input that does not exist.
 
 ## Testing
 
@@ -36,5 +36,7 @@ Two things this took longer to see than it should have.
 The first is that the rule's two halves were doing different jobs. Reading R-334 as a single rule about naming made the MongoDB question look like a conflict between the rule and an ecosystem, which invites an exemption. Reading it as a rule about word order that happens to also specify a separator made the amendment obvious and small: one clause, one bullet, and a sentence for the judge.
 
 The second is procedural. The first attempt at proving the RED failed twice for reasons that had nothing to do with the test: a new fixture has no line in the integrity manifest, which turns a different fixture red, which makes `tdd.sh red` refuse to certify anything; and `hook-latency.test.sh` is a timing fixture that fails when two suites run at once, which is what happens when a second RED run is launched while the first is still going. Neither failure was in the code under test. The lesson worth keeping is that `tdd.sh red` exits 0 when it refuses to certify, so the exit status is not the verdict; the printed `RED:` line is.
+
+The third is that the review caught this document, not only the code. An earlier draft of the decisions section said the amendment "gives the judge one more input", and the Enforcement paragraph in the rule itself said the judge is told the engine convention. Neither was true: the judge payload carries the rule set, the diff, and the project vocabulary, and nothing else. Writing a sentence about an enforcer is as capable of drifting from the enforcer as code is, which is the case R-516 is built around and the reason the fixture now asserts the corrected wording.
 
 Time since implementation: written in the same session as the change, roughly forty minutes after the slice opened.
