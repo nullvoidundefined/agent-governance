@@ -62,7 +62,7 @@ R-325: Destructure when reading 2+ properties of an object; never destructure a 
 R-330: Settle the domain vocabulary during spec writing; the spec carries a `## Domain vocabulary` glossary that all file, function, and type naming draws from. [hook:spec-glossary-check]
 R-331: Justify every new third-party dependency before adding it: name the need `services/`, `clients/`, and the existing packages cannot meet (R-308); a manifest gaining a dependency name asks. [hook:dependency-add-guard]
 R-332: Keep every comment true to the code beside it; when an edit removes, renames, or restructures what a comment describes, update or delete that comment in the same edit, never leave it describing code that no longer exists. [manual]
-R-334: Name every schema, model, type, module, and store base noun first, secondary nouns after, the base noun being the aggregate root that every entity inside the aggregate repeats (`trip_leg`, `conversation_message`); tables and repository modules are plural, foreign keys, enum types, model and schema classes are singular; an aggregate root takes no prefix and a framework's own tables keep the framework's names. [judge]
+R-334: Name every schema, model, type, module, and store base noun first, secondary nouns after, the base noun being the aggregate root that every entity inside the aggregate repeats; the word order is fixed while the separator follows the case convention of the engine or language the name lives in (`trip_legs` in Postgres, `tripLegs` in MongoDB); tables and repository modules are plural, foreign keys, enum types, model and schema classes are singular; an aggregate root takes no prefix and a framework's own tables keep the framework's names. [judge]
 
 ### Observability (R-34x)
 
