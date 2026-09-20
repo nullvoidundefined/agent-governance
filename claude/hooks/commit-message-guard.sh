@@ -185,6 +185,19 @@ message_references_other_ticket() {
 # separate ticket for that work. Silent when the shared scope reader is
 # missing, outside a work tree, on a detached HEAD, and whenever no scope is
 # declared, which is R-212's documented degraded path and not a licence.
+#
+# When the diff reaches outside the scope but no message could be read (a
+# `-F <file>` commit, a bare `git commit` in the editor, `--amend --no-edit`),
+# the `Refs:` escape cannot be evaluated, so this asks rather than allowing or
+# denying: the staged paths are named and the user decides. Allowing there was
+# the defect finding 1 of the PR #96 review caught, and denying would refuse
+# commits whose trailer does name a separate ticket in a file this hook never
+# sees.
+#
+# What it reads is the INDEX, not the commit. `git commit -a` and a trailing
+# pathspec both make those differ, and neither is handled yet (IAN-224).
+# It also resolves the repository from this process's own directory rather
+# than the one the commit runs in after a `cd` or `git -C` (IAN-225).
 judge_staged_scope() {
   type read_declared_scope >/dev/null 2>&1 || return 0
   local top branch staged own_ticket
@@ -200,10 +213,22 @@ judge_staged_scope() {
     is_exempt_scope_path "$top" "$staged" && continue
     is_in_scope "$staged" "${scope[@]}" && continue
     outside+=("$staged")
-  done < <(git -C "$top" diff --cached --name-only 2>/dev/null)
+    # -z with core.quotePath off: git's default renders a non-ASCII path as
+    # `"claude/h\303\251llo.sh"`, quotes and escapes included, which matches
+    # no scope entry and denies an in-scope file (finding 8).
+  done < <(git -C "$top" -c core.quotePath=false diff --cached -z --name-only 2>/dev/null | tr '\0' '\n')
   [ "${#outside[@]}" -gt 0 ] || return 0
+  if [ -z "$MSG" ]; then
+    PENDING_ASK_REASON="commit-message-guard (R-214): this commit stages $(printf '%s, ' "${outside[@]}" | sed 's/, $//'), outside the scope this task declared at task-start (${scope[*]}), and its message is one this hook cannot read (a \`-F <file>\` commit, a bare \`git commit\` opened in the editor, or an amend reusing an existing message), so it cannot tell whether a \`Refs:\` trailer already names a separate ticket for that work. Confirm only if those files belong to this task or the message names their own ticket; otherwise record them with \`finding.sh add\` and commit them separately."
+    return 0
+  fi
   own_ticket=$(read_declared_ticket "$top" "$branch")
-  message_references_other_ticket "$own_ticket" && return 0
+  # With no ticket on the ledger there is no key to tell "this task" from
+  # "other work", so no trailer can satisfy the gate and every out-of-scope
+  # commit is refused (finding 3). Accepting any key there would have made the
+  # gate satisfiable by the `Refs:` trailer R-605 already requires on every
+  # commit, which is the exact loophole this function exists to close.
+  [ -n "$own_ticket" ] && message_references_other_ticket "$own_ticket" && return 0
   deny "commit-message-guard BLOCKED this commit (R-214): it stages $(printf '%s, ' "${outside[@]}" | sed 's/, $//'), outside the scope this task declared at task-start (${scope[*]}), and the message names no ticket for that work. Work found while doing something else gets its own record, not a ride inside an unrelated commit: record it with \`bash ~/.claude/skills/task-start/scripts/finding.sh add \"<what>\" --kind bug|task|optimization\`, open its ticket, and either commit that work separately under its own key or add a \`Refs: <KEY>\` trailer naming it. If those files are genuinely part of this task after all, re-record the scope with \`task-tier.sh set <tier> \"<reason>\" --scope <glob>[,<glob>...]\` so the ledger matches the work." "R-214"
 }
 
@@ -226,7 +251,6 @@ judge_commit_message() {
     | grep -v '^[[:space:]]*$' \
     | grep -vE '^(Co-Authored-By|Signed-off-by|Reviewed-by|Refs):' \
     | grep -cv "Generated with" || true)
-  judge_staged_scope
   if [ "${body_line_count:-0}" -gt 3 ]; then
     PENDING_ASK_REASON="commit-message-guard (R-506): the body has $body_line_count non-trailer lines; the norm is a one-sentence body, with multi-line reserved for business-logic bugs, architectural refactors, and security changes. Confirm to proceed if this commit qualifies."
   fi
@@ -272,6 +296,13 @@ judge_simple_command() {
       join_commit_messages
     fi
     [ -n "$MSG" ] && judge_commit_message
+    # R-214 judges the staged diff, which is readable whether or not the
+    # message was (finding 1 of the PR #96 review). Called here rather than
+    # from judge_commit_message so `git commit -F <file>`, a bare `git commit`
+    # opened in the editor, `--amend --no-edit` and `-C HEAD` are covered:
+    # in every one of those the diff is perfectly readable and the gate used
+    # to be skipped entirely, with no ask either.
+    judge_staged_scope
     if [ "$IS_MESSAGE_UNCOUNTABLE" -eq 1 ] && [ -z "$PENDING_ASK_REASON" ]; then
       PENDING_ASK_REASON="commit-message-guard (R-505, R-506): the message holds a command substitution whose output this hook cannot read, so it cannot check the subject or count the body. Confirm to proceed if the resulting message has a conventional subject and a short body."
     fi

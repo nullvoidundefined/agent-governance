@@ -25,6 +25,14 @@
 # blanks it), a task whose last status is "deleted" is dropped entirely, and
 # malformed lines are skipped rather than failing the fold.
 #
+# Provenance is read from the event's own `provenance` field, which
+# task-state-tracker.sh writes, and derived from the subject's leading tag only
+# when that field is absent, which is every line written before R-213 existed.
+# Taking it from the field rather than re-deriving it keeps this agreeing with
+# what the tracker recorded even if a subject is later edited, and it means the
+# tracker's field has a reader rather than being written for nobody (finding 5
+# of the PR #96 review).
+#
 # A task carrying no recognised tag counts as untagged and is reported only
 # when there is at least one, so logs written before R-213 existed degrade to
 # an honest count rather than being silently folded into "self".
@@ -61,11 +69,13 @@ fold_counts() {
           | . + { ($id): {
               subject: (if $seen then $prior.subject else ($event.subject // "") end),
               status: (if ($event.status // "") != "" then $event.status
-                       elif $seen then $prior.status else "created" end)
+                       elif $seen then $prior.status else "created" end),
+              prov: (if $seen then $prior.prov
+                     elif ($event.provenance // "") != "" then $event.provenance
+                     else ($event.subject | provenance) end)
             } }
         end)
     | [ to_entries[] | .value | select(.status != "deleted") ]
-    | map(. + {prov: (.subject | provenance)})
     | [ (map(select(.prov == "requested")) | length),
         (map(select(.prov == "requested" and .status == "completed")) | length),
         (map(select(.prov == "required")) | length),

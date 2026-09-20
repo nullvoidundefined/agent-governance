@@ -41,6 +41,25 @@ read_ledger() {
   jq -c 'if type == "array" then . else [] end' "$LEDGER" 2>/dev/null || printf '[]'
 }
 
+# write_ledger <jq-program> <jq-arg>...: applies the program to the current
+# ledger and replaces it atomically. A unique temp file in the ledger's own
+# directory rather than a fixed `$LEDGER.tmp` (finding 7 of the PR #96
+# review): two runs in one checkout, which the multi-agent session type makes
+# plausible, would otherwise interleave into that single file before either
+# rename. Every failure dies rather than reporting success over an unchanged
+# ledger, because R-214's whole promise is that nothing noticed is lost.
+write_ledger() {
+  local program="$1" scratch
+  shift
+  scratch=$(mktemp "$ROOT/.claude/findings.XXXXXX") || die "could not create a temporary file beside $LEDGER_RELATIVE"
+  if read_ledger | jq "$@" "$program" > "$scratch" 2>/dev/null && [ -s "$scratch" ]; then
+    mv "$scratch" "$LEDGER" || { rm -f "$scratch"; die "could not replace $LEDGER_RELATIVE"; }
+  else
+    rm -f "$scratch"
+    die "could not write $LEDGER_RELATIVE"
+  fi
+}
+
 # warn_when_tracked: one warning when the project does not ignore the ledger,
 # matching task-tier.sh, since session state committed to a branch is how a
 # stale ledger reaches another checkout.
@@ -71,14 +90,14 @@ cmd_add() {
   fi
   mkdir -p "$ROOT/.claude"
   next_id=$(read_ledger | jq '(map(.id) | max // 0) + 1')
-  read_ledger | jq --argjson id "$next_id" --arg description "$description" --arg kind "$kind" \
-    --arg where "$where" --arg ticket "$ticket" \
-    --arg branch "$(git -C "$ROOT" branch --show-current 2>/dev/null)" \
-    --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+  write_ledger '
     . + [ {id: $id, kind: $kind, description: $description, foundAt: $iso, branch: $branch}
           + (if $where != "" then {where: $where} else {} end)
           + (if $ticket != "" then {ticket: $ticket} else {} end) ]
-  ' > "$LEDGER.tmp" 2>/dev/null && mv "$LEDGER.tmp" "$LEDGER" || die "could not write $LEDGER_RELATIVE"
+  ' --argjson id "$next_id" --arg description "$description" --arg kind "$kind" \
+    --arg where "$where" --arg ticket "$ticket" \
+    --arg branch "$(git -C "$ROOT" branch --show-current 2>/dev/null)" \
+    --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   warn_when_tracked
   if [ -n "$ticket" ]; then
     printf 'finding %d recorded (%s, %s): %s\n' "$next_id" "$kind" "$ticket" "$description"
@@ -93,8 +112,8 @@ cmd_ticket() {
   printf '%s' "$id" | grep -qE '^[0-9]+$' || die "give the finding's id, as \`finding.sh ticket <id> <KEY>\`"
   printf '%s' "$key" | grep -qE '^[A-Z][A-Z0-9]+-[0-9]+$' || die "give a tracker key such as IAN-201"
   read_ledger | jq -e --argjson id "$id" 'any(.id == $id)' >/dev/null 2>&1 || die "no finding with id $id"
-  read_ledger | jq --argjson id "$id" --arg key "$key" \
-    'map(if .id == $id then . + {ticket: $key} else . end)' > "$LEDGER.tmp" && mv "$LEDGER.tmp" "$LEDGER"
+  write_ledger 'map(if .id == $id then . + {ticket: $key} else . end)' \
+    --argjson id "$id" --arg key "$key"
   printf 'finding %s now carries %s\n' "$id" "$key"
 }
 

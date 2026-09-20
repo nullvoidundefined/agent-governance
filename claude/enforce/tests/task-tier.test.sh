@@ -194,7 +194,17 @@ OUT=$(cd "$S1" && bash "$TIER" set standard "r" --scope "" 2>&1); ST=$?
 check "S-1 an empty scope is refused" test "$ST" -eq 1
 
 OUT=$(cd "$S1" && bash "$TIER" set standard "r" 2>&1)
-check "S-1 a ledger without --scope declares no scope" test "$(jq -r 'has("scope")' "$S1/.claude/task-tier.json")" = "true"
+check "S-1 omitting --scope keeps the scope already on this branch" test "$(jq -r 'has("scope")' "$S1/.claude/task-tier.json")" = "true"
+
+# S-1 (finding 6 of the PR #96 review): the case the label above used to
+# promise and never tested. A FIRST set on a branch that never declared a
+# scope must omit the key entirely, because that absence is what makes
+# scope-widening-gate.sh and the R-214 commit gate stay silent (R-212's
+# degraded path). Asserting it here is what would catch read_previous_scope
+# returning `[]` instead of nothing.
+git -C "$S1" switch -q -c feat/scope-fresh
+OUT=$(cd "$S1" && bash "$TIER" set standard "no scope declared here" 2>&1)
+check "S-1 a first set with no --scope omits the key" test "$(jq -r 'has("scope")' "$S1/.claude/task-tier.json")" = "false"
 
 # V-3: HOME unset means no tracker is reachable: the degraded path, not an unbound-variable crash.
 V3="$SB/home-unset"; mkdir -p "$V3"

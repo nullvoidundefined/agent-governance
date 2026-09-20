@@ -822,7 +822,7 @@
             "enforcer": "hook:commit-message-guard",
             "severity": "error",
             "autofix": false,
-            "note": "PreToolUse Bash, the R-214 half beside R-505 and R-506: denies a git commit whose staged diff reaches outside the scope the task-start ledger declares unless the message Refs: trailer names a ticket other than the task own; silent with no declared scope, outside a work tree, and for .claude/ paths; the ledger is skills/task-start/scripts/finding.sh writing .claude/findings.json; scope reading and matching shared with scope-widening-gate.sh via hooks/scope-match.sh; fixture: tests/finding-ledger.test.sh"
+            "note": "PreToolUse Bash, the R-214 half beside R-505 and R-506: denies a git commit whose staged diff reaches outside the scope the task-start ledger declares unless the message Refs: trailer names a ticket other than the task own, and asks instead when no message is readable (-F file, a bare commit in the editor, an amend reusing its message) because the Refs escape cannot be evaluated there; a ledger declaring a scope but no ticket cannot be satisfied by any trailer; silent with no declared scope, outside a work tree, on a detached HEAD, and for .claude/ paths; reads the index, so git commit -a and a trailing pathspec are not covered (IAN-224) and the repository is this process own rather than the commit target after a cd (IAN-225); the ledger is skills/task-start/scripts/finding.sh writing .claude/findings.json; scope reading and matching shared with scope-widening-gate.sh via hooks/scope-match.sh; fixture: tests/finding-ledger.test.sh"
         },
         {
             "id": "R-334",

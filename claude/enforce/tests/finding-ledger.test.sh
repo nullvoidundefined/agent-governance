@@ -28,6 +28,14 @@
 #   9. A `Refs:` naming only the task's own ticket does not satisfy it, since
 #      that is the trailer every commit on the branch already carries.
 #  10. No declared scope means no constraint, so the gate is silent.
+#  12. The gate runs for every commit shape, not only those whose message this
+#      hook can parse. `-m` denies; a `-F <file>` commit and an
+#      `--amend --no-edit` ask, because the `Refs:` escape cannot be read
+#      there. Before the PR #96 review's finding 1 all three but `-m` were a
+#      silent allow, so the rule was bypassable by choosing how to commit.
+#  13. A ledger declaring a scope but no ticket denies regardless of `Refs:`.
+#      With no own key to compare against, any trailer would satisfy the gate,
+#      and R-605 already puts a `Refs:` trailer on every commit.
 #  11. A staged path under .claude/ never triggers it, because the ledger and
 #      the slice lock are session state every task writes. A git-ignored file
 #      that was force-staged DOES trigger it: `git add -f` puts it in the
@@ -78,9 +86,11 @@ OUT=$( (cd "$REPO" && bash "$FINDING" add "x" --kind task --ticket not-a-key) 2>
 check "5. a malformed tracker key is refused" "$([ "$ST" -ne 0 ] && echo 0 || echo 1)"
 
 # --- gate ---
-ledger() { # ledger <scope-json> [ticket]
-  jq -n --argjson s "$1" --arg t "${2:-IAN-300}" \
-    '{tier:"standard",reason:"fixture",branch:"feat/scoped",startedAt:0,startedAtIso:"2026-09-20T00:00:00Z",ticket:$t,scope:$s}' \
+ledger() { # ledger <scope-json> [ticket]; an explicit empty ticket omits the key
+  local ticket="${2-IAN-300}"
+  jq -n --argjson s "$1" --arg t "$ticket" \
+    '{tier:"standard",reason:"fixture",branch:"feat/scoped",startedAt:0,startedAtIso:"2026-09-20T00:00:00Z",scope:$s}
+     + (if $t == "" then {} else {ticket: $t} end)' \
     > "$REPO/.claude/task-tier.json"
 }
 run_commit() { (cd "$REPO" && jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$HOOK"); }
@@ -122,6 +132,27 @@ printf 'x\n' > "$REPO/build/out.js"
 git -C "$REPO" add -f build/out.js
 OUT=$(run_commit 'git commit -m "feat(api): handle the thing"')
 check "11. a force-staged ignored file is real content and is gated, got: '$(decision "$OUT")'" "$([ "$(decision "$OUT")" = "deny" ] && echo 0 || echo 1)"
+
+# 12. Every commit shape reaches the gate.
+ledger '["src/api/**"]'
+git -C "$REPO" reset -q
+printf 'drive-by\n' > "$REPO/docs/notes.md"
+git -C "$REPO" add docs/notes.md
+OUT=$(run_commit 'git commit -m "feat(api): handle the thing"')
+check "12. -m still denies, got: '$(decision "$OUT")'" "$([ "$(decision "$OUT")" = "deny" ] && echo 0 || echo 1)"
+
+printf 'feat(api): handle the thing\n' > "$TMP/msg.txt"
+OUT=$(run_commit "git commit -F $TMP/msg.txt")
+check "12. an unreadable -F message asks rather than allowing, got: '$(decision "$OUT")'" "$([ "$(decision "$OUT")" = "ask" ] && echo 0 || echo 1)"
+check "12. the ask names the out-of-scope file, got: $(reason "$OUT")" "$(says "$(reason "$OUT")" "docs/notes.md")"
+
+OUT=$(run_commit 'git commit --amend --no-edit')
+check "12. an amend reusing its message asks, got: '$(decision "$OUT")'" "$([ "$(decision "$OUT")" = "ask" ] && echo 0 || echo 1)"
+
+# 13. A scope with no ticket cannot be satisfied by any trailer.
+ledger '["src/api/**"]' ""
+OUT=$(run_commit 'git commit -m "feat(api): handle the thing" -m "Refs: IAN-300"')
+check "13. a ledger with no ticket denies despite Refs, got: '$(decision "$OUT")'" "$([ "$(decision "$OUT")" = "deny" ] && echo 0 || echo 1)"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "finding-ledger.test.sh PASS"
