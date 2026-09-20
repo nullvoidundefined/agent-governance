@@ -206,7 +206,7 @@ message_references_other_ticket() {
 # pathspec both make those differ, and neither is handled yet (IAN-224).
 judge_staged_scope() {
   type read_declared_scope >/dev/null 2>&1 || return 0
-  local payload_cwd top branch staged own_ticket
+  local payload_cwd top branch staged own_ticket scope_line
   local -a scope=() outside=()
   payload_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
   [ -n "$payload_cwd" ] || return 0
@@ -214,7 +214,13 @@ judge_staged_scope() {
   top=$(cd "$top" 2>/dev/null && pwd -P) || return 0
   branch=$(git -C "$top" branch --show-current 2>/dev/null)
   [ -n "$branch" ] || return 0
-  mapfile -t scope < <(read_declared_scope "$top" "$branch")
+  # bash 3.2 (macOS /bin/bash) has no mapfile, and a guard that aborts on a
+  # missing builtin emits nothing, which a PreToolUse hook reads as an allow
+  # (IAN-267). Read the lines with a loop that every supported shell has.
+  while IFS= read -r scope_line; do
+    [ -n "$scope_line" ] || continue
+    scope+=("$scope_line")
+  done < <(read_declared_scope "$top" "$branch")
   [ "${#scope[@]}" -gt 0 ] || return 0
   while IFS= read -r staged; do
     [ -n "$staged" ] || continue
