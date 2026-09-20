@@ -11,14 +11,44 @@ project. Linear is authoritative from here; this file is the record of origin an
 the reasoning behind each item. Dependencies are carried as Linear blocking
 relations as well as being stated below.
 
-## Estimates are heuristic, not history
+## Estimates, re-baselined against history on 2026-09-20
 
-`estimate_minutes` below is the R-906 3-5x division, labelled a heuristic because
-the tracker history that R-906 prefers was unreachable at capture. The two
-nearest samples in the session handoff both overran, at ratios 1.42 (IAN-156)
-and 2.17 (IAN-175), so every estimate here should be read as a floor rather than
-a midpoint. `n` is 2, well under the five R-906 requires before a median is
-evidence.
+This section originally said the estimates below were the R-906 3-5x division,
+labelled a heuristic "because the tracker history that R-906 prefers was
+unreachable at capture", with `n` of 2.
+
+That was wrong, and IAN-254 corrected it. The history existed. Two families of
+closed tickets in this tracker carry real `actual_minutes` and both clear
+R-906's five-sample minimum, so the history path was open the whole time. Every
+figure below now carries `(from history, n=N)` or, where the comparable count is
+genuinely under five, `(heuristic retained, n=N)` so the number is never mistaken
+for evidence it does not have. Each ticket in Linear carries an
+`## Estimate basis` section with its comparables table and a component breakdown.
+
+**Family T, convention-track and conventions-document work.** n=7: IAN-159 (43),
+IAN-90 (48), IAN-145 (49), IAN-92 (50), IAN-73 (55), IAN-95 (55), IAN-97 (55).
+Median 50, 80th percentile 55. The distribution is remarkably tight: those seven
+were estimated anywhere from 15 to 90 minutes and every one landed between 43 and
+55. IAN-72 is the saga check, delivering two tracks end to end in 228 actual.
+
+**Family H, hook, gate, enforcement and runner work.** n=12: IAN-115 (35),
+IAN-119 (39), IAN-174 (65), IAN-116 (69), IAN-99 (76), IAN-100 (94), IAN-175
+(130), IAN-137 (150), IAN-156 (170), IAN-152 (195), IAN-94 (327), IAN-141 (519).
+Median 112, 80th percentile 190. Wide, with a tail driven by guard work against
+an adversarial surface.
+
+Two corrections to the record that the original capture got wrong. IAN-97 and
+IAN-73 do carry actuals, 55 each, rather than none. And the premise that these
+estimates were uniformly inflated does not survive the comparables: across the
+sixteen items re-baselined by IAN-254, nine came down, five went up, and two were
+left at the heuristic. Their total moved from 3,125 minutes to 2,930, about 6
+percent, while individual items moved by up to 39 percent downward (D2) and 78
+percent upward (C0). IAN-205, corrected separately beforehand, is not in those
+totals.
+
+Retroactive R-605 backfill tickets (IAN-102 to IAN-113, IAN-226 to IAN-249) are
+excluded from both families: they closed with `actual_minutes` deliberately unset
+as not attributable, so they price nothing.
 
 ## Dependency order
 
@@ -39,7 +69,7 @@ The mechanism that lets someone else's stack work without a pull request here.
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** opus (schema design plus gate wiring)
-- **Estimate:** 240 minutes (heuristic)
+- **Estimate:** 195 minutes (from history, n=12)
 - **Human estimate:** 180 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/local-convention-tracks`
@@ -76,7 +106,7 @@ they do not write.
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** opus
-- **Estimate:** 180 minutes (heuristic)
+- **Estimate:** 150 minutes (from history, n=12)
 - **Human estimate:** 150 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/structure-gate-vocabulary-config`
@@ -107,7 +137,7 @@ structure enforcement behind them.
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** opus (sync semantics, prior destructive incident in this area)
-- **Estimate:** 240 minutes (heuristic)
+- **Estimate:** 200 minutes (from history, n=12)
 - **Human estimate:** 180 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/local-override-contract`
@@ -148,11 +178,11 @@ These fix advice that is currently wrong, not advice that is missing.
 ### B1. The Python track serves FastAPI conventions to every Django repository
 
 - **Ticket:** IAN-205
-- **Tier:** complex if adding Django and Flask; trivial if narrowing the claim
+- **Tier:** complex (settled 2026-09-20: add Django; the narrow path is rejected)
 - **Assist:** llm
 - **Model:** opus
-- **Estimate:** 300 minutes (add) or 15 minutes (narrow), heuristic
-- **Human estimate:** 240 minutes (add) or 10 minutes (narrow)
+- **Estimate:** 180 minutes (from history, n=5)
+- **Human estimate:** 240 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/python-track-framework-split`
 - **State:** backlog
@@ -188,7 +218,7 @@ absent track fails loudly.
 - **Tier:** complex
 - **Assist:** llm
 - **Model:** sonnet (well-scoped once the parity target is fixed)
-- **Estimate:** 240 minutes (heuristic)
+- **Estimate:** 205 minutes (from history, n=7 file half, n=1 runner half)
 - **Human estimate:** 180 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/go-track-parity`
@@ -216,7 +246,7 @@ same gap seen twice, so they should close together.
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
-- **Estimate:** 180 minutes (heuristic)
+- **Estimate:** 185 minutes (from history, n=7 file half, n=1 runner half)
 - **Human estimate:** 120 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/ruby-track-parity`
@@ -234,7 +264,7 @@ Sidekiq 3) and the RSpec half of the same `ISSUES.md` P2.
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
-- **Estimate:** 120 minutes (heuristic)
+- **Estimate:** 160 minutes (from history, n=7; prices the covered path, narrow path about 45)
 - **Human estimate:** 90 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/ts-backend-framework-assumption`
@@ -261,7 +291,7 @@ repository today gets layering denials for following its own framework.
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
-- **Estimate:** 150 minutes (heuristic)
+- **Estimate:** 145 minutes (from history, n=7)
 - **Human estimate:** 120 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/orm-conventions`
@@ -291,7 +321,7 @@ file and the migration tool start.
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
-- **Estimate:** 45 minutes (heuristic)
+- **Estimate:** 80 minutes (from history, n=12)
 - **Human estimate:** 30 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/track-requires-push-gate`
@@ -312,17 +342,23 @@ conventions are written.
 
 ### C1 to C4. Candidate languages
 
-Each is a separate ticket, each tier complex, each estimated at 240 minutes
-(heuristic) and 180 human minutes, each on branch `feat/<language>-track`, each
-in state `backlog`, and each depending on C0 plus its own lint gate landing
-first. Ordered by adoption surface per unit of maintenance:
+Each is a separate ticket, each tier complex, each 180 human minutes, each on
+branch `feat/<language>-track`, each in state `backlog`, and each depending on C0
+plus its own lint gate landing first. Ordered by adoption surface per unit of
+maintenance:
 
-| Ticket | Language | Marker | Gate | Note |
-|---|---|---|---|---|
-| IAN-212 | Rust | `Cargo.toml` | clippy | Cleanest fit; strong existing conventions culture maps well onto this rule style |
-| IAN-213 | Java / Kotlin | `pom.xml`, `build.gradle` | spotless or ktlint | Largest enterprise surface, heaviest to do properly |
-| IAN-214 | C# / .NET | `*.csproj` | `dotnet format` plus Roslyn analyzers | |
-| IAN-215 | PHP / Laravel | `composer.json` | Pint plus PHPStan | |
+| Ticket | Language | Marker | Gate | Estimate | Note |
+|---|---|---|---|---|---|
+| IAN-212 | Rust | `Cargo.toml` | clippy | 195 | Cleanest fit; strong existing conventions culture maps well onto this rule style |
+| IAN-213 | Java / Kotlin | `pom.xml`, `build.gradle` | spotless or ktlint | 260 | Largest enterprise surface, heaviest to do properly |
+| IAN-214 | C# / .NET | `*.csproj` | `dotnet format` plus Roslyn analyzers | 215 | Roslyn analyzer config and a multi-project solution layout both cost more than clippy's |
+| IAN-215 | PHP / Laravel | `composer.json` | Pint plus PHPStan | 195 | Laravel's fixed layout makes the structure-gate vocabulary the most mechanical of the four |
+
+All four are from history, n=7. The flat 240 these previously carried
+contradicted the ranking in this very table: the estimates now differ because the
+work differs. IAN-213 is the only one that rose, and it rose because it is not one
+track: Java and Kotlin are two languages, two build markers, two lint gates and
+two source layouts, where the other three are one of each.
 
 **Standing risk on all four.** None of these will be written on real work by the
 maintainer, so none gets the validation that produced the roughly 13 commits
@@ -341,7 +377,7 @@ track written by someone who writes that language.
 - **Tier:** saga
 - **Assist:** llm
 - **Model:** opus
-- **Estimate:** 480 minutes (heuristic)
+- **Estimate:** 480 minutes (heuristic retained, n=1)
 - **Human estimate:** 480 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/publishable-unit`
@@ -373,7 +409,7 @@ replacement.
 - **Tier:** standard
 - **Assist:** llm
 - **Model:** sonnet
-- **Estimate:** 90 minutes (heuristic)
+- **Estimate:** 55 minutes (from history, n=7)
 - **Human estimate:** 60 minutes
 - **Repo:** agent-governance
 - **Branch:** `feat/layer-labels`
@@ -398,7 +434,7 @@ adopter's expectation and therefore the maintenance burden that arrives with it.
 - **Tier:** trivial
 - **Assist:** llm
 - **Model:** haiku
-- **Estimate:** 20 minutes (heuristic)
+- **Estimate:** 20 minutes (heuristic retained, n=0)
 - **Human estimate:** 15 minutes
 - **Repo:** agent-governance
 - **Branch:** `fix/repo-identity-configurable`
