@@ -124,6 +124,7 @@ ff95ff6b28e37c384b6cd31088c9f713a116616219fc8880172dfe5399b5e8e6  enforce/tests/
 f2b4c2b1ef929bd1dc326841cab3866d0c202c7ea086dd68d50cf8728878e956  enforce/tests/task-tier.test.sh
 607146a20ce0601c465534880ce8bb5097eb2c9c858d6dad00ac3ed2cf48a1dc  enforce/tests/tdd-pytest.test.sh
 6e66a884b66f93aa63c2952ad81eb281193dff47dbbe2177e1db6d6d7f5b0aff  enforce/tests/tdd-red-green.test.sh
+8e83144e175717a9becc8fcec68b80614954ead3423abc6a9ecf8f89d3eac965  enforce/tests/tdd-red-manifest-drift.test.sh
 27bf51b1504e809c963e2449a6e6b7c6fd50b07f18034b4a84abe880a9aeabd0  enforce/tests/test-quality-rules.test.sh
 71a658751cf756cf02a60299abd3eca9f2759e8531175bfaed22eac82a97ad2b  enforce/tests/ticket-at-start-gate.test.sh
 9b6ba8d93e82011be0a95de8731766f5c45e350204baf0db2b90bef8c9215902  enforce/tests/translate-codex.test.sh
