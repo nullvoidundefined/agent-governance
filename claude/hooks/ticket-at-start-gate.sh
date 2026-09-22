@@ -57,24 +57,49 @@ deny() {
 # resolve_edit_directory <file-path>: prints the nearest existing directory
 # holding the file, physical path, so a new file under directories that do not
 # exist yet is judged by the repository it would land in.
+# Strips one component per turn with parameter expansion rather than with a
+# `dirname` process, so this hook's cost does not grow with the depth of the
+# path being written (IAN-183). This hook was the fifth carrying the pattern
+# and the one enforce/tests/hook-path-walk-budget.test.sh still caught after
+# the other four were fixed; the fixture passed in CI because enforce.yml runs
+# only on ubuntu-latest, where the chain's process count is under the budget.
 resolve_edit_directory() {
-  local directory
-  case "$1" in /*) directory=$(dirname "$1") ;; *) directory=$(dirname "$CWD/$1") ;; esac
-  while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do directory=$(dirname "$directory"); done
+  local directory parent
+  case "$1" in /*) directory="$1" ;; *) directory="$CWD/$1" ;; esac
+  directory="${directory%/*}"
+  [ -n "$directory" ] || directory="/"
+  while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do
+    parent="${directory%/*}"
+    [ "$parent" = "$directory" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    directory="$parent"
+  done
   (cd "$directory" 2>/dev/null && pwd -P)
 }
 
 # resolve_edit_path <file-path>: prints the file's physical path: the nearest
 # existing ancestor resolved through symlinks, followed by the components that
 # do not exist yet, so `.claude/new/x` keeps its `.claude/new` part.
+# Parameter expansion rather than `dirname` and `basename`, for the reason
+# resolve_edit_directory above gives. Trailing slashes are stripped first,
+# because `${path##*/}` on "a/b/" is the empty string where `basename` gives
+# "b"; a name with no slash left maps to "." exactly as `dirname` reports it.
 resolve_edit_path() {
-  local absolute_path existing_directory missing_suffix
+  local absolute_path existing_directory missing_suffix parent
   case "$1" in /*) absolute_path="$1" ;; *) absolute_path="$CWD/$1" ;; esac
-  existing_directory=$(dirname "$absolute_path")
-  missing_suffix=$(basename "$absolute_path")
+  while [ "$absolute_path" != "/" ] && [ "${absolute_path%/}" != "$absolute_path" ]; do
+    absolute_path="${absolute_path%/}"
+  done
+  existing_directory="${absolute_path%/*}"
+  [ "$existing_directory" = "$absolute_path" ] && existing_directory="."
+  [ -n "$existing_directory" ] || existing_directory="/"
+  missing_suffix="${absolute_path##*/}"
   while [ ! -d "$existing_directory" ] && [ "$existing_directory" != "/" ]; do
-    missing_suffix="$(basename "$existing_directory")/$missing_suffix"
-    existing_directory=$(dirname "$existing_directory")
+    missing_suffix="${existing_directory##*/}/$missing_suffix"
+    parent="${existing_directory%/*}"
+    [ "$parent" = "$existing_directory" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    existing_directory="$parent"
   done
   printf '%s/%s' "$(cd "$existing_directory" 2>/dev/null && pwd -P)" "$missing_suffix"
 }

@@ -688,5 +688,29 @@ git status && git commit -m x
 git diff --cached --stat && git commit -m x
 SHAPES
 
+# PW-1: this hook resolves a written path twice, in resolve_edit_directory and
+# in resolve_edit_path, and both walked it one `dirname` per component until
+# IAN-183's sweep reached them. It was the fifth hook carrying the pattern and
+# the one enforce/tests/hook-path-walk-budget.test.sh still caught after the
+# other four were fixed, which that fixture reports as chain growth without
+# naming the file. This names the file, so the next regression costs a grep
+# rather than a hunt through the whole Write|Edit chain.
+# Scoped to the two resolver bodies, not the whole file: three single calls
+# elsewhere (sourcing the helper directory, naming a git dir, labelling a
+# message) are one process each and do not scale with depth. What must not
+# come back is a call inside these two walks.
+PW_HITS=$(awk '
+  /^resolve_edit_directory\(\) \{|^resolve_edit_path\(\) \{/ { inside = 1 }
+  inside && /^\}/ { inside = 0 }
+  inside && /(dirname|basename)[[:space:]]+"?\$/ && $0 !~ /^[[:space:]]*#/ { print FNR ": " $0 }
+' "$HOOK")
+if [ -n "$PW_HITS" ]; then
+  echo "FAIL: PW-1 ticket-at-start-gate.sh walks a path with dirname or basename inside a resolver; strip components with parameter expansion (\${path%/*}, \${path##*/}) so the hook's cost does not grow with path depth (IAN-183):"
+  printf '  %s\n' "$PW_HITS"
+  fail=1
+else
+  echo "PASS: PW-1 neither resolver walks a path with dirname or basename"
+fi
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"
