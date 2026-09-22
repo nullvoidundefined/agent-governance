@@ -122,6 +122,19 @@ Ordered the way the implementation needs them. Each is one slice.
   `claude/prompts/*.md`, and fails the pull request below the threshold.
 - B-22: The suite emits a recall, a precision, and a noise number for each of
   the three graded adversaries, recorded as the baseline in the pull request.
+- B-23: The SessionStart handoff block is a fixed short pointer carrying the
+  path, the SHA, the line count, and the instruction to read the file, never
+  the document body, so it cannot exceed the harness's inline limit and cannot
+  be persisted to a preview.
+- B-24: A fixture asserts that block stays under a fixed byte budget and
+  contains the path and the SHA, so a future addition cannot reintroduce the
+  truncation.
+- B-25: `decision-log.sh` records, for each gate firing the human approved over,
+  whether a reason was given in the same turn, and `telemetry-rollup.sh` reports
+  per rule an override count alongside the gate yield.
+- B-26: No guard gains a skip flag, a bypass token, or an override argument. The
+  override record is derived from decisions already made, proved by a fixture
+  asserting that no hook reads an override environment variable or file.
 
 ## Invariants
 
@@ -147,6 +160,8 @@ Ordered the way the implementation needs them. Each is one slice.
 | `ANTHROPIC_API_KEY` absent in CI | The eval workflow passes with a notice, matching `judge-diff.sh`'s fail-open posture. The deterministic gates stay the hard guarantee. | Yes. |
 | An eval case's fixture repository fails to build | That case scores zero and the run reports which case, rather than the whole suite erroring out. | Yes. |
 | Two sessions append to the log at once | Lines stay whole, because each is a single `printf` under the append-only open the helper already uses. | Not needed. |
+| The handoff file is missing or unreadable at SessionStart | The pointer block says so in those words, which is the "absent" branch R-001 already handles. It never prints a partial body, because a partial body is the state that has no branch. | Yes. |
+| A human approves over a gate and gives no reason | The decision is recorded with an empty reason and the rollup counts it as an unexplained override. An unexplained override is data too: a rule with many of them is a rule people route around without being able to say why. | Not needed. |
 
 ## State transitions
 
@@ -162,6 +177,18 @@ lifecycle beyond being written.
   no adversary is deleted, no rule is retired. This spec produces the evidence
   those decisions need. Deciding without the evidence is the failure mode that
   produced 121 rule IDs.
+- **An override that actually bypasses a guard.** B-25 records that a human
+  approved over a firing and why; it grants nothing. R-203 reserves a bypass to
+  the user's explicit word in the turn, and a mechanism the session can invoke
+  itself would hand the model the switch that rule exists to withhold. Gap H5's
+  measurement half is in scope here precisely because its enforcement half is
+  not, and the record is the part that produces the false-positive data.
+- **Making a gate's exit status honest.** `tdd.sh red` and `doctor.sh` both exit
+  0 while refusing or reporting a failure, so the printed verdict is the only
+  truth (session handoff, pending item 14). That is the same class this spec is
+  about, a signal that goes silent or lies rather than going wrong, and it bit
+  this program's own first session twice. It is a separate change to separate
+  scripts and carries its own ticket rather than riding here.
 - **The end-to-end ablation A/B.** Phase B is 4 to 6 `--ablation with-without`
   cases run monthly. It is specified in the plan and is not a criterion here.
 - **Backfilling the existing log.** The clean series starts at the first line
