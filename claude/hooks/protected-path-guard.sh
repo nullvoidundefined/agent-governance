@@ -43,20 +43,48 @@ emit() {
 # Physical path of a file that may not exist yet: resolve the deepest existing
 # ancestor with pwd -P and append the remainder, so a symlinked checkout and
 # its real path compare equal.
+#
+# The two loops below strip one path component per turn with parameter
+# expansion rather than with `basename` and `dirname`. They used to spawn one
+# process per component each, so this hook charged a session two processes for
+# every directory level of every path it wrote, on top of the four `jq` reads
+# above: 23 processes for a four-level path, the most expensive hook in the
+# Write|Edit chain at 63ms and the reason hook-latency.test.sh sat on its
+# budget line (IAN-183; IAN-115 measured the same 63ms and left it as the
+# residual). Bash removes a component with no process at all.
+# enforce/tests/hook-path-walk-budget.test.sh pins the property by counting
+# what the chain starts at two path depths.
+#
+# Trailing slashes are stripped once, up front, because `${target##*/}` on
+# "a/b/" yields the empty string where `basename` yields "b". Below that line
+# the loop removes one component per turn and never reintroduces one.
 physical_path() {
-  local target="$1" rest=""
+  local target="$1" rest="" parent
   case "$target" in /*) ;; *) target="$CWD/$target" ;; esac
+  while [ "$target" != "/" ] && [ "${target%/}" != "$target" ]; do target="${target%/}"; done
   while [ ! -d "$target" ]; do
-    rest="/$(basename "$target")$rest"
-    target=$(dirname "$target")
+    rest="/${target##*/}$rest"
+    parent="${target%/*}"
+    [ "$parent" = "$target" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    target="$parent"
     [ "$target" = "/" ] && break
   done
   printf '%s%s' "$(cd "$target" 2>/dev/null && pwd -P)" "$rest"
 }
 
 repo_root_for() {
-  local dir="$1"
-  while [ ! -d "$dir" ] && [ "$dir" != "/" ]; do dir=$(dirname "$dir"); done
+  local dir="$1" parent
+  while [ ! -d "$dir" ] && [ "$dir" != "/" ]; do
+    parent="${dir%/*}"
+    # A name with no slash left expands to itself, which `dirname` reports as
+    # "." and which would otherwise spin this loop forever. Callers pass an
+    # absolute path today, so this is a guard rather than a live case, but the
+    # `dirname` it replaces terminated on such input and so must this.
+    [ "$parent" = "$dir" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    dir="$parent"
+  done
   git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true
 }
 
@@ -75,7 +103,12 @@ if [ "$TOOL" = "Bash" ]; then
 else
   FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
   [ -n "$FILE" ] || exit 0
-  ROOT=$(repo_root_for "$(dirname "$(physical_path "$FILE")")")
+  # physical_path already returns an absolute path with no trailing slash, so
+  # its parent is one expansion rather than a `dirname` process.
+  FILE_PHYSICAL=$(physical_path "$FILE")
+  FILE_PHYSICAL_PARENT="${FILE_PHYSICAL%/*}"
+  [ -n "$FILE_PHYSICAL_PARENT" ] || FILE_PHYSICAL_PARENT="/"
+  ROOT=$(repo_root_for "$FILE_PHYSICAL_PARENT")
 fi
 [ -n "$ROOT" ] || exit 0
 ROOT_PHYSICAL=$(cd "$ROOT" && pwd -P)
