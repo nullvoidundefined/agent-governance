@@ -1,10 +1,12 @@
-# Session Handoff: 2026-09-20, six sessions: IAN-156, R-334, the R-2xx rules, the IAN-173 spec, the R-605 audit, the IAN-184 gate, the README landing copy, PR triage
+# Session Handoff: 2026-09-20 to 2026-09-22, seven sessions: IAN-156, R-334, the R-2xx rules, the IAN-173 spec, the R-605 audit, the IAN-184 gate, the README landing copy, PR triage, and the IAN-183 path-walk fix
 
 Six sessions ran today and all wrote here. This merges them; detail is on each ticket.
 
 **Over R-602's 8 KB by about 6 KB, deliberately, and the overage is growing each session.** That limit assumes one session per handoff. Everything historical here is already one line apiece and pushed onto its ticket; what remains is the pending list, the production warnings and the next-session rules, and cutting those to satisfy a size check trades the document's purpose for its metric. The earlier attempt to obey the cap is the direct cause of this session's worst finding: compressing four sessions into 8179 bytes silently dropped a retraction, and only an adversarial review caught it. Filed as IAN-266; **IAN-260 is the actual fix**, giving each session its own uncapped file behind a capped index, at which point this note goes away.
 
 ## 1. Last commit
+
+`102d281` fix(hooks): walk a written path by expansion, not a process per component (IAN-183). PR #104 merged 2026-09-22 with all checks green; IAN-183, IAN-262 and IAN-301 closed. Superseded the entry below, which was current when the PR-triage session wrote this file.
 
 - `main` is at `021c8fa`, `fix(hooks): replace mapfile so the scope guards run under bash 3.2 (#105)`. Today's merges: `#89` to `#93`, `#95`, `#96`, `#98`, `#102`, `#99`, `#103`, `#105`.
 - `./sync.sh` ran from a worktree on `main` at `021c8fa`, so the live `~/.claude` carries the guard repair; both guards were re-verified firing against `~/.claude` itself.
@@ -57,7 +59,7 @@ Detail is on each ticket; these are one line apiece for traceability.
 
 ## 5. Pending (by urgency)
 
-1. **Merge `#104`** (IAN-183, 15 min): it is the hook-latency fix and its CI is green, but it is still a draft. Three hooks resolved a written file's directory by walking the path one component at a time, spawning a `dirname` or `basename` per level; the fix uses shell expansion. Until it lands, `hook-latency.test.sh` stays red at 450ms against 378ms and **blocks `tdd.sh red` for every new slice**, so no TDD work can start. Do not widen the budget (R-204); this is the root-cause fix.
+1. **IAN-295** (1 to 2 h, urgent): a cloud session with no installed harness runs **zero hooks** and says nothing. `~/.claude` is empty until `./sync.sh` runs, so R-212's scope gate, R-214's commit gate, R-518's draft-PR hook, `no-em-dash`, `secret-scan` and the rest all silently do nothing. Found because R-518's auto-draft-PR never fired for `#104`. R-003's enforcer is itself a SessionStart hook, so it cannot repair this: a hook cannot install the hooks. Same fail-open shape as IAN-267, wider blast radius.
 2. **Repoint `.sync-source` and re-sync** (5 min): it currently names a worktree on a handoff branch (section 2). Point it at a checkout on `main`, run `./sync.sh`, and confirm `~/.claude/hooks/scope-widening-gate.sh` matches `main`.
 3. **`#97`'s two HIGH findings** (60 to 90 min). The IAN-184 comment of 16:5xZ carries both verbatim with the intended fixes. H-1: `is_expected_red` never reads which check failed. H-2: `exit 0` in the checks loop skips the rest. M-1 to M-3 are owed too, and `#97` needs its `## Codex review` section.
 4. **IAN-260** (75 min remaining): slice 1's fixture is written, pushed and red; `handoff-check.sh` needs the session-file path, then slices 2 to 4. Unblocks `#101`, and retires the fold this file keeps needing.
@@ -70,8 +72,9 @@ Detail is on each ticket; these are one line apiece for traceability.
 11. **IAN-250** (60 min): rewrite the criticism audit as a senior challenging a junior's assumptions; its closing argues for self-blame against the brief.
 12. **IAN-251** (30 to 45 min): the four allow paths in `pr-ticket-ref-gate.sh` are bare `exit 0`, so an exemption is never recorded and reads later like a gate that never fired.
 13. **IAN-252** (40 min): `tdd.sh close` should refuse while the lock path is tracked, reading git state rather than file existence.
-14. Lower: **IAN-264** (10 min), **IAN-253** (R-512's bundle exception is dead here), **IAN-176** (20 min), **IAN-177** (15 min), **IAN-165** (45 min).
-15. **No ticket yet:** `tdd.sh red` and `doctor.sh` both exit 0 while refusing or reporting a fail, so the printed verdict is the only truth. `pr-ticket-ref-gate.test.sh` prints a bare `true` mid-run. `#101` has no `docs/prs/` document, and `#100` had none when it was closed. Whether the fixture suite should run under bash 3.2 in CI, and whether hooks should fail closed on an internal fault rather than by each one's structure, are both open from IAN-267 and unticketed.
+14. **From the IAN-183 session** (`#104`, merged as `102d281`): **IAN-300** (30 min, the one red fixture on `main`, `session-end.test.sh`), **IAN-297** (2 h, `SessionStart:resume` now the thinnest timed chain at 423 to 428ms against 402ms), **IAN-298** (45 min, the new path-walk fixture probes only outside a git work tree), **IAN-299** (20 min, `tdd.sh` reads `role-policy.json` from `$HOME` not `CLAUDE_TDD_HOME`). **IAN-301** is Done (retroactive).
+15. Lower: **IAN-264** (10 min), **IAN-253** (R-512's bundle exception is dead here; corrected 2026-09-22, the block is the `main` **ruleset's** `allowed_merge_methods`, not the repository setting, which already allows rebase), **IAN-176** (20 min), **IAN-177** (15 min), **IAN-165** (45 min).
+16. **No ticket yet:** `tdd.sh red` and `doctor.sh` both exit 0 while refusing or reporting a fail, so the printed verdict is the only truth. `pr-ticket-ref-gate.test.sh` prints a bare `true` mid-run. `#101` has no `docs/prs/` document, and `#100` had none when it was closed. Whether the fixture suite should run under bash 3.2 in CI, and whether hooks should fail closed on an internal fault rather than by each one's structure, are both open from IAN-267 and unticketed.
 
 ## 6. Next session
 
