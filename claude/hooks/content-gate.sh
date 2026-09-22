@@ -83,8 +83,18 @@ fi
 # moment either repo moves. Shared code publishes as a versioned package.
 case "$FILE" in
   *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs)
-    dir="$(dirname "$FILE")"
-    while [ ! -d "$dir" ] && [ "$dir" != "/" ] && [ "$dir" != "." ]; do dir="$(dirname "$dir")"; done
+    # One parameter expansion per component, not one `dirname` process: this
+    # loop walks the whole path when the file's directory does not exist yet,
+    # which is the ordinary case for a Write (IAN-183).
+    dir="${FILE%/*}"
+    [ "$dir" = "$FILE" ] && dir="."
+    [ -n "$dir" ] || dir="/"
+    while [ ! -d "$dir" ] && [ "$dir" != "/" ] && [ "$dir" != "." ]; do
+      parent="${dir%/*}"
+      [ "$parent" = "$dir" ] && parent="."
+      [ -n "$parent" ] || parent="/"
+      dir="$parent"
+    done
     TOP=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || exit 0
     RELATIVE_DIR="${FILE#"$TOP"/}"
     RELATIVE_DIR=$(dirname "$RELATIVE_DIR")
