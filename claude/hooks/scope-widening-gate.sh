@@ -66,14 +66,28 @@ HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
 # nearest existing ancestor through symlinks and keeping the components that
 # do not exist yet, so a file about to be created is judged by where it lands
 # rather than skipped for not being there.
+# Both loops here strip one component per turn with parameter expansion rather
+# than with a `basename` or `dirname` process, so this hook's cost does not
+# grow with the depth of the path being written (IAN-183).
+# enforce/tests/hook-path-walk-budget.test.sh pins that for the whole chain.
+# Trailing slashes are stripped first, because `${path##*/}` on "a/b/" is the
+# empty string where `basename` gives "b"; a name with no slash left maps to
+# "." exactly as `dirname` reports it, which is what ends the walk on a
+# relative path.
 physical_path() {
-  local absolute existing missing
+  local absolute existing missing parent
   case "$1" in /*) absolute="$1" ;; *) absolute="$CWD/$1" ;; esac
-  existing=$(dirname "$absolute")
-  missing=$(basename "$absolute")
+  while [ "$absolute" != "/" ] && [ "${absolute%/}" != "$absolute" ]; do absolute="${absolute%/}"; done
+  existing="${absolute%/*}"
+  [ "$existing" = "$absolute" ] && existing="."
+  [ -n "$existing" ] || existing="/"
+  missing="${absolute##*/}"
   while [ ! -d "$existing" ] && [ "$existing" != "/" ]; do
-    missing="$(basename "$existing")/$missing"
-    existing=$(dirname "$existing")
+    missing="${existing##*/}/$missing"
+    parent="${existing%/*}"
+    [ "$parent" = "$existing" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    existing="$parent"
   done
   printf '%s/%s' "$(cd "$existing" 2>/dev/null && pwd -P)" "$missing"
 }
@@ -82,9 +96,16 @@ physical_path() {
 # that exists, physical, so a target under directories that do not exist yet
 # is still resolved against the repository it would land in.
 nearest_existing_directory() {
-  local directory
-  directory=$(dirname "$1")
-  while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do directory=$(dirname "$directory"); done
+  local directory parent
+  directory="${1%/*}"
+  [ "$directory" = "$1" ] && directory="."
+  [ -n "$directory" ] || directory="/"
+  while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do
+    parent="${directory%/*}"
+    [ "$parent" = "$directory" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    directory="$parent"
+  done
   (cd "$directory" 2>/dev/null && pwd -P)
 }
 
