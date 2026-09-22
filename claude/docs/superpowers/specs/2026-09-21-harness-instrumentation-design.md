@@ -57,7 +57,7 @@ A guard that denies produces a fire and no decision.
 - `rule-fires.log` lines gain two fields:
   `ts|rule|hook|decision|repo|repo_class|intent_id`.
 - A new `~/.claude/telemetry/decisions.log`, one line per gate answered:
-  `ts|rule|hook|offered|chose|changed_course|repo_class`.
+  `ts|rule|hook|offered|chose|changed_course|reason_given|repo_class`.
 - `enforce/telemetry-rollup.sh` prints a table: per rule, distinct intents,
   product-repo share, and gate yield.
 - `claude plugin eval --json` writes per-adversary recall, precision, and noise
@@ -93,11 +93,27 @@ Ordered the way the implementation needs them. Each is one slice.
   reminder hook.
 - B-12: The rollup computes gate yield per rule from `decisions.log`, and a rule
   with no decisions reports `n/a` rather than zero.
-- B-13: `enforce/manifest.json` holds no `llm-judge` entry for R-316, R-317, or
-  R-325, and `judge-diff.sh` judges exactly two rules.
+- B-13: Every rule carrying both an `ast` row and an `llm-judge` row has a
+  `note` on each row stating which half that enforcer decides, asserted by a
+  fixture over `manifest.json`.
+
+  This replaces the deletion this criterion originally specified. The R-517
+  review of #109 established that the premise was false: the manifest records
+  that R-325's judge row decides "never destructure a method off its object", a
+  type question the AST rule deliberately excludes, and that R-316's and
+  R-317's ESLint coverage is active only in repositories declaring a naming key
+  in `.enforce.json`, with R-317 covering the decidable half alone. Deleting
+  those three rows would have removed enforcement, not redundancy, against an
+  invariant of this spec that Phase 1 only deletes and tightens. The judge's
+  surface therefore stays at five rules. The durable fix is the fixture above,
+  which makes the split explicit so a future reader cannot mistake partial
+  overlap for duplication the way the 2026-09-21 evaluation did.
 - B-14: A new `enforce/rules/r334-aggregate-root.mjs` flags a schema, model, or
   module name whose leading noun is absent from the spec's
-  `## Domain vocabulary`, and passes a name whose leading noun is present.
+  `## Domain vocabulary`, and passes a name whose leading noun is present. A
+  repository with no glossary disables the rule rather than flagging every
+  name, matching `judge-diff.sh`, which already drops R-334 from the judged set
+  when `collect_project_vocabulary` returns nothing.
 - B-15: A report under `docs/audits/` with more than 15 findings or more than
   3,000 words fails a fixture, naming the count.
 - B-16: R-517's Spec states the two-round cap and names redesign, not a further
@@ -117,7 +133,7 @@ Ordered the way the implementation needs them. Each is one slice.
 - B-20: A seeded-defect case's grader fails when the adversary's output does not
   name the planted defect, and a control's grader fails when the adversary
   reports any finding.
-- B-21: A workflow runs the eval suite with `--threshold` on any change to
+- B-21: A workflow runs the eval suite with `--threshold 0.8` on any change to
   `claude/agents/*.md`, `claude/enforce/judge-prompt.md`, or
   `claude/prompts/*.md`, and fails the pull request below the threshold.
 - B-22: The suite emits a recall, a precision, and a noise number for each of
@@ -126,20 +142,25 @@ Ordered the way the implementation needs them. Each is one slice.
   path, the SHA, the line count, and the instruction to read the file, never
   the document body, so it cannot exceed the harness's inline limit and cannot
   be persisted to a preview.
-- B-24: A fixture asserts that block stays under a fixed byte budget and
+- B-24: A fixture asserts that block stays under 512 bytes and
   contains the path and the SHA, so a future addition cannot reintroduce the
   truncation.
-- B-25: `decision-log.sh` records, for each gate firing the human approved over,
-  whether a reason was given in the same turn, and `telemetry-rollup.sh` reports
-  per rule an override count alongside the gate yield.
+- B-25: `decision-log.sh` sets `reason_given` to `yes` or `no` for each gate
+  firing the human approved over, and `telemetry-rollup.sh` reports per rule an
+  override count alongside the gate yield, split by that flag. The field is a
+  boolean and never the reason's text, because the Security section forbids
+  writing transcript free text into the log.
 - B-26: No guard gains a skip flag, a bypass token, or an override argument. The
   override record is derived from decisions already made, proved by a fixture
   asserting that no hook reads an override environment variable or file.
 
 ## Invariants
 
-- A fire line always has exactly seven pipe-separated fields, so a reader
-  written for the new format never has to guess which version it is reading.
+- Every fire line written after B-5 has exactly seven pipe-separated fields.
+  Lines written before it have five, and both readers accept either: a
+  five-field line reads as `repo_class=unknown` with no intent. The invariant
+  is that a line never has a count other than five or seven, so a reader never
+  has to guess.
 - `log_rule_fire` never fails, never blocks, and never slows its caller. Every
   addition here stays inside the existing `{ ... } 2>/dev/null || true` wrapper.
 - No telemetry line ever contains a secret, a credential, or an absolute local
@@ -201,7 +222,7 @@ lifecycle beyond being written.
 Reused (R-308), no new module where one exists:
 
 - `hooks/log-rule-fire.sh`, extended in place.
-- `enforce/harness-root.sh`, already sourced by 85 of 102 enforce fixtures.
+- `enforce/harness-root.sh`, already sourced by 87 of 103 enforce fixtures.
 - `hooks/session-end.sh`'s transcript-reading block, the pattern
   `decision-log.sh` follows.
 - `enforce/run-fixture-shards.sh`, for registering the new fixtures.
