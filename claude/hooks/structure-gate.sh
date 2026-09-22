@@ -29,11 +29,19 @@ deny() {
 # The two vocabulary checks below both ask "what kind of package is this file in".
 # Walk up to the nearest package.json (six levels covers a pnpm monorepo surface
 # plus slack) and read one dependency name out of it.
+# The walk strips one component per turn with parameter expansion rather than
+# with a `dirname` process. This runs twice per Write (once for the Nuxt probe,
+# once for the R-304/R-305 checks), so at six levels it charged a session
+# twelve processes to answer a question about the path alone (IAN-183).
 find_package_file() {
   local candidate="$1" parent
   for _ in 1 2 3 4 5 6; do
     [ -f "$candidate/package.json" ] && { printf '%s' "$candidate/package.json"; return 0; }
-    parent=$(dirname "$candidate")
+    parent="${candidate%/*}"
+    # `dirname` reports "." for a name with no slash; matching that keeps the
+    # walk's termination identical to the loop this replaces.
+    [ "$parent" = "$candidate" ] && parent="."
+    [ -n "$parent" ] || parent="/"
     [ "$parent" = "$candidate" ] && return 1
     candidate="$parent"
   done
