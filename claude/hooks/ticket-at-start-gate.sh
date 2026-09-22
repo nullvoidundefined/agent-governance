@@ -80,6 +80,9 @@ resolve_edit_directory() {
   case "$1" in /*) directory="$1" ;; *) directory="$CWD/$1" ;; esac
   while [ "$directory" != "/" ] && [ "${directory%/}" != "$directory" ]; do directory="${directory%/}"; done
   parent="${directory%/*}"
+  # See resolve_edit_path: command substitution dropped trailing newlines and
+  # expansion does not, which sent a path containing one to the wrong ancestor.
+  while [ "${parent%$'\n'}" != "$parent" ]; do parent="${parent%$'\n'}"; done
   [ "$parent" = "$directory" ] && parent="."
   [ -n "$parent" ] || parent="/"
   directory="$parent"
@@ -100,9 +103,15 @@ resolve_edit_path() {
   case "$1" in /*) absolute_path="$1" ;; *) absolute_path="$CWD/$1" ;; esac
   while [ "$absolute_path" != "/" ] && [ "${absolute_path%/}" != "$absolute_path" ]; do absolute_path="${absolute_path%/}"; done
   existing_directory="${absolute_path%/*}"
+  # `$(dirname ...)` and `$(basename ...)` dropped trailing newlines, because
+  # command substitution does; expansion keeps them. A path may legitimately
+  # contain a newline, and keeping it here sent the walk to the wrong ancestor
+  # and so judged the write against the wrong repository (IAN-183 R-517 review).
+  while [ "${existing_directory%$'\n'}" != "$existing_directory" ]; do existing_directory="${existing_directory%$'\n'}"; done
   [ "$existing_directory" = "$absolute_path" ] && existing_directory="."
   [ -n "$existing_directory" ] || existing_directory="/"
   missing_suffix="${absolute_path##*/}"
+  while [ "${missing_suffix%$'\n'}" != "$missing_suffix" ]; do missing_suffix="${missing_suffix%$'\n'}"; done
   while [ ! -d "$existing_directory" ] && [ "$existing_directory" != "/" ]; do
     missing_suffix="${existing_directory##*/}/$missing_suffix"
     parent="${existing_directory%/*}"
