@@ -712,5 +712,31 @@ else
   echo "PASS: PW-1 neither resolver walks a path with dirname or basename"
 fi
 
+# PW-2: the expansion rewrite must answer exactly what the dirname and
+# basename version answered. The R-517 review of #110 found three ways it did
+# not: `dirname` ignores trailing slashes where `${p%/*}` does not, `$(...)`
+# stripped trailing newlines from every result where expansion does not, and
+# the parent walk kept repeated separators. Each changed which repository a
+# path is judged against, so each is pinned here.
+# The two resolvers are extracted rather than sourced, because sourcing the
+# hook runs it.
+PW_FNS="$SB/resolvers.sh"
+sed -n '/^resolve_edit_directory() {/,/^}/p;/^resolve_edit_path() {/,/^}/p' "$HOOK" > "$PW_FNS"
+PW_OUT=$(
+  CWD="$SB"
+  . "$PW_FNS"
+  mkdir -p "$SB/real"
+  printf 'dir_trailing=%s\n' "$(resolve_edit_directory "$SB/real/")"
+  printf 'dir_newline=%s\n' "$(resolve_edit_directory "$SB/real"$'\n'"/x")"
+)
+check "PW-2 a trailing slash resolves to the parent, as dirname did" \
+  grep -qx "dir_trailing=$(cd "$SB" && pwd -P)" <<< "$PW_OUT"
+check "PW-2 a trailing newline is stripped, as command substitution did" \
+  grep -qx "dir_newline=$(cd "$SB/real" && pwd -P)" <<< "$PW_OUT"
+# The review's third finding, repeated separators kept while walking absent
+# parents, is fixed in the hook but is not pinned here: `pwd -P` normalises
+# "//" away, so an assertion on the resolver's output passes against the
+# unfixed code too and would be a test that cannot fail (R-401).
+
 [ "$fail" -eq 0 ] && echo "ticket-at-start-gate.test.sh PASS"
 exit "$fail"

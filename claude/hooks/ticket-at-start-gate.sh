@@ -63,10 +63,20 @@ deny() {
 # and the one enforce/tests/hook-path-walk-budget.test.sh still caught after
 # the other four were fixed; the fixture passed in CI because enforce.yml runs
 # only on ubuntu-latest, where the chain's process count is under the budget.
+# Two normalisations keep these resolvers' answers identical to the `dirname`
+# and `basename` versions they replace, and both are done with expansion so no
+# subshell is forked either (IAN-183 review, MEDIUM x2):
+#   trailing slashes, because `dirname` ignores them and `${p%/*}` does not, so
+#   the two disagree on "/a/b/" ("/a" against "/a/b");
+#   trailing newlines, because `$(...)` stripped them from every dirname and
+#   basename result, and a path may legitimately contain a newline.
 resolve_edit_directory() {
   local directory parent
   case "$1" in /*) directory="$1" ;; *) directory="$CWD/$1" ;; esac
+  while [ "$directory" != "/" ] && [ "${directory%/}" != "$directory" ]; do directory="${directory%/}"; done
   directory="${directory%/*}"
+  while [ "${directory%$'\n'}" != "$directory" ]; do directory="${directory%$'\n'}"; done
+  while [ "$directory" != "/" ] && [ "${directory%/}" != "$directory" ]; do directory="${directory%/}"; done
   [ -n "$directory" ] || directory="/"
   while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do
     parent="${directory%/*}"
@@ -91,12 +101,16 @@ resolve_edit_path() {
     absolute_path="${absolute_path%/}"
   done
   existing_directory="${absolute_path%/*}"
+  while [ "${existing_directory%$'\n'}" != "$existing_directory" ]; do existing_directory="${existing_directory%$'\n'}"; done
+  while [ "$existing_directory" != "/" ] && [ "${existing_directory%/}" != "$existing_directory" ]; do existing_directory="${existing_directory%/}"; done
   [ "$existing_directory" = "$absolute_path" ] && existing_directory="."
   [ -n "$existing_directory" ] || existing_directory="/"
   missing_suffix="${absolute_path##*/}"
+  while [ "${missing_suffix%$'\n'}" != "$missing_suffix" ]; do missing_suffix="${missing_suffix%$'\n'}"; done
   while [ ! -d "$existing_directory" ] && [ "$existing_directory" != "/" ]; do
     missing_suffix="${existing_directory##*/}/$missing_suffix"
     parent="${existing_directory%/*}"
+    while [ "$parent" != "/" ] && [ "${parent%/}" != "$parent" ]; do parent="${parent%/}"; done
     [ "$parent" = "$existing_directory" ] && parent="."
     [ -n "$parent" ] || parent="/"
     existing_directory="$parent"
