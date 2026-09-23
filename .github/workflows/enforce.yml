@@ -5,6 +5,14 @@
 # control, so this exists to be named as a required status check under branch
 # protection (Settings > Branches > require status checks > "fixtures").
 #
+# Two jobs run the fixture suites, and they differ only in the shell that runs
+# them. `fixtures` runs ubuntu-latest, where /usr/bin/env bash is bash 5.
+# `fixtures (macOS, bash 3.2)` runs macos-latest, where the same spelling is
+# GNU bash 3.2.57, which is the shell every hook in this repository actually
+# executes under on the owner's machine. The second job's own header records
+# why that floor needs a job of its own and what it deliberately does not
+# repeat from the first.
+#
 # The fixture suites resolve the implementation they exercise through
 # claude/enforce/harness-root.sh, which derives the harness root from each
 # fixture's own location, so they test the checkout wherever they are invoked
@@ -160,3 +168,138 @@ jobs:
       # itself surfaces as a red check rather than at first use in a real repo.
       - name: Ratchet
         run: node "$HOME/.claude/enforce/ratchet.mjs" "$GITHUB_WORKSPACE/claude"
+
+  # The same fixture suites on the shell the hooks actually run under.
+  #
+  # Every hook in this repository starts with `#!/usr/bin/env bash`, and on the
+  # owner's Mac that resolves to /bin/bash, which is GNU bash 3.2.57. The job
+  # above runs ubuntu-latest, where the same spelling resolves to bash 5, so it
+  # cannot see a bash 4 construct at all: the construct works there and the
+  # suite goes green.
+  #
+  # That gap shipped a real failure on 2026-09-20 (IAN-267). PR #96 introduced
+  # `mapfile`, a bash 4 builtin, into scope-widening-gate.sh and
+  # commit-message-guard.sh. Under bash 3.2 both hooks aborted at that line and
+  # emitted nothing, and a PreToolUse hook that emits nothing is an ALLOW, so
+  # R-212's scope gate and R-214's out-of-scope commit gate enforced nothing for
+  # two and a half hours while every CI check stayed green. Nothing surfaced it,
+  # because a guard that fails open produces no error anyone sees.
+  #
+  # enforce/tests/bash32-builtin-floor.test.sh already greps the hook trees for
+  # the bash 4 constructs somebody thought to list, and its own header records
+  # what that layer cannot reach: a construct nobody listed. Running the suite
+  # on the floor is the layer that does not depend on anticipating the
+  # construct, because the shell itself rejects it.
+  #
+  # Steps this job deliberately omits, because they are answered once on
+  # ubuntu and their answer cannot differ here: shellcheck (a static analyzer
+  # reading the same files), the translator port checks and the ratchet (Node
+  # programs comparing tracked trees). What is repeated here is only the work
+  # whose result depends on the shell and on the userland the shell calls.
+  fixtures-macos:
+    name: fixtures (macOS, bash 3.2)
+    runs-on: macos-latest
+    # A hung fixture on a 10x-billed runner costs ~3600 ubuntu-equivalent
+    # minutes against an observed 13-minute run (R-517 review of PR #115).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # Installing a newer bash here would recreate the very gap this job
+      # exists to close, so the image's own /bin/bash is the subject and this
+      # step is its guard. A future runner image that puts bash 4 or 5 ahead of
+      # /bin/bash on PATH must turn this job red and say why, rather than keep
+      # reporting green while covering a shell nobody runs. Both resolutions are
+      # checked because both are used: GitHub runs each `run:` block through
+      # `bash` from PATH, and every fixture and hook below re-resolves `bash`
+      # through its own `/usr/bin/env bash` shebang.
+      - name: Assert the runner shell is the bash 3.2 floor
+        run: |
+          echo "bash on PATH, in resolution order:"
+          command -v -a bash || true
+          echo "this step's shell: ${BASH_VERSION:-unknown} (${BASH:-unknown})"
+          env_major=$(/usr/bin/env bash -c 'printf %s "${BASH_VERSINFO[0]}"')
+          echo "/usr/bin/env bash major version: $env_major"
+          status=0
+          # `case`, not `[ "$x" -ne 3 ]`. An arithmetic test on an empty or
+          # non-numeric value is an ERROR, not a false: `[` exits 2, and inside
+          # an `if` condition that fires neither the body nor `set -e`, so a
+          # capture that succeeded while printing nothing would leave status 0
+          # and report the floor as verified. That is the silence-equals-
+          # approval shape this whole job exists to catch, and it was in the
+          # assertion itself (R-517 review of PR #115).
+          case "${BASH_VERSINFO[0]}" in
+            3) ;;
+            *) echo "::error::this job's own shell reports bash major '${BASH_VERSINFO[0]}', not the 3.2 floor the job exists to cover"
+               status=1 ;;
+          esac
+          case "$env_major" in
+            3) ;;
+            *) echo "::error::/usr/bin/env bash reports major '$env_major', so the hooks below would not be exercised on the 3.2 floor; an empty value means the probe printed nothing and is treated as a failure"
+               status=1 ;;
+          esac
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Do not resolve this by installing or removing a bash until you know what changed: the floor is the subject of this job, not an obstacle to it."
+          fi
+          exit "$status"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: claude/enforce/package-lock.json
+
+      # Locked installs only, and retried as the same locked operation, for the
+      # reasons the ubuntu job records above.
+      - name: Install enforcement dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci --prefix claude/enforce; then
+              exit 0
+            fi
+            echo "npm ci failed (attempt $attempt of 3); retrying the same locked install"
+            sleep $(( attempt * 5 ))
+          done
+          echo "npm ci failed three times: the lockfile or the registry is the problem, and npm install would only hide which" >&2
+          exit 1
+
+      # Pinned to the same versions the ubuntu job installs, for the same
+      # reasons, and because a version difference between the two jobs would
+      # show up as a platform difference and be investigated as one.
+      - name: Install ruff (required by push-ruff-gate.test.sh)
+        run: |
+          pipx install ruff==0.16.6
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm ruff resolves
+        run: ruff --version
+
+      - name: Install pytest (required by tdd-pytest.test.sh)
+        run: |
+          pipx install pytest==9.1.1
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm pytest resolves
+        run: pytest --version
+
+      - name: Install the checkout at ~/.claude
+        run: |
+          rm -rf "$HOME/.claude"
+          ln -s "$GITHUB_WORKSPACE/claude" "$HOME/.claude"
+
+      - name: Configure a git identity for the fixtures
+        run: |
+          git config --global user.email "enforce-ci@example.invalid"
+          git config --global user.name "enforce CI"
+
+      - name: Enforcement fixtures
+        run: bash "$HOME/.claude/enforce/tests/run-tests.sh"
+
+      - name: Hook fixtures
+        run: bash "$HOME/.claude/hooks/tests/run-tests.sh"
+
+      # sync.sh sits outside claude/, so neither runner above reaches it, and
+      # it is a shell script the owner runs on this same floor at every session
+      # start.
+      - name: Sync fixture
+        run: bash sync-tests/sync.test.sh

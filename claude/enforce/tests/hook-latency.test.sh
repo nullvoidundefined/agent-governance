@@ -116,9 +116,11 @@ measure_control_ms() {
 # round made the new SessionStart:resume call flip pass/fail run to run.
 # More, warmed rounds converge on the same true per-round cost with less
 # noise; they do not raise the budget or change what is being measured. The
-# two PreToolUse chains do not opt into either: they already pass
-# consistently, and the review said to leave them and their thresholds
-# alone.
+# two PreToolUse chains opted into neither while this suite ran only on
+# ubuntu. PR #115 adds a required macOS job on a shared 3-CPU runner, so they
+# now warm up and take 8 rounds as well. Their budgets and the chains
+# themselves are untouched: this reduces sampling noise, it does not widen
+# anything (R-204).
 assert_chain_under_budget() {
   local label="$1" hooks="$2" payload="$3" home_override="${4:-}" warm_up="${5:-0}" rounds_override="${6:-$ROUNDS}" floor_override="${7:-$BUDGET_FLOOR_MS}"
   local hook_count started_ms per_event_ms control_ms budget_ms hook
@@ -153,8 +155,15 @@ assert_chain_under_budget() {
   echo "  $label: ${per_event_ms}ms per event (control ${control_ms}ms, budget ${budget_ms}ms)"
 }
 
-assert_chain_under_budget "PreToolUse:Bash" "$BASH_HOOKS" "$PAYLOAD_PLAIN"
-assert_chain_under_budget "PreToolUse:Write" "$WRITE_HOOKS" "$PAYLOAD_WRITE"
+# Warmed, with more rounds, since PR #115 makes the macOS job a required
+# check: the runner is a shared 3-CPU host, and ROUNDS=3 cold rounds is the
+# most jitter-exposed measurement in this file. Neither budget moves and
+# neither chain changes; more warmed samples converge on the same true
+# per-round cost with less noise, which is exactly why these two parameters
+# exist. Without this a flake becomes a blocked merge rather than a retry
+# (R-517 review of PR #115).
+assert_chain_under_budget "PreToolUse:Bash" "$BASH_HOOKS" "$PAYLOAD_PLAIN" "" 1 8
+assert_chain_under_budget "PreToolUse:Write" "$WRITE_HOOKS" "$PAYLOAD_WRITE" "" 1 8
 
 # SessionStart:resume chain (review round 1, finding 2). Sandboxes HOME with
 # a real git repo and a realistic ~10-file resume snapshot (B-8), so
