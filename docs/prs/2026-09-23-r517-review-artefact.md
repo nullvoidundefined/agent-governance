@@ -1,6 +1,6 @@
 # R-517 binds to a review artefact, not a heading
 
-Ticket: IAN-286. Branch: `feat/r517-review-artefact`. PR: #(pending).
+Ticket: IAN-286. Branch: `feat/r517-review-artefact`. PR: #119.
 
 ## Summary
 
