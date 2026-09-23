@@ -60,12 +60,11 @@ Investigation is orthogonal to the other four, not a step below Trivial: it is c
 
 If uncertain between the other four tiers, choose the higher one. Downgrading mid-task wastes less time than upgrading.
 
-Then estimate and open the ticket, in that order (R-605, R-606):
+Then estimate and open the ticket (R-605, R-606), off the critical path (owner decision 2026-09-23, IAN-333, "Drop the PR ceremony"): dispatch a background subagent on `haiku` or `sonnet` (the Agent tool, `run_in_background: true`) to ask `/ticket-lifecycle` for `estimate <tier>` and open the ticket, while the main session keeps reading and planning instead of ending a turn to wait. It waits only when the first edit arrives: `ticket-at-start-gate.sh` denies that Write or Edit until the ledger names the branch and carries the key, so record `task-tier.sh set <tier> "<reason>" --ticket <KEY>` the moment the subagent reports the key. When the repo carries product docs (no `"productDocs": false` in `.enforce.json`), fold `docs/feature-list`, `docs/user-stories`, and `docs/session-handoff` into that `--scope` too, so the same subagent's bookkeeping edits (below, R-602) do not trip `scope-widening-gate.sh`.
 
-1. Ask `/ticket-lifecycle` for `estimate <tier>`. Five or more comparable closed tickets: take the median for a task that resembles them, the 80th percentile for one with an unknown dependency. Fewer than five: use the R-906 heuristic and say it is a heuristic.
-2. Announce the estimate in minutes with its basis: "Estimate: N minutes (median of n=M closed [tier] tickets)" or "Estimate: N minutes (heuristic, n=M is too small a sample)".
-3. Open the ticket through `/ticket-lifecycle` with `title`, `tier`, `assist`, `model`, `estimate_minutes`, `repo`, and the branch once it exists. Skip for the trivial tier unless the user asks for one.
-4. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Above trivial (or whenever a ticket was opened on request), announce the ticket key, record it in the ledger with `task-tier.sh set <tier> "<reason>" --ticket <KEY>` once the branch exists, and carry it in a `Refs: <key>` trailer on every commit for this task.
+1. Estimate: five or more comparable closed tickets, the median for a task resembling them, the 80th percentile for one with an unknown dependency; fewer than five, the R-906 heuristic, labelled as a heuristic. The subagent announces it: "Estimate: N minutes (median of n=M closed [tier] tickets)" or "(heuristic, n=M is too small a sample)".
+2. The subagent opens the ticket through `/ticket-lifecycle` with `title`, `tier`, `assist`, `model`, `estimate_minutes`, `repo`, and the branch once it exists, then returns the key. Skip for the trivial tier unless the user asks for one.
+3. Take `started_at` from the `## Session start (R-503)` block the SessionStart hook injected; never recall or estimate it. Above trivial (or whenever a ticket was opened on request), announce the ticket key and carry it in a `Refs: <key>` trailer on every commit for this task.
 
 ## Step 2: Determine Process Requirements
 
@@ -80,8 +79,8 @@ Ticket:         No (only when the user asks)
 TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
 Branch:         Yes, its own branch and PR (never a direct push to main)
-PR ceremony:    Minimal: no ticket, no PR document, no Copilot review request, and no pre-merge Codex
-                review: R-517 exempts the trivial tier, and the merge guard reads the exemption from the
+PR ceremony:    Minimal: no ticket, no PR document, no Copilot review request, and no R-517 review:
+                R-517 exempts the trivial tier, and the merge guard reads the exemption from the
                 task-tier ledger, never from the PR body.
 Worktree:       No
 Subagents:      No
@@ -89,7 +88,7 @@ Execution:      Inline, immediate
 Skills invoked: None (just do it)
 ```
 
-Create the branch, then record the tier on it with `bash ~/.claude/skills/task-start/scripts/task-tier.sh set trivial "<reason>"` so the ledger names that branch; `git-workflow-guard.sh` lets the PR merge without a `## Codex review` section only when that untracked ledger, in the checkout the merge runs from, records the trivial tier for the PR's head branch (a trivial marker typed into the PR body counts for nothing). Execute the change, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). The ledger is one file per checkout, so merge the trivial PR before running `task-tier.sh set` for the next task on the same checkout, or check the trivial branch out again and re-record `task-tier.sh set trivial` before merging. If the change grows past trivial, reclassify (`task-tier.sh set standard ...`), and the Codex review is required again. Done.
+Create the branch, then record the tier on it with `bash ~/.claude/skills/task-start/scripts/task-tier.sh set trivial "<reason>"` so the ledger names that branch; `git-workflow-guard.sh` lets the PR merge without a `## Codex review` section only when that untracked ledger, in the checkout the merge runs from, records the trivial tier for the PR's head branch (a trivial marker typed into the PR body counts for nothing). Execute the change, open the PR, and merge once CI is green under the usual merge authorization (the trivial fast path, R-514). The ledger is one file per checkout, so merge the trivial PR before running `task-tier.sh set` for the next task on the same checkout, or check the trivial branch out again and re-record `task-tier.sh set trivial` before merging. If the change grows past trivial, reclassify (`task-tier.sh set standard ...`), and the R-517 review is required again. Done.
 
 ### Standard
 
@@ -97,9 +96,10 @@ Create the branch, then record the tier on it with `bash ~/.claude/skills/task-s
 Spec:           No (unless the user asks for one)
 Plan:           No (inline mental model is sufficient)
 Ticket:         Yes. Opened at classification, closed with actuals (R-605).
-Spec review:    No. There is no spec to review; the pre-merge Codex review (R-517) still runs on the PR.
+Spec review:    No. There is no spec to review; the R-517 review (one sonnet subagent by default) still runs on the PR.
 TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh red, implement, tdd.sh green, close (R-412).
-                Codex writes each failing test through `codex exec` (R-907); the test-author agent only as the recorded fallback.
+                The session writes each failing test itself, before implementing (R-907); codex-test-author-guard
+                stays silent on this tier's ledger. Codex writes the test only when the owner opts in.
                 Open the slice WITHOUT --spec: that flag is optional in tdd.sh, and this tier has no spec by
                 design. The behavior named in the slice title and the ticket is the requirement the test
                 argues from. tdd-gated-dispatch's spec-driven flow (its step 1 shows --spec, and its role
@@ -149,9 +149,9 @@ Spec review:    Yes. Adversarial Codex review of the spec, including the stack a
                 owner approves it and before writing-plans (below). Every finding fixed or answered first.
 Plan:           Yes. One plan. Written via writing-plans skill.
 Ticket:         Yes. Advanced through specced and planned as each lands (R-605).
-TDD:            Yes, slices; tdd-gated-dispatch, with Codex writing every failing test (R-907), the test-author agent
-                only as the recorded fallback, and the implementer and slice-critic agents when using subagents.
-Model:          Opus for planning and the critic. Codex for the test author. Sonnet for the implementer.
+TDD:            Yes, slices; tdd-gated-dispatch, with the `test-author` agent writing every failing test (R-907),
+                Codex only when the owner opts in, and the implementer and slice-critic agents.
+Model:          Opus for planning, the critic, and the test author. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
 Subagents:      Optional (if 5+ independent tasks)
@@ -169,9 +169,9 @@ Spec review:    Yes. Adversarial Codex review of the spec, including the stack a
                 owner approves it and before writing-plans (below). Every finding fixed or answered first.
 Plan:           Yes. ONE plan with staged sections (not multiple plan files).
 Ticket:         Yes. One ticket for the saga; one per stage when a stage ships alone.
-TDD:            Yes, slices; tdd-gated-dispatch for every slice, with Codex writing every failing test (R-907), the
-                test-author agent only as the recorded fallback, and the implementer and slice-critic agents.
-Model:          Opus for planning and the critic. Codex for the test author. Sonnet for the implementer.
+TDD:            Yes, slices; tdd-gated-dispatch for every slice, with the `test-author` agent writing every
+                failing test (R-907), Codex only when the owner opts in, and the implementer and slice-critic agents.
+Model:          Opus for planning, the critic, and the test author. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
 Subagents:      Yes, with tdd-gated-dispatch skill
@@ -188,7 +188,7 @@ If the scope is genuinely too large for one plan (50+ tasks), decompose the feat
 
 | Tier | Setup sequence |
 |---|---|
-| **Trivial** | Branch, record the trivial tier on it (`task-tier.sh set trivial`), do the work, open the PR, merge on green CI; no Codex review (R-517's ledger-verified exemption). |
+| **Trivial** | Branch, record the trivial tier on it (`task-tier.sh set trivial`), do the work, open the PR, merge on green CI; no R-517 review (R-517's ledger-verified exemption). |
 | **Investigation** | Write the scope line, gather evidence, report. No branch unless the report is a file. |
 | **Standard** | `git checkout -b feat/<slug> main`, write the branch onto the ticket, add the product docs when the task adds user-facing behavior (below), then tdd-gated-dispatch's single-session loop |
 | **Complex** | Spec (superpowers:brainstorming if none exists), then the adversarial spec review (below) with every finding fixed or answered, then the owner's spec approval, then superpowers:writing-plans, advancing the ticket to `specced` and then `planned` as each document is accepted, then feature-create for the worktree, then the chosen execution skill |
@@ -251,7 +251,7 @@ valid, expected answer, and the goal is never library soup.
 In an application repository (one without `"productDocs": false` in `.enforce.json`), a task that adds or changes user-facing behavior records it before the first slice opens, so the feature list and the stories describe the work while it is planned rather than after it ships:
 
 - **Complex and Saga:** `feature-create <slug> --area <area>` does it: it appends the next `US-<AREA>-NNN` story to `docs/user-stories/<area>.md` and a **Planned** row to the area's section of `docs/feature-list/features.md`. Fill the story's criteria from the plan as that skill's Step 2 says.
-- **Standard:** do the same by hand on the feature branch. Pick the area from the `## ` sections of `features.md`. Add a **Planned** row there, or set an existing row to **Partial** when the task extends a shipped feature, and rewrite the `Last updated:` line. Append a story in the shape of `~/.claude/prompts/user-story-area-template.md` with the next free number in the area file. Name the e2e spec the slice will write on the `**E2E test:**` line. Commit it as `docs(<slug>): feature row and US-<AREA>-NNN`.
+- **Standard:** the background bookkeeping subagent (above, IAN-333) writes the same rows on the feature branch while the main session reads and plans: an area picked from the `## ` sections of `features.md`, a **Planned** row there (or an existing row set to **Partial** when the task extends a shipped feature), a rewritten `Last updated:` line, and a story in the shape of `~/.claude/prompts/user-story-area-template.md` with the next free number in the area file, naming the e2e spec the slice will write on the `**E2E test:**` line. The main session commits the subagent's edits as `docs(<slug>): feature row and US-<AREA>-NNN`; the subagent never commits.
 - **Trivial and Investigation:** nothing, unless the change adds a page or an API route. In that case the push gate will ask for the docs anyway, so treat the task as Standard.
 
 The push gate (`push-feature-docs-gate`) refuses a push that adds a page or API route without these changes, so skipping this step only moves the work to push time.
@@ -274,9 +274,10 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Brainstorming, spec writing | Opus for complex/saga, Sonnet for standard |
 | Plan writing, plan review | Opus for complex/saga, Sonnet for standard |
 | Implementation (inline) | Sonnet |
-| Implementation (subagent) | Sonnet (implementer), Opus (slice critic, and the test-author agent when it is the Codex fallback) |
-| Failing tests, every tier | Codex through `codex exec` (R-907); account default model, no `-m` |
-| Adversarial spec review (Complex, Saga) and pre-merge PR review (every non-trivial PR, R-517) | Codex through `codex exec -s read-only`; fallback a separate Claude agent on `fable` (else `opus`), never this session |
+| Implementation (subagent) | Sonnet (implementer), Opus (slice critic and the test-author agent; Codex only on owner opt-in) |
+| Failing tests (R-907) | Standard: the implementing session, under the lock, no separate call. Complex/Saga: the `test-author` agent on Opus; Codex only on owner opt-in, account default model, no `-m` |
+| Spec review (Complex, Saga) and pre-merge PR review (R-517) | Spec review: Codex `-s read-only`, fallback `fable` (else `opus`). PR review: a `sonnet` subagent by default; Codex or `opus`/`fable` only on owner opt-in or when the diff touches auth, money, or concurrency |
+| Bookkeeping (tickets, PR body, product docs, handoff) | Haiku or Sonnet, background subagent |
 | Audit/review | Per the role file: Opus for the standing roles (engineering, security, criticism) and the customer walkthrough, Sonnet for the rubric roles (design, UX, financial, legal, marketing); `all-hands` overrides every role to Sonnet for its weekly scan |
 | Doc edits, file moves, config | Haiku or Sonnet |
 
