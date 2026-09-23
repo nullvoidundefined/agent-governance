@@ -219,12 +219,22 @@ collectPushedDocuments() {
       *[!0]*) ;;
       *) continue ;;
     esac
+    printf '%s\n' "$local_sha" >> "$WORK_DIR/pushed-tips"
     git rev-list "$local_sha" --not --remotes="$PUSH_REMOTE" > "$WORK_DIR/pushed-commits" 2>/dev/null || {
       printDegraded "cannot list the commits $local_ref would add to $PUSH_REMOTE, so the push cannot be judged"
       return 1
     }
     [ -s "$WORK_DIR/pushed-commits" ] || continue
-    git diff-tree -r -z --no-commit-id --name-only --stdin < "$WORK_DIR/pushed-commits" \
+    # `git log --no-walk --stdin`, not `git diff-tree --stdin`. diff-tree emits
+    # NOTHING for a merge commit, and `-m` does not change that when the
+    # commits arrive on stdin: measured here, `-m` yields 28 paths for this
+    # branch's own merge head as an ARGUMENT and 0 through `--stdin`. The gate
+    # therefore inspected zero documents for any merge, including its own, and
+    # a conflict resolution that introduced an unreachable citation passed
+    # silently. `--root` covers an initial commit for the same reason. This is
+    # still one process for the whole push, and `-m` emits one diff per parent
+    # so paths repeat and are de-duplicated below (R-517 re-review of PR #118).
+    git log --no-walk --stdin -m --root --name-only --format= -z < "$WORK_DIR/pushed-commits" \
       > "$WORK_DIR/pushed-paths" 2>/dev/null || {
       printDegraded "cannot list the paths $local_ref would change, so the push cannot be judged"
       return 1
@@ -382,7 +392,25 @@ fi
 # The one reachability pass. --all is every ref plus HEAD, across every linked
 # worktree, so a commit held only by a tag (the keep/ pins) counts as reached.
 awk '{ print $2 }' "$WORK_DIR/resolved" | LC_ALL=C sort -u > "$WORK_DIR/resolved-shas"
-if ! git rev-list --all > "$WORK_DIR/reachable-raw" 2>/dev/null; then
+# In --push mode the question is what a FRESH CLONE of the remote will hold,
+# not what this clone holds. `--all` counts local-only refs, so a keep/ tag
+# that was created and never pushed made its citation look reachable while a
+# clone of the same remote did not have the object at all: the exact failure
+# R-215 exists to prevent, with only the first half of the remedy this check
+# prints (tag AND push) actually enforced. So: remote-tracking refs, plus the
+# tips being pushed right now, which are about to become remote refs
+# (R-517 re-review of PR #118).
+if [ "$MODE" = "push" ]; then
+  reachable_ok=0
+  if git rev-list --remotes="$PUSH_REMOTE" > "$WORK_DIR/reachable-raw" 2>/dev/null; then reachable_ok=1; fi
+  if [ -s "$WORK_DIR/pushed-tips" ]; then
+    if git rev-list --stdin < "$WORK_DIR/pushed-tips" >> "$WORK_DIR/reachable-raw" 2>/dev/null; then reachable_ok=1; fi
+  fi
+  if [ "$reachable_ok" -ne 1 ]; then
+    printDegraded "cannot list what $PUSH_REMOTE already holds, so the push cannot be judged"
+    exit 2
+  fi
+elif ! git rev-list --all > "$WORK_DIR/reachable-raw" 2>/dev/null; then
   printDegraded "cannot list the reachable commits: git rev-list --all failed in $ROOT"
   exit 2
 fi
