@@ -18,7 +18,7 @@ Every task has a tail: feature list updates, user stories, E2E tests, squash mer
 Split by owner decision 2026-09-23 (IAN-333, "Drop the PR ceremony"). The subagent edits files but never commits; the main session commits its own edits before the review runs, then merges, and the subagent closes the ticket after.
 
 - **Main session:** the scan, the verification gate, committing its own edits, the one pre-merge review, and the merge.
-- **Background subagent** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body (summary, what changed, decisions, testing, and a short reflection, replacing the retired `docs/prs/` document), any findings tickets, the ticket close, and the handoff.
+- **Background subagent** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body (summary, what changed, decisions, testing, and a short reflection, replacing the retired per-PR document file), any findings tickets, the ticket close, and the handoff.
 
 ## Step 1: Determine What Shipped
 
