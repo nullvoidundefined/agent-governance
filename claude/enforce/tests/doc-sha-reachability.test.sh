@@ -230,7 +230,13 @@ rm -f "$CORPUS/docs/new-note.md"
 PUSHED="$SB/pushed"
 makeRepository "$PUSHED"
 PUSHED_GONE="$GONE"
-git -C "$PUSHED" init -q --bare "$SB/remote.git"
+# --initial-branch is explicit because the bare repository's HEAD decides what
+# `git clone` checks out. Without it, HEAD follows the machine's
+# init.defaultBranch: `main` here, `master` on the CI runner, where the clone
+# below then found no such ref, produced an EMPTY working tree, and the copy
+# of the check into it failed. The pre-push hook found nothing to run and
+# exited 0 in silence, so two assertions measured a hook that never ran.
+git -C "$PUSHED" init -q --bare --initial-branch=main "$SB/remote.git"
 git -C "$PUSHED" remote add origin "$SB/remote.git"
 printf 'Migrated from `%s`.\n' "$PUSHED_GONE" > "$PUSHED/docs/committed.md"
 git -C "$PUSHED" add -A
@@ -272,6 +278,8 @@ if [ "$(git -C "$SB/shallow-push" rev-parse --is-shallow-repository 2>/dev/null)
 fi
 check "the shallow-push fixture really is a shallow clone" \
   test "$(git -C "$SB/shallow-push" rev-parse --is-shallow-repository 2>/dev/null)" = "true"
+check "the shallow-push clone actually checked out a tree" \
+  test -d "$SB/shallow-push/claude/enforce"
 cp "$CHECK" "$SB/shallow-push/claude/enforce/doc-sha-reachability.sh"
 SHALLOW_TIP=$(git -C "$SB/shallow-push" rev-parse HEAD)
 OUT=$(cd "$SB/shallow-push" && printf 'refs/heads/main %s refs/heads/main %s\n' "$SHALLOW_TIP" "$ZEROS" | bash "$SAMPLE_HOOK" origin "file://$SB/remote.git" 2>&1); ST=$?
