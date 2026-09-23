@@ -11,6 +11,10 @@ Open a ticket when a task is classified. Move it when the work moves. Close it w
 
 Design: `docs/superpowers/specs/2026-09-17-ticket-lifecycle-design.md`.
 
+## Who runs it
+
+Dispatch every operation to a background subagent on `haiku` (`sonnet` for an estimate computed from history), `run_in_background: true`; the main session never runs one inline. The prompt names the ticket key, or says to open one, plus the branch, repo, and fields. At `open`, the main session keeps reading and planning and waits for the key only at the first edit. The subagent returns the key and URL; the main session runs `task-tier.sh set <tier> "<reason>" --ticket <key>`, unless the subagent shares its checkout and records it itself (owner decision 2026-09-23, IAN-333).
+
 ## Instance config
 
 Read `~/.claude/TICKET-TRACKER.json` before any operation. It names the active tracker, its MCP tool names, its container, and the canonical-state mapping. The template is `~/.claude/TICKET-TRACKER.template.json`; the real file is gitignored.
@@ -32,7 +36,7 @@ Never type a provider status name that is not in the config's `states` map. An u
 | `done` | Squash-merged and `task-cleanup` reported clean. |
 | `dropped` | Abandoned. |
 
-Trivial and standard tiers go `backlog` to `in-progress` directly. `blocked` returns to the state it interrupted. `done` and `dropped` are terminal: reopening means a new ticket linking the old key.
+Trivial and standard tiers go `backlog` to `in-progress` directly. `blocked` returns to the state it interrupted. `done` and `dropped` are terminal: reopening means a new ticket linking the old key. By default `advance` runs only at `in-progress`, `in-review`, `blocked`, `done`, and `dropped`; `specced` and `planned` are written only when the owner asks.
 
 ## Canonical fields
 
@@ -69,7 +73,7 @@ Run at the end of `task-start` Step 1, after the tier is announced and before se
 
 ## Operation: advance
 
-Run at each event in the table above, in the same turn as the event.
+Run at each of those events, in the same turn as the event.
 
 1. Resolve the ticket key from the spec, the user story, the handoff doc, or the last `Refs:` trailer on the branch. No key found: say so and offer `open`.
 2. Map the target canonical state through the config. Unmapped: stop and ask.
@@ -141,6 +145,6 @@ A tracker failure (server down, auth expired, denial) never blocks the engineeri
 
 ## Integration
 
-- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` to `in-progress`), task-cleanup (`close`), the user directly (`report`, `estimate`)
+- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` at the canonical events above), task-cleanup (`close`), the user directly (`report`, `estimate`); every call is a dispatch to a background subagent, not an inline run
 - **Composes with:** tdd-gated-dispatch (a slice opening is the `in-progress` event), superpowers:finishing-a-development-branch (the merge is the `done` event)
 - **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write, except the Linear server's write class), R-106 (nothing client-identifying in this repo)
