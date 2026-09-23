@@ -14,7 +14,12 @@
 #     and wording around the keywords are free);
 #   - no commit SHA in backticks, or one that does not resolve in the
 #     repository the file lives in (session-start.sh applies the same test).
-# Silent for every other path. Never blocks; any internal fault exits 0 so
+#
+# Since IAN-260 it reads two kinds under docs/session-handoff/: the index
+# (session-handoff.md), which keeps every check above, and a session file
+# (YYYY-MM-DD-<slug>.md, an immediate child), which keeps the sections and
+# the SHA but carries no cap, because exactly one session writes it so there
+# is nothing for a cap to protect. Silent for every other path. Never blocks; any internal fault exits 0 so
 # the hook can never break a Write. Advisory, so no `set -e` (enforce/README,
 # hook set convention).
 set -uo pipefail
@@ -38,10 +43,22 @@ FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null ||
 KIND=""
 case "$FILE" in
   */docs/session-handoff/session-handoff.md|docs/session-handoff/session-handoff.md) KIND="index" ;;
-  */docs/session-handoff/*|docs/session-handoff/*)
+  *)
+    # The parent must END at docs/session-handoff: `*` in a case pattern
+    # matches `/` too, so a single `*/docs/session-handoff/*` also swallows
+    # docs/session-handoff/deeper/2026-09-20-x.md at any depth, and would
+    # apply handoff rules to a document that is not one. Comparing the parent
+    # exactly keeps session files immediate children, as the spec says.
     BASENAME="${FILE##*/}"
-    case "$BASENAME" in
-      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md) KIND="session" ;;
+    PARENT="${FILE%/*}"
+    case "$PARENT" in
+      */docs/session-handoff|docs/session-handoff)
+        # `?*` after the final hyphen requires a non-empty slug, so
+        # `2026-09-20-.md` is not a session file.
+        case "$BASENAME" in
+          [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-?*.md) KIND="session" ;;
+        esac
+        ;;
     esac
     ;;
 esac

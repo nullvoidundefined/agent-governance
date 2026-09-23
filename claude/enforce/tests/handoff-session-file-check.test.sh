@@ -90,7 +90,7 @@ check "a session file over the cap is silent" silent
 
 # --- Negative control: the index is still capped. Dropping the cap on
 # session files must not drop it on the one contended file. ---
-{ index; printf 'x%.0s' $(seq 1 12000); printf '\n'; } > "$SB/index-big.md"
+{ sections; printf 'x%.0s' $(seq 1 12000); printf '\n'; } > "$SB/index-big.md"
 OUT=$(run "$INDEX" "$SB/index-big.md")
 check "an oversized index is still named" reports "over the 8 KB cap"
 
@@ -100,6 +100,12 @@ check "an oversized index is still named" reports "over the 8 KB cap"
 sections | sed 's/^## 3. Session metrics/## 3. Timings/' > "$SB/session-nometrics.md"
 OUT=$(run "$SESSION_FILE" "$SB/session-nometrics.md")
 check "session file missing a section is named" reports "no section for: session metrics"
+
+# A session file owes the six sections IN ORDER, not merely present. Without
+# this direction, disabling the order check entirely leaves the fixture green.
+sections | awk '/^## 4\. What shipped/{buf=$0; getline; buf=buf"\n"$0; getline; buf=buf"\n"$0; hold=buf; next} /^## 5\. Pending/{print; getline; print; getline; print; print hold; next} {print}' > "$SB/session-disordered.md"
+OUT=$(run "$SESSION_FILE" "$SB/session-disordered.md")
+check "session file with sections out of order is named" reports "out of order: pending"
 
 sections | sed "s/\`$SHA\` init/no sha here/" > "$SB/session-nosha.md"
 OUT=$(run "$SESSION_FILE" "$SB/session-nosha.md")
@@ -124,6 +130,12 @@ mkdir -p "$REPO/docs/prs"
 sections | sed 's/^## 3. Session metrics/## 3. Timings/' > "$SB/elsewhere.md"
 OUT=$(run "$REPO/docs/prs/2026-09-20-something.md" "$SB/elsewhere.md")
 check "a dated file outside the handoff directory is silent" silent
+
+OUT=$(run "$REPO/docs/session-handoff/deeper/2026-09-20-nested.md" "$SB/elsewhere.md")
+check "a dated file nested below the handoff directory is silent" silent
+
+OUT=$(run "$REPO/docs/session-handoff/2026-09-20-.md" "$SB/elsewhere.md")
+check "a dated file with an empty slug is silent" silent
 
 OUT=$(run "$REPO/docs/session-handoff/README.md" "$SB/elsewhere.md")
 check "an undated file in the handoff directory is silent" silent
