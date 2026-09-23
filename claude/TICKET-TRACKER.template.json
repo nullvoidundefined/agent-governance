@@ -8,7 +8,8 @@
     "Set 'active' to one of the keys under 'trackers'. Tool names are whatever the MCP",
     "server on this machine actually exposes: read them from the tool list rather than",
     "assuming the placeholders below are right. The 'states' map is the only authority",
-    "on provider status values; the skill never types one that is not in it."
+    "on provider status values; the skill never types one that is not in it.",
+    "A tracker whose provider has no custom fields (Linear) carries the field set in the issue description and its extra states as labels; see that block's own _README."
   ],
   "active": "notion",
   "defaults": {
@@ -87,6 +88,66 @@
         "read": "<get-issue tool name>",
         "search": "<JQL search tool name>",
         "update": "<update-issue tool name>"
+      }
+    },
+    "linear": {
+      "_README": [
+        "Linear has no custom fields on the standard plan, so the canonical field set is",
+        "written as 'key: value' lines inside a fenced ticket-fields block at the top of the",
+        "issue description, ahead of the prose. Write only fields whose values are known;",
+        "never emit a placeholder value. Three canonical states share the Linear status",
+        "'In Progress' and two share 'Todo', so 'state_labels' is what disambiguates them:",
+        "on every transition remove the previous state label before adding the new one,",
+        "or an issue accumulates contradictory state labels."
+      ],
+      "container": {
+        "team": "<team name or ID>",
+        "project": "<project name holding these tickets, or null for none>"
+      },
+      "fields": {
+        "mechanism": "description-block",
+        "block_language": "ticket-fields",
+        "order": [
+          "tier",
+          "assist",
+          "model",
+          "estimate_minutes",
+          "human_estimate_minutes",
+          "repo",
+          "branch",
+          "spec_link",
+          "plan_link",
+          "pr_link",
+          "started_at",
+          "completed_at",
+          "actual_minutes",
+          "rework_count",
+          "estimate_ratio",
+          "human_speedup"
+        ]
+      },
+      "states": {
+        "backlog": "Backlog",
+        "blocked": "In Progress",
+        "done": "Done",
+        "dropped": "Canceled",
+        "in-progress": "In Progress",
+        "in-review": "In Progress",
+        "planned": "Todo",
+        "specced": "Todo"
+      },
+      "state_labels": {
+        "blocked": "blocked",
+        "in-review": "in-review",
+        "planned": "planned",
+        "specced": "specced"
+      },
+      "tools": {
+        "comment": "mcp__Linear__save_comment",
+        "create": "mcp__Linear__save_issue",
+        "read": "mcp__Linear__get_issue",
+        "search": "mcp__Linear__list_issues",
+        "update": "mcp__Linear__save_issue"
       }
     },
     "notion": {
