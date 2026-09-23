@@ -36,10 +36,12 @@ Everything below is observed output, not inference.
 - `Enforcement fixtures`: `all ran 104 of 104 fixtures with 1 jobs`, `ALL ENFORCEMENT TESTS PASS`.
 - `Hook fixtures`: `all ran 22 of 22 fixtures with 2 jobs`, `ALL HOOK TESTS PASS`.
 - `Sync fixture`: passed.
-- `hook-latency.test.sh`: `ok`. It is viable on a macOS runner.
+- `hook-latency.test.sh`: `ok`. It is viable on a macOS runner, and that is not a single lucky
+  sample: it reported `ok` in every macOS run taken for this ticket, four at the time of writing,
+  including the two probe runs below where other fixtures were failing around it.
 - Wall clock: 13 minutes against the ubuntu job's 4.5. The shard runner sized itself to 1 parallel job for the enforcement tree, because `macos-latest` has 3 CPUs and the job's own startup load ate two of them.
 
-**Affected-suite gate** (R-509), on the local floor: `affected ran 87 of 104 fixtures`, exit status 0, captured directly rather than through a pipe.
+**Affected-suite gate** (R-509), on the local floor: `affected ran 86 of 104 fixtures`, `ALL ENFORCEMENT TESTS PASS`, exit status 0 captured directly rather than read off the end of a pipe.
 
 **Reintroducing `mapfile` turns the macOS job red.** Verified rather than assumed, on the throwaway branch `probe/ian-307-mapfile`, which restores the IAN-267 defect verbatim: the `while IFS= read` loop that builds `SCOPE` in `scope-widening-gate.sh` becomes `mapfile -t SCOPE < <(read_declared_scope ...)`, with `hook-hashes.txt` regenerated so the integrity closure is not what fails.
 
@@ -51,7 +53,32 @@ INFO: this run used bash 3.2.57(1)-release
 FAIL: the scope gate emits an ask on an out-of-scope write (empty output is the fail-open signature)
 ```
 
-`scope-widening-gate.test.sh` reports 8 failures against the same hook. The grep layer in `bash32-builtin-floor.test.sh` is platform-independent and would have caught this particular construct on ubuntu too. What the macOS job adds is the layer that does not depend on somebody having listed the construct: the shell itself refuses it, the guard falls silent, and the behavioural fixtures see the silence.
+`scope-widening-gate.test.sh` reports 8 failures against the same hook.
+
+On CI, probe run 35835025781 separates what each platform can see:
+
+| Job | Failing fixtures |
+|---|---|
+| `fixtures` (ubuntu) | `bash32-builtin-floor.test.sh` |
+| `fixtures (macOS, bash 3.2)` | `bash32-builtin-floor.test.sh`, `scope-widening-gate.test.sh` |
+
+The grep layer is platform-independent, so ubuntu catches `mapfile` too. The guard's own behavioural
+fixture catches it only where the shell actually refuses the builtin.
+
+**The construct nobody listed is the case only this job can see.** A second probe, on the same branch,
+replaces `mapfile` with `LAST_SCOPE_GLOB="${SCOPE[-1]}"`. A negative array index is bash 4.2, it matches
+no pattern in `bash32-builtin-floor.test.sh`'s list, and `shellcheck --severity=error` is clean on it.
+Probe run 35836358157:
+
+| Job | Result |
+|---|---|
+| `fixtures` (ubuntu) | success, every fixture green |
+| `fixtures (macOS, bash 3.2)` | failure: `bash32-builtin-floor.test.sh`, `scope-widening-gate.test.sh` |
+
+On the floor, the fixture's grep layer passes entirely and only its behavioural anchor fires, with the
+message it was written for: `the scope gate emits an ask on an out-of-scope write (empty output is the
+fail-open signature)`. That is the whole argument for this job in one run. Every existing check was
+green on a guard that had stopped guarding.
 
 ## Reflection
 
