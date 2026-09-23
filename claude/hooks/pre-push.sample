@@ -41,9 +41,33 @@ if [ -f "$PORT_CHECKS_HELPER" ]; then
   done <<< "$(listPortChecks "$TOP")"
 fi
 
+# R-215: a commit SHA cited in a document is a promise that the commit can be
+# fetched, and this is the only boundary where the promise can still be
+# checked. The objects behind an unreachable citation exist in the author's
+# clone and nowhere else, so by the time CI or a reader could ask the question,
+# the answer is already gone: a fresh clone cannot tell an unreachable citation
+# from a citation of some other repository's commit. Only the documents this
+# branch touched are read, so the historical corpus (which carries citations of
+# commits whose branches were deleted long ago) does not block a push about
+# something else; `doc-sha-reachability.sh --all` reports that backlog.
+DOC_SHA_CHECK="$TOP/claude/enforce/doc-sha-reachability.sh"
+[ -f "$DOC_SHA_CHECK" ] || DOC_SHA_CHECK="$TOP/enforce/doc-sha-reachability.sh"
+if [ -f "$DOC_SHA_CHECK" ]; then
+  ( cd "$TOP" && bash "$DOC_SHA_CHECK" --changed )
+  doc_sha_status=$?
+  if [ "$doc_sha_status" -eq 1 ]; then
+    fail=1
+  elif [ "$doc_sha_status" -ne 0 ]; then
+    # Exit 2 is the check declining to judge (a shallow clone, or a change set
+    # it cannot read). It is reported rather than swallowed, and it does not
+    # abort the push, because a state the check cannot judge is not a finding.
+    echo "pre-push: the cited-SHA check could not judge this push (exit $doc_sha_status); its reason is above." >&2
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
-  echo "pre-push: port checks are red; push aborted." >&2
+  echo "pre-push: port checks or the cited-SHA check are red; push aborted." >&2
   echo "Fix the failure. Do not weaken the gate that caught it (R-204)." >&2
   exit 1
 fi
