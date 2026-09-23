@@ -88,6 +88,20 @@ check "the oversized-session fixture really is over 8192 bytes" test "$BIG" -gt 
 OUT=$(run "$SESSION_FILE" "$SB/session-big.md")
 check "a session file over the cap is silent" silent
 
+# --- The assertion above is an ABSENCE, and an absence cannot tell "the hook
+# looked and exempted the cap" from "the hook never classified this path at
+# all": make the session arm never match and it still passes. This one is
+# positive in both directions. The payload is over the cap AND missing a
+# section, so the hook must prove it looked (it names the section) and that
+# the exemption applied (it does not name the cap). It fails under the
+# never-match mutation and under the cap-applies mutation alike. ---
+sections | sed 's/^## 3. Session metrics/## 3. Timings/' > "$SB/session-big-nosection.md"
+printf 'x%.0s' $(seq 1 12000) >> "$SB/session-big-nosection.md"
+printf '\n' >> "$SB/session-big-nosection.md"
+OUT=$(run "$SESSION_FILE" "$SB/session-big-nosection.md")
+check "an oversized session file is still judged on its sections" reports "no section for: session metrics"
+check "an oversized session file is not named for the cap" bash -c '! grep -qF "over the 8 KB cap" <<< "$0"' "$OUT"
+
 # --- Negative control: the index is still capped. Dropping the cap on
 # session files must not drop it on the one contended file. ---
 { sections; printf 'x%.0s' $(seq 1 12000); printf '\n'; } > "$SB/index-big.md"
