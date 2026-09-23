@@ -825,6 +825,14 @@
             "note": "PreToolUse Bash, the R-214 half beside R-505 and R-506: denies a git commit whose staged diff reaches outside the scope the task-start ledger declares unless the message Refs: trailer names a ticket other than the task own, and asks instead when no message is readable (-F file, a bare commit in the editor, an amend reusing its message) because the Refs escape cannot be evaluated there; a ledger declaring a scope but no ticket cannot be satisfied by any trailer; silent with no declared scope, outside a work tree, on a detached HEAD, and for .claude/ paths; reads the index, so git commit -a and a trailing pathspec are not covered (IAN-224) and the repository is this process own rather than the commit target after a cd (IAN-225); the ledger is skills/task-start/scripts/finding.sh writing .claude/findings.json; scope reading and matching shared with scope-widening-gate.sh via hooks/scope-match.sh; fixtures: tests/finding-ledger.test.sh and tests/bash32-builtin-floor.test.sh, the latter holding the bash 3.2 floor after IAN-267 found mapfile aborting this guard into a silent allow"
         },
         {
+            "id": "R-215",
+            "tier": "regex",
+            "enforcer": "ci:doc-sha-reachability",
+            "severity": "error",
+            "autofix": false,
+            "note": "enforce/doc-sha-reachability.sh: every backticked 7-to-40 hex token, either case and normalised to lowercase, in docs/ and claude/docs/ that resolves to a commit here must be reachable from some ref, reported as DOC-SHA-UNREACHABLE with the citing file and line; a token that resolves to nothing is never a finding, since documents cite other repositories; resolution is one git cat-file --batch-check over all tokens and one git rev-list --all, never a process per token (IAN-183); the escape hatch is an unreachable-sha HTML comment naming the same SHA on the same line with a reason holding a real word, outside inline code, fences and enclosing comments, one marker per citation; every state it cannot judge (shallow clone, unreadable document, failed resolver, unlistable change set) exits 2 rather than reporting success; hooks/pre-push.sample runs --push, which reads the pre-push ref list on stdin and inspects the pushed commits rather than the working tree, and aborts on exit 2 as well as 1; the push half is inert until install-git-hooks.sh is re-run in a repository, since git hooks are not version-controlled; fixture enforce/tests/doc-sha-reachability.test.sh carries the IAN-260 spec and its three keep/ tags as the live regression case; the historical corpus is reported by --all and is not gated (IAN-308 phase 1, IAN-322)"
+        },
+        {
             "id": "R-334",
             "tier": "llm-judge",
             "enforcer": "ci:llm-rule-judge",
