@@ -10,9 +10,10 @@
 #   R-517  `gh pr merge` is denied unless the PR body, read from `gh pr view`,
 #          carries a Markdown heading named "Codex review" whose section names
 #          the `reviewer` that ran, the `model` it ran on, and the `range` it
-#          read, that range containing the PR's head commit from the same
-#          `gh pr view` (the blocking pre-merge Codex review, proved by its
-#          artefact rather than by the heading), or task-start's untracked
+#          read as a `<base>..<head>` expression whose head endpoint is the
+#          head commit the same `gh pr view` reports (the blocking pre-merge
+#          Codex review, proved by its artefact rather than by the heading),
+#          and only one such section exists, or task-start's untracked
 #          ledger records the trivial tier for the PR's own head branch in the
 #          same origin repository (never a body marker)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
@@ -265,12 +266,18 @@ read_bundle_verdict() {
   echo ok
 }
 
-# print_codex_review_section <body>: prints the non-blank lines under the PR
-# body's Markdown heading (any level, any case) whose text starts with "Codex
-# review", up to the next heading, and prints nothing when there is no such
-# heading or nothing follows it. A mention in prose is not a section, and a
-# bare heading records no findings. The caller reads the artefact's lines out
-# of what this prints, so the section is read once. Lines inside
+# read_codex_review_scan <body>: prints how many Markdown headings (any level,
+# any case) whose text starts with "Codex review" the PR body holds, then the
+# non-blank lines under the last one, up to the next heading. The count leads
+# the output because two review sections are refused rather than merged: a
+# reviewer line in one and a range in another satisfy nothing jointly, and an
+# earlier stale section must not mask a later current one. A mention in prose
+# is not a section, and a bare heading records no findings. Inline code spans
+# keep their contents and lose only their backticks, since an object name in
+# backticks is this repository's house style and deleting the span would empty
+# the field it labels; a `<`, `>`, or `#` inside a span is held aside while
+# comments and headings are recognised, so a span can neither open a comment
+# nor pass for a heading. Lines inside
 # a fenced code block count as neither heading nor content, so a template that
 # quotes the section as an example does not pass for it; a fence closes only
 # on a line holding nothing but a run of its own character at least as long
@@ -279,8 +286,35 @@ read_bundle_verdict() {
 # dropped, so a `<!--` quoted in a code span opens nothing.
 # A heading is indented by at most three spaces, since four make it an
 # indented code block. No regex intervals: older mawk lacks them.
-print_codex_review_section() {
+read_codex_review_scan() {
   printf '%s\n' "$1" | tr -d '\r' | awk '
+    # hold_code_spans <text>: drops the backticks of every inline code span and
+    # holds the characters inside it that the comment and heading rules react
+    # to, so the span contributes its text and nothing else.
+    function hold_code_spans(text,   out, tick, rest, close_tick, inside) {
+      out = ""
+      while (1) {
+        tick = index(text, "`")
+        if (tick == 0) return out text
+        out = out substr(text, 1, tick - 1)
+        rest = substr(text, tick + 1)
+        close_tick = index(rest, "`")
+        if (close_tick == 0) return out rest
+        inside = substr(rest, 1, close_tick - 1)
+        gsub("<", "\001", inside)
+        gsub(">", "\002", inside)
+        gsub("#", "\003", inside)
+        out = out inside
+        text = substr(rest, close_tick + 1)
+      }
+    }
+    # release_code_spans <text>: puts those characters back, for the caller.
+    function release_code_spans(text) {
+      gsub("\001", "<", text)
+      gsub("\002", ">", text)
+      gsub("\003", "#", text)
+      return text
+    }
     in_fence {
       if ($0 ~ /^( |  |   )?(`+|~+)[ \t]*$/) {
         run = $0
@@ -302,7 +336,7 @@ print_codex_review_section() {
       next
     }
     {
-      gsub(/`[^`]*`/, "", line)
+      line = hold_code_spans(line)
       gsub(/<!--([^-]|-[^-]|--[^>])*-->/, "", line)
       comment_start = index(line, "<!--")
       if (comment_start) { in_comment = 1; line = substr(line, 1, comment_start - 1) }
@@ -311,9 +345,11 @@ print_codex_review_section() {
       heading = tolower(line)
       sub(/^[ \t]*#+[ \t]+/, "", heading)
       in_section = (index(heading, "codex review") == 1)
+      if (in_section) { headings++; section = "" }
       next
     }
-    in_section && line ~ /[^ \t]/ { print line }'
+    in_section && line ~ /[^ \t]/ { section = section release_code_spans(line) "\n" }
+    END { print headings + 0; printf "%s", section }'
 }
 
 # read_codex_review_field <section> <label>: prints the value of the section's
@@ -342,40 +378,66 @@ read_codex_review_field() {
     }'
 }
 
-# is_object_name <word>: true when the word is a usable abbreviated or full
-# object name, which is at least seven hexadecimal characters and nothing
-# else. Shorter than seven is too ambiguous to identify one commit.
-is_object_name() {
-  [ "${#1}" -ge 7 ] || return 1
+# is_hexadecimal_name <word>: true when the word is hexadecimal and nothing
+# else, which is the shape of every abbreviated or full object name.
+is_hexadecimal_name() {
+  [ -n "$1" ] || return 1
   [ -z "$(printf '%s' "$1" | tr -d '0-9a-fA-F')" ]
 }
 
-# has_head_commit_in_range <range> <head oid>: true when the range names the
-# PR's head commit. Every hexadecimal run of at least seven characters in the
-# range is read as an object name, and one of them must be a prefix of the head
-# commit's. The check is textual because the head commit of a PR need not exist
-# in the checkout the merge runs from, so `git merge-base` would answer "no"
-# for a range that is in fact current. Six characters or fewer are too
-# ambiguous to accept as a match.
-has_head_commit_in_range() {
-  local head_oid
+# read_range_head <range line>: prints the head endpoint of the first
+# `<base>..<head>` or `<base>...<head>` expression on the line, with trailing
+# punctuation removed, and prints nothing when the line carries no such
+# expression. Only the first expression is read, so a line that names several
+# ranges is judged by the one it leads with rather than by whichever one
+# happens to match. The base must be present: the shape is what says which
+# diff was read, and a bare object name says only that somebody typed one.
+read_range_head() {
+  printf '%s' "$1" | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        token = $i
+        dots = index(token, "..")
+        if (dots < 2) continue
+        head = substr(token, dots)
+        sub(/^\.+/, "", head)
+        sub(/[.,;:)\]}]+$/, "", head)
+        if (head == "") continue
+        print head
+        exit
+      }
+    }'
+}
+
+# is_head_commit_prefix <endpoint> <head oid>: true when the range's head
+# endpoint identifies the PR's head commit, which means it is at least seven
+# characters (git's own abbreviation length, and short enough runs collide
+# with ordinary words) and a prefix of the head commit's object name. The
+# endpoint needs no separate hexadecimal check: anything that is not
+# hexadecimal cannot equal a prefix of an object name.
+# The comparison is textual rather than an ancestry lookup because the head
+# commit of a PR need not exist in the checkout the merge runs from, where
+# `git merge-base` would answer "no" for a range that is in fact current.
+is_head_commit_prefix() {
+  local endpoint head_oid
+  endpoint=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
   head_oid=$(printf '%s' "$2" | tr 'A-Z' 'a-z')
-  [ "${#head_oid}" -ge 7 ] || return 1
-  printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-f0-9' '\n' |
-    awk -v head="$head_oid" '
-      length($0) >= 7 && substr(head, 1, length($0)) == $0 { found = 1 }
-      END { exit found ? 0 : 1 }'
+  [ "${#endpoint}" -ge 7 ] || return 1
+  [ "$endpoint" = "$(printf '%.*s' "${#endpoint}" "$head_oid")" ]
 }
 
 # read_codex_artefact_verdict <section>: prints "ok" when the Codex review
 # section is a review artefact, otherwise the sentence naming what it is
 # missing. The artefact is the reviewer that ran, the model it ran on, and the
-# range it read, and the range must contain the PR's head commit: a review of
-# an older tree records that a review happened without saying anything about
-# what would merge, so it does not satisfy R-517 (IAN-286, from PR #106, whose
-# review reported against a commit two fixes behind the branch).
+# range it read, and that range's head endpoint must be the PR's head commit:
+# a review of an older tree records that a review happened without saying
+# anything about what would merge, so it does not satisfy R-517 (IAN-286, from
+# PR #106, whose review reported against a commit two fixes behind the
+# branch). The endpoint is what is compared, never any object name on the
+# line, because a range whose BASE is the head reviewed everything except the
+# head, and a head commit pasted into prose or a link reviewed nothing.
 read_codex_artefact_verdict() {
-  local section="$1" reviewer model range head_oid
+  local section="$1" reviewer model range head_oid range_head
   reviewer=$(read_codex_review_field "$section" reviewer)
   [ -n "$reviewer" ] ||
     { echo "its \`## Codex review\` section carries no \`reviewer\` line with a value, so nothing in the PR records who or what read the diff"; return 0; }
@@ -386,10 +448,13 @@ read_codex_artefact_verdict() {
   [ -n "$range" ] ||
     { echo "its \`## Codex review\` section carries no \`range\` line with a value, so nothing in the PR records which diff was read"; return 0; }
   head_oid=$(printf '%s' "$PR_JSON" | jq -r '.headRefOid // "" | strings' 2>/dev/null || true)
-  is_object_name "$head_oid" ||
+  is_hexadecimal_name "$head_oid" ||
     { echo "gh pr view returned no head commit for the PR, so the hook cannot tell whether the \`range\` line covers the state that would merge"; return 0; }
-  has_head_commit_in_range "$range" "$head_oid" ||
-    { echo "its \`## Codex review\` section names the range \`$range\`, which does not contain the PR's head commit $(printf '%.7s' "$head_oid"), so the review read a tree other than the one that would merge"; return 0; }
+  range_head=$(read_range_head "$range")
+  [ -n "$range_head" ] ||
+    { echo "its \`## Codex review\` section gives the range as \`$range\`, which holds no \`<base>..<head>\` range expression, so nothing in the PR says which diff was read"; return 0; }
+  is_head_commit_prefix "$range_head" "$head_oid" ||
+    { echo "its \`## Codex review\` section gives the range as \`$range\`, whose head endpoint \`$range_head\` does not identify $(printf '%.7s' "$head_oid"), the commit this PR would merge, so the review read a tree other than the one that would merge"; return 0; }
   echo ok
 }
 
@@ -439,14 +504,18 @@ read_ledger_state() {
 # otherwise the sentence naming what is missing. The ledger is consulted only
 # once the artefact has failed, so the common path costs no git calls.
 read_codex_review_verdict() {
-  local pr_body section verdict
+  local pr_body scan heading_count section verdict
   if [ -n "$PR_VIEW_PROBLEM" ]; then
     echo "$PR_VIEW_PROBLEM"
     return 0
   fi
   pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
-  section=$(print_codex_review_section "$pr_body")
-  if [ -n "$section" ]; then
+  scan=$(read_codex_review_scan "$pr_body")
+  heading_count=$(printf '%s\n' "$scan" | head -1)
+  section=$(printf '%s\n' "$scan" | tail -n +2)
+  if [ "$heading_count" -gt 1 ]; then
+    verdict="the PR body holds $heading_count \`## Codex review\` headings, and one PR carries one review, so the hook cannot say which of them describes the state that would merge; leave the one section the current review wrote"
+  elif [ -n "$section" ]; then
     verdict=$(read_codex_artefact_verdict "$section")
   else
     verdict="the PR body has no \`## Codex review\` section with content under it"

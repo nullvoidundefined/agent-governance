@@ -230,13 +230,55 @@ CODEX_NO_HEAD_OID=$(write_gh_stub codex-no-head-oid '{"body":"'"$CODEX_BODY"'","
 # Each missing line denies, and the deny names the line that is missing, so the
 # reader is told which of the three to add rather than to re-read the rule.
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_REVIEWER")" = "deny" ]
-case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_REVIEWER")" in *reviewer*) ;; *) echo "a section with no reviewer line must be denied by name" >&2; exit 1 ;; esac
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_REVIEWER")" in *no\ \`reviewer\`\ line*) ;; *) echo "a section with no reviewer line must be denied by name" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_MODEL")" = "deny" ]
-case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_MODEL")" in *model*) ;; *) echo "a section with no model line must be denied by name" >&2; exit 1 ;; esac
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_MODEL")" in *no\ \`model\`\ line*) ;; *) echo "a section with no model line must be denied by name" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_RANGE")" = "deny" ]
-case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_RANGE")" in *range*) ;; *) echo "a section with no range line must be denied by name" >&2; exit 1 ;; esac
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_RANGE")" in *no\ \`range\`\ line*) ;; *) echo "a section with no range line must be denied by name" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_BLANK_REVIEWER")" = "deny" ]   # a label with no value names nobody
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_RANGE_ELSEWHERE")" = "deny" ]  # a range line under another heading is not this section's
+# The head commit has to be the range's head ENDPOINT. A hexadecimal run
+# anywhere on the line is not evidence of anything: it passes for the head
+# commit pasted into prose or a link, and for a range that puts the head in
+# the BASE position, which is a review of everything except the head.
+CODEX_HEAD_AS_BASE=$(write_codex_stub codex-head-as-base "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 8183e6b..440aaf4\n- No findings.')")
+CODEX_BARE_SHA=$(write_codex_stub codex-bare-sha "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 8183e6b\n- No findings.')")
+CODEX_SHA_IN_PROSE=$(write_codex_stub codex-sha-in-prose "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: read the branch at 8183e6b by hand\n- No findings.')")
+CODEX_SHA_IN_LINK=$(write_codex_stub codex-sha-in-link "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: see https://github.com/o/r/commit/8183e6b for what I read\n- No findings.')")
+CODEX_URL_RANGE=$(write_codex_stub codex-url-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: https://github.com/o/r/compare/c20e5a8..8183e6b\n- No findings.')")
+CODEX_TRIPLE_DOT=$(write_codex_stub codex-triple-dot "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: origin/main...8183e6b\n- No findings.')")
+CODEX_BACKTICK_RANGE=$(write_codex_stub codex-backtick-range "$(codex_artefact '- reviewer: `Codex`\n- model: `gpt-5-codex`\n- range: `c20e5a8..8183e6b`\n- No findings.')")
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_HEAD_AS_BASE")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_HEAD_AS_BASE")" in *head\ endpoint*) ;; *) echo "a head-in-base-position deny must name the head endpoint" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_BARE_SHA")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_BARE_SHA")" in *range\ expression*) ;; *) echo "a range line with no range expression must be denied by name" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SHA_IN_PROSE")" = "deny" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SHA_IN_LINK")" = "deny" ]
+# A range expression inside a compare link, a three-dot range, and a range in
+# backticks are all real ranges, and backticks are this repository's house
+# style for an object name.
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_URL_RANGE")" = "ask" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_TRIPLE_DOT")" = "ask" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_BACKTICK_RANGE")" = "ask" ]
+# One PR, one review section. Two headings leave the hook unable to say which
+# section describes the state that would merge, and a pair that is complete
+# only when read together is not a review of anything.
+CODEX_DUPLICATE=$(write_codex_stub codex-duplicate "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 4f2a1b9..c20e5a8\n- Two findings.\n\n## Codex review\n- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_SPLIT=$(write_codex_stub codex-split "$(codex_artefact '- reviewer: Codex\n\n## Codex review\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_DUPLICATE")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_DUPLICATE")" in *headings*) ;; *) echo "a duplicate-section deny must name the headings it found" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SPLIT")" = "deny" ]
+# The markup exclusions have something real to suppress: each of these carries
+# a complete, current artefact inside markup that is not the PR's own claim.
+EXCLUDED_ARTEFACT='- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.'
+CODEX_FENCED_ARTEFACT=$(write_codex_stub codex-fenced-artefact '## Summary\nTemplate:\n```\n## Codex review\n'"$EXCLUDED_ARTEFACT"'\n```\n## Testing\nGreen.')
+CODEX_INDENTED_ARTEFACT=$(write_codex_stub codex-indented-artefact '## Summary\nExample:\n\n    ## Codex review\n    - reviewer: Codex\n    - model: gpt-5-codex\n    - range: c20e5a8..8183e6b\n\n## Testing\nGreen.')
+CODEX_COMMENTED_ARTEFACT=$(write_codex_stub codex-commented-artefact '## Summary\n\n<!--\n## Codex review\n'"$EXCLUDED_ARTEFACT"'\n-->\n\n## Testing\nGreen.')
+CODEX_EXAMPLE_AND_REAL=$(write_codex_stub codex-example-and-real '## Summary\nTemplate:\n```\n## Codex review\n'"$EXCLUDED_ARTEFACT"'\n```\n\n## Codex review\n'"$EXCLUDED_ARTEFACT")
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCED_ARTEFACT")" = "deny" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INDENTED_ARTEFACT")" = "deny" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_COMMENTED_ARTEFACT")" = "deny" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_EXAMPLE_AND_REAL")" = "ask" ]   # the excluded copy is not a second section
 # A stale range is the PR #106 case: the review reported against c20e5a8 while
 # the branch had moved to 8183e6b. It denies, and the deny names the head
 # commit the range has to cover, so the remedy is to re-run the review rather
@@ -247,6 +289,8 @@ case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" in *8183
 # The head commit comes from the one gh pr view the hook already makes; a gh
 # that does not report it leaves the range uncheckable, which fails closed.
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_HEAD_OID")" = "deny" ]
+CODEX_GARBAGE_HEAD=$(write_gh_stub codex-garbage-head '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[],"headRefOid":"not-a-commit"}')
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_GARBAGE_HEAD")" = "deny" ]     # a head that is not an object name is no head
 case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_HEAD_OID")" in *head\ commit*) ;; *) echo "an unreadable head commit must be denied by name" >&2; exit 1 ;; esac
 
 # Trivial-tier exemption (R-517): a PR with no Codex review section merges only
