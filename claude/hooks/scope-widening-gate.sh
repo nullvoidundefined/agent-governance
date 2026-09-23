@@ -124,10 +124,7 @@ BRANCH=$(git -C "$TOP" branch --show-current 2>/dev/null)
 # missing builtin emits nothing, which a PreToolUse hook reads as an allow
 # (IAN-267). Read the lines with a loop that every supported shell has.
 SCOPE=()
-while IFS= read -r scope_line; do
-  [ -n "$scope_line" ] || continue
-  SCOPE+=("$scope_line")
-done < <(read_declared_scope "$TOP" "$BRANCH")
+mapfile -t SCOPE < <(read_declared_scope "$TOP" "$BRANCH")
 [ "${#SCOPE[@]}" -gt 0 ] || exit 0
 
 case "$TARGET" in "$TOP"/*) REL="${TARGET#"$TOP"/}" ;; *) exit 0 ;; esac
