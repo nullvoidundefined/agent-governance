@@ -118,6 +118,10 @@ Codex (OpenAI's coding agent, run through its CLI as a separate process, so the 
 - Delete the feature branch after merge: `git branch -d feat/<slug>`
 - If worktree was used: `git worktree remove <path>`
 
+### Always, before the ticket is closed:
+
+Run `bash ~/.claude/skills/task-start/scripts/finding.sh open`. It lists every finding recorded during this task that still carries no tracker key (R-214). The task is not finished while that list is non-empty: open a ticket for each remaining finding through `/ticket-lifecycle` and attach it with `finding.sh ticket <id> <KEY>`, so nothing noticed during the work is lost when the session ends. Once every finding carries a key, `finding.sh clear` removes the per-repo ledger, the same way `task-tier.sh clear` removes the tier ledger; the tickets are the durable record and the ledger is only what carried them there.
+
 ### If a tracker ticket exists:
 
 **Close the ticket:**

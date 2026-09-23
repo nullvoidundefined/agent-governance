@@ -801,6 +801,30 @@
             "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
         },
         {
+            "id": "R-212",
+            "tier": "regex",
+            "enforcer": "hook:scope-widening-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Write|Edit: asks when the target sits outside the file scope the task-start ledger (.claude/task-tier.json) declares for the branch checked out; silent when no scope is declared, when the ledger names another branch, under the repository own .claude/, for git-ignored paths, and outside a git work tree; fixtures: tests/scope-widening-gate.test.sh and tests/bash32-builtin-floor.test.sh, the latter holding the bash 3.2 floor after IAN-267 found mapfile aborting this guard into a silent allow"
+        },
+        {
+            "id": "R-213",
+            "tier": "regex",
+            "enforcer": "hook:task-provenance-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse TaskCreate: denies a subject whose leading tag is not [requested], [required] or [self]; case and leading whitespace tolerated, TaskUpdate never gated, an empty subject left to the tool; task-state-tracker.sh records the parsed tag and skills/task-start/scripts/task-provenance.sh folds it into the status line; fixture: tests/task-provenance-gate.test.sh"
+        },
+        {
+            "id": "R-214",
+            "tier": "regex",
+            "enforcer": "hook:commit-message-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Bash, the R-214 half beside R-505 and R-506: denies a git commit whose staged diff reaches outside the scope the task-start ledger declares unless the message Refs: trailer names a ticket other than the task own, and asks instead when no message is readable (-F file, a bare commit in the editor, an amend reusing its message) because the Refs escape cannot be evaluated there; a ledger declaring a scope but no ticket cannot be satisfied by any trailer; silent with no declared scope, outside a work tree, on a detached HEAD, and for .claude/ paths; reads the index, so git commit -a and a trailing pathspec are not covered (IAN-224) and the repository is this process own rather than the commit target after a cd (IAN-225); the ledger is skills/task-start/scripts/finding.sh writing .claude/findings.json; scope reading and matching shared with scope-widening-gate.sh via hooks/scope-match.sh; fixtures: tests/finding-ledger.test.sh and tests/bash32-builtin-floor.test.sh, the latter holding the bash 3.2 floor after IAN-267 found mapfile aborting this guard into a silent allow"
+        },
+        {
             "id": "R-334",
             "tier": "llm-judge",
             "enforcer": "ci:llm-rule-judge",

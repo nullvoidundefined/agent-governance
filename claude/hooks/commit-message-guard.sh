@@ -8,6 +8,15 @@
 # command wins over an ask on another. A message holding a command
 # substitution whose output the hook cannot read is an ask; `-F <file>` is out
 # of reach and allowed.
+#
+# It also carries R-214 (IAN-201), which is about the diff rather than the
+# message: a commit staging files outside the scope the task-start ledger
+# declares is denied unless the message's `Refs:` trailer names a ticket other
+# than the task's own. Work discovered while doing something else is then
+# recorded where the user can find it instead of riding along inside an
+# unrelated commit. The check lives here rather than in a hook of its own
+# because this is already the one place that reads a commit's real message
+# through the quote-aware scan, and a second parser would drift from it.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
 # allow; a guard fails closed by structure, never open by accident
@@ -26,12 +35,16 @@ PREFILTER_TEXT=$(tr -d "\\\\\"'" <<< "$CMD")
 grep -Eq '(^|[^[:alnum:]_.-])git([^[:alnum:]_-]|$)' <<< "$PREFILTER_TEXT" || exit 0
 grep -q 'commit' <<< "$PREFILTER_TEXT" || exit 0
 
+SCOPE_MATCH_HELPER="$(dirname "${BASH_SOURCE[0]}")/scope-match.sh"
+# shellcheck source=/dev/null
+[ -f "$SCOPE_MATCH_HELPER" ] && source "$SCOPE_MATCH_HELPER"
+
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 
 deny() {
-  log_rule_fire "R-505" "commit-message-guard" "deny"
+  log_rule_fire "${2:-R-505}" "commit-message-guard" "deny"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 }
@@ -155,6 +168,84 @@ join_commit_messages() {
   done
 }
 
+# message_references_other_ticket <own-ticket>: true when the message's Refs:
+# trailer names a tracker key that is not the task's own. The task's own key
+# is on every commit of the branch already, so accepting it would make the
+# gate satisfiable by the trailer the session writes anyway.
+message_references_other_ticket() {
+  local own="$1" key
+  while IFS= read -r key; do
+    [ -n "$key" ] && [ "$key" != "$own" ] && return 0
+  done < <(printf '%s\n' "$MSG" | sed -n 's/^Refs:[[:space:]]*//p' | grep -oE '[A-Z][A-Z0-9]+-[0-9]+')
+  return 1
+}
+
+# judge_staged_scope: R-214. Denies a commit whose staged diff reaches outside
+# the file scope the task declared at task-start, unless the message names a
+# separate ticket for that work. Silent when the shared scope reader is
+# missing, outside a work tree, on a detached HEAD, and whenever no scope is
+# declared, which is R-212's documented degraded path and not a licence.
+#
+# When the diff reaches outside the scope but no message could be read (a
+# `-F <file>` commit, a bare `git commit` in the editor, `--amend --no-edit`),
+# the `Refs:` escape cannot be evaluated, so this asks rather than allowing or
+# denying: the staged paths are named and the user decides. Allowing there was
+# the defect finding 1 of the PR #96 review caught, and denying would refuse
+# commits whose trailer does name a separate ticket in a file this hook never
+# sees.
+#
+# The repository comes from the payload's `cwd`, never from this process's own
+# directory, and a payload carrying no `cwd` is left alone: there is no commit
+# context to judge, and reading the ambient checkout instead made the verdict
+# depend on whatever the developer happened to have staged, which broke three
+# unrelated fixtures the moment this rule shipped. Real Claude Code always
+# sends `cwd`. Following a `cd` or a `git -C` inside the command itself is
+# still not done (IAN-225).
+#
+# What it reads is the INDEX, not the commit. `git commit -a` and a trailing
+# pathspec both make those differ, and neither is handled yet (IAN-224).
+judge_staged_scope() {
+  type read_declared_scope >/dev/null 2>&1 || return 0
+  local payload_cwd top branch staged own_ticket scope_line
+  local -a scope=() outside=()
+  payload_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
+  [ -n "$payload_cwd" ] || return 0
+  top=$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null) || return 0
+  top=$(cd "$top" 2>/dev/null && pwd -P) || return 0
+  branch=$(git -C "$top" branch --show-current 2>/dev/null)
+  [ -n "$branch" ] || return 0
+  # bash 3.2 (macOS /bin/bash) has no mapfile, and a guard that aborts on a
+  # missing builtin emits nothing, which a PreToolUse hook reads as an allow
+  # (IAN-267). Read the lines with a loop that every supported shell has.
+  while IFS= read -r scope_line; do
+    [ -n "$scope_line" ] || continue
+    scope+=("$scope_line")
+  done < <(read_declared_scope "$top" "$branch")
+  [ "${#scope[@]}" -gt 0 ] || return 0
+  while IFS= read -r staged; do
+    [ -n "$staged" ] || continue
+    is_exempt_scope_path "$top" "$staged" && continue
+    is_in_scope "$staged" "${scope[@]}" && continue
+    outside+=("$staged")
+    # -z with core.quotePath off: git's default renders a non-ASCII path as
+    # `"claude/h\303\251llo.sh"`, quotes and escapes included, which matches
+    # no scope entry and denies an in-scope file (finding 8).
+  done < <(git -C "$top" -c core.quotePath=false diff --cached -z --name-only 2>/dev/null | tr '\0' '\n')
+  [ "${#outside[@]}" -gt 0 ] || return 0
+  if [ -z "$MSG" ]; then
+    PENDING_ASK_REASON="commit-message-guard (R-214): this commit stages $(printf '%s, ' "${outside[@]}" | sed 's/, $//'), outside the scope this task declared at task-start (${scope[*]}), and its message is one this hook cannot read (a \`-F <file>\` commit, a bare \`git commit\` opened in the editor, or an amend reusing an existing message), so it cannot tell whether a \`Refs:\` trailer already names a separate ticket for that work. Confirm only if those files belong to this task or the message names their own ticket; otherwise record them with \`finding.sh add\` and commit them separately."
+    return 0
+  fi
+  own_ticket=$(read_declared_ticket "$top" "$branch")
+  # With no ticket on the ledger there is no key to tell "this task" from
+  # "other work", so no trailer can satisfy the gate and every out-of-scope
+  # commit is refused (finding 3). Accepting any key there would have made the
+  # gate satisfiable by the `Refs:` trailer R-605 already requires on every
+  # commit, which is the exact loophole this function exists to close.
+  [ -n "$own_ticket" ] && message_references_other_ticket "$own_ticket" && return 0
+  deny "commit-message-guard BLOCKED this commit (R-214): it stages $(printf '%s, ' "${outside[@]}" | sed 's/, $//'), outside the scope this task declared at task-start (${scope[*]}), and the message names no ticket for that work. Work found while doing something else gets its own record, not a ride inside an unrelated commit: record it with \`bash ~/.claude/skills/task-start/scripts/finding.sh add \"<what>\" --kind bug|task|optimization\`, open its ticket, and either commit that work separately under its own key or add a \`Refs: <KEY>\` trailer naming it. If those files are genuinely part of this task after all, re-record the scope with \`task-tier.sh set <tier> \"<reason>\" --scope <glob>[,<glob>...]\` so the ledger matches the work." "R-214"
+}
+
 # judge_commit_message: denies the commit in MSG on an R-505 subject problem,
 # or records an R-506 ask in PENDING_ASK_REASON for after every commit is read.
 judge_commit_message() {
@@ -219,6 +310,13 @@ judge_simple_command() {
       join_commit_messages
     fi
     [ -n "$MSG" ] && judge_commit_message
+    # R-214 judges the staged diff, which is readable whether or not the
+    # message was (finding 1 of the PR #96 review). Called here rather than
+    # from judge_commit_message so `git commit -F <file>`, a bare `git commit`
+    # opened in the editor, `--amend --no-edit` and `-C HEAD` are covered:
+    # in every one of those the diff is perfectly readable and the gate used
+    # to be skipped entirely, with no ask either.
+    judge_staged_scope
     if [ "$IS_MESSAGE_UNCOUNTABLE" -eq 1 ] && [ -z "$PENDING_ASK_REASON" ]; then
       PENDING_ASK_REASON="commit-message-guard (R-505, R-506): the message holds a command substitution whose output this hook cannot read, so it cannot check the subject or count the body. Confirm to proceed if the resulting message has a conventional subject and a short body."
     fi

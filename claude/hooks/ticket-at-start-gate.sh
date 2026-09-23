@@ -57,10 +57,41 @@ deny() {
 # resolve_edit_directory <file-path>: prints the nearest existing directory
 # holding the file, physical path, so a new file under directories that do not
 # exist yet is judged by the repository it would land in.
+# Both walks below strip one component per turn with parameter expansion rather
+# than with a `dirname` or `basename` process, so this hook's cost does not grow
+# with the depth of the path being written (IAN-183).
+# enforce/tests/hook-path-walk-budget.test.sh pins that for the whole chain, and
+# supplies its own TICKET-TRACKER.json so this hook is actually reached: without
+# one it returns at its second line and a container with no tracker measures a
+# shorter chain than a real machine. That is how this hook was missed when the
+# other four were fixed, and it is why the fixture supplies the tracker itself
+# rather than trusting the environment to have one.
+# Trailing slashes are stripped once up front, because `${path##*/}` on "a/b/"
+# is the empty string where `basename` gives "b"; a name with no slash left maps
+# to "." exactly as `dirname` reports it, which is what ends the walk on a
+# relative path.
+# The expansions are written inline rather than behind a shared helper on
+# purpose. A helper called as `parent=$(parent_of "$x")` forks a subshell per
+# component, which is cheaper than exec'ing /usr/bin/dirname but not free, and
+# the spawn-counting fixture cannot see a fork, so that shape would turn the
+# fixture green while a session kept paying. The loops expand in place.
 resolve_edit_directory() {
-  local directory
-  case "$1" in /*) directory=$(dirname "$1") ;; *) directory=$(dirname "$CWD/$1") ;; esac
-  while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do directory=$(dirname "$directory"); done
+  local directory parent
+  case "$1" in /*) directory="$1" ;; *) directory="$CWD/$1" ;; esac
+  while [ "$directory" != "/" ] && [ "${directory%/}" != "$directory" ]; do directory="${directory%/}"; done
+  parent="${directory%/*}"
+  # See resolve_edit_path: command substitution dropped trailing newlines and
+  # expansion does not, which sent a path containing one to the wrong ancestor.
+  while [ "${parent%$'\n'}" != "$parent" ]; do parent="${parent%$'\n'}"; done
+  [ "$parent" = "$directory" ] && parent="."
+  [ -n "$parent" ] || parent="/"
+  directory="$parent"
+  while [ ! -d "$directory" ] && [ "$directory" != "/" ]; do
+    parent="${directory%/*}"
+    [ "$parent" = "$directory" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    directory="$parent"
+  done
   (cd "$directory" 2>/dev/null && pwd -P)
 }
 
@@ -68,13 +99,25 @@ resolve_edit_directory() {
 # existing ancestor resolved through symlinks, followed by the components that
 # do not exist yet, so `.claude/new/x` keeps its `.claude/new` part.
 resolve_edit_path() {
-  local absolute_path existing_directory missing_suffix
+  local absolute_path existing_directory missing_suffix parent
   case "$1" in /*) absolute_path="$1" ;; *) absolute_path="$CWD/$1" ;; esac
-  existing_directory=$(dirname "$absolute_path")
-  missing_suffix=$(basename "$absolute_path")
+  while [ "$absolute_path" != "/" ] && [ "${absolute_path%/}" != "$absolute_path" ]; do absolute_path="${absolute_path%/}"; done
+  existing_directory="${absolute_path%/*}"
+  # `$(dirname ...)` and `$(basename ...)` dropped trailing newlines, because
+  # command substitution does; expansion keeps them. A path may legitimately
+  # contain a newline, and keeping it here sent the walk to the wrong ancestor
+  # and so judged the write against the wrong repository (IAN-183 R-517 review).
+  while [ "${existing_directory%$'\n'}" != "$existing_directory" ]; do existing_directory="${existing_directory%$'\n'}"; done
+  [ "$existing_directory" = "$absolute_path" ] && existing_directory="."
+  [ -n "$existing_directory" ] || existing_directory="/"
+  missing_suffix="${absolute_path##*/}"
+  while [ "${missing_suffix%$'\n'}" != "$missing_suffix" ]; do missing_suffix="${missing_suffix%$'\n'}"; done
   while [ ! -d "$existing_directory" ] && [ "$existing_directory" != "/" ]; do
-    missing_suffix="$(basename "$existing_directory")/$missing_suffix"
-    existing_directory=$(dirname "$existing_directory")
+    missing_suffix="${existing_directory##*/}/$missing_suffix"
+    parent="${existing_directory%/*}"
+    [ "$parent" = "$existing_directory" ] && parent="."
+    [ -n "$parent" ] || parent="/"
+    existing_directory="$parent"
   done
   printf '%s/%s' "$(cd "$existing_directory" 2>/dev/null && pwd -P)" "$missing_suffix"
 }
