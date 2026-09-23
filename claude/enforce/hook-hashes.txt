@@ -41,7 +41,7 @@ eb74056eae3e00d3376fdb9eeacc77b35f51333e3a5dcc85531179db19c0bd54  enforce/tests/
 82a3e27d132a2f546493ee056f19b96f781ae1ab3f6c37cb5b07aab4180a1df8  enforce/tests/clean-code-reminder.test.sh
 39d81a19e4b9d3b6da9914468139c80ecb8d24bd8040d5a3ca21414d57bcbbb2  enforce/tests/codex-adapter-contract.test.sh
 66864ddc08bb5c14d3dd69e3ffd45c4f21296cb7b27aad97a7beaffc2697bc6d  enforce/tests/codex-billing-guard.test.sh
-5d5e635362a861b9fdfacc22d29eb5e7301f41c621135f8356574d44df1dcab4  enforce/tests/codex-test-author-guard-tier.test.sh
+6c868671a9ee3eac113ed59b878a238bf86400c65267f85be3170fcf79b633be  enforce/tests/codex-test-author-guard-tier.test.sh
 8d339bff1c81ad24062b6de78adbafb2b15956784959a231835fadb2284c1aae  enforce/tests/codex-test-author-guard.test.sh
 e77b1ecdf64867ff6d374408ef006e48549b30728764f3c369f61c6706d417ca  enforce/tests/commit-message-guard-copilot-cases.test.sh
 5faa524820e2854e65da61bf60412c4e168afb695ee0b36719c16380aea9a9ec  enforce/tests/commit-message-guard-copilot-round2.test.sh

@@ -49,4 +49,16 @@ write_ledger saga feat/ledger-tier
 write_ledger standard feat/another-task
 [ "$(decision "$TEST_FILE")" = "ask" ] || { echo "FAIL: expected ask when the ledger names another branch"; exit 1; }
 
+# A malformed ledger and a detached HEAD fail closed: the guard still asks.
+printf 'not json' >"$REPO/.claude/task-tier.json"
+[ "$(decision "$TEST_FILE")" = "ask" ] || { echo "FAIL: expected ask for a malformed ledger"; exit 1; }
+write_ledger standard feat/ledger-tier
+git -C "$REPO" checkout -q --detach
+[ "$(decision "$TEST_FILE")" = "ask" ] || { echo "FAIL: expected ask on a detached HEAD"; exit 1; }
+git -C "$REPO" checkout -q feat/ledger-tier
+
+# A test file in a directory that does not exist yet resolves its repository
+# through the nearest existing ancestor.
+[ "$(decision "$REPO/tests/new_area/test_new.py")" = "none" ] || { echo "FAIL: expected none for a new directory under a Standard ledger"; exit 1; }
+
 echo "PASS: codex-test-author-guard reads the ledger tier"
