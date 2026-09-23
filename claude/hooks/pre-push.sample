@@ -13,7 +13,21 @@
 # the turn-end gate already ran the fixtures each change affects. The port
 # checks stay, because they take seconds and nothing else local catches a
 # port left stale by an edit made outside a session.
+#
+# After editing this sample, re-run the installer to upgrade the copy git
+# actually runs; nothing else refreshes it, and until it is re-run the checks
+# added here enforce nothing in a repository that installed an older copy:
+#
+#   bash ~/.claude/hooks/install-git-hooks.sh /path/to/checkout
 set -uo pipefail
+
+# git feeds pre-push the refs being pushed on stdin, one
+# `<local ref> <local sha> <remote ref> <remote sha>` line per ref. It is read
+# once, here, into a file: stdin can be consumed only once, and the cited-SHA
+# gate below needs the same list.
+PUSH_REFS=$(mktemp)
+trap 'rm -f "$PUSH_REFS"' EXIT
+cat > "$PUSH_REFS"
 
 # git runs pre-push with cwd at the repo toplevel; resolve it explicitly
 # anyway so the hook also behaves when invoked by hand.
@@ -45,23 +59,27 @@ fi
 # fetched, and this is the only boundary where the promise can still be
 # checked. The objects behind an unreachable citation exist in the author's
 # clone and nowhere else, so by the time CI or a reader could ask the question,
-# the answer is already gone: a fresh clone cannot tell an unreachable citation
-# from a citation of some other repository's commit. Only the documents this
-# branch touched are read, so the historical corpus (which carries citations of
-# commits whose branches were deleted long ago) does not block a push about
-# something else; `doc-sha-reachability.sh --all` reports that backlog.
+# the answer is already gone.
+#
+# The refs on stdin are what the check reads, and it reads the documents as the
+# pushed COMMITS carry them. The working tree is not the subject: what is about
+# to become public is the commit, and a committed unreachable citation that an
+# uncommitted edit happens to hide is exactly the case this must catch (R-517
+# review of PR #118). Only the documents those commits change are read, so the
+# historical corpus, which cites commits whose branches were deleted long ago,
+# does not block a push about something else; `--all` reports that backlog.
+#
+# Exit 2 aborts the push as exit 1 does. It means the check declined to judge
+# (a shallow clone, an unreadable document, a resolver that failed), and a
+# question that cannot be answered must not be recorded as an answer of "fine".
 DOC_SHA_CHECK="$TOP/claude/enforce/doc-sha-reachability.sh"
 [ -f "$DOC_SHA_CHECK" ] || DOC_SHA_CHECK="$TOP/enforce/doc-sha-reachability.sh"
 if [ -f "$DOC_SHA_CHECK" ]; then
-  ( cd "$TOP" && bash "$DOC_SHA_CHECK" --changed )
+  ( cd "$TOP" && bash "$DOC_SHA_CHECK" --push "${1:-origin}" < "$PUSH_REFS" )
   doc_sha_status=$?
-  if [ "$doc_sha_status" -eq 1 ]; then
+  if [ "$doc_sha_status" -ne 0 ]; then
+    [ "$doc_sha_status" -eq 1 ] || echo "pre-push: the cited-SHA check declined to judge this push (exit $doc_sha_status); its reason is above." >&2
     fail=1
-  elif [ "$doc_sha_status" -ne 0 ]; then
-    # Exit 2 is the check declining to judge (a shallow clone, or a change set
-    # it cannot read). It is reported rather than swallowed, and it does not
-    # abort the push, because a state the check cannot judge is not a finding.
-    echo "pre-push: the cited-SHA check could not judge this push (exit $doc_sha_status); its reason is above." >&2
   fi
 fi
 

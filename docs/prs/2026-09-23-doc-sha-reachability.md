@@ -14,56 +14,79 @@ Phase 2 of the ticket, which extends `rule-judge.yml` to judge factual self-cons
 
 ## What changed
 
-- `claude/enforce/doc-sha-reachability.sh`, new. It collects every backticked 7-to-40 character hexadecimal token in the documents it is asked about, resolves them all in one `git cat-file --batch-check`, reads reachability from one `git rev-list --all`, and reports every token that resolves in this repository and that no ref reaches, naming the citing file and line.
-- `claude/enforce/tests/doc-sha-reachability.test.sh`, new. Forty-one assertions over eleven behaviours, including the live IAN-260 case and the three `keep/` tags.
-- `claude/hooks/pre-push.sample` runs the check in `--changed` mode, so a push that publishes a document citing an unreachable commit is refused.
+- `claude/enforce/doc-sha-reachability.sh`, new. It collects every backticked 7-to-40 character hexadecimal token in the documents it is asked about, in either case, normalises them to lowercase, resolves them all in one `git cat-file --batch-check`, reads reachability from one `git rev-list --all`, and reports every token that resolves in this repository and that no ref reaches, naming the citing file and line.
+- `claude/enforce/tests/doc-sha-reachability.test.sh`, new. Seventy-five assertions over nineteen behaviours, including the live IAN-260 case and the three `keep/` tags.
+- `claude/hooks/pre-push.sample` runs the check in `--push` mode over the refs git hands it on stdin, so a push that publishes a document citing an unreachable commit is refused.
 - `claude/CLAUDE.md` and `claude/rulebook/reference.md` carry the new rule R-215, and `claude/enforce/manifest.json` registers its enforcer as `ci:doc-sha-reachability` (R-516). `codex/` and `cursor/` are the regenerated ports of those two rule files.
 - `claude/enforce/hook-hashes.txt` is regenerated, because both new files sit under trees the integrity guard covers.
 
 ## Architectural decisions
 
-**Where the gate runs: the local push boundary, not CI.** Chosen: `hooks/pre-push.sample` runs `--changed`, and CI runs the fixture. The alternative was a corpus gate as a CI step. It was rejected for a reason that is worth stating plainly, because it is the limit of the whole check: an unreachable object exists in the author's clone and nowhere else. A CI runner clones at depth 1 and fetches one ref, so every citation in it resolves to nothing and the check has nothing to judge. By the time a fresh clone could ask the question, the answer has already been lost. The only moment the question can be answered is while the author still holds the object, which is also the only moment the repair (pinning the commit under a tag) is still possible.
+**Where the gate runs: the local push boundary, not CI.** Chosen: `hooks/pre-push.sample` runs `--push`, and CI runs the fixture. The alternative was a corpus gate as a CI step. It was rejected for a reason that is worth stating plainly, because it is the limit of the whole check: a clone can only be asked about objects it holds. The objects behind an unreachable citation exist in the author's clone and, once the branch carrying them is deleted, nowhere else; a clone that never received them cannot tell such a citation from a citation of some other repository's commit, and the check deliberately reports neither. So the only moment the question can be answered is while the author still holds the object, which is also the only moment the repair (pinning the commit under a tag) is still possible.
+
+**The gate reads the pushed commits, not the working tree.** What is about to become public is the commit. An earlier draft of this change read the working tree, which meant a committed unreachable citation passed the moment an uncommitted edit happened to remove it, and a first-push branch with no upstream produced "cannot judge" rather than an answer. The hook now hands the check git's pre-push ref list, and the check derives each pushed ref's new commits with one `git rev-list <tip> --not --remotes=<remote>`, their changed paths with one `git diff-tree --stdin`, and each document's content with `git show <tip>:<path>`.
+
+**A state the check cannot judge aborts the push.** Exit 2 is a decline, not a pass: a shallow clone, a document it cannot read, a change set it cannot list, and a resolver that failed all reach it, and the hook treats it exactly as it treats a finding. A question that cannot be answered must not be recorded as an answer of "fine", and there is no path through the check on which it reports success without having resolved what it collected.
 
 **A token that resolves to nothing is not a finding.** Documents in this repository legitimately cite other repositories' commits, and seven-character hexadecimal strings occur in prose. The check cannot tell a foreign SHA from a pruned one, so it reports neither, and says so in its own header rather than leaving the reader to infer it.
 
-**The escape hatch is an adjacent marker, not an allowlist file.** Chosen: `<!-- unreachable-sha: <sha> <reason> -->` on the citing line. The alternative was a central allowlist. A list far from the citation rots: an entry outlives the line it excused, and nobody reading the document sees that an exception was taken. The marker sits where whoever edits the citation will see it. Three conditions make it hard to fire by accident, and each is fixtured in both directions: the marker must name the same token the citation names, so a marker copied onto another line excuses nothing; it must be on the same line, so a marker that drifts one line away excuses nothing; and it must carry a reason after the SHA, so a blank marker excuses nothing. The marker itself carries no backticks, so it is never read as a citation of its own.
+**The escape hatch is an adjacent marker, not an allowlist file.** Chosen: an `unreachable-sha` HTML comment on the citing line. The alternative was a central allowlist. A list far from the citation rots: an entry outlives the line it excused, and nobody reading the document sees that an exception was taken. The marker sits where whoever edits the citation will see it. Six conditions keep it from opening by accident, and each is fixtured in both directions: it names the same commit the citation names, compared with both lowercased; it sits on the citing line; its reason carries a real word, so whitespace, an empty reason and `...` all fail; it is not inside inline code, not inside a fenced block, and not inside an HTML comment that opened on an earlier line, so a marker shown as an example in prose (this document, the rule text and the check's own header all show one) excuses nothing; and one marker excuses one citation, so a line citing the same commit twice needs two markers.
 
-**Three git processes, not one per token.** Chosen: one `git cat-file --batch-check` over all collected tokens and one `git rev-list --all`, with all the joining done in `awk`. The hook tree paid for the alternative expensively in IAN-183, where a process per path component put the whole Write chain over budget, so the fixture asserts the budget directly: thirty tokens must cost at most eight git invocations, counted through a logging shim on `PATH`.
+**Four git processes, not one per token.** One `git cat-file --batch-check` over all collected tokens, one `git rev-list --all`, and the two `git rev-parse` calls that locate the repository and detect a shallow clone. All the joining is done in `awk`. The hook tree paid for the alternative expensively in IAN-183, where a process per path component put the whole Write chain over budget, so the fixture asserts the budget directly: thirty citations of thirty distinct commits that all resolve and are all unreachable must cost at most eight git invocations, counted through a logging shim on `PATH`. Documents cost one read process each, and in `--push` mode that read is a `git show`, which is per changed document rather than per token.
 
-**A shallow clone is declined, not passed.** Exit 2 with `DOC-SHA-DEGRADED`, rather than exit 0 with no findings. A shallow clone holds none of the objects beyond its graft, so every unreachable citation in it looks exactly like a citation of another repository, and a silent pass would be a false all-clear. The pre-push hook reports that state and does not abort the push, because a question the check cannot answer is not a finding.
+**Hostile filenames are handled by never delimiting a path.** Every document is copied to a numbered file and its real path stored beside it, so nothing downstream parses a path out of a delimited record. A document named `docs/with:colon.md` and one whose name contains a newline are both inspected, and the fixture carries both.
 
-**The historical corpus is reported, not gated.** `--all` over this repository today reports 73 citations in 10 documents, nearly all of them in pull-request documents citing the pre-squash commits of branches deleted after merge. Gating them would mean either 34 new tags or 73 new markers, which is a different change from this one; it is recorded as a finding and left to its own ticket.
+**The historical corpus is reported, not gated.** `--all` over this repository today reports 73 citations in 10 documents, nearly all of them in pull-request documents citing the pre-squash commits of branches deleted after merge. Gating them would mean either 34 new tags or 73 new markers, which is a different change from this one; it is IAN-322.
 
 ## Testing
 
-Test-first under the R-412 slice lock. `tdd.sh red` certified the fixture failing for an assertion with 104 other fixtures passing; `tdd.sh green` certified it passing with the same 104 outside.
+Test-first under the R-412 slice lock, twice: once for the original implementation and once for the review round, each with `tdd.sh red` certifying the fixture failing for an assertion with 104 other fixtures passing and `tdd.sh green` certifying it passing with the same 104 outside.
 
-Every one of the forty-one assertions was driven to FAIL by at least one deliberate mutation of the implementation, each applied to a copy of the harness outside the repository:
+Every one of the seventy-five assertions was driven to FAIL by at least one deliberate mutation of the implementation, each applied to a copy of the harness outside the repository, and the coverage is computed rather than remembered: a prover runs each mutation, unions the assertions that went red, and prints the ones no mutation reached. That list is now empty.
 
 | Mutation | Assertions it breaks |
 | --- | --- |
-| No finding is ever reported | 6 |
-| Reachability is never consulted | 7 |
-| Every citation is excused | 18 |
-| The marker ignores sha, line and reason | 5 |
-| One `git` process per token | 20, including the batching budget |
+| No finding is ever printed | 26 |
+| Reachability is never consulted | 11 |
+| No citation is collected | 56 |
+| Every repository is declined | 65 |
 | A shallow clone is judged rather than declined | 2 |
-| `claude/docs/` is not a document root | 2 |
-| `--changed` reads the whole corpus | 1 |
+| `claude/docs/` is not a document root | 7 |
+| A token that resolves to nothing is reported | 3 |
+| The escape hatch never opens | 11 |
+| `--changed` reads the whole corpus | 7 |
+| The push gate reads the working tree | 6 |
+| Uppercase hexadecimal is not a citation | 3 |
+| The marker match is case sensitive | 6 |
+| Whitespace and punctuation count as a reason | 8 |
+| An example marker in code or a comment excuses | 10 |
+| One marker excuses the whole line | 6 |
+| The document list is newline delimited | 10 |
+| A failing resolver is swallowed | 6 |
+| An unreadable document is skipped | 6 |
+| One resolver process per token | 49, including the batching budget |
+| The hook lets a decline through | 5 |
+| The hook asks `--changed` rather than `--push` | 6 |
+| The sample hook carries no gate | 8 |
+| The installer refuses to upgrade an installed hook | 2 |
 | The checkout carries no `keep/` tags | 4, including all three tag assertions |
-| An unresolvable token is reported | 7 |
-| The escape hatch never opens | 3 |
-| No token is collected at all | 25 |
-| Every repository is declined | 31 |
-| The check declines, inside a repository | the IAN-260 spec assertions |
-| Nothing is collected, inside a repository | the IAN-260 inspection assertion |
 
 No assertion in the fixture asserts the absence of an error string. Each one asserts either the presence of a finding naming its SHA, its file and its line, or the presence of the clean summary line carrying a non-zero count of what was inspected. That rule is written into the fixture's header, because this repository shipped three absence-asserting tests in two days, each passing against an implementation that had stopped running.
 
+The live spec reports `OK, 9 cited token(s) in 1 document(s), 7 resolve here, all of those reachable`, in four git processes.
+
+## What this does not enforce
+
+`.git/hooks` is not version-controlled, so editing `hooks/pre-push.sample` changes nothing in a repository that already installed an older copy. The hook installed in this checkout on 2026-09-18 does not carry this gate, and will not until `bash ~/.claude/hooks/install-git-hooks.sh <repo>` is re-run; the installer upgrades an installed hook in place when its header marks it as the installer's own, and the fixture proves that path rather than assuming it. Until that is run, R-215 is manual in that repository, and nothing detects the staleness automatically today. The rule says so in the same words.
+
+CI runs the fixture, not a corpus gate. The checkout there is a depth-1 clone, so the check declines on it outright and the fixture's live-corpus block states that it did not run instead of passing blind. Giving that job a full clone is IAN-323.
+
 ## Reflection
 
-What is clear now that was not at the start: this check can only ever work in the author's clone. The instinct was to make it a CI gate, because that is where a check cannot be skipped, and a CI gate here would have been theatre. The shallow checkout would have made every run vacuously green, and the greener it looked the less it would have been measuring. The honest arrangement puts the gate at the push boundary, where the objects still exist, and gives CI the fixture, which is a claim CI can actually verify.
+What is clear now that was not at the start: this check can only ever work in the author's clone. The instinct was to make it a CI gate, because that is where a check cannot be skipped, and a CI gate here would have been theatre. The runner's clone does not hold the objects the question is about, and the greener that job looked the less it would have been measuring. The honest arrangement puts the gate at the push boundary, where the objects still exist, and gives CI the fixture, which is a claim CI can actually verify.
 
-What was wrong first: the intended design was a single corpus gate, and it survived until the corpus was actually scanned and returned 73 findings across 10 documents. Those are not defects introduced by carelessness; they are what a repository looks like after months of squash-merging and deleting branches. A gate that is red on arrival gets disabled, so the scope moved to the documents a branch touches, which is the ratchet the repository already applies elsewhere, and the backlog became a finding rather than a blocker.
+What was wrong first, and this is the part worth carrying: the first implementation gated the working tree rather than the commits being pushed. That reads as a small slip and is not one. A gate that inspects the working tree answers a question nobody asked, because the working tree is not what a push publishes, and the failure it allowed was the silent direction, where an uncommitted edit makes a committed defect invisible. The review also found that a brand-new branch, which is the common case for the gate, returned "cannot judge" and that the hook then let it through, so the gate was open exactly when it was most needed. Both came from the same habit of reasoning about the files in front of me rather than about the artifact the command actually produces.
+
+The second thing wrong first: the scope was a single corpus gate, and it survived until the corpus was actually scanned and returned 73 findings across 10 documents. Those are not defects introduced by carelessness; they are what a repository looks like after months of squash-merging and deleting branches. A gate that is red on arrival gets disabled, so the scope moved to the documents a push carries, and the backlog became its own ticket.
 
 One limit is worth carrying forward: the check catches a citation of a commit that is already unreachable when it is written, which is the IAN-260 case exactly. It does not catch the slower rot, where a document cites a live branch commit and that branch is deleted three days later. Nothing at write time can catch that, and a periodic `--all` sweep is what would.
