@@ -14,14 +14,55 @@
 #     and wording around the keywords are free);
 #   - no commit SHA in backticks, or one that does not resolve in the
 #     repository the file lives in (session-start.sh applies the same test).
-# Silent for every other path. Never blocks; any internal fault exits 0 so
+#
+# Since IAN-260 it reads two kinds under docs/session-handoff/: the index
+# (session-handoff.md), which keeps every check above, and a session file
+# (YYYY-MM-DD-<slug>.md, an immediate child), which keeps the sections and
+# the SHA but carries no cap, because exactly one session writes it so there
+# is nothing for a cap to protect. Silent for every other path. Never blocks; any internal fault exits 0 so
 # the hook can never break a Write. Advisory, so no `set -e` (enforce/README,
 # hook set convention).
 set -uo pipefail
 
 INPUT=$(cat 2>/dev/null || true)
 FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || true)
-case "$FILE" in */docs/session-handoff/session-handoff.md|docs/session-handoff/session-handoff.md) ;; *) exit 0 ;; esac
+# Two kinds of handoff live under docs/session-handoff/ (IAN-260):
+#
+#   KIND=index    session-handoff.md, the one file session-start.sh loads.
+#                 Rewritten every session, so it is the contended one and it
+#                 carries the cap. It also owes a `## Sessions` list, which is
+#                 the only route from the index to the per-session files.
+#   KIND=session  YYYY-MM-DD-<slug>.md, written by exactly one session.
+#                 Same six sections, no cap: nothing else writes it, so there
+#                 is nothing for a cap to protect, and the cap is what forced
+#                 four sessions to be folded by hand and lost content twice.
+#
+# Anything else is silent, including a dated file outside this directory and
+# an undated file inside it (a README, an index of indexes), because applying
+# handoff rules to a document that is not one is noise.
+KIND=""
+case "$FILE" in
+  */docs/session-handoff/session-handoff.md|docs/session-handoff/session-handoff.md) KIND="index" ;;
+  *)
+    # The parent must END at docs/session-handoff: `*` in a case pattern
+    # matches `/` too, so a single `*/docs/session-handoff/*` also swallows
+    # docs/session-handoff/deeper/2026-09-20-x.md at any depth, and would
+    # apply handoff rules to a document that is not one. Comparing the parent
+    # exactly keeps session files immediate children, as the spec says.
+    BASENAME="${FILE##*/}"
+    PARENT="${FILE%/*}"
+    case "$PARENT" in
+      */docs/session-handoff|docs/session-handoff)
+        # `?*` after the final hyphen requires a non-empty slug, so
+        # `2026-09-20-.md` is not a session file.
+        case "$BASENAME" in
+          [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-?*.md) KIND="session" ;;
+        esac
+        ;;
+    esac
+    ;;
+esac
+[ -n "$KIND" ] || exit 0
 CONTENT=$(printf '%s' "$INPUT" | jq -r '.tool_input.content // ""' 2>/dev/null || true)
 [ -n "$CONTENT" ] || exit 0
 
@@ -49,9 +90,19 @@ narrative_without_task_state() {
   '
 }
 
-NARRATIVE=$(narrative_without_task_state "$CONTENT")
-bytes=$(printf '%s' "$NARRATIVE" | wc -c | tr -d ' ')
-[ "$bytes" -le "$MAX_BYTES" ] || missing+=("it is $bytes bytes, over the 8 KB cap; cut detail, not sections")
+# The cap is the index's alone. A session file is uncontended, so measuring it
+# buys nothing and costs the detail the next session needs (IAN-260).
+if [ "$KIND" = "index" ]; then
+  NARRATIVE=$(narrative_without_task_state "$CONTENT")
+  bytes=$(printf '%s' "$NARRATIVE" | wc -c | tr -d ' ')
+  [ "$bytes" -le "$MAX_BYTES" ] || missing+=("it is $bytes bytes, over the 8 KB cap; move detail into a session file, do not cut sections")
+fi
+
+# The index also owes a `## Sessions` list, without which it stops being a
+# route to the session files. That check is deliberately NOT here yet: it
+# would make today's index non-compliant, and no session file exists for it
+# to list until the migration slice writes them. It lands with that slice,
+# together with the update to handoff-check.test.sh's compliant fixture.
 
 HEADINGS=$(printf '%s\n' "$CONTENT" | grep -E '^## ' | tr '[:upper:]' '[:lower:]' || true)
 EXPECTED=("last commit" "production state" "session metrics" "what shipped" "pending" "next session")
