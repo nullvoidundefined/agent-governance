@@ -260,7 +260,18 @@ check "the pre-push sample names the finding" reports "DOC-SHA-UNREACHABLE: $PUS
 git -C "$PUSHED" add -A
 git -C "$PUSHED" commit -qm "chore: carry the check for the hook to find"
 git -C "$PUSHED" push -q origin main
+# A --depth 1 clone over file:// is not reliably shallow on every git build:
+# it is shallow on macOS here and was NOT in CI, where these two assertions
+# failed while the ambient checkout (itself shallow) made the other shallow
+# directions pass. The fixture then measured something other than what it
+# claimed. Assert the precondition instead of assuming it, force it when the
+# clone did not take, and fail loudly rather than quietly testing nothing.
 git clone -q --depth 1 "file://$SB/remote.git" "$SB/shallow-push"
+if [ "$(git -C "$SB/shallow-push" rev-parse --is-shallow-repository 2>/dev/null)" != "true" ]; then
+  git -C "$SB/shallow-push" fetch -q --depth 1 origin main 2>/dev/null || true
+fi
+check "the shallow-push fixture really is a shallow clone" \
+  test "$(git -C "$SB/shallow-push" rev-parse --is-shallow-repository 2>/dev/null)" = "true"
 cp "$CHECK" "$SB/shallow-push/claude/enforce/doc-sha-reachability.sh"
 SHALLOW_TIP=$(git -C "$SB/shallow-push" rev-parse HEAD)
 OUT=$(cd "$SB/shallow-push" && printf 'refs/heads/main %s refs/heads/main %s\n' "$SHALLOW_TIP" "$ZEROS" | bash "$SAMPLE_HOOK" origin "file://$SB/remote.git" 2>&1); ST=$?
