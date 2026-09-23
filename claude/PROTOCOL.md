@@ -283,6 +283,29 @@ This revision reconciled the protocol with rule changes that had landed in `~/.c
 
 - **Layer 8 handoff cap raised** from 4KB to 8KB, reverting the 2026-06-05 reduction. The 4KB cap was forcing real content out of handoffs: a session would trim traceable findings to fit, and the next session would re-derive them. R-602 and the Layer 8 guidance above both now read 8KB.
 
+## What changed on 2026-09-23
+
+R-001 gained a scope line: the session-start procedure runs only when a user turn follows the
+invocation, so `codex exec` and `claude -p` carrying their own prompt skip it, while every
+interactive session, every cloud session, every resumed session and every dispatched subagent
+still runs it.
+
+The reason is measured rather than argued. Codex renders `CLAUDE.md` as its `AGENTS.md`, so R-001
+applied to every `codex exec` call, including one whose prompt already named each file to read.
+Two invocations whose entire prompt asked for a single line of output cost 21,740 and 28,780
+tokens. A third, aborted by a usage limit, spent 22,009 tokens on session-init reads and produced
+nothing at all. Across one working session of thirteen calls, roughly 200,000 tokens went to
+context the invocations never used, against a weekly allowance the owner measures near 5.6
+million.
+
+Three boundaries were drawn deliberately, each after a pre-merge review found the first attempt
+too loose. Cloud sessions are not exempt, because R-003's scope names them as the case that starts
+with no `~/.claude` at all, which is where the reads carry the most information rather than the
+least. Dispatched subagents are not exempt, because step 3 is the only channel that delivers Tier
+2 rules to them, R-706's fifty-call cap among them, and no role file restates it. And the test is
+"no user turn follows" rather than "one-shot", because an interactive session's first turn is also
+one prompt and also, until a second arrives, one shot.
+
 ## The principle
 
 The operating protocol is not a rulebook. It is a failure-mode catalog. The goal is not to follow the rules to avoid mistakes; the goal is to build the next layer the next time a failure teaches you where one is missing. Discipline is the habit of noticing the failure, naming the class, identifying the missing layer, and adding it immediately rather than hoping the next instance will be different.
