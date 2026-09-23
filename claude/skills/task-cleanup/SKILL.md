@@ -90,7 +90,7 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 3. Run the blocking pre-merge Codex review (below). It is the review every PR above trivial gets.
 4. Start the next ticket while CI and Codex run (CI alone on a trivial PR). Return to this PR when they finish; do not block the session on a poll loop. A trivial PR's exemption from R-517 lives in the checkout's one task-tier ledger, which the next ticket's `task-tier.sh set` replaces: merge the trivial PR first, start the next ticket in another worktree, or re-record `task-tier.sh set trivial` on the trivial branch before merging. The same holds above trivial: `ticket-at-start-gate.sh` denies edits and commits on a branch the ledger does not name, so a review fix on this PR after the next ticket's `task-tier.sh set` needs this PR's own ledger again (`task-tier.sh set <tier> "<reason>" --ticket <this PR's key>`), and one worktree per in-flight ticket avoids the swap entirely.
 5. Fix each valid review comment (failing case first when behavior changes), reply in its thread naming the fix commit, and resolve the thread (R-515).
-6. After a behavior-changing fix, re-run the Codex review on the new range; wording, docs, and PR-description fixes merge on green CI without a re-review.
+6. After any commit that moves the head, documentation included, re-run the Codex review on the new range and rewrite the `range` line from that run: the gate denies while the line does not end at the head, and it cannot tell a documentation commit from a behavior change. Editing the PR's description, title, or labels moves no commit and needs no re-review. Write the PR document and body before running the review so the review is the last thing before the merge.
 7. For 2 to 5 small related tickets, one bundle PR may replace separate PRs: label it `bundle`, keep one commit per ticket with its own `Refs:` trailer, and merge with `--rebase` (R-512). Never bundle deletion, security, sync, or migration changes.
 
 **Pre-merge Codex review** (R-517, blocking, every PR above the trivial tier; a trivial PR is exempt only when `.claude/task-tier.json` records the trivial tier for its head branch):
@@ -109,7 +109,17 @@ Codex (OpenAI's coding agent, run through its CLI as a separate process, so the 
    Close stdin with `</dev/null`, or codex blocks on "Reading additional input from stdin". Never pipe it through `tail`, which buffers until exit and looks like a hang. Omit `-m`: `gpt-5.1-codex-mini` is rejected on the owner's ChatGPT account, so the account default applies. R-908's billing guard applies to the call.
 3. **Fallback.** When Codex is missing, unauthenticated, or out of quota, do not wait for the quota to reset and do not review the diff in this session: dispatch a separate Claude agent in a fresh context, on a model at least as strong as this session's and ideally stronger (the Agent tool's `model: "fable"` when available, else `opus`), with the same filled prompt, and use its final message as the review.
 4. Fix each finding (test-first when behavior changes) or answer it with a reason in the PR. A HIGH finding is never merged over with a bare "won't fix".
-5. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`): the reviewer and model that ran and why (for example `Reviewer: Codex` or `Reviewer: Claude subagent (fable), fallback: Codex usage limit reached`), the range reviewed, and one line per finding with its severity and disposition (the fix commit, or the reason), or "No findings" with the areas checked. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing or empty.
+5. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`) carrying three labelled lines and then the findings:
+
+   ```
+   ## Codex review
+   - reviewer: Codex
+   - model: gpt-5-codex
+   - range: <base sha>..<head sha>
+   - MEDIUM: <finding> - fixed in <sha>
+   ```
+
+   The `reviewer` line names the reviewer that ran and why, for example `Codex` or `Claude subagent (fable), fallback: Codex usage limit reached`; the `model` line names the model it ran on; the `range` line names the diff it read as a `<base>..<head>` expression, and its head endpoint must be the PR's head commit as GitHub reports it, which means a review run before the last push is re-run rather than re-typed. The head must be on the right of the `..`: a range whose base is the head reviewed everything except the head, and the gate denies it. Then one line per finding with its severity and disposition, or "No findings" with the areas checked. Each label may be bulleted and emphasised (`- **Reviewer:** Codex`) but never left without a value. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, duplicated, missing one of the three lines, carrying a `range` line with no `<base>..<head>` expression, or naming a range whose head endpoint is not the head commit.
 
 **Merge decision:**
 - Confirm with the user before merging. `git-workflow-guard` gates `gh pr merge` (R-514) and not a local `git merge`, so the ask here is the skill's, and "merge when ready" from an earlier turn is not it.
