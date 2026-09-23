@@ -275,8 +275,10 @@ check "the shallow-push fixture really is a shallow clone" \
 cp "$CHECK" "$SB/shallow-push/claude/enforce/doc-sha-reachability.sh"
 SHALLOW_TIP=$(git -C "$SB/shallow-push" rev-parse HEAD)
 OUT=$(cd "$SB/shallow-push" && printf 'refs/heads/main %s refs/heads/main %s\n' "$SHALLOW_TIP" "$ZEROS" | bash "$SAMPLE_HOOK" origin "file://$SB/remote.git" 2>&1); ST=$?
-check "the pre-push sample aborts when the check cannot judge" test "$ST" -eq 1
-check "the pre-push sample says the check could not judge" reports "DOC-SHA-DEGRADED: shallow repository"
+# These two report what they saw. They failed in CI and passed here, and a
+# bare FAIL line with no status and no output cost two diagnostic rounds.
+check "the pre-push sample aborts when the check cannot judge (status $ST, output: $(printf '%s' "$OUT" | tr '\n' '|' | cut -c1-200))" test "$ST" -eq 1
+check "the pre-push sample says the check could not judge (output: $(printf '%s' "$OUT" | tr '\n' '|' | cut -c1-200))" reports "DOC-SHA-DEGRADED: shallow repository"
 
 # B-14: an installed hook is upgraded in place by re-running the installer, so
 # the enforcement claim has a path behind it rather than an assumption that
