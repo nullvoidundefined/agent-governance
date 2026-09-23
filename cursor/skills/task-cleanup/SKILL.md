@@ -110,7 +110,17 @@ Codex (OpenAI's coding agent, run through its CLI as a separate process, so the 
    Close stdin with `</dev/null`, or codex blocks on "Reading additional input from stdin". Never pipe it through `tail`, which buffers until exit and looks like a hang. Omit `-m`: `gpt-5.1-codex-mini` is rejected on the owner's ChatGPT account, so the account default applies. R-908's billing guard applies to the call.
 3. **Fallback.** When Codex is missing, unauthenticated, or out of quota, do not wait for the quota to reset and do not review the diff in this session: dispatch a separate Claude agent in a fresh context, on a model at least as strong as this session's and ideally stronger (the Agent tool's `model: "fable"` when available, else `opus`), with the same filled prompt, and use its final message as the review.
 4. Fix each finding (test-first when behavior changes) or answer it with a reason in the PR. A HIGH finding is never merged over with a bare "won't fix".
-5. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`): the reviewer and model that ran and why (for example `Reviewer: Codex` or `Reviewer: Claude subagent (fable), fallback: Codex usage limit reached`), the range reviewed, and one line per finding with its severity and disposition (the fix commit, or the reason), or "No findings" with the areas checked. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing or empty.
+5. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`) carrying three labelled lines and then the findings:
+
+   ```
+   ## Codex review
+   - reviewer: Codex
+   - model: gpt-5-codex
+   - range: <base sha>..<head sha>
+   - MEDIUM: <finding> - fixed in <sha>
+   ```
+
+   The `reviewer` line names the reviewer that ran and why, for example `Codex` or `Claude subagent (fable), fallback: Codex usage limit reached`; the `model` line names the model it ran on; the `range` line names the diff it read, and it must contain the PR's head commit as GitHub reports it, which means a review run before the last push is re-run rather than re-typed. Then one line per finding with its severity and disposition, or "No findings" with the areas checked. Each label may be bulleted and emphasised (`- **Reviewer:** Codex`) but never left without a value. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, missing one of the three lines, or naming a range that stops short of the head commit.
 
 **Merge decision:**
 - Confirm with the user before merging. `git-workflow-guard` gates `gh pr merge` (R-514) and not a local `git merge`, so the ask here is the skill's, and "merge when ready" from an earlier turn is not it.

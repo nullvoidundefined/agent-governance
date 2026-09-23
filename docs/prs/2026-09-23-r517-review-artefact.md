@@ -1,0 +1,41 @@
+# R-517 binds to a review artefact, not a heading
+
+Ticket: IAN-286. Branch: `feat/r517-review-artefact`. PR: #(pending).
+
+## Summary
+
+R-517 requires a blocking Codex review before any pull request merges, and until this change its gate in `claude/hooks/git-workflow-guard.sh` denied `gh pr merge` unless the pull request body carried a Markdown heading whose text began with "Codex review" and at least one non-blank line under it. That predicate checks a ritual rather than a review: it cannot tell a real review from the literal text `Codex review\n\nnone`, and four adversarial review rounds plus two Copilot rounds were spent making the presence check unevadable while it went on asking the wrong question.
+
+It failed in production on 2026-09-23. A session checked PR #104 for a review with `gh pr view 104 --json body --jq '.body|test("## Codex review")'`, got `true`, and reported the pull request as reviewed. The match was the sentence "R-517 Codex review has not run; this PR has no `## Codex review` section yet." The body asserted the opposite of what the check concluded, and nothing in the gate could tell the difference.
+
+The gate now reads the section as an artefact. It must carry a `reviewer` line, a `model` line, and a `range` line, each with a value, and the range must contain the pull request's head commit as GitHub reports it. This closes spec item B-17 of `claude/docs/superpowers/specs/2026-09-21-harness-instrumentation-design.md`.
+
+## What changed
+
+- `claude/hooks/git-workflow-guard.sh`: the one `gh pr view` call now also asks for `headRefOid`, so the head commit arrives with the body and no second call is made. `has_codex_review_section` became `print_codex_review_section`, which prints the section's content lines instead of answering yes or no, and three new helpers read the artefact out of them: `read_codex_review_field` (the `<label>: <value>` reader, tolerant of a bullet and of `**` emphasis), `is_object_name`, and `has_head_commit_in_range`. `read_codex_artefact_verdict` sequences them and names, in the deny reason, whichever one failed. The trivial-tier ledger is consulted only after the artefact check fails, so the passing path costs no extra git calls.
+- `claude/enforce/tests/git-workflow-guard.test.sh`: every stub whose pull request reaches the R-517 check now reports a head commit and a conforming section, and eleven new cases cover the three missing lines, a label with no value, a label under a different heading, a stale range, a six-character abbreviation, a full 40-character object name, bold labels, and a `gh` that reports no head commit at all. The existing trivial-tier exemption cases are unchanged and still pass.
+- `claude/CLAUDE.md`, `claude/rulebook/reference.md`: R-517's norm line and Spec. The Spec gains a Section bullet describing the three lines and a Range bullet recording the stale-range decision and its reasoning.
+- `claude/skills/task-cleanup/SKILL.md`, `claude/skills/build-by-slice-require-review/SKILL.md`: the `## Codex review` format each skill tells the session to write, now with a worked example.
+- `claude/prompts/codex-pr-review-prompt.md`, `claude/enforce/manifest.json`: the two remaining descriptions of what the gate checks.
+- `codex/` and `cursor/`: regenerated with `node translate/codex.mjs --write` and `node translate/cursor.mjs --write`.
+- `claude/enforce/hook-hashes.txt`: regenerated.
+
+## Architectural decisions
+
+- **Chosen: a stale range denies the merge.** **Alternative:** accept a stale range and record it, warning rather than denying. **Why not:** a review whose range stops short of the head read a tree other than the one about to land, so it records that a review happened at some point without saying anything about what would merge. That is precisely the class of evidence this ticket exists to stop accepting. The case that settled it is PR #106, whose review returned findings against `c20e5a8` while the branch had already moved to `8183e6b`; two of its HIGH findings had been fixed before it reported, and its own preamble had to explain that it described a tree that no longer existed. The remedy is cheap and unambiguous (re-run the review on the current range and rewrite the line from that run), and the cost of the alternative is that the warning becomes the new ritual. The reasoning is written into R-517's Spec so the next person does not re-litigate it from scratch.
+- **Chosen: a textual containment check over `git merge-base --is-ancestor`.** **Alternative:** ask git whether the head commit is reachable from the range's endpoints. **Why not:** the head commit of a pull request need not exist in the checkout the merge runs from, so an ancestry question asked there answers "no" for a range that is in fact current, and the gate would deny correct reviews on any machine that had not fetched the branch. The textual rule is that every hexadecimal run of at least seven characters in the line is read as an object name and one of them must prefix the head commit's, which accepts every abbreviation git itself would.
+- **Chosen: seven characters as the floor for an abbreviation.** **Alternative:** accept any hexadecimal run. **Why not:** short runs appear in ordinary prose (`add`, `face`, `beef`) and would let an unrelated word satisfy the containment check by accident. Seven is git's own default abbreviation length.
+- **Chosen: the trivial-tier exemption waives the whole artefact, not just the heading.** **Alternative:** require the three lines even from a trivial pull request that chose to write a section. **Why not:** the exemption's meaning is that R-517's review is not required for that tier, and a session that voluntarily writes a partial section should not be worse off than one that writes nothing. The ledger check itself is untouched.
+- **Chosen: rewording the deny's generic remedy sentence so it no longer contains the phrase "head commit".** **Alternative:** leave the wording alone. **Why not:** the remedy repeated the phrase the unknown-head verdict uses, which made the fixture's assertion that the deny "names the head commit" satisfiable by boilerplate. It was an assertion that could not fail, which is the defect class this repository has shipped three times in two days. The phrase now survives only where it carries the decision.
+
+## Testing
+
+- `claude/enforce/tests/git-workflow-guard.test.sh` passes, with the slice proved red first under `claude/enforce/tdd.sh` (the red was the selector stub, which pins the exact `--json` field list the hook asks for and so failed before `headRefOid` was requested).
+- Every new assertion was proved able to fail by breaking the implementation in a copy of the harness outside the repository and running the real fixture against it through `CLAUDE_HARNESS_ROOT`. Thirteen mutations were run; each is listed with the assertion that caught it in the pull request body.
+- `bash claude/enforce/tests/run-tests.sh --affected`: ALL ENFORCEMENT TESTS PASS, exit status 0 read directly rather than through a pipe.
+
+## Reflection
+
+What I understand now that I did not at the start: the hard part of this ticket is not the parsing, it is deciding what the gate is allowed to claim. The artefact check proves that the section says who reviewed what, and that the range it claims reaches the commit that would merge. It cannot prove that the named reviewer ran, that the claimed range is the one it read, or that the listed findings are the findings returned. That is a real limit and the Spec now says so in those words, because a gate that is described as proving more than it does is how the 2026-09-23 failure happened in the first place.
+
+What I got wrong first: the fixture's assertion that the unknown-head deny "names the head commit" passed against a deliberately broken implementation, because the generic remedy sentence at the end of every R-517 deny also contains that phrase. The assertion was vacuous and I only found it by running the mutation rather than trusting the green fixture. The lesson generalises past this diff: a substring assertion against a long message is only as strong as the part of the message that is specific to the decision, and the way to know which part that is, is to break the implementation and watch.

@@ -3,7 +3,8 @@
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
 # merge (R-514), denies a non-squash merge (R-512) except a rebase of a PR
 # labeled bundle whose every commit carries a Refs: trailer, denies any merge
-# whose PR body lacks a non-empty Codex review section (R-517), and warns on a cross-cutting
+# whose PR body lacks a Codex review section naming the reviewer, the model,
+# and a range containing the PR's head commit (R-517), and warns on a cross-cutting
 # commit to main (R-511) and a surface-adding commit with no README (R-508),
 # whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
@@ -48,8 +49,19 @@ stubbed_decision() {
 stubbed_reason() {
   payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason'
 }
-CODEX_BODY='## Summary\nWork.\n\n## Codex review\nTwo findings: one fixed in abc1234, one answered in the thread.\n\n## Testing\nGreen.'
-BUNDLE_OK=$(write_gh_stub bundle-ok '{"body":"'"$CODEX_BODY"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
+# The PR's head commit, and a `## Codex review` section that is a review
+# artefact: it names the reviewer, the model, and a range containing that head
+# commit (IAN-286). CODEX_HEAD_OID is what every stub below reports as
+# `headRefOid`, so a range line naming 8183e6b covers what would merge.
+CODEX_HEAD_OID='8183e6b1f0c4d5a6b7c8d9e0f1a2b3c4d5e6f708'
+CODEX_FIELDS='- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b'
+CODEX_BODY='## Summary\nWork.\n\n## Codex review\n'"$CODEX_FIELDS"'\n- Two findings: one fixed in abc1234, one answered in the thread.\n\n## Testing\nGreen.'
+# write_codex_stub <name> <body>: a gh stand-in answering with <body>, no
+# labels or commits, and CODEX_HEAD_OID as the PR's head commit.
+write_codex_stub() {
+  write_gh_stub "$1" '{"body":"'"$2"'","labels":[],"commits":[],"headRefOid":"'"$CODEX_HEAD_OID"'"}'
+}
+BUNDLE_OK=$(write_gh_stub bundle-ok '{"body":"'"$CODEX_BODY"'","headRefOid":"'"$CODEX_HEAD_OID"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
 NO_LABEL=$(write_gh_stub no-label '{"labels":[{"name":"enhancement"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"Refs: IAN-2"}]}')
 MISSING_REFS=$(write_gh_stub missing-refs '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"No trailer here, Refs: IAN-2 inline only"}]}')
 GH_FAILS=$(write_gh_stub gh-fails '' 1)
@@ -66,8 +78,8 @@ case "$(stubbed_reason 'gh pr merge 42 --rebase' "$MISSING_REFS")" in *Refs:*) ;
 # The PR selector is the first positional argument, never a flag's value, and
 # --repo is forwarded: this stub answers as a bundle only for `42 --repo o/r`.
 SELECTOR_STUB="$STUB_DIR/selector"
-printf '%s\n' '{"body":"'"$CODEX_BODY"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
-printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits,body,headRefName,isCrossRepository,url" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
+printf '%s\n' '{"body":"'"$CODEX_BODY"'","headRefOid":"'"$CODEX_HEAD_OID"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
+printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
 chmod +x "$SELECTOR_STUB"
 [ "$(stubbed_decision 'gh pr merge --subject 7 -R o/r --rebase 42' "$SELECTOR_STUB")" = "ask" ]
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SELECTOR_STUB")" = "deny" ]   # --repo dropped: a different PR
@@ -107,11 +119,11 @@ chmod +x "$MARKER_GH"
 # Codex pre-merge review (R-517): every merge, squash included, reads the PR
 # body and passes only when a Markdown heading named "Codex review" is followed
 # by at least one non-blank line before the next heading.
-CODEX_OK=$(write_gh_stub codex-ok '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[]}')
-CODEX_LOWER=$(write_gh_stub codex-lower '{"body":"Intro.\r\n\r\n### codex review\r\nNo findings; checked the spec criteria B-1 to B-4.\r\n","labels":[],"commits":[]}')
-CODEX_MISSING=$(write_gh_stub codex-missing '{"body":"## Summary\nWork.\n\n## Testing\nGreen.","labels":[],"commits":[]}')
-CODEX_INLINE=$(write_gh_stub codex-inline '{"body":"## Summary\nCodex review is pending.","labels":[],"commits":[]}')
-CODEX_EMPTY=$(write_gh_stub codex-empty '{"body":"## Codex review\n\n   \n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_OK=$(write_codex_stub codex-ok ''"$CODEX_BODY"'')
+CODEX_LOWER=$(write_codex_stub codex-lower 'Intro.\r\n\r\n### codex review\r\nReviewer: Codex\r\nModel: gpt-5-codex\r\nRange: c20e5a8..8183e6b\r\nNo findings; checked the spec criteria B-1 to B-4.\r\n')
+CODEX_MISSING=$(write_codex_stub codex-missing '## Summary\nWork.\n\n## Testing\nGreen.')
+CODEX_INLINE=$(write_codex_stub codex-inline '## Summary\nCodex review is pending.')
+CODEX_EMPTY=$(write_codex_stub codex-empty '## Codex review\n\n   \n## Testing\nGreen.')
 CODEX_NULL=$(write_gh_stub codex-null '{"body":null,"labels":[],"commits":[]}')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_OK")" = "ask" ]       # section present: on to R-514's ask
 [ "$(stubbed_decision 'gh pr merge 42 --squash --delete-branch' "$CODEX_LOWER")" = "ask" ]  # any heading level, any case, CRLF
@@ -126,7 +138,7 @@ case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_MISSING")" in *R-517*Co
 [ "$(stubbed_decision 'gh pr merge 42 -r' "$CODEX_OK")" = "deny" ]             # R-517 never waives R-512's bundle check
 # A section quoted inside a fenced code block (a PR template's example) is not
 # the section.
-CODEX_FENCED=$(write_gh_stub codex-fenced '{"body":"## Summary\nTemplate:\n```\n## Codex review\nexample text\n```\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_FENCED=$(write_codex_stub codex-fenced '## Summary\nTemplate:\n```\n## Codex review\nexample text\n```\n## Testing\nGreen.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCED")" = "deny" ]
 # One gh view vouches for one PR, so a command that merges two is denied.
 [ "$(stubbed_decision 'gh pr merge 42 --squash && gh pr merge 43 --squash' "$CODEX_OK")" = "deny" ]
@@ -145,11 +157,11 @@ CODEX_FENCED=$(write_gh_stub codex-fenced '{"body":"## Summary\nTemplate:\n```\n
 [ "$(stubbed_decision 'gh pr merge 42 --squash && gh pr -R o/r merge 43 --squash' "$CODEX_OK")" = "deny" ]  # mixed shapes
 [ "$(stubbed_decision 'git commit -m "docs: explain gh pr merge"' "$CODEX_OK")" != "deny" ]  # quoted mention in a message
 # A fence closes only on its own delimiter, and an indented code block is not a heading.
-CODEX_MIXED_FENCE=$(write_gh_stub codex-mixed-fence '{"body":"## Summary\n~~~\n```\n## Codex review\nexample\n~~~\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_MIXED_FENCE=$(write_codex_stub codex-mixed-fence '## Summary\n~~~\n```\n## Codex review\nexample\n~~~\n## Testing\nGreen.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_MIXED_FENCE")" = "deny" ]
-CODEX_INDENTED=$(write_gh_stub codex-indented '{"body":"## Summary\nExample:\n\n    ## Codex review\n    example text\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_INDENTED=$(write_codex_stub codex-indented '## Summary\nExample:\n\n    ## Codex review\n    example text\n\n## Testing\nGreen.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_INDENTED")" = "deny" ]
-CODEX_THREE_SPACES=$(write_gh_stub codex-three-spaces '{"body":"   ## Codex review\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
+CODEX_THREE_SPACES=$(write_codex_stub codex-three-spaces '   ## Codex review\n'"$CODEX_FIELDS"'\n- No findings.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_THREE_SPACES")" = "ask" ]      # up to three spaces is still a heading
 # Round-two review: a parenthesized mention is not a merge, and more wrapper
 # shapes are recognized.
@@ -161,9 +173,9 @@ for wrapped in '\gh pr merge 42 --squash' '"gh" pr merge 42 --squash' 'timeout 3
 done
 [ "$(stubbed_decision $'echo x\\\\\ngh pr merge 42 --squash' "$CODEX_MISSING")" = "deny" ]   # an escaped backslash does not join lines
 # An HTML comment is not the section, and a fence does not close on a line with trailing text.
-CODEX_COMMENTED=$(write_gh_stub codex-commented '{"body":"## Summary\n\n<!--\n## Codex review\n<reviewer>, <range>, findings\n-->\n\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_COMMENTED=$(write_codex_stub codex-commented '## Summary\n\n<!--\n## Codex review\n<reviewer>, <range>, findings\n-->\n\n## Testing\nGreen.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_COMMENTED")" = "deny" ]
-CODEX_FENCE_TRAILING=$(write_gh_stub codex-fence-trailing '{"body":"```\ncode\n``` trailing\n## Codex review\nreal content\n```","labels":[],"commits":[]}')
+CODEX_FENCE_TRAILING=$(write_codex_stub codex-fence-trailing '```\ncode\n``` trailing\n## Codex review\nreal content\n```')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCE_TRAILING")" = "deny" ]
 # Round three: merges are found by a quote-aware shell scan, not a regex, so
 # control flow, quoting, and escapes cannot hide one, and a mention inside a
@@ -183,12 +195,60 @@ for mention in 'GIT_EDITOR=true git commit -m "fix(enforce): gh pr merge wrapper
   [ "$(stubbed_decision "$mention" "$CODEX_MISSING")" != "deny" ] || { echo "a mention was read as a merge: $mention" >&2; exit 1; }
 done
 # Inline HTML comments and a `<!--` in a code span do not hide a real section.
-CODEX_HEADING_COMMENT=$(write_gh_stub codex-heading-comment '{"body":"## Codex review <!-- required -->\nReviewer: Codex. No findings.","labels":[],"commits":[]}')
+CODEX_HEADING_COMMENT=$(write_codex_stub codex-heading-comment '## Codex review <!-- required -->\n'"$CODEX_FIELDS"'\n- No findings.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_HEADING_COMMENT")" = "ask" ]
-CODEX_LINE_COMMENT=$(write_gh_stub codex-line-comment '{"body":"## Codex review\nReviewer: Codex. No findings. <!-- generated -->","labels":[],"commits":[]}')
+CODEX_LINE_COMMENT=$(write_codex_stub codex-line-comment '## Codex review\n'"$CODEX_FIELDS"'\n- No findings. <!-- generated -->')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_LINE_COMMENT")" = "ask" ]
-CODEX_CODE_SPAN=$(write_gh_stub codex-code-span '{"body":"## Codex review\nReviewer: Codex. Fixed the `<!--` handling.\n## Testing\nGreen.","labels":[],"commits":[]}')
+CODEX_CODE_SPAN=$(write_codex_stub codex-code-span '## Codex review\n'"$CODEX_FIELDS"'\n- Fixed the `<!--` handling.\n## Testing\nGreen.')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_CODE_SPAN")" = "ask" ]
+# The section is a review artefact, not a ritual heading (IAN-286). It names the
+# reviewer that ran, the model it ran on, and the range reviewed; each missing
+# line denies. A range that does not contain the PR's head commit denies too: a
+# review of an older tree records that a review happened without vouching for
+# what would merge, and R-517 wants the second thing.
+# codex_artefact <lines>: the JSON-escaped body of a PR whose only section is
+# `## Codex review` carrying <lines>. The newlines stay the two characters JSON
+# decodes, never real ones, which would not parse.
+codex_artefact() {
+  printf '%s' '## Codex review\n'"$1"
+}
+CODEX_NO_REVIEWER=$(write_codex_stub codex-no-reviewer "$(codex_artefact '- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_NO_MODEL=$(write_codex_stub codex-no-model "$(codex_artefact '- reviewer: Codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_NO_RANGE=$(write_codex_stub codex-no-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- No findings.')")
+CODEX_BLANK_REVIEWER=$(write_codex_stub codex-blank-reviewer "$(codex_artefact '- reviewer:\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_STALE_RANGE=$(write_codex_stub codex-stale-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 4f2a1b9..c20e5a8\n- Two HIGH findings, both fixed.')")
+CODEX_SHORT_RANGE=$(write_codex_stub codex-short-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6')")
+CODEX_FULL_OID=$(write_codex_stub codex-full-oid "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_OID"'\n- No findings.')")
+CODEX_BOLD_FIELDS=$(write_codex_stub codex-bold-fields "$(codex_artefact '**Reviewer:** Claude subagent (fable), fallback: Codex usage limit reached\n**Model:** fable\n**Range:** c20e5a8..8183e6b\nNo findings; checked B-1 to B-4.')")
+CODEX_RANGE_ELSEWHERE=$(write_codex_stub codex-range-elsewhere "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- No findings.\n\n## Testing\n- range: c20e5a8..8183e6b')")
+CODEX_NO_HEAD_OID=$(write_gh_stub codex-no-head-oid '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[]}')
+# A conforming artefact reaches R-514's ask; the abbreviation may be any length
+# from seven characters up to the whole object name, and the labels may be
+# bulleted, bold, or bare.
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FULL_OID")" = "ask" ]
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_BOLD_FIELDS")" = "ask" ]
+# Each missing line denies, and the deny names the line that is missing, so the
+# reader is told which of the three to add rather than to re-read the rule.
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_REVIEWER")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_REVIEWER")" in *reviewer*) ;; *) echo "a section with no reviewer line must be denied by name" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_MODEL")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_MODEL")" in *model*) ;; *) echo "a section with no model line must be denied by name" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_RANGE")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_RANGE")" in *range*) ;; *) echo "a section with no range line must be denied by name" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_BLANK_REVIEWER")" = "deny" ]   # a label with no value names nobody
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_RANGE_ELSEWHERE")" = "deny" ]  # a range line under another heading is not this section's
+# A stale range is the PR #106 case: the review reported against c20e5a8 while
+# the branch had moved to 8183e6b. It denies, and the deny names the head
+# commit the range has to cover, so the remedy is to re-run the review rather
+# than to retype the line.
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" in *8183e6b*) ;; *) echo "a stale-range deny must name the head commit the range misses" >&2; exit 1 ;; esac
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SHORT_RANGE")" = "deny" ]      # six characters is too ambiguous to match a head
+# The head commit comes from the one gh pr view the hook already makes; a gh
+# that does not report it leaves the range uncheckable, which fails closed.
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_HEAD_OID")" = "deny" ]
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_HEAD_OID")" in *head\ commit*) ;; *) echo "an unreadable head commit must be denied by name" >&2; exit 1 ;; esac
+
 # Trivial-tier exemption (R-517): a PR with no Codex review section merges only
 # when task-start's ledger (.claude/task-tier.json, untracked, in the checkout
 # the merge runs from) records the trivial tier for the PR's own head branch,

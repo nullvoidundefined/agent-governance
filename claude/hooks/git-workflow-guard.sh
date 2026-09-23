@@ -8,10 +8,13 @@
 #          trailer on every commit, read from `gh pr view`); feature branches
 #          squash-merge into one commit per feature
 #   R-517  `gh pr merge` is denied unless the PR body, read from `gh pr view`,
-#          carries a Markdown heading named "Codex review" with at least one
-#          non-blank line under it (the blocking pre-merge Codex review), or
-#          task-start's untracked ledger records the trivial tier for the PR's
-#          own head branch in the same origin repository (never a body marker)
+#          carries a Markdown heading named "Codex review" whose section names
+#          the `reviewer` that ran, the `model` it ran on, and the `range` it
+#          read, that range containing the PR's head commit from the same
+#          `gh pr view` (the blocking pre-merge Codex review, proved by its
+#          artefact rather than by the heading), or task-start's untracked
+#          ledger records the trivial tier for the PR's own head branch in the
+#          same origin repository (never a body marker)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -183,7 +186,7 @@ parse_merge_arguments() {
 
 # run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $MERGE_CWD,
 # asking for the labels, commits, body, and the head branch, fork flag, and
-# URL the R-517 trivial exemption checks, and prints its output, returning non-zero when gh fails or outlives
+# URL the R-517 trivial exemption checks and the head commit its range check reads, and prints its output, returning non-zero when gh fails or outlives
 # CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
 # fail-closed: a hook killed by the harness timeout prints nothing, and an
 # empty PreToolUse output is an allow. Polls in 0.2s steps rather than using a
@@ -193,7 +196,7 @@ run_gh_view_with_deadline() {
   local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
   deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
   view_output_file=$(mktemp) || return 1
-  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
+  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
     if [ "$waited_steps" -ge "$deadline_steps" ]; then
@@ -262,10 +265,12 @@ read_bundle_verdict() {
   echo ok
 }
 
-# has_codex_review_section <body>: true when the PR body holds a Markdown
-# heading (any level, any case) whose text starts with "Codex review" and at
-# least one non-blank line follows it before the next heading. A mention in
-# prose is not a section, and a bare heading records no findings. Lines inside
+# print_codex_review_section <body>: prints the non-blank lines under the PR
+# body's Markdown heading (any level, any case) whose text starts with "Codex
+# review", up to the next heading, and prints nothing when there is no such
+# heading or nothing follows it. A mention in prose is not a section, and a
+# bare heading records no findings. The caller reads the artefact's lines out
+# of what this prints, so the section is read once. Lines inside
 # a fenced code block count as neither heading nor content, so a template that
 # quotes the section as an example does not pass for it; a fence closes only
 # on a line holding nothing but a run of its own character at least as long
@@ -274,7 +279,7 @@ read_bundle_verdict() {
 # dropped, so a `<!--` quoted in a code span opens nothing.
 # A heading is indented by at most three spaces, since four make it an
 # indented code block. No regex intervals: older mawk lacks them.
-has_codex_review_section() {
+print_codex_review_section() {
   printf '%s\n' "$1" | tr -d '\r' | awk '
     in_fence {
       if ($0 ~ /^( |  |   )?(`+|~+)[ \t]*$/) {
@@ -308,8 +313,84 @@ has_codex_review_section() {
       in_section = (index(heading, "codex review") == 1)
       next
     }
-    in_section && line ~ /[^ \t]/ { found = 1 }
-    END { exit found ? 0 : 1 }'
+    in_section && line ~ /[^ \t]/ { print line }'
+}
+
+# read_codex_review_field <section> <label>: prints the value of the section's
+# first `<label>: <value>` line, or nothing when no line carries that label
+# with a value. A leading bullet and surrounding `**`/`__` emphasis are part of
+# the labelling, not of the name, so `- **Reviewer:** Codex` reads as `Codex`.
+read_codex_review_field() {
+  printf '%s\n' "$1" | awk -v label="$2" '
+    {
+      line = $0
+      sub(/^[ \t]*/, "", line)
+      sub(/^[-*+][ \t]+/, "", line)
+      gsub(/\*\*/, "", line)
+      gsub(/__/, "", line)
+      colon = index(line, ":")
+      if (!colon) next
+      name = tolower(substr(line, 1, colon - 1))
+      gsub(/[ \t]/, "", name)
+      if (name != label) next
+      value = substr(line, colon + 1)
+      sub(/^[ \t]+/, "", value)
+      sub(/[ \t]+$/, "", value)
+      if (value == "") next
+      print value
+      exit
+    }'
+}
+
+# is_object_name <word>: true when the word is a usable abbreviated or full
+# object name, which is at least seven hexadecimal characters and nothing
+# else. Shorter than seven is too ambiguous to identify one commit.
+is_object_name() {
+  [ "${#1}" -ge 7 ] || return 1
+  [ -z "$(printf '%s' "$1" | tr -d '0-9a-fA-F')" ]
+}
+
+# has_head_commit_in_range <range> <head oid>: true when the range names the
+# PR's head commit. Every hexadecimal run of at least seven characters in the
+# range is read as an object name, and one of them must be a prefix of the head
+# commit's. The check is textual because the head commit of a PR need not exist
+# in the checkout the merge runs from, so `git merge-base` would answer "no"
+# for a range that is in fact current. Six characters or fewer are too
+# ambiguous to accept as a match.
+has_head_commit_in_range() {
+  local head_oid
+  head_oid=$(printf '%s' "$2" | tr 'A-Z' 'a-z')
+  [ "${#head_oid}" -ge 7 ] || return 1
+  printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-f0-9' '\n' |
+    awk -v head="$head_oid" '
+      length($0) >= 7 && substr(head, 1, length($0)) == $0 { found = 1 }
+      END { exit found ? 0 : 1 }'
+}
+
+# read_codex_artefact_verdict <section>: prints "ok" when the Codex review
+# section is a review artefact, otherwise the sentence naming what it is
+# missing. The artefact is the reviewer that ran, the model it ran on, and the
+# range it read, and the range must contain the PR's head commit: a review of
+# an older tree records that a review happened without saying anything about
+# what would merge, so it does not satisfy R-517 (IAN-286, from PR #106, whose
+# review reported against a commit two fixes behind the branch).
+read_codex_artefact_verdict() {
+  local section="$1" reviewer model range head_oid
+  reviewer=$(read_codex_review_field "$section" reviewer)
+  [ -n "$reviewer" ] ||
+    { echo "its \`## Codex review\` section carries no \`reviewer\` line with a value, so nothing in the PR records who or what read the diff"; return 0; }
+  model=$(read_codex_review_field "$section" model)
+  [ -n "$model" ] ||
+    { echo "its \`## Codex review\` section carries no \`model\` line with a value, so nothing in the PR records which model the review ran on"; return 0; }
+  range=$(read_codex_review_field "$section" range)
+  [ -n "$range" ] ||
+    { echo "its \`## Codex review\` section carries no \`range\` line with a value, so nothing in the PR records which diff was read"; return 0; }
+  head_oid=$(printf '%s' "$PR_JSON" | jq -r '.headRefOid // "" | strings' 2>/dev/null || true)
+  is_object_name "$head_oid" ||
+    { echo "gh pr view returned no head commit for the PR, so the hook cannot tell whether the \`range\` line covers the state that would merge"; return 0; }
+  has_head_commit_in_range "$range" "$head_oid" ||
+    { echo "its \`## Codex review\` section names the range \`$range\`, which does not contain the PR's head commit $(printf '%.7s' "$head_oid"), so the review read a tree other than the one that would merge"; return 0; }
+  echo ok
 }
 
 # read_github_slug <url>: prints the lowercase owner/repo a GitHub remote or
@@ -354,20 +435,31 @@ read_ledger_state() {
 }
 
 # read_codex_review_verdict: prints "ok" when the merged PR's body carries the
-# R-517 Codex review section or the PR is a ledger-verified trivial-tier PR,
-# otherwise the sentence naming what is missing.
+# R-517 review artefact or the PR is a ledger-verified trivial-tier PR,
+# otherwise the sentence naming what is missing. The ledger is consulted only
+# once the artefact has failed, so the common path costs no git calls.
 read_codex_review_verdict() {
-  local pr_body
+  local pr_body section verdict
   if [ -n "$PR_VIEW_PROBLEM" ]; then
     echo "$PR_VIEW_PROBLEM"
     return 0
   fi
   pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
-  if has_codex_review_section "$pr_body" || is_trivial_tier_pr; then
+  section=$(print_codex_review_section "$pr_body")
+  if [ -n "$section" ]; then
+    verdict=$(read_codex_artefact_verdict "$section")
+  else
+    verdict="the PR body has no \`## Codex review\` section with content under it"
+  fi
+  if [ "$verdict" = ok ]; then
     echo ok
     return 0
   fi
-  echo "the PR body has no \`## Codex review\` section with content under it, and task-start's ledger does not exempt it as a trivial-tier PR (the ledger holds: $(read_ledger_state); a later task-tier.sh set on this checkout replaces it)."
+  if is_trivial_tier_pr; then
+    echo ok
+    return 0
+  fi
+  echo "$verdict, and task-start's ledger does not exempt it as a trivial-tier PR (the ledger holds: $(read_ledger_state); a later task-tier.sh set on this checkout replaces it)."
 }
 
 # classify_merge_commands <command> <is-nested>: walks the command's simple
@@ -521,7 +613,7 @@ if [ "$MERGE_TOTAL" -gt 0 ]; then
   fi
   CODEX_REVIEW_VERDICT=$(read_codex_review_verdict)
   [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
-    deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body summarizing the findings and their dispositions; then merge again."
+    deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line, a \`range\` line covering the commit this PR would merge, and the findings with their dispositions; then merge again."
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
 
