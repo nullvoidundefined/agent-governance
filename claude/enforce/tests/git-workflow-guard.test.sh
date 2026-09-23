@@ -218,6 +218,12 @@ CODEX_NO_RANGE=$(write_codex_stub codex-no-range "$(codex_artefact '- reviewer: 
 CODEX_BLANK_REVIEWER=$(write_codex_stub codex-blank-reviewer "$(codex_artefact '- reviewer:\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
 CODEX_STALE_RANGE=$(write_codex_stub codex-stale-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 4f2a1b9..c20e5a8\n- Two HIGH findings, both fixed.')")
 CODEX_SHORT_RANGE=$(write_codex_stub codex-short-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6')")
+# Two behaviours the parser documents and the suite did not pin: mutating
+# `dots < 2` to `dots < 1` reintroduced a base-less `..<head>`, and deleting
+# the trailing-punctuation strip left `c20e5a8..8183e6b.` accepted; both left
+# the suite green (R-517 re-review of PR #119).
+CODEX_NO_BASE_RANGE=$(write_codex_stub codex-no-base-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: ..8183e6b')")
+CODEX_PUNCT_RANGE=$(write_codex_stub codex-punct-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b.')")
 CODEX_FULL_OID=$(write_codex_stub codex-full-oid "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_OID"'\n- No findings.')")
 CODEX_BOLD_FIELDS=$(write_codex_stub codex-bold-fields "$(codex_artefact '**Reviewer:** Claude subagent (fable), fallback: Codex usage limit reached\n**Model:** fable\n**Range:** c20e5a8..8183e6b\nNo findings; checked B-1 to B-4.')")
 CODEX_RANGE_ELSEWHERE=$(write_codex_stub codex-range-elsewhere "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- No findings.\n\n## Testing\n- range: c20e5a8..8183e6b')")
@@ -283,6 +289,8 @@ CODEX_EXAMPLE_AND_REAL=$(write_codex_stub codex-example-and-real '## Summary\nTe
 # the branch had moved to 8183e6b. It denies, and the deny names the head
 # commit the range has to cover, so the remedy is to re-run the review rather
 # than to retype the line.
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_BASE_RANGE")" = "deny" ] || { echo "a base-less ..<head> is not a range and must deny" >&2; exit 1; }
+[ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_PUNCT_RANGE")" = "ask" ] || { echo "a range with trailing punctuation must still be read" >&2; exit 1; }
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" = "deny" ]
 case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" in *8183e6b*) ;; *) echo "a stale-range deny must name the head commit the range misses" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SHORT_RANGE")" = "deny" ]      # six characters is too ambiguous to match a head
