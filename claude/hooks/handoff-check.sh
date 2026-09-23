@@ -21,7 +21,31 @@ set -uo pipefail
 
 INPUT=$(cat 2>/dev/null || true)
 FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || true)
-case "$FILE" in */docs/session-handoff/session-handoff.md|docs/session-handoff/session-handoff.md) ;; *) exit 0 ;; esac
+# Two kinds of handoff live under docs/session-handoff/ (IAN-260):
+#
+#   KIND=index    session-handoff.md, the one file session-start.sh loads.
+#                 Rewritten every session, so it is the contended one and it
+#                 carries the cap. It also owes a `## Sessions` list, which is
+#                 the only route from the index to the per-session files.
+#   KIND=session  YYYY-MM-DD-<slug>.md, written by exactly one session.
+#                 Same six sections, no cap: nothing else writes it, so there
+#                 is nothing for a cap to protect, and the cap is what forced
+#                 four sessions to be folded by hand and lost content twice.
+#
+# Anything else is silent, including a dated file outside this directory and
+# an undated file inside it (a README, an index of indexes), because applying
+# handoff rules to a document that is not one is noise.
+KIND=""
+case "$FILE" in
+  */docs/session-handoff/session-handoff.md|docs/session-handoff/session-handoff.md) KIND="index" ;;
+  */docs/session-handoff/*|docs/session-handoff/*)
+    BASENAME="${FILE##*/}"
+    case "$BASENAME" in
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md) KIND="session" ;;
+    esac
+    ;;
+esac
+[ -n "$KIND" ] || exit 0
 CONTENT=$(printf '%s' "$INPUT" | jq -r '.tool_input.content // ""' 2>/dev/null || true)
 [ -n "$CONTENT" ] || exit 0
 
@@ -49,9 +73,19 @@ narrative_without_task_state() {
   '
 }
 
-NARRATIVE=$(narrative_without_task_state "$CONTENT")
-bytes=$(printf '%s' "$NARRATIVE" | wc -c | tr -d ' ')
-[ "$bytes" -le "$MAX_BYTES" ] || missing+=("it is $bytes bytes, over the 8 KB cap; cut detail, not sections")
+# The cap is the index's alone. A session file is uncontended, so measuring it
+# buys nothing and costs the detail the next session needs (IAN-260).
+if [ "$KIND" = "index" ]; then
+  NARRATIVE=$(narrative_without_task_state "$CONTENT")
+  bytes=$(printf '%s' "$NARRATIVE" | wc -c | tr -d ' ')
+  [ "$bytes" -le "$MAX_BYTES" ] || missing+=("it is $bytes bytes, over the 8 KB cap; move detail into a session file, do not cut sections")
+fi
+
+# The index also owes a `## Sessions` list, without which it stops being a
+# route to the session files. That check is deliberately NOT here yet: it
+# would make today's index non-compliant, and no session file exists for it
+# to list until the migration slice writes them. It lands with that slice,
+# together with the update to handoff-check.test.sh's compliant fixture.
 
 HEADINGS=$(printf '%s\n' "$CONTENT" | grep -E '^## ' | tr '[:upper:]' '[:lower:]' || true)
 EXPECTED=("last commit" "production state" "session metrics" "what shipped" "pending" "next session")
