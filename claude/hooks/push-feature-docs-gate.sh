@@ -62,8 +62,9 @@ TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 # run_doc_check <rule> <label> <script>: runs one canonical check from the
 # repository top; prints "<rule> (<label>): <report>" when it reports a gap
 # (exit 1) and nothing otherwise. The caller joins the reports, since command
-# substitution strips any trailing separator printed here (PR #124 review). A missing script is named on stderr and
-# skipped, so one absent file never disables the other check.
+# substitution strips any trailing separator printed here (PR #124 review). A
+# missing script is named on stderr and skipped, so one absent file never
+# disables the other check.
 run_doc_check() {
   local report status
   [ -f "$3" ] || { echo "push-feature-docs-gate: $3 is missing; $1 not checked" >&2; return 0; }

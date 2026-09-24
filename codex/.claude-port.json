@@ -82,7 +82,7 @@
     "skills/structure-conventions/SKILL.md": "sha256:de4a1b39d783afcb671ee42ee5407c43a3b8f3fb42c9a698ecb3a7001b08c41a",
     "skills/task-cleanup/SKILL.md": "sha256:78e197f6b97234ef732552bd1e264a8273945f108def186772e040bc403422f2",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
-    "skills/task-start/SKILL.md": "sha256:07926e48be8392dd11f356ade1f3a0bf89692a42539c277a5698273dd7b36897",
+    "skills/task-start/SKILL.md": "sha256:b454017b2d684441d55313ca36c33b51f7863339331551b79b101c7ad719adf9",
     "skills/task-start/scripts/finding.sh": "sha256:1093603bacdf34684e826d1c2a45027ad47baea7c587643be7c153842e5bd86c",
     "skills/task-start/scripts/task-provenance.sh": "sha256:376189563db5db8f512d5cbd53ca39924ac1747a24fde77916ed73a6e1f2b919",
     "skills/task-start/scripts/task-tier.sh": "sha256:2537e1932db4839aa3fc63160014ccc4fa08beeab4834ac034de401e7e829b5f",

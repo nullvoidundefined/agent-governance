@@ -196,11 +196,13 @@ R=$(make_repo o7); write_file "$R" tests/test_trips.py 'logger.info("fixture_loa
 write_file "$R" src/services/createTrip.test.ts 'logger.info({}, "Fixture loaded");\n'; run_check "$R"
 check "O-7 test-file log events exit 0" test "$ST" -eq 0
 
-# O-8: observabilityDoc false turns off only the observability half.
+# O-8: observabilityDoc false turns off only the observability half. The
+# manifest is seeded on main first, so feat/x can still fast-forward onto it.
 R=$(make_repo o8); printf '{"observabilityDoc": false}\n' > "$R/.enforce.json"
+write_base "$R" package.json "$PKG_BASE"
 write_file "$R" app/services/a.py 'logger.info("trip_created", trip_id=1)\n'; run_check "$R"
 check "O-8 observabilityDoc false exits 0" test "$ST" -eq 0
-write_base "$R" package.json "$PKG_BASE"; write_file "$R" package.json "$PKG_ADDED"; run_check "$R"
+write_file "$R" package.json "$PKG_ADDED"; run_check "$R"
 check "O-8 observabilityDoc false still checks stack" test "$ST" -eq 1
 
 # O-9: extra registries from .enforce.json; a bad pattern is ignored.
