@@ -272,11 +272,41 @@ bash ~/.claude/enforce/tdd.sh validate slice-critic   # nothing written at all
 
 It reads the boundary from `enforce/role-policy.json` (R-411) and judges `git status --porcelain` against it, so the orchestrator never applies the patterns by eye; `tdd.sh status` still prints the lock when the refusal needs context. Run the implementer's validate before the GREEN commit, the critic's after it.
 
+**The author's own mistake.** When whoever wrote this slice's RED test (you in
+Standard, the test author in Complex and Saga) finds a bug in it while the
+phase is still `red`, before any GREEN and before the RED is pushed, fix it
+with `tdd.sh amend` instead of a `DISPUTE:`:
+
+```bash
+bash ~/.claude/enforce/tdd.sh amend <test file>   # phase amending: only this file is writable
+# fix the test
+bash ~/.claude/enforce/tdd.sh amend <test file>   # must still fail for a classified reason; back to red
+```
+
+The second run re-hashes the file and records the amendment in the lock
+(`amendments`, with git blobs of the test before and after, so
+`git diff <fromBlob> <toBlob>` shows the change); commit the amended test
+before the implementation. It is refused for a test from an earlier slice,
+after green, and once the RED is pushed. A dispatched `implementer` agent can
+never amend, since role policy denies it every test write; in Standard, where
+one session writes both, the only brake is the still-failing requirement and
+the recorded diff, so amend to fix the test's own mistake, never to make the
+implementation easier. Weakening a test is a `DISPUTE:`.
+
 A `DISPUTE:` return stops the loop. Show the user the test, the claim, and the
 spec line. If the user agrees the test is wrong, `tdd.sh` cannot unlock it: the
 user deletes `.claude/tdd-lock.json` outside the session, you `open` the slice
 again, and the test author writes the corrected RED. Never edit the test
 yourself.
+
+**A lock from a dead session.** `tdd.sh open` refuses while another slice's
+lock exists. When that lock's session is gone, run `tdd.sh abandon` rather than
+asking the user to delete it: it closes the lock and logs the close only when
+the lock recorded a test, nothing has run `tdd.sh` there for
+`CLAUDE_TDD_STALE_HOURS` (default 4), no live process outside this session
+works in the tree, and every locked test is committed and passing with the rest
+of the suite green. Any refusal names what is missing; unfinished work means
+resume the slice, and anything else goes to the user.
 
 ## Common mistakes
 
@@ -289,6 +319,8 @@ yourself.
 | Running `codex exec` with stdin open or piped through `tail` | it blocks on stdin, or looks hung until exit; close stdin and poll the log file |
 | Letting the implementer "fix" a flaky assertion | denied; the only path is `DISPUTE:` |
 | Skipping the RED commit | `tdd.sh green` hash-checks against the lock only and warns |
+| Asking the user to delete the lock over a typo in the test you just wrote | `tdd.sh amend <test file>` twice, while still red |
+| Deleting a stale lock by hand | denied (R-410); `tdd.sh abandon` closes it when its tests are committed and passing |
 | Dispatching the critic with the implementer's summary | anchored review; give it paths and the diff range only |
 | Batching three behaviors into one slice | three tests, one implementation, no minimal step; slice again |
 | Using this skill for exploratory or research work | nothing to assert; use plain dispatch |

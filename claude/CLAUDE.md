@@ -81,9 +81,9 @@ R-405: Fix root causes; never weaken the protection that surfaced the failure (C
 R-406: Give every user-input handler one negative-input test (oversized payload, injection, malformed encoding). [manual]
 R-408: Lint/format staged files only in pre-commit; full sweeps in pre-push and CI. [manual]
 R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before committing again. [manual]
-R-410: Never write a gate input (`.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, `.claude/tdd-lock.json`) nor, once a slice is red, any test, fixture, or spec path; a test believed wrong returns `DISPUTE: <test>` to the user. [hook:protected-path-guard]
+R-410: Never write a gate input (`.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, `.claude/tdd-lock.json`) nor, once a slice is red, any test, fixture, or spec path; the slice's own author fixes its unpushed RED test only through `tdd.sh amend <test>` while red; any other test believed wrong returns `DISPUTE: <test>` to the user. [hook:protected-path-guard]
 R-411: Subagent roles write inside their boundary (`enforce/role-policy.json`): test-author only test and fixture trees, implementer never tests, fixtures, or specs, slice-critic nothing. [hook:protected-path-guard]
-R-412: Work in slices: `tdd.sh open`, the failing test, `tdd.sh red` before any production edit, `tdd.sh green` before the commit, `tdd.sh close`; the lock denies production writes while open and test writes once red. [hook:protected-path-guard]
+R-412: Work in slices: `tdd.sh open`, the failing test, `tdd.sh red` before any production edit, `tdd.sh green` before the commit, `tdd.sh close`; the lock denies production writes while open and test writes once red; a dead session's stale lock whose tests are committed and passing closes with `tdd.sh abandon`, never by deleting it. [hook:protected-path-guard]
 
 ## Git and process (R-5xx)
 

@@ -38,10 +38,22 @@
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
 #       refactor.
+#   tdd.sh amend <test file>
+#       the author's fix to a test it just proved RED: from red, opens a window
+#       (phase "amending") in which only that file is writable; run again, it
+#       requires the amended test to still fail for a classified reason,
+#       re-hashes it, records the amendment, and returns to red. Refused for a
+#       test the slice did not lock, outside red, and once the RED is pushed.
 #   tdd.sh close
 #       removes the lock; refused unless the phase is green, or the phase is
 #       open and no test was ever locked (nothing could have been written
 #       under the lock, so an abandoned slice need not wait for the user).
+#   tdd.sh abandon
+#       closes a dead session's lock without the user: refused unless the lock
+#       recorded a test, has seen no tdd.sh activity for CLAUDE_TDD_STALE_HOURS
+#       (default 4), no live process outside this session works in the tree,
+#       and every locked test is committed and passing with the suite green.
+#       Logged to CLAUDE_TDD_ABANDON_LOG.
 #   tdd.sh status
 #       prints the lock.
 #   tdd.sh validate <role>
@@ -691,7 +703,7 @@ open_refactor() {
 
 cmd_red() {
   require_lock
-  case "$(phase)" in open | red) ;; refactor) die "this is a refactor slice; a new behavior is a new slice: 'tdd.sh green', 'tdd.sh close', then 'tdd.sh open'" ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
+  case "$(phase)" in open | red) ;; amending) die "an amendment of $(jq -r '.amending.path' "$LOCK") is open; finish it with 'tdd.sh amend $(jq -r '.amending.path' "$LOCK")' first" ;; refactor) die "this is a refactor slice; a new behavior is a new slice: 'tdd.sh green', 'tdd.sh close', then 'tdd.sh open'" ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
   esac
   [ $# -gt 0 ] || die "usage: tdd.sh red <test file | test file::test id>..."
   local tests_pattern spec='[]' rels=() rel file id
@@ -747,7 +759,11 @@ check_hashes() {
 
 cmd_green() {
   require_lock
-  case "$(phase)" in red | green | refactor) ;; *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;; esac
+  case "$(phase)" in
+    red | green | refactor) ;;
+    amending) die "an amendment of $(jq -r '.amending.path' "$LOCK") is open; finish it with 'tdd.sh amend $(jq -r '.amending.path' "$LOCK")' before green" ;;
+    *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;;
+  esac
   check_hashes
   local rels names rel record locked_rels=()
   rels=$(jq -r '.tests[].path' "$LOCK")
@@ -818,13 +834,187 @@ cmd_expected_red() {
   require_lock
   local current rel locked_rels=()
   current=$(phase)
-  [ "$current" = red ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
+  [ "$current" = red ] || [ "$current" = amending ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
   while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
   [ "${#locked_rels[@]}" -gt 0 ] || die "phase is red but the lock records no test file; repair or delete $LOCK_RELATIVE outside the session"
   run_suite "${locked_rels[@]}"
   outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null
   rm -f "$REPORT"
   say "EXPECTED RED: every failure is one of the ${#locked_rels[@]} locked test file(s)"
+}
+
+# cmd_amend <test file>: the author's own fix to a test it just proved RED,
+# without the user deleting the lock (2026-09-24). Run twice. From phase red
+# the first run opens a window, phase "amending", in which the guard lets
+# exactly that file be written and nothing else, production included. From
+# "amending" the second run re-runs the suite, requires the amended test to
+# still fail for a classified reason with nothing outside the locked tests
+# failing, re-hashes it, appends the change to .amendments with git blobs of
+# the file before and after (`git diff <fromBlob> <toBlob>` shows what the
+# author changed; the blobs are unreferenced, so a gc prunes them after its
+# expiry), and returns to
+# red. Refused for a test this slice did not lock (an earlier slice's test
+# stays under R-410), in every phase but red and amending (after green above
+# all), and once the RED version of the test, or a committed red lock, is
+# reachable from a remote-tracking ref: pushed history is shared, and a
+# changed test there goes through `DISPUTE:` and the user.
+cmd_amend() {
+  require_lock
+  [ $# -eq 1 ] || die "usage: tdd.sh amend <test file>"
+  local rel
+  rel=$(relative "$1")
+  case "$(phase)" in
+    red) start_amendment "$rel" ;;
+    amending) finish_amendment "$rel" ;;
+    *) die "phase is $(phase); a test is amended only while its slice is red, before any GREEN. After that the test is the contract (R-410): return 'DISPUTE: <test id>: <why>' to the user" ;;
+  esac
+}
+
+start_amendment() {
+  local rel="$1"
+  jq -e --arg p "$rel" 'any(.tests[]; .path == $p)' "$LOCK" >/dev/null \
+    || die "$rel is not a test this slice locked at RED; a test from an earlier slice stays read-only (R-410). If it is wrong, return 'DISPUTE: <test id>: <why>' to the user"
+  red_is_pushed "$rel" && die "the RED version of $rel has been pushed, so it is shared history and no longer the author's to amend (R-410). Return 'DISPUTE: <test id>: <why>' to the user"
+  local from_blob
+  from_blob=$(git hash-object -w -- "$rel") || die "could not store $rel in the git object database"
+  jq --arg p "$rel" --arg b "$from_blob" --arg at "$(now)" '.phase = "amending" | .amending = {path: $p, fromBlob: $b, startedAt: $at}' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
+  say "AMENDING: $rel is writable, and nothing else is. Fix the test, then run 'tdd.sh amend $rel' again to re-prove the RED."
+}
+
+finish_amendment() {
+  local rel="$1" open_path
+  open_path=$(jq -r '.amending.path // ""' "$LOCK")
+  [ "$rel" = "$open_path" ] || die "the open amendment is for $open_path; finish it with 'tdd.sh amend $open_path' first"
+  local before ids locked_rels=() path class
+  before=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
+  ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
+  while IFS= read -r path; do [ -n "$path" ] && locked_rels+=("$path"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  run_suite "${locked_rels[@]}"
+  if [ "$ids" = null ]; then class=$(classify_red "$rel") || exit 1
+  else class=$(classify_named "$rel" "$ids") || exit 1
+  fi
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null || exit 1
+  local after count from_blob to_blob
+  after=$(sha "$rel")
+  from_blob=$(jq -r '.amending.fromBlob // ""' "$LOCK")
+  to_blob=$(git hash-object -w -- "$rel") || die "could not store $rel in the git object database"
+  count=$(named_count "$rel" "$ids")
+  rm -f "$REPORT"
+  jq --arg p "$rel" --arg from "$before" --arg to "$after" --arg fb "$from_blob" --arg tb "$to_blob" --arg c "$class" --argjson n "$count" --arg at "$(now)" '
+    .tests |= map(if .path == $p then .sha256 = $to | .failureClass = $c | .tests = $n else . end)
+    | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, fromBlob: $fb, toBlob: $tb, failureClass: $c, at: $at}])
+    | .phase = "red" | del(.amending)' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
+  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). Commit the amended test before the implementation, then 'tdd.sh green'."
+}
+
+# red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding
+# <rel> with the content the lock recorded at RED, or the last commit of a
+# committed lock that records <rel> at that hash. A lock some earlier slice
+# committed and pushed is not this RED: a repository that once tracked the
+# lock and then ignored it would otherwise refuse every amendment.
+red_is_pushed() {
+  local rel="$1" recorded commit
+  recorded=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
+  while IFS= read -r commit; do
+    [ -n "$commit" ] || continue
+    [ "$(git show "$commit:$rel" 2>/dev/null | shasum -a 256 | awk '{print $1}')" = "$recorded" ] && return 0
+  done <<< "$(git log --remotes --format=%H -- "$rel" 2>/dev/null)"
+  commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
+  [ -n "$commit" ] || return 1
+  git show "$commit:$LOCK_RELATIVE" 2>/dev/null | jq -e --arg p "$rel" --arg h "$recorded" 'any(.tests[]?; .path == $p and .sha256 == $h)' >/dev/null 2>&1 || return 1
+  [ -n "$(git branch -r --contains "$commit" 2>/dev/null)" ]
+}
+
+# cmd_abandon: closes a lock whose session is dead, without the user, when
+# closing it loses nothing (2026-09-24: a dead session's lock blocked the next
+# one). Refused unless all of these hold: the lock recorded a test (a lock
+# that never did is `close`'s case); no tdd.sh activity for
+# CLAUDE_TDD_STALE_HOURS (default 4), read from the lock's own timestamps and
+# its mtime; no live process outside the caller's own session has its working
+# directory in this tree (skipped with a warning where lsof is absent); every
+# locked test is committed, identical to HEAD and to the lock's hash; and the
+# suite passes, the locked tests included. The close is appended as one JSON
+# line to CLAUDE_TDD_ABANDON_LOG (default telemetry/tdd-abandon.jsonl under the
+# Claude home).
+cmd_abandon() {
+  require_lock
+  jq -e '(.tests // []) | length > 0' "$LOCK" >/dev/null \
+    || die "this lock never recorded a test; end it with 'tdd.sh close', which needs no staleness check"
+  local hours="${CLAUDE_TDD_STALE_HOURS:-4}" last_activity age_hours
+  last_activity=$(lock_last_activity)
+  age_hours=$(( ($(date -u +%s) - last_activity) / 3600 ))
+  [ "$age_hours" -ge "$hours" ] \
+    || die "the lock saw tdd.sh activity ${age_hours}h ago, and a lock is stale only after ${hours} hours without any (CLAUDE_TDD_STALE_HOURS); its session may still be working. Ask the user, or wait"
+  local holders
+  if holders=$(live_holders); then
+    [ -z "$holders" ] || die "a live process outside this session is working in this tree, so the lock's session may not be dead: $(printf '%s' "$holders" | tr '\n' ';' | sed 's/;$//'). Ask the user"
+  else
+    say "warning: lsof is not on PATH, so live processes in this tree were not checked; staleness rests on the lock's age alone" >&2
+  fi
+  local rel recorded locked_rels=()
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    locked_rels+=("$rel")
+    recorded=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
+    git ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && git diff --quiet HEAD -- "$rel" 2>/dev/null && [ "$(sha "$rel")" = "$recorded" ] \
+      || die "$rel is not committed as the lock recorded it (untracked, changed since HEAD, or changed since RED); abandoning would lose that work. Ask the user"
+  done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  run_suite "${locked_rels[@]}"
+  local ids record
+  for rel in "${locked_rels[@]}"; do
+    ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
+    record=$(file_record "$rel")
+    printf '%s' "$record" | jq -e --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.status != "failed" and ([.assertionResults[] | select(in_scope($ids; $kind))] | length > 0 and all(.status == "passed"))' >/dev/null 2>&1 \
+      || die "$rel is not passing, so the slice's behavior is unfinished; resume it ('tdd.sh green' once it passes) or ask the user"
+  done
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" >/dev/null || exit 1
+  rm -f "$REPORT"
+  local log="${CLAUDE_TDD_ABANDON_LOG:-$CLAUDE_DIR/telemetry/tdd-abandon.jsonl}" last_iso
+  last_iso=$(date -u -r "$last_activity" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$last_activity" +%Y-%m-%dT%H:%M:%SZ)
+  mkdir -p "$(dirname "$log")"
+  jq -c --arg at "$(now)" --arg repo "$(basename "$ROOT_PHYSICAL")" --arg last "$last_iso" \
+    '{at: $at, repo: $repo, slice: .slice, phase: .phase, lastActivity: $last, tests: [.tests[].path]}' "$LOCK" >> "$log"
+  say "abandoned: $(jq -r '.slice' "$LOCK") (phase $(phase), idle ${age_hours}h); its tests are committed and passing. Logged to $log."
+  rm -f "$LOCK"
+}
+
+# lock_last_activity: epoch seconds of the newest tdd.sh write to the lock,
+# the later of its mtime and every timestamp it records.
+lock_last_activity() {
+  local mtime recorded
+  # GNU first: GNU `stat -f` is file-system status and exits 0, so trying the
+  # BSD form first reads garbage on Linux. A non-number falls back to BSD.
+  mtime=$(stat -c %Y "$LOCK" 2>/dev/null) || mtime=""
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -f %m "$LOCK" 2>/dev/null) || mtime=0
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+  recorded=$(jq -r '[.openedAt, .redAt, .greenAt, (.amendments // [] | .[].at), .amending.startedAt] | map(select(. != null) | fromdateiso8601) | max // 0' "$LOCK")
+  if [ "$recorded" -gt "$mtime" ]; then printf '%s' "$recorded"; else printf '%s' "$mtime"; fi
+}
+
+# live_holders: prints "<pid> <command>" for every live process whose working
+# directory lies in this tree and that does not belong to the caller's own
+# session: the topmost ancestor of this script working in the tree, and
+# everything below it (its shell, subagents, MCP servers). Returns 1 when lsof
+# is absent.
+live_holders() {
+  command -v lsof >/dev/null 2>&1 || return 1
+  ps -Ao pid=,ppid=,comm= | awk -v self="$$" -v root="$ROOT_PHYSICAL" '
+    FNR == NR {
+      if ($0 ~ /^p/) pid = substr($0, 2)
+      else if ($0 ~ /^n/) { dir = substr($0, 2); if (dir == root || index(dir, root "/") == 1) inroot[pid] = 1 }
+      next
+    }
+    { parent[$1] = $2; name = $0; sub(/^ *[0-9]+ +[0-9]+ +/, "", name); command[$1] = name }
+    END {
+      session = self
+      for (p = self; p != "" && p + 0 > 1; p = parent[p]) { ancestor[p] = 1; if (p in inroot) session = p }
+      for (pid in inroot) {
+        if (pid in ancestor || !(pid in parent)) continue
+        mine = 0
+        for (p = pid; p != "" && p + 0 > 1; p = parent[p]) if (p == session) { mine = 1; break }
+        if (!mine) print pid " " command[pid]
+      }
+    }' <(lsof -d cwd -Fpn 2>/dev/null || true) -
 }
 
 cmd_status() {
@@ -877,8 +1067,10 @@ case "${1:-}" in
   red) shift; cmd_red "$@" ;;
   green) cmd_green ;;
   expected-red) cmd_expected_red ;;
+  amend) shift; cmd_amend "$@" ;;
+  abandon) cmd_abandon ;;
   close) cmd_close ;;
   status) cmd_status ;;
   validate) shift; cmd_validate "$@" ;;
-  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | expected-red | close | status | validate <role>" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | amend <test file> | expected-red | close | abandon | status | validate <role>" ;;
 esac

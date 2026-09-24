@@ -862,7 +862,7 @@
             "enforcer": "hook:protected-path-guard",
             "severity": "error",
             "autofix": false,
-            "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered via redirections, tee, and mutating-verb operands; runner configs and package.json test scripts ask"
+            "note": "denies writes to the gate inputs and, once a slice is red, to every test tree and locked fixture or spec path; Bash covered by its parsed write targets (redirections, tee, mutating-verb operands, cp-family destinations, nested shells, inline-script write calls) with quoted text and heredoc bodies set aside; tdd.sh amend opens a one-file window for the slice author; runner configs and package.json test scripts ask"
         },
         {
             "id": "R-411",
@@ -878,7 +878,7 @@
             "enforcer": "hook:protected-path-guard",
             "severity": "error",
             "autofix": false,
-            "note": "phase from .claude/tdd-lock.json written by enforce/tdd.sh: open denies production writes, red and green deny test writes; opening the slice is the manual step"
+            "note": "phase from .claude/tdd-lock.json written by enforce/tdd.sh: open denies production writes, red and green deny test writes, amending allows only the amended test; tdd.sh abandon closes a stale lock whose tests are committed and passing; opening the slice is the manual step"
         },
         {
             "id": "R-705",
