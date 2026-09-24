@@ -13,7 +13,7 @@ Design: `docs/superpowers/specs/2026-09-17-ticket-lifecycle-design.md`.
 
 ## Who runs it
 
-Dispatch every operation to a background subagent on `haiku` (`sonnet` for an estimate computed from history), `run_in_background: true`; the main session never runs one inline. The prompt names the ticket key, or says to open one, plus the branch, repo, and fields. At `open`, the main session keeps reading and planning and waits for the key only at the first edit. The subagent returns the key and URL; the main session runs `task-tier.sh set <tier> "<reason>" --ticket <key>`, unless the subagent shares its checkout and records it itself (owner decision 2026-09-23, IAN-333).
+The main session runs every operation itself, as direct tracker MCP calls, never through a subagent (owner decision 2026-09-24, IAN-345, amending IAN-333: a subagent spent about 136k tokens opening one ticket, while direct calls cost a few thousand each). Load the tracker's tools with ToolSearch once, then make one call per write. After `open`, run `task-tier.sh set <tier> "<reason>" --ticket <key>` with the key the call returned. Only a `report` or an `estimate` over a long history, which reads many tickets, may go to a background subagent on `sonnet`.
 
 ## Instance config
 
@@ -145,6 +145,6 @@ A tracker failure (server down, auth expired, denial) never blocks the engineeri
 
 ## Integration
 
-- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` at the canonical events above), task-cleanup (`close`), the user directly (`report`, `estimate`); every call is a dispatch to a background subagent, not an inline run
+- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` at the canonical events above), task-cleanup (`close`), the user directly (`report`, `estimate`); every call is a direct tracker call from the main session (R-605)
 - **Composes with:** tdd-gated-dispatch (a slice opening is the `in-progress` event), superpowers:finishing-a-development-branch (the merge is the `done` event)
 - **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write, except the Linear server's write class), R-106 (nothing client-identifying in this repo)

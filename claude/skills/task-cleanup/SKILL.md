@@ -15,10 +15,10 @@ Every task has a tail: feature list updates, user stories, E2E tests, squash mer
 
 ## Who Does What
 
-Split by owner decision 2026-09-23 (IAN-333, "Drop the PR ceremony"). The subagent edits files but never commits; the main session commits its own edits before the review runs, then merges, and the subagent closes the ticket after.
+Split by owner decision 2026-09-24 (IAN-345, amending IAN-333): tracker writes are direct calls from the main session, and a subagent is worth its start-up cost only for large doc bookkeeping.
 
-- **Main session:** the scan, the verification gate, committing its own edits, the one pre-merge review, and the merge.
-- **Background subagent** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body (summary, what changed, decisions, testing, and a short reflection, replacing the retired per-PR document file), any findings tickets, the ticket close, and the handoff.
+- **Main session:** the scan, the verification gate, the feature list, the user story, the PR body (summary, what changed, decisions, testing, and a short reflection, replacing the retired per-PR document file), committing the edits, the one pre-merge review, the merge, every tracker write (findings tickets and the ticket close, as direct MCP calls), and the handoff.
+- **Background subagent, Complex and Saga only** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body, and the handoff, when they read enough files to be worth it. The subagent edits files but never commits and never writes to the tracker; the main session commits its edits before the review runs.
 
 ## Step 1: Determine What Shipped
 
@@ -106,7 +106,7 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 
 **PR loop** (R-514, R-515, R-517). On a trivial tier recorded in the task-tier ledger for this branch, run only step 1 (open the PR) and step 3 (the ledger note), then merge on green CI; steps 2, 4, and 5 apply only above the trivial tier:
 1. Open the PR. Never request a Copilot review (R-514). The separate `/code-review` pass before opening the PR is retired; one review per PR is enough.
-2. Commit the bookkeeping subagent's file edits (feature list, user story, handoff), then run the R-517 review (below) on the finished head. It is the review every PR above trivial gets.
+2. Commit the bookkeeping edits (feature list, user story, handoff), then run the R-517 review (below) on the finished head. It is the review every PR above trivial gets.
 3. Start the next ticket while CI and the review run (CI alone on a trivial PR). Return to this PR when they finish; do not block the session on a poll loop. A trivial PR's exemption from R-517 lives in the checkout's one task-tier ledger: merge the trivial PR first, or use one worktree per in-flight ticket to avoid a ledger swap.
 4. Fix each valid review comment (failing case first when behavior changes), reply in its thread naming the fix commit, and resolve the thread (R-515). A commit that moves the head triggers a re-review on the new range.
 5. After the review, change only the PR body, title, or labels, which move no commit, so one review per PR stays sufficient.
@@ -143,15 +143,15 @@ Run it in the background (the Bash tool's `run_in_background`) and poll the log 
 - `gh pr merge --squash --delete-branch` is the primary path; write a squash commit message that summarizes the whole feature, not just the last change.
 - If worktree was used: `git worktree remove <path>`
 
-### Always, before the ticket is closed (background subagent):
+### Always, before the ticket is closed (main session):
 
-The background subagent runs `bash ~/.claude/skills/task-start/scripts/finding.sh open`. It lists every finding recorded during this task that still carries no tracker key (R-214). The task is not finished while that list is non-empty: open a ticket for each remaining finding through `/ticket-lifecycle` and attach it with `finding.sh ticket <id> <KEY>`, so nothing noticed during the work is lost when the session ends. Once every finding carries a key, `finding.sh clear` removes the per-repo ledger, the same way `task-tier.sh clear` removes the tier ledger; the tickets are the durable record and the ledger is only what carried them there.
+Run `bash ~/.claude/skills/task-start/scripts/finding.sh open`. It lists every finding recorded during this task that still carries no tracker key (R-214). The task is not finished while that list is non-empty: open a ticket for each remaining finding through `/ticket-lifecycle` and attach it with `finding.sh ticket <id> <KEY>`, so nothing noticed during the work is lost when the session ends. Once every finding carries a key, `finding.sh clear` removes the per-repo ledger, the same way `task-tier.sh clear` removes the tier ledger; the tickets are the durable record and the ledger is only what carried them there.
 
 ### If a tracker ticket exists:
 
-**Close the ticket (background subagent, after the merge):**
+**Close the ticket (main session, direct tracker call, after the merge):**
 
-The background subagent runs `/ticket-lifecycle` `close` after the verification gate and the merge decision, never before: a `done` ticket asserts the work shipped (R-606). Resolve the key from the spec's or user story's `**Ticket:**` line, the handoff doc, or the last `Refs:` trailer on the branch.
+Run `/ticket-lifecycle` `close` after the verification gate and the merge decision, never before: a `done` ticket asserts the work shipped (R-606). Resolve the key from the spec's or user story's `**Ticket:**` line, the handoff doc, or the last `Refs:` trailer on the branch.
 
 One update carries all of it: `done`, `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, and `pr_link`. `actual_minutes` is attributable working time inside the sessions that worked the task, measured from the R-503 start timestamp: not the calendar gap between open and close; a ticket opened Monday and closed Friday is not four days of work, and recording it that way distorts every future estimate for that tier. `rework_count` is the number of times a green slice went back to red or a review sent the work back, counted from the git log and the session's own history, not from memory.
 
@@ -159,7 +159,7 @@ Then state the recalibration R-906 asks for, in one line: the ratio, and which d
 
 ### If session is ending:
 
-**Session handoff (background subagent):**
+**Session handoff (main session; the bookkeeping subagent on a Complex or Saga task):**
 Write `docs/session-handoff/session-handoff.md` per R-602, in this order:
 1. Last commit SHA + subject
 2. Production state verified

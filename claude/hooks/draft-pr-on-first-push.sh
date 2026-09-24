@@ -334,5 +334,5 @@ PR_URL=$(grep -Eo -- "$PR_URL_PATTERN" "$SCRATCH/created" | tail -1 || true)
 [ -n "$PR_URL" ] || give_up_with_note "gh pr create printed no pull request URL"
 
 if [ -n "$DEGRADED_NOTE" ]; then record_fire "degraded"; else record_fire "opened"; fi
-emit_context "R-518 (draft PR): opened draft pull request $PR_URL for $PUSHED_BRANCH against $DEFAULT_BRANCH. Have the background bookkeeping subagent write the PR body, commit its edits, and run the one R-517 review before marking it ready with \`gh pr ready\`.${DEGRADED_NOTE} $(print_monitor_instruction "$PR_URL")"
+emit_context "R-518 (draft PR): opened draft pull request $PR_URL for $PUSHED_BRANCH against $DEFAULT_BRANCH. Write the PR body (R-605: the main session, or the bookkeeping subagent on a Complex or Saga task), commit any bookkeeping edits, and run the one R-517 review before marking it ready with \`gh pr ready\`.${DEGRADED_NOTE} $(print_monitor_instruction "$PR_URL")"
 exit 0
