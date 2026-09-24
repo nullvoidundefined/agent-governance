@@ -20,7 +20,7 @@
   },
   "files": {
     ".gitignore": "sha256:5ecb58d247c6770527fbde5c1cf4c4e5ed8605bf22ce7ee62d6c5acb5f50e6e6",
-    "AGENTS.md": "sha256:3d1299bb450092665640e0bbdb5732e0a41300354420c5512b6e8fee9be99230",
+    "AGENTS.md": "sha256:36be526931ccfeaf54d17c129c11eba2137d4d0881404fa0be8700c554fee679",
     "PORT-STATUS.md": "sha256:f6e3528ff47b72a65b45fcbe334182f7c4bf44ee0b54fbbc80b130e4321685f8",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
@@ -86,7 +86,7 @@
     "skills/task-start/scripts/finding.sh": "sha256:1093603bacdf34684e826d1c2a45027ad47baea7c587643be7c153842e5bd86c",
     "skills/task-start/scripts/task-provenance.sh": "sha256:376189563db5db8f512d5cbd53ca39924ac1747a24fde77916ed73a6e1f2b919",
     "skills/task-start/scripts/task-tier.sh": "sha256:2537e1932db4839aa3fc63160014ccc4fa08beeab4834ac034de401e7e829b5f",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:f5667a1785bfa40a39d3afa3ee0463cebde063bcf64ef091febd6d6f6703ba4d",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:1ad3017449f8cb7492d6d72de45c8fd7f3b11f529984791467925a450cc15183",
     "skills/ticket-lifecycle/SKILL.md": "sha256:984eb8fb0c16b2b741b0039c0c6c40fe07e598476029fbf9f24d1ccaac30fcb8"
   },
   "classes": {
