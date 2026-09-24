@@ -982,7 +982,11 @@ cmd_abandon() {
 # the later of its mtime and every timestamp it records.
 lock_last_activity() {
   local mtime recorded
-  mtime=$(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK")
+  # GNU first: GNU `stat -f` is file-system status and exits 0, so trying the
+  # BSD form first reads garbage on Linux. A non-number falls back to BSD.
+  mtime=$(stat -c %Y "$LOCK" 2>/dev/null) || mtime=""
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -f %m "$LOCK" 2>/dev/null) || mtime=0
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
   recorded=$(jq -r '[.openedAt, .redAt, .greenAt, (.amendments // [] | .[].at), .amending.startedAt] | map(select(. != null) | fromdateiso8601) | max // 0' "$LOCK")
   if [ "$recorded" -gt "$mtime" ]; then printf '%s' "$recorded"; else printf '%s' "$mtime"; fi
 }
