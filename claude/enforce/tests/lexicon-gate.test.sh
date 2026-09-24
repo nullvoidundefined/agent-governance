@@ -9,6 +9,7 @@
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/lexicon-gate.sh"
+export CLAUDE_FIRE_LOG=/dev/null
 
 fail=0
 SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
