@@ -902,7 +902,9 @@ finish_amendment() {
 
 # red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding
 # <rel> with the content the lock recorded at RED, or the last commit of a
-# committed lock.
+# committed lock that records <rel> at that hash. A lock some earlier slice
+# committed and pushed is not this RED: a repository that once tracked the
+# lock and then ignored it would otherwise refuse every amendment.
 red_is_pushed() {
   local rel="$1" recorded commit
   recorded=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
@@ -911,7 +913,9 @@ red_is_pushed() {
     [ "$(git show "$commit:$rel" 2>/dev/null | shasum -a 256 | awk '{print $1}')" = "$recorded" ] && return 0
   done <<< "$(git log --remotes --format=%H -n 50 -- "$rel" 2>/dev/null)"
   commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
-  [ -n "$commit" ] && [ -n "$(git branch -r --contains "$commit" 2>/dev/null)" ]
+  [ -n "$commit" ] || return 1
+  git show "$commit:$LOCK_RELATIVE" 2>/dev/null | jq -e --arg p "$rel" --arg h "$recorded" 'any(.tests[]?; .path == $p and .sha256 == $h)' >/dev/null 2>&1 || return 1
+  [ -n "$(git branch -r --contains "$commit" 2>/dev/null)" ]
 }
 
 # cmd_abandon: closes a lock whose session is dead, without the user, when
