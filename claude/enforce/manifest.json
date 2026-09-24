@@ -749,6 +749,14 @@
             "note": "PreToolUse Bash git push: runs the canonical enforce/require-feature-checklist.sh over the outgoing diff (never the target repository's copy) and denies when the branch adds a Next, Nuxt, FastAPI, or Express route without changing docs/feature-list/features.md, a docs/user-stories/ story, and an e2e spec; .enforce.json productDocs false opts a repository out. Fixtures: enforce/tests/push-feature-docs-gate.test.sh, enforce/tests/require-feature-checklist.test.sh"
         },
         {
+            "id": "R-608",
+            "tier": "regex",
+            "enforcer": "hook:push-feature-docs-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Bash git push: after the R-607 checklist, runs the canonical enforce/require-stack-observability-docs.sh over the outgoing diff (never the target repository's copy) and denies when a package.json, pyproject.toml, Gemfile, or go.mod gains or loses a dependency name without docs/stack.md changing, or when an analytics event registry entry, an error-code registry entry, or a log event name is added or removed without docs/observability.md changing; .enforce.json stackDoc false and observabilityDoc false opt a repository out of each half. Fixtures: enforce/tests/require-stack-observability-docs.test.sh, enforce/tests/push-feature-docs-gate.test.sh"
+        },
+        {
             "id": "R-513",
             "tier": "advisory",
             "enforcer": "hook:constant-change-guard",

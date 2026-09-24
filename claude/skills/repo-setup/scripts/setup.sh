@@ -50,6 +50,8 @@
 #                 URL for the bootstrap hook)
 #                 [--no-product-docs]           (opt a library or tooling
 #                 repository out of R-607's product docs)
+#                 [--no-stack-doc] [--no-observability-doc]  (opt a library
+#                 or tooling repository out of either R-608 document)
 # Run from the repository's checkout (local files are written there).
 # REPO_SETUP_GH_CMD overrides the gh binary (fixtures stub it).
 # Exit: 0 baseline met (or applied); 1 with --check when any item is missing;
@@ -63,7 +65,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # or ~/.cursor, which carry neither, so it falls back to the synced ~/.claude.
 # The sibling tree is used only when it carries every file this path needs,
 # so a partial tree never shadows a complete synced copy.
-PRODUCT_DOC_SOURCES=(prompts/feature-list-template.md prompts/user-stories-readme-template.md enforce/require-feature-checklist.sh)
+PRODUCT_DOC_SOURCES=(prompts/feature-list-template.md prompts/user-stories-readme-template.md enforce/require-feature-checklist.sh prompts/stack-template.md prompts/observability-template.md)
 
 # has_product_doc_sources <dir>: true when the harness tree holds every source.
 has_product_doc_sources() {
@@ -72,7 +74,7 @@ has_product_doc_sources() {
 }
 HARNESS_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 has_product_doc_sources "$HARNESS_ROOT" || HARNESS_ROOT="$HOME/.claude"
-REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""; PRODUCT_DOCS=1
+REPO=""; CHECK=0; STACK=""; BRANCHES="main,staging"; REVIEWS=0; CI_CONTEXT="ci"; HARNESS_REPO=""; PRODUCT_DOCS=1; STACK_DOC=1; OBSERVABILITY_DOC=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK=1; shift ;;
@@ -82,6 +84,8 @@ while [ $# -gt 0 ]; do
     --ci-context) CI_CONTEXT="${2:-ci}"; shift 2 ;;
     --harness-repo) HARNESS_REPO="${2:-}"; shift 2 ;;
     --no-product-docs) PRODUCT_DOCS=0; shift ;;
+    --no-stack-doc) STACK_DOC=0; shift ;;
+    --no-observability-doc) OBSERVABILITY_DOC=0; shift ;;
     --*) echo "repo-setup: unknown option $1" >&2; exit 2 ;;
     *) REPO="$1"; shift ;;
   esac
@@ -251,6 +255,56 @@ elif apply; then
 else
   report product-docs MISSING "absent:${absent_docs}"
 fi
+
+# --- stack and observability docs (R-608) ------------------------------------
+# An application repository keeps docs/stack.md and docs/observability.md from
+# its first commit, so every later task has an entry to update. Each document
+# is its own item with its own opt-out, recorded as data in .enforce.json
+# (stackDoc, observabilityDoc) so --check and the push gate read one answer.
+
+# is_living_doc_opted_out <key>: true when .enforce.json sets the key to false.
+is_living_doc_opted_out() {
+  [ -f .enforce.json ] && jq -e --arg k "$1" '.[$k] == false' .enforce.json >/dev/null 2>&1
+}
+
+# record_living_doc_opt_out <key>: merges <key>:false into .enforce.json,
+# keeping every other key; returns non-zero on invalid JSON.
+record_living_doc_opt_out() {
+  local tmp
+  [ -f .enforce.json ] || printf '{}\n' > .enforce.json
+  tmp=$(mktemp)
+  if jq --arg k "$1" '.[$k] = false' .enforce.json > "$tmp" 2>/dev/null; then mv "$tmp" .enforce.json; else rm -f "$tmp"; return 1; fi
+}
+
+# seed_living_doc <item> <key> <requested> <path> <template> <flag>: reports
+# the item: SKIPPED when opted out (or recording the opt-out), OK when the doc
+# exists or was written from the template, MISSING otherwise.
+seed_living_doc() {
+  local item="$1" key="$2" requested="$3" path="$4" template="$5" flag="$6"
+  if is_living_doc_opted_out "$key"; then
+    report "$item" SKIPPED ".enforce.json $key false (library or tooling repository)"
+  elif [ "$requested" -eq 0 ]; then
+    if ! apply; then
+      report "$item" MISSING "$flag given with --check; re-run without --check to record the opt-out"
+    elif record_living_doc_opt_out "$key"; then
+      report "$item" SKIPPED "recorded $key false in .enforce.json"
+    else
+      report "$item" MISSING ".enforce.json is not valid JSON; fix it, then re-run"
+    fi
+  elif [ -f "$path" ]; then
+    report "$item" OK "$path present"
+  elif [ ! -f "$HARNESS_ROOT/prompts/$template" ]; then
+    report "$item" MISSING "absent: $path; harness template not found under $HARNESS_ROOT (sync ~/.claude)"
+  elif apply; then
+    render_product_doc_template "$template" "$path"
+    report "$item" OK "wrote $path (R-608)"
+  else
+    report "$item" MISSING "absent: $path"
+  fi
+}
+
+seed_living_doc stack-doc stackDoc "$STACK_DOC" docs/stack.md stack-template.md --no-stack-doc
+seed_living_doc observability-doc observabilityDoc "$OBSERVABILITY_DOC" docs/observability.md observability-template.md --no-observability-doc
 
 # --- branches ----------------------------------------------------------------
 DEFAULT_BRANCH=$("$GH" api "repos/$REPO" --jq .default_branch 2>/dev/null || echo main)
