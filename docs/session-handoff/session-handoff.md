@@ -6,6 +6,8 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 ## 1. Last commit
 
+`6a4188c` chore(skills): make merge-on-green an opt-in chosen per slice (IAN-352). PR #132 squash-merged 2026-09-24 at 11:21:48Z with all four checks green, verified by reading the changed files at `origin/main` rather than the PR badge, and synced into the live `~/.claude`, `~/.cursor` and `~/.codex`. This supersedes every entry below as the newest commit on `main`. Only this SHA is cited for that change: the branch's own six commits are unreachable after the squash merge, which is what `doc-sha-reachability` is for.
+
 `c982b18` fix(enforce): stop push-eslint-gate denying clean diffs on import-x vue parse warnings (IAN-332). PR #122 squash-merged 2026-09-24 with all four checks green, verified on `main`, and synced into `~/.claude`. This supersedes the entries below as the newest commit on `main`.
 
 `102d281` fix(hooks): walk a written path by expansion, not a process per component (IAN-183). PR #104 merged 2026-09-22 with all checks green; IAN-183, IAN-262 and IAN-301 closed. Superseded the entry below, which was current when the PR-triage session wrote this file.
@@ -40,10 +42,16 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 - **A gate that depends on a gitignored per-machine file is off by default on every fresh checkout.** The R-605 ticket gate was disabled for a whole session because `~/.claude/TICKET-TRACKER.json` was absent, then activated the moment that file was written and refused a commit after four had landed. That tracker config was written in an ephemeral container and never reached the laptop: copy the `linear` block from the template and fill in team and project locally, or R-605 stays disabled there.
 
+- **The owner merges each slice PR again, unless the slice plan opts out** (IAN-352, owner directive 2026-09-24). IAN-333 had made the session's own merge on green CI the default; the owner's judgement is that this removed them from the loop by default in a skill named require-review, and that a Claude subagent's review is not a substitute for their own read of the diff. `build-by-slice-require-review` now asks once per slice at Gate 1 which mode applies, owner-merges listed first, and the answer is recorded on a plan-level `**Merge mode:**` line and in the ticket's Gate 1 transition comment. R-514's authorization follows that line: a plan that records nothing, or records the default, leaves every PR for the owner. The trivial tier is the one standing exception and is unchanged.
+- **`spec-glossary-check.sh` now reads the slice plan's preamble for that line**, the lines above the first `### ` heading, anchored to the start of a line. It took three passes to get there, and the two discarded versions are the useful part: an unanchored `contains` over the whole document let the bolded phrase in a PR block's prose silence the reminder, and a line-anchored search over the whole document let a `**Merge mode:**` line inside a PR block do the same. A presence check for a formatted token is worth writing as a question about where the token is allowed to be, not whether it appears.
+- **A bash `${var/pattern/repl}` whose pattern begins with `**` is a glob, not a literal.** Deriving a fixture plan with `${var/**Contents:**/...}` replaced everything from the start of the document to the first `Contents:`, and the mangled fixture still passed its assertion, so a case was green for the wrong reason until an unrelated finding forced a rewrite. Strip a line with `grep -v '^\*\*Label:\*\*'`, which takes a real regex, or write the document out in full. This is the same class as item 1 under Next session: the assertion passed, and passing said nothing.
+- **A subagent reads the `CLAUDE.md` copy cached in its own prompt, not the file.** A reviewer raised a HIGH saying the project `CLAUDE.md` bullet had never been replaced, quoting the old text, more than an hour after the file on disk carried the new one. When a review finding rests on a file outside the diff, verify with a direct read before acting, and tell a reviewer to read such a path rather than trust its context.
+
 ## 3. Session metrics
 
 Per-ticket actuals are on the tickets; these are the figures that change a future estimate.
 
+- IAN-352: standard tier, 65 attributable minutes against a 45-minute estimate (ratio 1.44), rework 3, four R-517 review rounds. The calendar gap was 118 minutes; about 50 of those were waiting on fixture suites at a load average peaking near 134 with two other sessions' suites running, on the reviews, and on CI. **R-906:** the edits took about 15 minutes and everything else was overhead, so estimate a rule-text-plus-hook change in this repo at 70 minutes, read as 15 minutes of authoring against 55 of review, merge and verification. Three of the four review rounds existed only because each round's accepted findings moved the head and R-517 re-reviews the new range; two merges of `main` mid-PR cost two of them.
 - IAN-332: standard tier, 10 active minutes against a 45-minute estimate (ratio 0.22, human_speedup 6.0), rework 0, one fresh Sonnet review with no findings. **R-906:** estimate a single-gate fix with a known reproduction at 15 to 20 minutes.
 - PRs merged: 6 code plus handoffs, rework 6, velocity normal. The triage session merged `#98`, `#99` and `#105`, opened `#100`, `#101`, `#105` and `#106`, and closed `#100` unmerged. `#103` merged fifteen seconds before `#105` opened.
 - Ratios: IAN-156 1.42 (scope discovery, not a wrong tier), IAN-175 2.17 (human_speedup 0.35, half the time in the gate loop), IAN-257 0.56 (human_speedup 4.29), IAN-267 0.60, IAN-259 0.50.
@@ -56,6 +64,7 @@ Per-ticket actuals are on the tickets; these are the figures that change a futur
 
 Detail is on each ticket; these are one line apiece for traceability.
 
+- **IAN-352 (#132).** Merge-on-green became an opt-in chosen per slice at Gate 1, with the owner's merge as the default again; R-514's norm line and Spec, the `task-cleanup` merge decision, the README's Gate 2 paragraph and the project-level `CLAUDE.md` were reconciled with it, `spec-glossary-check.sh` reminds when a slice plan records no mode, and its fixture went from 19 cases to 27.
 - **IAN-332 (#122).** The ts/tsx/vue ESLint block hands import-x the TypeScript sub-parser for imported SFCs, and `push-eslint-gate.sh` judges exit status plus stdout while still failing closed on a crash; two new cases in `push-eslint-gate.test.sh`.
 - **IAN-156 (#91).** `tdd.sh red` past manifest drift, so a test author here can reach a RED.
 - **IAN-175 (#92).** The R-334 norm line and Spec, a 144-line fixture, both ports, the lock untracking.
@@ -81,21 +90,22 @@ Detail is on each ticket; these are one line apiece for traceability.
 2. **Review and land `#115`** (IAN-307, 30 min): the macOS job, green on both jobs, draft, no R-517 review yet. Decide the cost question first, below.
 3. **IAN-260 slices 2 to 5** (4 hours): session-start load, rule text and procedures, task-state relocation, migration. Slice 5 reads from the `keep/` tags, not the bare SHAs.
 4. **IAN-322** (90 min): decide pin-or-mark for each of the 73 unreachable citations, then promote `doc-sha-reachability` from reporting to gating.
-5. **IAN-323** (20 min): `fetch-depth: 0` on the fixtures job. Touches the same workflow file as `#115`; land `#115` first or fold it in.
-6. **IAN-325** (30 min): three more fixtures build bare repositories without `--initial-branch`; audit each and assert a clone is non-empty before depending on it.
-7. **IAN-317** (15 min): `${array[*]}` joins on the first character of `IFS` only, so the handoff hook's misses render as `a;b` rather than `a; b`.
-7. **`#97`'s two HIGH findings** (60 to 90 min). The IAN-184 comment of 16:5xZ carries both verbatim with the intended fixes. H-1: `is_expected_red` never reads which check failed. H-2: `exit 0` in the checks loop skips the rest. M-1 to M-3 are owed too, and `#97` needs its `## Codex review` section.
-8. **IAN-220** (120 min): `tdd.sh green` cannot anchor its hash check to a git object (the lock is gitignored) and `fix-commit-requires-test.sh` denies every bug-fix slice's implementation commit. Both need "the locked tests are committed at HEAD".
-9. **IAN-172** (4 h, high): the employer work profile. Open: Codex sending employer code to a personal ChatGPT plan, `settings.json` replaced at SessionStart, `claude/global-memory/` public behind only a `[manual]` rule.
-10. **IAN-173** (2 h): the database engine-track split. Spec approved, three slices planned, nothing built.
-11. **IAN-157** (3 h): `protected-path-guard` fired nine times on paths nobody was writing.
-12. **IAN-258** (60 min): re-derive the R-605 audit figures and reconcile the backfill.
-13. **IAN-261** (30 min): `SETUP.md` step 1, `AGENTS.md`, and `RECIPES.md` each describe this repository wrongly; `RECIPES.md` calls this file ignored when it is tracked. Also removes two caveats `ce44eda` added to `README.md`.
-14. **IAN-250** (60 min): rewrite the criticism audit as a senior challenging a junior's assumptions; its closing argues for self-blame against the brief.
-15. **IAN-251** (30 to 45 min): the four allow paths in `pr-ticket-ref-gate.sh` are bare `exit 0`, so an exemption is never recorded and reads later like a gate that never fired.
-16. **IAN-252** (40 min): `tdd.sh close` should refuse while the lock path is tracked, reading git state rather than file existence.
-17. Lower: **IAN-264** (10 min), **IAN-253** (R-512's bundle exception is dead here; corrected 2026-09-22, the block is the `main` **ruleset's** `allowed_merge_methods`, not the repository setting, which already allows rebase), **IAN-176** (20 min), **IAN-177** (15 min), **IAN-165** (45 min).
-18. **No ticket yet:** `tdd.sh red` and `doctor.sh` both exit 0 while refusing or reporting a fail, so the printed verdict is the only truth. `pr-ticket-ref-gate.test.sh` prints a bare `true` mid-run. `#101` has no `docs/prs/` document, and `#100` had none when it was closed. Whether the fixture suite should run under bash 3.2 in CI, and whether hooks should fail closed on an internal fault rather than by each one's structure, are both open from IAN-267 and unticketed.
+5. **IAN-358** (60 min, new): the generated port manifests conflict on every merge of `main` into any rule-touching branch, since both sides regenerate them from the whole rule set. Item 5 under Next session is the current workaround, and this ticket is the proposal to remove the class instead: a `.gitattributes` merge driver that regenerates, dropping the manifests from version control, or a gate that refuses a hand-resolved generated file. Measured cost on IAN-352: two conflicted merges, two extra review rounds.
+6. **IAN-323** (20 min): `fetch-depth: 0` on the fixtures job. Touches the same workflow file as `#115`; land `#115` first or fold it in.
+7. **IAN-325** (30 min): three more fixtures build bare repositories without `--initial-branch`; audit each and assert a clone is non-empty before depending on it.
+8. **IAN-317** (15 min): `${array[*]}` joins on the first character of `IFS` only, so the handoff hook's misses render as `a;b` rather than `a; b`.
+9. **`#97`'s two HIGH findings** (60 to 90 min). The IAN-184 comment of 16:5xZ carries both verbatim with the intended fixes. H-1: `is_expected_red` never reads which check failed. H-2: `exit 0` in the checks loop skips the rest. M-1 to M-3 are owed too, and `#97` needs its `## Codex review` section.
+10. **IAN-220** (120 min): `tdd.sh green` cannot anchor its hash check to a git object (the lock is gitignored) and `fix-commit-requires-test.sh` denies every bug-fix slice's implementation commit. Both need "the locked tests are committed at HEAD".
+11. **IAN-172** (4 h, high): the employer work profile. Open: Codex sending employer code to a personal ChatGPT plan, `settings.json` replaced at SessionStart, `claude/global-memory/` public behind only a `[manual]` rule.
+12. **IAN-173** (2 h): the database engine-track split. Spec approved, three slices planned, nothing built.
+13. **IAN-157** (3 h): `protected-path-guard` fired nine times on paths nobody was writing.
+14. **IAN-258** (60 min): re-derive the R-605 audit figures and reconcile the backfill.
+15. **IAN-261** (30 min): `SETUP.md` step 1, `AGENTS.md`, and `RECIPES.md` each describe this repository wrongly; `RECIPES.md` calls this file ignored when it is tracked. Also removes two caveats `ce44eda` added to `README.md`.
+16. **IAN-250** (60 min): rewrite the criticism audit as a senior challenging a junior's assumptions; its closing argues for self-blame against the brief.
+17. **IAN-251** (30 to 45 min): the four allow paths in `pr-ticket-ref-gate.sh` are bare `exit 0`, so an exemption is never recorded and reads later like a gate that never fired.
+18. **IAN-252** (40 min): `tdd.sh close` should refuse while the lock path is tracked, reading git state rather than file existence.
+19. Lower: **IAN-264** (10 min), **IAN-253** (R-512's bundle exception is dead here; corrected 2026-09-22, the block is the `main` **ruleset's** `allowed_merge_methods`, not the repository setting, which already allows rebase), **IAN-176** (20 min), **IAN-177** (15 min), **IAN-165** (45 min).
+20. **No ticket yet:** `tdd.sh red` and `doctor.sh` both exit 0 while refusing or reporting a fail, so the printed verdict is the only truth. `pr-ticket-ref-gate.test.sh` prints a bare `true` mid-run. `#101` has no `docs/prs/` document, and `#100` had none when it was closed. Whether the fixture suite should run under bash 3.2 in CI, and whether hooks should fail closed on an internal fault rather than by each one's structure, are both open from IAN-267 and unticketed.
 
 ## 6. Next session
 
