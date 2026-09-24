@@ -36,7 +36,7 @@ For a hard or risky PR, write a one-paragraph explain-back of what it does and w
 
 ## Merge mode (asked once per slice, at Gate 1)
 
-Ask which of the two modes this slice runs under, as an option-tile question with the default listed first (R-211), and record the answer on the plan's `**Merge mode:**` line and on the slice's ticket, so a later session and the ticket both know which mode ran.
+Ask which of the two modes this slice runs under, as an option-tile question with the default listed first (R-211), and record the answer twice: on the plan's `**Merge mode:**` line, and in the slice ticket's Gate 1 transition comment, which R-605 already requires at that point and which needs no new ticket field. A later session then reads the mode from the plan, and the ticket carries which mode the slice actually ran under.
 
 - **Owner merges (the default):** every PR stops at the owner. The session opens it, gets CI green, runs the R-517 review, fixes or answers every finding, and hands the PR over with the findings and their dispositions; the owner reads it and merges it. This is Gate 2. It is the default because the owner's read of each PR, not the reviewer's, is what keeps their understanding of the build current, and a review by a subagent is not a substitute for it.
 - **Merge on green (opt-in):** the session merges each PR itself once CI is green and the R-517 review has passed, then moves to the next PR without stopping. Choose it for a slice whose PRs the owner does not need to read one by one, such as mechanical, repetitive, or low-risk work where the review is enough on its own.
