@@ -148,7 +148,7 @@ check "a nested run leaves its parent's lock in place" test "$(cat "$LOCK_DIR/pi
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/capped.out" run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; capped_status=$?
 capped_output=$(cat "$SANDBOX/capped.out")
-check "a run past the wait cap exits non-zero" not test "$capped_status" -eq 0
+check "a run past the wait cap exits 75, the code the gate does not retry (IAN-351)" test "$capped_status" -eq 75
 check "a run past the wait cap says it gave up and names the holder" \
   grep -q "gave up after 2s waiting for PID $holder_pid" <<< "$capped_output"
 check "a run past the wait cap runs no fixture" test ! -s "$EVENTS"

@@ -117,6 +117,16 @@ if [ -n "$TREE_KEY" ] && [ -f "$MEMO_FILE" ] && [ "$(cat "$MEMO_FILE" 2>/dev/nul
 fi
 
 TIMEOUT_SECONDS="${CLAUDE_VERIFY_TIMEOUT:-600}"
+# The fixture runner queues behind a machine-wide lock and gives up after
+# FIXTURE_SHARDS_LOCK_WAIT_SECONDS, 1200 by default (IAN-348). The harness
+# kills this hook at 660 seconds, so every check here waits at most 480 and
+# the runner's own message still reaches the turn. Set unconditionally: a
+# value the session's shell exported must not stretch the wait past the hook's
+# budget (IAN-351).
+export FIXTURE_SHARDS_LOCK_WAIT_SECONDS=480
+# The runner's exit status when that wait reached its cap. Not retried: the
+# retry would queue for a second 480 seconds and overrun the budget anyway.
+FIXTURE_LOCK_GAVE_UP_STATUS=75
 MAX_OUTPUT_LINES=200
 MAX_OUTPUT_CHARS=8000
 
@@ -284,7 +294,9 @@ while IFS= read -r check; do
   # timeout (124) skips the retry: doubling a 600s wait before blocking is the
   # wrong tradeoff, and a check that needs the full budget once is unlikely to
   # need less on an immediate second attempt.
-  if [ "$STATUS" -ne 124 ]; then
+  # A lock give-up (75) skips it too, for the reason given at
+  # FIXTURE_LOCK_GAVE_UP_STATUS.
+  if [ "$STATUS" -ne 124 ] && [ "$STATUS" -ne "$FIXTURE_LOCK_GAVE_UP_STATUS" ]; then
     sleep "$RETRY_DELAY_SECONDS"
     RETRIED=1
     OUTPUT=$(run_with_timeout "$check")
@@ -295,6 +307,8 @@ while IFS= read -r check; do
   TAIL=$(printf '%s' "$OUTPUT" | tail -n "$MAX_OUTPUT_LINES" | tail -c "$MAX_OUTPUT_CHARS")
   if [ "$STATUS" -eq 124 ]; then
     TAIL="Command exceeded CLAUDE_VERIFY_TIMEOUT (${TIMEOUT_SECONDS}s) and was killed."$'\n\n'"$TAIL"
+  elif [ "$STATUS" -eq "$FIXTURE_LOCK_GAVE_UP_STATUS" ]; then
+    TAIL="No fixture ran: another fixture run held the machine-wide lock for all ${FIXTURE_SHARDS_LOCK_WAIT_SECONDS}s this gate waits, so the check was not retried. End the turn again once that run finishes."$'\n\n'"$TAIL"
   fi
   RETRY_NOTE=""
   RELATED_NOTE=""
