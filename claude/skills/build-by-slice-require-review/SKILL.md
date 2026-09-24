@@ -27,15 +27,15 @@ Split a slice into more than one PR only when the diff would pass ~2000 lines or
 1. Read the spec, flows, and acceptance criteria.
 2. Plan the next slice: write its slice plan document (below) listing its PR block(s), each described in the PR description format.
 3. **Gate 1:** present the slice plan document and get explicit user approval before building. This is the only stop in the loop.
-4. Build the PR as a sequence of TDD tasks (below), dispatching bookkeeping (ticket open/advance, the handoff, the feature-list and user-story rows) to a background `haiku`/`sonnet` subagent as each point comes up, never inline in the main session.
-5. Commit the slice's edits, the bookkeeping subagent's included, then run the pre-merge review (below). On green CI and a passed R-517 review, merge: an owner-approved slice plan authorizes merging its PRs (R-514). The harness's own `gh pr merge` permission prompt still applies.
+4. Build the PR as a sequence of TDD tasks (below), doing the bookkeeping as each point comes up (R-605): ticket open and advance as direct tracker calls from the main session, and the handoff and the feature-list and user-story rows by the main session, or on a Complex or Saga slice by a background `haiku`/`sonnet` subagent.
+5. Commit the slice's edits, the bookkeeping edits included (R-605), then run the pre-merge review (below). On green CI and a passed R-517 review, merge: an owner-approved slice plan authorizes merging its PRs (R-514). The harness's own `gh pr merge` permission prompt still applies.
 6. Go straight to the next PR or slice; no stop between them. Report progress as one line inside the work. Only a fork the plan leaves open, a destructive action, or a confirmation gate stops the run (R-211).
 
 For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge. A stronger reviewer (Codex, or a fresh Claude subagent on `opus`/`fable`) replaces the default reviewer for that PR rather than adding a second review; never Copilot (R-514).
 
 ## Pre-merge review (every PR, one reviewer)
 
-Before any PR merges, one reviewer checks the PR's diff against the spec and the acceptance criteria of the PR's block in the slice plan document (R-517). It runs after the last commit on the branch, the bookkeeping subagent's doc edits included, so nothing but the PR body, title, or labels changes afterward, keeping one review sufficient for the merge guard.
+Before any PR merges, one reviewer checks the PR's diff against the spec and the acceptance criteria of the PR's block in the slice plan document (R-517). It runs after the last commit on the branch, the bookkeeping doc edits included, so nothing but the PR body, title, or labels changes afterward, keeping one review sufficient for the merge guard.
 
 - **Default:** a fresh Claude subagent on `sonnet`, given the filled `~/.claude/prompts/codex-pr-review-prompt.md`.
 - **Opt-in or required:** Codex (`codex exec -s read-only -C <repo root> --skip-git-repo-check -o <final-message file> "<prompt>" </dev/null > <log file> 2>&1`, run in the background and polled via the log file, stdin closed, no `-m`) or a stronger Claude subagent (`opus`/`fable`), when the owner opts in or the diff touches auth, money, or concurrency.
@@ -44,7 +44,7 @@ Before any PR merges, one reviewer checks the PR's diff against the spec and the
 
 ## Slice plan document
 
-Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file carries one `### PR 1: <title>` block by default, in the PR description format below; it is the artifact the user approves at Gate 1. Split into more than one PR block only under the size or risk exception above. The bookkeeping subagent writes the PR body from this block; the plan document itself carries no per-PR execution record (no PR number, merge date, review outcome, or test-author fallback to track by hand). `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels or the plan has no PR block at all, so Gate 1 never sees a half-described PR.
+Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file carries one `### PR 1: <title>` block by default, in the PR description format below; it is the artifact the user approves at Gate 1. Split into more than one PR block only under the size or risk exception above. The PR body is written from this block (R-605); the plan document itself carries no per-PR execution record (no PR number, merge date, review outcome, or test-author fallback to track by hand). `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels or the plan has no PR block at all, so Gate 1 never sees a half-described PR.
 
 ## PR description format
 
@@ -83,7 +83,7 @@ Tests cite the spec's acceptance criteria. End-to-end tests come from the spec's
 
 ## Living docs
 
-Keep the project's spec and its task/PR tracker a factual reflection of the current state. The bookkeeping subagent updates them, committed with the slice, as each PR and slice completes.
+Keep the project's spec and its task/PR tracker a factual reflection of the current state. The main session updates them (tracker writes as direct MCP calls, R-605), committed with the slice, as each PR and slice completes.
 
 ## Review depth
 
