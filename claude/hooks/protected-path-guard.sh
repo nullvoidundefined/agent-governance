@@ -127,11 +127,13 @@ LOCK="$ROOT/.claude/tdd-lock.json"
 LOCK_STATE="none"
 PHASE=""
 LOCKED=""
+AMENDING=""
 if [ -f "$LOCK" ]; then
   if jq -e . "$LOCK" >/dev/null 2>&1; then
     LOCK_STATE="ok"
     PHASE=$(jq -r '.phase // "red"' "$LOCK")
     LOCKED=$(jq -r '[(.tests[]?.path // empty), (.locked[]? // empty)] | .[]' "$LOCK")
+    [ "$PHASE" = amending ] && AMENDING=$(jq -r '.amending.path // ""' "$LOCK")
   else
     LOCK_STATE="unreadable"
   fi
@@ -196,6 +198,11 @@ verdict_for() {
       open)
         if ! matches "$rel" "$TESTS_PATTERN" && ! matches "$rel" "$SPECS_PATTERN"; then
           printf 'deny|%s' "Slice '$(jq -r '.slice // "?"' "$LOCK")' is open and not yet red, so production paths are read-only (R-412). Write the failing test for this behavior first, run 'bash ~/.claude/enforce/tdd.sh red <test file>' to prove it fails for the right reason, and then '$rel' opens up."
+          return
+        fi ;;
+      amending)
+        if [ "$rel" != "$AMENDING" ]; then
+          printf 'deny|%s' "Slice '$(jq -r '.slice // "?"' "$LOCK")' is amending '$AMENDING', so that file is the only writable path until 'tdd.sh amend $AMENDING' re-proves the RED (R-410, R-412); '$rel' waits until then."
           return
         fi ;;
       red | green | refactor)

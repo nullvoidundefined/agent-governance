@@ -38,6 +38,12 @@
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
 #       refactor.
+#   tdd.sh amend <test file>
+#       the author's fix to a test it just proved RED: from red, opens a window
+#       (phase "amending") in which only that file is writable; run again, it
+#       requires the amended test to still fail for a classified reason,
+#       re-hashes it, records the amendment, and returns to red. Refused for a
+#       test the slice did not lock, outside red, and once the RED is pushed.
 #   tdd.sh close
 #       removes the lock; refused unless the phase is green, or the phase is
 #       open and no test was ever locked (nothing could have been written
@@ -691,7 +697,7 @@ open_refactor() {
 
 cmd_red() {
   require_lock
-  case "$(phase)" in open | red) ;; refactor) die "this is a refactor slice; a new behavior is a new slice: 'tdd.sh green', 'tdd.sh close', then 'tdd.sh open'" ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
+  case "$(phase)" in open | red) ;; amending) die "an amendment of $(jq -r '.amending.path' "$LOCK") is open; finish it with 'tdd.sh amend $(jq -r '.amending.path' "$LOCK")' first" ;; refactor) die "this is a refactor slice; a new behavior is a new slice: 'tdd.sh green', 'tdd.sh close', then 'tdd.sh open'" ;; *) die "phase is $(phase); red is only valid from open or red. Close this slice and open the next." ;;
   esac
   [ $# -gt 0 ] || die "usage: tdd.sh red <test file | test file::test id>..."
   local tests_pattern spec='[]' rels=() rel file id
@@ -747,7 +753,11 @@ check_hashes() {
 
 cmd_green() {
   require_lock
-  case "$(phase)" in red | green | refactor) ;; *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;; esac
+  case "$(phase)" in
+    red | green | refactor) ;;
+    amending) die "an amendment of $(jq -r '.amending.path' "$LOCK") is open; finish it with 'tdd.sh amend $(jq -r '.amending.path' "$LOCK")' before green" ;;
+    *) die "phase is $(phase); run 'tdd.sh red <test file>' first" ;;
+  esac
   check_hashes
   local rels names rel record locked_rels=()
   rels=$(jq -r '.tests[].path' "$LOCK")
@@ -818,13 +828,84 @@ cmd_expected_red() {
   require_lock
   local current rel locked_rels=()
   current=$(phase)
-  [ "$current" = red ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
+  [ "$current" = red ] || [ "$current" = amending ] || die "phase is $current; only a slice that recorded its RED has an expected red suite, so there is nothing here to excuse"
   while IFS= read -r rel; do [ -n "$rel" ] && locked_rels+=("$rel"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
   [ "${#locked_rels[@]}" -gt 0 ] || die "phase is red but the lock records no test file; repair or delete $LOCK_RELATIVE outside the session"
   run_suite "${locked_rels[@]}"
   outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null
   rm -f "$REPORT"
   say "EXPECTED RED: every failure is one of the ${#locked_rels[@]} locked test file(s)"
+}
+
+# cmd_amend <test file>: the author's own fix to a test it just proved RED,
+# without the user deleting the lock (2026-09-24). Run twice. From phase red
+# the first run opens a window, phase "amending", in which the guard lets
+# exactly that file be written and nothing else, production included. From
+# "amending" the second run re-runs the suite, requires the amended test to
+# still fail for a classified reason with nothing outside the locked tests
+# failing, re-hashes it, appends the change to .amendments, and returns to
+# red. Refused for a test this slice did not lock (an earlier slice's test
+# stays under R-410), in every phase but red and amending (after green above
+# all), and once the RED version of the test, or a committed red lock, is
+# reachable from a remote-tracking ref: pushed history is shared, and a
+# changed test there goes through `DISPUTE:` and the user.
+cmd_amend() {
+  require_lock
+  [ $# -eq 1 ] || die "usage: tdd.sh amend <test file>"
+  local rel
+  rel=$(relative "$1")
+  case "$(phase)" in
+    red) start_amendment "$rel" ;;
+    amending) finish_amendment "$rel" ;;
+    *) die "phase is $(phase); a test is amended only while its slice is red, before any GREEN. After that the test is the contract (R-410): return 'DISPUTE: <test id>: <why>' to the user" ;;
+  esac
+}
+
+start_amendment() {
+  local rel="$1"
+  jq -e --arg p "$rel" 'any(.tests[]; .path == $p)' "$LOCK" >/dev/null \
+    || die "$rel is not a test this slice locked at RED; a test from an earlier slice stays read-only (R-410). If it is wrong, return 'DISPUTE: <test id>: <why>' to the user"
+  red_is_pushed "$rel" && die "the RED version of $rel has been pushed, so it is shared history and no longer the author's to amend (R-410). Return 'DISPUTE: <test id>: <why>' to the user"
+  jq --arg p "$rel" --arg at "$(now)" '.phase = "amending" | .amending = {path: $p, startedAt: $at}' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
+  say "AMENDING: $rel is writable, and nothing else is. Fix the test, then run 'tdd.sh amend $rel' again to re-prove the RED."
+}
+
+finish_amendment() {
+  local rel="$1" open_path
+  open_path=$(jq -r '.amending.path // ""' "$LOCK")
+  [ "$rel" = "$open_path" ] || die "the open amendment is for $open_path; finish it with 'tdd.sh amend $open_path' first"
+  local before ids locked_rels=() path class
+  before=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
+  ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
+  while IFS= read -r path; do [ -n "$path" ] && locked_rels+=("$path"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  run_suite "${locked_rels[@]}"
+  if [ "$ids" = null ]; then class=$(classify_red "$rel") || exit 1
+  else class=$(classify_named "$rel" "$ids") || exit 1
+  fi
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null || exit 1
+  local after count
+  after=$(sha "$rel")
+  count=$(named_count "$rel" "$ids")
+  rm -f "$REPORT"
+  jq --arg p "$rel" --arg from "$before" --arg to "$after" --arg c "$class" --argjson n "$count" --arg at "$(now)" '
+    .tests |= map(if .path == $p then .sha256 = $to | .failureClass = $c | .tests = $n else . end)
+    | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, failureClass: $c, at: $at}])
+    | .phase = "red" | del(.amending)' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
+  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock. Commit the amended test before the implementation, then 'tdd.sh green'."
+}
+
+# red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding
+# <rel> with the content the lock recorded at RED, or the last commit of a
+# committed lock.
+red_is_pushed() {
+  local rel="$1" recorded commit
+  recorded=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
+  while IFS= read -r commit; do
+    [ -n "$commit" ] || continue
+    [ "$(git show "$commit:$rel" 2>/dev/null | shasum -a 256 | awk '{print $1}')" = "$recorded" ] && return 0
+  done <<< "$(git log --remotes --format=%H -n 50 -- "$rel" 2>/dev/null)"
+  commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
+  [ -n "$commit" ] && [ -n "$(git branch -r --contains "$commit" 2>/dev/null)" ]
 }
 
 cmd_status() {
@@ -877,8 +958,9 @@ case "${1:-}" in
   red) shift; cmd_red "$@" ;;
   green) cmd_green ;;
   expected-red) cmd_expected_red ;;
+  amend) shift; cmd_amend "$@" ;;
   close) cmd_close ;;
   status) cmd_status ;;
   validate) shift; cmd_validate "$@" ;;
-  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | expected-red | close | status | validate <role>" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | amend <test file> | expected-red | close | status | validate <role>" ;;
 esac
