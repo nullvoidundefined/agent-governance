@@ -7,6 +7,12 @@
 # criteria", and "## Non-goals". Any missing -> one reminder naming each
 # missing section; all present -> silent; any other path -> silent.
 #
+# A slice plan under docs/slices/ must carry the seven bold labels in every
+# "### PR" block and, since IAN-352 (2026-09-24), a plan-level
+# "**Merge mode:**" line recording the merge mode the owner chose at Gate 1.
+# The two are reported together in one reminder, so a plan missing both hears
+# about both.
+#
 # Run: ~/.claude/hooks/tests/spec-glossary-check.test.sh
 
 set -uo pipefail
@@ -94,9 +100,12 @@ check "design md outside specs silent"                silent "docs/other/x-desig
 check "source file silent"                            silent "apps/server/src/services/foo.ts" "export const x = 1;"
 
 # Slice plans (2026-09-17 skills audit, S-10): every "### PR" block carries
-# the seven bold labels of build-by-slice-require-review's PR format.
+# the seven bold labels of build-by-slice-require-review's PR format, and
+# (IAN-352) the plan carries a "**Merge mode:**" line.
 SLICE="docs/slices/slice-01-auth.md"
 SLICE_COMPLETE="# Slice 01: auth
+
+**Merge mode:** owner merges, because the owner is reading the auth work PR by PR.
 
 ### PR 1: session table
 
@@ -162,11 +171,24 @@ SLICE_EMPTY="# Slice 01: auth
 
 Some prose and no PR blocks.
 "
+SLICE_NO_MODE="$(printf '%s\n' "$SLICE_COMPLETE" | grep -v '^\*\*Merge mode:\*\*')"
+SLICE_OPT_IN="${SLICE_COMPLETE/owner merges, because the owner is reading the auth work PR by PR./merge on green, because every PR here is a mechanical rename.}"
+
 check "complete slice plan silent"                    silent "$SLICE" "$SLICE_COMPLETE"
+check "opt-in mode line also silent"                  silent "$SLICE" "$SLICE_OPT_IN"
 check "slice plan missing labels nudges"              nudges "$SLICE" "$SLICE_PARTIAL"
 check "missing labels named per PR"                   names 'PR 1: session table lacks Tests, Review focus, Size' "$SLICE" "$SLICE_PARTIAL"
 check "complete PR not named"                         omits 'PR 2: login handler lacks' "$SLICE" "$SLICE_PARTIAL"
 check "slice plan with no PR block nudges"            names 'no "### PR' "$SLICE" "$SLICE_EMPTY"
 check "other file under docs/slices silent"           silent "docs/slices/README.md" "$SLICE_EMPTY"
+
+# The merge mode (IAN-352): its absence is reported on its own when the PR
+# blocks are complete, reported alongside the label problems when they are not,
+# and folded into the no-PR-block reminder rather than lost behind it.
+check "plan without a merge mode nudges"              nudges "$SLICE" "$SLICE_NO_MODE"
+check "missing merge mode is named"                   names 'no "\*\*Merge mode:\*\*" line' "$SLICE" "$SLICE_NO_MODE"
+check "complete PR blocks not named with it"          omits 'lacks' "$SLICE" "$SLICE_NO_MODE"
+check "mode and labels reported together"             names 'Merge mode.*PR 1: session table lacks' "$SLICE" "$SLICE_PARTIAL"
+check "no-PR-block reminder names the mode too"       names 'Merge mode' "$SLICE" "$SLICE_EMPTY"
 
 exit $fail

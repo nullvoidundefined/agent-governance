@@ -130,16 +130,21 @@ Comprehension is preserved because a human reads the work at fixed gates rather 
 
 There are two hard gates. **Gate 1** is the slice plan document, written to
 `docs/slices/slice-<nn>-<slug>.md` before any code, listing every pull request in the slice with its
-context, problem, approach, contents, tests, review focus, and size. The user approves that document
-before building starts. **Gate 2** is the pull request itself: the user reviews and approves it on
-GitHub before merge, with no auto-merge and no command-line merge.
+context, problem, approach, contents, tests, review focus, and size, and recording on a
+`**Merge mode:**` line which merge mode the owner chose for the slice. The user approves that
+document before building starts. **Gate 2** is the pull request itself: by default the user reads
+and merges it on GitHub and the session stops there. A slice may opt out of Gate 2 at Gate 1, which
+lets the session merge that slice's pull requests itself once CI is green and the pre-merge review
+has passed. The owner's merge is the default because a review by a subagent is not a substitute for
+the owner reading the diff, and a skill named require-review should not remove them from the loop
+without being asked to (IAN-352).
 
 This skill is portable prose. It describes a discipline that works in any tool, including ones with
 no hook surface at all, because nothing in it requires a script to be present. Where the hook
 surface does exist, two guards back its gates rather than replacing them:
 `hooks/spec-glossary-check.sh` reminds you on the write when a slice plan's pull request block is
-missing any of the seven labels, and `hooks/git-workflow-guard.sh` denies `gh pr merge` while the
-review section of the body is missing or empty. Neither one can tell whether a human actually read
+missing any of the seven labels or the plan records no merge mode, and `hooks/git-workflow-guard.sh`
+denies `gh pr merge` while the review section of the body is missing or empty. Neither one can tell whether a human actually read
 the pull request, which is the part that matters and the part that stays with you.
 
 **Reach for it when** the question is "how does this work reach the human, in what size pieces, and

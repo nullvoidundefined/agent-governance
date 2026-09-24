@@ -14,8 +14,11 @@
 # build-by-slice-require-review skill: every "### PR" block must carry the
 # seven bold labels the skill's PR description format fixes (Context,
 # Problem, Approach, Contents, Tests, Review focus, Size), and the plan must
-# hold at least one such block. One reminder names each PR and its missing
-# labels.
+# hold at least one such block. Since 2026-09-24 (IAN-352) it must also carry
+# a plan-level "**Merge mode:**" line, the record of which merge mode the
+# owner chose for the slice at Gate 1, because merging on green CI is now the
+# opt-in and the owner's own merge is the default (R-514). One reminder names
+# the missing mode line and each PR's missing labels together.
 # Silent for every other path. Never blocks; a jq fault or malformed input
 # exits 0 so the hook can never break a Write. The template with all headings
 # is prompts/spec-template.md.
@@ -44,10 +47,13 @@ jq -rc '
           | ($labels | map(select(("**" + . + ":**") as $needle | ($block | contains($needle)) | not))) as $absent
           | if ($absent | length) == 0 then empty else ($heading + " lacks " + ($absent | join(", "))) end
         )) as $problems
+      | (if ($c | contains("**Merge mode:**")) then []
+         else ["the plan has no \"**Merge mode:**\" line, so nothing records whether the owner reads and merges each PR (the default) or the session merges on green CI plus the R-517 review (the opt-in, R-514)"] end) as $mode
+      | (($mode + $problems)) as $all
       | if ($blocks | length) == 0 then
-          {hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Slice plan "+$p+" has no \"### PR <n>: <title>\" block; build-by-slice-require-review lists every PR of the slice under one, each with the seven bold labels Context, Problem, Approach, Contents, Tests, Review focus, Size.")}}
-        elif ($problems | length) == 0 then empty
-        else {hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Slice plan "+$p+" is incomplete for Gate 1 (build-by-slice-require-review): "+($problems | join("; "))+". Every PR block carries the seven bold labels Context, Problem, Approach, Contents, Tests, Review focus, Size.")}}
+          {hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Slice plan "+$p+" has no \"### PR <n>: <title>\" block; build-by-slice-require-review lists every PR of the slice under one, each with the seven bold labels Context, Problem, Approach, Contents, Tests, Review focus, Size"+(if ($mode | length) == 0 then "." else ", and the plan itself carries a \"**Merge mode:**\" line recording the merge mode chosen at Gate 1 (R-514)." end))}}
+        elif ($all | length) == 0 then empty
+        else {hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Slice plan "+$p+" is incomplete for Gate 1 (build-by-slice-require-review): "+($all | join("; "))+". Every PR block carries the seven bold labels Context, Problem, Approach, Contents, Tests, Review focus, Size, and the plan carries a \"**Merge mode:**\" line.")}}
         end
     else empty end
 ' 2>/dev/null || true
