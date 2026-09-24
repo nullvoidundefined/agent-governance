@@ -4,8 +4,8 @@
 
 **How to use:**
 
-1. Copy everything below the line into a scratch file (never into the repository) and replace every `<PLACEHOLDER>`. With no spec (Standard tier), name the slice titles and the ticket as the requirements and write "none" for the spec.
-2. Keep it focused: name the base and head refs and let Codex read only the changed files and the requirement documents. The owner's Codex account is a $20 ChatGPT plan with tight usage limits, and an unfocused review can exhaust it.
+1. Copy everything below the line into a scratch file (never into the repository) and replace every `<PLACEHOLDER>`. With no spec (Standard tier), paste the slice titles and the ticket's scope as the requirements and write "none" for the spec.
+2. Paste the diff and the requirements into the prompt; never leave the reviewer to fetch them (owner decision 2026-09-24, IAN-346). Every API call a subagent makes re-sends its whole context, about 22k tokens of harness before any diff, so the tool-call count drives the cost: reviews that fetched their own diff cost 88k to 135k tokens for 3 to 43 calls, while one that answers from its prompt costs one call plus the diff. Build `<DIFF>` with `git diff <BASE_REF>...<HEAD_REF> -- . ':(exclude)<generated paths>'`, excluding generated trees and lock files (in agent-governance, `codex/`, `cursor/`, and `claude/enforce/hook-hashes.txt`) and naming the exclusions on the `Excluded` line. Paste `<REQUIREMENTS>` as the text itself: the spec section or rule entry the PR implements, the slice plan's PR block, or the ticket's scope. When the diff runs past about 1,500 lines, paste the hunks of the executable and rule files, list the rest by path under `Excluded`, and say so. The same pasted prompt keeps an opted-in Codex review focused, which matters because the owner's Codex account is a $20 ChatGPT plan with tight usage limits.
 3. Default: dispatch a fresh Claude subagent (Agent tool, `model: "sonnet"`) with the filled prompt and treat its final message as the review. Codex, when opted in: run it read-only, in the background, with stdin closed and output in a log file, exactly as `skills/task-cleanup/SKILL.md` shows, then read the final message file when the log shows the run has finished.
 4. When an opted-in Codex review is unavailable, unauthenticated, or out of quota, do not wait for the quota to reset and do not run the review in the main session: dispatch a separate Claude agent in a fresh context, on a model at least as strong as the main session's and ideally stronger (the Agent tool's `model: "fable"` when available, else `opus`), give it this same prompt with the same placeholders filled, and treat its final message as the review. Record in the PR's `## Codex review` section (the heading stays the same whichever reviewer ran) which reviewer and model ran and why, for example `Reviewer: Claude subagent (fable), fallback: Codex usage limit reached`.
 
@@ -14,15 +14,22 @@
 You are an adversarial reviewer of a pull request. Your job is to find where the change is wrong, incomplete, or unsafe, not to praise it. Another agent wrote this code and its tests, so assume it has blind spots.
 
 Repository: <REPO_ROOT>
-Diff under review: `git -C <REPO_ROOT> diff <BASE_REF>...<HEAD_REF>` (start with `--stat`, then read each changed file in full where the hunk alone does not show the behavior).
+Range under review: <BASE_REF>...<HEAD_REF>
+Excluded from the diff below: <GENERATED_PATHS, or "nothing">
 
-Requirements the diff must satisfy:
+Requirements the diff must satisfy (pasted, not referenced):
   Spec: <SPEC_PATH, or "none (Standard tier)">
-  Acceptance criteria for this PR: <the slice plan path and its PR block, the B-n lines this PR claims, or the slice titles and ticket for a Standard task>
+  <REQUIREMENTS: the spec section, rule entry, slice plan PR block, or ticket scope, as text>
 Convention files that apply to the changed code:
   <CONVENTION_FILE_PATHS, only the tracks the diff touches>
 
-Read only the diff, the files it changes, the requirement documents above, and files the changed code imports directly. Do not scan the rest of the repository.
+The diff under review:
+
+```diff
+<DIFF>
+```
+
+Judge from the diff and the requirements above. Use a tool only when they cannot answer a specific question, such as reading a caller outside a hunk, checking a convention section, or running a named test, and make at most three tool calls: each one re-sends your whole context. Never scan the rest of the repository.
 
 Find, with evidence:
 
