@@ -17,7 +17,7 @@ R-001: Run the session-start procedure before any other work.
   3. Read Tier 2 files for that session type per the session-types load map.
   4. Run `git -C "$(cat ~/.claude/.sync-source)" status -s`; triage non-empty (`~/.claude` is a sync target of the agent-governance repo, not a git repo itself).
   5. Read `docs/session-handoff/session-handoff.md` if present; verify the last-commit SHA against `git log`.
-  6. Read the project `CLAUDE.md`.
+  6. Confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`); Read it only when its content is absent from the injected context. A repo with none lists `no project file` under Skipped, and the procedure continues.
   - First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`.
   - On reclassification: re-read files and update the declaration.
   Scope: Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent.
