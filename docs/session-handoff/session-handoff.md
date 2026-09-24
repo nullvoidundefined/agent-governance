@@ -6,6 +6,8 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 ## 1. Last commit
 
+`c982b18` fix(enforce): stop push-eslint-gate denying clean diffs on import-x vue parse warnings (IAN-332). PR #122 squash-merged 2026-09-24 with all four checks green, verified on `main`, and synced into `~/.claude`. This supersedes the entries below as the newest commit on `main`.
+
 `102d281` fix(hooks): walk a written path by expansion, not a process per component (IAN-183). PR #104 merged 2026-09-22 with all checks green; IAN-183, IAN-262 and IAN-301 closed. Superseded the entry below, which was current when the PR-triage session wrote this file.
 
 - `main` is at `021c8fa`, `fix(hooks): replace mapfile so the scope guards run under bash 3.2 (#105)`. Today's merges: `#89` to `#93`, `#95`, `#96`, `#98`, `#102`, `#99`, `#103`, `#105`.
@@ -27,7 +29,8 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 - **`tdd.sh red` tolerates manifest drift** (IAN-156) when every reverse-closure line names a test file the red command named. `expected-red` answers the same read-only; `green` does not.
 - **`.claude/tdd-lock.json` is untracked and gitignored** as of `#92`. IAN-188 closed on that evidence.
 - **Do not sync from `fix/gate-expected-red` until `#97`'s H-1 and H-2 are fixed**: that build widens R-509, so a phase-`red` turn can end on a failing typecheck, lint or port check.
-- **`~/.claude/.sync-source` now points at `.claude/worktrees/epic-poitras-097aba`, which is on `docs/handoff-2026-09-20-pr-triage`, not `main`.** That pointer was rewritten by this session's own `./sync.sh`. Today it is harmless, because that branch differs from `main` only by this file, but `./sync.sh` installs from whatever checkout it runs in, so a source on a code branch installs that branch. The primary checkout is separately stale, sitting on `fix/ticket-gate-exemption-telemetry` at `d426098`. Check `git -C "$(cat ~/.claude/.sync-source)" log -1` before syncing.
+- **`~/.claude/.sync-source` now points at `agent-governance-main`, a detached checkout at `origin/main` (`c982b18`)**, rewritten by the IAN-332 session's `./sync.sh` on 2026-09-24. Keep syncing from that checkout after `git -C <it> switch --detach origin/main`; the earlier sources (`epic-poitras-097aba`, then `unruffled-gates-6647a2` on the since-merged `chore/scope-r001-to-interactive-sessions`) were feature branches. The primary checkout is still stale, on `fix/ticket-gate-exemption-telemetry` at `d426098`. Check `git -C "$(cat ~/.claude/.sync-source)" log -1` before syncing.
+- **The push ESLint gate now decides on lint.mjs's exit status and stdout, not stderr** (IAN-332). Before `c982b18`, any `.ts` file importing a `<script setup lang="ts">` component with TypeScript-only syntax denied the push with import-x parse warnings and no violation. Those SFCs were also silently missing from `no-cycle`'s import graph, so R-303 was unenforced across them until this fix.
 - **Codex quota is restored**, so R-517 has its primary reviewer again; the Claude subagent is the fallback only. Codex still exits 0 while printing an error: a first invocation on 2026-09-23 exited 0 having produced no review at all, because `gpt-5.1-codex-max` is not available on a ChatGPT account. Read the log, never the exit status, and do not pass `--model`.
 - `hook-latency.test.sh` passed the gate session (308ms vs 348ms), failed the README session (344ms vs 324ms) and failed this one at 450ms vs 378ms. The budget floats with load because it is six times a bare-spawn control measured per run, but the cause is not load: `#104` measured it as three hooks resolving a written file's directory one component at a time, spawning a `dirname` or `basename` per level, and its fix gives ten consecutive runs at 199 to 225ms. While red it blocks `tdd.sh red` for any slice whose tests sit in `claude/enforce/tests/`, because a RED cannot be certified while that suite is red. Do not widen it (R-204).
 - `#101` merged on 09-23, folding the IAN-218 session record in rather than overwriting it. `#100` stays closed unmerged, and whether IAN-218's branch returns as a PR is still an owner decision.
@@ -41,6 +44,7 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 Per-ticket actuals are on the tickets; these are the figures that change a future estimate.
 
+- IAN-332: standard tier, 10 active minutes against a 45-minute estimate (ratio 0.22, human_speedup 6.0), rework 0, one fresh Sonnet review with no findings. **R-906:** estimate a single-gate fix with a known reproduction at 15 to 20 minutes.
 - PRs merged: 6 code plus handoffs, rework 6, velocity normal. The triage session merged `#98`, `#99` and `#105`, opened `#100`, `#101`, `#105` and `#106`, and closed `#100` unmerged. `#103` merged fifteen seconds before `#105` opened.
 - Ratios: IAN-156 1.42 (scope discovery, not a wrong tier), IAN-175 2.17 (human_speedup 0.35, half the time in the gate loop), IAN-257 0.56 (human_speedup 4.29), IAN-267 0.60, IAN-259 0.50.
 - **IAN-259's 0.50 is misleading**: the ticket was opened retroactively mid-work and never bounded the fold it is supposed to measure. Keep it out of the standard-tier baseline.
@@ -52,6 +56,7 @@ Per-ticket actuals are on the tickets; these are the figures that change a futur
 
 Detail is on each ticket; these are one line apiece for traceability.
 
+- **IAN-332 (#122).** The ts/tsx/vue ESLint block hands import-x the TypeScript sub-parser for imported SFCs, and `push-eslint-gate.sh` judges exit status plus stdout while still failing closed on a crash; two new cases in `push-eslint-gate.test.sh`.
 - **IAN-156 (#91).** `tdd.sh red` past manifest drift, so a test author here can reach a RED.
 - **IAN-175 (#92).** The R-334 norm line and Spec, a 144-line fixture, both ports, the lock untracking.
 - **R-212, R-213, R-214 (#96).** Scope declaration, provenance tags, findings-to-ticket, each with an enforcer, fixture and manifest row, plus the `chmod 000` fixture that asserted nothing as uid 0. Deferred: IAN-224, IAN-225. Two of these enforcers shipped dead on macOS and were repaired in `#105` (IAN-267).
