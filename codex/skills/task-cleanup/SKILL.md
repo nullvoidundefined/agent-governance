@@ -19,7 +19,7 @@ Every task has a tail: feature list updates, user stories, E2E tests, squash mer
 Split by owner decision 2026-09-24 (IAN-345, amending IAN-333): tracker writes are direct calls from the main session, and a subagent is worth its start-up cost only for large doc bookkeeping.
 
 - **Main session:** the scan, the verification gate, the feature list, the user story, the PR body (summary, what changed, decisions, testing, and a short reflection, replacing the retired per-PR document file), committing the edits, the one pre-merge review, the merge, every tracker write (findings tickets and the ticket close, as direct MCP calls), and the handoff.
-- **Background subagent, Complex and Saga only** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body, and the handoff, when they read enough files to be worth it. It edits files but never commits and never writes to the tracker; the main session commits its edits before the review runs.
+- **Background subagent, Complex and Saga only** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body, and the handoff, when they read enough files to be worth it. The subagent edits files but never commits and never writes to the tracker; the main session commits its edits before the review runs.
 
 ## Step 1: Determine What Shipped
 
