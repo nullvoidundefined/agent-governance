@@ -6,6 +6,12 @@
 # user confirms (a codex-authored test believed wrong is a DISPUTE, not an
 # edit).
 #
+# Tier scope (IAN-333, owner decision 2026-09-23): the ask applies only when the
+# task-start ledger records Complex or Saga, or records nothing, for the branch
+# checked out in the test file's repository. A Standard or Trivial ledger lets
+# the session write its own failing test, which the R-412 lock still forces to
+# come before the implementation.
+#
 # Runtime marker: codex is not outside this guard. Its CLI runs the same hooks
 # through codex/hooks/codex-hook-adapter.sh, which registers this guard on the
 # Write|Edit matcher (codex/hooks.json) and translates an ask into a deny,
@@ -94,7 +100,29 @@ if [ "${CLAUDE_HOOK_RUNTIME:-}" = "codex" ]; then
   log_rule_fire "R-907" "codex-test-author-guard" "codex-runtime"
   exit 0
 fi
+# read_ledger_tier <file>: prints the tier the task-start ledger records for
+# the branch checked out in <file>'s repository, or nothing when there is no
+# repository, no readable ledger, or a ledger written for another branch.
+read_ledger_tier() {
+  local dir top branch ledger
+  dir=$(dirname "$1")
+  while [ ! -d "$dir" ] && [ "$dir" != "/" ]; do dir=$(dirname "$dir"); done
+  top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 0
+  branch=$(git -C "$top" symbolic-ref --quiet --short HEAD 2>/dev/null) || return 0
+  ledger="$top/.claude/task-tier.json"
+  [ -f "$ledger" ] || return 0
+  jq -r --arg b "$branch" 'select(type == "object" and .branch == $b) | .tier // "" | strings' "$ledger" 2>/dev/null
+}
+# Standard and Trivial work writes its own failing test under the R-412 lock
+# (owner decision 2026-09-23, IAN-333); the independent author R-907 asks for
+# is a Complex and Saga requirement, so only those tiers reach the ask.
+case "$(read_ledger_tier "$FILE")" in
+  standard | trivial)
+    log_rule_fire "R-907" "codex-test-author-guard" "tier-exempt"
+    exit 0
+    ;;
+esac
 log_rule_fire "R-907" "codex-test-author-guard" "ask"
-jq -n --arg r "codex-test-author-guard (R-907): $BASE is a test file, and tests are authored by the codex CLI, never by the model writing the implementation. Dispatch codex to write or change it, or return DISPUTE: <test> if a codex-authored test looks wrong. Confirm only if this edit genuinely must come from Claude (for example harness plumbing the user asked for)." \
+jq -n --arg r "codex-test-author-guard (R-907): $BASE is a test file, and in the Complex and Saga tiers tests come from an author other than the implementer: the test-author subagent by default, or the codex CLI when the owner opts in. Dispatch one of them, or return DISPUTE: <test> if a locked test looks wrong. Confirm only if this edit genuinely must come from this session (for example harness plumbing the user asked for)." \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
 exit 0

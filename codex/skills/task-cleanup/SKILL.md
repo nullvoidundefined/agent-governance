@@ -14,6 +14,13 @@ Examine what shipped. Run required cleanup. Close out the work.
 
 Every task has a tail: feature list updates, user stories, E2E tests, squash merges, session handoffs. Without this skill, those steps are forgotten or done inconsistently. This skill makes them mechanical.
 
+## Who Does What
+
+Split by owner decision 2026-09-23 (IAN-333, "Drop the PR ceremony"). The subagent edits files but never commits; the main session commits its own edits before the review runs, then merges, and the subagent closes the ticket after.
+
+- **Main session:** the scan, the verification gate, committing its own edits, the one pre-merge review, and the merge.
+- **Background subagent** (`haiku` or `sonnet`, Agent tool `run_in_background: true`, dispatched as soon as the diff is final): the feature list, the user story, the PR body (summary, what changed, decisions, testing, and a short reflection, replacing the retired per-PR document file), any findings tickets, the ticket close, and the handoff.
+
 ## Step 1: Determine What Shipped
 
 Run the scan; it answers six of the seven questions from the diff, names the files behind each answer, and prints the Step 4 table with N/A pre-filled where the answer is no:
@@ -85,73 +92,62 @@ Check if the spec and plan are fully shipped (all tasks done, all acceptance cri
 
 Run the project's test, build, and lint commands (whatever `package.json`, `Makefile`, or the project `CLAUDE.md` defines). All three must pass before any merge decision.
 
-**PR loop** (R-514, R-515, R-517). On a trivial tier recorded in the task-tier ledger for this branch, run only steps 2 (open the PR) and 4 (the ledger note), then merge on green CI; steps 1, 3, 5, and 6 apply only above the trivial tier:
-1. Run `/code-review` on the branch diff, or dispatch a fresh reviewer subagent given only the diff, before opening the PR. Fix every real finding test-first (failing case, then fix) and record what the review found in the PR document.
-2. Open the PR. Never request a Copilot review (R-514).
-3. Run the blocking pre-merge Codex review (below). It is the review every PR above trivial gets.
-4. Start the next ticket while CI and Codex run (CI alone on a trivial PR). Return to this PR when they finish; do not block the session on a poll loop. A trivial PR's exemption from R-517 lives in the checkout's one task-tier ledger, which the next ticket's `task-tier.sh set` replaces: merge the trivial PR first, start the next ticket in another worktree, or re-record `task-tier.sh set trivial` on the trivial branch before merging. The same holds above trivial: `ticket-at-start-gate.sh` denies edits and commits on a branch the ledger does not name, so a review fix on this PR after the next ticket's `task-tier.sh set` needs this PR's own ledger again (`task-tier.sh set <tier> "<reason>" --ticket <this PR's key>`), and one worktree per in-flight ticket avoids the swap entirely.
-5. Fix each valid review comment (failing case first when behavior changes), reply in its thread naming the fix commit, and resolve the thread (R-515).
-6. After any commit that moves the head, documentation included, re-run the Codex review on the new range and rewrite the `range` line from that run: the gate denies while the line does not end at the head, and it cannot tell a documentation commit from a behavior change. Editing the PR's description, title, or labels moves no commit and needs no re-review. Write the PR document and body before running the review so the review is the last thing before the merge.
-7. For 2 to 5 small related tickets, one bundle PR may replace separate PRs: label it `bundle`, keep one commit per ticket with its own `Refs:` trailer, and merge with `--rebase` (R-512). Never bundle deletion, security, sync, or migration changes.
+**PR loop** (R-514, R-515, R-517). On a trivial tier recorded in the task-tier ledger for this branch, run only step 1 (open the PR) and step 3 (the ledger note), then merge on green CI; steps 2, 4, and 5 apply only above the trivial tier:
+1. Open the PR. Never request a Copilot review (R-514). The separate `/code-review` pass before opening the PR is retired; one review per PR is enough.
+2. Commit the bookkeeping subagent's file edits (feature list, user story, handoff), then run the R-517 review (below) on the finished head. It is the review every PR above trivial gets.
+3. Start the next ticket while CI and the review run (CI alone on a trivial PR). Return to this PR when they finish; do not block the session on a poll loop. A trivial PR's exemption from R-517 lives in the checkout's one task-tier ledger: merge the trivial PR first, or use one worktree per in-flight ticket to avoid a ledger swap.
+4. Fix each valid review comment (failing case first when behavior changes), reply in its thread naming the fix commit, and resolve the thread (R-515). A commit that moves the head triggers a re-review on the new range.
+5. After the review, change only the PR body, title, or labels, which move no commit, so one review per PR stays sufficient.
+6. For 2 to 5 small related tickets, one bundle PR may replace separate PRs: label it `bundle`, keep one commit per ticket with its own `Refs:` trailer, and merge with `--rebase` (R-512). Never bundle deletion, security, sync, or migration changes.
 
-**Pre-merge Codex review** (R-517, blocking, every PR above the trivial tier; a trivial PR is exempt only when `.claude/task-tier.json` records the trivial tier for its head branch):
+**Pre-merge review (R-517)** (blocking, every PR above the trivial tier; a trivial PR is exempt only when `.claude/task-tier.json` records the trivial tier for its head branch):
 
-Codex (OpenAI's coding agent, run through its CLI as a separate process, so the reviewer is a different model from the one that wrote the code) reviews the PR's diff against the spec and the acceptance criteria the PR claims, before merge.
+The default reviewer is a fresh Claude subagent on `sonnet`, given the filled `~/.claude/prompts/codex-pr-review-prompt.md`, reviewing the PR's diff against the spec and the acceptance criteria the PR claims, before merge (a different context from the one that wrote the code). Use Codex, or a stronger subagent (`opus`/`fable`), only when the owner opts in or the diff touches auth, money, or concurrency.
 
-1. Copy `~/.claude/prompts/codex-pr-review-prompt.md` below its line into a scratch file and fill every placeholder: the base and head refs, the spec path (or "none" in Standard), the acceptance criteria (the slice plan's PR block, the `B-n` lines, or the slice titles and ticket), and only the convention files the diff touches. Keep it focused: the owner's Codex account is a $20 ChatGPT plan with tight usage limits.
-2. Run it read-only, in the background (the Bash tool's `run_in_background`), and poll the log file until the process exits:
+1. Copy `~/.claude/prompts/codex-pr-review-prompt.md` below its line into a scratch file and fill every placeholder: the base and head refs, the spec path (or "none" in Standard), the acceptance criteria (the slice plan's PR block, the `B-n` lines, or the slice titles and ticket), and only the convention files the diff touches.
+2. Dispatch a fresh Claude subagent (Agent tool, `model: "sonnet"`) with the filled prompt, and use its final message as the review.
 
-   ```bash
-   codex exec -s read-only -C <repo root> --skip-git-repo-check \
-     -o <scratch>/codex-pr-<n>-final.md "$(cat <scratch>/codex-pr-<n>-prompt.md)" \
-     </dev/null > <scratch>/codex-pr-<n>.log 2>&1
-   ```
-
-   Close stdin with `</dev/null`, or codex blocks on "Reading additional input from stdin". Never pipe it through `tail`, which buffers until exit and looks like a hang. Omit `-m`: `gpt-5.1-codex-mini` is rejected on the owner's ChatGPT account, so the account default applies. R-908's billing guard applies to the call.
-3. **Fallback.** When Codex is missing, unauthenticated, or out of quota, do not wait for the quota to reset and do not review the diff in this session: dispatch a separate Claude agent in a fresh context, on a model at least as strong as this session's and ideally stronger (the Agent tool's `model: "fable"` when available, else `opus`), with the same filled prompt, and use its final message as the review.
-4. Fix each finding (test-first when behavior changes) or answer it with a reason in the PR. A HIGH finding is never merged over with a bare "won't fix".
-5. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`) carrying three labelled lines and then the findings:
-
+**Codex (opt-in).** Run Codex instead when the owner asks or the diff touches auth, money, or concurrency. Keep it focused: the owner's Codex account is a $20 ChatGPT plan with tight usage limits.
+```bash
+codex exec -s read-only -C <repo root> --skip-git-repo-check \
+  -o <scratch>/codex-pr-<n>-final.md "$(cat <scratch>/codex-pr-<n>-prompt.md)" \
+  </dev/null > <scratch>/codex-pr-<n>.log 2>&1
+```
+Run it in the background (the Bash tool's `run_in_background`) and poll the log file until the process exits. Close stdin with `</dev/null`, or codex blocks on "Reading additional input from stdin". Never pipe it through `tail`, which buffers until exit and looks like a hang. Omit `-m`: `gpt-5.1-codex-mini` is rejected on the owner's ChatGPT account, so the account default applies. R-908's billing guard applies to the call.
+**Fallback.** When Codex is missing, unauthenticated, or out of quota, do not wait for the quota to reset: dispatch a Claude subagent on a model at least as strong as this session's and ideally stronger (the Agent tool's `model: "fable"` when available, else `opus`), with the same filled prompt, and use its final message as the review.
+3. Fix each finding (test-first when behavior changes) or answer it with a reason in the PR. A HIGH finding is never merged over with a bare "won't fix".
+4. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`) carrying three labelled lines and then the findings:
    ```
    ## Codex review
-   - reviewer: Codex
-   - model: gpt-5-codex
+   - reviewer: Claude subagent (sonnet)
+   - model: claude-sonnet-5
    - range: <base sha>..<head sha>
    - MEDIUM: <finding> - fixed in <sha>
    ```
-
-   The `reviewer` line names the reviewer that ran and why, for example `Codex` or `Claude subagent (fable), fallback: Codex usage limit reached`; the `model` line names the model it ran on; the `range` line names the diff it read as a `<base>..<head>` expression, and its head endpoint must be the PR's head commit as GitHub reports it, which means a review run before the last push is re-run rather than re-typed. The head must be on the right of the `..`: a range whose base is the head reviewed everything except the head, and the gate denies it. Then one line per finding with its severity and disposition, or "No findings" with the areas checked. Each label may be bulleted and emphasised (`- **Reviewer:** Codex`) but never left without a value. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, duplicated, missing one of the three lines, carrying a `range` line with no `<base>..<head>` expression, or naming a range whose head endpoint is not the head commit.
+   The `reviewer` line names the reviewer that ran and why, for example `Claude subagent (sonnet)` or `Codex, owner opt-in`; the `model` line names the model it ran on; the `range` line names the diff it read as a `<base>..<head>` expression, and its head endpoint must be the PR's head commit as GitHub reports it, which means a review run before the last push is re-run rather than re-typed. The head must be on the right of the `..`: a range whose base is the head reviewed everything except the head, and the gate denies it. Then one line per finding with its severity and disposition, or "No findings" with the areas checked. Each label may be bulleted and emphasised (`- **Reviewer:** Codex`) but never left without a value. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, duplicated, missing one of the three lines, carrying a `range` line with no `<base>..<head>` expression, or naming a range whose head endpoint is not the head commit.
 
 **Merge decision:**
-- Confirm with the user before merging. `git-workflow-guard` gates `gh pr merge` (R-514) and not a local `git merge`, so the ask here is the skill's, and "merge when ready" from an earlier turn is not it.
-- Squash merge onto main: `git checkout main && git merge --squash feat/<slug>`
-- Write a squash commit message that summarizes the whole feature, not just the last change.
-- Delete the feature branch after merge: `git branch -d feat/<slug>`
+- Merge on green CI and a passed R-517 review when an owner-approved plan covers the work (R-514). Otherwise confirm in the current turn; "merge when ready" from an earlier turn is not confirmation. `git-workflow-guard` gates `gh pr merge` and not a local `git merge`.
+- `gh pr merge --squash --delete-branch` is the primary path; write a squash commit message that summarizes the whole feature, not just the last change.
 - If worktree was used: `git worktree remove <path>`
 
-### Always, before the ticket is closed:
+### Always, before the ticket is closed (background subagent):
 
-Run `bash ~/.claude/skills/task-start/scripts/finding.sh open`. It lists every finding recorded during this task that still carries no tracker key (R-214). The task is not finished while that list is non-empty: open a ticket for each remaining finding through `/ticket-lifecycle` and attach it with `finding.sh ticket <id> <KEY>`, so nothing noticed during the work is lost when the session ends. Once every finding carries a key, `finding.sh clear` removes the per-repo ledger, the same way `task-tier.sh clear` removes the tier ledger; the tickets are the durable record and the ledger is only what carried them there.
+The background subagent runs `bash ~/.claude/skills/task-start/scripts/finding.sh open`. It lists every finding recorded during this task that still carries no tracker key (R-214). The task is not finished while that list is non-empty: open a ticket for each remaining finding through `/ticket-lifecycle` and attach it with `finding.sh ticket <id> <KEY>`, so nothing noticed during the work is lost when the session ends. Once every finding carries a key, `finding.sh clear` removes the per-repo ledger, the same way `task-tier.sh clear` removes the tier ledger; the tickets are the durable record and the ledger is only what carried them there.
 
 ### If a tracker ticket exists:
 
-**Close the ticket:**
+**Close the ticket (background subagent, after the merge):**
 
-Run `/ticket-lifecycle` `close` after the verification gate and the merge decision, never before: a `done` ticket asserts the work shipped (R-606). Resolve the key from the spec's or user story's `**Ticket:**` line, the handoff doc, or the last `Refs:` trailer on the branch.
+The background subagent runs `/ticket-lifecycle` `close` after the verification gate and the merge decision, never before: a `done` ticket asserts the work shipped (R-606). Resolve the key from the spec's or user story's `**Ticket:**` line, the handoff doc, or the last `Refs:` trailer on the branch.
 
-One update carries all of it: `done`, `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, and `pr_link`.
+One update carries all of it: `done`, `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, and `pr_link`. `actual_minutes` is attributable working time inside the sessions that worked the task, measured from the R-503 start timestamp: not the calendar gap between open and close; a ticket opened Monday and closed Friday is not four days of work, and recording it that way distorts every future estimate for that tier. `rework_count` is the number of times a green slice went back to red or a review sent the work back, counted from the git log and the session's own history, not from memory.
 
-`actual_minutes` is attributable working time inside the sessions that worked the task, measured from the R-503 start timestamp. It is not the calendar gap between open and close; a ticket opened Monday and closed Friday is not four days of work, and recording it that way distorts every future estimate for that tier.
-
-`rework_count` is the number of times a green slice went back to red or a review sent the work back. Count it from the git log and the session's own history, not from memory.
-
-Then state the recalibration R-906 asks for, in one line: the ratio, and which direction the tier's next estimate moves. That line is the only reason the estimate was stored in the first place.
-
-Work abandoned rather than shipped closes as `dropped` with the reason in the comment, never as `done` and never left open.
+Then state the recalibration R-906 asks for, in one line: the ratio, and which direction the tier's next estimate moves. That line is the only reason the estimate was stored in the first place. Work abandoned rather than shipped closes as `dropped` with the reason in the comment, never as `done` and never left open.
 
 ### If session is ending:
 
-**Session handoff:**
+**Session handoff (background subagent):**
 Write `docs/session-handoff/session-handoff.md` per R-602, in this order:
 1. Last commit SHA + subject
 2. Production state verified
@@ -204,7 +200,7 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 
 | Tier | Adds |
 |---|---|
-| **Trivial** | Commit, open the PR, merge on green CI with no Codex review (R-517 exempts a branch the task-tier ledger records as trivial): no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
+| **Trivial** | Commit, open the PR, merge on green CI with no R-517 review (R-517 exempts a branch the task-tier ledger records as trivial): no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
 | **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch; ticket closed with actuals |
 | **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; ticket closed with actuals and the recalibration line; handoff if the session is ending |
 | **Saga** | Every surface tested; handoff is mandatory; ticket closed with actuals per stage that shipped; consider whether enough shipped to warrant an engineering audit |
@@ -218,15 +214,16 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 - Updating the feature list but not the user story (or vice versa); the push gate refuses a new route without both (R-607)
 - Leaving a shipped row at **Planned**, or ticking criteria that did not ship
 - Forgetting to delete the feature branch after squash merge
-- Merging before the Codex review ran, or with a `## Codex review` section that lists findings without their dispositions
+- Merging before the R-517 review ran, or with a `## Codex review` section that lists findings without their dispositions
 - Closing the ticket as `done` before the verification gate passes
 - Writing the calendar gap between open and close as `actual_minutes`
 - Closing with the actuals missing, which leaves a `done` row that no estimate can ever be drawn from
+- Doing bookkeeping inline in the main session, or committing docs after the review (it forces a second review)
 
 ## Integration
 
 - **Paired with:** task-start (run at the beginning of every task)
 - **Calls:** ticket-lifecycle (`close`, or `advance` to `dropped` for abandoned work)
-- **Uses:** `prompts/codex-pr-review-prompt.md` for the blocking pre-merge Codex review (R-517)
+- **Uses:** `prompts/codex-pr-review-prompt.md` for the blocking pre-merge review (R-517)
 - **Composes with:** cleanup-specs-plans (bulk cleanup), superpowers:finishing-a-development-branch (merge decisions), and the project's own surface-doc refresh command where one is defined
 - **Replaces:** the manual feature-completion checklist
