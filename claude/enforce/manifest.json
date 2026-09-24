@@ -801,6 +801,14 @@
             "note": "design doc written without a Domain vocabulary glossary, an Acceptance criteria section, or a Non-goals section; template in prompts/spec-template.md"
         },
         {
+            "id": "R-330",
+            "tier": "regex",
+            "enforcer": "hook:lexicon-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse Write|Edit (only a brand-new file is judged; an Edit of an existing file is a no-op here): denies a brand-new file with a gated source extension (ts, tsx, js, jsx, mjs, py, rb, go, vue; .d.ts exempted per R-320) inside a git work tree, linked worktrees included, that carries no \"## Domain vocabulary\" heading anywhere. Any file already on disk, a non-gated extension, a repo that already has the heading anywhere, and a path outside any work tree are silent; a filesystem read error elsewhere in the tree fails open rather than denying. Fixture: enforce/tests/lexicon-gate.test.sh"
+        },
+        {
             "id": "R-331",
             "tier": "regex",
             "enforcer": "hook:dependency-add-guard",

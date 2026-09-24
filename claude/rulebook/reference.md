@@ -410,15 +410,17 @@ R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-noche
   Go analog: every `//nolint` names a specific linter and a reason, never blanket.
   Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment; ruff:ANN401 + PGH003/PGH004 via push-ruff-gate (Python); golangci:nolintlint via push-golangci-gate (Go)
 
-R-330: Settle the domain vocabulary during spec writing, before naming propagates.
+R-330: Settle the domain vocabulary before the first line of code, spec or no spec, before naming propagates.
   Scope: extends R-315/R-316/R-317; establishes the domain-noun lexicon they draw from.
   Spec:
   - When running superpowers spec writing (brainstorming), hold an intense domain-vocabulary round before presenting the design.
   - The spec is incomplete until it carries a `## Domain vocabulary` section, each domain noun written as `term - meaning - chosen over: <alternatives> because <reason>`.
+  - Standard tier and any walking skeleton carry no spec by design (task-start.md), and the vocabulary round still happens: before the first source file, write the same `## Domain vocabulary` section into `docs/spec.md` if one exists, or into a new `docs/lexicon.md` otherwise. The heading and entry format are identical either way, so one glossary satisfies both this rule and R-334's root list.
   - All file, function, and type naming conforms to that glossary.
   - Prefer domain-precise terms over evocative metaphors unless a framework makes the metaphor standard (ECS `World`, Cucumber `World`).
   Spec (2026-09-06): the spec also carries `## Acceptance criteria` (one numbered behavior per line, `B-1`, `B-2`, each a slice R-412 runs as RED then GREEN) and `## Non-goals`; the full heading set with each heading's intent is `prompts/spec-template.md`, and `spec-grounding` adds the missing headings when it rewrites an external spec.
-  Enforcement: hook:spec-glossary-check (advisory)
+  Spec (2026-09-24, IAN-365): the walking-skeleton clause above is deterministic, not advisory. A brand-new file with a gated source extension (ts, tsx, js, jsx, mjs, py, rb, go, vue), inside a git work tree that carries the `## Domain vocabulary` heading nowhere at all, is denied rather than nudged; an existing file, a non-gated extension, and a repo that already has the heading anywhere pass. This is a start-of-project gate, not a per-file one: once any file in the repo carries the heading, every later write passes it, so the round happens exactly once, before the first line of code.
+  Enforcement: hook:spec-glossary-check (advisory, checks the glossary's internal format and entry shape once a superpowers spec exists); hook:lexicon-gate (deterministic, denies the first source-code write in a repo that has no glossary anywhere yet)
 
 R-331: Justify every new third-party dependency before adding it.
   Scope: `package.json` (dependencies, devDependencies, peerDependencies, optionalDependencies), `pyproject.toml` (`[project]` dependencies and optional-dependencies, `[dependency-groups]`, poetry dependency tables), `go.mod` (direct `require` lines), `Gemfile` (`gem` lines). Lockfiles, version changes, removals, and `// indirect` Go requires are not judged.

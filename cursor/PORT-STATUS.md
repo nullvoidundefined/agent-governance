@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-53 of 60 hook registrations port, across 9 Cursor events.
+54 of 61 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -37,6 +37,7 @@
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `codex-test-author-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `ticket-at-start-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
+| `lexicon-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `scope-widening-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `task-provenance-gate` | PreToolUse (TaskCreate) | not ported: fires on Claude Code's TaskCreate tool, which Cursor lacks; a registration on that matcher would never receive an event, so R-213's provenance tag depends on recall under Cursor. |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |

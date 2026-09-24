@@ -27,13 +27,13 @@
     ],
     "preToolUse": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh preToolUse secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate scope-widening-gate",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh preToolUse secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate lexicon-gate scope-widening-gate",
         "timeout": 30
       }
     ],
     "afterFileEdit": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate scope-widening-gate new-file-header-reminder flat-directory-reminder spec-glossary-check handoff-check clean-code-reminder observability-reminder dockerfile-reminder",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate lexicon-gate scope-widening-gate new-file-header-reminder flat-directory-reminder spec-glossary-check handoff-check clean-code-reminder observability-reminder dockerfile-reminder",
         "timeout": 60
       }
     ],
