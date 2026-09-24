@@ -219,8 +219,8 @@ A second run prints one line naming the PID recorded in the lock file and
 polls every two seconds. After `FIXTURE_SHARDS_LOCK_WAIT_SECONDS` (default
 1200, twenty minutes) it exits 75 with a message naming that PID instead of
 hanging the turn, and a lock parent directory that cannot be written fails at
-once with that reason. When perl is missing the run goes ahead unqueued, with
-a warning. Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop
+once with that reason. When perl is missing, or cannot load its `Fcntl`
+module, the run goes ahead unqueued, with a warning. Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop
 gate (`hooks/verification-gate.sh`) sets the cap to 480 seconds for every
 check it runs, because the Stop hook itself is killed at 660 seconds, and it
 does not retry a fixture suite's 75, since a retry would wait a second 480

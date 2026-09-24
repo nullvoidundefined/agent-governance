@@ -222,6 +222,17 @@ check "a run past the wait cap leaves the holder's lock held" not is_lock_free
 list_output=$(run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2 -- --list); list_status=$?
 check "--list does not wait on the lock" test "$list_status" -eq 0
 check "--list still lists the fixtures under a held lock" grep -qx "sleeper.test.sh" <<< "$list_output"
+
+# Case 7a: a perl that is installed but cannot load Fcntl (a bad PERL5OPT or
+# PERL5LIB) is reported and the run goes ahead unqueued, as with no perl at
+# all, rather than being read as a busy lock and waited on until the cap
+# (PR #136 review). The holder above still holds the lock throughout.
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/broken-perl.out" run_locked_runner PERL5OPT=-MNoSuchModuleForIan359 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=6; broken_perl_status=$?
+check "a broken perl does not fail the run" test "$broken_perl_status" -eq 0
+check "a broken perl is named as the reason the run is unqueued" grep -q "perl cannot take the run lock" "$SANDBOX/broken-perl.out"
+check "a broken perl is not reported as a busy lock" not grep -q "gave up after\|waiting for PID" "$SANDBOX/broken-perl.out"
+check "a run with a broken perl ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
 kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null
 
 # Case 7b: a killed run's orphaned fixtures still hold the lock under a lock

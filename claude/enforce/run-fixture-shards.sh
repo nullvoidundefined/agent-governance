@@ -376,12 +376,16 @@ require_lock_parent_dir() {
 # (default 1200). A nested run returns at once and takes nothing. Both are
 # environment variables, unlike the other controls, because neither can make
 # a run shorter or heavier: the marker counts only while the run it names
-# holds the lock, and the cap only decides how long to queue. Without perl the
-# run goes ahead unqueued, with a warning, as it did before IAN-348.
+# holds the lock, and the cap only decides how long to queue. Without a
+# working perl the run goes ahead unqueued, with a warning, as it did before
+# IAN-348.
 acquire_run_lock() {
   local wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS" holder announced=""
   [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
   command -v perl >/dev/null 2>&1 || { echo "fixture-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
+  # A perl that cannot load Fcntl (a bad PERL5OPT or PERL5LIB) would make every
+  # try below fail and read as a busy lock until the cap (PR #136 review).
+  perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "fixture-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
   is_nested_run && return 0
   require_lock_parent_dir
   open_run_lock_file
