@@ -42,9 +42,14 @@ export default tseslint.config({
     vue: pluginVue,
     ...foreignRulePlugins,
   },
+  // import-x parses an imported .vue with vue-eslint-parser but with the
+  // IMPORTING file's parserOptions, so a .ts file needs the TypeScript
+  // sub-parser here too; without it <script setup lang="ts"> falls back to
+  // espree, fails on type syntax, and the SFC drops out of the import graph
+  // (IAN-332). @typescript-eslint/parser ignores both keys on a .ts file.
   languageOptions: {
     parser: tseslint.parser,
-    parserOptions: { ecmaFeatures: { jsx: true } },
+    parserOptions: { ecmaFeatures: { jsx: true }, extraFileExtensions: [".vue"], parser: tseslint.parser },
   },
   // "@/..." path aliases are internal modules, not scoped packages. Without this
   // they classify as "unknown" and import-x/order demands they trail relative
