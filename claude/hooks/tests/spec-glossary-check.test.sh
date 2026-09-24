@@ -176,10 +176,55 @@ SLICE_EMPTY="# Slice 01: auth
 
 Some prose and no PR blocks.
 "
+# Derived plans. The mode line is stripped with grep rather than with a
+# parameter substitution because `**` opens a glob in a substitution pattern,
+# which silently replaces the wrong span: the first draft of these fixtures
+# mangled the whole document and still passed (second review of PR #132). The
+# two plans that place the phrase inside a PR block are written out in full for
+# the same reason.
 SLICE_NO_MODE="$(printf '%s\n' "$SLICE_COMPLETE" | grep -v '^\*\*Merge mode:\*\*')"
-SLICE_MODE_IN_PROSE="${SLICE_NO_MODE/**Approach:** a table and a repository./**Approach:** a table and a repository, and the **Merge mode:** question is answered on the ticket.}"
 SLICE_OPT_IN="${SLICE_COMPLETE/owner merges, because the owner is reading the auth work PR by PR./merge on green, because every PR here is a mechanical rename.}"
 SLICE_OPT_IN_NO_MODE="$(printf '%s\n' "$SLICE_OPT_IN" | grep -v '^\*\*Merge mode:\*\*')"
+# The phrase quoted in a PR block's prose is not a declaration.
+SLICE_MODE_IN_PROSE="# Slice 01: auth
+
+### PR 1: session table
+
+**Context:** nothing exists yet.
+
+**Problem:** no sessions.
+
+**Approach:** a table and a repository, and the **Merge mode:** question is answered on the ticket.
+
+**Contents:** migration, repository.
+
+**Tests:** repository round-trip.
+
+**Review focus:** the migration.
+
+**Size:** 3 files, 120 lines.
+"
+# A line of its own, but inside a PR block rather than above the blocks.
+SLICE_MODE_IN_BLOCK="# Slice 01: auth
+
+### PR 1: session table
+
+**Context:** nothing exists yet.
+
+**Problem:** no sessions.
+
+**Approach:** a table and a repository.
+
+**Merge mode:** merge on green.
+
+**Contents:** migration, repository.
+
+**Tests:** repository round-trip.
+
+**Review focus:** the migration.
+
+**Size:** 3 files, 120 lines.
+"
 
 check "complete slice plan silent"                    silent "$SLICE" "$SLICE_COMPLETE"
 check "opt-in mode line also silent"                  silent "$SLICE" "$SLICE_OPT_IN"
@@ -197,6 +242,7 @@ check "missing merge mode is named"                   names 'no "\*\*Merge mode:
 check "mode named without inventing label problems"   names_but_omits 'Merge mode' 'lacks' "$SLICE" "$SLICE_NO_MODE"
 check "stripping the mode from an opt-in plan nudges" names 'Merge mode' "$SLICE" "$SLICE_OPT_IN_NO_MODE"
 check "the phrase inside a PR block is not the line"  names_but_omits 'Merge mode' 'lacks' "$SLICE" "$SLICE_MODE_IN_PROSE"
+check "a mode line inside a PR block is not plan-level" names_but_omits 'Merge mode' 'lacks' "$SLICE" "$SLICE_MODE_IN_BLOCK"
 check "mode and labels reported together"             names 'Merge mode.*PR 1: session table lacks' "$SLICE" "$SLICE_PARTIAL"
 check "no-PR-block reminder names the mode too"       names 'Merge mode' "$SLICE" "$SLICE_EMPTY"
 

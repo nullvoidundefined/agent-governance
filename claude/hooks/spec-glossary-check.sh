@@ -15,14 +15,17 @@
 # seven bold labels the skill's PR description format fixes (Context,
 # Problem, Approach, Contents, Tests, Review focus, Size), and the plan must
 # hold at least one such block. Since 2026-09-24 (IAN-352) it must also carry
-# a line of its own beginning "**Merge mode:**", the record of which merge mode
-# the owner chose for the slice at Gate 1, because merging on green CI is now
-# the opt-in and the owner's own merge is the default (R-514). The check is
-# anchored to the start of a line rather than a substring search of the whole
-# document: the same bolded phrase quoted inside a PR block's prose would
-# otherwise silence the reminder while no declaration exists (review finding 3
-# on PR #132). One reminder names the missing mode line and each PR's missing
-# labels together.
+# a line of its own beginning "**Merge mode:**", above the first "### " block,
+# the record of which merge mode the owner chose for the slice at Gate 1,
+# because merging on green CI is now the opt-in and the owner's own merge is the
+# default (R-514). The check reads only the preamble, the lines before the first
+# "### " heading, and anchors to the start of a line rather than searching the
+# whole document: the same bolded phrase quoted in a PR block's prose, or set as
+# its own line inside a PR block, would otherwise silence the reminder while no
+# plan-level declaration exists (review findings 3 and 2 on PR #132, first and
+# second round). A document whose first line already opens a block has an empty
+# preamble and is reminded. One reminder names the missing mode line and each
+# PR's missing labels together.
 # Silent for every other path. Never blocks; a jq fault or malformed input
 # exits 0 so the hook can never break a Write. The template with all headings
 # is prompts/spec-template.md.
@@ -51,7 +54,10 @@ jq -rc '
           | ($labels | map(select(("**" + . + ":**") as $needle | ($block | contains($needle)) | not))) as $absent
           | if ($absent | length) == 0 then empty else ($heading + " lacks " + ($absent | join(", "))) end
         )) as $problems
-      | (if ($c | split("\n") | any(startswith("**Merge mode:**"))) then []
+      | (($c | split("\n")) as $lines
+         | ($lines | map(startswith("### ")) | index(true)) as $firstBlockLine
+         | (if $firstBlockLine == null then $lines else $lines[:$firstBlockLine] end)) as $preamble
+      | (if ($preamble | any(startswith("**Merge mode:**"))) then []
          else ["the plan has no \"**Merge mode:**\" line, so nothing records whether the owner reads and merges each PR (the default) or the session merges on green CI plus the R-517 review (the opt-in, R-514)"] end) as $mode
       | (($mode + $problems)) as $all
       | if ($blocks | length) == 0 then
