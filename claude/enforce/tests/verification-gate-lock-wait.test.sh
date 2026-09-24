@@ -69,4 +69,23 @@ check "a lock give-up does not claim an automatic retry" not grep -q 'automatic 
 check "a lock give-up says another fixture run held the lock" grep -q 'another fixture run held the machine-wide lock' <<< "$reason"
 check "a lock give-up keeps the runner's own message" grep -q 'waiting for PID 4242' <<< "$reason"
 
+# Case 3: a 75 from any other check is an ordinary failure. A project's own
+# .claude/verify.sh may exit 75 (EX_TEMPFAIL) for its own reasons, so it keeps
+# the one automatic retry and is never described as a fixture lock give-up
+# (PR #133 review).
+REPO="$SANDBOX/project-verify"
+mkdir -p "$REPO/.claude"
+git -C "$REPO" init -q
+git -C "$REPO" config user.email t@t
+git -C "$REPO" config user.name t
+echo base > "$REPO/tracked.txt"
+git -C "$REPO" add -A && git -C "$REPO" commit -qm "chore: init"
+VERIFY_RUN_LOG="$SANDBOX/project-verify-runs"
+: > "$VERIFY_RUN_LOG"
+printf 'echo run >> "%s"\nexit 75\n' "$VERIFY_RUN_LOG" > "$REPO/.claude/verify.sh"
+reason=$(gate_reason "$REPO")
+check "a project check exiting 75 still blocks" grep -q 'R-509' <<< "$reason"
+check "a project check exiting 75 keeps its automatic retry" test "$(wc -l < "$VERIFY_RUN_LOG" | tr -d ' ')" = 2
+check "a project check exiting 75 is not called a fixture lock give-up" not grep -q 'another fixture run held the machine-wide lock' <<< "$reason"
+
 if [ "$fail" -eq 0 ]; then echo "verification-gate-lock-wait: PASS"; else echo "verification-gate-lock-wait: FAIL"; exit 1; fi
