@@ -284,9 +284,14 @@ bash ~/.claude/enforce/tdd.sh amend <test file>   # must still fail for a classi
 ```
 
 The second run re-hashes the file and records the amendment in the lock
-(`amendments`); commit the amended test before the implementation. It is
-refused for a test from an earlier slice, after green, and once the RED is
-pushed. The implementer never amends: role policy denies it every test write.
+(`amendments`, with git blobs of the test before and after, so
+`git diff <fromBlob> <toBlob>` shows the change); commit the amended test
+before the implementation. It is refused for a test from an earlier slice,
+after green, and once the RED is pushed. A dispatched `implementer` agent can
+never amend, since role policy denies it every test write; in Standard, where
+one session writes both, the only brake is the still-failing requirement and
+the recorded diff, so amend to fix the test's own mistake, never to make the
+implementation easier. Weakening a test is a `DISPUTE:`.
 
 A `DISPUTE:` return stops the loop. Show the user the test, the claim, and the
 spec line. If the user agrees the test is wrong, `tdd.sh` cannot unlock it: the

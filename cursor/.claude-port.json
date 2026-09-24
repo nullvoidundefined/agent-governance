@@ -110,7 +110,7 @@
     "skills/task-start/scripts/finding.sh": "sha256:1093603bacdf34684e826d1c2a45027ad47baea7c587643be7c153842e5bd86c",
     "skills/task-start/scripts/task-provenance.sh": "sha256:376189563db5db8f512d5cbd53ca39924ac1747a24fde77916ed73a6e1f2b919",
     "skills/task-start/scripts/task-tier.sh": "sha256:2537e1932db4839aa3fc63160014ccc4fa08beeab4834ac034de401e7e829b5f",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:d7f1fcbec00fb11a0d795dc6d0e13d4bd617aeca032b439f64c3ff68638e768e",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:5a4fbe83d3bcdea1f42aec902cd558f8737c40ed63a0381139b82e6eb790768b",
     "skills/ticket-lifecycle/SKILL.md": "sha256:0dda4f141f812e3f56ac52c474788491b1e5543bff24f426d9a4d62d52bba396"
   },
   "classes": {

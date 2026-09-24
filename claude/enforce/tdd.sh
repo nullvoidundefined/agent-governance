@@ -849,7 +849,10 @@ cmd_expected_red() {
 # exactly that file be written and nothing else, production included. From
 # "amending" the second run re-runs the suite, requires the amended test to
 # still fail for a classified reason with nothing outside the locked tests
-# failing, re-hashes it, appends the change to .amendments, and returns to
+# failing, re-hashes it, appends the change to .amendments with git blobs of
+# the file before and after (`git diff <fromBlob> <toBlob>` shows what the
+# author changed; the blobs are unreferenced, so a gc prunes them after its
+# expiry), and returns to
 # red. Refused for a test this slice did not lock (an earlier slice's test
 # stays under R-410), in every phase but red and amending (after green above
 # all), and once the RED version of the test, or a committed red lock, is
@@ -872,7 +875,9 @@ start_amendment() {
   jq -e --arg p "$rel" 'any(.tests[]; .path == $p)' "$LOCK" >/dev/null \
     || die "$rel is not a test this slice locked at RED; a test from an earlier slice stays read-only (R-410). If it is wrong, return 'DISPUTE: <test id>: <why>' to the user"
   red_is_pushed "$rel" && die "the RED version of $rel has been pushed, so it is shared history and no longer the author's to amend (R-410). Return 'DISPUTE: <test id>: <why>' to the user"
-  jq --arg p "$rel" --arg at "$(now)" '.phase = "amending" | .amending = {path: $p, startedAt: $at}' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
+  local from_blob
+  from_blob=$(git hash-object -w -- "$rel") || die "could not store $rel in the git object database"
+  jq --arg p "$rel" --arg b "$from_blob" --arg at "$(now)" '.phase = "amending" | .amending = {path: $p, fromBlob: $b, startedAt: $at}' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   say "AMENDING: $rel is writable, and nothing else is. Fix the test, then run 'tdd.sh amend $rel' again to re-prove the RED."
 }
 
@@ -889,15 +894,17 @@ finish_amendment() {
   else class=$(classify_named "$rel" "$ids") || exit 1
   fi
   outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" tolerate >/dev/null || exit 1
-  local after count
+  local after count from_blob to_blob
   after=$(sha "$rel")
+  from_blob=$(jq -r '.amending.fromBlob // ""' "$LOCK")
+  to_blob=$(git hash-object -w -- "$rel") || die "could not store $rel in the git object database"
   count=$(named_count "$rel" "$ids")
   rm -f "$REPORT"
-  jq --arg p "$rel" --arg from "$before" --arg to "$after" --arg c "$class" --argjson n "$count" --arg at "$(now)" '
+  jq --arg p "$rel" --arg from "$before" --arg to "$after" --arg fb "$from_blob" --arg tb "$to_blob" --arg c "$class" --argjson n "$count" --arg at "$(now)" '
     .tests |= map(if .path == $p then .sha256 = $to | .failureClass = $c | .tests = $n else . end)
-    | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, failureClass: $c, at: $at}])
+    | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, fromBlob: $fb, toBlob: $tb, failureClass: $c, at: $at}])
     | .phase = "red" | del(.amending)' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
-  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock. Commit the amended test before the implementation, then 'tdd.sh green'."
+  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). Commit the amended test before the implementation, then 'tdd.sh green'."
 }
 
 # red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding
@@ -911,7 +918,7 @@ red_is_pushed() {
   while IFS= read -r commit; do
     [ -n "$commit" ] || continue
     [ "$(git show "$commit:$rel" 2>/dev/null | shasum -a 256 | awk '{print $1}')" = "$recorded" ] && return 0
-  done <<< "$(git log --remotes --format=%H -n 50 -- "$rel" 2>/dev/null)"
+  done <<< "$(git log --remotes --format=%H -- "$rel" 2>/dev/null)"
   commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
   [ -n "$commit" ] || return 1
   git show "$commit:$LOCK_RELATIVE" 2>/dev/null | jq -e --arg p "$rel" --arg h "$recorded" 'any(.tests[]?; .path == $p and .sha256 == $h)' >/dev/null 2>&1 || return 1

@@ -27,8 +27,12 @@
 # (bash -c, eval, bash <<EOF), and the paths an inline interpreter script
 # (python -c, node -e, python3 - <<EOF) hands to a write call on the same line
 # or through a variable assigned from a literal. A script file run by name, or
-# a write through a path built at run time, is not seen here; `tdd.sh green`
-# compares hashes against the lock and the RED commit for that case.
+# a write through a path built at run time (a variable assigned outside the
+# command, an `xargs -I{}` substitution, awk's own print redirection), is not
+# seen here; `tdd.sh green` compares hashes against the lock and the RED commit
+# for that case. A variable assigned inside the command (`T=path; rm "$T"`) is
+# expanded before its operand is judged, and a shell nested deeper than three
+# levels asks instead of passing unread (R-517 review of IAN-342).
 # While a slice is amending (`tdd.sh amend`), only the one test file under
 # amendment is writable.
 # Paths outside the repository root are not governed. Silent on allow.
@@ -335,14 +339,43 @@ set_aside_quotes() {
 # __Q<n>__ placeholder with the content stored in QUOTES[n].
 quoted_word() {
   if [[ "$1" =~ $PLAIN_WORD ]]; then WORD="$1"; return; fi
-  WORD=" __Q${#QUOTES[@]}__ "
+  WORD="__Q${#QUOTES[@]}__"
   QUOTES+=("$1")
 }
 
-# resolve_word <word>: a __Q<n>__ placeholder's text, any other word as is.
+# resolve_word <word>: the word with every __Q<n>__ placeholder in it put back
+# as its text and every variable assigned earlier in the command expanded.
 resolve_word() {
-  if [[ "$1" =~ ^__Q([0-9]+)__$ ]]; then printf '%s' "${QUOTES[${BASH_REMATCH[1]}]}"
-  else printf '%s' "$1"; fi
+  local word="$1" out=""
+  while [[ "$word" =~ ^(.*)__Q([0-9]+)__(.*)$ ]]; do
+    out="${QUOTES[${BASH_REMATCH[2]}]}${BASH_REMATCH[3]}$out"; word="${BASH_REMATCH[1]}"
+  done
+  expand_variables "$word$out"
+}
+
+# Variables assigned inside the command (`NAME=value`, `export NAME=value`),
+# as parallel arrays: bash 3.2 has no associative arrays.
+VARIABLE_NAMES=()
+VARIABLE_VALUES=()
+record_assignment() {
+  [[ "$1" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || return 0
+  VARIABLE_NAMES+=("${BASH_REMATCH[1]}")
+  VARIABLE_VALUES+=("$(resolve_word "${BASH_REMATCH[2]}")")
+}
+
+# expand_variables <word>: $NAME and ${NAME} replaced by the latest value the
+# command assigned; a variable it never assigned stays as written.
+expand_variables() {
+  local word="$1" out="" name rest index value
+  while [[ "$word" =~ ^([^\$]*)\$(\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))(.*)$ ]]; do
+    out+="${BASH_REMATCH[1]}"; name="${BASH_REMATCH[3]}${BASH_REMATCH[4]}"; rest="${BASH_REMATCH[5]}"
+    value="\$$name"
+    for index in "${!VARIABLE_NAMES[@]}"; do
+      [ "${VARIABLE_NAMES[index]}" = "$name" ] && value="${VARIABLE_VALUES[index]}"
+    done
+    out+="$value"; word="$rest"
+  done
+  printf '%s' "$out$word"
 }
 
 # add_operands <word>...: every operand that is not an option and looks like
@@ -410,7 +443,7 @@ segment_targets() {
       launched=0
       case "$word" in run | exec | x | dlx | --) index=$((index + 1)); continue ;; esac
     fi
-    if [[ "$word" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then index=$((index + 1)); continue; fi
+    if [[ "$word" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then record_assignment "$word"; index=$((index + 1)); continue; fi
     case "$word" in
       sudo | env | xargs | nice | nohup | time | command | builtin | exec) skip_options=1; index=$((index + 1)); continue ;;
       then | do | else | elif | if | while | until | '!' | '{') index=$((index + 1)); continue ;;
@@ -422,6 +455,8 @@ segment_targets() {
   verb="${words[index]##*/}"
   local operands=("${words[@]:index+1}")
   case "$verb" in
+    export | local | declare | readonly | typeset)
+      for word in "${operands[@]+"${operands[@]}"}"; do record_assignment "$word"; done ;;
     rm | rmdir | shred | truncate | unlink | mv) add_operands "${operands[@]+"${operands[@]}"}" ;;
     cp | rsync | install | ln) add_destination "${operands[@]+"${operands[@]}"}" ;;
     dd) for word in "${operands[@]+"${operands[@]}"}"; do case "$word" in of=*) add_target "${word#of=}" ;; esac; done ;;
@@ -437,7 +472,7 @@ segment_targets() {
     find)
       case " $segment " in *" -delete "* | *" -exec "* | *" -execdir "* | *" -ok "*) add_operands "${operands[@]+"${operands[@]}"}" ;; esac ;;
     bash | sh | zsh | dash | ksh | eval)
-      [ "$depth" -lt 3 ] || return 0
+      [ "$depth" -lt 3 ] || emit ask "This command nests shells more than three levels deep, past what the guard reads, so it cannot tell what the innermost one writes (R-410). Confirm it does not write a locked test, fixture, spec, or gate input."
       local take_next=0
       [ "$verb" = eval ] && take_next=1
       for word in "${operands[@]+"${operands[@]}"}"; do
@@ -463,21 +498,21 @@ segment_targets() {
 # collect_shell_targets <command> [depth]: every write target of a command
 # line, nested shells included up to three levels.
 collect_shell_targets() {
-  local text="$1" depth="${2:-0}" unquoted segment
+  local text="$1" depth="${2:-0}" unquoted segment written=""
   split_heredocs "$text"
   set_aside_quotes "$HEREDOC_SPLIT"
   unquoted="$UNQUOTED"
-  # Redirections and tee always write their operand.
-  while IFS= read -r target; do
-    [ -n "$target" ] && add_target "$(resolve_word "$target")"
-  done < <(printf '%s' "$unquoted" | grep -oE '(^|[^<-])>>?[[:space:]]*[^[:space:];&|<>()]+' | sed -E 's/^[^>]?>>?[[:space:]]*//' || true)
-  while IFS= read -r target; do
-    [ -n "$target" ] && add_target "$(resolve_word "$target")"
-  done < <(printf '%s' "$unquoted" | grep -oE '(^|[;&|(][[:space:]]*|[[:space:]])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[^[:space:];&|]+' | awk '{print $NF}' || true)
+  # Redirections and tee always write their operand; the operand is resolved
+  # after the segments, once the command's own assignments are recorded.
+  written=$( { printf '%s' "$unquoted" | grep -oE '(^|[^<-])>(>|\|)?[[:space:]]*[^[:space:];&|<>()]+' | sed -E 's/^[^>]?>(>|\|)?[[:space:]]*//'
+    printf '%s' "$unquoted" | grep -oE '(^|[;&|(][[:space:]]*|[[:space:]])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[^[:space:];&|]+' | awk '{print $NF}'; } || true)
   # Each simple command on its own: a verb reaches only its own operands.
   while IFS= read -r segment; do
     [ -n "$segment" ] && segment_targets "$segment" "$depth"
   done < <(printf '%s' "$unquoted" | sed -E 's/&&|\|\|/;/g' | tr ';|()&' '\n\n\n\n\n')
+  while IFS= read -r target; do
+    [ -n "$target" ] && add_target "$(resolve_word "$target")"
+  done <<< "$written"
 }
 
 collect_shell_targets "$CMD"
