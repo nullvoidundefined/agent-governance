@@ -21,8 +21,13 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # parallel, and with --affected runs only what the changed files need. No
 # argument means every fixture: CI and doctor.sh call it that way.
 MODE="${1:---all}"
-if bash "$DIR/../../enforce/run-fixture-shards.sh" "$DIR" "$MODE"; then
+# The runner's 75 (the run-lock wait reached its cap) passes through
+# unchanged, so the Stop gate can tell it from a failing fixture (IAN-351).
+bash "$DIR/../../enforce/run-fixture-shards.sh" "$DIR" "$MODE"; runner_status=$?
+if [ "$runner_status" -eq 0 ]; then
   echo "ALL HOOK TESTS PASS"
+elif [ "$runner_status" -eq 75 ]; then
+  echo "HOOK TESTS DID NOT RUN: another fixture run held the lock"; exit 75
 else
   echo "HOOK TESTS FAILED"; exit 1
 fi

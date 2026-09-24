@@ -212,8 +212,15 @@ itself cleared when the waiter holding it was killed inside it. A holder whose
 PID the kernel has already given to another process reads as alive, so that
 one case waits for the cap. After
 `FIXTURE_SHARDS_LOCK_WAIT_SECONDS` (default 1200, twenty minutes) the waiting
-run exits 1 with a message naming the holder instead of hanging the turn, and
+run exits 75 with a message naming the holder instead of hanging the turn, and
 a lock parent directory that cannot be written fails at once with that reason.
+Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop gate
+(`hooks/verification-gate.sh`) sets the cap to 480 seconds for every check it
+runs, because the Stop hook itself is killed at 660 seconds, and it does not
+retry a 75, since a retry would wait a second 480 seconds; it blocks the turn
+once with the runner's message instead (IAN-351). Fixtures:
+`tests/verification-gate-lock-wait.test.sh` and
+`tests/suite-wrappers-lock-give-up.test.sh`.
 "Machine-wide" means every caller that shares `TMPDIR`: on macOS that is the
 per-user directory launchd assigns, which terminal shells and app-launched
 hooks inherit alike, and on Linux it is usually unset, so `/tmp`. The
