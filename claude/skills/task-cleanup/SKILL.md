@@ -104,7 +104,7 @@ Check if the spec and plan are fully shipped (all tasks done, all acceptance cri
 
 Run the project's test, build, and lint commands (whatever `package.json`, `Makefile`, or the project `CLAUDE.md` defines). All three must pass before any merge decision.
 
-**PR loop** (R-514, R-515, R-517). On a trivial tier recorded in the task-tier ledger for this branch, run only step 1 (open the PR) and step 3 (the ledger note), then merge on green CI; steps 2, 4, and 5 apply only above the trivial tier:
+**PR loop** (R-514, R-515, R-517). On a trivial tier recorded in the task-tier ledger for this branch, run only step 1 (open the PR) and step 3 (the ledger note), then merge on green CI; steps 2, 4, and 5 apply only above the trivial tier. The trivial tier is the one path that still merges on green CI without a recorded opt-in (owner decision 2026-09-19), and it is a standalone task rather than a slice of a plan, so no `**Merge mode:**` line governs it; every PR above that tier follows the merge decision below:
 1. Open the PR. Never request a Copilot review (R-514). The separate `/code-review` pass before opening the PR is retired; one review per PR is enough.
 2. Commit the bookkeeping edits (feature list, user story, handoff), then run the R-517 review (below) on the finished head. It is the review every PR above trivial gets.
 3. Start the next ticket while CI and the review run (CI alone on a trivial PR). Return to this PR when they finish; do not block the session on a poll loop. A trivial PR's exemption from R-517 lives in the checkout's one task-tier ledger: merge the trivial PR first, or use one worktree per in-flight ticket to avoid a ledger swap.
@@ -139,7 +139,7 @@ Run it in the background (the Bash tool's `run_in_background`) and poll the log 
    The `reviewer` line names the reviewer that ran and why, for example `Claude subagent (sonnet)` or `Codex, owner opt-in`; the `model` line names the model it ran on; the `range` line names the diff it read as a `<base>..<head>` expression, and its head endpoint must be the PR's head commit as GitHub reports it, which means a review run before the last push is re-run rather than re-typed. The head must be on the right of the `..`: a range whose base is the head reviewed everything except the head, and the gate denies it. Then one line per finding with its severity and disposition, or "No findings" with the areas checked. Each label may be bulleted and emphasised (`- **Reviewer:** Codex`) but never left without a value. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, duplicated, missing one of the three lines, carrying a `range` line with no `<base>..<head>` expression, or naming a range whose head endpoint is not the head commit.
 
 **Merge decision:**
-- Merge on green CI and a passed R-517 review when an owner-approved plan covers the work (R-514). Otherwise confirm in the current turn; "merge when ready" from an earlier turn is not confirmation. `git-workflow-guard` gates `gh pr merge` and not a local `git merge`.
+- Merge on green CI and a passed R-517 review when an owner-approved plan covers the work and that plan's `**Merge mode:**` line records the merge-on-green opt-in (R-514). Under a plan recording the default, or none, hand the PR to the owner with its findings and their dispositions and let them merge it. Otherwise confirm in the current turn; "merge when ready" from an earlier turn is not confirmation. `git-workflow-guard` gates `gh pr merge` and not a local `git merge`.
 - `gh pr merge --squash --delete-branch` is the primary path; write a squash commit message that summarizes the whole feature, not just the last change.
 - If worktree was used: `git worktree remove <path>`
 
@@ -212,7 +212,7 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 
 | Tier | Adds |
 |---|---|
-| **Trivial** | Commit, open the PR, merge on green CI with no R-517 review (R-517 exempts a branch the task-tier ledger records as trivial): no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
+| **Trivial** | Commit, open the PR, merge on green CI with no R-517 review (R-517 exempts a branch the task-tier ledger records as trivial) and without the recorded merge-mode opt-in every other tier needs, this tier being the standing exception: no PR doc and no Copilot wait (R-514). Close the ticket only if one was opened. |
 | **Standard** | Feature list if user-facing; user story if a new flow; squash merge if on a branch; ticket closed with actuals |
 | **Complex** | E2E test must exist and pass; Storybook stories verified; shipped spec/plan deleted; ticket closed with actuals and the recalibration line; handoff if the session is ending |
 | **Saga** | Every surface tested; handoff is mandatory; ticket closed with actuals per stage that shipped; consider whether enough shipped to warrant an engineering audit |
