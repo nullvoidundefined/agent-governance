@@ -432,6 +432,14 @@ GOVERNANCE_HOME=$(sync_home "$GOVERNANCE_REPO")
 # A fork PR and a PR on a branch no worktree holds still deny.
 [ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$FORK_PR")" = "deny" ]
 [ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$OTHER_BRANCH_PR")" = "deny" ]
+# With HOME unset the hook still decides. The worktree search reads
+# ~/.claude/.sync-source, and under set -u an unbound $HOME must end only the
+# R-517 verdict's command substitution (whose empty result is not "ok", so it
+# denies) and never the hook, since a PreToolUse hook that prints nothing is an
+# allow. CLAUDE_FIRE_LOG is pinned because log-rule-fire.sh's own unguarded
+# $HOME is IAN-356, not this search.
+UNSET_HOME_OUT=$(payload 'gh pr merge https://github.com/o/r/pull/42 --squash' "$SESSION_REPO" | env -u HOME CLAUDE_FIRE_LOG=/dev/null CLAUDE_GH_CMD="$TRIVIAL_PR" "$HOOK" 2>/dev/null || true)
+[ "$(printf '%s' "$UNSET_HOME_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]
 # A trivial ledger on the head branch in a worktree of a different repository denies.
 FOREIGN_REPO=$(fixture_repo o/other)
 FOREIGN_WORKTREE=$(add_trivial_worktree "$FOREIGN_REPO")
