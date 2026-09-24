@@ -201,35 +201,45 @@ instead, since a catch-all glob would leave no change unmapped.
 Runs queue rather than overlap (IAN-348). Two suites running at once on one
 machine, for example a manual run and a second session's Stop gate, starved
 each other of CPU until single fixtures passed the 600-second tool timeout on
-2026-09-24. A run therefore takes a machine-wide lock, the directory
-`${TMPDIR:-/tmp}/claude-fixture-shards.lock` holding the owner's PID, created
-with an atomic `mkdir` because macOS has no `flock` and removed by an EXIT
-trap. A second run prints one line naming the holder's PID and polls every two
-seconds until the lock is free. When the recorded PID is no longer running,
-the waiter takes the lock over, and a second lock directory ensures that only
-one waiter at a time removes a dead holder's lock; that second directory is
-itself cleared when the waiter holding it was killed inside it. A holder whose
-PID the kernel has already given to another process reads as alive, so that
-one case waits for the cap. After
-`FIXTURE_SHARDS_LOCK_WAIT_SECONDS` (default 1200, twenty minutes) the waiting
-run exits 75 with a message naming the holder instead of hanging the turn, and
-a lock parent directory that cannot be written fails at once with that reason.
-Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop gate
-(`hooks/verification-gate.sh`) sets the cap to 480 seconds for every check it
-runs, because the Stop hook itself is killed at 660 seconds, and it does not
-retry a fixture suite's 75, since a retry would wait a second 480 seconds; it
-blocks the turn once with the runner's message instead (IAN-351). A 75 from
-any other check, such as a project's own `.claude/verify.sh`, is an ordinary
-failure and keeps its one automatic retry. Fixtures:
+2026-09-24. A run therefore takes a machine-wide lock before it runs
+anything: a kernel `flock` on `${TMPDIR:-/tmp}/claude-fixture-shards.flock`,
+taken through perl because macOS ships perl but no `flock(1)`, and held on
+file descriptor 9, which the runner's `xargs` workers inherit. The lock
+therefore lasts until the last process running a fixture for that run has
+exited, whatever happens to the runner: a TERM or KILL to the runner cannot
+free it while its fixtures still run, and a crashed run's lock needs no
+takeover because the kernel releases it. Each fixture starts with fd 9
+closed, so a background process a fixture leaks does not hold the lock once
+its run ends. The first design (an `mkdir` lock directory with a recorded PID
+and a dead-holder takeover) had exactly those two holes, found by a post-merge
+review and replaced in IAN-359; the new lock file has a different name, so a
+leftover lock directory is ignored.
+
+A second run prints one line naming the PID recorded in the lock file and
+polls every two seconds. After `FIXTURE_SHARDS_LOCK_WAIT_SECONDS` (default
+1200, twenty minutes) it exits 75 with a message naming that PID instead of
+hanging the turn, and a lock parent directory that cannot be written fails at
+once with that reason. When perl is missing, or cannot load its `Fcntl`
+module, the run goes ahead unqueued, with a warning. Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop
+gate (`hooks/verification-gate.sh`) sets the cap to 480 seconds for every
+check it runs, because the Stop hook itself is killed at 660 seconds, and it
+does not retry a fixture suite's 75, since a retry would wait a second 480
+seconds; it blocks the turn once with the runner's message instead (IAN-351).
+A 75 from any other check, such as a project's own `.claude/verify.sh`, is an
+ordinary failure and keeps its one automatic retry. Fixtures:
 `tests/verification-gate-lock-wait.test.sh` and
 `tests/suite-wrappers-lock-give-up.test.sh`.
+
 "Machine-wide" means every caller that shares `TMPDIR`: on macOS that is the
 per-user directory launchd assigns, which terminal shells and app-launched
-hooks inherit alike, and on Linux it is usually unset, so `/tmp`. The
-runner exports `FIXTURE_SHARDS_LOCK_HELD` to its fixtures, so a fixture that
-calls the runner again, such as the runner's own fixture, skips the lock
-instead of waiting on its parent. `--list` runs nothing and takes no lock.
-Fixture: `tests/run-fixture-shards-lock.test.sh`.
+hooks inherit alike, and on Linux it is usually unset, so `/tmp`. The runner
+exports its PID as `FIXTURE_SHARDS_LOCK_HELD`, so a fixture that calls the
+runner again, such as the runner's own fixture, skips the lock instead of
+waiting on its parent. The marker counts only while it names the PID the
+lock file records and that lock is held, so it still works for the fixtures
+of a runner that was killed (its orphaned workers hold the lock), while a
+value left exported in some shell cannot switch queueing off. `--list` runs nothing and takes no lock. Fixture:
+`tests/run-fixture-shards-lock.test.sh`.
 
 Run them from the checkout, not from `~/.claude`. Every fixture resolves the
 implementation it exercises through `enforce/harness-root.sh`, which derives

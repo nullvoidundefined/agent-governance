@@ -49,13 +49,14 @@
 # for the same reason as the test options: an exported variable must not be
 # able to shorten the quiet period or overload the gate.
 #
-# Runs queue machine-wide (IAN-348): a run takes the lock directory
-# ${TMPDIR:-/tmp}/claude-fixture-shards.lock before running anything, and a
-# second run prints one line naming the holder's PID and polls until it is
-# free, takes over a lock whose holder is dead, and exits 75 after
-# FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200). The runner exports
-# FIXTURE_SHARDS_LOCK_HELD to its fixtures, so a fixture that calls the runner
-# again does not wait on its own parent. --list takes no lock.
+# Runs queue machine-wide (IAN-348, IAN-359): before running anything a run
+# takes a kernel flock on ${TMPDIR:-/tmp}/claude-fixture-shards.flock through
+# file descriptor 9, which its workers inherit, so the lock lasts until the
+# last process running a fixture for that run has exited, whatever happens to
+# the runner itself. A second run prints one line naming the holder's PID,
+# polls, and exits 75 after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200).
+# The runner exports its PID as FIXTURE_SHARDS_LOCK_HELD, so a fixture that
+# calls the runner again does not wait on its own parent. --list takes no lock.
 #
 # A fixture passes on exit 0 with a PASS line and no FAIL line, the verdict
 # the sequential runners applied; output is printed in name order once the
@@ -73,12 +74,14 @@ MAX_DEFAULT_JOBS=8
 SERIAL_SETTLE_DEFAULT_SECONDS=5
 SERIAL_SETTLE_MAX_DEFAULT_SECONDS=60
 LOAD_FROM=""
-# The machine-wide run lock (IAN-348): an mkdir lock directory, because mkdir
-# is atomic and macOS has no flock. RUN_LOCK_TAKEOVER_DIR serialises the
-# removal of a dead holder's lock, so two waiters never both remove one.
+# The machine-wide run lock (IAN-359): a kernel flock taken through perl,
+# because macOS ships perl but no flock(1). It replaced an mkdir lock with a
+# recorded PID (IAN-348), which a TERM to the runner released while its
+# fixtures still ran, and whose dead-holder takeover could admit two runs. The
+# file name differs from that lock directory's, so a leftover directory is
+# never mistaken for this lock.
 RUN_LOCK_PARENT_DIR="${TMPDIR:-/tmp}"
-RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.lock"
-RUN_LOCK_TAKEOVER_DIR="$RUN_LOCK_DIR.takeover"
+RUN_LOCK_FILE="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.flock"
 RUN_LOCK_POLL_SECONDS=2
 RUN_LOCK_WAIT_DEFAULT_SECONDS=1200
 RUN_LOCK_GAVE_UP_STATUS=75
@@ -89,7 +92,9 @@ RUN_LOCK_GAVE_UP_STATUS=75
 run_one_fixture() {
   local result_dir="$1" fixture="$2" name output status
   name=$(basename "$fixture")
-  output=$(bash "$fixture" </dev/null 2>&1); status=$?
+  # fd 9 closed: a background process a fixture leaks must not hold the run
+  # lock after the run ends; this process keeps it while the fixture runs.
+  output=$(bash "$fixture" </dev/null 9>&- 2>&1); status=$?
   printf '%s\n' "$output" > "$result_dir/$name.out"
   echo "$status" > "$result_dir/$name.status"
   # Here-strings, not pipes: under pipefail, `printf | grep -q` fails when grep
@@ -301,58 +306,46 @@ affected_selection() {
   [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
 }
 
-# run_lock_holder_pid: prints the PID the run lock records, nothing when the
-# lock is absent or its owner has not written the PID yet.
+# run_lock_holder_pid: prints the PID of the run that last took the lock, as
+# it recorded in the lock file; nothing when no run has.
 run_lock_holder_pid() {
-  cat "$RUN_LOCK_DIR/pid" 2>/dev/null
+  head -1 "$RUN_LOCK_FILE" 2>/dev/null
 }
 
-# is_process_alive <pid>: true while the process exists. kill -0 alone reads
-# another user's live process as dead, so ps confirms before anything is
-# removed. A dead holder whose PID the kernel has reused reads as alive, so
-# that lock is waited on until the cap rather than taken over.
-is_process_alive() {
-  kill -0 "$1" 2>/dev/null || ps -p "$1" >/dev/null 2>&1
+# is_run_lock_held: true while some process holds the run lock. Probes on a
+# fresh open of the file, so the probe's own momentary lock is released as
+# soon as perl exits.
+is_run_lock_held() {
+  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 1; flock($f, LOCK_EX|LOCK_NB) ? exit 1 : exit 0' "$RUN_LOCK_FILE"
 }
 
-# release_run_lock: the EXIT trap. Removes the lock and the takeover lock only
-# while they record this run, so a run that never got the lock, or lost it,
-# never deletes another run's.
-release_run_lock() {
-  [ "$(run_lock_holder_pid)" = "$$" ] && rm -rf "$RUN_LOCK_DIR"
-  [ "$(cat "$RUN_LOCK_TAKEOVER_DIR/pid" 2>/dev/null)" = "$$" ] && rm -rf "$RUN_LOCK_TAKEOVER_DIR"
-  return 0
+# is_nested_run: true when FIXTURE_SHARDS_LOCK_HELD names the run the lock
+# file records as holder and the lock is held right now, that is, this runner
+# was started by one of that run's fixtures and must not wait on its own
+# ancestors. The holder need not be alive: a killed runner's orphaned workers
+# still hold the lock, and their fixtures' nested runs must not queue behind
+# them. A marker naming another PID, or a holder whose run has finished, is
+# stale, left in some shell's environment, and is ignored, so it can never
+# switch queueing off (IAN-359 review).
+is_nested_run() {
+  local marker="${FIXTURE_SHARDS_LOCK_HELD:-}"
+  [ -n "$marker" ] && [ "$marker" = "$(run_lock_holder_pid)" ] && is_run_lock_held
 }
 
-# clear_dead_takeover_lock: removes a takeover lock whose holder died inside
-# it, because SIGKILL skips the EXIT trap and a takeover lock left behind
-# would otherwise stop every later dead holder's run lock from ever being
-# taken over (PR #129 review). A takeover lock with no PID yet is left alone:
-# its owner may still be writing it.
-clear_dead_takeover_lock() {
-  local takeover_holder
-  takeover_holder=$(cat "$RUN_LOCK_TAKEOVER_DIR/pid" 2>/dev/null)
-  if [ -n "$takeover_holder" ] && ! is_process_alive "$takeover_holder"; then
-    rm -rf "$RUN_LOCK_TAKEOVER_DIR"
-  fi
-  return 0
+# open_run_lock_file: opens the lock file on fd 9 for the rest of the run.
+# The xargs workers inherit it, which is what keeps the lock held while any
+# of them is still running a fixture.
+open_run_lock_file() {
+  { exec 9>>"$RUN_LOCK_FILE"; } 2>/dev/null && return 0
+  echo "fixture-shards: cannot open the run lock $RUN_LOCK_FILE; point TMPDIR at a writable directory" >&2
+  exit 1
 }
 
-# take_over_stale_lock <dead pid>: removes a lock its dead holder left behind;
-# true when it did. Only the waiter holding the takeover lock may remove it,
-# and it re-reads the holder first, so a lock a live run has just taken is
-# never removed.
-take_over_stale_lock() {
-  local dead_pid="$1" removed=1
-  clear_dead_takeover_lock
-  mkdir "$RUN_LOCK_TAKEOVER_DIR" 2>/dev/null || return 1
-  echo "$$" > "$RUN_LOCK_TAKEOVER_DIR/pid"
-  if [ "$(run_lock_holder_pid)" = "$dead_pid" ]; then
-    echo "fixture-shards: taking over the run lock left by PID $dead_pid, which is no longer running"
-    rm -rf "$RUN_LOCK_DIR" && removed=0
-  fi
-  rm -rf "$RUN_LOCK_TAKEOVER_DIR"
-  return "$removed"
+# try_run_lock: true when this run now holds the lock. perl locks the runner's
+# own fd 9 (fdopen shares its open file description), so the lock outlives
+# perl and is released only when every process holding fd 9 has exited.
+try_run_lock() {
+  perl -MFcntl=:flock -e 'open(my $f, ">&=", 9) or exit 2; flock($f, LOCK_EX|LOCK_NB) ? exit 0 : exit 1'
 }
 
 # give_up_waiting <wait cap> <holder pid>: the wait cap's clean failure, so a
@@ -361,13 +354,13 @@ take_over_stale_lock() {
 # never cleared from a failing fixture and skip its retry, which would wait a
 # second full cap past the Stop hook's budget (IAN-351).
 give_up_waiting() {
-  echo "fixture-shards: gave up after ${1}s waiting for PID ${2:-unknown} to release $RUN_LOCK_DIR; rerun once that run finishes, or remove the directory (and $RUN_LOCK_TAKEOVER_DIR) if no fixture run is alive" >&2
+  echo "fixture-shards: gave up after ${1}s waiting for PID ${2:-unknown} (or the fixtures it started) to release $RUN_LOCK_FILE; rerun once that run finishes" >&2
   exit "$RUN_LOCK_GAVE_UP_STATUS"
 }
 
 # require_lock_parent_dir: exits 1 when the lock's parent directory cannot be
-# created or written, which would otherwise make every mkdir fail and read as
-# a busy lock until the cap (PR #129 review).
+# created or written, which would otherwise read as a busy lock (PR #129
+# review).
 require_lock_parent_dir() {
   mkdir -p "$RUN_LOCK_PARENT_DIR" 2>/dev/null
   if [ ! -d "$RUN_LOCK_PARENT_DIR" ] || [ ! -w "$RUN_LOCK_PARENT_DIR" ]; then
@@ -376,33 +369,37 @@ require_lock_parent_dir() {
   fi
 }
 
-# acquire_run_lock: takes the machine-wide run lock (IAN-348), waiting while
-# another run holds it, because two suites at once starved each other past the
-# 600-second tool timeout (2026-09-24). Prints one line per holder it waits
-# on, takes over a dead holder's lock, and gives up after
-# FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200). A nested run, marked by the
-# FIXTURE_SHARDS_LOCK_HELD its parent exported, returns at once and owns
-# nothing. Both are environment variables, unlike the other controls, because
-# neither can make a run shorter or heavier: the marker restores the
-# unqueued behaviour and the cap only decides how long to queue.
+# acquire_run_lock: takes the machine-wide run lock (IAN-348, IAN-359),
+# waiting while another run holds it, because two suites at once starved each
+# other past the 600-second tool timeout (2026-09-24). Prints one line per
+# holder it waits on and gives up after FIXTURE_SHARDS_LOCK_WAIT_SECONDS
+# (default 1200). A nested run returns at once and takes nothing. Both are
+# environment variables, unlike the other controls, because neither can make
+# a run shorter or heavier: the marker counts only while the run it names
+# holds the lock, and the cap only decides how long to queue. Without a
+# working perl the run goes ahead unqueued, with a warning, as it did before
+# IAN-348.
 acquire_run_lock() {
   local wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS" holder announced=""
-  [ -n "${FIXTURE_SHARDS_LOCK_HELD:-}" ] && return 0
   [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
+  command -v perl >/dev/null 2>&1 || { echo "fixture-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
+  # A perl that cannot load Fcntl (a bad PERL5OPT or PERL5LIB) would make every
+  # try below fail and read as a busy lock until the cap (PR #136 review).
+  perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "fixture-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
+  is_nested_run && return 0
   require_lock_parent_dir
-  trap release_run_lock EXIT
-  until mkdir "$RUN_LOCK_DIR" 2>/dev/null; do
+  open_run_lock_file
+  until try_run_lock; do
     holder=$(run_lock_holder_pid)
-    if [ -n "$holder" ] && ! is_process_alive "$holder"; then take_over_stale_lock "$holder" && continue; fi
     if [ -n "$holder" ] && [ "$holder" != "$announced" ]; then
-      echo "fixture-shards: another fixture run holds $RUN_LOCK_DIR; waiting for PID $holder (up to ${wait_cap}s)"
+      echo "fixture-shards: another fixture run holds $RUN_LOCK_FILE; waiting for PID $holder (or the fixtures it started, up to ${wait_cap}s)"
       announced="$holder"
     fi
     [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting "$wait_cap" "$holder"
     sleep "$RUN_LOCK_POLL_SECONDS"
   done
-  echo "$$" > "$RUN_LOCK_DIR/pid"
-  export FIXTURE_SHARDS_LOCK_HELD=1
+  echo "$$" > "$RUN_LOCK_FILE"
+  export FIXTURE_SHARDS_LOCK_HELD="$$"
 }
 
 # usage_error <message>: exits 2 with the message and the usage line.

@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # Shard: slow
-# Verifies the machine-wide lock in enforce/run-fixture-shards.sh (IAN-348).
-# Two fixture-suite runs on one machine starved each other of CPU until single
-# fixtures passed the 600-second tool timeout (2026-09-24), so a second run now
-# queues behind the first instead of overlapping it. The cases prove that two
-# concurrent runs execute one after the other, that a second run names the
-# holder's PID while it waits, that a lock left by a dead process is taken
-# over, that a nested run with the marker exported neither waits nor removes
-# its parent's lock, and that the wait cap fails cleanly instead of hanging.
+# Verifies the machine-wide run lock in enforce/run-fixture-shards.sh
+# (IAN-348, redesigned in IAN-359). Two fixture-suite runs on one machine
+# starved each other of CPU until single fixtures passed the 600-second tool
+# timeout (2026-09-24), so a second run queues behind the first. The lock is a
+# kernel flock held on a file descriptor the runner's workers inherit, so it
+# lasts exactly as long as any process running a fixture for that run: a TERM
+# or KILL to the runner cannot free it while its fixtures still run, and no
+# dead holder ever needs taking over (the PID-and-takeover design this
+# replaced let both happen, IAN-359). The cases prove that concurrent runs
+# execute one after the other; that a killed runner's fixtures keep the lock
+# until they finish; that a lock file naming a dead PID is no obstacle; that a
+# background process a fixture leaks does not hold the lock; that a nested run
+# skips the lock only for a live holder's PID; and that the wait cap exits 75.
 #
 # Every run points TMPDIR at the sandbox, so the lock under test is never the
-# real one, and unsets the marker this fixture inherits from the runner that
+# real one, and clears the marker this fixture inherits from the runner that
 # is running it, or the runs under test would skip the lock altogether.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../harness-root.sh"
@@ -24,25 +29,28 @@ check() {
 not() { ! "$@"; }
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/run-fixture-shards-lock.XXXXXX")
-HOLDER_PIDS=""
+BACKGROUND_PIDS=""
 cleanup_sandbox() {
-  local holder_pid
-  for holder_pid in $HOLDER_PIDS; do kill "$holder_pid" 2>/dev/null; done
+  local background_pid
+  for background_pid in $BACKGROUND_PIDS $(cat "$SANDBOX/leaked-pids" 2>/dev/null); do
+    kill "$background_pid" 2>/dev/null
+  done
   rm -rf "$SANDBOX"
 }
 trap cleanup_sandbox EXIT
 LOCK_TMPDIR="$SANDBOX/tmp"
-LOCK_DIR="$LOCK_TMPDIR/claude-fixture-shards.lock"
+LOCK_FILE="$LOCK_TMPDIR/claude-fixture-shards.flock"
 TESTS="$SANDBOX/tests"
+LEAK_TESTS="$SANDBOX/leak-tests"
 EVENTS="$SANDBOX/events"
 LOAD_FILE="$SANDBOX/load"
-mkdir -p "$LOCK_TMPDIR" "$TESTS"
+mkdir -p "$LOCK_TMPDIR" "$TESTS" "$LEAK_TESTS"
 : > "$EVENTS"
 echo 0 > "$LOAD_FILE"
-export EVENTS
+export EVENTS SANDBOX
 
-# The one sandbox fixture appends a start line, sleeps, and appends an end
-# line, so the order of the lines in EVENTS shows whether two runs overlapped.
+# The sandbox fixture appends a start line, sleeps, and appends an end line,
+# so the order of the lines in EVENTS shows whether two runs overlapped.
 cat > "$TESTS/sleeper.test.sh" <<'FIXTURE'
 #!/usr/bin/env bash
 echo start >> "$EVENTS"
@@ -50,31 +58,44 @@ sleep 3
 echo end >> "$EVENTS"
 echo "sleeper PASS"
 FIXTURE
+# The leak fixture starts a long-lived background process, as a fixture that
+# forgets to stop a server would, records its PID for cleanup, and passes.
+cat > "$LEAK_TESTS/leaker.test.sh" <<'FIXTURE'
+#!/usr/bin/env bash
+sleep 60 > /dev/null 2>&1 &
+echo "$!" >> "$SANDBOX/leaked-pids"
+echo "leaker PASS"
+FIXTURE
 
-# run_locked_runner [VAR=value]... [-- runner option...]: runs the runner on
-# the sandbox tests with the sandbox TMPDIR, the marker cleared, any extra
-# environment given, and any extra runner options after a `--`.
-run_locked_runner() {
+# build_runner_argv [VAR=value]... [-- runner option...]: sets RUNNER_ARGV to
+# the env-prefixed runner command for the sandbox tests (RUNNER_TESTS when
+# set), with the sandbox TMPDIR, the marker cleared, and any extra
+# environment and options (after a `--`) given.
+build_runner_argv() {
   local environment_assignments=()
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do environment_assignments+=("$1"); shift; done
   [ "$#" -gt 0 ] && shift
-  env -u FIXTURE_SHARDS_LOCK_HELD TMPDIR="$LOCK_TMPDIR" ${environment_assignments[@]+"${environment_assignments[@]}"} \
-    bash "$RUNNER" "$TESTS" --all --jobs 1 --settle-seconds 0 --load-from "$LOAD_FILE" "$@" 2>&1
+  RUNNER_ARGV=(env -u FIXTURE_SHARDS_LOCK_HELD TMPDIR="$LOCK_TMPDIR"
+    ${environment_assignments[@]+"${environment_assignments[@]}"}
+    bash "$RUNNER" "${RUNNER_TESTS:-$TESTS}" --all --jobs 1 --settle-seconds 0 --load-from "$LOAD_FILE" "$@")
 }
 
-# start_live_holder: starts a process that outlives the case, to stand in for
-# a run that holds the lock, and records its PID in LIVE_HOLDER_PID. Not
-# called in a command substitution, whose subshell would own the child.
-start_live_holder() {
-  sleep 60 &
-  LIVE_HOLDER_PID=$!
-  HOLDER_PIDS="$HOLDER_PIDS $LIVE_HOLDER_PID"
+# run_locked_runner [VAR=value]... [-- runner option...]: runs the runner in
+# the foreground with its output on stdout.
+run_locked_runner() {
+  build_runner_argv "$@"
+  "${RUNNER_ARGV[@]}" 2>&1
 }
 
-# plant_lock <pid>: writes a lock owned by that PID, as a real run would.
-plant_lock() {
-  mkdir -p "$LOCK_DIR"
-  echo "$1" > "$LOCK_DIR/pid"
+# start_runner_in_background <output file> [VAR=value]...: starts the runner
+# so that $! is the runner's own PID (the subshell execs env, which execs
+# bash), and records it in STARTED_RUNNER_PID.
+start_runner_in_background() {
+  local output_file="$1"; shift
+  build_runner_argv "$@"
+  ( exec "${RUNNER_ARGV[@]}" > "$output_file" 2>&1 ) &
+  STARTED_RUNNER_PID=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $STARTED_RUNNER_PID"
 }
 
 # run_with_deadline <seconds> <output file> <command...>: runs the command
@@ -94,6 +115,31 @@ run_with_deadline() {
   return "$command_status"
 }
 
+# wait_for_line <seconds> <pattern> <file>: true once the file holds a line
+# matching the pattern, false when the seconds pass first.
+wait_for_line() {
+  local waited=0
+  until grep -q "$2" "$3" 2>/dev/null; do
+    [ "$waited" -ge "$(( $1 * 10 ))" ] && return 1
+    sleep 0.1; waited=$(( waited + 1 ))
+  done
+}
+
+# is_lock_free: true when a fresh process can take the run lock at once.
+is_lock_free() {
+  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 2; flock($f, LOCK_EX|LOCK_NB) ? exit 0 : exit 1' "$LOCK_FILE"
+}
+
+# start_lock_holder: starts a process that takes the run lock and keeps it,
+# writing its PID into the lock file as a real run does, and records the PID
+# in LOCK_HOLDER_PID once the lock is held.
+start_lock_holder() {
+  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; flock($f, LOCK_EX) or die; open(my $p, ">", $ARGV[0]) or die; print $p "$$\n"; close $p; sleep 60' "$LOCK_FILE" &
+  LOCK_HOLDER_PID=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $LOCK_HOLDER_PID"
+  wait_for_line 5 "^$LOCK_HOLDER_PID\$" "$LOCK_FILE"
+}
+
 # dead_pid_of_finished_process: prints the PID of a process that has exited.
 dead_pid_of_finished_process() {
   sh -c 'exit 0' &
@@ -102,78 +148,128 @@ dead_pid_of_finished_process() {
   echo "$finished_pid"
 }
 
-# Case 1: two concurrent runs do not overlap. The first starts, the second
-# starts a second later while the first still sleeps; the events must read
-# start, end, start, end, and the second must name the first's PID.
-run_locked_runner > "$SANDBOX/first.out" &
-first_pid=$!
-sleep 1
-run_locked_runner > "$SANDBOX/second.out" &
-second_pid=$!
+# Case 1: two concurrent runs do not overlap. The second starts once the
+# first's fixture has started; the events must read start, end, start, end,
+# and the second prints exactly one waiting line.
+start_runner_in_background "$SANDBOX/first.out"
+first_pid=$STARTED_RUNNER_PID
+wait_for_line 10 start "$EVENTS"
+run_with_deadline 60 "$SANDBOX/second.out" run_locked_runner; second_status=$?
 wait "$first_pid"; first_status=$?
-wait "$second_pid"; second_status=$?
-events=$(tr '\n' ' ' < "$EVENTS")
 check "first concurrent run passes" test "$first_status" -eq 0
 check "second concurrent run passes" test "$second_status" -eq 0
-check "concurrent runs execute one after the other" test "$events" = "start end start end "
-check "second run prints one waiting line naming a holder PID" \
-  test "$(grep -c 'waiting for PID [0-9]' "$SANDBOX/second.out")" -eq 1
-check "no lock is left after both runs finish" not test -e "$LOCK_DIR"
+check "concurrent runs execute one after the other" test "$(tr '\n' ' ' < "$EVENTS")" = "start end start end "
+check "second run prints one waiting line naming the first run's PID" \
+  test "$(grep -c "waiting for PID $first_pid" "$SANDBOX/second.out")" -eq 1
+check "the lock is free once both runs finish" is_lock_free
 
-# Case 2: a lock whose recorded PID is dead is taken over, not waited on.
-dead_pid=$(dead_pid_of_finished_process)
-plant_lock "$dead_pid"
+# Case 2: a runner killed with TERM mid-run keeps the lock until its fixture
+# finishes, so the next run cannot start its fixture alongside the orphan.
+for kill_signal in TERM KILL; do
+  : > "$EVENTS"
+  start_runner_in_background "$SANDBOX/killed-$kill_signal.out"
+  killed_pid=$STARTED_RUNNER_PID
+  wait_for_line 10 start "$EVENTS"
+  kill "-$kill_signal" "$killed_pid"
+  run_with_deadline 60 "$SANDBOX/after-$kill_signal.out" run_locked_runner; after_status=$?
+  check "a run after a $kill_signal-killed runner passes" test "$after_status" -eq 0
+  check "a $kill_signal-killed runner's fixture finishes before the next run's starts" \
+    test "$(tr '\n' ' ' < "$EVENTS")" = "start end start end "
+done
+
+# Case 3: a lock file naming a dead PID, with no process holding the lock, is
+# no obstacle: the run starts at once and prints no waiting line.
+dead_pid_of_finished_process > "$LOCK_FILE"
 : > "$EVENTS"
-stale_output=$(run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=10); stale_status=$?
-check "a dead holder's lock is taken over and the run passes" test "$stale_status" -eq 0
-check "the run after a takeover ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
-check "the takeover names the dead PID" grep -q "PID $dead_pid" <<< "$stale_output"
-check "the taken-over lock is released at exit" not test -e "$LOCK_DIR"
+run_with_deadline 30 "$SANDBOX/stale.out" run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=10; stale_status=$?
+check "a lock file naming a dead PID does not stop the run" test "$stale_status" -eq 0
+check "a lock file naming a dead PID causes no wait" not grep -q "waiting for PID" "$SANDBOX/stale.out"
+check "the run after a stale lock file ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
 
-# Case 3: a nested run, the marker exported by the run above it, does not wait
-# on the lock that run holds and does not remove it on exit.
-start_live_holder
-holder_pid="$LIVE_HOLDER_PID"
-plant_lock "$holder_pid"
+# Case 4: a background process a fixture leaks does not hold the lock once
+# the run that started it has finished.
+RUNNER_TESTS="$LEAK_TESTS" run_with_deadline 30 "$SANDBOX/leak.out" run_locked_runner; leak_status=$?
+check "the leaking fixture's run passes" test "$leak_status" -eq 0
+check "a fixture's leaked background process does not hold the lock" is_lock_free
+
+# Case 5: a nested run whose marker names the live holder skips the lock and
+# leaves it held; a marker naming a dead PID is stale and does not.
+start_lock_holder
+holder_pid="$LOCK_HOLDER_PID"
 : > "$EVENTS"
-nested_output=$(run_locked_runner FIXTURE_SHARDS_LOCK_HELD=1 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2); nested_status=$?
-check "a nested run passes under a live lock" test "$nested_status" -eq 0
-check "a nested run ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
-check "a nested run does not wait" not grep -q "waiting for PID" <<< "$nested_output"
-check "a nested run leaves its parent's lock in place" test "$(cat "$LOCK_DIR/pid" 2>/dev/null)" = "$holder_pid"
+run_with_deadline 30 "$SANDBOX/nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; nested_status=$?
+check "a nested run naming the live holder passes" test "$nested_status" -eq 0
+check "a nested run naming the live holder ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
+check "a nested run naming the live holder does not wait" not grep -q "waiting for PID" "$SANDBOX/nested.out"
+check "a nested run leaves its parent's lock held" not is_lock_free
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/stale-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$(dead_pid_of_finished_process)" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; stale_marker_status=$?
+check "a stale marker does not skip the lock: the run queues and gives up with 75" test "$stale_marker_status" -eq 75
+check "a run with a stale marker runs no fixture while the lock is held" test ! -s "$EVENTS"
 
-# Case 4: the wait cap. A live holder never lets go, so the run gives up after
-# the cap with a non-zero exit and a message, runs nothing, and leaves the
-# holder's lock alone.
+# Case 6: the wait cap. A live holder never lets go, so the run gives up after
+# the cap with exit 75, the code the gate does not retry (IAN-351), a message
+# naming the holder, and no fixture run; the holder keeps the lock.
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/capped.out" run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; capped_status=$?
-capped_output=$(cat "$SANDBOX/capped.out")
-check "a run past the wait cap exits 75, the code the gate does not retry (IAN-351)" test "$capped_status" -eq 75
+check "a run past the wait cap exits 75" test "$capped_status" -eq 75
 check "a run past the wait cap says it gave up and names the holder" \
-  grep -q "gave up after 2s waiting for PID $holder_pid" <<< "$capped_output"
+  grep -q "gave up after 2s waiting for PID $holder_pid" "$SANDBOX/capped.out"
 check "a run past the wait cap runs no fixture" test ! -s "$EVENTS"
-check "a run past the wait cap leaves the holder's lock in place" test "$(cat "$LOCK_DIR/pid" 2>/dev/null)" = "$holder_pid"
+check "a run past the wait cap leaves the holder's lock held" not is_lock_free
 
-# Case 5: --list runs nothing, so it takes no lock and does not wait.
+# Case 7: --list runs nothing, so it takes no lock and does not wait.
 list_output=$(run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2 -- --list); list_status=$?
 check "--list does not wait on the lock" test "$list_status" -eq 0
 check "--list still lists the fixtures under a held lock" grep -qx "sleeper.test.sh" <<< "$list_output"
-kill "$holder_pid" 2>/dev/null
-rm -rf "$LOCK_DIR"
 
-# Case 6: a takeover lock left by a waiter that was killed inside it (SIGKILL
-# skips the EXIT trap) is cleared, so a dead holder's run lock can still be
-# taken over rather than every later run queueing until the cap.
-plant_lock "$(dead_pid_of_finished_process)"
-mkdir -p "$LOCK_DIR.takeover"
-dead_pid_of_finished_process > "$LOCK_DIR.takeover/pid"
+# Case 7a: a perl that is installed but cannot load Fcntl (a bad PERL5OPT or
+# PERL5LIB) is reported and the run goes ahead unqueued, as with no perl at
+# all, rather than being read as a busy lock and waited on until the cap
+# (PR #136 review). The holder above still holds the lock throughout.
 : > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/orphan.out" run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=6; orphan_status=$?
-check "a dead waiter's takeover lock does not block the takeover" test "$orphan_status" -eq 0
-check "the run after clearing a dead takeover lock ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
-check "no run lock or takeover lock is left afterwards" not test -e "$LOCK_DIR" -o -e "$LOCK_DIR.takeover"
+run_with_deadline 30 "$SANDBOX/broken-perl.out" run_locked_runner PERL5OPT=-MNoSuchModuleForIan359 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=6; broken_perl_status=$?
+check "a broken perl does not fail the run" test "$broken_perl_status" -eq 0
+check "a broken perl is named as the reason the run is unqueued" grep -q "perl cannot take the run lock" "$SANDBOX/broken-perl.out"
+check "a broken perl is not reported as a busy lock" not grep -q "gave up after\|waiting for PID" "$SANDBOX/broken-perl.out"
+check "a run with a broken perl ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
+kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null
 
-# Case 7: a lock parent the runner cannot write is reported as that at once,
+# Case 7b: a killed run's orphaned fixtures still hold the lock under a lock
+# file naming the dead runner. A nested run from one of them, its marker
+# naming that dead runner, must skip the lock rather than queue behind its own
+# ancestors until the cap. A stand-in holds the lock while the file names a
+# dead PID.
+orphan_runner_pid=$(dead_pid_of_finished_process)
+perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; flock($f, LOCK_EX) or die; open(my $p, ">", $ARGV[0]) or die; print $p "$ARGV[1]\n"; close $p; sleep 60' "$LOCK_FILE" "$orphan_runner_pid" &
+orphan_holder_pid=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $orphan_holder_pid"
+wait_for_line 5 "^$orphan_runner_pid\$" "$LOCK_FILE"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/orphan-nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$orphan_runner_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; orphan_nested_status=$?
+check "a nested run under a killed run's orphans passes without queueing" test "$orphan_nested_status" -eq 0
+check "a nested run under a killed run's orphans ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
+kill "$orphan_holder_pid" 2>/dev/null; wait "$orphan_holder_pid" 2>/dev/null
+
+# Case 7c: a marker still naming the PID the lock file records, after that run
+# has finished and nobody holds the lock, is stale: the run takes the lock
+# itself and records its own PID instead of running unqueued.
+finished_holder_pid=$(head -1 "$LOCK_FILE")
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/finished-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$finished_holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; finished_marker_status=$?
+check "a marker naming a finished holder still lets the run pass" test "$finished_marker_status" -eq 0
+check "a marker naming a finished holder does not skip the lock: the run records its own PID" \
+  not test "$(head -1 "$LOCK_FILE")" = "$finished_holder_pid"
+
+# Case 8: a lock directory left at the old IAN-348 path is not this lock.
+mkdir -p "$LOCK_TMPDIR/claude-fixture-shards.lock"
+echo "$$" > "$LOCK_TMPDIR/claude-fixture-shards.lock/pid"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/old-dir.out" run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; old_dir_status=$?
+check "an old-style lock directory does not block a run" test "$old_dir_status" -eq 0
+check "an old-style lock directory causes no wait" not grep -q "waiting for PID" "$SANDBOX/old-dir.out"
+
+# Case 9: a lock parent the runner cannot write is reported as that at once,
 # not waited on until the cap as if another run held the lock. Skipped as
 # root, which can write a read-only directory.
 if [ "$(id -u)" -ne 0 ]; then
