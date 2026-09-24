@@ -53,6 +53,44 @@ git add debt.ts; git commit -q -m violating-addition
 OUT4=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
 printf '%s' "$OUT4" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 
+# IAN-332 (2026-09-24): a .ts file importing a <script setup lang="ts"> SFC
+# with an optional prop. import-x parses the imported .vue with the importing
+# file's parserOptions, which lacked the TypeScript sub-parser, so it printed
+# "Error while parsing ... Unexpected token ?" on stderr; the gate folded
+# stderr into its report and denied a diff with no violations. The SFC needs
+# an import: import-x skips parsing a dependency with no import or export.
+mkdir -p components
+cat > components/Button.vue <<'SFC'
+<script setup lang="ts">
+import { computed } from "vue";
+
+const props = defineProps<{ label: string; disabled?: boolean }>();
+const isDisabled = computed(() => props.disabled === true);
+</script>
+<template><button :disabled="isDisabled">{{ props.label }}</button></template>
+SFC
+printf 'import Button from "./components/Button.vue";\n\nexport const buttonComponent = Button;\n' > useButton.ts
+git add components/Button.vue useButton.ts; git commit -q -m "test: ts importer of a typed SFC"
+VUE_STDERR=$(node "$CLAUDE_HARNESS_ROOT/enforce/lint.mjs" "$REPO/useButton.ts" "$REPO/components/Button.vue" 2>&1 >/dev/null || true)
+if grep -qF "Error while parsing" <<<"$VUE_STDERR"; then
+  echo "FAIL: import-x parses an imported typed SFC without the TypeScript sub-parser"; exit 1
+fi
+OUTVUE=$(printf '%s' "$PAYLOAD" | CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK")
+if [ -n "$OUTVUE" ]; then
+  echo "FAIL: a clean typed SFC and its .ts importer are denied: $OUTVUE"; exit 1
+fi
+
+# The gate judges lint.mjs's exit status and stdout, not stderr: a clean
+# diff whose linter run also writes diagnostics to stderr is still allowed.
+STDERR_NOISE="$(mktemp -d)/stderr-noise.cjs"
+printf 'process.stderr.write("some parser warning on stderr\\n");\n' > "$STDERR_NOISE"
+OUTNOISE=$(printf '%s' "$PAYLOAD" | NODE_OPTIONS="--require=$STDERR_NOISE" CLAUDE_ENFORCE_BASE=HEAD~1 "$HOOK" 2>/dev/null)
+if [ -n "$OUTNOISE" ]; then
+  echo "FAIL: stderr diagnostics on a clean diff deny the push: $OUTNOISE"; exit 1
+fi
+rm -rf "$(dirname "$STDERR_NOISE")"
+git rm -q -r components useButton.ts; git commit -q -m "test: drop the SFC importer fixture"
+
 # --- Repository targeting: two isolated repositories -------------------------
 
 SANDBOX=$(mktemp -d)

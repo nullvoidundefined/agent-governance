@@ -54,27 +54,45 @@ TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$TOP" ] || exit 0
 # --added-only: deny only on violations in lines the outgoing diff adds (2026-07-10,
 # Ian-approved). Pre-existing debt elsewhere in a touched file no longer blocks.
-REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$ENFORCE_DIR/lint.mjs" --added-only "$BASE" 2>&1 || true)
+# lint.mjs prints violations on stdout and exits 1; stderr carries ESLint and
+# plugin diagnostics (import-x parse warnings, deprecation notices). The gate
+# judges the exit status and stdout only (IAN-332, 2026-09-24): folding stderr
+# into the report denied clean diffs with advice to fix violations that did
+# not exist. stderr is kept apart for the crash branches below.
+LINT_STDERR_FILE=$(mktemp)
+trap 'rm -f "$LINT_STDERR_FILE"' EXIT
+REPORT=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs node "$ENFORCE_DIR/lint.mjs" --added-only "$BASE" 2>"$LINT_STDERR_FILE")
+LINT_STATUS=$?
+LINT_STDERR=$(cat "$LINT_STDERR_FILE" 2>/dev/null || true)
+[ "$LINT_STATUS" -eq 0 ] && exit 0
 
 # A linter that cannot load its own dependencies is a broken gate, not a
 # violating diff. The crash text used to fill REPORT, so the push was denied
 # (closed, as it should be) with advice to fix ESLint violations that did not
 # exist (2026-09-18: a synced lockfile never installed). Name the bundle and
 # the locked install that repairs it instead, on stderr and in the reason.
-if grep -Eq 'ERR_MODULE_NOT_FOUND|Cannot find (package|module)' <<< "$REPORT"; then
+if grep -Eq 'ERR_MODULE_NOT_FOUND|Cannot find (package|module)' <<< "$LINT_STDERR"; then
   BROKEN="The enforcement ESLint bundle at $ENFORCE_DIR is broken, not your diff: lint.mjs could not load one of its dependencies, so the push is denied until the bundle is repaired. Run: npm ci --prefix $ENFORCE_DIR (./sync.sh from the agent-governance checkout does this). Error:
-$(grep -E 'ERR_MODULE_NOT_FOUND|Cannot find' <<< "$REPORT" | head -n 3)"
+$(grep -E 'ERR_MODULE_NOT_FOUND|Cannot find' <<< "$LINT_STDERR" | head -n 3)"
   printf 'push-eslint-gate: %s\n' "$BROKEN" >&2
   jq -n --arg r "$BROKEN" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 fi
 
-if [ -n "$REPORT" ]; then
-  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
-  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
-  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
-  log_rule_fire "eslint-ast" "push-eslint-gate" "deny"
-  jq -n --arg r "ESLint enforcement failed on the outgoing diff (R-323/R-321/R-319). Fix the violations or run eslint --fix:
-$REPORT" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+# Non-zero exit with no report on stdout is some other linter crash: still a
+# deny (the gate fails closed), but reported as a crash, not as violations.
+if [ -z "$REPORT" ]; then
+  CRASHED="The enforcement linter exited $LINT_STATUS without a report, so the outgoing diff could not be checked and the push is denied. This is a gate failure, not a violation in your diff. Error:
+$(printf '%s\n' "$LINT_STDERR" | tail -n 5)"
+  printf 'push-eslint-gate: %s\n' "$CRASHED" >&2
+  jq -n --arg r "$CRASHED" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
 fi
+
+LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+[ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
+type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+log_rule_fire "eslint-ast" "push-eslint-gate" "deny"
+jq -n --arg r "ESLint enforcement failed on the outgoing diff (R-323/R-321/R-319). Fix the violations or run eslint --fix:
+$REPORT" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 0
