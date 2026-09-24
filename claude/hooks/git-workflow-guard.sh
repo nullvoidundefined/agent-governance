@@ -15,7 +15,8 @@
 #          Codex review, proved by its artefact rather than by the heading),
 #          and only one such section exists, or task-start's untracked
 #          ledger records the trivial tier for the PR's own head branch in the
-#          same origin repository (never a body marker)
+#          same origin repository, read in the merge's checkout or in a local
+#          worktree on that head branch (never a body marker)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -465,26 +466,56 @@ read_github_slug() {
     sed -nE 's#^(https?://|ssh://)?([^@/]+@)?github\.com[:/]([^/]+)/([^/]+).*$#\3/\4#p' | sed -E 's/\.git$//'
 }
 
-# is_trivial_tier_pr: true when the merge is exempt from R-517's section as a
-# trivial-tier PR. The only authority is task-start's ledger
-# (.claude/task-tier.json at the top of the checkout the merge runs from,
-# $MERGE_CWD, never a `git -C` target elsewhere in the command),
-# which must be untracked session state, record the trivial tier, and name the
-# PR's own head branch; the PR must also live in that checkout's origin
-# repository and come from a branch of it rather than a fork. Nothing in the
-# PR body counts, since anyone can type a marker there.
-is_trivial_tier_pr() {
-  local top ledger head_branch pr_slug origin_slug
-  top=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) || return 1
+# is_trivial_ledger_checkout <checkout> <head-branch> <pr-slug>: true when
+# task-start's ledger (.claude/task-tier.json at the top of <checkout>) is
+# untracked session state, records the trivial tier, and names <head-branch>,
+# and <checkout>'s origin is the PR's repository <pr-slug>.
+is_trivial_ledger_checkout() {
+  local top ledger
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
   ledger="$top/.claude/task-tier.json"
   [ -f "$ledger" ] || return 1
   git -C "$top" ls-files --error-unmatch .claude/task-tier.json >/dev/null 2>&1 && return 1
+  jq -e --arg b "$2" '.tier == "trivial" and .branch == $b' "$ledger" >/dev/null 2>&1 || return 1
+  [ "$(read_github_slug "$(git -C "$top" remote get-url origin 2>/dev/null)")" = "$3" ]
+}
+
+# list_head_branch_worktrees <head-branch>: prints the path of every local
+# worktree checked out on refs/heads/<head-branch>, among the worktrees of the
+# repository the merge runs from and of the repository ~/.claude/.sync-source
+# names. Both repositories come from the tool call's cwd and the harness's own
+# state, never from the command's text, so a session merging by URL from
+# another repository (IAN-350) reaches the PR's checkout without a `cd`.
+list_head_branch_worktrees() {
+  local sync_source_file="$HOME/.claude/.sync-source" repository_root
+  {
+    printf '%s\n' "$MERGE_CWD"
+    [ -f "$sync_source_file" ] && head -n 1 "$sync_source_file"
+  } | while IFS= read -r repository_root; do
+    [ -n "$repository_root" ] || continue
+    git -C "$repository_root" worktree list --porcelain 2>/dev/null |
+      awk -v ref="refs/heads/$1" '/^worktree /{path=substr($0, 10)} $0 == "branch " ref {print path}'
+  done
+}
+
+# is_trivial_tier_pr: true when the merge is exempt from R-517's section as a
+# trivial-tier PR. The only authority is task-start's ledger, checked by
+# is_trivial_ledger_checkout first in the checkout the merge runs from
+# ($MERGE_CWD, never a `git -C` target elsewhere in the command), then in each
+# worktree on the PR's own head branch that list_head_branch_worktrees finds.
+# The PR must come from a branch of that checkout's origin repository rather
+# than a fork. Nothing in the PR body counts, since anyone can type a marker there.
+is_trivial_tier_pr() {
+  local head_branch pr_slug candidate_checkout
   head_branch=$(printf '%s' "$PR_JSON" | jq -r 'select(.isCrossRepository == false) | .headRefName // "" | strings' 2>/dev/null)
   [ -n "$head_branch" ] || return 1
-  jq -e --arg b "$head_branch" '.tier == "trivial" and .branch == $b' "$ledger" >/dev/null 2>&1 || return 1
   pr_slug=$(read_github_slug "$(printf '%s' "$PR_JSON" | jq -r '.url // "" | strings' 2>/dev/null)")
-  origin_slug=$(read_github_slug "$(git -C "$top" remote get-url origin 2>/dev/null)")
-  [ -n "$pr_slug" ] && [ "$pr_slug" = "$origin_slug" ]
+  [ -n "$pr_slug" ] || return 1
+  is_trivial_ledger_checkout "$MERGE_CWD" "$head_branch" "$pr_slug" && return 0
+  while IFS= read -r candidate_checkout; do
+    is_trivial_ledger_checkout "$candidate_checkout" "$head_branch" "$pr_slug" && return 0
+  done < <(list_head_branch_worktrees "$head_branch")
+  return 1
 }
 
 # read_ledger_state: prints the tier and branch task-start's ledger in the
