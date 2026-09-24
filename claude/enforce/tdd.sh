@@ -48,6 +48,12 @@
 #       removes the lock; refused unless the phase is green, or the phase is
 #       open and no test was ever locked (nothing could have been written
 #       under the lock, so an abandoned slice need not wait for the user).
+#   tdd.sh abandon
+#       closes a dead session's lock without the user: refused unless the lock
+#       recorded a test, has seen no tdd.sh activity for CLAUDE_TDD_STALE_HOURS
+#       (default 4), no live process outside this session works in the tree,
+#       and every locked test is committed and passing with the suite green.
+#       Logged to CLAUDE_TDD_ABANDON_LOG.
 #   tdd.sh status
 #       prints the lock.
 #   tdd.sh validate <role>
@@ -908,6 +914,94 @@ red_is_pushed() {
   [ -n "$commit" ] && [ -n "$(git branch -r --contains "$commit" 2>/dev/null)" ]
 }
 
+# cmd_abandon: closes a lock whose session is dead, without the user, when
+# closing it loses nothing (2026-09-24: a dead session's lock blocked the next
+# one). Refused unless all of these hold: the lock recorded a test (a lock
+# that never did is `close`'s case); no tdd.sh activity for
+# CLAUDE_TDD_STALE_HOURS (default 4), read from the lock's own timestamps and
+# its mtime; no live process outside the caller's own session has its working
+# directory in this tree (skipped with a warning where lsof is absent); every
+# locked test is committed, identical to HEAD and to the lock's hash; and the
+# suite passes, the locked tests included. The close is appended as one JSON
+# line to CLAUDE_TDD_ABANDON_LOG (default telemetry/tdd-abandon.jsonl under the
+# Claude home).
+cmd_abandon() {
+  require_lock
+  jq -e '(.tests // []) | length > 0' "$LOCK" >/dev/null \
+    || die "this lock never recorded a test; end it with 'tdd.sh close', which needs no staleness check"
+  local hours="${CLAUDE_TDD_STALE_HOURS:-4}" last_activity age_hours
+  last_activity=$(lock_last_activity)
+  age_hours=$(( ($(date -u +%s) - last_activity) / 3600 ))
+  [ "$age_hours" -ge "$hours" ] \
+    || die "the lock saw tdd.sh activity ${age_hours}h ago, and a lock is stale only after ${hours} hours without any (CLAUDE_TDD_STALE_HOURS); its session may still be working. Ask the user, or wait"
+  local holders
+  if holders=$(live_holders); then
+    [ -z "$holders" ] || die "a live process outside this session is working in this tree, so the lock's session may not be dead: $(printf '%s' "$holders" | tr '\n' ';' | sed 's/;$//'). Ask the user"
+  else
+    say "warning: lsof is not on PATH, so live processes in this tree were not checked; staleness rests on the lock's age alone" >&2
+  fi
+  local rel recorded locked_rels=()
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    locked_rels+=("$rel")
+    recorded=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
+    git ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && git diff --quiet HEAD -- "$rel" 2>/dev/null && [ "$(sha "$rel")" = "$recorded" ] \
+      || die "$rel is not committed as the lock recorded it (untracked, changed since HEAD, or changed since RED); abandoning would lose that work. Ask the user"
+  done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  run_suite "${locked_rels[@]}"
+  local ids record
+  for rel in "${locked_rels[@]}"; do
+    ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
+    record=$(file_record "$rel")
+    printf '%s' "$record" | jq -e --argjson ids "$ids" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'.status != "failed" and ([.assertionResults[] | select(in_scope($ids; $kind))] | length > 0 and all(.status == "passed"))' >/dev/null 2>&1 \
+      || die "$rel is not passing, so the slice's behavior is unfinished; resume it ('tdd.sh green' once it passes) or ask the user"
+  done
+  outside_pass_count "$(spec_named "$(jq -c '.tests' "$LOCK")")" >/dev/null || exit 1
+  rm -f "$REPORT"
+  local log="${CLAUDE_TDD_ABANDON_LOG:-$CLAUDE_DIR/telemetry/tdd-abandon.jsonl}" last_iso
+  last_iso=$(date -u -r "$last_activity" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$last_activity" +%Y-%m-%dT%H:%M:%SZ)
+  mkdir -p "$(dirname "$log")"
+  jq -c --arg at "$(now)" --arg repo "$(basename "$ROOT_PHYSICAL")" --arg last "$last_iso" \
+    '{at: $at, repo: $repo, slice: .slice, phase: .phase, lastActivity: $last, tests: [.tests[].path]}' "$LOCK" >> "$log"
+  say "abandoned: $(jq -r '.slice' "$LOCK") (phase $(phase), idle ${age_hours}h); its tests are committed and passing. Logged to $log."
+  rm -f "$LOCK"
+}
+
+# lock_last_activity: epoch seconds of the newest tdd.sh write to the lock,
+# the later of its mtime and every timestamp it records.
+lock_last_activity() {
+  local mtime recorded
+  mtime=$(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK")
+  recorded=$(jq -r '[.openedAt, .redAt, .greenAt, (.amendments // [] | .[].at), .amending.startedAt] | map(select(. != null) | fromdateiso8601) | max // 0' "$LOCK")
+  if [ "$recorded" -gt "$mtime" ]; then printf '%s' "$recorded"; else printf '%s' "$mtime"; fi
+}
+
+# live_holders: prints "<pid> <command>" for every live process whose working
+# directory lies in this tree and that does not belong to the caller's own
+# session: the topmost ancestor of this script working in the tree, and
+# everything below it (its shell, subagents, MCP servers). Returns 1 when lsof
+# is absent.
+live_holders() {
+  command -v lsof >/dev/null 2>&1 || return 1
+  ps -Ao pid=,ppid=,comm= | awk -v self="$$" -v root="$ROOT_PHYSICAL" '
+    FNR == NR {
+      if ($0 ~ /^p/) pid = substr($0, 2)
+      else if ($0 ~ /^n/) { dir = substr($0, 2); if (dir == root || index(dir, root "/") == 1) inroot[pid] = 1 }
+      next
+    }
+    { parent[$1] = $2; name = $0; sub(/^ *[0-9]+ +[0-9]+ +/, "", name); command[$1] = name }
+    END {
+      session = self
+      for (p = self; p != "" && p + 0 > 1; p = parent[p]) { ancestor[p] = 1; if (p in inroot) session = p }
+      for (pid in inroot) {
+        if (pid in ancestor || !(pid in parent)) continue
+        mine = 0
+        for (p = pid; p != "" && p + 0 > 1; p = parent[p]) if (p == session) { mine = 1; break }
+        if (!mine) print pid " " command[pid]
+      }
+    }' <(lsof -d cwd -Fpn 2>/dev/null || true) -
+}
+
 cmd_status() {
   if [ -f "$LOCK" ]; then jq . "$LOCK"; else say "no slice open"; fi
 }
@@ -959,8 +1053,9 @@ case "${1:-}" in
   green) cmd_green ;;
   expected-red) cmd_expected_red ;;
   amend) shift; cmd_amend "$@" ;;
+  abandon) cmd_abandon ;;
   close) cmd_close ;;
   status) cmd_status ;;
   validate) shift; cmd_validate "$@" ;;
-  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | amend <test file> | expected-red | close | status | validate <role>" ;;
+  *) die "usage: tdd.sh open [--refactor] \"<slice>\" [--spec <path>] [--lock <path>]... | red <test file>... | green | amend <test file> | expected-red | close | abandon | status | validate <role>" ;;
 esac
