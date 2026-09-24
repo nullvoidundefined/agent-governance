@@ -65,17 +65,20 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)
 
 # resolve_start_directory: the nearest existing ancestor of a not-yet-created
 # path, so a new file under directories that do not exist yet is judged by
-# the repository it would land in.
+# the repository it would land in. Walks with bash parameter expansion
+# (${path%/*}), never dirname, so a deep path costs zero extra processes
+# instead of one per path component (hook-path-walk-budget.test.sh).
 resolve_start_directory() {
     local path="$1"
     case "$path" in
         /*) : ;;
         *) path="$CWD/$path" ;;
     esac
-    local dir
-    dir=$(dirname "$path")
+    local dir="${path%/*}"
+    [ -n "$dir" ] || dir="/"
     while [ ! -d "$dir" ] && [ "$dir" != "/" ]; do
-        dir=$(dirname "$dir")
+        dir="${dir%/*}"
+        [ -n "$dir" ] || dir="/"
     done
     printf '%s' "$dir"
 }

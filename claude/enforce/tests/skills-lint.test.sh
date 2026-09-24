@@ -47,7 +47,9 @@ docs/user-stories/
 docs/query-params.md
 docs/stack.md
 docs/observability.md
-docs/session-handoff/session-handoff.md'
+docs/session-handoff/session-handoff.md
+docs/spec.md
+docs/lexicon.md'
 
 MAX_DESCRIPTION=1536
 
