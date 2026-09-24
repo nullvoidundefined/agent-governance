@@ -95,6 +95,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── test-author.md               # Slice role: writes the failing test, proves RED.
 │   ├── implementer.md               # Slice role: minimum code to GREEN, never touches tests.
 │   ├── slice-critic.md              # Slice role: read-only fresh-context review, seven questions.
+│   ├── pr-reviewer.md               # R-517 pre-merge reviewer: read-only, diff pasted into its prompt.
 │   └── audit-*.md                   # On-request audit agents (design, financial, etc.)
 ├── audits/                          # Pointer stubs; canonical roles live in agents/audit-*.md.
 │   ├── engineering.md               # Forwards to agents/audit-engineering.md (CTO persona).

@@ -27,6 +27,7 @@
 !/agents/audit-security.toml
 !/agents/audit-ux.toml
 !/agents/implementer.toml
+!/agents/pr-reviewer.toml
 !/agents/slice-critic.toml
 !/agents/spec-conformance-review.toml
 !/agents/test-author.toml
