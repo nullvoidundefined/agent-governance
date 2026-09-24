@@ -319,10 +319,11 @@ TIER_SCRIPT="$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh"
 TRACKERLESS_HOME=$(mktemp -d)
 # set_tier <tier>: records <tier> for the checked-out branch through task-start's own script.
 set_tier() { (cd "$TRIVIAL_REPO" && HOME="$TRACKERLESS_HOME" bash "$TIER_SCRIPT" set "$1" "fixture reason" >/dev/null 2>&1); }
-# trivial_decision: the hook's decision for command $1, run from TRIVIAL_REPO with gh stubbed by $2.
+# trivial_decision: the hook's decision for command $1, run from TRIVIAL_REPO with gh stubbed by $2,
+# under a HOME with no .sync-source so the live harness checkout is never scanned.
 trivial_decision() {
   local out
-  out=$(payload "$1" "$TRIVIAL_REPO" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null)
+  out=$(payload "$1" "$TRIVIAL_REPO" | HOME="$TRACKERLESS_HOME" CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null)
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
 }
 NO_SECTION_FIELDS='"labels":[],"commits":[],"isCrossRepository":false,"url":"https://github.com/o/r/pull/42"'
@@ -382,6 +383,79 @@ git -C "$TRIVIAL_REPO" add .claude/task-tier.json
 git -C "$TRIVIAL_REPO" -c user.email=t@example.com -c user.name=T commit -q -m "ledger"
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$TRIVIAL_PR")" = "deny" ]
 rm -rf "$TRIVIAL_REPO"
+# Cross-repository sessions (IAN-350): a session whose cwd is another
+# repository merges by URL, and its cwd checkout holds no ledger for the PR. The
+# hook then finds the worktree checked out on the PR's head branch among the
+# worktrees of the cwd repository and of the repository ~/.claude/.sync-source
+# names, and applies the unchanged ledger, branch, origin, and fork checks there.
+# fixture_repo <owner/repo>: prints a fresh repository on main with one commit and that GitHub origin.
+fixture_repo() {
+  local repo
+  repo=$(mktemp -d)
+  git -C "$repo" init -q --initial-branch=main
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
+  git -C "$repo" remote add origin "https://github.com/$1.git"
+  printf '%s' "$repo"
+}
+# add_trivial_worktree <repo>: adds a worktree of <repo> on fix/typo whose ledger records trivial, prints its path.
+add_trivial_worktree() {
+  local worktree
+  worktree="$(mktemp -d)/fix-typo"
+  git -C "$1" worktree add -q -b fix/typo "$worktree"
+  (cd "$worktree" && HOME="$TRACKERLESS_HOME" bash "$TIER_SCRIPT" set trivial "fixture reason" >/dev/null 2>&1)
+  printf '%s' "$worktree"
+}
+# sync_home <repo>: prints a HOME whose .claude/.sync-source names <repo>.
+sync_home() {
+  local home
+  home=$(mktemp -d)
+  mkdir -p "$home/.claude"
+  printf '%s\n' "$1" >"$home/.claude/.sync-source"
+  printf '%s' "$home"
+}
+# cross_decision <cwd> <home> <gh stub>: the decision for merging the PR by URL from <cwd> under <home>.
+cross_decision() {
+  local out
+  out=$(payload 'gh pr merge https://github.com/o/r/pull/42 --squash' "$1" | HOME="$2" CLAUDE_GH_CMD="$3" "$HOOK" 2>/dev/null)
+  if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+GOVERNANCE_REPO=$(fixture_repo o/r)
+GOVERNANCE_WORKTREE=$(add_trivial_worktree "$GOVERNANCE_REPO")
+SESSION_REPO=$(fixture_repo o/template)
+GOVERNANCE_HOME=$(sync_home "$GOVERNANCE_REPO")
+# The #127 case: cwd is another repository, the PR's worktree belongs to the sync source.
+[ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$TRIVIAL_PR")" = "ask" ]
+# The same merge with no sync source to scan finds no ledger and denies.
+[ "$(cross_decision "$SESSION_REPO" "$TRACKERLESS_HOME" "$TRIVIAL_PR")" = "deny" ]
+# From the repository's main checkout, its own worktree on the head branch is found.
+[ "$(cross_decision "$GOVERNANCE_REPO" "$TRACKERLESS_HOME" "$TRIVIAL_PR")" = "ask" ]
+# A fork PR and a PR on a branch no worktree holds still deny.
+[ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$FORK_PR")" = "deny" ]
+[ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$OTHER_BRANCH_PR")" = "deny" ]
+# With HOME unset the hook still decides. The worktree search reads
+# ~/.claude/.sync-source, and under set -u an unbound $HOME must end only the
+# R-517 verdict's command substitution (whose empty result is not "ok", so it
+# denies) and never the hook, since a PreToolUse hook that prints nothing is an
+# allow. CLAUDE_FIRE_LOG is pinned because log-rule-fire.sh's own unguarded
+# $HOME is IAN-356, not this search.
+UNSET_HOME_OUT=$(payload 'gh pr merge https://github.com/o/r/pull/42 --squash' "$SESSION_REPO" | env -u HOME CLAUDE_FIRE_LOG=/dev/null CLAUDE_GH_CMD="$TRIVIAL_PR" "$HOOK" 2>/dev/null || true)
+[ "$(printf '%s' "$UNSET_HOME_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]
+# A trivial ledger on the head branch in a worktree of a different repository denies.
+FOREIGN_REPO=$(fixture_repo o/other)
+FOREIGN_WORKTREE=$(add_trivial_worktree "$FOREIGN_REPO")
+[ "$(cross_decision "$SESSION_REPO" "$(sync_home "$FOREIGN_REPO")" "$TRIVIAL_PR")" = "deny" ]
+[ "$(cross_decision "$FOREIGN_REPO" "$TRACKERLESS_HOME" "$TRIVIAL_PR")" = "deny" ]
+# A ledger in the head-branch worktree that names another branch denies.
+jq '.branch = "fix/other"' "$GOVERNANCE_WORKTREE/.claude/task-tier.json" >"$GOVERNANCE_WORKTREE/ledger.tmp"
+mv "$GOVERNANCE_WORKTREE/ledger.tmp" "$GOVERNANCE_WORKTREE/.claude/task-tier.json"
+[ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$TRIVIAL_PR")" = "deny" ]
+# A ledger committed to the head branch is not task-start's session state.
+(cd "$GOVERNANCE_WORKTREE" && HOME="$TRACKERLESS_HOME" bash "$TIER_SCRIPT" set trivial "fixture reason" >/dev/null 2>&1)
+[ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$TRIVIAL_PR")" = "ask" ]
+git -C "$GOVERNANCE_WORKTREE" add -f .claude/task-tier.json
+git -C "$GOVERNANCE_WORKTREE" -c user.email=t@example.com -c user.name=T commit -q -m "ledger"
+[ "$(cross_decision "$SESSION_REPO" "$GOVERNANCE_HOME" "$TRIVIAL_PR")" = "deny" ]
+rm -rf "$GOVERNANCE_REPO" "$(dirname "$GOVERNANCE_WORKTREE")" "$SESSION_REPO" "$GOVERNANCE_HOME" "$FOREIGN_REPO" "$(dirname "$FOREIGN_WORKTREE")"
 # Round four: a merge fed to a shell on stdin, a backtick substitution, and a
 # merge spelled through an expansion are unreadable, so they deny.
 for hidden in $'bash <<\'EOF\'\ngh pr merge 42 --squash\nEOF' $'sh -s <<EOF\ngh pr merge 42 --squash\nEOF' \
