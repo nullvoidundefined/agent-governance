@@ -307,7 +307,8 @@ run_lock_holder_pid() {
 
 # is_process_alive <pid>: true while the process exists. kill -0 alone reads
 # another user's live process as dead, so ps confirms before anything is
-# removed.
+# removed. A dead holder whose PID the kernel has reused reads as alive, so
+# that lock is waited on until the cap rather than taken over.
 is_process_alive() {
   kill -0 "$1" 2>/dev/null || ps -p "$1" >/dev/null 2>&1
 }
@@ -321,12 +322,27 @@ release_run_lock() {
   return 0
 }
 
+# clear_dead_takeover_lock: removes a takeover lock whose holder died inside
+# it, because SIGKILL skips the EXIT trap and a takeover lock left behind
+# would otherwise stop every later dead holder's run lock from ever being
+# taken over (PR #129 review). A takeover lock with no PID yet is left alone:
+# its owner may still be writing it.
+clear_dead_takeover_lock() {
+  local takeover_holder
+  takeover_holder=$(cat "$RUN_LOCK_TAKEOVER_DIR/pid" 2>/dev/null)
+  if [ -n "$takeover_holder" ] && ! is_process_alive "$takeover_holder"; then
+    rm -rf "$RUN_LOCK_TAKEOVER_DIR"
+  fi
+  return 0
+}
+
 # take_over_stale_lock <dead pid>: removes a lock its dead holder left behind;
 # true when it did. Only the waiter holding the takeover lock may remove it,
 # and it re-reads the holder first, so a lock a live run has just taken is
 # never removed.
 take_over_stale_lock() {
   local dead_pid="$1" removed=1
+  clear_dead_takeover_lock
   mkdir "$RUN_LOCK_TAKEOVER_DIR" 2>/dev/null || return 1
   echo "$$" > "$RUN_LOCK_TAKEOVER_DIR/pid"
   if [ "$(run_lock_holder_pid)" = "$dead_pid" ]; then
@@ -344,6 +360,17 @@ give_up_waiting() {
   exit 1
 }
 
+# require_lock_parent_dir: exits 1 when the lock's parent directory cannot be
+# created or written, which would otherwise make every mkdir fail and read as
+# a busy lock until the cap (PR #129 review).
+require_lock_parent_dir() {
+  mkdir -p "$RUN_LOCK_PARENT_DIR" 2>/dev/null
+  if [ ! -d "$RUN_LOCK_PARENT_DIR" ] || [ ! -w "$RUN_LOCK_PARENT_DIR" ]; then
+    echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is missing or not writable; point TMPDIR at a writable directory" >&2
+    exit 1
+  fi
+}
+
 # acquire_run_lock: takes the machine-wide run lock (IAN-348), waiting while
 # another run holds it, because two suites at once starved each other past the
 # 600-second tool timeout (2026-09-24). Prints one line per holder it waits
@@ -357,7 +384,7 @@ acquire_run_lock() {
   local wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS" holder announced=""
   [ -n "${FIXTURE_SHARDS_LOCK_HELD:-}" ] && return 0
   [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
-  mkdir -p "$RUN_LOCK_PARENT_DIR" 2>/dev/null
+  require_lock_parent_dir
   trap release_run_lock EXIT
   until mkdir "$RUN_LOCK_DIR" 2>/dev/null; do
     holder=$(run_lock_holder_pid)

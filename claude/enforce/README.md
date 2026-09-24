@@ -207,9 +207,16 @@ with an atomic `mkdir` because macOS has no `flock` and removed by an EXIT
 trap. A second run prints one line naming the holder's PID and polls every two
 seconds until the lock is free. When the recorded PID is no longer running,
 the waiter takes the lock over, and a second lock directory ensures that only
-one waiter at a time removes a dead holder's lock. After
+one waiter at a time removes a dead holder's lock; that second directory is
+itself cleared when the waiter holding it was killed inside it. A holder whose
+PID the kernel has already given to another process reads as alive, so that
+one case waits for the cap. After
 `FIXTURE_SHARDS_LOCK_WAIT_SECONDS` (default 1200, twenty minutes) the waiting
-run exits 1 with a message naming the holder instead of hanging the turn. The
+run exits 1 with a message naming the holder instead of hanging the turn, and
+a lock parent directory that cannot be written fails at once with that reason.
+"Machine-wide" means every caller that shares `TMPDIR`: on macOS that is the
+per-user directory launchd assigns, which terminal shells and app-launched
+hooks inherit alike, and on Linux it is usually unset, so `/tmp`. The
 runner exports `FIXTURE_SHARDS_LOCK_HELD` to its fixtures, so a fixture that
 calls the runner again, such as the runner's own fixture, skips the lock
 instead of waiting on its parent. `--list` runs nothing and takes no lock.
