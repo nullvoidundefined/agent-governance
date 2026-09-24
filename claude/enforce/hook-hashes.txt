@@ -227,7 +227,7 @@ eaf7b10eb9adcd5bfe4da030b25fe724daa2711560ff206ee6d80e7f67641eee  hooks/tests/fi
 afe519f905ce0aa8ff01d0461c6239c12a4ab72c28ca798a4809284881bb4174  hooks/tests/hook-integrity-check.test.sh
 1adf94ee4678ab18bd841102d173b9d7d95ed8fdb6630cd6cea2b7f79dcb1d73  hooks/tests/hookspath-drift-check.test.sh
 ecb45c962385dae4f55bef7740be71865e8c45f3aa0e1a5754ae292958c273b0  hooks/tests/install-git-hooks.test.sh
-4fd961c1f0e779b253ebb958ab45db050758350cdf0e64db1f48418b3e4461ec  hooks/tests/log-rule-fire.test.sh
+f818fe3204c866d6e01ce35356982c61142ce07769c1f5dbeb26872a2a3e6ebe  hooks/tests/log-rule-fire.test.sh
 e36ad053047f459a9b0f19fd297a2fc1b9ff7b4d74ca46a95ae09f2075068493  hooks/tests/migration-defaults-guard.test.sh
 51eb1d88dfe564e078f6be411e7cb1a22b5bc59bd874bd8e4ea0942a1c6c6af5  hooks/tests/new-file-header-reminder.test.sh
 5eb8c6beab812dd2437c5792d17cff782e982cf12573d7459316b4056396ad3e  hooks/tests/post-compact-rules.test.sh
