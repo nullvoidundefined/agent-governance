@@ -17,10 +17,24 @@
 #          "refactor", which locks tests exactly like "red"
 # Test-runner configs and the package.json test/typecheck scripts ask rather
 # than deny: a legitimate edit is rare but real (2026-09-06 decision 8).
-# Bash is covered by its write targets: redirections, tee, and the paths named
-# alongside a mutating verb (rm, mv, cp, sed -i, git rm/mv/checkout/restore).
-# An interpreter that writes a file from inside its own source is not seen
-# here; `tdd.sh green` compares hashes against the RED commit for that case.
+# Bash is covered by its write targets, never by the text it carries: quoted
+# strings and heredoc bodies are set aside before the command is scanned, so a
+# `-t "does not rm the cookie"` filter or a `=> {` inside a heredoc no longer
+# names a target (2026-09-24, five stops in one build). The targets are
+# redirections, tee, the operands of a mutating command (rm, mv, sed -i,
+# perl -i, git rm/mv/checkout/restore/clean/stash, find -delete or -exec),
+# the destination of cp, rsync, install, and ln, a nested shell's own targets
+# (bash -c, eval, bash <<EOF), and the paths an inline interpreter script
+# (python -c, node -e, python3 - <<EOF) hands to a write call on the same line
+# or through a variable assigned from a literal. A script file run by name, or
+# a write through a path built at run time (a variable assigned outside the
+# command, an `xargs -I{}` substitution, awk's own print redirection), is not
+# seen here; `tdd.sh green` compares hashes against the lock and the RED commit
+# for that case. A variable assigned inside the command (`T=path; rm "$T"`) is
+# expanded before its operand is judged, and a shell nested deeper than three
+# levels asks instead of passing unread (R-517 review of IAN-342).
+# While a slice is amending (`tdd.sh amend`), only the one test file under
+# amendment is writable.
 # Paths outside the repository root are not governed. Silent on allow.
 set -uo pipefail
 INPUT=$(cat)
@@ -117,11 +131,13 @@ LOCK="$ROOT/.claude/tdd-lock.json"
 LOCK_STATE="none"
 PHASE=""
 LOCKED=""
+AMENDING=""
 if [ -f "$LOCK" ]; then
   if jq -e . "$LOCK" >/dev/null 2>&1; then
     LOCK_STATE="ok"
     PHASE=$(jq -r '.phase // "red"' "$LOCK")
     LOCKED=$(jq -r '[(.tests[]?.path // empty), (.locked[]? // empty)] | .[]' "$LOCK")
+    [ "$PHASE" = amending ] && AMENDING=$(jq -r '.amending.path // ""' "$LOCK")
   else
     LOCK_STATE="unreadable"
   fi
@@ -188,6 +204,11 @@ verdict_for() {
           printf 'deny|%s' "Slice '$(jq -r '.slice // "?"' "$LOCK")' is open and not yet red, so production paths are read-only (R-412). Write the failing test for this behavior first, run 'bash ~/.claude/enforce/tdd.sh red <test file>' to prove it fails for the right reason, and then '$rel' opens up."
           return
         fi ;;
+      amending)
+        if [ "$rel" != "$AMENDING" ]; then
+          printf 'deny|%s' "Slice '$(jq -r '.slice // "?"' "$LOCK")' is amending '$AMENDING', so that file is the only writable path until 'tdd.sh amend $AMENDING' re-proves the RED (R-410, R-412); '$rel' waits until then."
+          return
+        fi ;;
       red | green | refactor)
         if is_locked "$rel" || matches "$rel" "$TESTS_PATTERN"; then
           printf 'deny|%s' "'$rel' is locked for slice '$(jq -r '.slice // "?"' "$LOCK")' (R-410): once the slice is red, tests, fixtures, and the spec are the contract and stay read-only through GREEN and REFACTOR. Make the implementation satisfy the test. If the test is wrong, return 'DISPUTE: <test id>: <why>' and stop; the user decides, and any change is a new RED. A new behavior is a new slice: 'tdd.sh close' then 'tdd.sh open'."
@@ -237,30 +258,268 @@ fi
 # Bash: collect write targets, then judge each one.
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 [ -n "$CMD" ] || exit 0
-NORM=$(printf '%s' "$CMD" | tr '\n' ';')
+# Byte-wise string indexing keeps the quote scan linear on non-ASCII input.
+LC_ALL=C
 TARGETS=""
 add_target() { TARGETS="$TARGETS"$'\n'"$1"; }
 
-# Redirections and tee always write their operand.
-while IFS= read -r target; do
-  [ -n "$target" ] && add_target "$target"
-done < <(printf '%s' "$NORM" | grep -oE '>>?[[:space:]]*[^[:space:];&|<>]+' | sed -E 's/^>>?[[:space:]]*//' || true)
-while IFS= read -r target; do
-  [ -n "$target" ] && add_target "$target"
-done < <(printf '%s' "$NORM" | grep -oE '(^|[;&|(][[:space:]]*|[[:space:]])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[^[:space:];&|]+' | awk '{print $NF}' || true)
+# Set-aside text, referenced from the scanned command by placeholder: a quoted
+# string with anything beyond plain path characters becomes __Q<n>__ and a
+# heredoc body becomes __H<n>__, so neither is read as shell syntax.
+QUOTES=()
+HEREDOCS=()
+PLAIN_WORD='^[A-Za-z0-9_./@:+,=~%-]+$'
+HEREDOC_MARKER='(^|[^<])<<(-?)[[:space:]]*(["'"'"']?)([A-Za-z_][A-Za-z0-9_]*)["'"'"']?'
+INTERPRETERS='^(python[0-9.]*|node|nodejs|ruby|php|deno|bun|tsx|ts-node|perl|osascript)$'
+LAUNCHERS='^(uv|npx|pnpx|pnpm|yarn|bunx|poetry|pipenv)$'
+# A write call in an inline script: Python open() with a write mode,
+# pathlib's write_text and write_bytes, shutil and os moves and deletes,
+# Node's fs writers, Ruby's File and FileUtils, Perl's output open.
+SCRIPT_WRITE='open\(.*,[[:space:]]*(mode[[:space:]]*=[[:space:]]*)?["'"'"'][rbt]*[wax+]|\.write_(text|bytes)\(|shutil\.(copy|copyfile|copy2|move|rmtree)\(|os\.(remove|unlink|rename|replace|truncate)\(|\.unlink\(|\.rename\(|(^|[^A-Za-z0-9_])(writeFile|appendFile|createWriteStream|copyFile|rename|unlink|rm|truncate|cp)(Sync)?\(|File\.(write|delete|rename)|FileUtils\.|open\([^,]*,[[:space:]]*["'"'"']?\+?[>]'
 
-# A mutating verb makes every path-like operand of the command a write target.
-MUTATE='(^|[;&|(][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?(rm|mv|cp|shred|truncate|unlink|sed[[:space:]]+-[a-zA-Z]*i|git[[:space:]]+(rm|mv|checkout|restore|clean|stash))([[:space:]]|$)'
-if grep -qE "$MUTATE" <<< "$NORM"; then
-  while IFS= read -r token; do
-    [ -n "$token" ] && add_target "$token"
-  done < <(printf '%s' "$NORM" | tr ';&|()' '     ' | tr -s ' ' '\n' | sed -E "s/^['\"]|['\"]$//g" | grep -E '^[^-]' | grep -E '/|\.' || true)
-fi
+# split_heredocs <text>: sets HEREDOC_SPLIT to the text with each heredoc body
+# removed and its opening marker replaced by __H<n>__; the body lands in
+# HEREDOCS[n]. A marker whose terminator never comes keeps the rest as body.
+split_heredocs() {
+  local text="$1" line pending=() strips=() indexes=() body="" out="" compare index
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ ${#pending[@]} -gt 0 ]; then
+      compare="$line"
+      [ "${strips[0]}" = "-" ] && compare="${compare#"${compare%%[!$'\t']*}"}"
+      if [ "$compare" = "${pending[0]}" ]; then
+        HEREDOCS[${indexes[0]}]="$body"; body=""
+        pending=("${pending[@]:1}"); strips=("${strips[@]:1}"); indexes=("${indexes[@]:1}")
+      else
+        body+="$line"$'\n'
+      fi
+      continue
+    fi
+    while [[ "$line" =~ $HEREDOC_MARKER ]]; do
+      index=${#HEREDOCS[@]}
+      HEREDOCS+=("")
+      pending+=("${BASH_REMATCH[4]}"); strips+=("${BASH_REMATCH[2]}"); indexes+=("$index")
+      line="${line/"${BASH_REMATCH[0]}"/${BASH_REMATCH[1]} __H${index}__ }"
+    done
+    out+="$line"$'\n'
+  done <<< "$text"
+  [ ${#pending[@]} -gt 0 ] && HEREDOCS[${indexes[0]}]="$body"
+  HEREDOC_SPLIT="$out"
+}
+
+# set_aside_quotes <text>: sets UNQUOTED to the text with every quoted string
+# either unwrapped (plain path characters only, so `rm "a/b.ts"` still names
+# its operand) or replaced by __Q<n>__, and with newlines outside quotes
+# turned into `;`.
+set_aside_quotes() {
+  local text="$1" out="" rest content char i=0 length=${#1}
+  while [ "$i" -lt "$length" ]; do
+    char="${text:i:1}"
+    case "$char" in
+      \\) out+="${text:i:2}"; i=$((i + 2)) ;;
+      $'\n') out+=";"; i=$((i + 1)) ;;
+      "'")
+        rest="${text:i+1}"; content="${rest%%\'*}"
+        i=$((i + ${#content} + 2)); quoted_word "$content"; out+="$WORD" ;;
+      '"')
+        content=""; i=$((i + 1))
+        while [ "$i" -lt "$length" ] && [ "${text:i:1}" != '"' ]; do
+          if [ "${text:i:1}" = \\ ]; then content+="${text:i+1:1}"; i=$((i + 2))
+          else content+="${text:i:1}"; i=$((i + 1)); fi
+        done
+        i=$((i + 1)); quoted_word "$content"; out+="$WORD"
+        # A command substitution inside double quotes still runs.
+        case "$content" in *'$('* | *'`'*) collect_shell_targets "$content" ;; esac ;;
+      *) out+="$char"; i=$((i + 1)) ;;
+    esac
+  done
+  UNQUOTED="$out"
+}
+
+# quoted_word <content>: sets WORD to the unwrapped content, or to a
+# __Q<n>__ placeholder with the content stored in QUOTES[n].
+quoted_word() {
+  if [[ "$1" =~ $PLAIN_WORD ]]; then WORD="$1"; return; fi
+  WORD="__Q${#QUOTES[@]}__"
+  QUOTES+=("$1")
+}
+
+# resolve_word <word>: the word with every __Q<n>__ placeholder in it put back
+# as its text and every variable assigned earlier in the command expanded.
+resolve_word() {
+  local word="$1" out=""
+  while [[ "$word" =~ ^(.*)__Q([0-9]+)__(.*)$ ]]; do
+    out="${QUOTES[${BASH_REMATCH[2]}]}${BASH_REMATCH[3]}$out"; word="${BASH_REMATCH[1]}"
+  done
+  expand_variables "$word$out"
+}
+
+# Variables assigned inside the command (`NAME=value`, `export NAME=value`),
+# as parallel arrays: bash 3.2 has no associative arrays.
+VARIABLE_NAMES=()
+VARIABLE_VALUES=()
+record_assignment() {
+  [[ "$1" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || return 0
+  VARIABLE_NAMES+=("${BASH_REMATCH[1]}")
+  VARIABLE_VALUES+=("$(resolve_word "${BASH_REMATCH[2]}")")
+}
+
+# expand_variables <word>: $NAME and ${NAME} replaced by the latest value the
+# command assigned; a variable it never assigned stays as written.
+expand_variables() {
+  local word="$1" out="" name rest index value
+  while [[ "$word" =~ ^([^\$]*)\$(\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))(.*)$ ]]; do
+    out+="${BASH_REMATCH[1]}"; name="${BASH_REMATCH[3]}${BASH_REMATCH[4]}"; rest="${BASH_REMATCH[5]}"
+    value="\$$name"
+    for index in "${!VARIABLE_NAMES[@]}"; do
+      [ "${VARIABLE_NAMES[index]}" = "$name" ] && value="${VARIABLE_VALUES[index]}"
+    done
+    out+="$value"; word="$rest"
+  done
+  printf '%s' "$out$word"
+}
+
+# add_operands <word>...: every operand that is not an option and looks like
+# a path (a slash or a dot) is a target.
+add_operands() {
+  local word
+  for word in "$@"; do
+    case "$word" in -*) continue ;; esac
+    word=$(resolve_word "$word")
+    case "$word" in */* | *.*) add_target "$word" ;; esac
+  done
+}
+
+# add_destination <word>...: cp, rsync, install, and ln write only their
+# destination, the -t directory or else the last operand.
+add_destination() {
+  local word last="" target_dir="" take_next=0
+  for word in "$@"; do
+    if [ "$take_next" -eq 1 ]; then target_dir="$word"; take_next=0; continue; fi
+    case "$word" in
+      -t | --target-directory) take_next=1 ;;
+      --target-directory=*) target_dir="${word#*=}" ;;
+      -*) ;;
+      *) last="$word" ;;
+    esac
+  done
+  [ -n "$target_dir" ] && last="$target_dir"
+  [ -n "$last" ] && add_target "$(resolve_word "$last")"
+}
+
+# script_targets <script>: the path literals an inline interpreter script hands
+# to a write call, on the write line itself or through a variable assigned
+# from a literal elsewhere in the script. Literals only: a read of the locked
+# test beside a write of another file is not a write of the test.
+script_targets() {
+  local script="$1" write_lines names line
+  write_lines=$(grep -E "$SCRIPT_WRITE" <<< "$script") || return 0
+  names=$(grep -oE '[A-Za-z_][A-Za-z0-9_]*' <<< "$write_lines" | sort -u)
+  { printf '%s\n' "$write_lines"
+    while IFS= read -r line; do
+      [[ "$line" =~ ^[[:space:]]*((const|let|var|my)[[:space:]]+)?\$?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*:?=[^=] ]] || continue
+      grep -qxF "${BASH_REMATCH[3]}" <<< "$names" && printf '%s\n' "$line"
+    done <<< "$script"
+  } | grep -oE "[\"'][^\"'[:space:]]*[^\"'[:space:]./][^\"'[:space:]]*[\"']" | sed -E "s/^.(.*).$/\1/" | while IFS= read -r literal; do
+    case "$literal" in *://*) continue ;; */* | *.*) printf '%s\n' "$literal" ;; esac
+  done
+}
+
+# segment_targets <segment> <depth>: the targets of one simple command.
+segment_targets() {
+  local segment="$1" depth="$2" words=() index=0 word verb skip_options=0 launched=0
+  read -ra words <<< "$segment"
+  [ ${#words[@]} -gt 0 ] || return 0
+  # Step past assignments, wrappers, and launchers to the command itself.
+  while [ "$index" -lt ${#words[@]} ]; do
+    word="${words[index]}"
+    if [ "$skip_options" -eq 1 ]; then
+      case "$word" in
+        -I | -n | -P | -L | -s | -d | -E | -u | -g) index=$((index + 2)); continue ;;
+        -*) index=$((index + 1)); continue ;;
+      esac
+      skip_options=0
+    fi
+    if [ "$launched" -eq 1 ]; then
+      launched=0
+      case "$word" in run | exec | x | dlx | --) index=$((index + 1)); continue ;; esac
+    fi
+    if [[ "$word" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then record_assignment "$word"; index=$((index + 1)); continue; fi
+    case "$word" in
+      sudo | env | xargs | nice | nohup | time | command | builtin | exec) skip_options=1; index=$((index + 1)); continue ;;
+      then | do | else | elif | if | while | until | '!' | '{') index=$((index + 1)); continue ;;
+    esac
+    if [[ "$word" =~ $LAUNCHERS ]]; then launched=1; index=$((index + 1)); continue; fi
+    break
+  done
+  [ "$index" -lt ${#words[@]} ] || return 0
+  verb="${words[index]##*/}"
+  local operands=("${words[@]:index+1}")
+  case "$verb" in
+    export | local | declare | readonly | typeset)
+      for word in "${operands[@]+"${operands[@]}"}"; do record_assignment "$word"; done ;;
+    rm | rmdir | shred | truncate | unlink | mv) add_operands "${operands[@]+"${operands[@]}"}" ;;
+    cp | rsync | install | ln) add_destination "${operands[@]+"${operands[@]}"}" ;;
+    dd) for word in "${operands[@]+"${operands[@]}"}"; do case "$word" in of=*) add_target "${word#of=}" ;; esac; done ;;
+    sed | gsed)
+      for word in "${operands[@]+"${operands[@]}"}"; do
+        [[ "$word" =~ ^--in-place|^-[a-zA-Z]*i ]] && { add_operands "${operands[@]}"; break; }
+      done ;;
+    git)
+      while [ ${#operands[@]} -gt 0 ]; do
+        case "${operands[0]}" in -C | -c) operands=("${operands[@]:2}") ;; -*) operands=("${operands[@]:1}") ;; *) break ;; esac
+      done
+      case "${operands[0]:-}" in rm | mv | checkout | restore | clean | stash) add_operands "${operands[@]:1}" ;; esac ;;
+    find)
+      case " $segment " in *" -delete "* | *" -exec "* | *" -execdir "* | *" -ok "*) add_operands "${operands[@]+"${operands[@]}"}" ;; esac ;;
+    bash | sh | zsh | dash | ksh | eval)
+      [ "$depth" -lt 3 ] || emit ask "This command nests shells more than three levels deep, past what the guard reads, so it cannot tell what the innermost one writes (R-410). Confirm it does not write a locked test, fixture, spec, or gate input."
+      local take_next=0
+      [ "$verb" = eval ] && take_next=1
+      for word in "${operands[@]+"${operands[@]}"}"; do
+        if [ "$take_next" -eq 1 ]; then collect_shell_targets "$(resolve_word "$word")" $((depth + 1)); [ "$verb" = eval ] || take_next=0; continue; fi
+        case "$word" in -c | -*c) take_next=1 ;; esac
+        [[ "$word" =~ ^__H([0-9]+)__$ ]] && collect_shell_targets "${HEREDOCS[${BASH_REMATCH[1]}]}" $((depth + 1))
+      done ;;
+    *)
+      if [[ "$verb" =~ $INTERPRETERS ]]; then
+        # perl -i edits its operands in place; any other flag set runs a script.
+        if [ "$verb" = perl ] && [[ " ${operands[*]:-} " =~ \ -[a-zA-Z]*i[a-zA-Z]*\  ]]; then add_operands "${operands[@]}"; return 0; fi
+        for word in "${operands[@]+"${operands[@]}"}"; do
+          if [[ "$word" =~ ^__Q[0-9]+__$ ]]; then
+            while IFS= read -r target; do [ -n "$target" ] && add_target "$target"; done < <(script_targets "$(resolve_word "$word")")
+          elif [[ "$word" =~ ^__H([0-9]+)__$ ]]; then
+            while IFS= read -r target; do [ -n "$target" ] && add_target "$target"; done < <(script_targets "${HEREDOCS[${BASH_REMATCH[1]}]}")
+          fi
+        done
+      fi ;;
+  esac
+}
+
+# collect_shell_targets <command> [depth]: every write target of a command
+# line, nested shells included up to three levels.
+collect_shell_targets() {
+  local text="$1" depth="${2:-0}" unquoted segment written=""
+  split_heredocs "$text"
+  set_aside_quotes "$HEREDOC_SPLIT"
+  unquoted="$UNQUOTED"
+  # Redirections and tee always write their operand; the operand is resolved
+  # after the segments, once the command's own assignments are recorded.
+  written=$( { printf '%s' "$unquoted" | grep -oE '(^|[^<-])>(>|\|)?[[:space:]]*[^[:space:];&|<>()]+' | sed -E 's/^[^>]?>(>|\|)?[[:space:]]*//'
+    printf '%s' "$unquoted" | grep -oE '(^|[;&|(][[:space:]]*|[[:space:]])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[^[:space:];&|]+' | awk '{print $NF}'; } || true)
+  # Each simple command on its own: a verb reaches only its own operands.
+  while IFS= read -r segment; do
+    [ -n "$segment" ] && segment_targets "$segment" "$depth"
+  done < <(printf '%s' "$unquoted" | sed -E 's/&&|\|\|/;/g' | tr ';|()&' '\n\n\n\n\n')
+  while IFS= read -r target; do
+    [ -n "$target" ] && add_target "$(resolve_word "$target")"
+  done <<< "$written"
+}
+
+collect_shell_targets "$CMD"
 
 while IFS= read -r target; do
   [ -n "$target" ] || continue
-  target="${target#\'}"; target="${target%\'}"; target="${target#\"}"; target="${target%\"}"
-  case "$target" in /dev/*) continue ;; esac
+  case "$target" in /dev/* | __Q*__) continue ;; esac
   apply_verdict "$(relative_path "$target")"
 done <<< "$TARGETS"
 exit 0
