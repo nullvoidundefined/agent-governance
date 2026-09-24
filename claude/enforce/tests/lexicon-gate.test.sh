@@ -29,9 +29,15 @@ make_repo() {
   printf '%s' "$dir"
 }
 
-# file_gate <file>: runs the hook on a Write of <file>; sets OUT.
+# file_gate <file> [cwd]: runs the hook on a Write of <file>, optionally with a
+# .cwd field (for a relative <file>); sets OUT.
 file_gate() {
-  OUT=$(jq -nc --arg f "$1" '{tool_name:"Write",tool_input:{file_path:$f,content:"x"}}' | "$HOOK" 2>/dev/null)
+  if [ -n "${2:-}" ]; then
+    OUT=$(jq -nc --arg f "$1" --arg d "$2" \
+      '{tool_name:"Write",cwd:$d,tool_input:{file_path:$f,content:"x"}}' | "$HOOK" 2>/dev/null)
+  else
+    OUT=$(jq -nc --arg f "$1" '{tool_name:"Write",tool_input:{file_path:$f,content:"x"}}' | "$HOOK" 2>/dev/null)
+  fi
 }
 
 check "hook exists and is executable" test -x "$HOOK"
@@ -92,5 +98,42 @@ check "L-7 path outside any work tree allows" is_silent
 R=$(make_repo l8)
 OUT=$(jq -nc --arg f "$R/src/new_thing.py" '{tool_name:"Edit",tool_input:{file_path:$f,old_string:"a",new_string:"b"}}' | "$HOOK" 2>/dev/null)
 check "L-8 Edit payload (no glossary) still denies a brand-new path" is_deny
+
+# L-9: a linked git worktree is still "inside a git work tree." A worktree's
+# .git is a file (a gitdir: pointer), not a directory, so a repo-root walk
+# that only tests `-d "$dir/.git"` never recognizes it and silently allows.
+R=$(make_repo l9)
+printf 'seed\n' > "$R/README.md"
+git -C "$R" add -A; git -C "$R" commit -qm seed
+WT="$SB/l9-worktree"
+git -C "$R" worktree add -q -b l9-branch "$WT" >/dev/null 2>&1
+file_gate "$WT/src/new_thing.py"
+check "L-9 new file in a linked worktree with no glossary denies" is_deny
+
+# L-10: an unrelated read error elsewhere in the tree (a permission-denied
+# sibling directory) must fail open, not be read as "no glossary anywhere,"
+# even though the glossary genuinely exists elsewhere in the same repo.
+R=$(make_repo l10)
+mkdir -p "$R/docs" "$R/locked"
+printf '# Spec\n\n## Domain vocabulary\n\n- posting - a job posting\n' > "$R/docs/spec.md"
+printf 'x\n' > "$R/locked/secret.md"
+chmod 000 "$R/locked"
+file_gate "$R/src/new_thing.py"
+check "L-10 unrelated permission error fails open (glossary exists elsewhere)" is_silent
+chmod 755 "$R/locked"
+
+# L-11: a relative file_path resolves against the PreToolUse payload's own
+# .cwd, not the hook process's bare $PWD, which need not be the same
+# directory the tool call is scoped to.
+R=$(make_repo l11)
+file_gate "src/new_thing.py" "$R"
+check "L-11 relative file_path resolves against payload .cwd, not bare PWD" is_deny
+
+# L-12: a .d.ts declaration file is not a hand-written source file (R-320
+# already exempts it from the file-header requirement); the gate should not
+# treat it as one either.
+R=$(make_repo l12)
+file_gate "$R/src/types.d.ts"
+check "L-12 .d.ts declaration file allows" is_silent
 
 exit $fail

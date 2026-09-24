@@ -12,16 +12,23 @@
 #
 # Fires only when every one of these holds:
 #   - the write targets a gated source extension (ts, tsx, js, jsx, mjs, py,
-#     rb, go, vue): the languages task-start's stack tracks build against
+#     rb, go, vue), and is not a .d.ts declaration file: R-320 already treats
+#     .d.ts as not hand-written source, and this gate follows that carve-out
 #   - the target file does not already exist: an edit to an existing file
 #     is not a walking-skeleton moment, and re-editing the first file after
 #     the glossary lands must not re-trigger this
-#   - the file sits inside a git work tree (walked up from its directory,
-#     including one that does not exist yet, the normal shape of a new
-#     source file's first Write)
+#   - the file sits inside a git work tree, including a linked worktree
+#     (`git rev-parse --show-toplevel`, not a hand-rolled `.git` directory
+#     walk: a worktree's `.git` is a file holding a `gitdir:` pointer, not a
+#     directory, and R-501 directs using worktrees for parallel sessions, so
+#     this is a live case, not a theoretical one), and including a directory
+#     that does not exist yet (the normal shape of a new source file's first
+#     Write)
 #   - that work tree holds zero files, anywhere, containing the heading
 #     "## Domain vocabulary" (the exact heading R-330 already fixes, so one
-#     glossary satisfies both the advisory spec check and this gate)
+#     glossary satisfies both the advisory spec check and this gate); a read
+#     error elsewhere in the tree (a permission-denied sibling directory) is
+#     not the same answer as "no glossary" and must not be read as one
 #
 # Denies with the two places the glossary already belongs: the project's
 # docs/spec.md if one exists, or a new docs/lexicon.md, in the `term -
@@ -34,12 +41,14 @@
 # A PreToolUse hook that emits nothing is an allow (enforce/README.md), so an
 # internal error here can only under-enforce, never lock out real work.
 set -uo pipefail
+HOOK_DIR="$(dirname "${BASH_SOURCE[0]}")"
 
 INPUT=$(cat)
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -n "$FILE_PATH" ] || exit 0
 
 case "$FILE_PATH" in
+    *.d.ts) exit 0 ;;
     *.ts|*.tsx|*.js|*.jsx|*.mjs|*.py|*.rb|*.go|*.vue) ;;
     *) exit 0 ;;
 esac
@@ -47,14 +56,21 @@ esac
 # An existing file has already had its walking-skeleton moment.
 [ -e "$FILE_PATH" ] && exit 0
 
+# A relative file_path resolves against the PreToolUse payload's own .cwd
+# (what the tool call is actually scoped to), falling back to the hook
+# process's own $PWD only when the payload carries none (mirrors
+# ticket-at-start-gate.sh's CWD resolution).
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)
+[ -n "$CWD" ] || CWD="$PWD"
+
 # resolve_start_directory: the nearest existing ancestor of a not-yet-created
 # path, so a new file under directories that do not exist yet is judged by
-# the repository it would land in (mirrors ticket-at-start-gate.sh).
+# the repository it would land in.
 resolve_start_directory() {
     local path="$1"
     case "$path" in
         /*) : ;;
-        *) path="$PWD/$path" ;;
+        *) path="$CWD/$path" ;;
     esac
     local dir
     dir=$(dirname "$path")
@@ -67,26 +83,29 @@ resolve_start_directory() {
 start_dir=$(resolve_start_directory "$FILE_PATH")
 [ -n "$start_dir" ] || exit 0
 
-repo_root=""
-dir="$start_dir"
-while [ "$dir" != "/" ] && [ -n "$dir" ]; do
-    if [ -d "$dir/.git" ]; then
-        repo_root="$dir"
-        break
-    fi
-    dir=$(dirname "$dir")
-done
+# git itself resolves a linked worktree's toplevel correctly; a hand-rolled
+# `-d "$dir/.git"` walk does not, since a worktree's .git is a file, not a
+# directory. rev-parse also fails (non-zero, empty stdout) outside any work
+# tree, which is exactly the "not gated" case.
+repo_root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null)
 [ -n "$repo_root" ] || exit 0
 
-if grep -rlF '## Domain vocabulary' "$repo_root" \
+grep -rlF '## Domain vocabulary' "$repo_root" \
     --include='*.md' \
     --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv \
     --exclude-dir=vendor --exclude-dir=dist --exclude-dir=build \
-    >/dev/null 2>&1; then
-    exit 0
-fi
+    >/dev/null 2>/dev/null
+grep_status=$?
+# grep exits 0 (found: allow), 1 (no match anywhere, no errors: proceed to
+# deny), or 2+ (a read error somewhere, e.g. a permission-denied subtree,
+# unrelated to whether the glossary exists): only 1 is a real "no glossary"
+# answer, so anything else fails open rather than denies on a filesystem
+# problem this hook did not cause and cannot see past.
+[ "$grep_status" -eq 1 ] || exit 0
 
 REL_PATH="${FILE_PATH#"$repo_root"/}"
+[ -f "$HOOK_DIR/log-rule-fire.sh" ] && source "$HOOK_DIR/log-rule-fire.sh"
+type log_rule_fire >/dev/null 2>&1 && log_rule_fire "R-330" "lexicon-gate" "deny"
 jq -n --arg p "$REL_PATH" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
