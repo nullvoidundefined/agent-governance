@@ -217,8 +217,10 @@ a lock parent directory that cannot be written fails at once with that reason.
 Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop gate
 (`hooks/verification-gate.sh`) sets the cap to 480 seconds for every check it
 runs, because the Stop hook itself is killed at 660 seconds, and it does not
-retry a 75, since a retry would wait a second 480 seconds; it blocks the turn
-once with the runner's message instead (IAN-351). Fixtures:
+retry a fixture suite's 75, since a retry would wait a second 480 seconds; it
+blocks the turn once with the runner's message instead (IAN-351). A 75 from
+any other check, such as a project's own `.claude/verify.sh`, is an ordinary
+failure and keeps its one automatic retry. Fixtures:
 `tests/verification-gate-lock-wait.test.sh` and
 `tests/suite-wrappers-lock-give-up.test.sh`.
 "Machine-wide" means every caller that shares `TMPDIR`: on macOS that is the
