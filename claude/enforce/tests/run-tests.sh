@@ -39,8 +39,13 @@ fi
 # parallel, and with --affected runs only what the changed files need. No
 # argument means every fixture: CI and doctor.sh call it that way.
 MODE="${1:---all}"
-if bash "$DIR/../run-fixture-shards.sh" "$DIR" "$MODE"; then
+# The runner's 75 (the run-lock wait reached its cap) passes through
+# unchanged, so the Stop gate can tell it from a failing fixture (IAN-351).
+bash "$DIR/../run-fixture-shards.sh" "$DIR" "$MODE"; runner_status=$?
+if [ "$runner_status" -eq 0 ]; then
   echo "ALL ENFORCEMENT TESTS PASS"
+elif [ "$runner_status" -eq 75 ]; then
+  echo "ENFORCEMENT TESTS DID NOT RUN: another fixture run held the lock"; exit 75
 else
   echo "ENFORCEMENT TESTS FAILED"; exit 1
 fi

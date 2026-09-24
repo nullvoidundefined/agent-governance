@@ -117,12 +117,37 @@ if [ -n "$TREE_KEY" ] && [ -f "$MEMO_FILE" ] && [ "$(cat "$MEMO_FILE" 2>/dev/nul
 fi
 
 TIMEOUT_SECONDS="${CLAUDE_VERIFY_TIMEOUT:-600}"
+# The fixture runner queues behind a machine-wide lock and gives up after
+# FIXTURE_SHARDS_LOCK_WAIT_SECONDS, 1200 by default (IAN-348). The harness
+# kills this hook at 660 seconds, so every check here waits at most 480 and
+# the runner's own message still reaches the turn. Set unconditionally: a
+# value the session's shell exported must not stretch the wait past the hook's
+# budget (IAN-351).
+export FIXTURE_SHARDS_LOCK_WAIT_SECONDS=480
+# The runner's exit status when that wait reached its cap. Not retried when a
+# fixture-suite check returns it: the retry would queue for a second 480
+# seconds and overrun the budget anyway.
+FIXTURE_LOCK_GAVE_UP_STATUS=75
 MAX_OUTPUT_LINES=200
 MAX_OUTPUT_CHARS=8000
 
 # Discovery. Each branch appends shell commands, one per line, in run order.
 CHECKS=""
 add_check() { CHECKS="${CHECKS}${1}"$'\n'; }
+# The fixture-suite checks, one per line. Only these can exit 75 for the
+# run-lock give-up; any other check's 75 is an ordinary failure (PR #133 review).
+FIXTURE_SUITE_CHECKS=""
+# add_fixture_suite_check <command>: adds a check that runs a fixture suite
+# through its run-tests.sh wrapper, and records it as one.
+add_fixture_suite_check() {
+  add_check "$1"
+  FIXTURE_SUITE_CHECKS="${FIXTURE_SUITE_CHECKS}${1}"$'\n'
+}
+# is_fixture_lock_give_up <check> <status>: true when a fixture-suite check
+# exited with the runner's lock give-up status.
+is_fixture_lock_give_up() {
+  [ "$2" -eq "$FIXTURE_LOCK_GAVE_UP_STATUS" ] && grep -qxF -- "$1" <<< "$FIXTURE_SUITE_CHECKS"
+}
 
 # The R-509 related-test mapping for application stacks
 # (enforce/related-tests.sh, IAN-98). An absent helper, or a mapping that
@@ -174,13 +199,13 @@ elif [ -f enforce/tests/run-tests.sh ] && [ -f hooks/tests/run-tests.sh ] && [ -
   # A governance-shaped tree at the toplevel (the pre-migration ~/.claude
   # layout, or a CI checkout of claude/ itself). No typecheck: plain shell
   # and JS with no tsc. Both fixture suites are the checks.
-  add_check "bash enforce/tests/run-tests.sh --affected"
-  add_check "bash hooks/tests/run-tests.sh --affected"
+  add_fixture_suite_check "bash enforce/tests/run-tests.sh --affected"
+  add_fixture_suite_check "bash hooks/tests/run-tests.sh --affected"
 elif [ -f claude/enforce/tests/run-tests.sh ] && [ -f claude/hooks/tests/run-tests.sh ] && [ -f claude/CLAUDE.md ]; then
   # The agent-governance monorepo: the same governance tree one level down
   # under claude/ (2026-09-16 audit P1-1).
-  add_check "bash claude/enforce/tests/run-tests.sh --affected"
-  add_check "bash claude/hooks/tests/run-tests.sh --affected"
+  add_fixture_suite_check "bash claude/enforce/tests/run-tests.sh --affected"
+  add_fixture_suite_check "bash claude/hooks/tests/run-tests.sh --affected"
   # The same port checks pre-push and CI run, so the turn-end gate and the
   # push gate stop disagreeing about what verifies this repo: a stale codex
   # port used to survive until push time (2026-09-17 audit P2-5), and the
@@ -284,7 +309,9 @@ while IFS= read -r check; do
   # timeout (124) skips the retry: doubling a 600s wait before blocking is the
   # wrong tradeoff, and a check that needs the full budget once is unlikely to
   # need less on an immediate second attempt.
-  if [ "$STATUS" -ne 124 ]; then
+  # A fixture suite's lock give-up (75) skips it too, for the reason given
+  # at FIXTURE_LOCK_GAVE_UP_STATUS.
+  if [ "$STATUS" -ne 124 ] && ! is_fixture_lock_give_up "$check" "$STATUS"; then
     sleep "$RETRY_DELAY_SECONDS"
     RETRIED=1
     OUTPUT=$(run_with_timeout "$check")
@@ -295,6 +322,8 @@ while IFS= read -r check; do
   TAIL=$(printf '%s' "$OUTPUT" | tail -n "$MAX_OUTPUT_LINES" | tail -c "$MAX_OUTPUT_CHARS")
   if [ "$STATUS" -eq 124 ]; then
     TAIL="Command exceeded CLAUDE_VERIFY_TIMEOUT (${TIMEOUT_SECONDS}s) and was killed."$'\n\n'"$TAIL"
+  elif is_fixture_lock_give_up "$check" "$STATUS"; then
+    TAIL="No fixture ran: another fixture run held the machine-wide lock for all ${FIXTURE_SHARDS_LOCK_WAIT_SECONDS}s this gate waits, so the check was not retried. End the turn again once that run finishes."$'\n\n'"$TAIL"
   fi
   RETRY_NOTE=""
   RELATED_NOTE=""

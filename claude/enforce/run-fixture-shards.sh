@@ -52,7 +52,7 @@
 # Runs queue machine-wide (IAN-348): a run takes the lock directory
 # ${TMPDIR:-/tmp}/claude-fixture-shards.lock before running anything, and a
 # second run prints one line naming the holder's PID and polls until it is
-# free, takes over a lock whose holder is dead, and exits 1 after
+# free, takes over a lock whose holder is dead, and exits 75 after
 # FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200). The runner exports
 # FIXTURE_SHARDS_LOCK_HELD to its fixtures, so a fixture that calls the runner
 # again does not wait on its own parent. --list takes no lock.
@@ -60,7 +60,8 @@
 # A fixture passes on exit 0 with a PASS line and no FAIL line, the verdict
 # the sequential runners applied; output is printed in name order once the
 # run finishes, so a parallel run reads the same as a sequential one. Exit 0
-# when every chosen fixture passed, 1 when one failed, 2 on a usage error.
+# when every chosen fixture passed, 1 when one failed, 2 on a usage error,
+# and 75 when the wait for the run lock reached its cap.
 set -uo pipefail
 
 # Files every fixture of a kind depends on without naming them: the harness
@@ -80,6 +81,7 @@ RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.lock"
 RUN_LOCK_TAKEOVER_DIR="$RUN_LOCK_DIR.takeover"
 RUN_LOCK_POLL_SECONDS=2
 RUN_LOCK_WAIT_DEFAULT_SECONDS=1200
+RUN_LOCK_GAVE_UP_STATUS=75
 
 # run_one_fixture <result dir> <fixture>: runs one fixture with stdin closed
 # and records its verdict and output. Invoked through xargs as a subcommand,
@@ -354,10 +356,13 @@ take_over_stale_lock() {
 }
 
 # give_up_waiting <wait cap> <holder pid>: the wait cap's clean failure, so a
-# queued run ends the turn with a reason instead of hanging it.
+# queued run ends the turn with a reason instead of hanging it. Exits 75
+# (EX_TEMPFAIL) rather than 1, so verification-gate.sh can tell a queue that
+# never cleared from a failing fixture and skip its retry, which would wait a
+# second full cap past the Stop hook's budget (IAN-351).
 give_up_waiting() {
   echo "fixture-shards: gave up after ${1}s waiting for PID ${2:-unknown} to release $RUN_LOCK_DIR; rerun once that run finishes, or remove the directory (and $RUN_LOCK_TAKEOVER_DIR) if no fixture run is alive" >&2
-  exit 1
+  exit "$RUN_LOCK_GAVE_UP_STATUS"
 }
 
 # require_lock_parent_dir: exits 1 when the lock's parent directory cannot be
