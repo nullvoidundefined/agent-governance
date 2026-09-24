@@ -33,6 +33,11 @@ nudges() { run_hook "$@" | grep -q 'additionalContext'; }
 names() { local pattern="$1"; shift; run_hook "$@" | jq -r '.hookSpecificOutput.additionalContext' | grep -q "$pattern"; }
 omits() { local pattern="$1"; shift; ! run_hook "$@" | jq -r '.hookSpecificOutput.additionalContext // ""' | grep -q "$pattern"; }
 silent() { [ -z "$(run_hook "$@")" ]; }
+names_but_omits() { # present, absent, path, content
+    local present="$1" absent="$2"; shift 2
+    local out; out=$(run_hook "$@" | jq -r '.hookSpecificOutput.additionalContext // ""')
+    grep -q "$present" <<< "$out" && ! grep -q "$absent" <<< "$out"
+}
 
 SPEC="docs/superpowers/specs/2026-07-07-thing-design.md"
 
@@ -172,7 +177,9 @@ SLICE_EMPTY="# Slice 01: auth
 Some prose and no PR blocks.
 "
 SLICE_NO_MODE="$(printf '%s\n' "$SLICE_COMPLETE" | grep -v '^\*\*Merge mode:\*\*')"
+SLICE_MODE_IN_PROSE="${SLICE_NO_MODE/**Approach:** a table and a repository./**Approach:** a table and a repository, and the **Merge mode:** question is answered on the ticket.}"
 SLICE_OPT_IN="${SLICE_COMPLETE/owner merges, because the owner is reading the auth work PR by PR./merge on green, because every PR here is a mechanical rename.}"
+SLICE_OPT_IN_NO_MODE="$(printf '%s\n' "$SLICE_OPT_IN" | grep -v '^\*\*Merge mode:\*\*')"
 
 check "complete slice plan silent"                    silent "$SLICE" "$SLICE_COMPLETE"
 check "opt-in mode line also silent"                  silent "$SLICE" "$SLICE_OPT_IN"
@@ -187,7 +194,9 @@ check "other file under docs/slices silent"           silent "docs/slices/README
 # and folded into the no-PR-block reminder rather than lost behind it.
 check "plan without a merge mode nudges"              nudges "$SLICE" "$SLICE_NO_MODE"
 check "missing merge mode is named"                   names 'no "\*\*Merge mode:\*\*" line' "$SLICE" "$SLICE_NO_MODE"
-check "complete PR blocks not named with it"          omits 'lacks' "$SLICE" "$SLICE_NO_MODE"
+check "mode named without inventing label problems"   names_but_omits 'Merge mode' 'lacks' "$SLICE" "$SLICE_NO_MODE"
+check "stripping the mode from an opt-in plan nudges" names 'Merge mode' "$SLICE" "$SLICE_OPT_IN_NO_MODE"
+check "the phrase inside a PR block is not the line"  names_but_omits 'Merge mode' 'lacks' "$SLICE" "$SLICE_MODE_IN_PROSE"
 check "mode and labels reported together"             names 'Merge mode.*PR 1: session table lacks' "$SLICE" "$SLICE_PARTIAL"
 check "no-PR-block reminder names the mode too"       names 'Merge mode' "$SLICE" "$SLICE_EMPTY"
 

@@ -104,7 +104,7 @@
     "skills/spec-grounding/SKILL.md": "sha256:1defe3069f25bf142b2ac810ac04a6d59429992e79faddade64c463ee011a1a8",
     "skills/spec-grounding/scripts/check.sh": "sha256:cba4fbe2e6a64e553b557c65d79233523414ec78e7abe77c924fca84dd8c3ddb",
     "skills/structure-conventions/SKILL.md": "sha256:5f3cf394d9ef20b1bc4e05ad005c3e7e07b9910441295b5d2ae64720d714a8b6",
-    "skills/task-cleanup/SKILL.md": "sha256:141df7dbfbe4f5525d5411e9824c42910ad6f731c3943dc00e905954330d3293",
+    "skills/task-cleanup/SKILL.md": "sha256:e79031048a9f7266694a0c281951992bbc340e7caecd440a105fde25c3027fe2",
     "skills/task-cleanup/scripts/scan.sh": "sha256:48de98c6cbd60fba6d29119b8956ec8acfe8070362b2d49e21bc22fe4f67d866",
     "skills/task-start/SKILL.md": "sha256:bb8e3320dde56991d3e789c675aa3b78f00cda216780d2774134baa99b11ee05",
     "skills/task-start/scripts/finding.sh": "sha256:1093603bacdf34684e826d1c2a45027ad47baea7c587643be7c153842e5bd86c",
