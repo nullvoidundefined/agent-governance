@@ -95,6 +95,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── test-author.md               # Slice role: writes the failing test, proves RED.
 │   ├── implementer.md               # Slice role: minimum code to GREEN, never touches tests.
 │   ├── slice-critic.md              # Slice role: read-only fresh-context review, seven questions.
+│   ├── pr-reviewer.md               # R-517 pre-merge reviewer: read-only, diff pasted into its prompt.
 │   └── audit-*.md                   # On-request audit agents (design, financial, etc.)
 ├── audits/                          # Pointer stubs; canonical roles live in agents/audit-*.md.
 │   ├── engineering.md               # Forwards to agents/audit-engineering.md (CTO persona).
@@ -126,7 +127,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── lint.mjs                     # Lints any absolute path; used by the push gate.
 │   ├── ratchet.mjs                  # Full-tree baseline; fails when a count rises.
 │   ├── tdd.sh                       # Slice loop evidence: open, red, green, close.
-│   ├── run-fixture-shards.sh        # Runs a fixture tree in parallel; --affected picks what the changes need (R-509).
+│   ├── run-fixture-shards.sh        # Runs a fixture tree in parallel; --affected picks what the changes need (R-509); concurrent runs queue behind a machine-wide lock.
 │   ├── role-policy.json             # Subagent write boundaries by agent_type (R-411).
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
