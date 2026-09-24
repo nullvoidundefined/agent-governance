@@ -235,9 +235,10 @@ per-user directory launchd assigns, which terminal shells and app-launched
 hooks inherit alike, and on Linux it is usually unset, so `/tmp`. The runner
 exports its PID as `FIXTURE_SHARDS_LOCK_HELD`, so a fixture that calls the
 runner again, such as the runner's own fixture, skips the lock instead of
-waiting on its parent. The marker counts only while it names the live PID the
-lock file records, so a value left exported in some shell cannot switch
-queueing off. `--list` runs nothing and takes no lock. Fixture:
+waiting on its parent. The marker counts only while it names the PID the
+lock file records and that lock is held, so it still works for the fixtures
+of a runner that was killed (its orphaned workers hold the lock), while a
+value left exported in some shell cannot switch queueing off. `--list` runs nothing and takes no lock. Fixture:
 `tests/run-fixture-shards-lock.test.sh`.
 
 Run them from the checkout, not from `~/.claude`. Every fixture resolves the

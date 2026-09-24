@@ -312,20 +312,24 @@ run_lock_holder_pid() {
   head -1 "$RUN_LOCK_FILE" 2>/dev/null
 }
 
-# is_process_alive <pid>: true while the process exists. kill -0 alone reads
-# another user's live process as dead, so ps answers when it fails.
-is_process_alive() {
-  kill -0 "$1" 2>/dev/null || ps -p "$1" >/dev/null 2>&1
+# is_run_lock_held: true while some process holds the run lock. Probes on a
+# fresh open of the file, so the probe's own momentary lock is released as
+# soon as perl exits.
+is_run_lock_held() {
+  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 1; flock($f, LOCK_EX|LOCK_NB) ? exit 1 : exit 0' "$RUN_LOCK_FILE"
 }
 
-# is_nested_run: true when FIXTURE_SHARDS_LOCK_HELD names the live run that
-# the lock file records as holder, that is, this runner was started by one of
-# that run's fixtures and must not wait on its own parent. A marker naming a
-# dead or different PID is stale, left in some shell's environment, and is
-# ignored, so it can never switch queueing off (IAN-359 review).
+# is_nested_run: true when FIXTURE_SHARDS_LOCK_HELD names the run the lock
+# file records as holder and the lock is held right now, that is, this runner
+# was started by one of that run's fixtures and must not wait on its own
+# ancestors. The holder need not be alive: a killed runner's orphaned workers
+# still hold the lock, and their fixtures' nested runs must not queue behind
+# them. A marker naming another PID, or a holder whose run has finished, is
+# stale, left in some shell's environment, and is ignored, so it can never
+# switch queueing off (IAN-359 review).
 is_nested_run() {
   local marker="${FIXTURE_SHARDS_LOCK_HELD:-}"
-  [ -n "$marker" ] && [ "$marker" = "$(run_lock_holder_pid)" ] && is_process_alive "$marker"
+  [ -n "$marker" ] && [ "$marker" = "$(run_lock_holder_pid)" ] && is_run_lock_held
 }
 
 # open_run_lock_file: opens the lock file on fd 9 for the rest of the run.
@@ -371,14 +375,14 @@ require_lock_parent_dir() {
 # holder it waits on and gives up after FIXTURE_SHARDS_LOCK_WAIT_SECONDS
 # (default 1200). A nested run returns at once and takes nothing. Both are
 # environment variables, unlike the other controls, because neither can make
-# a run shorter or heavier: the marker only reaches a live holder's own
-# descendants, and the cap only decides how long to queue. Without perl the
+# a run shorter or heavier: the marker counts only while the run it names
+# holds the lock, and the cap only decides how long to queue. Without perl the
 # run goes ahead unqueued, with a warning, as it did before IAN-348.
 acquire_run_lock() {
   local wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS" holder announced=""
-  is_nested_run && return 0
   [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
   command -v perl >/dev/null 2>&1 || { echo "fixture-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
+  is_nested_run && return 0
   require_lock_parent_dir
   open_run_lock_file
   until try_run_lock; do

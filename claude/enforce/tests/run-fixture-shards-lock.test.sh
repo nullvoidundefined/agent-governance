@@ -224,6 +224,32 @@ check "--list does not wait on the lock" test "$list_status" -eq 0
 check "--list still lists the fixtures under a held lock" grep -qx "sleeper.test.sh" <<< "$list_output"
 kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null
 
+# Case 7b: a killed run's orphaned fixtures still hold the lock under a lock
+# file naming the dead runner. A nested run from one of them, its marker
+# naming that dead runner, must skip the lock rather than queue behind its own
+# ancestors until the cap. A stand-in holds the lock while the file names a
+# dead PID.
+orphan_runner_pid=$(dead_pid_of_finished_process)
+perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; flock($f, LOCK_EX) or die; open(my $p, ">", $ARGV[0]) or die; print $p "$ARGV[1]\n"; close $p; sleep 60' "$LOCK_FILE" "$orphan_runner_pid" &
+orphan_holder_pid=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $orphan_holder_pid"
+wait_for_line 5 "^$orphan_runner_pid\$" "$LOCK_FILE"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/orphan-nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$orphan_runner_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; orphan_nested_status=$?
+check "a nested run under a killed run's orphans passes without queueing" test "$orphan_nested_status" -eq 0
+check "a nested run under a killed run's orphans ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
+kill "$orphan_holder_pid" 2>/dev/null; wait "$orphan_holder_pid" 2>/dev/null
+
+# Case 7c: a marker still naming the PID the lock file records, after that run
+# has finished and nobody holds the lock, is stale: the run takes the lock
+# itself and records its own PID instead of running unqueued.
+finished_holder_pid=$(head -1 "$LOCK_FILE")
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/finished-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$finished_holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; finished_marker_status=$?
+check "a marker naming a finished holder still lets the run pass" test "$finished_marker_status" -eq 0
+check "a marker naming a finished holder does not skip the lock: the run records its own PID" \
+  not test "$(head -1 "$LOCK_FILE")" = "$finished_holder_pid"
+
 # Case 8: a lock directory left at the old IAN-348 path is not this lock.
 mkdir -p "$LOCK_TMPDIR/claude-fixture-shards.lock"
 echo "$$" > "$LOCK_TMPDIR/claude-fixture-shards.lock/pid"
