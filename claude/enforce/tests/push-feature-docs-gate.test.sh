@@ -77,5 +77,26 @@ printf 'https://example.invalid/b15.git\n' > "$SB/exempt-home/.claude/enforce/ex
 run_gate "$R" "$PUSH" "$SB/exempt-home"
 check "B-15 exempt repository emits nothing" test -z "$OUT"
 
+# B-16 (R-608): a Gemfile gem added without docs/stack.md is denied with the
+# stack report; the same push with the doc passes.
+R=$(make_repo b16 Gemfile)
+printf 'source "https://rubygems.org"\ngem "sidekiq"\n' > "$R/Gemfile"; git -C "$R" add -A; git -C "$R" commit -qm gem
+run_gate "$R" "$PUSH"
+check "B-16 missing stack doc denies" is_deny
+check "B-16 reason names R-608" reason_has "R-608"
+check "B-16 reason names docs/stack.md" reason_has "docs/stack.md"
+mkdir -p "$R/docs"; printf '# stack\n' > "$R/docs/stack.md"; git -C "$R" add -A; git -C "$R" commit -qm stack
+run_gate "$R" "$PUSH"
+check "B-16 stack doc present emits nothing" test -z "$OUT"
+
+# B-17 (R-607 and R-608 together): one deny carries both reports.
+R=$(make_repo b17 app/routers/trips.py app/analytics/events.py)
+printf 'class AnalyticsEvent(StrEnum):\n    TRIP_CREATED = "trip_created"\n' > "$R/app/analytics/events.py"
+git -C "$R" add -A; git -C "$R" commit -qm event
+run_gate "$R" "$PUSH"
+check "B-17 combined deny" is_deny
+check "B-17 reason names R-607" reason_has "R-607"
+check "B-17 reason names docs/observability.md" reason_has "docs/observability.md"
+
 [ "$fail" -eq 0 ] && echo "push-feature-docs-gate.test.sh PASS"
 exit "$fail"
