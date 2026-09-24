@@ -49,6 +49,14 @@
 # for the same reason as the test options: an exported variable must not be
 # able to shorten the quiet period or overload the gate.
 #
+# Runs queue machine-wide (IAN-348): a run takes the lock directory
+# ${TMPDIR:-/tmp}/claude-fixture-shards.lock before running anything, and a
+# second run prints one line naming the holder's PID and polls until it is
+# free, takes over a lock whose holder is dead, and exits 1 after
+# FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200). The runner exports
+# FIXTURE_SHARDS_LOCK_HELD to its fixtures, so a fixture that calls the runner
+# again does not wait on its own parent. --list takes no lock.
+#
 # A fixture passes on exit 0 with a PASS line and no FAIL line, the verdict
 # the sequential runners applied; output is printed in name order once the
 # run finishes, so a parallel run reads the same as a sequential one. Exit 0
@@ -64,6 +72,14 @@ MAX_DEFAULT_JOBS=8
 SERIAL_SETTLE_DEFAULT_SECONDS=5
 SERIAL_SETTLE_MAX_DEFAULT_SECONDS=60
 LOAD_FROM=""
+# The machine-wide run lock (IAN-348): an mkdir lock directory, because mkdir
+# is atomic and macOS has no flock. RUN_LOCK_TAKEOVER_DIR serialises the
+# removal of a dead holder's lock, so two waiters never both remove one.
+RUN_LOCK_PARENT_DIR="${TMPDIR:-/tmp}"
+RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.lock"
+RUN_LOCK_TAKEOVER_DIR="$RUN_LOCK_DIR.takeover"
+RUN_LOCK_POLL_SECONDS=2
+RUN_LOCK_WAIT_DEFAULT_SECONDS=1200
 
 # run_one_fixture <result dir> <fixture>: runs one fixture with stdin closed
 # and records its verdict and output. Invoked through xargs as a subcommand,
@@ -283,6 +299,80 @@ affected_selection() {
   [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
 }
 
+# run_lock_holder_pid: prints the PID the run lock records, nothing when the
+# lock is absent or its owner has not written the PID yet.
+run_lock_holder_pid() {
+  cat "$RUN_LOCK_DIR/pid" 2>/dev/null
+}
+
+# is_process_alive <pid>: true while the process exists. kill -0 alone reads
+# another user's live process as dead, so ps confirms before anything is
+# removed.
+is_process_alive() {
+  kill -0 "$1" 2>/dev/null || ps -p "$1" >/dev/null 2>&1
+}
+
+# release_run_lock: the EXIT trap. Removes the lock and the takeover lock only
+# while they record this run, so a run that never got the lock, or lost it,
+# never deletes another run's.
+release_run_lock() {
+  [ "$(run_lock_holder_pid)" = "$$" ] && rm -rf "$RUN_LOCK_DIR"
+  [ "$(cat "$RUN_LOCK_TAKEOVER_DIR/pid" 2>/dev/null)" = "$$" ] && rm -rf "$RUN_LOCK_TAKEOVER_DIR"
+  return 0
+}
+
+# take_over_stale_lock <dead pid>: removes a lock its dead holder left behind;
+# true when it did. Only the waiter holding the takeover lock may remove it,
+# and it re-reads the holder first, so a lock a live run has just taken is
+# never removed.
+take_over_stale_lock() {
+  local dead_pid="$1" removed=1
+  mkdir "$RUN_LOCK_TAKEOVER_DIR" 2>/dev/null || return 1
+  echo "$$" > "$RUN_LOCK_TAKEOVER_DIR/pid"
+  if [ "$(run_lock_holder_pid)" = "$dead_pid" ]; then
+    echo "fixture-shards: taking over the run lock left by PID $dead_pid, which is no longer running"
+    rm -rf "$RUN_LOCK_DIR" && removed=0
+  fi
+  rm -rf "$RUN_LOCK_TAKEOVER_DIR"
+  return "$removed"
+}
+
+# give_up_waiting <wait cap> <holder pid>: the wait cap's clean failure, so a
+# queued run ends the turn with a reason instead of hanging it.
+give_up_waiting() {
+  echo "fixture-shards: gave up after ${1}s waiting for PID ${2:-unknown} to release $RUN_LOCK_DIR; rerun once that run finishes, or remove the directory (and $RUN_LOCK_TAKEOVER_DIR) if no fixture run is alive" >&2
+  exit 1
+}
+
+# acquire_run_lock: takes the machine-wide run lock (IAN-348), waiting while
+# another run holds it, because two suites at once starved each other past the
+# 600-second tool timeout (2026-09-24). Prints one line per holder it waits
+# on, takes over a dead holder's lock, and gives up after
+# FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200). A nested run, marked by the
+# FIXTURE_SHARDS_LOCK_HELD its parent exported, returns at once and owns
+# nothing. Both are environment variables, unlike the other controls, because
+# neither can make a run shorter or heavier: the marker restores the
+# unqueued behaviour and the cap only decides how long to queue.
+acquire_run_lock() {
+  local wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS" holder announced=""
+  [ -n "${FIXTURE_SHARDS_LOCK_HELD:-}" ] && return 0
+  [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
+  mkdir -p "$RUN_LOCK_PARENT_DIR" 2>/dev/null
+  trap release_run_lock EXIT
+  until mkdir "$RUN_LOCK_DIR" 2>/dev/null; do
+    holder=$(run_lock_holder_pid)
+    if [ -n "$holder" ] && ! is_process_alive "$holder"; then take_over_stale_lock "$holder" && continue; fi
+    if [ -n "$holder" ] && [ "$holder" != "$announced" ]; then
+      echo "fixture-shards: another fixture run holds $RUN_LOCK_DIR; waiting for PID $holder (up to ${wait_cap}s)"
+      announced="$holder"
+    fi
+    [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting "$wait_cap" "$holder"
+    sleep "$RUN_LOCK_POLL_SECONDS"
+  done
+  echo "$$" > "$RUN_LOCK_DIR/pid"
+  export FIXTURE_SHARDS_LOCK_HELD=1
+}
+
 # usage_error <message>: exits 2 with the message and the usage line.
 usage_error() {
   echo "run-fixture-shards.sh: $1" >&2
@@ -323,6 +413,9 @@ main() {
     exit 0
   fi
   count=$(grep -c . <<< "$SELECTED")
+  # After --list, which runs nothing, and before the job count, which should
+  # read the load once the run ahead has finished.
+  acquire_run_lock
   [ -n "$jobs" ] || jobs=$(default_job_count)
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
   result_dir="${kept_dir:-$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")}"
