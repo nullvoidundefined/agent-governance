@@ -126,7 +126,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── lint.mjs                     # Lints any absolute path; used by the push gate.
 │   ├── ratchet.mjs                  # Full-tree baseline; fails when a count rises.
 │   ├── tdd.sh                       # Slice loop evidence: open, red, green, close.
-│   ├── run-fixture-shards.sh        # Runs a fixture tree in parallel; --affected picks what the changes need (R-509).
+│   ├── run-fixture-shards.sh        # Runs a fixture tree in parallel; --affected picks what the changes need (R-509); concurrent runs queue behind a machine-wide lock.
 │   ├── role-policy.json             # Subagent write boundaries by agent_type (R-411).
 │   ├── judge-prompt.md              # Instructions for the semantic-rule judge.
 │   ├── hook-hashes.txt              # Integrity manifest for the enforcement surface.
