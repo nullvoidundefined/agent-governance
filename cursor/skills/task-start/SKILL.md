@@ -92,6 +92,14 @@ Create the branch, then record the tier on it with `bash ~/.claude/skills/task-s
 
 ### Standard
 
+Before the first source file: settle the domain vocabulary (R-330). This tier
+carries no spec, so the glossary has no natural home; write a `## Domain
+vocabulary` section into `docs/lexicon.md` (or into `docs/spec.md` if one
+already exists for another reason) before the first Write. `hooks/lexicon-gate.sh`
+enforces this mechanically: a brand-new source file denies until the repo
+carries that heading somewhere, once, ever. A repo that already has one
+(from an earlier task) never sees the gate again.
+
 ```
 Spec:           No (unless the user asks for one)
 Plan:           No (inline mental model is sufficient)
