@@ -10,7 +10,10 @@
 # is never overwritten; the product-docs item (R-607) seeds the features
 # list, the user stories index, and the checklist script, never overwrites
 # them, and --no-product-docs records the opt-out in .enforce.json; every CI
-# template runs that checklist on pull requests and honours the opt-out.
+# template runs that checklist on pull requests and honours the opt-out; the
+# stack-doc and observability-doc items (R-608) seed docs/stack.md and
+# docs/observability.md, never overwrite them, and --no-stack-doc and
+# --no-observability-doc each record their own opt-out.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 SETUP="$CLAUDE_HARNESS_ROOT/skills/repo-setup/scripts/setup.sh"
@@ -62,7 +65,7 @@ git -C "$REPO" add -A; git -C "$REPO" commit -qm init
 # 1. --check on a bare repository: everything missing, exit 1, nothing written.
 OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --check 2>&1); ST=$?
 check "check exits 1 when items are missing" test "$ST" -eq 1
-for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan greptile harness product-docs; do
+for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan greptile harness product-docs stack-doc observability-doc; do
   check "check reports $item MISSING" row "$item" MISSING
 done
 check "check writes no files" test ! -e "$REPO/.github"
@@ -71,7 +74,7 @@ check "check posts nothing" bash -c "! grep -q -- '-X POST' '$STUB_LOG'"
 # 2. Apply: files, branch, rulesets, policy, alerts, scanning, harness bootstrap; greptile remains.
 OUT=$(cd "$REPO" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1); ST=$?
 check "apply exits 1 while greptile is manual" test "$ST" -eq 1
-for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan harness product-docs; do
+for item in ci dependabot pr-template gitignore staging protect-refs protect-merge merge-policy alerts secret-scan harness product-docs stack-doc observability-doc; do
   check "apply reports $item OK" row "$item" OK
 done
 check "bootstrap hook written" test -x "$REPO/.claude/hooks/harness-bootstrap.sh"
@@ -178,7 +181,7 @@ REPO6="$SB/library"; mkdir -p "$REPO6"; git -C "$REPO6" init -q -b main
 printf '{"importZones":[]}\n' > "$REPO6/.enforce.json"
 OUT=$(cd "$REPO6" && bash "$SETUP" acme/widget --no-product-docs --harness-repo https://github.com/acme/agent-governance 2>&1)
 check "B-18 opt-out reports SKIPPED" row product-docs SKIPPED
-check "B-18 opt-out writes no docs" test ! -e "$REPO6/docs"
+check "B-18 opt-out writes no R-607 docs" test ! -e "$REPO6/docs/feature-list" -a ! -e "$REPO6/docs/user-stories"
 check "B-18 opt-out writes no script" test ! -e "$REPO6/scripts"
 check "B-18 opt-out recorded" jqe '.productDocs == false' "$REPO6/.enforce.json"
 check "B-18 opt-out keeps existing keys" jqe '.importZones == []' "$REPO6/.enforce.json"
@@ -206,6 +209,46 @@ REPO8="$SB/r&d#app"; mkdir -p "$REPO8"; git -C "$REPO8" init -q -b main
 OUT=$(cd "$REPO8" && HOME="$SB/full-home" bash "$PORT2/setup.sh" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
 check "partial sibling tree falls back and reports OK" row product-docs OK
 check "project name with & and # renders literally" grep -qxF '# r&d#app Feature List' "$REPO8/docs/feature-list/features.md"
+
+# 13. R-608: --check names each absent doc; apply writes both from the
+#     templates with the project name and date; an existing doc is never
+#     overwritten; each opt-out records only its own key and reports SKIPPED.
+REPO9="$SB/living"; mkdir -p "$REPO9"; git -C "$REPO9" init -q -b main
+OUT=$(cd "$REPO9" && bash "$SETUP" acme/widget --check 2>&1)
+check "R-608 check reports stack-doc MISSING naming the file" bash -c "printf '%s' \"\$0\" | grep -E '^stack-doc +MISSING ' | grep -qF docs/stack.md" "$OUT"
+check "R-608 check reports observability-doc MISSING naming the file" bash -c "printf '%s' \"\$0\" | grep -E '^observability-doc +MISSING ' | grep -qF docs/observability.md" "$OUT"
+check "R-608 check writes no docs" test ! -e "$REPO9/docs"
+mkdir -p "$REPO9/docs"; printf '# Hand-written stack\n' > "$REPO9/docs/stack.md"
+OUT=$(cd "$REPO9" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "R-608 apply reports stack-doc OK" row stack-doc OK
+check "R-608 apply reports observability-doc OK" row observability-doc OK
+check "R-608 existing stack doc not overwritten" test "$(cat "$REPO9/docs/stack.md")" = "# Hand-written stack"
+check "R-608 observability doc names the project" grep -qx '# living Observability' "$REPO9/docs/observability.md"
+check "R-608 observability doc has a dated Last updated line" grep -qE '^Last updated: [0-9]{4}-[0-9]{2}-[0-9]{2} ' "$REPO9/docs/observability.md"
+check "R-608 observability doc has no placeholder left" bash -c "! grep -q '{{' '$REPO9/docs/observability.md'"
+REPO9B="$SB/living-fresh"; mkdir -p "$REPO9B"; git -C "$REPO9B" init -q -b main
+OUT=$(cd "$REPO9B" && bash "$SETUP" acme/widget --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "R-608 stack doc names the project" grep -qx '# living-fresh Stack' "$REPO9B/docs/stack.md"
+for heading in 'Languages and runtimes' Backend Frontend Data Jobs Integrations Testing Tooling CI/CD Hosting; do
+  check "R-608 stack doc has the $heading layer" grep -qx "## $heading" "$REPO9B/docs/stack.md"
+done
+check "R-608 stack doc asks for a docs link" grep -qF -- '- **Docs:**' "$REPO9B/docs/stack.md"
+check "R-608 stack doc asks for an explanation" grep -qF -- '- **What it is:**' "$REPO9B/docs/stack.md"
+OUT=$(cd "$REPO9B" && bash "$SETUP" acme/widget --check 2>&1)
+check "R-608 check after apply reports stack-doc OK" row stack-doc OK
+check "R-608 check after apply reports observability-doc OK" row observability-doc OK
+REPO10="$SB/living-library"; mkdir -p "$REPO10"; git -C "$REPO10" init -q -b main
+printf '{"importZones":[]}\n' > "$REPO10/.enforce.json"
+OUT=$(cd "$REPO10" && bash "$SETUP" acme/widget --no-stack-doc --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "R-608 --no-stack-doc reports SKIPPED" row stack-doc SKIPPED
+check "R-608 --no-stack-doc writes no stack doc" test ! -e "$REPO10/docs/stack.md"
+check "R-608 --no-stack-doc still writes the observability doc" test -f "$REPO10/docs/observability.md"
+check "R-608 --no-stack-doc recorded, keys kept" jqe '.stackDoc == false and .importZones == [] and (has("observabilityDoc") | not)' "$REPO10/.enforce.json"
+OUT=$(cd "$REPO10" && bash "$SETUP" acme/widget --no-observability-doc --harness-repo https://github.com/acme/agent-governance 2>&1)
+check "R-608 --no-observability-doc reports SKIPPED" row observability-doc SKIPPED
+check "R-608 --no-observability-doc recorded" jqe '.observabilityDoc == false and .stackDoc == false' "$REPO10/.enforce.json"
+OUT=$(cd "$REPO10" && bash "$SETUP" acme/widget --check 2>&1)
+check "R-608 SKIPPED is not counted missing" bash -c "! grep -qE '^(stack|observability)-doc .*MISSING' <<< \"\$0\"" "$OUT"
 
 # 12. IAN-117: every CI template runs the R-607 checklist on pull requests
 #     against the full history, and the step itself fails a branch that adds

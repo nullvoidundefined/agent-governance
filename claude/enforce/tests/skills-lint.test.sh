@@ -45,6 +45,8 @@ docs/slices/
 docs/feature-list/features.md
 docs/user-stories/
 docs/query-params.md
+docs/stack.md
+docs/observability.md
 docs/session-handoff/session-handoff.md'
 
 MAX_DESCRIPTION=1536

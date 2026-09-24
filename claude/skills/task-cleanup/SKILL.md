@@ -68,6 +68,19 @@ Check if a Playwright spec covers the new flow.
 - If one exists: verify it covers the acceptance criteria.
 - If the flow is not E2E-testable (extension-only, requires manual browser): document why in the user story.
 
+### If the stack or what the app dispatches changed:
+
+This block is R-608; the document shapes are `~/.claude/prompts/stack-template.md` and `~/.claude/prompts/observability-template.md`. Skip each half in a repository whose `.enforce.json` sets `"stackDoc"` or `"observabilityDoc"` to `false`.
+
+**Stack doc:**
+```bash
+git diff --stat "$(git merge-base origin/main HEAD)"..HEAD -- '*package.json' '*pyproject.toml' '*Gemfile' '*go.mod'
+```
+For every dependency, runtime, service, or tool the branch added, removed, replaced, or upgraded across a major version, `docs/stack.md` has a matching `### <Name>` entry under its layer with all six fields filled (version, what it is, docs link, role here, why chosen, configured in), or no entry when it was removed. The push gate only sees dependency names in the four manifests; a major upgrade, a new hosted service, or a CI tool is yours to check. Rewrite the `Last updated:` line.
+
+**Observability doc:**
+Every analytics event, log event, and error code the branch added, renamed, or removed has its row in `docs/observability.md` (added, renamed, or deleted), with the trigger, fields or properties, and level or HTTP status. Check the error-tracker, request-ID, health, and metrics sections against the diff as well, since the push gate cannot see them. Rewrite the `Last updated:` line.
+
 ### If new components were created:
 
 **Storybook story:**
@@ -212,6 +225,7 @@ Cleanup intensity scales with the task tier (from task-start, read off the ledge
 - Deferring the E2E test without a line in the user story saying why and when
 - Updating the feature list but not the user story (or vice versa); the push gate refuses a new route without both (R-607)
 - Leaving a shipped row at **Planned**, or ticking criteria that did not ship
+- Adding a dependency or an analytics event, error code, or log event without its `docs/stack.md` entry or `docs/observability.md` row, or writing a stack entry with no docs link or no plain explanation (R-608)
 - Forgetting to delete the feature branch after squash merge
 - Merging before the R-517 review ran, or with a `## Codex review` section that lists findings without their dispositions
 - Closing the ticket as `done` before the verification gate passes

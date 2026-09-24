@@ -58,6 +58,8 @@ The script leaves the new story at the end of `docs/user-stories/<area>.md` with
 
 **Query params.** Only when the script's summary says `query params: yes`, ask the user: "The plan mentions query parameters. Add the entries to `docs/query-params.md` now?" and wait for confirmation before committing. When it says `no`, do not ask.
 
+**Stack and observability docs (R-608).** Skip in a repository whose `.enforce.json` sets `"stackDoc"` or `"observabilityDoc"` to `false`, each for its own document. Read the plan for anything it adds, removes, replaces, or upgrades across a major version: a dependency, runtime, service, or tool (an entry in `docs/stack.md`), and an analytics event, log event, error code, tracker tag or scrubbing rule, health check, or metric (a row in `docs/observability.md`). Name each one in the plan's task that introduces it, so the slice that adds the dependency or the event also writes its entry; the push gate refuses the branch otherwise. A stack entry carries all six fields of `~/.claude/prompts/stack-template.md`, the plain explanation and the link to the official documentation included.
+
 ## Step 3: Transition to implementation
 
 Read the plan file. Count the total tasks and identify which are independent (no dependency on prior tasks' output).

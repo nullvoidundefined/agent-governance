@@ -255,6 +255,16 @@ In an application repository (one without `"productDocs": false` in `.enforce.js
 
 The push gate (`push-feature-docs-gate`) refuses a push that adds a page or API route without these changes, so skipping this step only moves the work to push time.
 
+### Stack and observability docs at task start (R-608)
+
+In an application repository (one without `"stackDoc": false` or `"observabilityDoc": false` in `.enforce.json`), name the entries the task will touch while planning, so the slice that changes the code also changes the document:
+
+- A task that adds, removes, replaces, or upgrades across a major version a dependency, runtime, service, or tool changes that piece's `### <Name>` entry in `docs/stack.md`: version, plain explanation, official docs link, role here, why chosen over the alternatives, and where it is configured (`~/.claude/prompts/stack-template.md`).
+- A task that adds, renames, or removes an analytics event, a log event, an error code, an error-tracker tag or scrubbing rule, a health check, or a metric changes its row in `docs/observability.md` (`~/.claude/prompts/observability-template.md`).
+- Declare `docs/stack.md` and `docs/observability.md` in the task's `--scope` whenever either applies.
+
+The push gate refuses a manifest dependency change without `docs/stack.md`, and a registry entry or log event name change without `docs/observability.md`, so skipping this step only moves the work to push time.
+
 The ticket moves to `in-progress` at the first `tdd.sh open`, which `feature-create` does when it hands off to the execution skill.
 
 ## The One-Spec-One-Plan Rule
