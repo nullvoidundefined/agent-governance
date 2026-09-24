@@ -37,8 +37,11 @@ BUILTIN_REGISTRIES=(
 SOURCE_PATTERN='\.(ts|tsx|js|jsx|mjs|cjs|vue|py|rb|go)$'
 TEST_FILE_PATTERN='(\.(test|spec)\.[^/]+$)|(/__tests__/)|((^|/)test_[^/]+\.py$)|(_test\.(py|go)$)|(_spec\.rb$)|((^|/)(tests?|spec|e2e)/)'
 # A logger call whose first string literal (after an optional context object
-# or ctx argument) is the event name, or a Ruby `event:` payload key.
-LOG_CALL_PATTERN="(logger|log|slog)\.(trace|debug|info|warning|warn|error|exception|critical|fatal|Debug|Info|Warn|Error)(Context)?\( *(ctx, *)?(\{[^}]*\}, *)?[\"'][^\"']+[\"']|event: *[\"'][^\"']+[\"']"
+# or ctx argument) is the event name, or a Ruby `event:` payload key. Each
+# identifier starts at a word boundary, so `backlog.info` and `prevent:` are
+# not loggers (PR #124 review); whitespace may be a newline, because the
+# pattern runs over whole files with their lines joined.
+LOG_CALL_PATTERN="(^|[^A-Za-z0-9_])(logger|log|slog)\.(trace|debug|info|warning|warn|error|exception|critical|fatal|Debug|Info|Warn|Error)(Context)?\([[:space:]]*(ctx,[[:space:]]*)?(\{[^}]*\},[[:space:]]*)?[\"'][^\"']+[\"']|(^|[^A-Za-z0-9_])event:[[:space:]]*[\"'][^\"']+[\"']"
 
 # is_half_disabled <key>: true when .enforce.json sets the key to false. A
 # missing jq means the opt-out cannot be read, so the check runs.
@@ -183,14 +186,26 @@ is_log_event_in_tree() {
   git grep -qF -e "\"$2\"" -e "'$2'" "$1" -- 2>/dev/null
 }
 
+# show_joined_file <ref> <path>: the file's content at the ref on one line, so
+# a logger call wrapped across lines matches as one call; nothing when the
+# file does not exist at the ref.
+show_joined_file() {
+  git show "$1:$2" 2>/dev/null | tr '\n' ' '
+  echo
+}
+
 # list_log_event_changes <changed-files>: one line per log event name that the
-# branch introduces to the tree or removes from it, test files excluded.
+# branch introduces to the tree or removes from it, test files excluded. Names
+# are read from each changed file's whole content at the base and at HEAD, not
+# from diff lines, so a call wrapped across lines is read (PR #124 review); a
+# name counts only when it is absent from the other side's whole tree, so a
+# name the file already carried, or that another file uses, never triggers.
 list_log_event_changes() {
   local sources added removed name
   sources=$(grep -E "$SOURCE_PATTERN" <<<"$1" | grep -vE "$TEST_FILE_PATTERN" | grep -vE "$VENDORED_PATTERN")
   [ -n "$sources" ] || return 0
-  added=$(while IFS= read -r f; do list_diff_lines "$f" +; done <<<"$sources" | extract_log_event_names)
-  removed=$(while IFS= read -r f; do list_diff_lines "$f" -; done <<<"$sources" | extract_log_event_names)
+  added=$(while IFS= read -r f; do show_joined_file HEAD "$f"; done <<<"$sources" | extract_log_event_names)
+  removed=$(while IFS= read -r f; do show_joined_file "$MERGE_BASE" "$f"; done <<<"$sources" | extract_log_event_names)
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     is_log_event_in_tree "$MERGE_BASE" "$name" || echo "    log event \"$name\" added"

@@ -61,7 +61,8 @@ TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 
 # run_doc_check <rule> <label> <script>: runs one canonical check from the
 # repository top; prints "<rule> (<label>): <report>" when it reports a gap
-# (exit 1) and nothing otherwise. A missing script is named on stderr and
+# (exit 1) and nothing otherwise. The caller joins the reports, since command
+# substitution strips any trailing separator printed here (PR #124 review). A missing script is named on stderr and
 # skipped, so one absent file never disables the other check.
 run_doc_check() {
   local report status
@@ -70,14 +71,20 @@ run_doc_check() {
   status=$?
   [ "$status" -eq 1 ] || return 0
   log_rule_fire "$1" "push-feature-docs-gate" "deny"
-  printf '%s (%s): %s\n\n' "$1" "$2" "$report"
+  printf '%s (%s): %s\n' "$1" "$2" "$report"
 }
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 
-REASON="$(run_doc_check "R-607" "features list and user stories" "$CHECKLIST")$(run_doc_check "R-608" "stack and observability docs" "$STACK_OBSERVABILITY_CHECK")"
+FEATURE_REPORT=$(run_doc_check "R-607" "features list and user stories" "$CHECKLIST")
+STACK_REPORT=$(run_doc_check "R-608" "stack and observability docs" "$STACK_OBSERVABILITY_CHECK")
+if [ -n "$FEATURE_REPORT" ] && [ -n "$STACK_REPORT" ]; then
+  REASON="$FEATURE_REPORT"$'\n\n'"$STACK_REPORT"
+else
+  REASON="$FEATURE_REPORT$STACK_REPORT"
+fi
 [ -n "$REASON" ] || exit 0
 jq -n --arg r "$REASON" \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'

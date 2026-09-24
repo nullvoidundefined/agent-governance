@@ -97,6 +97,9 @@ run_gate "$R" "$PUSH"
 check "B-17 combined deny" is_deny
 check "B-17 reason names R-607" reason_has "R-607"
 check "B-17 reason names docs/observability.md" reason_has "docs/observability.md"
+# PR #124 review: the two reports are separated by a blank line, so the
+# R-608 report starts its own line rather than running on from R-607's.
+check "B-17 R-608 report starts its own line" bash -c "printf '%s' \"\$0\" | jq -r '.hookSpecificOutput.permissionDecisionReason' | grep -q '^R-608 (stack and observability docs)'" "$OUT"
 
 [ "$fail" -eq 0 ] && echo "push-feature-docs-gate.test.sh PASS"
 exit "$fail"

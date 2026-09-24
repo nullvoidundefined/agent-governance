@@ -212,6 +212,24 @@ write_file "$R" src/analytics/events.ts "$EVENTS_ADDED"; run_check "$R"
 check "O-9 bad pattern keeps built-in registries" test "$ST" -eq 1
 check "O-9 bad pattern is reported" reports "(unclosed"
 
+# O-10 (PR #124 review): an identifier that merely ends in "log" is not a
+# logger, and neither is a key that merely ends in "event".
+R=$(make_repo o10); write_file "$R" src/services/report.ts 'backlog.info("weekly_report_generated");\ncatalog.error({ id }, "catalog_missing");\nprevent: "double_submit"\n'; run_check "$R"
+check "O-10 backlog, catalog, prevent exit 0" test "$ST" -eq 0
+
+# O-11 (PR #124 review): a logger call wrapped across lines is still read,
+# and req.log is a logger.
+R=$(make_repo o11); write_file "$R" src/services/createOrder.ts 'logger.info(\n    { requestId },\n    "order_created",\n);\n'; run_check "$R"
+check "O-11 multi-line log call exits 1" test "$ST" -eq 1
+check "O-11 names the wrapped event" reports "order_created"
+R=$(make_repo o11req); write_file "$R" src/handlers/orders.ts 'req.log.warn({ orderId }, "order_rejected");\n'; run_check "$R"
+check "O-11 req.log call exits 1" test "$ST" -eq 1
+
+# O-12 (PR #124 review): a wrapped call removed from the tree is read too.
+R=$(make_repo o12); write_base "$R" src/services/createOrder.ts 'logger.info(\n    { requestId },\n    "order_created",\n);\n'
+write_file "$R" src/services/createOrder.ts 'export {};\n'; run_check "$R"
+check "O-12 removed multi-line log call exits 1" test "$ST" -eq 1
+
 # B-1: both halves in one report.
 R=$(make_repo b1); write_base "$R" package.json "$PKG_BASE"; write_file "$R" package.json "$PKG_ADDED"
 write_file "$R" src/analytics/events.ts "$EVENTS_ADDED"; run_check "$R"
