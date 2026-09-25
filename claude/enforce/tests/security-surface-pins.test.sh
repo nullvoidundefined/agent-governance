@@ -27,7 +27,24 @@ trap 'rm -rf "$WORK"' EXIT
 
 # A Semgrep stand-in that scans nothing and reports no findings.
 CLEAN_STUB="$WORK/clean-semgrep"
-printf '#!/bin/sh\necho '"'"'{"results": [], "errors": [], "paths": {"scanned": []}}'"'"'\nexit 0\n' > "$CLEAN_STUB"
+# Reports a complete clean scan the way real Semgrep does: every target it was
+# given is listed under paths.scanned (IAN-381: an empty scanned list is a skip).
+cat > "$CLEAN_STUB" <<'STUB'
+#!/bin/sh
+skip_next=0
+targets=""
+for argument in "$@"; do
+  if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
+  case "$argument" in
+    --config) skip_next=1 ;;
+    --*) ;;
+    *) targets="$targets$argument
+" ;;
+  esac
+done
+printf '%s' "$targets" | jq -R . | jq -sc '{results: [], errors: [], paths: {scanned: .}}'
+exit 0
+STUB
 chmod +x "$CLEAN_STUB"
 
 # A Semgrep stand-in that exits 0 with no findings but reports a parse error.
