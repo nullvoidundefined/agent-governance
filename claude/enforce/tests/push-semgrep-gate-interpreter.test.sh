@@ -176,14 +176,21 @@ chmod +x "$STUB_DIR/python3"
 STUB_PATH="$STUB_DIR:$PATH"
 
 # N1 allow: the repository carries .venv/bin/python3, a wrapper that execs the
-# real python3 by absolute path. The gate must parse with it and allow.
+# real python3 by absolute path, and its origin is listed in the scratch home's
+# gate-trusted-repos.txt, because the gate runs a repository's own interpreter
+# only for a trusted repository (IAN-381 B-6f, owner decision). The gate must
+# parse with it and allow.
 REPO_VENV="$WORK/repo-venv"
 make_repo "$REPO_VENV" main
 commit_file "$REPO_VENV" app/models.py "$MODERN_SOURCE"
+git -C "$REPO_VENV" remote add origin "https://example.invalid/repo-venv.git"
+TRUSTED_HOME="$WORK/home-trusted"
+mkdir -p "$TRUSTED_HOME/.claude/enforce"
+printf '%s\n' "https://example.invalid/repo-venv.git" > "$TRUSTED_HOME/.claude/enforce/gate-trusted-repos.txt"
 mkdir -p "$REPO_VENV/.venv/bin"
 printf '#!/bin/sh\nexec "%s" "$@"\n' "$REAL_PYTHON3" > "$REPO_VENV/.venv/bin/python3"
 chmod +x "$REPO_VENV/.venv/bin/python3"
-OUT_VENV=$(run_hook "$REPO_VENV" main PATH="$STUB_PATH")
+OUT_VENV=$(run_hook "$REPO_VENV" main PATH="$STUB_PATH" HOME="$TRUSTED_HOME")
 expect_silent "N1 repository .venv python3 parses modern syntax, push allowed" "$OUT_VENV"
 
 # N1 control: the same content without .venv falls back to python3 on PATH,
