@@ -19,10 +19,10 @@ Session type is orthogonal to stack. Stack convention files auto-load through pa
 
 | Marker in project root | Stack | Read |
 |---|---|---|
-| `package.json` | TypeScript/Node | `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-REACT.md` with `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md`, or `CLAUDE-FRONTEND-VUE.md` with `CLAUDE-FRONTEND-NUXT.md`, per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md` (whichever the work touches) |
-| `pyproject.toml`, `requirements.txt`, or `setup.py` | Python | `CLAUDE-PYTHON.md` |
-| `Gemfile` | Ruby on Rails | `CLAUDE-RUBY.md` |
-| `go.mod` | Go | `CLAUDE-GO.md` |
+| `package.json` | TypeScript/Node | `CLAUDE-BACKEND.md`, `CLAUDE-OBSERVABILITY.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-REACT.md` with `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md`, or `CLAUDE-FRONTEND-VUE.md` with `CLAUDE-FRONTEND-NUXT.md`, per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md` (whichever the work touches) |
+| `pyproject.toml`, `requirements.txt`, or `setup.py` | Python | `CLAUDE-PYTHON.md`, `CLAUDE-OBSERVABILITY.md` |
+| `Gemfile` | Ruby on Rails | `CLAUDE-RUBY.md`, `CLAUDE-OBSERVABILITY.md` |
+| `go.mod` | Go | `CLAUDE-GO.md`, `CLAUDE-OBSERVABILITY.md` |
 
 A repo carrying multiple marker sets is polyglot: read each track for the surface being touched. The `[ts]`-tagged rules in `CLAUDE.md` apply only to the TypeScript stack; their analogs live in `CLAUDE-PYTHON.md`, `CLAUDE-RUBY.md`, and `CLAUDE-GO.md`.
 

@@ -124,22 +124,108 @@ end
 
 Never log a credential or `ENV` dump.
 
+`CORS_ORIGIN` gets its own parser in the same initializer, run in every environment: `rack-cors` is configured with `credentials: true`, and a wildcard or `null` origin there hands the session cookie's single-origin boundary to any caller.
+
+```ruby
+# UNSAFE_CORS_ORIGINS names the values that would open the credentialed API to any site.
+UNSAFE_CORS_ORIGINS = Set["*", "null"]
+# Accepts scheme://host[:port] for the two browser schemes; the host must start with a
+# letter or digit, and the port alternatives exclude each scheme's default (443, 80) and
+# cap at 65535, since a browser never sends a default port or an out-of-range one.
+# \A and \z anchor the whole string; Ruby's ^ and $ match at every line break.
+BROWSER_ORIGIN_PATTERN = /\A(https:\/\/[a-z0-9][a-z0-9.-]*(:(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http:\/\/[a-z0-9][a-z0-9.-]*(:(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)\z/
+
+# Returns "" for a blank value, meaning no cross-origin caller is allowed.
+def parse_cors_origin(raw_value)
+  origin = raw_value.to_s.strip
+  return "" if origin.empty?
+  raise "CORS_ORIGIN must name one concrete origin, not a wildcard or null" if UNSAFE_CORS_ORIGINS.include?(origin.downcase)
+  raise "CORS_ORIGIN must be scheme://host[:port] exactly as a browser sends it" unless BROWSER_ORIGIN_PATTERN.match?(origin)
+
+  origin
+end
+
+cors_origin = parse_cors_origin(ENV["CORS_ORIGIN"])
+raise "CORS_ORIGIN is required in production" if Rails.env.production? && cors_origin.empty?
+unless cors_origin.empty?
+  Rails.application.config.middleware.insert_before 0, Rack::Cors do
+    allow do
+      origins cors_origin
+      resource "*", headers: :any, methods: %i[get post put patch delete], credentials: true
+    end
+  end
+end
+```
+
+```ruby
+RSpec.describe "parse_cors_origin" do
+  it "returns a real origin unchanged" do
+    expect(parse_cors_origin("https://app.example.com")).to eq("https://app.example.com")
+  end
+
+  unsafe_values = [
+    "*",
+    "null",
+    "https://a.example,https://b.example",
+    "https://client.example/path",
+    "https://name@client.example",
+  ]
+
+  unsafe_values.each do |unsafe_value|
+    it "refuses #{unsafe_value.inspect}" do
+      expect { parse_cors_origin(unsafe_value) }.to raise_error(/CORS_ORIGIN/)
+    end
+  end
+
+  ["", "   "].each do |blank_value|
+    it "returns an empty string for #{blank_value.inspect}" do
+      expect(parse_cors_origin(blank_value)).to eq("")
+    end
+  end
+end
+```
+
+## Session Store
+
+`secure` on the session cookie names development and nothing else; a check tied to production instead sends the cookie over plain HTTP in staging.
+
+```ruby
+cookies.signed[:session_token] = {
+  value: raw_token,
+  httponly: true,
+  secure: !Rails.env.development?,
+  same_site: :lax,
+  expires: 7.days.from_now,
+}
+```
+
+```ruby
+RSpec.describe "session cookie" do
+  it "is Secure and HttpOnly in staging" do
+    user = User.create!(email: "user@example.com", password: "changeme")
+    allow(Rails).to receive(:env).and_return("staging".inquiry)
+    https! # Rails withholds a Secure cookie from a plain-HTTP request
+    post "/v1/auth/login", params: { email: user.email, password: "changeme" }
+
+    set_cookie_lines = Array(response.headers["Set-Cookie"]).flat_map { |header| header.split("\n") }
+    session_cookie = set_cookie_lines.find { |line| line.start_with?("session_token=") }
+    expect(session_cookie).to match(/;\s*secure/i)
+    expect(session_cookie).to match(/;\s*httponly/i)
+  end
+end
+```
+
 ## Error Handling
 
 `rescue_from` on `ApplicationController` maps domain errors (`ActiveRecord::RecordNotFound` -> 404, `ActiveRecord::RecordInvalid` -> 422) centrally. Never `rescue Exception`; rescue the narrowest class that can occur. No internals in response bodies.
 
 ## Logging
 
-Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag request IDs; one log line per request in production.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ## Observability (R-341 to R-346 in Rails form)
 
-- R-341: `ActionDispatch::RequestId` honors `X-Request-Id` and sets it on the response; `config.log_tags = [:request_id]` puts it on every line; jobs log with the job ID in the same role.
-- R-342: `Rails.logger.info(event: "note_loaded", note_id: note.id)` through lograge's custom payload, never string interpolation of values into the message and never `puts` in app code; manual, since `Rails/Output` needs the rubocop-rails extension the gate does not bundle.
-- R-343: one `app/clients/analytics.rb` wraps the provider; event names are constants in `app/analytics/events.rb`, never a literal at the call site.
-- R-344: every `rescue` names the exception and logs or re-raises it; an empty `rescue` body is a defect (`Lint/SuppressedException` in `enforce/rubocop-enforce.yml`); a bound-but-unused exception stays manual.
-- R-345: `/health` and `/health/ready` routes registered before application routes.
-- R-346: every client call sets a timeout, logs provider, operation, duration, and outcome, and forwards the request ID.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ## Containers (R-351 in Rails form)
 

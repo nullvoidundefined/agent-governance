@@ -102,6 +102,156 @@ Handlers are thin: decode, validate, delegate, encode. Guard clauses with early 
 
 `internal/config.Load()` reads env into a typed `Config`, validates every required field, and returns an error that `main` treats as fatal. Business code takes `Config` (or narrower structs) by injection; never reads `os.Getenv` directly. Secrets stay off-path and out of logs (R-102).
 
+`CORS_ORIGIN` goes through its own parser inside `config.Load()`, in every environment: the CORS middleware sends `Access-Control-Allow-Credentials: true`, and a wildcard or `null` origin there hands the session cookie's single-origin boundary to any caller.
+
+```go
+// internal/config/config.go
+
+// Config holds the settings Load reads; the real struct carries every required field.
+type Config struct {
+    Environment string
+    CORSOrigin  string
+}
+
+// Load reads the environment once; an unsafe CORS_ORIGIN stops the process at startup.
+func Load() (Config, error) {
+    corsOrigin, err := parseCORSOrigin(os.Getenv("CORS_ORIGIN"))
+    if err != nil {
+        return Config{}, err
+    }
+    environment := os.Getenv("ENVIRONMENT")
+    if environment == "production" && corsOrigin == "" {
+        return Config{}, errors.New("CORS_ORIGIN is required in production")
+    }
+    return Config{Environment: environment, CORSOrigin: corsOrigin}, nil
+}
+
+// unsafeCORSOrigins names the values that would open the credentialed API to any site.
+var unsafeCORSOrigins = map[string]bool{"*": true, "null": true}
+
+// browserOriginPattern accepts scheme://host[:port] for the two browser schemes; the host
+// must start with a letter or digit, and the port alternatives exclude each scheme's
+// default (443, 80) and cap at 65535, since a browser never sends a default or out-of-range port.
+var browserOriginPattern = regexp.MustCompile(`^(https://[a-z0-9][a-z0-9.-]*(:(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http://[a-z0-9][a-z0-9.-]*(:(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)$`)
+
+// parseCORSOrigin returns "" for a blank value, meaning no cross-origin caller is allowed.
+func parseCORSOrigin(raw string) (string, error) {
+    origin := strings.TrimSpace(raw)
+    if origin == "" {
+        return "", nil
+    }
+    if unsafeCORSOrigins[strings.ToLower(origin)] {
+        return "", fmt.Errorf("CORS_ORIGIN must name one concrete origin, not a wildcard or null")
+    }
+    if !browserOriginPattern.MatchString(origin) {
+        return "", fmt.Errorf("CORS_ORIGIN must be scheme://host[:port] exactly as a browser sends it")
+    }
+    return origin, nil
+}
+
+// internal/server/cors.go
+
+// newCORSMiddleware passes cfg.CORSOrigin, parsed by Load, to go-chi/cors. go-chi/cors reads
+// an empty AllowedOrigins as allow-all, so a blank origin installs no CORS middleware at all.
+func newCORSMiddleware(cfg config.Config) func(http.Handler) http.Handler {
+    if cfg.CORSOrigin == "" {
+        return func(next http.Handler) http.Handler { return next }
+    }
+    return cors.Handler(cors.Options{
+        AllowedOrigins:   []string{cfg.CORSOrigin},
+        AllowCredentials: true,
+    })
+}
+```
+
+```go
+func TestParseCORSOriginReturnsRealOriginUnchanged(t *testing.T) {
+    got, err := parseCORSOrigin("https://app.example.com")
+    if err != nil {
+        t.Fatalf("parseCORSOrigin(%q) = %v, want nil error", "https://app.example.com", err)
+    }
+    if got != "https://app.example.com" {
+        t.Errorf("parseCORSOrigin(%q) = %q, want it unchanged", "https://app.example.com", got)
+    }
+}
+
+func TestParseCORSOriginRefusesUnsafeValues(t *testing.T) {
+    unsafeValues := []string{
+        "*",
+        "null",
+        "https://a.example,https://b.example",
+        "https://client.example/path",
+        "https://name@client.example",
+    }
+    for _, unsafeValue := range unsafeValues {
+        if _, err := parseCORSOrigin(unsafeValue); err == nil {
+            t.Errorf("parseCORSOrigin(%q) = nil error, want refusal", unsafeValue)
+        }
+    }
+}
+
+func TestParseCORSOriginReturnsEmptyForBlankValue(t *testing.T) {
+    for _, blankValue := range []string{"", "   "} {
+        got, err := parseCORSOrigin(blankValue)
+        if err != nil {
+            t.Errorf("parseCORSOrigin(%q) = %v, want nil error", blankValue, err)
+        }
+        if got != "" {
+            t.Errorf("parseCORSOrigin(%q) = %q, want \"\"", blankValue, got)
+        }
+    }
+}
+
+// Load is the one function that reads the environment, so this is the one test that sets it.
+func TestLoadRequiresCORSOriginInProduction(t *testing.T) {
+    t.Setenv("ENVIRONMENT", "production")
+    t.Setenv("CORS_ORIGIN", "")
+    _, err := Load()
+    if err == nil {
+        t.Error("Load() with a blank CORS_ORIGIN in production = nil error, want a refusal")
+    }
+}
+```
+
+## Session Store
+
+The session cookie's `Secure` flag names development and nothing else; a flag tied to a production check sends the cookie over plain HTTP in staging.
+
+```go
+// setSessionCookie writes the session cookie, Secure in every environment but development.
+func setSessionCookie(w http.ResponseWriter, cfg config.Config, rawToken string) {
+    http.SetCookie(w, &http.Cookie{
+        Name:     sessionCookieName,
+        Value:    rawToken,
+        HttpOnly: true,
+        Secure:   cfg.Environment != "development",
+        SameSite: http.SameSiteLaxMode,
+        Path:     "/",
+        MaxAge:   int(sessionTTL.Seconds()),
+    })
+}
+```
+
+```go
+func TestSessionCookieIsSecureInStaging(t *testing.T) {
+    cfg := config.Config{Environment: "staging"}
+    rr := httptest.NewRecorder()
+    setSessionCookie(rr, cfg, "raw_token")
+
+    cookies := rr.Result().Cookies()
+    if len(cookies) != 1 {
+        t.Fatalf("got %d cookies, want 1", len(cookies))
+    }
+    cookie := cookies[0]
+    if !cookie.Secure {
+        t.Errorf("cookie.Secure = false, want true in staging")
+    }
+    if !cookie.HttpOnly {
+        t.Errorf("cookie.HttpOnly = false, want true in staging")
+    }
+}
+```
+
 ## Migrations
 
 Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'active'`, `DEFAULT now()`), so the R-328 quoting trap does not arise. Same staged approach for risky changes: additive, backfill, switch, cleanup; never a destructive one-shot against production (R-101).
@@ -138,9 +288,4 @@ Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'acti
 
 ## Observability (R-341 to R-346 in Go form)
 
-- R-341: middleware reads `X-Request-Id` or mints one, writes it to the response, and stores it in `context.Context`; handlers and services log through `slog` with the ID taken from the context (`slog.With("request_id", id)`), never as a parameter threaded by hand.
-- R-342: `slog` with structured attributes (`slog.Info("note loaded", "note_id", id)`), never `fmt.Println` or `log.Printf` with formatted values in service code; manual, no golangci linter is bundled for it.
-- R-343: one `clients/analytics` package wraps the provider; event names are constants in `analytics/events.go`, never a literal at the call site.
-- R-344: every error return is handled or wrapped with `%w`; `_ = err` and an empty `if err != nil {}` are defects; `errcheck` and `errorlint` in `enforce/golangci-enforce.yml` cover the unhandled-return and wrapping halves (the config is v2 schema; a v1 file was silently ignored by v2 binaries until 2026-09-04).
-- R-345: `/health` and `/health/ready` on every service and worker, registered first.
-- R-346: every client call uses a `context.WithTimeout`, logs provider, operation, duration, and outcome, and forwards the request ID on outbound HTTP.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.

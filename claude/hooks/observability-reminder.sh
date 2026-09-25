@@ -63,7 +63,7 @@ esac
 jq -n --arg f "$file_path" --arg r "$reminders" '{
   hookSpecificOutput: {
     hookEventName: "PostToolUse",
-    additionalContext: ("Observability reminder for " + $f + " (advisory; these are project-shape checks ESLint cannot make):\n" + $r + "Patterns in ~/.claude/CLAUDE-BACKEND.md under Observability. If the file is deliberately exempt, say so and move on.")
+    additionalContext: ("Observability reminder for " + $f + " (advisory; these are project-shape checks ESLint cannot make):\n" + $r + "Patterns for every stack in ~/.claude/CLAUDE-OBSERVABILITY.md. If the file is deliberately exempt, say so and move on.")
   }
 }'
 exit 0
