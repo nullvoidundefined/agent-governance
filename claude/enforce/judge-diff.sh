@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # judge-diff.sh: the CI rule judge for the llm-judge tier rules in
-# manifest.json (R-315, R-316, R-317, R-325, R-334), the semantic rules no
+# manifest.json (R-315, R-316, R-317, R-325, R-334, R-362 to R-365), the semantic rules no
 # linter can express. Asks a fast model to judge the diff between two refs.
 # Exit 1 on an error-severity finding at or above the confidence threshold,
 # printing one "<rule> [<file>]: <why>" line each on stdout; warn-severity
