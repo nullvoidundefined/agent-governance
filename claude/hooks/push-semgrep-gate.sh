@@ -19,8 +19,11 @@
 # any skipped path, because a partial scan is indistinguishable from a clean
 # one. Semgrep's error recovery can also drop a finding from a file with a
 # syntax error while reporting no error at all, so every exported file first
-# gets a local parse check: python3's ast for .py, and `node --check` for .js
-# .mjs .cjs when node is on PATH; a file that does not parse is denied. Known
+# gets a local parse check: ast.parse for .py under the pushed repository's
+# .venv/bin/python3 when it is executable, else python3 on PATH, and `node
+# --check` for .js .mjs .cjs when node is on PATH; a file that does not parse
+# is denied. `node --check` detects ESM syntax in a .js file only from Node
+# 22.7 on, so an older node can reject a valid ES module .js file. Known
 # limit: .ts .tsx .mts .cts .jsx .go .rb have no guaranteed local parser, so
 # for those the gate relies on Semgrep's own errors alone.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
@@ -70,15 +73,37 @@ export_head_files() {
   done <<< "$file_list"
 }
 
+# Prints the Python interpreter for the parse check: the pushed repository's
+# own <top level>/.venv/bin/python3 when it is executable, else python3 on
+# PATH, so a project on a newer Python than the host is parsed by its own.
+resolve_python_interpreter() {
+  local repo_top_level
+  repo_top_level=$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -n "$repo_top_level" ] && [ -x "$repo_top_level/.venv/bin/python3" ]; then
+    printf '%s' "$repo_top_level/.venv/bin/python3"
+  else
+    printf 'python3'
+  fi
+}
+
+# Prints the version of the interpreter $1 for the deny message, or
+# `unknown version` when it cannot report one.
+describe_interpreter_version() {
+  local interpreter="$1" interpreter_version
+  interpreter_version=$("$interpreter" -c 'import sys; print(sys.version.split()[0])' 2>/dev/null || true)
+  printf '%s' "${interpreter_version:-unknown version}"
+}
+
 # Returns non-zero when the exported file $1 does not parse with its local
-# parser: python3's ast for .py, and `node --check` for .js .mjs .cjs when node
-# resolves. A .py file with no python3 on PATH fails, so the gate stays closed.
-# Other extensions have no guaranteed local parser and pass here.
+# parser: the interpreter in $PYTHON_INTERPRETER running ast.parse for .py, and
+# `node --check` for .js .mjs .cjs when node resolves. A .py file with no
+# interpreter fails, so the gate stays closed. Other extensions have no
+# guaranteed local parser and pass here.
 check_file_parses() {
   local file_path="$1"
   case "$file_path" in
     *.py)
-      python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])' "$file_path" >/dev/null 2>&1 ;;
+      "$PYTHON_INTERPRETER" -c 'import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])' "$file_path" >/dev/null 2>&1 ;;
     *.js|*.mjs|*.cjs)
       if command -v node >/dev/null 2>&1; then node --check "$file_path" >/dev/null 2>&1; fi ;;
   esac
@@ -95,13 +120,16 @@ list_unparsable_files() {
 }
 
 # Prints one line per Semgrep error and per skipped path in the JSON report
-# on stdin, as `path: message`, or nothing when the scan was complete.
+# on stdin, as `path: message`, or nothing when the scan was complete. Each
+# branch is parenthesized because jq's comma binds tighter than its pipe:
+# unparenthesized, every error line was piped into the skipped-path template,
+# jq failed on it, and the report came out empty, which allowed the push.
 list_incomplete_scan_entries() {
   jq -r '
-    (.errors // [])[]
-      | "\(.path // (.spans[0].file // "<no path>")): \(.type | if type == "array" then .[0] else . end | tostring): \(.message // "" | tostring | .[0:300])",
-    (.paths.skipped // [])[]
-      | "\(.path // "<no path>"): skipped: \(.reason // "" | tostring)"
+    ((.errors // [])[]
+      | "\(.path // (.spans[0].file // "<no path>")): \(.type | if type == "array" then .[0] else . end | tostring): \(.message // "" | tostring | .[0:300])"),
+    ((.paths.skipped // [])[]
+      | "\(.path // "<no path>"): skipped: \(.reason // "" | tostring)")
   ' 2>/dev/null
 }
 
@@ -163,10 +191,17 @@ fi
 # Semgrep's error recovery can drop a finding from a file that does not parse
 # without reporting any error, so a file that fails its local parse check is
 # denied before Semgrep's result is trusted.
+PYTHON_INTERPRETER=$(resolve_python_interpreter)
 UNPARSABLE=$(list_unparsable_files "$FILES" "$SCAN_DIR")
 if [ -n "$UNPARSABLE" ]; then
   unparsable_path=$(printf '%s\n' "$UNPARSABLE" | head -n 1)
-  emit_deny "R-109: $unparsable_path does not parse, so the security scan cannot vouch for it; fix the syntax and push again. Files that do not parse:
+  case "$unparsable_path" in
+    *.py)
+      parse_failure="$unparsable_path does not parse under $PYTHON_INTERPRETER ($(describe_interpreter_version "$PYTHON_INTERPRETER")), so the security scan cannot vouch for it; fix the syntax, or point .venv at the project's interpreter, and push again" ;;
+    *)
+      parse_failure="$unparsable_path does not parse under node ($(node --version 2>/dev/null || printf 'unknown version')), so the security scan cannot vouch for it; fix the syntax and push again" ;;
+  esac
+  emit_deny "R-109: $parse_failure. Files that do not parse:
 $UNPARSABLE"
   exit 0
 fi
