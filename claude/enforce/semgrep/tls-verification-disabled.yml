@@ -1,0 +1,34 @@
+# Reports an HTTP or TLS client configured to skip certificate verification,
+# in Python, TypeScript, and Go (R-109, B-5). One rule per language, each id
+# namespaced by its language so no two rules in this file share an id; every
+# finding's id still ends in tls-verification-disabled.
+rules:
+  - id: python.tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: >-
+      verify=False turns off TLS certificate checks, so anyone on the network
+      path can impersonate the server and read or alter the traffic. Leave
+      verification on, and pass verify=<CA bundle path> to trust a private CA
+      (R-109).
+    pattern: $CALL(..., verify=False, ...)
+  - id: typescript.tls-verification-disabled
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      rejectUnauthorized: false turns off TLS certificate checks, so anyone on
+      the network path can impersonate the server and read or alter the
+      traffic. Leave it true, and pass ca: <certificate> to trust a private CA
+      (R-109).
+    pattern: |
+      {..., rejectUnauthorized: false, ...}
+  - id: go.tls-verification-disabled
+    languages: [go]
+    severity: ERROR
+    message: >-
+      InsecureSkipVerify: true turns off TLS certificate checks, so anyone on
+      the network path can impersonate the server and read or alter the
+      traffic. Leave it false, and set RootCAs to trust a private CA (R-109).
+    pattern-either:
+      - pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"
+      - pattern: $CONFIG.InsecureSkipVerify = true

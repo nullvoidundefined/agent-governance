@@ -1,0 +1,29 @@
+# Reports a pydantic settings field that carries a CORS origin with no field
+# validator of its own, the template-fastapi-nuxt #27 shape (R-109, B-3, B-4).
+rules:
+  - id: cors-unvalidated-setting
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Settings field '$FIELD' feeds the CORS allowed origins but no
+      @field_validator("$FIELD") checks it, so an environment value of '*' or
+      'null' reaches a credentialed CORS policy and lets any site read
+      authenticated responses. Add a @field_validator for '$FIELD' that
+      refuses '*' and 'null' and accepts only concrete origins (R-109).
+    patterns:
+      - pattern-inside: |
+          class $SETTINGS(..., BaseSettings, ...):
+              ...
+      - pattern-either:
+          - pattern: "$FIELD: $TYPE = $DEFAULT"
+          - pattern: "$FIELD: $TYPE"
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (?i)cors.*origin
+      - pattern-not-inside: |
+          class $SETTINGS(...):
+              ...
+              @field_validator(..., "$FIELD", ...)
+              def $VALIDATOR(...):
+                  ...
+              ...
