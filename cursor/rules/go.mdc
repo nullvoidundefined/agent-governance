@@ -163,6 +163,42 @@ func TestParseCORSOriginRefusesUnsafeValues(t *testing.T) {
 }
 ```
 
+## Session Store
+
+The session cookie's `Secure` flag names development and nothing else; a flag tied to a production check sends the cookie over plain HTTP in staging.
+
+```go
+http.SetCookie(w, &http.Cookie{
+    Name:     sessionCookieName,
+    Value:    rawToken,
+    HttpOnly: true,
+    Secure:   os.Getenv("ENVIRONMENT") != "development",
+    SameSite: http.SameSiteLaxMode,
+    Path:     "/",
+    MaxAge:   int(sessionTTL.Seconds()),
+})
+```
+
+```go
+func TestSessionCookieIsSecureInStaging(t *testing.T) {
+    t.Setenv("ENVIRONMENT", "staging")
+    rr := httptest.NewRecorder()
+    setSessionCookie(rr, "raw_token")
+
+    cookies := rr.Result().Cookies()
+    if len(cookies) != 1 {
+        t.Fatalf("got %d cookies, want 1", len(cookies))
+    }
+    cookie := cookies[0]
+    if !cookie.Secure {
+        t.Errorf("cookie.Secure = false, want true in staging")
+    }
+    if !cookie.HttpOnly {
+        t.Errorf("cookie.HttpOnly = false, want true in staging")
+    }
+}
+```
+
 ## Migrations
 
 Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'active'`, `DEFAULT now()`), so the R-328 quoting trap does not arise. Same staged approach for risky changes: additive, backfill, switch, cleanup; never a destructive one-shot against production (R-101).

@@ -171,6 +171,32 @@ RSpec.describe "parse_cors_origin" do
 end
 ```
 
+## Session Store
+
+`secure` on the session cookie names development and nothing else; a check tied to production instead sends the cookie over plain HTTP in staging.
+
+```ruby
+cookies.signed[:session_token] = {
+  value: raw_token,
+  httponly: true,
+  secure: !Rails.env.development?,
+  same_site: :lax,
+  expires: 7.days.from_now,
+}
+```
+
+```ruby
+RSpec.describe "session cookie" do
+  it "is Secure and HttpOnly in staging" do
+    allow(Rails).to receive(:env).and_return("staging".inquiry)
+    get "/v1/auth/login"
+
+    expect(response.headers["Set-Cookie"]).to match(/secure/i)
+    expect(response.headers["Set-Cookie"]).to match(/httponly/i)
+  end
+end
+```
+
 ## Error Handling
 
 `rescue_from` on `ApplicationController` maps domain errors (`ActiveRecord::RecordNotFound` -> 404, `ActiveRecord::RecordInvalid` -> 422) centrally. Never `rescue Exception`; rescue the narrowest class that can occur. No internals in response bodies.

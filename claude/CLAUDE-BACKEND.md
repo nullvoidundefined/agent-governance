@@ -341,10 +341,26 @@ export const loadSession = session({
     name: SESSION_COOKIE_NAME,
     cookie: {
         httpOnly: true,
-        secure: isProduction(),
+        secure: process.env.NODE_ENV !== "development",
         sameSite: "lax",
         maxAge: SESSION_MAX_AGE_MS,
     },
+});
+```
+
+A `secure` flag tied to `isProduction()` sends the session cookie over plain HTTP in every non-production environment, staging included; the check names development and nothing else.
+
+```typescript
+import { describe, expect, it, vi } from "vitest";
+
+describe("session cookie", () => {
+    it("is Secure and HttpOnly in staging", () => {
+        vi.stubEnv("NODE_ENV", "staging");
+        const cookie = { httpOnly: true, secure: process.env.NODE_ENV !== "development" };
+
+        expect(cookie.secure).toBe(true);
+        expect(cookie.httpOnly).toBe(true);
+    });
 });
 ```
 

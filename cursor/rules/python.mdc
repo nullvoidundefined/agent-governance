@@ -385,7 +385,31 @@ async def verify_password(candidate: str, stored_hash: str | None) -> bool:
 ```
 
 - **Table** `user_sessions` (R-334): `id uuid PK`, `user_id uuid FK -> users ON DELETE CASCADE`, `token_hash text UNIQUE NOT NULL`, `expires_at timestamptz NOT NULL`, `created_at`, `last_seen_at`, and an index on `expires_at`
-- **Cookie**: `httponly=True`, `secure=True` outside development, `samesite="lax"`, `max_age` from `SESSION_TTL`, `path="/"`, set with `response.set_cookie`
+- **Cookie**: `httponly=True`, `secure` tied to every non-development environment, `samesite="lax"`, `max_age` from `SESSION_TTL`, `path="/"`, set with `response.set_cookie`. A staging cookie without `secure` travels over plain HTTP, so the check names development and nothing else:
+
+```python
+environment = os.environ.get("ENVIRONMENT", "development")
+response.set_cookie(
+    SESSION_COOKIE_NAME,
+    raw_token,
+    httponly=True,
+    secure=environment != "development",
+    samesite="lax",
+    max_age=int(SESSION_TTL.total_seconds()),
+    path="/",
+)
+```
+
+```python
+def test_session_cookie_is_secure_in_staging(monkeypatch, client):
+    """A cookie without Secure in staging would travel over plain HTTP."""
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    response = client.post("/v1/auth/login", json={"email": "user@example.com", "password": "changeme"})
+    cookie = response.cookies["sid"]
+    assert cookie["secure"] is True
+    assert cookie["httponly"] is True
+```
+
 - **Email** is trimmed and lowercased before every insert and lookup, and `users` carries a unique index on `lower(email)` (added 2026-09-19: without both, `A@x.com` and `a@x.com` register as two accounts and login depends on case)
 - **Login** looks up the user, runs `verify_password` even when the user is missing (the dummy hash equalizes timing), and answers `AUTH_INVALID_CREDENTIALS` in both cases
 - **Password reset** (`user_password_resets`, token stored as its SHA-256 hash): 1-hour expiry; issuing a reset deletes the user's earlier unused resets; consumption is one atomic `UPDATE ... SET used_at = now() WHERE token_hash = :hash AND used_at IS NULL AND expires_at > now() RETURNING user_id`, and success deletes every session of the user (added 2026-09-19: a select-then-update lets two concurrent submissions of one token both succeed)
