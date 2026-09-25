@@ -219,7 +219,15 @@ if ! printf '%s' "$RESULTS" | jq -e '.results | type == "array"' >/dev/null 2>&1
   exit 0
 fi
 
+# Every jq read of the report is status-checked: an empty result from a jq that
+# failed is not a clean scan, and reading it as one is how the partial-scan
+# bypass fixed above shipped.
 INCOMPLETE=$(printf '%s' "$RESULTS" | list_incomplete_scan_entries)
+INCOMPLETE_STATUS=$?
+if [ "$INCOMPLETE_STATUS" -ne 0 ]; then
+  emit_deny "R-109: the gate could not read Semgrep's error and skipped-path lists (jq exit $INCOMPLETE_STATUS), and this security gate fails closed rather than treat an unreadable report as a clean scan."
+  exit 0
+fi
 if [ -n "$INCOMPLETE" ]; then
   emit_deny "R-109: Semgrep could not fully scan files this push changes, and this security gate fails closed on a partial scan. Fix each file so it parses and is scanned whole, then push again:
 $INCOMPLETE"
@@ -233,6 +241,15 @@ fi
 # check_id carries the config directory as a dotted prefix; the rule id is the
 # last dotted component.
 REPORT=$(printf '%s' "$RESULTS" | jq -r '.results[] | "\(.path):\(.start.line) \(.check_id | split(".") | last)"' 2>/dev/null)
+REPORT_STATUS=$?
+if [ "$REPORT_STATUS" -ne 0 ]; then
+  emit_deny "R-109: the gate could not read Semgrep's findings (jq exit $REPORT_STATUS), and this security gate fails closed rather than treat an unreadable report as a clean scan."
+  exit 0
+fi
+if [ -z "$REPORT" ] && [ "$SEMGREP_STATUS" -eq 1 ]; then
+  emit_deny "R-109: Semgrep exited 1, which means it found something, but the gate read no findings from its report, and this security gate fails closed."
+  exit 0
+fi
 if [ -n "$REPORT" ]; then
   emit_deny "R-109: the security rule pack (enforce/semgrep/) reported findings in files this push changes. Fix each one before pushing:
 $REPORT"
