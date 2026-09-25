@@ -386,26 +386,29 @@ async def verify_password(candidate: str, stored_hash: str | None) -> bool:
 - **Cookie**: `httponly=True`, `secure` tied to every non-development environment, `samesite="lax"`, `max_age` from `SESSION_TTL`, `path="/"`, set with `response.set_cookie`. A staging cookie without `secure` travels over plain HTTP, so the check names development and nothing else:
 
 ```python
-environment = os.environ.get("ENVIRONMENT", "development")
-response.set_cookie(
-    SESSION_COOKIE_NAME,
-    raw_token,
-    httponly=True,
-    secure=environment != "development",
-    samesite="lax",
-    max_age=int(SESSION_TTL.total_seconds()),
-    path="/",
-)
+def set_session_cookie(response: Response, raw_token: str, settings: Settings) -> None:
+    """Write the session cookie; the login route passes the settings it got from Depends(get_settings)."""
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        raw_token,
+        httponly=True,
+        secure=settings.environment != "development",
+        samesite="lax",
+        max_age=int(SESSION_TTL.total_seconds()),
+        path="/",
+    )
 ```
 
 ```python
-def test_session_cookie_is_secure_in_staging(monkeypatch, client):
+async def test_session_cookie_is_secure_in_staging(app, client, registered_user):
     """A cookie without Secure in staging would travel over plain HTTP."""
-    monkeypatch.setenv("ENVIRONMENT", "staging")
-    response = client.post("/v1/auth/login", json={"email": "user@example.com", "password": "changeme"})
-    cookie = response.cookies["sid"]
-    assert cookie["secure"] is True
-    assert cookie["httponly"] is True
+    staging_settings = Settings(_env_file=None, environment="staging", database_url="postgresql://localhost/app_test")
+    app.dependency_overrides[get_settings] = lambda: staging_settings
+    response = await client.post("/v1/auth/login", json={"email": registered_user.email, "password": "changeme"})
+    app.dependency_overrides.clear()
+    set_cookie_header = response.headers["set-cookie"]
+    assert "Secure" in set_cookie_header
+    assert "HttpOnly" in set_cookie_header
 ```
 
 - **Email** is trimmed and lowercased before every insert and lookup, and `users` carries a unique index on `lower(email)` (added 2026-09-19: without both, `A@x.com` and `a@x.com` register as two accounts and login depends on case)

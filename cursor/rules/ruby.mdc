@@ -132,20 +132,26 @@ UNSAFE_CORS_ORIGINS = Set["*", "null"]
 # Accepts scheme://host[:port] for the two browser schemes; the host must start with a
 # letter or digit, and the port alternatives exclude each scheme's default (443, 80) and
 # cap at 65535, since a browser never sends a default port or an out-of-range one.
-BROWSER_ORIGIN_PATTERN = /^(https:\/\/[a-z0-9][a-z0-9.-]*(:(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http:\/\/[a-z0-9][a-z0-9.-]*(:(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)$/
+# \A and \z anchor the whole string; Ruby's ^ and $ match at every line break.
+BROWSER_ORIGIN_PATTERN = /\A(https:\/\/[a-z0-9][a-z0-9.-]*(:(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http:\/\/[a-z0-9][a-z0-9.-]*(:(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)\z/
 
+# Returns "" for a blank value, meaning no cross-origin caller is allowed.
 def parse_cors_origin(raw_value)
   origin = raw_value.to_s.strip
+  return "" if origin.empty?
   raise "CORS_ORIGIN must name one concrete origin, not a wildcard or null" if UNSAFE_CORS_ORIGINS.include?(origin.downcase)
   raise "CORS_ORIGIN must be scheme://host[:port] exactly as a browser sends it" unless BROWSER_ORIGIN_PATTERN.match?(origin)
 
   origin
 end
 
-Rails.application.config.middleware.insert_before 0, Rack::Cors do
-  allow do
-    origins parse_cors_origin(ENV["CORS_ORIGIN"])
-    resource "*", headers: :any, methods: %i[get post put patch delete], credentials: true
+cors_origin = parse_cors_origin(ENV["CORS_ORIGIN"])
+unless cors_origin.empty?
+  Rails.application.config.middleware.insert_before 0, Rack::Cors do
+    allow do
+      origins cors_origin
+      resource "*", headers: :any, methods: %i[get post put patch delete], credentials: true
+    end
   end
 end
 ```
@@ -169,6 +175,12 @@ RSpec.describe "parse_cors_origin" do
       expect { parse_cors_origin(unsafe_value) }.to raise_error(/CORS_ORIGIN/)
     end
   end
+
+  ["", "   "].each do |blank_value|
+    it "returns an empty string for #{blank_value.inspect}" do
+      expect(parse_cors_origin(blank_value)).to eq("")
+    end
+  end
 end
 ```
 
@@ -189,11 +201,15 @@ cookies.signed[:session_token] = {
 ```ruby
 RSpec.describe "session cookie" do
   it "is Secure and HttpOnly in staging" do
+    user = User.create!(email: "user@example.com", password: "changeme")
     allow(Rails).to receive(:env).and_return("staging".inquiry)
-    get "/v1/auth/login"
+    https! # Rails withholds a Secure cookie from a plain-HTTP request
+    post "/v1/auth/login", params: { email: user.email, password: "changeme" }
 
-    expect(response.headers["Set-Cookie"]).to match(/secure/i)
-    expect(response.headers["Set-Cookie"]).to match(/httponly/i)
+    set_cookie_lines = Array(response.headers["Set-Cookie"]).flat_map { |header| header.split("\n") }
+    session_cookie = set_cookie_lines.find { |line| line.start_with?("session_token=") }
+    expect(session_cookie).to match(/;\s*secure/i)
+    expect(session_cookie).to match(/;\s*httponly/i)
   end
 end
 ```

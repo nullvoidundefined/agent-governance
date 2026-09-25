@@ -52,8 +52,8 @@ Four convention tracks load on demand by detected stack (see `rules/session-type
 
 - **TypeScript/Node** (`package.json`): `CLAUDE-BACKEND.md`, `CLAUDE-FRONTEND.md` (plus `CLAUDE-FRONTEND-REACT.md` with `CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md`, or `CLAUDE-FRONTEND-VUE.md` with `CLAUDE-FRONTEND-NUXT.md`, per the framework), `CLAUDE-DATABASE.md`, `CLAUDE-STYLING.md`. The `[ts]`-tagged rules in `CLAUDE.md` apply here.
 - **Python** (`pyproject.toml` / `requirements.txt` / `setup.py`): `CLAUDE-PYTHON.md`, plus `CLAUDE-OBSERVABILITY.md` for logging and observability (shared by every backend stack).
-- **Ruby on Rails** (`Gemfile`): `CLAUDE-RUBY.md`.
-- **Go** (`go.mod`): `CLAUDE-GO.md`.
+- **Ruby on Rails** (`Gemfile`): `CLAUDE-RUBY.md`, plus `CLAUDE-OBSERVABILITY.md` for logging and observability (shared by every backend stack).
+- **Go** (`go.mod`): `CLAUDE-GO.md`, plus `CLAUDE-OBSERVABILITY.md` for logging and observability (shared by every backend stack).
 
 Universal rules in `CLAUDE.md` (untagged) apply to every stack; each track documents its analogs of the `[ts]`-tagged rules and its blessed exceptions.
 
