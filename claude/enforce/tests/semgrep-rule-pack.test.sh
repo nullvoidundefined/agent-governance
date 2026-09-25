@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies the security rule pack in enforce/semgrep/ (IAN-381, B-3 to B-5):
 # every rule reports a finding carrying its own id on each of its bad samples
-# in enforce/tests/semgrep-fixtures/, reports nothing on each of its good
+# in enforce/tests/testdata/semgrep/, reports nothing on each of its good
 # samples, and actually scans every sample it is tested against, so a sample
 # in a language the rule does not cover, or a sample that fails to parse,
 # cannot pass as a clean scan. Every rule file shipped in enforce/semgrep/
@@ -15,7 +15,7 @@
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 RULES_DIR="$CLAUDE_HARNESS_ROOT/enforce/semgrep"
-SAMPLES_DIR="$CLAUDE_HARNESS_ROOT/enforce/tests/semgrep-fixtures"
+SAMPLES_DIR="$CLAUDE_HARNESS_ROOT/enforce/tests/testdata/semgrep"
 RULE_IDS="cors-unvalidated-setting cors-literal-wildcard cookie-samesite-none-insecure tls-verification-disabled bcrypt-weak-cost"
 
 failures=0

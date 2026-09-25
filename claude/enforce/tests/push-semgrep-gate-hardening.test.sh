@@ -17,7 +17,7 @@
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/push-semgrep-gate.sh"
-SAMPLES_DIR="$CLAUDE_HARNESS_ROOT/enforce/tests/semgrep-fixtures"
+SAMPLES_DIR="$CLAUDE_HARNESS_ROOT/enforce/tests/testdata/semgrep"
 unset CLAUDE_ENFORCE_BASE CLAUDE_SEMGREP_CMD
 
 failures=0
