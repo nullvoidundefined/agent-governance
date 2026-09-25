@@ -329,3 +329,52 @@ R-351: Dockerize every deployable artifact from its first commit.
   - `docker-compose.yml` at the repo root runs every artifact with its dependencies (database, cache, queue) for local development and integration tests; the same image CI builds is the one the platform deploys (Railway `dockerfilePath`, Fly, Render, or a registry push), so a platform buildpack or Nixpacks is never the deploy path.
   - CI builds every image on every pull request; the build is a required check, and a build-smoke step runs the image's `HEALTHCHECK` target before the check passes.
   Enforcement: hook:dockerfile-reminder (advisory; reminds when an artifact entry file, a start script, or a deploy config is written and no `Dockerfile` exists between that file's directory and the repo root, when a Dockerfile has no `.dockerignore` beside it, and when a written Dockerfile runs as root or pulls an unpinned base image); the compose file, the CI build, and the platform wiring are manual, and `CLAUDE-BACKEND.md` under Containers carries the Dockerfile pattern
+
+### Data access (R-36x)
+
+Applies to every code path that reaches a database: repositories, services, handlers, workers, in every stack. Tests, seed scripts, and one-off backfills under `scripts/` or `bin/` are exempt. `CLAUDE-DATABASE.md` carries the SQL shapes and the query-budget test.
+
+R-361: Never query once per element of a collection (the N+1); load or write the set in one statement.
+  Spec:
+  - Load the children of a set of parents in one query: `WHERE parent_id = ANY($1::uuid[])`, a `JOIN`, or a `LEFT JOIN LATERAL` with `json_agg`; group the rows in memory with a `Map` keyed by the parent id.
+  - Never call a repository or `query` inside a `for`, a `while`, a `.map`, a `.forEach`, or `Promise.all(ids.map(...))`. Running the N queries in parallel does not remove the N+1: it is still N round trips, and it checks out up to N pool connections at once.
+  - Write a set in one statement: `INSERT ... SELECT * FROM unnest($1::uuid[], $2::text[])`, `UPDATE ... FROM unnest(...)`, `DELETE ... WHERE id = ANY($1::uuid[])`.
+  - A repository offers the plural form (`listJobsByIds(jobIds)`, `listLegsByTripIds(tripIds)`) as soon as any caller needs more than one row; a caller that needs many never loops over the singular.
+  - A loop that repeats a query on purpose, with a stated bound (keyset batching in a worker, one query per 1000 rows), carries `// eslint-disable-next-line dataAccess/no-query-in-loop -- <the bound>`.
+  - Every endpoint and job that reads a collection has a query-budget test: run it with one parent and with several against the test database and assert the query count is the same. It catches the N+1 the AST rule cannot see, a query hidden behind a helper function.
+  - The pool wrapper counts queries per request and the request's completion log line carries `queryCount`; a count above the named threshold logs at `warn`, which surfaces an N+1 that reached production.
+  - Python, Ruby, and Go apply the same shapes through their own data layer: SQLAlchemy `selectinload` or an `ANY(:ids)` query, ActiveRecord `includes` or `preload` with `strict_loading`, `database/sql` with `ANY($1)`.
+  Enforcement: eslint:no-query-in-loop (decides a data-access call, meaning the pool `query`, any `.query`, or a function imported from a `repositories/`, `database/`, or `db/` module, inside a loop body, a loop test or update clause, or an array iteration callback; a query hidden behind a helper declared elsewhere is not followed); the query-budget test and the `queryCount` log line are manual
+
+R-362: Run every group of writes that must succeed or fail together in one transaction, every statement on the transaction's client, and nothing slow inside it.
+  Spec:
+  - Two or more writes that must land together (a row and its children, a transfer between two rows, a status change and its audit row, a delete and the reassignment it forces) go in one `withTransaction(async (client) => ...)` in TypeScript, or through the stack's transaction boundary elsewhere (`get_connection` and `begin_nested` in `CLAUDE-PYTHON.md`). One SQL statement is already atomic and needs no transaction; a data-modifying CTE is often the simpler form.
+  - Every statement inside the callback runs on `client`: `client.query(...)`, or the pool wrapper's `query(sql, values, client)`. Repository functions take an optional trailing `client?: PoolClient` and forward it, so a service composes several repository writes into one transaction. A statement on any other connection does not roll back with the transaction, cannot see its uncommitted rows, and can deadlock a small pool waiting for a connection the transaction itself holds.
+  - Statements on one client run in sequence: `await` each in turn, never `Promise.all` over one client.
+  - An explicit TypeScript transaction never waits on the network: HTTP calls, queue enqueues, emails, and provider SDK calls happen before it opens or after it commits. A side effect that must happen exactly when the commit happens is written as an outbox row inside the transaction and delivered by a worker.
+  - Keep a transaction short: no user input, no sleeps, no unbounded loops inside it. When it locks more than one row, it takes the locks in primary-key order, so two transactions cannot deadlock each other.
+  Enforcement: eslint:transaction-client-required (decides, inside a `withTransaction` callback, a data-access call that neither runs on nor receives the client, a callback that declares no client parameter, and a `fetch` or `clients/` call); whether a group of writes needed a transaction at all depends on intent and stays manual
+
+R-363: Make every read-modify-write atomic in the database; never read a value, change it in application code, and write it back unguarded.
+  Spec:
+  - Express the change in SQL where it can be: `SET balance = balance - $2 WHERE id = $1 AND balance >= $2`, `SET attempt_count = attempt_count + 1`, `ON CONFLICT ... DO UPDATE`; read `rowCount` to learn whether the guard held.
+  - When the new value needs application logic, lock the row first with `SELECT ... FOR UPDATE` inside the same transaction (R-362), or use optimistic concurrency: `UPDATE ... SET version = version + 1 WHERE id = $1 AND version = $2`, where zero rows updated means a concurrent change, answered by a reload or a 409.
+  - "Select, then insert when absent" is a race; a unique constraint with `ON CONFLICT` decides it.
+  - An idempotent endpoint or webhook handler records its idempotency key under a unique constraint in the same transaction as the effect.
+  Enforcement: manual
+
+R-364: Bound every read by the request, never by the size of the table.
+  Spec:
+  - Every list query has a `LIMIT`, capped by a named maximum page size (R-324); a caller-supplied limit is clamped to it, never passed through.
+  - Paginate tables that grow without bound with a keyset (`WHERE (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT $1`). `OFFSET` is for small, bounded tables and admin screens only: its cost grows with the page number, and rows shift between pages under concurrent writes.
+  - Every `ORDER BY` ends in a unique column (`id`) so a page boundary is deterministic.
+  - Aggregate in SQL (`COUNT`, `SUM`, `GROUP BY`), never by loading rows to count or sum them in memory; test existence with `EXISTS` or `LIMIT 1`, never `COUNT(*) > 0`.
+  - Select only the columns the caller uses when the table carries large columns (`jsonb` payloads, long `text`) the endpoint does not return; `SELECT *` stays the default for single-row reads and narrow tables.
+  - Every column in a `WHERE`, `JOIN`, or `ORDER BY` is covered by an index, and a new query against a table that can grow past a few thousand rows is checked with `EXPLAIN ANALYZE` on realistic data before merge.
+  Enforcement: manual
+
+R-365: Pass only values as query parameters and put only allowlisted identifiers into SQL text; never build SQL from caller input.
+  Spec:
+  - Every value travels as a placeholder (`$1`), `LIMIT`, `OFFSET`, and array filters (`= ANY($1)`) included; a value is never interpolated or concatenated into the text.
+  - A dynamic identifier (the columns of a dynamic `UPDATE`, a sort column, a sort direction) comes from a constant allowlist in the repository, mapped from the caller's key; a key outside the allowlist is rejected. Quoting an identifier is not validation, and object keys from a request body are caller input even after schema parsing that does not strip unknown keys.
+  Enforcement: manual

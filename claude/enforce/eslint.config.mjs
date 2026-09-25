@@ -3,7 +3,8 @@
  * Loaded by lint.mjs and invoked by push-eslint-gate.sh to check outgoing diffs
  * against the AST-tier rules declared in manifest.json (R-323, R-321, R-319,
  * R-326, R-327, R-324, R-329, R-303 no-cycle everywhere and import zones when a
- * repo opts in via .enforce.json, R-344 catch discipline, R-401 test quality). Vue single-file components
+ * repo opts in via .enforce.json, R-344 catch discipline, R-361/R-362 data
+ * access, R-401 test quality). Vue single-file components
  * (.vue) get the same rules on their <script setup lang="ts"> block through
  * vue-eslint-parser, with the TypeScript parser for the script content.
  */
@@ -13,10 +14,12 @@ import vueParser from "vue-eslint-parser";
 import { createNodeResolver, importX } from "eslint-plugin-import-x";
 import analyticsEventName from "./rules/analytics-event-name.mjs";
 import behaviorAssertionRequired from "./rules/behavior-assertion-required.mjs";
+import noQueryInLoop from "./rules/no-query-in-loop.mjs";
 import noSelfMock from "./rules/no-self-mock.mjs";
 import noSwallowedCatch from "./rules/no-swallowed-catch.mjs";
 import oneExportPerFile from "./rules/one-export-per-file.mjs";
 import structuredLogCall from "./rules/structured-log-call.mjs";
+import transactionClientRequired from "./rules/transaction-client-required.mjs";
 
 // Repos run plugins the gate does not carry (eslint-plugin-security, react,
 // react-hooks); their source keeps live eslint-disable comments for those
@@ -223,6 +226,48 @@ export default tseslint.config({
   rules: {
     "catchDiscipline/no-swallowed-catch": "error",
     "no-empty": ["error", { allowEmptyCatch: false }],
+  },
+}, {
+  // R-361/R-362: data-access discipline wherever a query can be issued: the
+  // server trees above plus every src/services tree, because the N+1 most
+  // often lives in a service looping over a repository call, not in the
+  // repository itself. Tests, bin/, scripts/ (seeds, one-off backfills), and
+  // migrations are exempt.
+  files: [
+    "**/apps/server/**/*.ts",
+    "**/packages/worker/**/*.ts",
+    "**/server/src/**/*.ts",
+    "**/src/handlers/**/*.ts",
+    "**/src/repositories/**/*.ts",
+    "**/src/services/**/*.ts",
+    "**/src/workers/**/*.ts",
+    "**/server/api/**/*.ts",
+  ],
+  ignores: [
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+    "**/tests/**",
+    "**/e2e/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/bin/**",
+    "**/scripts/**",
+    "**/migrations/**",
+    "**/*.config.ts",
+    "**/*.d.ts",
+  ],
+  plugins: {
+    dataAccess: {
+      rules: {
+        "no-query-in-loop": noQueryInLoop,
+        "transaction-client-required": transactionClientRequired,
+      },
+    },
+  },
+  rules: {
+    "dataAccess/no-query-in-loop": "error",
+    "dataAccess/transaction-client-required": "error",
   },
 }, {
   // R-401 items 1, 3, 5 in test trees (2026-09-06 TDD harness assessment

@@ -642,6 +642,22 @@
             "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM"
         },
         {
+            "id": "R-361",
+            "tier": "ast",
+            "enforcer": "eslint:no-query-in-loop",
+            "severity": "error",
+            "autofix": false,
+            "note": "a data-access call (the pool query, any .query, or a function imported from repositories/, database/, or db/) in a loop body, a for/while test or update clause, or an array iteration callback including Promise.all(xs.map(...)); server trees plus every src/services tree; a helper declared elsewhere is not followed, which the query-budget test in CLAUDE-DATABASE.md covers. Fixture: enforce/tests/data-access-rules.test.sh"
+        },
+        {
+            "id": "R-362",
+            "tier": "ast",
+            "enforcer": "eslint:transaction-client-required",
+            "severity": "error",
+            "autofix": false,
+            "note": "inside a withTransaction callback: a data-access call that neither runs on nor receives the client, a callback with no client parameter, and a fetch or clients/ call; whether a group of writes needed a transaction stays manual. Fixture: enforce/tests/data-access-rules.test.sh"
+        },
+        {
             "id": "R-908",
             "tier": "advisory",
             "enforcer": "hook:codex-billing-guard",

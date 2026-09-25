@@ -7,7 +7,7 @@ alwaysApply: false
 
 # Database Conventions
 
-These rules apply to all PostgreSQL schemas, migrations, and database access code across every app in this portfolio.
+These rules apply to all PostgreSQL schemas, migrations, and database access code across every app in this portfolio. Query code follows the data-access rules R-361 to R-365 (`rulebook/reference.md`); the Query Discipline section below gives their SQL shapes and the checklist to run before finishing a change.
 
 ---
 
@@ -223,7 +223,8 @@ pgm.createIndex("messages", ["conversation_id", "created_at"]);
 
 - Use auto-generated names (don't specify custom index names)
 - Index all foreign key columns
-- Index columns used in `WHERE`, `ORDER BY`, and `JOIN` clauses
+- Index columns used in `WHERE`, `ORDER BY`, and `JOIN` clauses (R-364)
+- Index every column a set query filters on with `= ANY($1)` (R-361); for a child table this is the foreign key, already indexed above
 - Create indexes in the same migration as the table they belong to
 
 ---
@@ -232,34 +233,67 @@ pgm.createIndex("messages", ["conversation_id", "created_at"]);
 
 ### Connection
 
-All queries go through the pool wrapper in `src/db/pool/pool.ts`:
+All queries go through the pool wrapper in `src/db/pool/pool.ts`. The wrapper takes an optional `client` so a caller inside a transaction runs on the transaction's connection (R-362), and it counts queries per async context so tests and request logs can see the count (R-361):
 
 ```typescript
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { PoolClient, QueryResult, QueryResultRow } from "pg";
+
+export const queryCounter = new AsyncLocalStorage<{ count: number }>();
+
 export async function query<T extends QueryResultRow>(
     text: string,
     values?: unknown[],
     client?: PoolClient,
-): Promise<QueryResult<T>> { ... }
+): Promise<QueryResult<T>> {
+    const counter = queryCounter.getStore();
+    if (counter) counter.count += 1;
+    return (client ?? pool).query<T>(text, values);
+}
 
 export async function withTransaction<T>(
     fn: (client: PoolClient) => Promise<T>,
-): Promise<T> { ... }
+): Promise<T> {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const result = await fn(client);
+        await client.query("COMMIT");
+        return result;
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+export async function countQueries<T>(
+    fn: () => Promise<T>,
+): Promise<{ queryCount: number; result: T }> {
+    const counter = { count: 0 };
+    const result = await queryCounter.run(counter, fn);
+    return { queryCount: counter.count, result };
+}
 ```
+
+- Inside a transaction, prefer `query(sql, values, client)` to `client.query(sql, values)`: both run on the transaction, but only the wrapper is counted.
+- The request-ID middleware (R-341) runs each request inside `queryCounter.run({ count: 0 }, next)`, and the request's completion log line reads the store and carries `queryCount`; a count above `QUERY_COUNT_WARN_THRESHOLD` logs at `warn`.
 
 ### SQL Formatting
 
 - **UPPERCASE** keywords: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `FROM`, `WHERE`, `JOIN`, `ORDER BY`, `LIMIT`, `RETURNING`
 - **lowercase** table and column names
-- Parameterized placeholders: `$1`, `$2`, `$3`; never string interpolation
+- Parameterized placeholders: `$1`, `$2`, `$3`; never string interpolation (R-365)
 - Multi-line queries for readability:
 
 ```typescript
 const result = await query<Job>(
     `SELECT * FROM jobs
      WHERE user_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2 OFFSET $3`,
-    [userId, limit, offset],
+     ORDER BY created_at DESC, id DESC
+     LIMIT $2`,
+    [userId, pageSize],
 );
 ```
 
@@ -287,27 +321,251 @@ await query(
     [tripId],
 );
 
-// Parallel queries for list + count
+// Many rows by id; the plural form every caller with more than one id uses (R-361)
+const result = await query<Job>(
+    `SELECT * FROM jobs WHERE id = ANY($1::uuid[]) AND user_id = $2`,
+    [jobIds, userId],
+);
+
+// Parallel queries for list + count; the page size is clamped (R-364)
+const pageSize = Math.min(requestedPageSize, MAX_PAGE_SIZE);
 const [dataResult, countResult] = await Promise.all([
-    query<Job>(`SELECT * FROM jobs WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, [userId, limit, offset]),
+    query<Job>(
+        `SELECT * FROM jobs WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
+        [userId, pageSize, offset],
+    ),
     query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM jobs WHERE user_id = $1`, [userId]),
 ]);
 ```
 
 ### Dynamic Updates
 
+Map caller keys to columns through a constant allowlist (R-365). Never interpolate a key from the input object, even quoted.
+
 ```typescript
-const fields = Object.entries(input).filter(([, v]) => v !== undefined);
+const UPDATABLE_JOB_COLUMNS = {
+    company: "company",
+    status: "status",
+    title: "title",
+} as const satisfies Record<keyof UpdateJobInput, string>;
+
+const fields = Object.entries(input).filter(
+    (entry): entry is [keyof typeof UPDATABLE_JOB_COLUMNS, unknown] =>
+        entry[1] !== undefined && Object.hasOwn(UPDATABLE_JOB_COLUMNS, entry[0]),
+);
 if (fields.length === 0) return getJobById(id, userId);
 
-const setClauses = fields.map(([key], i) => `"${key}" = $${i + 3}`).join(", ");
-const values = fields.map(([, v]) => v);
+const setClauses = fields.map(([key], i) => `${UPDATABLE_JOB_COLUMNS[key]} = $${i + 3}`).join(", ");
+const values = fields.map(([, value]) => value);
 
 const result = await query<Job>(
     `UPDATE jobs SET ${setClauses} WHERE id = $1 AND user_id = $2 RETURNING *`,
     [id, userId, ...values],
 );
 ```
+
+---
+
+## Query Discipline (R-361 to R-365)
+
+The rules are in `rulebook/reference.md`; this section gives their SQL shapes. Before finishing any change that reads or writes the database, check the diff against every item:
+
+1. **No query per element (R-361).** No repository call, `query`, or `.query` inside a `for`, `while`, `.map`, `.forEach`, or `Promise.all(xs.map(...))`. Load sets with `= ANY($1)`, a `JOIN`, or a lateral `json_agg`; write sets with `unnest`.
+2. **One transaction for writes that belong together (R-362).** Two or more writes that must succeed or fail together run in one `withTransaction`, every statement on `client`, no network calls inside, statements awaited in sequence.
+3. **No unguarded read-modify-write (R-363).** Compute in SQL, guard with `WHERE`, `ON CONFLICT`, `FOR UPDATE`, or a version column.
+4. **Every read bounded (R-364).** Capped `LIMIT`, `ORDER BY` ending in `id`, keyset pagination on unbounded tables, aggregates in SQL, index-backed filters.
+5. **Only values in parameters, only allowlisted identifiers in text (R-365).**
+6. **A query-budget test covers every collection read (R-361).**
+
+### R-361: No query per element (N+1)
+
+Load the parents, then load all their children in one query and join them in memory.
+
+```typescript
+// Wrong: one query per trip, 1 + N round trips
+const trips = await tripsRepository.listTripsByUser(userId);
+for (const trip of trips) {
+    trip.legs = await tripLegsRepository.listLegsByTripId(trip.id);
+}
+
+// Wrong: the same N queries, run in parallel; still N round trips and up to N pool checkouts
+const legsByTrip = await Promise.all(trips.map((trip) => tripLegsRepository.listLegsByTripId(trip.id)));
+
+// Right: two queries, whatever the number of trips
+const trips = await tripsRepository.listTripsByUser(userId);
+const legs = await tripLegsRepository.listLegsByTripIds(trips.map((trip) => trip.id));
+const legsByTripId = Map.groupBy(legs, (leg) => leg.trip_id);
+return trips.map((trip) => ({ ...trip, legs: legsByTripId.get(trip.id) ?? [] }));
+```
+
+```sql
+-- listLegsByTripIds
+SELECT * FROM trip_legs
+WHERE trip_id = ANY($1::uuid[])
+ORDER BY trip_id, position;
+
+-- One query when the caller always needs both: children aggregated per parent
+SELECT trips.*, COALESCE(legs.items, '[]'::json) AS legs
+FROM trips
+LEFT JOIN LATERAL (
+    SELECT json_agg(trip_legs ORDER BY trip_legs.position) AS items
+    FROM trip_legs
+    WHERE trip_legs.trip_id = trips.id
+) legs ON true
+WHERE trips.user_id = $1
+ORDER BY trips.created_at DESC, trips.id DESC
+LIMIT $2;
+```
+
+Write sets in one statement:
+
+```typescript
+// Wrong: one INSERT per tag
+for (const tagId of tagIds) {
+    await query(`INSERT INTO link_tags (link_id, tag_id) VALUES ($1, $2)`, [linkId, tagId], client);
+}
+
+// Right: one INSERT for any number of tags
+await query(
+    `INSERT INTO link_tags (link_id, tag_id)
+     SELECT $1, tag_id FROM unnest($2::uuid[]) AS tag_id
+     ON CONFLICT DO NOTHING`,
+    [linkId, tagIds],
+    client,
+);
+
+// Right: per-row values from parallel arrays
+await query(
+    `UPDATE trip_legs SET position = input.position
+     FROM unnest($1::uuid[], $2::int[]) AS input(id, position)
+     WHERE trip_legs.id = input.id AND trip_legs.trip_id = $3`,
+    [legIds, positions, tripId],
+    client,
+);
+```
+
+- Add the plural repository function (`listLegsByTripIds`) the first time a caller needs more than one row; never loop over the singular.
+- A loop that repeats a query on purpose, with a stated bound, carries the disable comment with that bound:
+
+```typescript
+// eslint-disable-next-line dataAccess/no-query-in-loop -- keyset batching, BACKFILL_BATCH_SIZE rows per query
+const batch = await query<Job>(`SELECT * FROM jobs WHERE id > $1 ORDER BY id LIMIT $2`, [cursor, BACKFILL_BATCH_SIZE]);
+```
+
+### R-362: Writes that belong together run in one transaction
+
+```typescript
+// Wrong: the second write runs on another pool connection; if it fails, the first stays committed
+await jobsRepository.updateJobStatus(jobId, "applied");
+await jobEventsRepository.createJobEvent(jobId, "applied");
+
+// Wrong: inside the transaction, but the event insert does not receive the client, so it runs outside it
+await withTransaction(async (client) => {
+    await jobsRepository.updateJobStatus(jobId, "applied", client);
+    await jobEventsRepository.createJobEvent(jobId, "applied");
+});
+
+// Wrong: an email send holds the transaction's locks and connection for a network round trip
+await withTransaction(async (client) => {
+    await jobsRepository.updateJobStatus(jobId, "applied", client);
+    await emailClient.sendApplicationConfirmation(userEmail);
+});
+
+// Right: both writes on the client; the email goes out after the commit
+await withTransaction(async (client) => {
+    await jobsRepository.updateJobStatus(jobId, "applied", client);
+    await jobEventsRepository.createJobEvent(jobId, "applied", client);
+});
+await emailClient.sendApplicationConfirmation(userEmail);
+```
+
+Repository functions take the client as an optional trailing parameter and forward it:
+
+```typescript
+export async function updateJobStatus(
+    jobId: string,
+    status: JobStatus,
+    client?: PoolClient,
+): Promise<Job | null> {
+    const result = await query<Job>(
+        `UPDATE jobs SET status = $2 WHERE id = $1 RETURNING *`,
+        [jobId, status],
+        client,
+    );
+    return result.rows[0] ?? null;
+}
+```
+
+- A single statement is already atomic: a data-modifying CTE (`WITH moved AS (UPDATE ... RETURNING ...) INSERT ... SELECT FROM moved`) needs no `withTransaction`.
+- `await` each statement on a client in turn; never `Promise.all` over one client.
+- A side effect that must happen exactly when the commit happens (a job enqueue, a webhook) is written as an outbox row inside the transaction and delivered by a worker.
+- A transaction that locks several rows locks them in primary-key order (`SELECT ... WHERE id = ANY($1) ORDER BY id FOR UPDATE`).
+
+### R-363: No unguarded read-modify-write
+
+```typescript
+// Wrong: two concurrent requests both read 5 and both write 4
+const account = await accountsRepository.getAccountById(accountId);
+await accountsRepository.updateCredits(accountId, account.credits - 1);
+
+// Right: the database computes and guards the change in one statement
+const result = await query<Account>(
+    `UPDATE accounts SET credits = credits - 1
+     WHERE id = $1 AND credits >= 1
+     RETURNING *`,
+    [accountId],
+);
+if (result.rowCount === 0) throw new InsufficientCreditsError(accountId);
+```
+
+- When the new value needs application logic: `SELECT ... FOR UPDATE` inside `withTransaction`, or optimistic concurrency with `WHERE id = $1 AND version = $2` and `SET version = version + 1`; zero rows updated means a concurrent change (reload, or return 409).
+- "Select, then insert when absent" is a race: add a unique constraint and use `INSERT ... ON CONFLICT`.
+- Idempotency keys live under a unique constraint and are written in the same transaction as the effect.
+
+### R-364: Every read is bounded
+
+- Every list query has a `LIMIT` capped by `MAX_PAGE_SIZE`; clamp the caller's value.
+- Paginate tables that grow without bound with a keyset; keep `OFFSET` for small, bounded tables and admin screens:
+
+```sql
+SELECT * FROM messages
+WHERE conversation_id = $1
+  AND (created_at, id) < ($2, $3)
+ORDER BY created_at DESC, id DESC
+LIMIT $4;
+```
+
+- End every `ORDER BY` in `id` so page boundaries are deterministic.
+- Aggregate in SQL: `COUNT`, `SUM`, and `GROUP BY` in the query, never `rows.length` or a reduce over loaded rows; test existence with `SELECT EXISTS (...)`.
+- Name the columns in list queries over tables that carry large `jsonb` or `text` columns the endpoint does not return.
+- Back every new filter, join, and sort column with an index (see Indexes); run `EXPLAIN ANALYZE` on a new query against a table that can grow past a few thousand rows.
+
+### R-365: Only values in parameters, only allowlisted identifiers in SQL text
+
+- Every value is a `$n` placeholder, `LIMIT`, `OFFSET`, and `= ANY($1)` arrays included.
+- A sort column or direction from the request maps through a constant allowlist (`const JOB_SORT_COLUMNS = { createdAt: "created_at", title: "title" } as const`); an unknown key is a 400, never a quoted pass-through. See Dynamic Updates above.
+
+### Query Budget Tests (R-361)
+
+Every repository or service function that returns a collection, and every endpoint that serves one, has a test asserting its query count does not grow with the number of rows. Run it against the test database, never a mocked pool (R-401):
+
+```typescript
+it("lists trips with their legs in a constant number of queries", async () => {
+    const user = await createTestUser();
+    await createTestTripsWithLegs(user.id, { tripCount: 1, legsPerTrip: 2 });
+    const { queryCount: singleTripCount } = await countQueries(() => listTripsWithLegs(user.id));
+
+    await createTestTripsWithLegs(user.id, { tripCount: 4, legsPerTrip: 3 });
+    const { queryCount: manyTripCount, result: trips } = await countQueries(() => listTripsWithLegs(user.id));
+
+    expect(trips).toHaveLength(5);
+    expect(trips.flatMap((trip) => trip.legs)).toHaveLength(14);
+    expect(manyTripCount).toBe(singleTripCount);
+});
+```
+
+- Compare two sizes instead of pinning an absolute number, so adding one legitimate query does not break the test while an N+1 always does.
+- The ESLint rule `dataAccess/no-query-in-loop` catches a query written inside a loop; only this test catches one hidden behind a helper, a service calling a service, or a loop in another module.
 
 ---
 
