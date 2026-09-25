@@ -332,7 +332,7 @@ R-351: Dockerize every deployable artifact from its first commit.
 
 ### Data access (R-36x)
 
-Applies to every code path that reaches a database: repositories, services, handlers, workers, in every stack. Exempt, in every enforcer: tests and test data (`tests/`, `test/`, `spec/`, `__tests__/`, Go `testdata/` and `_test.go`), migrations (`migrations/`, Alembic `alembic/`, and Rails `db/`, which also holds seeds and the schema), and one-off scripts, seeds, and backfills under `scripts/`, `script/`, `bin/`, Rails `lib/tasks/`, or Go `cmd/tools/`. `CLAUDE-DATABASE.md` carries the SQL shapes and the query-budget test.
+Applies to every code path that reaches a database: repositories, services, handlers, workers, in every stack. Tests, migrations, and one-off scripts are exempt; each enforcer names the exact paths it skips, and they differ by stack. TypeScript (`eslint.config.mjs`): `__tests__/`, `__fixtures__/`, `__mocks__/`, `tests/`, `e2e/`, `bin/`, `scripts/`, `migrations/`, and files named `*.test.ts`, `*.spec.ts`, `*.config.ts`, or `*.d.ts`. Python (`python_data_access.py`): a `tests/`, `test/`, `scripts/`, `migrations/`, or `alembic/` directory, and files named `test_*.py`, `*_test.py`, or `conftest.py`. Go (`go/main.go`): a `testdata/`, `scripts/`, `migrations/`, or `cmd/tools/` directory, and files named `*_test.go`. Ruby (`ruby_data_access.rb`): a `spec/`, `test/`, `db/` (migrations, seeds, and the schema), `script/`, `scripts/`, `bin/`, or `lib/tasks/` directory, and files named `*_spec.rb` or `*_test.rb`. `CLAUDE-DATABASE.md` carries the SQL shapes and the query-budget test.
 
 R-361: Never query once per element of a collection (the N+1); load or write the set in one statement.
   Spec:
