@@ -382,9 +382,14 @@ Call `validateEnv()` at the top of `app.ts`, before any middleware registration.
 `CORS_ORIGIN` also needs its own shape check, in every environment, not only in production: with `credentials: true` the CORS middleware echoes the configured origin back on every response, so a wildcard or a `null` origin hands the session cookie to any site that asks. `corsConfig.ts` parses the raw value before it ever reaches the CORS middleware:
 
 ```typescript
+import cors from "cors";
+
 // The values that would open the credentialed API to every site on the web if accepted.
 const UNSAFE_CORS_ORIGINS = new Set(["*", "null"]);
-const BROWSER_ORIGIN_PATTERN = /^https?:\/\/[a-z0-9.-]+(?::[1-9][0-9]{0,4})?$/;
+// Accepts scheme://host[:port] for the two browser schemes; the host must start with a
+// letter or digit, and the port alternatives exclude each scheme's default (443, 80) and
+// cap at 65535, since a browser never sends a default port or an out-of-range one.
+const BROWSER_ORIGIN_PATTERN = /^(https:\/\/[a-z0-9][a-z0-9.-]*(?::(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http:\/\/[a-z0-9][a-z0-9.-]*(?::(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)$/;
 
 export function parseCorsOrigin(rawValue: string): string {
     const origin = rawValue.trim();
@@ -396,6 +401,11 @@ export function parseCorsOrigin(rawValue: string): string {
     }
     return origin;
 }
+
+export const corsConfig = cors({
+    origin: parseCorsOrigin(process.env.CORS_ORIGIN ?? ""),
+    credentials: true,
+});
 ```
 
 ```typescript
@@ -403,6 +413,10 @@ import { describe, expect, it } from "vitest";
 import { parseCorsOrigin } from "app/config/corsConfig.js";
 
 describe("parseCorsOrigin", () => {
+    it("returns a real origin unchanged", () => {
+        expect(parseCorsOrigin("https://app.example.com")).toBe("https://app.example.com");
+    });
+
     it.each([
         ["*", "wildcard"],
         ["null", "sandboxed-origin null"],
