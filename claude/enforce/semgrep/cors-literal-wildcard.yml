@@ -1,7 +1,8 @@
 # Reports a credentialed CORS policy whose allowed origin is a literal
-# wildcard, the literal "null" origin, or the reflect-any `origin: true`
-# (R-109, B-5). One rule per language, each id namespaced by its language so
-# no two rules in this file share an id; every finding's id still ends in
+# wildcard, the literal "null" origin, an origin regex that matches every host
+# (".*" or "https?://.*"), or the reflect-any `origin: true` (R-109, B-5). One
+# rule per language, each id namespaced by its language so no two rules in
+# this file share an id; every finding's id still ends in
 # cors-literal-wildcard.
 rules:
   - id: python.cors-literal-wildcard
@@ -10,14 +11,21 @@ rules:
     message: >-
       CORS allows the origin $ORIGIN while allow_credentials=True, so any site
       (or any sandboxed iframe, for "null") can read authenticated responses.
-      List the concrete origins the app serves, or turn credentials off for a
-      public API (R-109).
+      List the concrete origins the app serves, or a regex anchored to your
+      own domain, or turn credentials off for a public API (R-109).
     patterns:
-      - pattern: $CALL(..., allow_origins=[..., $ORIGIN, ...], ...)
       - pattern: $CALL(..., allow_credentials=True, ...)
-      - metavariable-regex:
-          metavariable: $ORIGIN
-          regex: ^["'](\*|null)["']$
+      - pattern-either:
+          - patterns:
+              - pattern: $CALL(..., allow_origins=[..., $ORIGIN, ...], ...)
+              - metavariable-regex:
+                  metavariable: $ORIGIN
+                  regex: ^["'](\*|null)["']$
+          - patterns:
+              - pattern: $CALL(..., allow_origin_regex=$ORIGIN, ...)
+              - metavariable-regex:
+                  metavariable: $ORIGIN
+                  regex: ^[rR]?["']\^?(https?\??://)?\.\*\$?["']$
   - id: typescript.cors-literal-wildcard
     languages: [typescript, javascript]
     severity: ERROR

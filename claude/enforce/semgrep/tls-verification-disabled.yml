@@ -7,21 +7,28 @@ rules:
     languages: [python]
     severity: ERROR
     message: >-
-      verify=False turns off TLS certificate checks, so anyone on the network
-      path can impersonate the server and read or alter the traffic. Leave
-      verification on, and pass verify=<CA bundle path> to trust a private CA
-      (R-109).
-    pattern: $CALL(..., verify=False, ...)
+      This turns off TLS certificate or hostname checks (verify=False, an
+      unverified ssl context, check_hostname=False, or CERT_NONE), so anyone on
+      the network path can impersonate the server and read or alter the
+      traffic. Use ssl.create_default_context() and leave verification on;
+      load a CA bundle to trust a private CA (R-109).
+    pattern-either:
+      - pattern: $CALL(..., verify=False, ...)
+      - pattern: ssl._create_unverified_context(...)
+      - pattern: $CONTEXT.check_hostname = False
+      - pattern: $CONTEXT.verify_mode = ssl.CERT_NONE
   - id: typescript.tls-verification-disabled
     languages: [typescript, javascript]
     severity: ERROR
     message: >-
-      rejectUnauthorized: false turns off TLS certificate checks, so anyone on
-      the network path can impersonate the server and read or alter the
-      traffic. Leave it true, and pass ca: <certificate> to trust a private CA
-      (R-109).
-    pattern: |
-      {..., rejectUnauthorized: false, ...}
+      rejectUnauthorized: false or NODE_TLS_REJECT_UNAUTHORIZED="0" turns off
+      TLS certificate checks, so anyone on the network path can impersonate
+      the server and read or alter the traffic. Leave verification on, and
+      pass ca: <certificate> to trust a private CA (R-109).
+    pattern-either:
+      - pattern: |
+          {..., rejectUnauthorized: false, ...}
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
   - id: go.tls-verification-disabled
     languages: [go]
     severity: ERROR
