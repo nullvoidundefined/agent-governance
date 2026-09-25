@@ -72,6 +72,14 @@ R-346: Instrument every outbound call in `clients/`: log provider, operation, du
 
 R-351: Dockerize every deployable artifact from its first commit: one `Dockerfile` per artifact (API, worker, cron job, frontend server, static site), a `.dockerignore`, and a `docker-compose.yml` that runs it with its dependencies; the image is the deploy unit on every platform; libraries and shared packages exempt. [hook:dockerfile-reminder]
 
+### Data access (R-36x)
+
+R-361: Never query once per element of a collection (N+1): no repository or `query` call inside a loop, `.map`, `.forEach`, or `Promise.all(ids.map(...))`; load the set in one query (`= ANY($1)`, a JOIN) or write it in one statement (`unnest`), and cover every collection read with a query-budget test. [eslint:no-query-in-loop]
+R-362: Run writes that must succeed or fail together in one `withTransaction`, every statement on its `client` (repositories forward an optional `client`), nothing on the network inside it, statements awaited in sequence. [eslint:transaction-client-required]
+R-363: Make every read-modify-write atomic in SQL (`SET x = x + 1`, guarded `WHERE`, `ON CONFLICT`) or under `SELECT ... FOR UPDATE` or a version check; never read, compute in code, and write back unguarded. [manual]
+R-364: Bound every read: a capped `LIMIT` on every list, keyset pagination on unbounded tables, `ORDER BY` ending in a unique column, aggregates in SQL, index-backed filters. [manual]
+R-365: Only values go in `$n` parameters and only allowlisted identifiers go in SQL text; never build SQL from caller input or request-body keys. [manual]
+
 ## Testing and quality (R-4xx)
 
 R-401: Write tests that fail when the implementation is wrong: behavior assertions over mock-call counts; rewrite the nine anti-patterns (reference.md) on sight; never skip or suppress a failing test: fix it or delete it. [hook:content-gate, eslint:no-self-mock, eslint:behavior-assertion-required]
