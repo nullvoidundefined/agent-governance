@@ -15,7 +15,10 @@
     "(^|/)[^/]*(settings|config)[^/]*\\.(py|ts|js|go|rb)$",
     "(^|/)middleware/",
     "(^|/)\\.github/workflows/",
-    "(^|/)Dockerfile[^/]*$"
+    "(^|/)(Dockerfile[^/]*|[^/]*\\.Dockerfile|Containerfile)$",
+    "(^|/)\\.enforce\\.json$",
+    "(^|/)\\.gitattributes$",
+    "(^|/)\\.semgrepignore$"
   ],
   "content": [
     "CORSMiddleware",
@@ -33,6 +36,14 @@
     "Content-Security-Policy",
     "helmet\\(",
     "(execute|query)\\([[:space:]]*[rb]?f[rb]?[\"']",
-    "(execute|query)\\([[:space:]]*`[^`]*\\$\\{"
+    "(execute|query)\\([[:space:]]*`[^`]*\\$\\{",
+    "rate[-_]?limit|throttl|limiter",
+    "rejectUnauthorized",
+    "InsecureSkipVerify",
+    "VERIFY_NONE",
+    "argon2|scrypt|pbkdf2",
+    "Strict-Transport-Security",
+    "X-Frame-Options",
+    "csrf"
   ]
 }
