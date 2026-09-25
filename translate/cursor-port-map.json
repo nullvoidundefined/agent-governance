@@ -87,6 +87,7 @@
         "frontend-react.mdc": "React-specific frontend conventions: hooks, component and provider patterns, state management. Auto-attached to .tsx and .jsx files and to src/state and src/hooks trees; read together with frontend.mdc, the framework-agnostic core.",
         "go.mdc": "Go net/http and chi track - layout, pgx, golangci-lint, analogs of the [ts] rules. Auto-attached to .go files and go.mod.",
         "python.mdc": "Python and FastAPI track - layout, SQLAlchemy, Alembic, pytest, ruff and mypy, analogs of the [ts] rules. Auto-attached to .py files.",
+        "observability.mdc": "Logging and observability for every backend stack - request IDs, structured logging, analytics, error handling, health endpoints, outbound-call instrumentation (R-341 to R-346). Auto-attached to backend files in Python, Express, Go, and Ruby.",
         "ruby.mdc": "Ruby on Rails API track - layout, RSpec, RuboCop, analogs of the [ts] rules. Auto-attached to .rb files and the Gemfile.",
         "rulebook-agents.mdc": "R-7xx Agents and Dispatch - Tier 2 rules for multi-agent sessions. Fetch when dispatching subagents, parallel worktrees, or multi-repo work (R-001).",
         "rulebook-audits.mdc": "R-8xx Audits - Tier 2 rules for audit sessions. Fetch when running an engineering, security, criticism, or on-request audit (R-001).",

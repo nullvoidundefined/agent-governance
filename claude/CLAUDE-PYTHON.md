@@ -383,7 +383,36 @@ async def verify_password(candidate: str, stored_hash: str | None) -> bool:
 ```
 
 - **Table** `user_sessions` (R-334): `id uuid PK`, `user_id uuid FK -> users ON DELETE CASCADE`, `token_hash text UNIQUE NOT NULL`, `expires_at timestamptz NOT NULL`, `created_at`, `last_seen_at`, and an index on `expires_at`
-- **Cookie**: `httponly=True`, `secure=True` outside development, `samesite="lax"`, `max_age` from `SESSION_TTL`, `path="/"`, set with `response.set_cookie`
+- **Cookie**: `httponly=True`, `secure` tied to every non-development environment, `samesite="lax"`, `max_age` from `SESSION_TTL`, `path="/"`, set with `response.set_cookie`. A staging cookie without `secure` travels over plain HTTP, so the check names development and nothing else:
+
+```python
+def set_session_cookie(response: Response, raw_token: str, settings: Settings) -> None:
+    """Write the session cookie; the login route passes the settings it got from Depends(get_settings)."""
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        raw_token,
+        httponly=True,
+        secure=settings.environment != "development",
+        samesite="lax",
+        max_age=int(SESSION_TTL.total_seconds()),
+        path="/",
+    )
+```
+
+```python
+async def test_session_cookie_is_secure_in_staging(app, client, registered_user):
+    """A cookie without Secure in staging would travel over plain HTTP."""
+    staging_settings = Settings(_env_file=None, environment="staging", database_url="postgresql://localhost/app_test")
+    app.dependency_overrides[get_settings] = lambda: staging_settings
+    try:
+        response = await client.post("/v1/auth/login", json={"email": registered_user.email, "password": "changeme"})
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+    set_cookie_header = response.headers["set-cookie"]
+    assert "Secure" in set_cookie_header
+    assert "HttpOnly" in set_cookie_header
+```
+
 - **Email** is trimmed and lowercased before every insert and lookup, and `users` carries a unique index on `lower(email)` (added 2026-09-19: without both, `A@x.com` and `a@x.com` register as two accounts and login depends on case)
 - **Login** looks up the user, runs `verify_password` even when the user is missing (the dummy hash equalizes timing), and answers `AUTH_INVALID_CREDENTIALS` in both cases
 - **Password reset** (`user_password_resets`, token stored as its SHA-256 hash): 1-hour expiry; issuing a reset deletes the user's earlier unused resets; consumption is one atomic `UPDATE ... SET used_at = now() WHERE token_hash = :hash AND used_at IS NULL AND expires_at > now() RETURNING user_id`, and success deletes every session of the user (added 2026-09-19: a select-then-update lets two concurrent submissions of one token both succeed)
@@ -438,15 +467,22 @@ Cookie sessions need a CSRF guard. The API requires a custom header that a brows
 ```python
 """Typed settings read from the environment once and validated at startup."""
 
+import re
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+UNSAFE_CORS_ORIGINS = frozenset({"*", "null"})  # CORSMiddleware allow-all, and the iframe origin
+# Accepts scheme://host[:port] for the two browser schemes; the host must start with a
+# letter or digit, and the port alternatives exclude each scheme's default (443, 80) and
+# cap at 65535, since a browser never sends a default port or an out-of-range one.
+BROWSER_ORIGIN_PATTERN = re.compile(r"^(https://[a-z0-9][a-z0-9.-]*(:(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http://[a-z0-9][a-z0-9.-]*(:(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)$")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     app_name: str = "api"
     environment: Literal["development", "test", "staging", "production"] = "development"
@@ -455,6 +491,14 @@ class Settings(BaseSettings):
     cors_origin: str | None = None
     database_ca_cert: str | None = None
     forwarded_allow_ips: str | None = None
+
+    @field_validator("cors_origin")
+    @classmethod
+    def refuse_unsafe_cors_origin(cls, value: str | None) -> str | None:
+        origin = (value or "").strip()
+        if origin and (origin.lower() in UNSAFE_CORS_ORIGINS or not BROWSER_ORIGIN_PATTERN.fullmatch(origin)):
+            raise ValueError("CORS_ORIGIN must be one concrete scheme://host[:port] origin")
+        return origin or None
 
     @model_validator(mode="after")
     def require_production_values(self) -> "Settings":
@@ -469,6 +513,26 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Build the settings once per process."""
     return Settings()
+```
+
+`CORS_ORIGIN` is validated in every environment, not only production: with `allow_credentials=True`, Starlette reads `*` as allow-all and echoes each caller's `Origin`, and `null` is the origin every sandboxed iframe sends, so either value hands the session cookie to any site. The negative test feeds each value a browser could never send:
+
+```python
+def test_settings_refuses_unsafe_cors_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/app_test")
+    unsafe_origins = ("*", "null", "https://a.example,https://b.example", "https://client.example/path", "https://name@client.example")
+    for unsafe_origin in unsafe_origins:
+        monkeypatch.setenv("CORS_ORIGIN", unsafe_origin)
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(_env_file=None)
+        assert exc_info.value.errors()[0]["loc"] == ("cors_origin",)
+
+
+def test_settings_accepts_real_cors_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/app_test")
+    monkeypatch.setenv("CORS_ORIGIN", "https://app.example.com")
+    settings = Settings(_env_file=None)
+    assert settings.cors_origin == "https://app.example.com"
 ```
 
 - Business code receives `Settings` through `Depends(get_settings)` or a parameter; nothing reads `os.environ`
@@ -488,9 +552,10 @@ def register_middleware(app: FastAPI, settings: Settings) -> None:
     app.add_middleware(CsrfGuardMiddleware)                      # 6
     app.add_middleware(RequestTimeoutMiddleware, seconds=30)     # 5
     app.add_middleware(RateLimitMiddleware, settings=settings)   # 4
+    cors_origins = [settings.cors_origin] if settings.cors_origin else []  # already validated
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.cors_origin] if settings.cors_origin else [],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Content-Type", "X-Requested-With", "Idempotency-Key", "X-Request-Id"],
@@ -795,115 +860,13 @@ class ErrorCode(StrEnum):
 
 ## Logging (structlog)
 
-```python
-"""Configures structlog once per process; standard-library records share the renderer."""
-
-import logging
-import sys
-
-import structlog
-from structlog.tracebacks import ExceptionDictTransformer
-
-from app.core.settings import Settings
-
-SHARED_PROCESSORS: list[structlog.typing.Processor] = [
-    structlog.contextvars.merge_contextvars,
-    structlog.processors.add_log_level,
-    structlog.processors.TimeStamper(fmt="iso", utc=True),
-    structlog.processors.ExceptionRenderer(ExceptionDictTransformer(show_locals=False)),
-]
-
-
-def configure_logging(settings: Settings) -> None:
-    """Install the structlog chain, then route standard-library records through it."""
-    renderer = (
-        structlog.dev.ConsoleRenderer()
-        if settings.environment == "development"
-        else structlog.processors.JSONRenderer()
-    )
-    structlog.configure(
-        processors=[*SHARED_PROCESSORS, renderer],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-    )
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(structlog.stdlib.ProcessorFormatter(
-        foreign_pre_chain=SHARED_PROCESSORS,
-        processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
-    ))
-    logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
-    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "asgi_correlation_id"):
-        logging.getLogger(logger_name).handlers.clear()
-        logging.getLogger(logger_name).propagate = True
-```
-
-- Every module gets its logger with `logger = structlog.get_logger()` at module level
-- Event name first as a `snake_case` string, values as keyword fields: `logger.info("trip_created", trip_id=trip.id)` (R-342); never an f-string with values in the event
-- Errors pass as `exc_info=err`, rendered as a structured field (the Python form of `{ err }`) by `ExceptionRenderer(ExceptionDictTransformer(show_locals=False))` (corrected 2026-09-19: the earlier `dict_tracebacks` renders frame locals by default, and a probe showed it writing the database password from asyncpg's connect frame into a readiness log line)
-- Standard-library records (uvicorn, asgi-correlation-id, SQLAlchemy) reach the same renderer through `ProcessorFormatter` on the root handler; uvicorn installs its own handlers before it calls the factory, so the loop clears them and lets the records propagate, so every production line is JSON (corrected 2026-09-19: the track claimed this routing without showing it, and those records printed as plain text). No secrets, tokens, passwords, emails, or other PII in any field (R-104); log IDs instead
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ---
 
 ## Observability (R-341 to R-346)
 
-**Request ID (R-341).** One ID per request, honored from the caller only when it is safe, echoed back, and bound to the context so nothing passes it by hand. asgi-correlation-id does the honoring, minting, and echoing (owner decision, 2026-09-19 stack audit: a maintained package replaces about 40 hand-written lines):
-
-```python
-import re
-
-REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-
-
-def is_valid_request_id(candidate: str) -> bool:
-    """Accept an inbound request ID only when it is 1 to 64 safe characters."""
-    return REQUEST_ID_PATTERN.fullmatch(candidate) is not None
-```
-
-- The validator rejects an inbound ID outside the pattern and a fresh UUID takes its place (corrected 2026-09-19: the hand-written middleware echoed any inbound value, so a client could inject newlines or megabytes into every log line and response header)
-- `RequestContextMiddleware` binds `correlation_id.get()` with `structlog.contextvars.bound_contextvars(...)`, which restores the previous context when the request ends; the library never resets its own context variable, and `clear_contextvars()` would also wipe an outer caller's binding
-- The body limit covers a streamed body as well as `Content-Length`: the middleware reads the body up to 100 KB before calling the app and replays it, and anything larger gets a 413 it sends itself as raw ASGI messages, so the app never runs (corrected 2026-09-19: raising from `receive` becomes a 400, because FastAPI converts an exception raised while it reads a Pydantic body, and counting bytes only as the app reads them misses a route that never reads its body)
-- Services and repositories log through their module logger and inherit `request_id` from the context automatically; workers bind `job_id` the same way
-
-**Analytics (R-343).** One client, one registry, no literals at the call site:
-
-```python
-# analytics/events.py: the registry, object_action, past tense
-class AnalyticsEvent(StrEnum):
-    TRIP_CREATED = "trip_created"
-    SIGNUP_COMPLETED = "signup_completed"
-
-
-# clients/analytics.py: the only module that imports the PostHog SDK
-async def track_event(distinct_id: str, event: AnalyticsEvent, properties: dict[str, object]) -> None:
-    """Send one event; a provider failure is logged and never fails the request."""
-    try:
-        await asyncio.to_thread(_posthog.capture, distinct_id, event.value, properties)
-    except (OSError, PostHogError) as err:
-        logger.warning("analytics_capture_failed", analytics_event=event.value, exc_info=err)
-```
-
-**Error reporting (R-344).** Every `except` names the exception class, binds it, and uses it. The 500 handler logs and reports before it responds. Bare `except:` and `except Exception: pass` never appear; ruff `E722`, `S110`, and `BLE001` catch the syntactic cases.
-
-**Outbound instrumentation (R-346).** Wrap every provider call once:
-
-```python
-# clients/telemetry.py
-async def with_client_telemetry[T](provider: str, operation: str, call: Callable[[], Awaitable[T]]) -> T:
-    """Time one provider call and log its outcome with the provider and operation."""
-    started_at = time.perf_counter()
-    try:
-        result = await call()
-    except Exception as err:
-        logger.warning("client_call_failed", provider=provider, operation=operation,
-                       duration_ms=_elapsed_ms(started_at), exc_info=err)
-        raise
-    logger.debug("client_call_succeeded", provider=provider, operation=operation,
-                 duration_ms=_elapsed_ms(started_at))
-    return result
-```
-
-- The one broad `except Exception` in the codebase is here, and it re-raises. Every client sets an explicit timeout (`httpx.AsyncClient(timeout=10.0)`, `AsyncAnthropic(timeout=60.0, max_retries=2)`); a client without one is a defect
-- Outbound HTTP forwards the request ID: an `httpx` event hook adds `X-Request-Id` from `structlog.contextvars.get_contextvars()`
-- Health endpoints (R-345) are the two under Health Endpoints; workers answer on `WORKER_PORT` (Worker Pattern above)
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ---
 

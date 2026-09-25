@@ -137,7 +137,7 @@ import express from "express";
 import { z } from "zod";
 
 // 4. Local imports by layer (config → db → middleware → repos → schemas → services → utils)
-import { corsConfig } from "app/config/corsConfig.js";
+import { createCorsConfig } from "app/config/corsConfig.js";
 import { query } from "app/database/pool.js";
 import * as jobsRepo from "app/repositories/jobs/jobs.js";
 import type { Job } from "app/schemas/job.js";
@@ -326,18 +326,50 @@ import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } from "app/constants/session.j
 
 const PgStore = connectPgSimple(session);
 
-export const loadSession = session({
-    store: new PgStore({ pool, tableName: "sessions" }),
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    name: SESSION_COOKIE_NAME,
-    cookie: {
-        httpOnly: true,
-        secure: isProduction(),
-        sameSite: "lax",
-        maxAge: SESSION_MAX_AGE_MS,
-    },
+// Builds the session middleware for one environment; the cookie is Secure everywhere but development.
+export function createSessionMiddleware(environment: string | undefined) {
+    return session({
+        store: new PgStore({ pool, tableName: "sessions" }),
+        secret: process.env.SESSION_SECRET!,
+        resave: false,
+        saveUninitialized: false,
+        name: SESSION_COOKIE_NAME,
+        cookie: {
+            httpOnly: true,
+            secure: environment !== "development",
+            sameSite: "lax",
+            maxAge: SESSION_MAX_AGE_MS,
+        },
+    });
+}
+```
+
+A `secure` flag tied to `isProduction()` sends the session cookie over plain HTTP in every non-production environment, staging included; the check names development and nothing else.
+
+The test drives the real middleware over a request the proxy marks as HTTPS, because express-session withholds a Secure cookie from a plain-HTTP request:
+
+```typescript
+import express from "express";
+import request from "supertest";
+import { describe, expect, it } from "vitest";
+import { createSessionMiddleware } from "app/middleware/loadSession.js";
+
+describe("session cookie", () => {
+    it("is Secure and HttpOnly in staging", async () => {
+        const app = express();
+        app.set("trust proxy", 1);
+        app.use(createSessionMiddleware("staging"));
+        app.post("/login", (req, res) => {
+            req.session.userId = "user-1";
+            res.sendStatus(204);
+        });
+
+        const response = await request(app).post("/login").set("X-Forwarded-Proto", "https");
+        const [sessionCookie] = response.get("Set-Cookie") ?? [];
+
+        expect(sessionCookie).toMatch(/;\s*Secure/);
+        expect(sessionCookie).toMatch(/;\s*HttpOnly/);
+    });
 });
 ```
 
@@ -379,6 +411,65 @@ export function validateEnv() {
 
 Call `validateEnv()` at the top of `app.ts`, before any middleware registration.
 
+`CORS_ORIGIN` also needs its own shape check, in every environment, not only in production: with `credentials: true` the CORS middleware echoes the configured origin back on every response, so a wildcard or a `null` origin hands the session cookie to any site that asks. `corsConfig.ts` parses the raw value before it ever reaches the CORS middleware:
+
+```typescript
+import cors from "cors";
+
+// The values that would open the credentialed API to every site on the web if accepted.
+const UNSAFE_CORS_ORIGINS = new Set(["*", "null"]);
+// Accepts scheme://host[:port] for the two browser schemes; the host must start with a
+// letter or digit, and the port alternatives exclude each scheme's default (443, 80) and
+// cap at 65535, since a browser never sends a default port or an out-of-range one.
+const BROWSER_ORIGIN_PATTERN = /^(https:\/\/[a-z0-9][a-z0-9.-]*(?::(?:[1-9][0-9]?|[1-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?|http:\/\/[a-z0-9][a-z0-9.-]*(?::(?:[1-9]|[1-79][0-9]|8[1-9]|[1-9][0-9]{2}|[1-9][0-9]{3}|6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}))?)$/;
+
+// A blank value returns "": no cross-origin caller is allowed.
+export function parseCorsOrigin(rawValue: string): string {
+    const origin = rawValue.trim();
+    if (origin === "") {
+        return "";
+    }
+    if (UNSAFE_CORS_ORIGINS.has(origin.toLowerCase())) {
+        throw new Error("CORS_ORIGIN must name one concrete origin, not a wildcard or null");
+    }
+    if (!BROWSER_ORIGIN_PATTERN.test(origin)) {
+        throw new Error("CORS_ORIGIN must be scheme://host[:port] exactly as a browser sends it");
+    }
+    return origin;
+}
+
+// Builds the CORS middleware from the raw CORS_ORIGIN value when the app starts, never at import time.
+export function createCorsConfig(rawOrigin: string | undefined) {
+    const origin = parseCorsOrigin(rawOrigin ?? "");
+    return cors({ origin: origin === "" ? false : origin, credentials: true });
+}
+```
+
+```typescript
+import { describe, expect, it } from "vitest";
+import { parseCorsOrigin } from "app/config/corsConfig.js";
+
+describe("parseCorsOrigin", () => {
+    it("returns a real origin unchanged", () => {
+        expect(parseCorsOrigin("https://app.example.com")).toBe("https://app.example.com");
+    });
+
+    it.each([
+        ["*", "wildcard"],
+        ["null", "sandboxed-origin null"],
+        ["https://a.example,https://b.example", "comma-separated list"],
+        ["https://client.example/path", "origin with a path"],
+        ["https://name@client.example", "origin with userinfo"],
+    ])("refuses %s (%s)", (unsafeOrigin) => {
+        expect(() => parseCorsOrigin(unsafeOrigin)).toThrow(/CORS_ORIGIN/);
+    });
+
+    it.each(["", "   "])("returns an empty string for the blank value %j", (blankValue) => {
+        expect(parseCorsOrigin(blankValue)).toBe("");
+    });
+});
+```
+
 ---
 
 ## Express App Structure (`app.ts`)
@@ -388,13 +479,13 @@ Middleware is applied in this exact order:
 ```typescript
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(corsConfig);
+app.use(createCorsConfig(process.env.CORS_ORIGIN));
 app.use(requestLogger);
 app.use(rateLimiter);
 app.use(express.json({ limit: "10kb" }));
 app.use(cookieParser());
 app.use(csrfGuard);
-app.use(loadSession);
+app.use(createSessionMiddleware(process.env.NODE_ENV));
 
 // Routes
 app.use("/auth", authRouter);
@@ -573,119 +664,13 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
 ## Logging (Pino)
 
-```typescript
-// Structured context objects first, message string second
-logger.info({ event: "register_success", userId: user.id }, "User registered");
-logger.warn({ event: "login_failure", reason: "user_not_found" }, "Login failed");
-logger.error({ err, linkId }, "Failed to fetch content");
-logger.debug({ hash }, "Cache hit");
-```
-
-- Pretty printing in development, JSON in production
-- Request IDs via `pino-http` middleware (R-341, below)
-- Always pass error objects as `{ err }`; Pino serializes them properly
-- Never `console.*` in server code; values go in the context object, never the message string (R-342, ESLint-enforced)
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ---
 
 ## Observability (R-341 to R-346)
 
-**Request ID (R-341).** One ID per request, honored from the caller, echoed back, and bound to the request context so nothing passes it by hand:
-
-```typescript
-// middleware/requestLogger.ts
-import { randomUUID } from "node:crypto";
-import pinoHttp from "pino-http";
-import { logger } from "app/utils/logs/logger.js";
-
-export const requestLogger = pinoHttp({
-    logger,
-    genReqId: (req, res) => {
-        const requestId = (req.headers["x-request-id"] as string | undefined) ?? randomUUID();
-        res.setHeader("X-Request-Id", requestId);
-        return requestId;
-    },
-});
-
-// middleware/requestContext.ts: AsyncLocalStorage so services and repositories
-// log with the request ID without receiving it as a parameter.
-export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
-export function bindRequestContext(req: Request, _res: Response, next: NextFunction) {
-    requestContext.run({ requestId: req.id as string }, next);
-}
-```
-
-- Register `requestLogger` then `bindRequestContext` before every route; `req.log` is the request-scoped child logger.
-- Services and repositories log through `logger.child(requestContext.getStore() ?? {})` or a `getRequestLogger()` helper in `utils/logs/`; never through a logger that lacks the ID.
-- Workers use the job ID in the same role (`{ jobId }` on every line, forwarded to any HTTP call the job makes).
-
-**Analytics (R-343).** One client, one registry, no literals at the call site:
-
-```typescript
-// analytics/events.ts: the registry. object_action, past tense.
-export const EVENTS = {
-    noteCreated: "note_created",
-    signupCompleted: "signup_completed",
-} as const;
-
-// clients/analytics/trackEvent.ts: the only file that imports the provider SDK.
-export async function trackEvent(distinctId: string, event: EventName, properties: Record<string, unknown>) {
-    try {
-        await posthog.capture({ distinctId, event, properties });
-    } catch (err) {
-        logger.warn({ err, event }, "Analytics capture failed"); // never fails the request (R-344)
-    }
-}
-
-// a handler
-await trackEvent(user.id, EVENTS.signupCompleted, { plan: user.plan });
-```
-
-**Error reporting (R-344).** Every `catch` binds and uses the error; the global handler reports before it responds:
-
-```typescript
-export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
-    logger.error({ err, requestId: req.id }, "Unhandled error");
-    reportError(err, { requestId: req.id as string }); // clients/errorTracker
-    res.status(500).json({ error: { message: isProduction() ? "Internal server error" : String(err) } });
-}
-
-// expected failure: still bound, still logged, defined fallback
-try {
-    return await cache.get(key);
-} catch (err) {
-    logger.warn({ err, key }, "Cache read failed; continuing without it");
-    return null;
-}
-```
-
-**Outbound instrumentation (R-346).** Wrap the provider once so call sites stay thin (R-307):
-
-```typescript
-// clients/withClientTelemetry.ts
-export async function withClientTelemetry<T>(provider: string, operation: string, call: () => Promise<T>): Promise<T> {
-    const startedAt = performance.now();
-    try {
-        const result = await call();
-        logger.debug({ provider, operation, durationMs: Math.round(performance.now() - startedAt) }, "Client call succeeded");
-        return result;
-    } catch (err) {
-        logger.warn({ err, provider, operation, durationMs: Math.round(performance.now() - startedAt) }, "Client call failed");
-        throw err;
-    }
-}
-
-// clients/stripe/createCheckoutSession.ts
-export function createCheckoutSession(input: CheckoutInput) {
-    return withClientTelemetry("stripe", "createCheckoutSession", () =>
-        stripe.checkout.sessions.create(input, { timeout: 10_000, idempotencyKey: input.idempotencyKey }),
-    );
-}
-```
-
-- Outbound HTTP forwards the request ID: `headers: { "X-Request-Id": requestContext.getStore()?.requestId ?? "" }`.
-- Every client call sets a timeout; a client without one is a defect.
-- Health endpoints (R-345) are the two above under "Health Endpoints"; workers run the same two paths on their health server.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ---
 

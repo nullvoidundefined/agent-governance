@@ -83,6 +83,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 ├── CLAUDE-PYTHON.md                 # Auto-loads on .py: FastAPI / pytest conventions.
 ├── CLAUDE-RUBY.md                   # Auto-loads on .rb: Rails API / RSpec conventions.
 ├── CLAUDE-GO.md                     # Auto-loads on .go: net/http + chi conventions.
+├── CLAUDE-OBSERVABILITY.md          # Auto-loads on backend files in every stack: logging and observability (R-341 to R-346).
 ├── CLOUD-DEPLOYMENT.md              # Read on demand: Railway / Cloudflare deploy guide.
 ├── TICKET-TRACKER.template.json     # Template for the gitignored tracker instance config (R-605).
 ├── settings.json                    # Claude Code settings including hook wiring and the sandbox block (configured but disabled by default; see enforce/README.md's "Containment boundaries" section).
