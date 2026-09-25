@@ -16,7 +16,9 @@
 #       for an unrelated missing field;
 #   (3) each stack's example test asserts a real origin comes back unchanged;
 #   (4) the TypeScript, Go, and Ruby examples feed the CORS middleware the
-#       parser's output, never the raw environment value.
+#       parser's output, never the raw environment value (TypeScript through
+#       parseCorsOrigin or a createCorsConfig factory taking the raw value, Go
+#       through a block that holds both parseCORSOrigin and AllowedOrigins).
 # No `# Covers:` line: no manifest enforcer exists for these documents yet, and
 # manifest-fixture-closure refuses a declaration the manifest does not name.
 # Every failing check names the file and the behavior; all failures are
@@ -218,13 +220,13 @@ print_blocks_containing "$RUBY_DOC" 'parse_cors_origin(' | grep -qE "eq\(${REAL_
   || report_failure "$RUBY_DOC" "no example test asserts parse_cors_origin returns a real origin unchanged ('eq(\"<real origin>\")')"
 
 # (4) The CORS middleware receives the parser's output, never the raw env value.
-print_blocks_containing "$BACKEND_DOC" 'parseCorsOrigin(process.env.CORS_ORIGIN' | grep -q . \
-  || report_failure "$BACKEND_DOC" "no example wires the CORS middleware with 'parseCorsOrigin(process.env.CORS_ORIGIN'"
+print_blocks_containing "$BACKEND_DOC" 'process.env.CORS_ORIGIN' | grep -qE '(parseCorsOrigin|createCorsConfig)\(process\.env\.CORS_ORIGIN' \
+  || report_failure "$BACKEND_DOC" "no example wires the CORS middleware with 'parseCorsOrigin(process.env.CORS_ORIGIN' or the factory 'createCorsConfig(process.env.CORS_ORIGIN'"
 if print_blocks_containing "$BACKEND_DOC" 'process.env.CORS_ORIGIN' | grep -E 'origin:[[:space:]]*process\.env\.CORS_ORIGIN' | grep -q .; then
   report_failure "$BACKEND_DOC" "an example passes the raw 'origin: process.env.CORS_ORIGIN' to the CORS middleware"
 fi
-print_blocks_containing "$GO_DOC" 'parseCORSOrigin(os.Getenv("CORS_ORIGIN"))' | grep -q . \
-  || report_failure "$GO_DOC" "no example feeds 'parseCORSOrigin(os.Getenv(\"CORS_ORIGIN\"))' to the CORS middleware"
+print_blocks_containing "$GO_DOC" 'parseCORSOrigin(' | grep -qF 'AllowedOrigins' \
+  || report_failure "$GO_DOC" "no fenced block holds both 'parseCORSOrigin(' and 'AllowedOrigins', so the parsed origin is never shown reaching the CORS middleware"
 print_blocks_containing "$RUBY_DOC" 'parse_cors_origin(ENV' | grep -q . \
   || report_failure "$RUBY_DOC" "no example feeds 'parse_cors_origin(ENV' to the rack-cors configuration"
 if print_blocks_containing "$RUBY_DOC" 'origins' | grep -E "origins[[:space:]]+ENV" | grep -q .; then

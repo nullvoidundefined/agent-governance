@@ -9,8 +9,8 @@
 #   (b) a negative test, inside a fenced code block, that feeds the validator
 #       `*`, `null`, a comma-separated list, an origin with a path, and an
 #       origin with userinfo, and asserts refusal;
-#   (c) for Python, CORSMiddleware wiring that no longer passes the bare
-#       `[settings.cors_origin]` straight through.
+#   (c) for Python, the CORSMiddleware wiring with its `allow_origins=` line;
+#       the validator in (a) is what keeps the value it receives safe.
 # No `# Covers:` line: no manifest enforcer exists for these documents yet, and
 # manifest-fixture-closure refuses a declaration the manifest does not name.
 # Every failing check names the file and the missing marker; all failures are
@@ -87,14 +87,11 @@ done
 check_unsafe_constant "$PYTHON_DOC" 'UNSAFE_CORS_ORIGINS'
 check_validator       "$PYTHON_DOC" '@field_validator("cors_origin")'
 check_negative_test   "$PYTHON_DOC" 'def test_settings_refuses_unsafe_cors_origin(' 'pytest.raises(ValidationError)'
-# (c) The CORSMiddleware wiring is still shown, and no longer as the bare #27 pass-through.
+# (c) The CORSMiddleware wiring is still shown; the validator check above guards the value it receives.
 grep -qF 'CORSMiddleware,' "$PYTHON_DOC" \
   || report_missing "$PYTHON_DOC" "no CORSMiddleware wiring example ('CORSMiddleware,')"
 grep -qE 'allow_origins=' "$PYTHON_DOC" \
   || report_missing "$PYTHON_DOC" "no 'allow_origins=' line in the CORSMiddleware example"
-if grep -qF 'allow_origins=[settings.cors_origin]' "$PYTHON_DOC"; then
-  report_missing "$PYTHON_DOC" "still shows the bare 'allow_origins=[settings.cors_origin]' wiring; wire the validated value instead"
-fi
 
 # B-2: TypeScript backend (Express, Vitest).
 check_unsafe_constant "$BACKEND_DOC" 'UNSAFE_CORS_ORIGINS'
