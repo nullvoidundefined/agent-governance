@@ -238,6 +238,14 @@ commit_all "$REPO" "add tuning module"
 expect_marked "semgrep trigger" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$REAL_SEMGREP"
 expect_hits "semgrep trigger" "app/tuning.py:3 semgrep" \
   "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$REAL_SEMGREP"
+# Real Semgrep must also complete cleanly (status 0): if its scanned-path form
+# ever stopped matching the targets the detector passes, every PR with a code
+# file would be marked with status 2 while the hit line above still printed
+# (review finding 15 on PR #142).
+run_detector list_security_surface_hits "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$REAL_SEMGREP" >/dev/null
+real_scan_status=$?
+[ "$real_scan_status" -eq 0 ] \
+  || report_failure "semgrep trigger: list_security_surface_hits must return 0 on a complete real Semgrep scan; got $real_scan_status"
 
 # --- 4. Nothing touched (B-7, negative) --------------------------------------
 REPO=$(new_repo docs-only)

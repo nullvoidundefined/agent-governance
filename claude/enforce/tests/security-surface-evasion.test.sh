@@ -171,6 +171,10 @@ write_file "$REPO" .gitattributes $'*.py -diff\n'
 write_file "$REPO" app/main.py $'app.add_middleware(CORSMiddleware)\n'
 commit_all "$REPO" "add main module behind a -diff attribute"
 expect_marked "content hit behind a -diff attribute" "$SCANNED_STUB" "$REPO" "$BASE"
+# The .gitattributes path hit alone would mark the range, so also prove the
+# content leg survives the attribute (review finding 14 on PR #142).
+expect_hit_line "content hit behind a -diff attribute" "app/main.py:1 content" \
+  "$SCANNED_STUB" "$REPO" "$BASE"
 
 # --- 3. Moves to a follow-up slice once the clean Semgrep stubs list their scanned targets.
 
