@@ -83,7 +83,7 @@ Security merge gate:
 - B-9: On a security-touching PR, `gh pr merge` is denied unless all of the following hold: the Semgrep and CodeQL checks are green; a `## Security review` section exists whose `model` line equals `securityReviewModel` and whose `range` head equals the PR head commit; the diff adds at least one test that feeds a security control an insecure value; and no finding has status `open`.
 - B-10: The gate denies a PR whose findings table shows a severity lower than the one in the reviewer's saved artifact for the same finding.
 - B-11: The gate accepts `fixed <sha>` only when that SHA is inside the PR range.
-- B-12: The gate accepts `waived by owner <date>` only when the owner's `approved` appears in the current turn, the same check the R-203 bypass uses.
+- B-12: A finding marked `waived by owner <date>` never lets the merge through silently: the gate returns an `ask` decision naming each waived finding, so the owner confirms the waiver in the harness permission prompt, the same channel R-514 uses for merge authorization.
 - B-13: A replay of #27 is blocked twice: at pre-push by the rule pack, and at merge for the missing security review.
 - B-14: A PR that touches no security surface passes the gate unchanged, so the gate adds no cost to unrelated work.
 
