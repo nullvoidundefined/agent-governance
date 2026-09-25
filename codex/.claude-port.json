@@ -33,7 +33,7 @@
     "agents/audit-ux.toml": "sha256:d398a457a4e4985b820dee9c2116e21e3f369e8afdb18b1ee842509748c98461",
     "agents/implementer.toml": "sha256:a568f376b32d3f712ea27f1a0d4c540e95de8d2caaa8691f814d57d764e33796",
     "agents/pr-reviewer.toml": "sha256:820158e5ceba654e6a9223ee6e82bab7d5ea0394fd9dc044e9586c7d615f50d4",
-    "agents/security-reviewer.toml": "sha256:83b8c31c0a62b26efba176bfc44497c0b8776a075d447d1299d86d42ed2952d1",
+    "agents/security-reviewer.toml": "sha256:ed8e0aebef808c81ecc1ffe74227cdc871a65d1f017a2a3336b41a3990ead438",
     "agents/slice-critic.toml": "sha256:583a13776f84973cae852233d1d1cf58bdad35a73ad9a8759af9f3ab4b0fed05",
     "agents/spec-conformance-review.toml": "sha256:1d5b1cb324078a5753bcb5cf9f9d0d973499e52e1b6e26b74ddb95b255b5f567",
     "agents/test-author.toml": "sha256:3e2420a598c51dcc0ace758012c9fe6154f2c70e3b2d5714374ffca019a0ef0d",

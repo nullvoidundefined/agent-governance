@@ -5,7 +5,8 @@
 #   (1) enforce/security-review-model.json exists and its securityReviewModel
 #       key is a non-empty string;
 #   (2) agents/security-reviewer.md is read-only: its frontmatter tools line is
-#       exactly `tools: Read, Grep, Glob, Bash`, and its model line equals the key;
+#       exactly `tools: Read, Grep, Glob, Bash` (its model line is pinned by
+#       security-reviewer-contract-2.test.sh);
 #   (3) prompts/security-review-prompt.md requires the control inventory, the
 #       input sources per control, the worst value per source and the control's
 #       behavior with it, the insecure-value test with MEDIUM for a missing one,
@@ -52,14 +53,8 @@ else
   TOOLS_LINE=$(printf '%s\n' "$FRONTMATTER" | grep -E '^tools:' || true)
   [ "$TOOLS_LINE" = "tools: Read, Grep, Glob, Bash" ] \
     || report_failure "$AGENT_FILE" "frontmatter tools line is '${TOOLS_LINE:-<missing>}', expected exactly 'tools: Read, Grep, Glob, Bash' (read-only, no Write, Edit, or NotebookEdit)"
-  AGENT_MODEL=$(printf '%s\n' "$FRONTMATTER" | sed -nE 's/^model:[[:space:]]*//p' | sed -E 's/[[:space:]]+$//' | head -n 1)
-  if [ -z "$AGENT_MODEL" ]; then
-    report_failure "$AGENT_FILE" "frontmatter has no 'model:' line with a value"
-  elif [ -z "$MODEL_ID" ]; then
-    report_failure "$AGENT_FILE" "model is '$AGENT_MODEL' but there is no securityReviewModel key to compare it with"
-  elif [ "$AGENT_MODEL" != "$MODEL_ID" ]; then
-    report_failure "$AGENT_FILE" "model is '$AGENT_MODEL', which does not equal the securityReviewModel key '$MODEL_ID'"
-  fi
+  # The model line is pinned by security-reviewer-contract-2.test.sh (6): the
+  # dispatcher passes the model from the key, so no frontmatter check here.
 fi
 
 # --- (3) the review prompt ---------------------------------------------------
@@ -116,7 +111,9 @@ else
   require_exact "(e) finding status 'waived by owner <date>'" '`waived by owner <date>`'
 
   # (f) the Nothing found line must name the values it tried.
-  require_exact "(f) clean-control line format" 'Nothing found: <control>: tried <values>'
+  # The full template, sources included, is pinned by
+  # security-reviewer-contract-2.test.sh (2); this check keeps the shape.
+  require_line_with_all "(f) clean-control line format" 'Nothing found: <control>:' 'tried <'
   require_line_with_all "(f) a Nothing found line naming no values is refused" 'nothing found' 'no values' '(not acceptable|rejected|refused|invalid)'
 
   # (g) trusted configuration never lowers a severity.
