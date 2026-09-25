@@ -146,6 +146,7 @@ def parse_cors_origin(raw_value)
 end
 
 cors_origin = parse_cors_origin(ENV["CORS_ORIGIN"])
+raise "CORS_ORIGIN is required in production" if Rails.env.production? && cors_origin.empty?
 unless cors_origin.empty?
   Rails.application.config.middleware.insert_before 0, Rack::Cors do
     allow do

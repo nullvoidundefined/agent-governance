@@ -118,7 +118,11 @@ func Load() (Config, error) {
     if err != nil {
         return Config{}, err
     }
-    return Config{Environment: os.Getenv("ENVIRONMENT"), CORSOrigin: corsOrigin}, nil
+    environment := os.Getenv("ENVIRONMENT")
+    if environment == "production" && corsOrigin == "" {
+        return Config{}, errors.New("CORS_ORIGIN is required in production")
+    }
+    return Config{Environment: environment, CORSOrigin: corsOrigin}, nil
 }
 
 // unsafeCORSOrigins names the values that would open the credentialed API to any site.
@@ -194,6 +198,16 @@ func TestParseCORSOriginReturnsEmptyForBlankValue(t *testing.T) {
         if got != "" {
             t.Errorf("parseCORSOrigin(%q) = %q, want \"\"", blankValue, got)
         }
+    }
+}
+
+// Load is the one function that reads the environment, so this is the one test that sets it.
+func TestLoadRequiresCORSOriginInProduction(t *testing.T) {
+    t.Setenv("ENVIRONMENT", "production")
+    t.Setenv("CORS_ORIGIN", "")
+    _, err := Load()
+    if err == nil {
+        t.Error("Load() with a blank CORS_ORIGIN in production = nil error, want a refusal")
     }
 }
 ```

@@ -404,8 +404,10 @@ async def test_session_cookie_is_secure_in_staging(app, client, registered_user)
     """A cookie without Secure in staging would travel over plain HTTP."""
     staging_settings = Settings(_env_file=None, environment="staging", database_url="postgresql://localhost/app_test")
     app.dependency_overrides[get_settings] = lambda: staging_settings
-    response = await client.post("/v1/auth/login", json={"email": registered_user.email, "password": "changeme"})
-    app.dependency_overrides.clear()
+    try:
+        response = await client.post("/v1/auth/login", json={"email": registered_user.email, "password": "changeme"})
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
     set_cookie_header = response.headers["set-cookie"]
     assert "Secure" in set_cookie_header
     assert "HttpOnly" in set_cookie_header
