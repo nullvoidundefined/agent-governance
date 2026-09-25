@@ -658,6 +658,38 @@
             "note": "inside a withTransaction callback: a data-access call that neither runs on nor receives the client, a callback with no client parameter, and a fetch or clients/ call; whether a group of writes needed a transaction stays manual. Fixture: enforce/tests/data-access-rules.test.sh"
         },
         {
+            "id": "R-362",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "decides the intent half the eslint row cannot: two or more writes that must land together issued outside one transaction"
+        },
+        {
+            "id": "R-363",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "a value read, changed in application code, and written back with no SQL guard, FOR UPDATE, or version check"
+        },
+        {
+            "id": "R-364",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "a list query with no LIMIT or an uncapped caller limit, an ORDER BY with no unique tiebreaker, rows loaded to count or sum in memory"
+        },
+        {
+            "id": "R-365",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "a value interpolated into SQL text, or an identifier taken from caller input without a constant allowlist"
+        },
+        {
             "id": "R-908",
             "tier": "advisory",
             "enforcer": "hook:codex-billing-guard",

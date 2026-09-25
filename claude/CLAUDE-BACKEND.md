@@ -145,7 +145,7 @@ import { z } from "zod";
 
 // 4. Local imports by layer (config → db → middleware → repos → schemas → services → utils)
 import { corsConfig } from "app/config/corsConfig.js";
-import { query } from "app/db/pool/pool.js";
+import { query } from "app/database/pool.js";
 import * as jobsRepo from "app/repositories/jobs/jobs.js";
 import type { Job } from "app/schemas/job.js";
 import { logger } from "app/utils/logs/logger.js";
@@ -328,7 +328,7 @@ Sessions must use PostgreSQL-backed storage; never in-memory `MemoryStore`:
 ```typescript
 import connectPgSimple from "connect-pg-simple";
 import session from "express-session";
-import { pool } from "app/db/pool/pool.js";
+import { pool } from "app/database/pool.js";
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } from "app/constants/session.js";
 
 const PgStore = connectPgSimple(session);
@@ -526,7 +526,7 @@ export type CreateJobInput = z.infer<typeof createJobSchema>;
 ## Repository Pattern
 
 ```typescript
-import { query } from "app/db/pool/pool.js";
+import { query } from "app/database/pool.js";
 import type { Job } from "app/schemas/job.js";
 
 export async function getJobById(id: string, userId: string): Promise<Job | null> {
@@ -713,7 +713,7 @@ const pool = new Pool({
 
 - Query wrapper logs duration in development
 - Transaction helper: `withTransaction(async (client) => { ... })`
-- Pool lives in `src/db/pool/pool.ts`
+- Pool lives in `src/database/pool.ts` (R-311: `database/`, never `db/`)
 
 ---
 

@@ -233,7 +233,7 @@ pgm.createIndex("messages", ["conversation_id", "created_at"]);
 
 ### Connection
 
-All queries go through the pool wrapper in `src/db/pool/pool.ts`. The wrapper takes an optional `client` so a caller inside a transaction runs on the transaction's connection (R-362), and it counts queries per async context so tests and request logs can see the count (R-361):
+All queries go through the pool wrapper in `src/database/pool.ts`. The wrapper takes an optional `client` so a caller inside a transaction runs on the transaction's connection (R-362), and it counts queries per async context so tests and request logs can see the count (R-361):
 
 ```typescript
 import { AsyncLocalStorage } from "node:async_hooks";

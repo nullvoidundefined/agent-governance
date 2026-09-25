@@ -353,7 +353,7 @@ R-362: Run every group of writes that must succeed or fail together in one trans
   - Statements on one client run in sequence: `await` each in turn, never `Promise.all` over one client.
   - An explicit TypeScript transaction never waits on the network: HTTP calls, queue enqueues, emails, and provider SDK calls happen before it opens or after it commits. A side effect that must happen exactly when the commit happens is written as an outbox row inside the transaction and delivered by a worker.
   - Keep a transaction short: no user input, no sleeps, no unbounded loops inside it. When it locks more than one row, it takes the locks in primary-key order, so two transactions cannot deadlock each other.
-  Enforcement: eslint:transaction-client-required (decides, inside a `withTransaction` callback, a data-access call that neither runs on nor receives the client, a callback that declares no client parameter, and a `fetch` or `clients/` call); whether a group of writes needed a transaction at all depends on intent and stays manual
+  Enforcement: eslint:transaction-client-required (decides, inside a `withTransaction` callback, a data-access call that neither runs on nor receives the client, a callback that declares no client parameter, and a `fetch` or `clients/` call); whether a group of writes needed a transaction at all depends on intent and goes to the judge (warn)
 
 R-363: Make every read-modify-write atomic in the database; never read a value, change it in application code, and write it back unguarded.
   Spec:
@@ -361,7 +361,7 @@ R-363: Make every read-modify-write atomic in the database; never read a value, 
   - When the new value needs application logic, lock the row first with `SELECT ... FOR UPDATE` inside the same transaction (R-362), or use optimistic concurrency: `UPDATE ... SET version = version + 1 WHERE id = $1 AND version = $2`, where zero rows updated means a concurrent change, answered by a reload or a 409.
   - "Select, then insert when absent" is a race; a unique constraint with `ON CONFLICT` decides it.
   - An idempotent endpoint or webhook handler records its idempotency key under a unique constraint in the same transaction as the effect.
-  Enforcement: manual
+  Enforcement: judge (warn; decides a value read, changed in application code, and written back with no SQL guard, row lock, or version check)
 
 R-364: Bound every read by the request, never by the size of the table.
   Spec:
@@ -371,10 +371,10 @@ R-364: Bound every read by the request, never by the size of the table.
   - Aggregate in SQL (`COUNT`, `SUM`, `GROUP BY`), never by loading rows to count or sum them in memory; test existence with `EXISTS` or `LIMIT 1`, never `COUNT(*) > 0`.
   - Select only the columns the caller uses when the table carries large columns (`jsonb` payloads, long `text`) the endpoint does not return; `SELECT *` stays the default for single-row reads and narrow tables.
   - Every column in a `WHERE`, `JOIN`, or `ORDER BY` is covered by an index, and a new query against a table that can grow past a few thousand rows is checked with `EXPLAIN ANALYZE` on realistic data before merge.
-  Enforcement: manual
+  Enforcement: judge (warn; decides a list query with no `LIMIT` or an uncapped caller limit, an `ORDER BY` with no unique tiebreaker, and rows loaded to count or sum in memory); `EXPLAIN ANALYZE` on realistic data stays manual
 
 R-365: Pass only values as query parameters and put only allowlisted identifiers into SQL text; never build SQL from caller input.
   Spec:
   - Every value travels as a placeholder (`$1`), `LIMIT`, `OFFSET`, and array filters (`= ANY($1)`) included; a value is never interpolated or concatenated into the text.
   - A dynamic identifier (the columns of a dynamic `UPDATE`, a sort column, a sort direction) comes from a constant allowlist in the repository, mapped from the caller's key; a key outside the allowlist is rejected. Quoting an identifier is not validation, and object keys from a request body are caller input even after schema parsing that does not strip unknown keys.
-  Enforcement: manual
+  Enforcement: judge (warn; decides a value interpolated into SQL text and an identifier taken from caller input without an allowlist)
