@@ -246,9 +246,10 @@ run_security_surface_semgrep() {
   : > "$scan_dir/.semgrepignore"
   # shellcheck disable=SC2086  # the command may be the two-word `uvx semgrep`
   # --max-target-bytes=0 lifts the default 1 MB limit, over which Semgrep
-  # silently leaves a target out of the scan.
+  # silently leaves a target out of the scan. The `--` keeps a dash-leading
+  # target from reading as an option; Semgrep still lists it as passed.
   (cd "$scan_dir" && $semgrep_command --config "$SECURITY_SURFACE_RULES_DIR" --metrics=off \
-    --disable-version-check --disable-nosem --max-target-bytes=0 --json --quiet "$@" 2>/dev/null)
+    --disable-version-check --disable-nosem --max-target-bytes=0 --json --quiet -- "$@" 2>/dev/null)
   [ "$?" -lt 2 ]
 }
 
@@ -273,14 +274,19 @@ read_semgrep_findings() {
 
 # list_unscanned_semgrep_targets <report> <target>...: prints each target the
 # Semgrep JSON report does not list under `.paths.scanned`, compared exactly as
-# passed, one per line. Returns non-zero when the report has no scanned array.
+# passed, one per line. The targets travel on stdin, never as jq arguments, so
+# a dash-leading target cannot read as a jq option. Returns non-zero when the
+# report is not JSON or has no scanned array.
 list_unscanned_semgrep_targets() {
   local semgrep_report="$1"
   shift
-  jq -r '
-    (.paths.scanned | if type == "array" then . else error("no scanned list") end) as $scanned
-    | $ARGS.positional - $scanned | .[]
-  ' --args "$@" <<< "$semgrep_report" 2>/dev/null
+  printf '%s\n' "$@" | jq -R -s -r --argjson report "$semgrep_report" '
+    ($report.paths.scanned | if type == "array" then . else error("no scanned list") end) as $scanned
+    | split("\n")[:-1] - $scanned | .[]
+  ' 2>/dev/null
+  # Copy both statuses at once: the first test would overwrite PIPESTATUS.
+  local pipe_statuses="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
+  [ "$pipe_statuses" = "0 0" ]
 }
 
 # check_semgrep_targets_scanned <report> <target>...: returns 0 when the report

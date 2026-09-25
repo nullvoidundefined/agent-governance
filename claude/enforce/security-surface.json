@@ -37,7 +37,7 @@
     "helmet\\(",
     "(execute|query)\\([[:space:]]*[rb]?f[rb]?[\"']",
     "(execute|query)\\([[:space:]]*`[^`]*\\$\\{",
-    "rate[-_]?limit|throttl|limiter",
+    "rate[-_]?limit|throttl|(^|[^e])limiter",
     "rejectUnauthorized",
     "InsecureSkipVerify",
     "VERIFY_NONE",
