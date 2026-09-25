@@ -30,7 +30,7 @@ forbidText "$ROOT/rulebook/reference.md" 'Pre-push runs the whole suite' "refere
 requireText "$ROOT/rulebook/reference.md" 'trivial-tier PR' "reference.md R-514 lacks the trivial fast path"
 requireText "$ROOT/skills/task-start/SKILL.md" 'no ticket, no PR document, no Copilot review request' "task-start lacks the trivial fast path"
 forbidText "$ROOT/rulebook/reference.md" 'push-time judge' "reference.md still calls the judge push-time"
-requireText "$ROOT/enforce/README.md" 'R-315, R-316, R-317, R-325, R-334 |' "enforce/README.md judge row must list every llm-judge rule"
+requireText "$ROOT/enforce/README.md" 'R-315, R-316, R-317, R-325, R-334, R-362, R-363, R-364, R-365 |' "enforce/README.md judge row must list every llm-judge rule"
 requireText "$ROOT/rulebook/reference.md" 'under the same merge authorization as any PR' "R-514's trivial path must keep the merge authorization"
 PORT_MAP="$REPO_ROOT/translate/cursor-port-map.json"
 if [ -f "$PORT_MAP" ]; then

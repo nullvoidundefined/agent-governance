@@ -195,6 +195,18 @@ print_blocks_containing() {
   ' "$1"
 }
 
+# has_match reports whether any input line matches, reading ALL of its input
+# first. `grep -q` exits at the first match, and print_blocks_containing writes
+# one block at a time, so under pipefail a block written after grep has gone
+# dies of SIGPIPE and turns a match into a failure; it depends on scheduling
+# and failed 18 of 30 runs under CPU load (2026-09-25). Output to /dev/null is
+# not enough, because GNU grep treats that like -q; counting reads everything.
+has_match() {
+  local match_count
+  match_count=$(grep -c "$@" || true)
+  [ "${match_count:-0}" -gt 0 ]
+}
+
 # A quoted real origin literal, as the positive cases must write it.
 REAL_ORIGIN_LITERAL="[\"']https?://[a-z0-9][a-z0-9.-]*(:[0-9]+)?[\"']"
 
@@ -210,26 +222,26 @@ else
 fi
 
 # (3) Each stack's example test asserts a real origin is accepted and returned unchanged.
-print_blocks_containing "$PYTHON_DOC" 'def test_' | grep -qE "\.cors_origin == ${REAL_ORIGIN_LITERAL}" \
+print_blocks_containing "$PYTHON_DOC" 'def test_' | has_match -E "\.cors_origin == ${REAL_ORIGIN_LITERAL}" \
   || report_failure "$PYTHON_DOC" "no example test asserts '.cors_origin == \"<real origin>\"' for an accepted origin"
-print_blocks_containing "$BACKEND_DOC" 'parseCorsOrigin(' | grep -qE "\.to(Be|Equal|StrictEqual)\(${REAL_ORIGIN_LITERAL}\)" \
+print_blocks_containing "$BACKEND_DOC" 'parseCorsOrigin(' | has_match -E "\.to(Be|Equal|StrictEqual)\(${REAL_ORIGIN_LITERAL}\)" \
   || report_failure "$BACKEND_DOC" "no example test asserts parseCorsOrigin returns a real origin unchanged ('.toBe(\"<real origin>\")')"
-print_blocks_containing "$GO_DOC" 'parseCORSOrigin(' | grep -qE "(!=|==)[[:space:]]*${REAL_ORIGIN_LITERAL}" \
+print_blocks_containing "$GO_DOC" 'parseCORSOrigin(' | has_match -E "(!=|==)[[:space:]]*${REAL_ORIGIN_LITERAL}" \
   || report_failure "$GO_DOC" "no example test compares parseCORSOrigin's result with a real origin ('got != \"<real origin>\"')"
-print_blocks_containing "$RUBY_DOC" 'parse_cors_origin(' | grep -qE "eq\(${REAL_ORIGIN_LITERAL}\)" \
+print_blocks_containing "$RUBY_DOC" 'parse_cors_origin(' | has_match -E "eq\(${REAL_ORIGIN_LITERAL}\)" \
   || report_failure "$RUBY_DOC" "no example test asserts parse_cors_origin returns a real origin unchanged ('eq(\"<real origin>\")')"
 
 # (4) The CORS middleware receives the parser's output, never the raw env value.
-print_blocks_containing "$BACKEND_DOC" 'process.env.CORS_ORIGIN' | grep -qE '(parseCorsOrigin|createCorsConfig)\(process\.env\.CORS_ORIGIN' \
+print_blocks_containing "$BACKEND_DOC" 'process.env.CORS_ORIGIN' | has_match -E '(parseCorsOrigin|createCorsConfig)\(process\.env\.CORS_ORIGIN' \
   || report_failure "$BACKEND_DOC" "no example wires the CORS middleware with 'parseCorsOrigin(process.env.CORS_ORIGIN' or the factory 'createCorsConfig(process.env.CORS_ORIGIN'"
-if print_blocks_containing "$BACKEND_DOC" 'process.env.CORS_ORIGIN' | grep -E 'origin:[[:space:]]*process\.env\.CORS_ORIGIN' | grep -q .; then
+if print_blocks_containing "$BACKEND_DOC" 'process.env.CORS_ORIGIN' | grep -E 'origin:[[:space:]]*process\.env\.CORS_ORIGIN' | has_match .; then
   report_failure "$BACKEND_DOC" "an example passes the raw 'origin: process.env.CORS_ORIGIN' to the CORS middleware"
 fi
-print_blocks_containing "$GO_DOC" 'parseCORSOrigin(' | grep -qF 'AllowedOrigins' \
+print_blocks_containing "$GO_DOC" 'parseCORSOrigin(' | has_match -F 'AllowedOrigins' \
   || report_failure "$GO_DOC" "no fenced block holds both 'parseCORSOrigin(' and 'AllowedOrigins', so the parsed origin is never shown reaching the CORS middleware"
-print_blocks_containing "$RUBY_DOC" 'parse_cors_origin(ENV' | grep -q . \
+print_blocks_containing "$RUBY_DOC" 'parse_cors_origin(ENV' | has_match . \
   || report_failure "$RUBY_DOC" "no example feeds 'parse_cors_origin(ENV' to the rack-cors configuration"
-if print_blocks_containing "$RUBY_DOC" 'origins' | grep -E "origins[[:space:]]+ENV" | grep -q .; then
+if print_blocks_containing "$RUBY_DOC" 'origins' | grep -E "origins[[:space:]]+ENV" | has_match .; then
   report_failure "$RUBY_DOC" "an example passes the raw 'origins ENV' value to rack-cors"
 fi
 

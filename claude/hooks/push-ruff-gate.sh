@@ -2,11 +2,17 @@
 # push-ruff-gate.sh: on `git push`, run the bundled enforcement ruff config over
 # the Python files added/changed in the outgoing diff. Deny the push on any
 # violation of the AST-tier rule analogs (R-324/R-326/R-329/R-342/R-344; code mapping in
-# enforce/ruff-enforce.toml). The Python counterpart of push-eslint-gate.sh:
+# enforce/ruff-enforce.toml). It also runs the standard-library data-access
+# checker (enforce/data-access/python_data_access.py) over the same files,
+# which decides the Python halves of R-361 (a query per loop iteration, the
+# N+1) and R-362 (network I/O, or a statement off the transaction's
+# connection, inside an explicit begin()/begin_nested() block), because ruff
+# cannot load custom rules. The Python counterpart of push-eslint-gate.sh:
 # heavy work runs once per push, not per edit; only lines the outgoing diff
-# adds can deny (--added-only parity, 2026-07-10, Ian-approved); fails OPEN
-# with a stderr note when no ruff binary is available, because a missing tool
-# must not block legitimate work.
+# adds can deny (--added-only parity, 2026-07-10, Ian-approved). Each tool
+# fails OPEN on its own with a stderr note when it is unavailable (no ruff or
+# uvx, or no python3), because a missing tool must not block legitimate work,
+# and one tool missing must not switch the other off.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
 # allow; a guard fails closed by structure, never open by accident
@@ -52,6 +58,11 @@ BASE=$(resolve_outgoing_base)
 FILES=$(run_git_on_target diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.py$' || true)
 [ -z "$FILES" ] && exit 0
 
+# Resolve both tools before any heavy work. A missing tool no longer exits
+# the gate early: ruff absent still lets the data-access checker run, and
+# python3 absent still lets ruff run; only when both are absent is there
+# nothing to do.
+RUFF=""
 if [ -n "${CLAUDE_RUFF_CMD:-}" ]; then
   RUFF="$CLAUDE_RUFF_CMD"
 elif command -v ruff >/dev/null 2>&1; then
@@ -59,9 +70,22 @@ elif command -v ruff >/dev/null 2>&1; then
 elif command -v uvx >/dev/null 2>&1; then
   RUFF="uvx ruff"
 else
-  echo "push-ruff-gate: no ruff or uvx on PATH, skipping the Python AST gate (install ruff or uv)" >&2
-  exit 0
+  echo "push-ruff-gate: no ruff or uvx on PATH, skipping the ruff AST checks (install ruff or uv)" >&2
 fi
+
+# CLAUDE_PYTHON_CMD mirrors CLAUDE_RUFF_CMD so a fixture can drive the
+# missing-interpreter path without rebuilding PATH.
+DATA_ACCESS_CHECKER="$ENFORCE_DIR/data-access/python_data_access.py"
+PYTHON_CMD="${CLAUDE_PYTHON_CMD:-python3}"
+RUN_CHECKER=1
+if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
+  echo "push-ruff-gate: no python3 on PATH, skipping the R-361/R-362 data-access checker" >&2
+  RUN_CHECKER=0
+elif [ ! -f "$DATA_ACCESS_CHECKER" ]; then
+  echo "push-ruff-gate: data-access checker missing at $DATA_ACCESS_CHECKER, skipping it (fails open)" >&2
+  RUN_CHECKER=0
+fi
+[ -z "$RUFF" ] && [ "$RUN_CHECKER" = 0 ] && exit 0
 
 TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$TOP" ] || exit 0
@@ -87,27 +111,53 @@ ADDED=$(run_git_on_target diff -U0 --diff-filter=ACMR "$BASE"..HEAD -- '*.py' 2>
   }')
 [ -z "$ADDED" ] && exit 0
 
-RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs $RUFF check --config "$CONFIG" $EXTRA_SELECT --output-format json --no-cache 2>/dev/null || true)
-printf '%s' "$RESULTS" | jq -e 'type == "array"' >/dev/null 2>&1 || {
-  echo "push-ruff-gate: ruff produced no parseable output, skipping (fails open)" >&2
-  exit 0
-}
-
-REPORT=$(printf '%s' "$RESULTS" | jq -r --arg added "$ADDED" --arg top "$TOP/" '
-  ($added | split("\n") | map(select(length > 0))) as $lines
+# Ruff and the checker each yield "path:line CODE message" lines filtered to
+# the added set; the jq filter is shared so both tools are scoped the same way.
+# ruff reports absolute filenames, and the checker echoes the relative paths
+# it was given, so stripping the top-level prefix normalizes both.
+ADDED_FILTER='($added | split("\n") | map(select(length > 0))) as $lines
   | [ .[]
-      | (.filename | ltrimstr($top)) as $rel
-      | ($rel + ":" + (.location.row | tostring)) as $key
+      | (.file | ltrimstr($top)) as $rel
+      | ($rel + ":" + (.line | tostring)) as $key
       | select($lines | index($key))
-      | "\($rel):\(.location.row) \(.code) \(.message)" ]
-  | .[]' 2>/dev/null || true)
+      | "\($rel):\(.line) \(.code) \(.message)" ]
+  | .[]'
+
+RUFF_REPORT=""
+if [ -n "$RUFF" ]; then
+  RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs $RUFF check --config "$CONFIG" $EXTRA_SELECT --output-format json --no-cache 2>/dev/null || true)
+  if printf '%s' "$RESULTS" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    RUFF_REPORT=$(printf '%s' "$RESULTS" | jq -r --arg added "$ADDED" --arg top "$TOP/" \
+      "map({file: .filename, line: .location.row, code: .code, message: .message}) | $ADDED_FILTER" 2>/dev/null || true)
+  else
+    # An unparseable ruff run used to end the gate here; it now skips only
+    # ruff, so the data-access checker still judges the push.
+    echo "push-ruff-gate: ruff produced no parseable output, skipping the ruff checks (fails open)" >&2
+  fi
+fi
+
+DATA_ACCESS_REPORT=""
+if [ "$RUN_CHECKER" = 1 ]; then
+  # xargs may split a long file list into several runs, each printing its own
+  # JSON array, so jq -s concatenates them before filtering.
+  CHECKER_RESULTS=$(cd "$TOP" && printf '%s\n' "$FILES" | xargs "$PYTHON_CMD" "$DATA_ACCESS_CHECKER" 2>/dev/null || true)
+  if printf '%s' "$CHECKER_RESULTS" | jq -s -e 'length > 0 and all(type == "array")' >/dev/null 2>&1; then
+    DATA_ACCESS_REPORT=$(printf '%s' "$CHECKER_RESULTS" | jq -r -s --arg added "$ADDED" --arg top "$TOP/" \
+      "add | map({file: .file, line: .line, code: .rule, message: .message}) | $ADDED_FILTER" 2>/dev/null || true)
+  else
+    echo "push-ruff-gate: the data-access checker produced no parseable output, skipping it (fails open)" >&2
+  fi
+fi
+
+REPORT=$(printf '%s\n%s\n' "$RUFF_REPORT" "$DATA_ACCESS_REPORT" | grep -v '^$' || true)
 
 if [ -n "$REPORT" ]; then
   LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
   [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
-  log_rule_fire "ruff-ast" "push-ruff-gate" "deny"
-  jq -n --arg r "ruff enforcement failed on the outgoing diff (R-324/R-326/R-329 Python analogs; mapping in enforce/ruff-enforce.toml). Fix the violations:
+  [ -n "$RUFF_REPORT" ] && log_rule_fire "ruff-ast" "push-ruff-gate" "deny"
+  [ -n "$DATA_ACCESS_REPORT" ] && log_rule_fire "python-data-access" "push-ruff-gate" "deny"
+  jq -n --arg r "Python enforcement failed on the outgoing diff (ruff: R-324/R-326/R-329/R-342/R-344 analogs, mapping in enforce/ruff-enforce.toml; data-access checker: R-361/R-362, silenced only by a \`# data-access-allow: <reason>\` comment). Fix the violations:
 $REPORT" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 fi
 exit 0

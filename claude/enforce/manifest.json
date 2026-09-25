@@ -642,6 +642,102 @@
             "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM"
         },
         {
+            "id": "R-361",
+            "tier": "ast",
+            "enforcer": "eslint:no-query-in-loop",
+            "severity": "error",
+            "autofix": false,
+            "note": "a data-access call (the pool query, any .query, or a function imported from repositories/, database/, or db/) in a loop body, a for/while test or update clause, or an array iteration callback including Promise.all(xs.map(...)); server trees plus every src/services tree; a helper declared elsewhere is not followed, which the query-budget test in CLAUDE-DATABASE.md covers. Fixture: enforce/tests/data-access-rules.test.sh"
+        },
+        {
+            "id": "R-362",
+            "tier": "ast",
+            "enforcer": "eslint:transaction-client-required",
+            "severity": "error",
+            "autofix": false,
+            "note": "inside a withTransaction callback: a data-access call that neither runs on nor receives the client, a callback with no client parameter, and a fetch or clients/ call; whether a group of writes needed a transaction stays manual. Fixture: enforce/tests/data-access-rules.test.sh"
+        },
+        {
+            "id": "R-361",
+            "tier": "ast",
+            "enforcer": "hook:push-ruff-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog via enforce/data-access/python_data_access.py (stdlib ast, run by push-ruff-gate on added lines): repository/db-imported call or execute/scalar(s)/stream call inside a for/async for/while body or while test, a comprehension element or filter, or a map/filter lambda; helpers not followed; suppressed by # data-access-allow: <reason>. Fixture: enforce/tests/data-access-python.test.sh"
+        },
+        {
+            "id": "R-362",
+            "tier": "ast",
+            "enforcer": "hook:push-ruff-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Python analog via enforce/data-access/python_data_access.py: inside with/async with <expr>.begin()/begin_nested(), an httpx/requests/aiohttp or clients/ call, or a data-access call not given the transaction connection (the as-name or begin receiver, engines excluded); get_connection dependency not inspected. Fixture: enforce/tests/data-access-python.test.sh"
+        },
+        {
+            "id": "R-361",
+            "tier": "ast",
+            "enforcer": "hook:push-golangci-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Go analog via enforce/data-access/go/main.go (stdlib go/ast, built and run by push-golangci-gate on added lines, including repos off the golangci trust list since it only parses): Query/QueryRow/Exec/*Context/CopyFrom, repositories/ import, or *Repo/*Repository receiver call in a for/range body, cond/post, or a literal invoked there; helpers not followed; SendBatch results exempt; // data-access-allow: <reason> suppresses. Fixture: enforce/tests/data-access-go.test.sh"
+        },
+        {
+            "id": "R-362",
+            "tier": "ast",
+            "enforcer": "hook:push-golangci-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Go analog via enforce/data-access/go/main.go: inside a BeginFunc/BeginTxFunc/WithTx/WithTransaction/InTx/RunInTx literal with a *Tx parameter, a data-access call not on or passed the tx, or net/http, .Do on a client, or clients/ calls; a context-carried tx is not checked. Fixture: enforce/tests/data-access-go.test.sh"
+        },
+        {
+            "id": "R-361",
+            "tier": "ast",
+            "enforcer": "hook:push-rubocop-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Ruby analog via enforce/data-access/ruby_data_access.rb (stdlib Ripper, run by push-rubocop-gate on added lines): ActiveRecord finder or writer on a model constant, connection-level SQL, or query-object .call inside an iteration block or while/until/for; lazy association access is not decidable (strict_loading/includes); # data-access-allow: <reason> suppresses. Fixture: enforce/tests/data-access-ruby.test.sh"
+        },
+        {
+            "id": "R-362",
+            "tier": "ast",
+            "enforcer": "hook:push-rubocop-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "Ruby analog via enforce/data-access/ruby_data_access.rb: network client call, deliver_now/deliver_later, or perform_later/perform_async/perform_in/perform_at inside a transaction or with_lock block (after_commit blocks exempt). Fixture: enforce/tests/data-access-ruby.test.sh"
+        },
+        {
+            "id": "R-362",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "decides the intent half the eslint row cannot: two or more writes that must land together issued outside one transaction"
+        },
+        {
+            "id": "R-363",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "a value read, changed in application code, and written back with no SQL guard, FOR UPDATE, or version check"
+        },
+        {
+            "id": "R-364",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "a list query with no LIMIT or an uncapped caller limit, an ORDER BY with no unique tiebreaker, rows loaded to count or sum in memory"
+        },
+        {
+            "id": "R-365",
+            "tier": "llm-judge",
+            "enforcer": "ci:llm-rule-judge",
+            "severity": "warn",
+            "autofix": false,
+            "note": "a value interpolated into SQL text, or an identifier taken from caller input without a constant allowlist"
+        },
+        {
             "id": "R-908",
             "tier": "advisory",
             "enforcer": "hook:codex-billing-guard",
