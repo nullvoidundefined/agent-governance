@@ -1,0 +1,38 @@
+{
+  "paths": [
+    "cors",
+    "csrf",
+    "csp",
+    "auth",
+    "session",
+    "cookie",
+    "crypto",
+    "password",
+    "token",
+    "security",
+    "permission",
+    "policy",
+    "(^|/)[^/]*(settings|config)[^/]*\\.(py|ts|js|go|rb)$",
+    "(^|/)middleware/",
+    "(^|/)\\.github/workflows/",
+    "(^|/)Dockerfile[^/]*$"
+  ],
+  "content": [
+    "CORSMiddleware",
+    "cors\\(",
+    "allow_origins",
+    "allow_credentials",
+    "set_cookie",
+    "Set-Cookie",
+    "SameSite",
+    "httponly",
+    "bcrypt\\.(hashpw|checkpw|hash|hashSync|compare|compareSync)\\(",
+    "jwt",
+    "hashlib",
+    "verify=",
+    "Content-Security-Policy",
+    "helmet\\(",
+    "(execute|query)\\([[:space:]]*[rb]?f[rb]?[\"']",
+    "(execute|query)\\([[:space:]]*`[^`]*\\$\\{"
+  ]
+}
