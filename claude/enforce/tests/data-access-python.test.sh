@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:push-ruff-gate
 # Verifies the Python data-access checker (enforce/data-access/python_data_access.py)
 # directly, then once end to end through push-ruff-gate.sh.

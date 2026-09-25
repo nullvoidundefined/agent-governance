@@ -332,7 +332,7 @@ R-351: Dockerize every deployable artifact from its first commit.
 
 ### Data access (R-36x)
 
-Applies to every code path that reaches a database: repositories, services, handlers, workers, in every stack. Tests, seed scripts, and one-off backfills under `scripts/` or `bin/` are exempt. `CLAUDE-DATABASE.md` carries the SQL shapes and the query-budget test.
+Applies to every code path that reaches a database: repositories, services, handlers, workers, in every stack. Exempt, in every enforcer: tests and test data (`tests/`, `test/`, `spec/`, `__tests__/`, Go `testdata/` and `_test.go`), migrations (`migrations/`, Alembic `alembic/`, and Rails `db/`, which also holds seeds and the schema), and one-off scripts, seeds, and backfills under `scripts/`, `script/`, `bin/`, Rails `lib/tasks/`, or Go `cmd/tools/`. `CLAUDE-DATABASE.md` carries the SQL shapes and the query-budget test.
 
 R-361: Never query once per element of a collection (the N+1); load or write the set in one statement.
   Spec:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:push-rubocop-gate
 # Verifies the Ruby data-access checker (enforce/data-access/ruby_data_access.rb)
 # directly, then once end to end through push-rubocop-gate.sh.
