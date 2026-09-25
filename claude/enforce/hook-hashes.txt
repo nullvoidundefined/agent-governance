@@ -119,6 +119,7 @@ d257eb6189ee28f012ec44d811bf203eab5a71b48c05b3b9d17e93cc95487c47  enforce/tests/
 62a2363721e50bbf02d115841116224835d351b6479fa85094802136c8405683  enforce/tests/push-golangci-gate.test.sh
 6460b0bd97ee8f34505632fbeaa78afbbc4d2259ce0271faab01011f66d71422  enforce/tests/push-rubocop-gate.test.sh
 64122a26b24f96d2815fd7ce5fd6db655aa5308d8fb82358cdb41c1e31aa47c9  enforce/tests/push-ruff-gate.test.sh
+8dddcae324aaad3aff820928a7c32011f6361fe51b6e201749f61876a1f6ece2  enforce/tests/push-semgrep-gate.test.sh
 f1c996b51d37a4429951d597d22087a5c592e9a581be2e827acdeadc3987467a  enforce/tests/r001-non-interactive-scope-rule-text.test.sh
 98b76df279d558144f82c4867d8427a228b0a7634ac50624b6dd127effe19f22  enforce/tests/r001-project-file-rule-text.test.sh
 abdf995c121507205c523891dc8ac8b4d7fbfe2af177cb44519ba4280cb99be9  enforce/tests/r334-engine-case-rule-text.test.sh
