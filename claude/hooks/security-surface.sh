@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # security-surface.sh: the security-surface detector, a sourced helper and not
-# a hook (IAN-381, B-7, B-8, and B-8c). It decides whether the range
+# a hook (IAN-381, B-7, B-8, B-8c, and B-8d). It decides whether the range
 # <base-oid>..<head-oid> of a repository touches a security surface, so the
 # security merge gate can demand a security review only for the PRs that need
 # one.
@@ -28,8 +28,11 @@
 # push-semgrep-gate.sh rather than extracted, so that gate stays untouched.
 #
 # The detector fails CLOSED: when the patterns, the diff, or the Semgrep scan
-# cannot be read (no Semgrep resolves, it crashes, its JSON is unreadable, or
-# it reports errors or skipped paths), when scope-match.sh did not load, or
+# cannot be read (no Semgrep resolves, it crashes, its JSON is unreadable, it
+# reports errors or skipped paths, or its `.paths.scanned` list leaves out any
+# exported code target, compared exactly as the relative path passed from the
+# export directory; the scan runs with --max-target-bytes=0 so no size limit
+# drops a target), when scope-match.sh did not load, or
 # when an exported code file does not parse (`.py` through the PATH python3 in
 # isolated mode, `.js .mjs .cjs` through `node --check` when node is on PATH),
 # is_security_surface returns 0, because a detector error must never excuse a
@@ -242,8 +245,10 @@ run_security_surface_semgrep() {
   # target (a tests/ directory, for example).
   : > "$scan_dir/.semgrepignore"
   # shellcheck disable=SC2086  # the command may be the two-word `uvx semgrep`
+  # --max-target-bytes=0 lifts the default 1 MB limit, over which Semgrep
+  # silently leaves a target out of the scan.
   (cd "$scan_dir" && $semgrep_command --config "$SECURITY_SURFACE_RULES_DIR" --metrics=off \
-    --disable-version-check --disable-nosem --json --quiet "$@" 2>/dev/null)
+    --disable-version-check --disable-nosem --max-target-bytes=0 --json --quiet "$@" 2>/dev/null)
   [ "$?" -lt 2 ]
 }
 
@@ -261,13 +266,44 @@ read_semgrep_findings() {
     then (.results[] | "\(.path):\(.start.line) semgrep"), ""
     else error("incomplete report") end
   ' 2>/dev/null | sed '/^$/d'
-  [ "${PIPESTATUS[0]}" -eq 0 ]
+  # Copy both statuses at once: the first test would overwrite PIPESTATUS.
+  local pipe_statuses="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
+  [ "$pipe_statuses" = "0 0" ]
+}
+
+# list_unscanned_semgrep_targets <report> <target>...: prints each target the
+# Semgrep JSON report does not list under `.paths.scanned`, compared exactly as
+# passed, one per line. Returns non-zero when the report has no scanned array.
+list_unscanned_semgrep_targets() {
+  local semgrep_report="$1"
+  shift
+  jq -r '
+    (.paths.scanned | if type == "array" then . else error("no scanned list") end) as $scanned
+    | $ARGS.positional - $scanned | .[]
+  ' --args "$@" <<< "$semgrep_report" 2>/dev/null
+}
+
+# check_semgrep_targets_scanned <report> <target>...: returns 0 when the report
+# lists every target as scanned, and non-zero after naming each unscanned
+# target on stderr, or when the scanned list cannot be read, because a target
+# Semgrep silently left out is indistinguishable from a clean one.
+check_semgrep_targets_scanned() {
+  local unscanned_targets target_path
+  unscanned_targets=$(list_unscanned_semgrep_targets "$@") || {
+    echo "security-surface: the Semgrep report has no readable scanned-path list" >&2
+    return 1
+  }
+  [ -n "$unscanned_targets" ] || return 0
+  while IFS= read -r target_path; do
+    echo "security-surface: Semgrep did not scan $target_path" >&2
+  done <<< "$unscanned_targets"
+  return 1
 }
 
 # list_semgrep_hits <repo-top> <head-oid> <file list> <work dir>: prints
 # `path:line semgrep` for each rule-pack finding in the listed code files, or
 # nothing when none of them is a code file. Returns non-zero when a code file
-# does not parse or the scan fails.
+# does not parse, the scan fails, or the report leaves a target unscanned.
 list_semgrep_hits() {
   local repo_top="$1" head_oid="$2" file_list="$3" scan_dir="$4/scan" exported_files semgrep_report file_path
   local scan_targets=()
@@ -279,7 +315,8 @@ list_semgrep_hits() {
   [ "${#scan_targets[@]}" -gt 0 ] || return 0
   check_security_surface_code_parses "$scan_dir" "${scan_targets[@]}" || return 1
   semgrep_report=$(run_security_surface_semgrep "$scan_dir" "${scan_targets[@]}") || return 1
-  printf '%s' "$semgrep_report" | read_semgrep_findings
+  printf '%s' "$semgrep_report" | read_semgrep_findings || return 1
+  check_semgrep_targets_scanned "$semgrep_report" "${scan_targets[@]}"
 }
 
 # collect_security_surface_hits <repo-top> <base-oid> <head-oid> <work dir>:
