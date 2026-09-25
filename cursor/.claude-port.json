@@ -20,7 +20,7 @@
   },
   "files": {
     ".gitignore": "sha256:c4ab4bd26f89bcf7d2a5d4d632b97834bbd0d32877a9566303292893d4963c37",
-    "PORT-STATUS.md": "sha256:effea58f35074b078309a4d65735eebdd10a8a1eb90384ea581b657243b8566c",
+    "PORT-STATUS.md": "sha256:c4f48124ff647227173a2453f851f58ca0f8a19df8d24515528ba2434c2dd255",
     "agents/audit-criticism.md": "sha256:d2c130cb9ec0f35995a7aadb6786b0e5e0a176f91731df0dbc64a6dc7c1419cb",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",
     "agents/audit-design.md": "sha256:86f8aa6d608e6f7cecada777dca12fd35ba751e57875d8f30e80685c22d1673b",
@@ -41,7 +41,7 @@
     "commands/audit-security.md": "sha256:0b91845bae44ecf29e11ab31841b97d81fb08bfc4d43b70e39f3d118c0f8b0a8",
     "commands/audit-ux.md": "sha256:8a131255913384b5184c22b447da75792555bf84eafcac7961162e545012fbaa",
     "commands/spec-conformance-review.md": "sha256:292c3d0e222778fac5340b0f15c1e4b3239ae44c6f8902b4d05ad1e25b8ae1f0",
-    "hooks.json": "sha256:ba7ab11a7a0c7c77e45d915c4699aff136d2813c71391571c8ebf566600de8f7",
+    "hooks.json": "sha256:4d946e8d19a6be34c33b79d2bc9b382d2c6c6086850ff4afdaf416854590e0a5",
     "rules/000-global-rules.mdc": "sha256:2efdab12ebd846f3d4f30e6d25c8d087964ce08e5f006cdb5f1bbd85da341f60",
     "rules/001-session-types.mdc": "sha256:18c406b47904fd2a5cf382719241b4744d33e33ac0c59cab0340f0c93bc61ac6",
     "rules/002-global-memory-index.mdc": "sha256:f87fcc12b6580008110f71ca587f26429e7d8d85adf721408cdbbf2447e84183",

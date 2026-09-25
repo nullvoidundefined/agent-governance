@@ -21,7 +21,7 @@
   "files": {
     ".gitignore": "sha256:855899d454a58e0c021afc57673bd0108d0209de043b2da9e94dd38e6ba082b3",
     "AGENTS.md": "sha256:9d8c809e90fa1c2876c9e4f5489d001ce28a436d88dfc495a1320c51ca5bdd7f",
-    "PORT-STATUS.md": "sha256:c649e773a94854d762d66a4bf0ee323cb5951bd805dd754eed2ccdb51798c24c",
+    "PORT-STATUS.md": "sha256:e816f8d6db97f2ca95f51019eec69cf95837cf4ed46729abfb9058f25dfc0a3f",
     "agents/audit-criticism.toml": "sha256:cfd0d75ca5ee6e36f251cc42a4e83dc03ca191297ed51a8732386a59cca6f628",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",
     "agents/audit-design.toml": "sha256:096747f9f18673dee96a5f6d32cb17c6285a7b18d243fdbb9f85d33883b180b3",
@@ -36,7 +36,7 @@
     "agents/slice-critic.toml": "sha256:583a13776f84973cae852233d1d1cf58bdad35a73ad9a8759af9f3ab4b0fed05",
     "agents/spec-conformance-review.toml": "sha256:1d5b1cb324078a5753bcb5cf9f9d0d973499e52e1b6e26b74ddb95b255b5f567",
     "agents/test-author.toml": "sha256:3e2420a598c51dcc0ace758012c9fe6154f2c70e3b2d5714374ffca019a0ef0d",
-    "hooks.json": "sha256:967935c203ecd752b3186069056d7664ccd1e1e3ab27d91f2462878740128de6",
+    "hooks.json": "sha256:77d5e3c6ffc98ca576ff84c7f3747cee53ad1c57cf2da1d0ff19a28da4e68ab3",
     "skills/add-stack-track/SKILL.md": "sha256:1c713e4633aed6e30493a6f98ac07a987944f912b54d93d4a828646837af9584",
     "skills/all-hands/SKILL.md": "sha256:0d470818244fe82c6c0c0e760f766b6d28fb0a9ecc7acecd342351a57961212a",
     "skills/audit-criticism/SKILL.md": "sha256:345d45c383cd6d7d4c6cc03c4f777b153bde4ff0c6158122726e2603822b17a3",

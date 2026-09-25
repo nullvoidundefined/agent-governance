@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-54 of 61 hook registrations port, across 9 Cursor events.
+55 of 62 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -20,6 +20,7 @@
 | `ticket-at-start-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-eslint-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-ruff-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
+| `push-semgrep-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-rubocop-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-golangci-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-feature-docs-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
