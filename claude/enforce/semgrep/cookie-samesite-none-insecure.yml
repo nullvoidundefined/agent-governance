@@ -54,5 +54,10 @@ rules:
                   {...}
               - pattern-not: |
                   {..., secure: $SECURE, ...}
+              # Known limit: an object that spreads another object may carry
+              # secure through the spread, which Semgrep cannot resolve, so a
+              # spread counts as possibly secure and the object is not reported.
+              - pattern-not: |
+                  {..., ...$SPREAD, ...}
           - pattern: |
               {..., secure: false, ...}

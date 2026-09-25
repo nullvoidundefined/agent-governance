@@ -17,6 +17,16 @@ rules:
       - metavariable-comparison:
           metavariable: $COST
           comparison: $COST < 12
+  - id: typescript.gensalt-default.bcrypt-weak-cost
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      bcrypt genSalt with no cost argument uses the library default of 10,
+      below the floor of 12, which makes an offline brute-force of a leaked
+      hash cheaper. Pass a cost of 12 or higher (R-109).
+    pattern-either:
+      - pattern: bcrypt.genSalt()
+      - pattern: bcrypt.genSaltSync()
   - id: typescript.bcrypt-weak-cost
     languages: [typescript, javascript]
     severity: ERROR
