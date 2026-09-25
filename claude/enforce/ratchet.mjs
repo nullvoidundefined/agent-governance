@@ -34,7 +34,9 @@ import { buildEslintOptions } from "./eslint-options.mjs";
 
 const BASELINE_FILENAME = ".enforce-baseline.json";
 const SOURCE_EXTENSION_PATTERN = /\.(tsx?|vue)$/;
-const EXCLUDED_PATH_PATTERN = /(^|\/)(node_modules|dist|build|coverage|\.next)(\/|$)/;
+// testdata/ holds inert sample inputs (the Semgrep rule pack's deliberately insecure samples),
+// never source, following Go's convention that tooling ignores it (IAN-381).
+const EXCLUDED_PATH_PATTERN = /(^|\/)(node_modules|dist|build|coverage|\.next|testdata)(\/|$)/;
 
 const args = process.argv.slice(2);
 const shouldUpdate = args.includes("--update");

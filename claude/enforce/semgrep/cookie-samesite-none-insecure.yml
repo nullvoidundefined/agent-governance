@@ -1,0 +1,63 @@
+# Reports a cookie set with SameSite=None whose Secure flag is missing or
+# false, including a Starlette SessionMiddleware with same_site="none" whose
+# https_only is missing or false (R-109, B-5). Each id is namespaced by its
+# language so no two rules in this file share an id; every finding's id still
+# ends in cookie-samesite-none-insecure.
+rules:
+  - id: python.cookie-samesite-none-insecure
+    languages: [python]
+    severity: ERROR
+    message: >-
+      This cookie is SameSite=None without Secure, so browsers either reject it
+      or send the cross-site cookie over plain HTTP where it can be read and
+      replayed. Set secure=True on every SameSite=None cookie (R-109).
+    patterns:
+      - pattern: $COOKIE.set_cookie(..., samesite=$SAMESITE, ...)
+      - metavariable-regex:
+          metavariable: $SAMESITE
+          regex: (?i)^["']none["']$
+      - pattern-either:
+          - patterns:
+              - pattern: $COOKIE.set_cookie(...)
+              - pattern-not: $COOKIE.set_cookie(..., secure=$SECURE, ...)
+          - pattern: $COOKIE.set_cookie(..., secure=False, ...)
+  - id: python.session-middleware.cookie-samesite-none-insecure
+    languages: [python]
+    severity: ERROR
+    message: >-
+      This SessionMiddleware sets its session cookie SameSite=None without
+      https_only=True (the default is False), so browsers either reject it or
+      send the cross-site session cookie over plain HTTP where it can be read
+      and replayed. Pass https_only=True with same_site="none" (R-109).
+    patterns:
+      - pattern: $APP.add_middleware(SessionMiddleware, ..., same_site=$SAMESITE, ...)
+      - metavariable-regex:
+          metavariable: $SAMESITE
+          regex: (?i)^["']none["']$
+      - pattern-not: $APP.add_middleware(SessionMiddleware, ..., https_only=True, ...)
+  - id: typescript.cookie-samesite-none-insecure
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      This cookie is sameSite "none" without secure, so browsers either reject
+      it or send the cross-site cookie over plain HTTP where it can be read and
+      replayed. Set secure: true on every sameSite "none" cookie (R-109).
+    patterns:
+      - pattern: |
+          {..., sameSite: $SAMESITE, ...}
+      - metavariable-regex:
+          metavariable: $SAMESITE
+          regex: (?i)^["']none["']$
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  {...}
+              - pattern-not: |
+                  {..., secure: $SECURE, ...}
+              # Known limit: an object that spreads another object may carry
+              # secure through the spread, which Semgrep cannot resolve, so a
+              # spread counts as possibly secure and the object is not reported.
+              - pattern-not: |
+                  {..., ...$SPREAD, ...}
+          - pattern: |
+              {..., secure: false, ...}

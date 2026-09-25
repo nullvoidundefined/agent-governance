@@ -1,0 +1,44 @@
+# Reports an HTTP or TLS client configured to skip certificate verification,
+# in Python, TypeScript, and Go (R-109, B-5). One rule per language, each id
+# namespaced by its language so no two rules in this file share an id; every
+# finding's id still ends in tls-verification-disabled.
+rules:
+  - id: python.tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: >-
+      This turns off TLS certificate or hostname checks (verify=False on a
+      call or a session, an aiohttp connector with ssl=False, an unverified
+      ssl context, check_hostname=False, or CERT_NONE), so anyone on the
+      network path can impersonate the server and read or alter the traffic.
+      Use ssl.create_default_context() and leave verification on; load a CA
+      bundle to trust a private CA (R-109).
+    pattern-either:
+      - pattern: $CALL(..., verify=False, ...)
+      - pattern: $SESSION.verify = False
+      - pattern: aiohttp.TCPConnector(..., ssl=False, ...)
+      - pattern: ssl._create_unverified_context(...)
+      - pattern: $CONTEXT.check_hostname = False
+      - pattern: $CONTEXT.verify_mode = ssl.CERT_NONE
+  - id: typescript.tls-verification-disabled
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      rejectUnauthorized: false or NODE_TLS_REJECT_UNAUTHORIZED="0" turns off
+      TLS certificate checks, so anyone on the network path can impersonate
+      the server and read or alter the traffic. Leave verification on, and
+      pass ca: <certificate> to trust a private CA (R-109).
+    pattern-either:
+      - pattern: |
+          {..., rejectUnauthorized: false, ...}
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+  - id: go.tls-verification-disabled
+    languages: [go]
+    severity: ERROR
+    message: >-
+      InsecureSkipVerify: true turns off TLS certificate checks, so anyone on
+      the network path can impersonate the server and read or alter the
+      traffic. Leave it false, and set RootCAs to trust a private CA (R-109).
+    pattern-either:
+      - pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"
+      - pattern: $CONFIG.InsecureSkipVerify = true

@@ -1,0 +1,64 @@
+# Reports a CORS origin setting that no field validator checks, the
+# template-fastapi-nuxt #27 shape (R-109, B-3, B-4). The settings rule reports
+# an origin-named field on a class that extends BaseSettings, directly or
+# through a BaseSettings subclass defined in the same file. The sink rule
+# reports a credentialed CORSMiddleware whose allow_origins reads a
+# settings.<field> that no @field_validator in the file checks, which catches a
+# Settings class whose BaseSettings parent is imported from another module.
+# Each id is namespaced so no two rules in this file share an id; every
+# finding's id still ends in cors-unvalidated-setting.
+rules:
+  - id: cors-unvalidated-setting
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Settings field '$FIELD' feeds the CORS allowed origins but no
+      @field_validator("$FIELD") checks it, so an environment value of '*' or
+      'null' reaches a credentialed CORS policy and lets any site read
+      authenticated responses. Add a @field_validator for '$FIELD' that
+      refuses '*' and 'null' and accepts only concrete origins (R-109).
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              class $SETTINGS(..., BaseSettings, ...):
+                  ...
+          - pattern-inside: |
+              class $PARENT(..., BaseSettings, ...):
+                  ...
+              ...
+              class $SETTINGS(..., $PARENT, ...):
+                  ...
+      - pattern-either:
+          - pattern: "$FIELD: $TYPE = $DEFAULT"
+          - pattern: "$FIELD: $TYPE"
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (?i).*(cors.*origin|allowed_origins?|frontend_origin|origins?_allow)
+      - pattern-not-inside: |
+          class $OWNER(...):
+              ...
+              @field_validator(..., "$FIELD", ...)
+              def $VALIDATOR(...):
+                  ...
+              ...
+  - id: python.cors-sink.cors-unvalidated-setting
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CORSMiddleware allows credentials for origins read from
+      settings.$FIELD, but no @field_validator("$FIELD") in this file checks
+      that setting, so an environment value of '*' or 'null' reaches a
+      credentialed CORS policy and lets any site read authenticated
+      responses. Add a @field_validator for '$FIELD' that refuses '*' and
+      'null' and accepts only concrete origins (R-109).
+    patterns:
+      - pattern: $APP.add_middleware(CORSMiddleware, ..., allow_origins=<... settings.$FIELD ...>, ...)
+      - pattern: $APP.add_middleware(CORSMiddleware, ..., allow_credentials=True, ...)
+      - pattern-not-inside: |
+          class $OWNER(...):
+              ...
+              @field_validator(..., "$FIELD", ...)
+              def $VALIDATOR(...):
+                  ...
+              ...
+          ...

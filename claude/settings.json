@@ -212,6 +212,11 @@
                     },
                     {
                         "type": "command",
+                        "command": "~/.claude/hooks/push-semgrep-gate.sh",
+                        "if": "Bash(git *)"
+                    },
+                    {
+                        "type": "command",
                         "command": "~/.claude/hooks/push-rubocop-gate.sh",
                         "if": "Bash(git *)"
                     },

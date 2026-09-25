@@ -111,6 +111,18 @@ jobs:
       - name: Confirm ruff resolves
         run: ruff --version
 
+      # push-semgrep-gate.sh fails closed without Semgrep, so its fixtures and
+      # semgrep-rule-pack.test.sh need the real binary (IAN-381). Pinned for
+      # the same reason as ruff; keep it in step with the maintainer's local
+      # `uvx semgrep`.
+      - name: Install semgrep (required by push-semgrep-gate.test.sh)
+        run: |
+          pipx install semgrep==1.178.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm semgrep resolves
+        run: semgrep --version --disable-version-check
+
       # tdd-pytest.test.sh drives the REAL pytest behind a stub uv, so the
       # JUnit XML that enforce/tdd.sh converts is live output rather than a
       # hand-written sample. Pinned for the same reason as ruff; keep it in
@@ -295,6 +307,18 @@ jobs:
 
       - name: Confirm ruff resolves
         run: ruff --version
+
+      # push-semgrep-gate.sh fails closed without Semgrep, so its fixtures and
+      # semgrep-rule-pack.test.sh need the real binary (IAN-381). Pinned for
+      # the same reason as ruff; keep it in step with the maintainer's local
+      # `uvx semgrep`.
+      - name: Install semgrep (required by push-semgrep-gate.test.sh)
+        run: |
+          pipx install semgrep==1.178.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm semgrep resolves
+        run: semgrep --version --disable-version-check
 
       - name: Install pytest (required by tdd-pytest.test.sh)
         run: |

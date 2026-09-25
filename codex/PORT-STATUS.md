@@ -2,7 +2,7 @@
 
 # Codex port status
 
-56 of 61 hook registrations port, across 6 Codex events.
+57 of 62 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -20,6 +20,7 @@
 | `ticket-at-start-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-eslint-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-ruff-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
+| `push-semgrep-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-rubocop-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-golangci-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-feature-docs-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
