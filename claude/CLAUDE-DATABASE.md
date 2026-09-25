@@ -446,7 +446,7 @@ await query(
 ```
 
 - Add the plural repository function (`listLegsByTripIds`) the first time a caller needs more than one row; never loop over the singular.
-- A loop that repeats a query on purpose, with a stated bound, carries the disable comment with that bound:
+- A loop that repeats a query on purpose, with a stated bound, carries the disable comment with that bound (in Python and Ruby `# data-access-allow: <the bound>`, in Go `// data-access-allow: <the bound>`, on the line or the line above):
 
 ```typescript
 // eslint-disable-next-line dataAccess/no-query-in-loop -- keyset batching, BACKFILL_BATCH_SIZE rows per query

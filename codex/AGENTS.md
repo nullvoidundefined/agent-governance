@@ -78,8 +78,8 @@ R-351: Dockerize every deployable artifact from its first commit: one `Dockerfil
 
 ### Data access (R-36x)
 
-R-361: Never query once per element of a collection (N+1): no repository or `query` call inside a loop, `.map`, `.forEach`, or `Promise.all(ids.map(...))`; load the set in one query (`= ANY($1)`, a JOIN) or write it in one statement (`unnest`), and cover every collection read with a query-budget test. [eslint:no-query-in-loop]
-R-362: Run writes that must succeed or fail together in one `withTransaction`, every statement on its `client` (repositories forward an optional `client`), nothing on the network inside it, statements awaited in sequence. [eslint:transaction-client-required, judge]
+R-361: Never query once per element of a collection (N+1): no repository or `query` call inside a loop, `.map`, `.forEach`, or `Promise.all(ids.map(...))`; load the set in one query (`= ANY($1)`, a JOIN) or write it in one statement (`unnest`), and cover every collection read with a query-budget test. [eslint:no-query-in-loop, hook:push-ruff-gate, hook:push-golangci-gate, hook:push-rubocop-gate]
+R-362: Run writes that must succeed or fail together in one `withTransaction`, every statement on its `client` (repositories forward an optional `client`), nothing on the network inside it, statements awaited in sequence. [eslint:transaction-client-required, hook:push-ruff-gate, hook:push-golangci-gate, hook:push-rubocop-gate, judge]
 R-363: Make every read-modify-write atomic in SQL (`SET x = x + 1`, guarded `WHERE`, `ON CONFLICT`) or under `SELECT ... FOR UPDATE` or a version check; never read, compute in code, and write back unguarded. [judge]
 R-364: Bound every read: a capped `LIMIT` on every list, keyset pagination on unbounded tables, `ORDER BY` ending in a unique column, aggregates in SQL, index-backed filters. [judge]
 R-365: Only values go in `$n` parameters and only allowlisted identifiers go in SQL text; never build SQL from caller input or request-body keys. [judge]
