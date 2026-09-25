@@ -55,6 +55,7 @@
 !/rules/frontend-vue.mdc
 !/rules/frontend.mdc
 !/rules/go.mdc
+!/rules/observability.mdc
 !/rules/python.mdc
 !/rules/ruby.mdc
 !/rules/rulebook-agents.mdc

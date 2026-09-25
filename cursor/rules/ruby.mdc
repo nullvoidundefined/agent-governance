@@ -124,22 +124,51 @@ end
 
 Never log a credential or `ENV` dump.
 
+`CORS_ORIGIN` gets its own parser in the same initializer, run in every environment: `rack-cors` is configured with `credentials: true`, and a wildcard or `null` origin there hands the session cookie's single-origin boundary to any caller.
+
+```ruby
+# UNSAFE_CORS_ORIGINS names the values that would open the credentialed API to any site.
+UNSAFE_CORS_ORIGINS = Set["*", "null"]
+BROWSER_ORIGIN_PATTERN = /\A https?:\/\/ [a-z0-9.-]+ (:[1-9][0-9]{0,4})? \z/x
+
+def parse_cors_origin(raw_value)
+  origin = raw_value.to_s.strip
+  raise "CORS_ORIGIN must name one concrete origin, not a wildcard or null" if UNSAFE_CORS_ORIGINS.include?(origin.downcase)
+  raise "CORS_ORIGIN must be scheme://host[:port] exactly as a browser sends it" unless BROWSER_ORIGIN_PATTERN.match?(origin)
+
+  origin
+end
+```
+
+```ruby
+RSpec.describe "parse_cors_origin" do
+  unsafe_values = [
+    "*",
+    "null",
+    "https://a.example,https://b.example",
+    "https://client.example/path",
+    "https://name@client.example",
+  ]
+
+  unsafe_values.each do |unsafe_value|
+    it "refuses #{unsafe_value.inspect}" do
+      expect { parse_cors_origin(unsafe_value) }.to raise_error(/CORS_ORIGIN/)
+    end
+  end
+end
+```
+
 ## Error Handling
 
 `rescue_from` on `ApplicationController` maps domain errors (`ActiveRecord::RecordNotFound` -> 404, `ActiveRecord::RecordInvalid` -> 422) centrally. Never `rescue Exception`; rescue the narrowest class that can occur. No internals in response bodies.
 
 ## Logging
 
-Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag request IDs; one log line per request in production.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ## Observability (R-341 to R-346 in Rails form)
 
-- R-341: `ActionDispatch::RequestId` honors `X-Request-Id` and sets it on the response; `config.log_tags = [:request_id]` puts it on every line; jobs log with the job ID in the same role.
-- R-342: `Rails.logger.info(event: "note_loaded", note_id: note.id)` through lograge's custom payload, never string interpolation of values into the message and never `puts` in app code; manual, since `Rails/Output` needs the rubocop-rails extension the gate does not bundle.
-- R-343: one `app/clients/analytics.rb` wraps the provider; event names are constants in `app/analytics/events.rb`, never a literal at the call site.
-- R-344: every `rescue` names the exception and logs or re-raises it; an empty `rescue` body is a defect (`Lint/SuppressedException` in `enforce/rubocop-enforce.yml`); a bound-but-unused exception stays manual.
-- R-345: `/health` and `/health/ready` routes registered before application routes.
-- R-346: every client call sets a timeout, logs provider, operation, duration, and outcome, and forwards the request ID.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
 
 ## Containers (R-351 in Rails form)
 

@@ -101,6 +101,43 @@ Handlers are thin: decode, validate, delegate, encode. Guard clauses with early 
 
 `internal/config.Load()` reads env into a typed `Config`, validates every required field, and returns an error that `main` treats as fatal. Business code takes `Config` (or narrower structs) by injection; never reads `os.Getenv` directly. Secrets stay off-path and out of logs (R-102).
 
+`CORS_ORIGIN` goes through its own parser inside `config.Load()`, in every environment: the CORS middleware sends `Access-Control-Allow-Credentials: true`, and a wildcard or `null` origin there hands the session cookie's single-origin boundary to any caller.
+
+```go
+// unsafeCORSOrigins names the values that would open the credentialed API to any site.
+var unsafeCORSOrigins = map[string]bool{"*": true, "null": true}
+
+var browserOriginPattern = regexp.MustCompile(`^https?://[a-z0-9.-]+(:[1-9][0-9]{0,4})?$`)
+
+func parseCORSOrigin(raw string) (string, error) {
+    origin := strings.TrimSpace(raw)
+    if unsafeCORSOrigins[strings.ToLower(origin)] {
+        return "", fmt.Errorf("CORS_ORIGIN must name one concrete origin, not a wildcard or null")
+    }
+    if !browserOriginPattern.MatchString(origin) {
+        return "", fmt.Errorf("CORS_ORIGIN must be scheme://host[:port] exactly as a browser sends it")
+    }
+    return origin, nil
+}
+```
+
+```go
+func TestParseCORSOriginRefusesUnsafeValues(t *testing.T) {
+    unsafeValues := []string{
+        "*",
+        "null",
+        "https://a.example,https://b.example",
+        "https://client.example/path",
+        "https://name@client.example",
+    }
+    for _, unsafeValue := range unsafeValues {
+        if _, err := parseCORSOrigin(unsafeValue); err == nil {
+            t.Errorf("parseCORSOrigin(%q) = nil error, want refusal", unsafeValue)
+        }
+    }
+}
+```
+
 ## Migrations
 
 Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'active'`, `DEFAULT now()`), so the R-328 quoting trap does not arise. Same staged approach for risky changes: additive, backfill, switch, cleanup; never a destructive one-shot against production (R-101).
@@ -137,9 +174,4 @@ Raw SQL pairs via golang-migrate; write defaults directly in SQL (`DEFAULT 'acti
 
 ## Observability (R-341 to R-346 in Go form)
 
-- R-341: middleware reads `X-Request-Id` or mints one, writes it to the response, and stores it in `context.Context`; handlers and services log through `slog` with the ID taken from the context (`slog.With("request_id", id)`), never as a parameter threaded by hand.
-- R-342: `slog` with structured attributes (`slog.Info("note loaded", "note_id", id)`), never `fmt.Println` or `log.Printf` with formatted values in service code; manual, no golangci linter is bundled for it.
-- R-343: one `clients/analytics` package wraps the provider; event names are constants in `analytics/events.go`, never a literal at the call site.
-- R-344: every error return is handled or wrapped with `%w`; `_ = err` and an empty `if err != nil {}` are defects; `errcheck` and `errorlint` in `enforce/golangci-enforce.yml` cover the unhandled-return and wrapping halves (the config is v2 schema; a v1 file was silently ignored by v2 binaries until 2026-09-04).
-- R-345: `/health` and `/health/ready` on every service and worker, registered first.
-- R-346: every client call uses a `context.WithTimeout`, logs provider, operation, duration, and outcome, and forwards the request ID on outbound HTTP.
+This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend file in every stack alongside this one.
