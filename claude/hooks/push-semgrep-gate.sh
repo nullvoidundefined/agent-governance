@@ -73,13 +73,24 @@ export_head_files() {
   done <<< "$file_list"
 }
 
+# True when the pushed repository's origin URL is listed in
+# ~/.claude/enforce/gate-trusted-repos.txt, the same opt-in push-golangci-gate
+# requires before running anything that belongs to the target repository.
+is_trusted_repository() {
+  local trusted_file="$HOME/.claude/enforce/gate-trusted-repos.txt" origin_url
+  origin_url=$(run_git_on_target remote get-url origin 2>/dev/null || true)
+  [ -n "$origin_url" ] && [ -f "$trusted_file" ] && grep -qxF "$origin_url" "$trusted_file"
+}
+
 # Prints the Python interpreter for the parse check: the pushed repository's
-# own <top level>/.venv/bin/python3 when it is executable, else python3 on
-# PATH, so a project on a newer Python than the host is parsed by its own.
+# own <top level>/.venv/bin/python3 only when the repository is trusted and the
+# file is executable, else python3 on PATH. An untrusted repository's .venv is
+# never run, because it is untracked, never reviewed, and could bless a file
+# that does not parse (IAN-381 review finding N6).
 resolve_python_interpreter() {
   local repo_top_level
   repo_top_level=$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)
-  if [ -n "$repo_top_level" ] && [ -x "$repo_top_level/.venv/bin/python3" ]; then
+  if [ -n "$repo_top_level" ] && [ -x "$repo_top_level/.venv/bin/python3" ] && is_trusted_repository; then
     printf '%s' "$repo_top_level/.venv/bin/python3"
   else
     printf 'python3'
@@ -197,7 +208,7 @@ if [ -n "$UNPARSABLE" ]; then
   unparsable_path=$(printf '%s\n' "$UNPARSABLE" | head -n 1)
   case "$unparsable_path" in
     *.py)
-      parse_failure="$unparsable_path does not parse under $PYTHON_INTERPRETER ($(describe_interpreter_version "$PYTHON_INTERPRETER")), so the security scan cannot vouch for it; fix the syntax, or point .venv at the project's interpreter, and push again" ;;
+      parse_failure="$unparsable_path does not parse under $PYTHON_INTERPRETER ($(describe_interpreter_version "$PYTHON_INTERPRETER")), so the security scan cannot vouch for it; fix the syntax, or (for a repository listed in ~/.claude/enforce/gate-trusted-repos.txt) point .venv at the project's interpreter, and push again" ;;
     *)
       parse_failure="$unparsable_path does not parse under node ($(node --version 2>/dev/null || printf 'unknown version')), so the security scan cannot vouch for it; fix the syntax and push again" ;;
   esac
