@@ -7,13 +7,16 @@
 # naming R-109 unless the PR body carries a `## Security review` section whose
 # `reviewer` line is non-empty, whose `model` line equals `securityReviewModel`
 # in enforce/security-review-model.json, and whose `range` line's head endpoint
-# identifies the PR head commit by the same prefix rule the Codex review uses.
+# identifies the PR head commit by the same prefix rule the Codex review uses,
+# and whose `artefact` line names the reviewer's saved output as recorded in the
+# review ledger by enforce/security-review-record.sh.
 # A PR that touches no security code reaches the R-514 ask exactly as before,
 # and a detector that cannot run (it fails, or the PR head is not in the local
 # repository) denies with R-109 rather than letting the merge through.
 #
 # Each case builds a throwaway repository: `main` and `origin/main` hold the
-# base commit, a `feature` branch holds the PR's two commits, and the checkout
+# base commit, a `feature` branch holds the PR's commits (two, plus a third
+# adding the empty-findings artefact in the security repository), and the checkout
 # stays on `main`, so the gate must judge the range base..headRefOid rather
 # than whatever happens to be checked out. gh is stubbed through CLAUDE_GH_CMD
 # and Semgrep through CLAUDE_SEMGREP_CMD, so neither GitHub nor Semgrep is a
@@ -137,11 +140,17 @@ codex_section() {
   printf '## Codex review\n- reviewer: pr-reviewer\n- model: sonnet\n- range: %.7s..%.7s\n- No findings; checked B-9 and B-14.\n' "$1" "$2"
 }
 
+# The empty-findings artefact the security PR commits at its head, recorded in
+# the review ledger with enforce/security-review-record.sh (B-10b, B-10c).
+ARTEFACT_PATH=docs/reviews/security-review-empty.json
+RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
+
 # security_section <reviewer> <model> <base> <head>: a `## Security review`
-# section with the given fields and a clean control written in the prompt's
+# section with the given fields, an `artefact` line naming the committed
+# empty-findings artefact, and a clean control written in the prompt's
 # `Nothing found:` form, so the section records what was tried.
 security_section() {
-  printf '## Security review\n- reviewer: %s\n- model: %s\n- range: %.7s..%.7s\n\nNothing found: CORS: sources env CORS_ORIGIN: tried *, null, https://evil.example\n' "$1" "$2" "$3" "$4"
+  printf '## Security review\n- reviewer: %s\n- model: %s\n- range: %.7s..%.7s\n- artefact: %s\n\nNothing found: CORS: sources env CORS_ORIGIN: tried *, null, https://evil.example\n' "$1" "$2" "$3" "$4" "$ARTEFACT_PATH"
 }
 
 # pr_body <section>...: a PR body holding a summary, the given sections, and a
@@ -190,7 +199,21 @@ expect_r514_ask() {
 # Security-touching PR: app/middleware/cors_config.py is a path hit.
 build_pr_repo sec app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
   'ALLOWED_ORIGINS = ["https://app.example.com", "https://admin.example.com"]'
-SEC_DIR="$REPO_DIR" SEC_BASE="$REPO_BASE" SEC_FIRST="$REPO_FIRST" SEC_HEAD="$REPO_HEAD"
+SEC_DIR="$REPO_DIR" SEC_BASE="$REPO_BASE" SEC_FIRST="$REPO_FIRST"
+# A third PR commit adds the empty-findings artefact, so it exists at the PR
+# head, and the record script writes it into the ledger from a checkout of
+# that head, the way a reviewer records it after committing.
+git_in "$SEC_DIR" checkout -q feature
+mkdir -p "$SEC_DIR/docs/reviews"
+printf '%s\n' '{"findings":[]}' > "$SEC_DIR/$ARTEFACT_PATH"
+git_in "$SEC_DIR" add docs
+git_in "$SEC_DIR" commit -q -m "docs: security review artefact"
+SEC_HEAD=$(git -C "$SEC_DIR" rev-parse HEAD)
+git_in "$SEC_DIR" push -q origin feature
+(cd "$SEC_DIR" && bash "$RECORD_SCRIPT" "$ARTEFACT_PATH" >/dev/null 2>&1) ||
+  report_failure "setup: security-review-record.sh could not record $ARTEFACT_PATH at the PR head"
+git_in "$SEC_DIR" checkout -q main
+[ "$SEC_HEAD" != "$REPO_HEAD" ] || report_failure "setup: the artefact commit was not created"
 SEC_CODEX=$(codex_section "$SEC_BASE" "$SEC_HEAD")
 
 # Case 1: valid Codex review, no Security review section.
@@ -211,7 +234,8 @@ fi
 STUB=$(write_pr_stub case3 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_FIRST")")" "$SEC_HEAD" "$SEC_BASE")
 expect_r109_deny "case 3 (stale range head)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB")"
 
-# Case 4: valid reviewer, model, and range: R-109 is satisfied and R-514 asks.
+# Case 4: valid reviewer, model, and range, and an artefact line naming the
+# artefact recorded at the PR head: R-109 is satisfied and R-514 asks.
 STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE")
 expect_r514_ask "case 4 (valid security review)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 

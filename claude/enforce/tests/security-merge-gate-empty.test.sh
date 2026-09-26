@@ -11,7 +11,9 @@
 # in range:` line reaches the plain R-514 ask.
 #
 # The setup mirrors security-merge-gate.test.sh: a throwaway repository whose
-# `feature` branch touches app/middleware/cors_config.py, a gh stub answering
+# `feature` branch touches app/middleware/cors_config.py and then commits an
+# empty-findings artefact that every section names and the ledger records at
+# the PR head, a gh stub answering
 # with baseRefName, baseRefOid, and headRefOid, a clean Semgrep stub that lists its targets,
 # a valid Codex review, and a scratch HOME.
 set -uo pipefail
@@ -122,10 +124,16 @@ codex_section() {
   printf '## Codex review\n- reviewer: pr-reviewer\n- model: sonnet\n- range: %.7s..%.7s\n- No findings; checked B-16b.\n' "$1" "$2"
 }
 
+# The empty-findings artefact the security PR commits at its head, recorded in
+# the review ledger with enforce/security-review-record.sh (B-10b, B-10c).
+ARTEFACT_PATH=docs/reviews/security-review-empty.json
+RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
+
 # security_header <base> <head>: a `## Security review` section with a valid
-# reviewer, the expected model, and a current range, and nothing else.
+# reviewer, the expected model, a current range, and an `artefact` line naming
+# the recorded empty-findings artefact, and nothing else.
 security_header() {
-  printf '## Security review\n- reviewer: security-reviewer\n- model: %s\n- range: %.7s..%.7s\n' "$EXPECTED_MODEL" "$1" "$2"
+  printf '## Security review\n- reviewer: security-reviewer\n- model: %s\n- range: %.7s..%.7s\n- artefact: %s\n' "$EXPECTED_MODEL" "$1" "$2" "$ARTEFACT_PATH"
 }
 
 # pr_body <section>...: a PR body holding a summary, the given sections, and a
@@ -172,7 +180,21 @@ expect_r514_ask() {
 # Security-touching PR: app/middleware/cors_config.py is a path hit.
 build_pr_repo sec app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
   'ALLOWED_ORIGINS = ["https://app.example.com", "https://admin.example.com"]'
-SEC_DIR="$REPO_DIR" SEC_BASE="$REPO_BASE" SEC_HEAD="$REPO_HEAD"
+SEC_DIR="$REPO_DIR" SEC_BASE="$REPO_BASE"
+# A third PR commit adds the empty-findings artefact, so it exists at the PR
+# head, and the record script writes it into the ledger from a checkout of
+# that head, the way a reviewer records it after committing.
+git_in "$SEC_DIR" checkout -q feature
+mkdir -p "$SEC_DIR/docs/reviews"
+printf '%s\n' '{"findings":[]}' > "$SEC_DIR/$ARTEFACT_PATH"
+git_in "$SEC_DIR" add docs
+git_in "$SEC_DIR" commit -q -m "docs: security review artefact"
+SEC_HEAD=$(git -C "$SEC_DIR" rev-parse HEAD)
+git_in "$SEC_DIR" push -q origin feature
+(cd "$SEC_DIR" && bash "$RECORD_SCRIPT" "$ARTEFACT_PATH" >/dev/null 2>&1) ||
+  report_failure "setup: security-review-record.sh could not record $ARTEFACT_PATH at the PR head"
+git_in "$SEC_DIR" checkout -q main
+[ "$SEC_HEAD" != "$REPO_HEAD" ] || report_failure "setup: the artefact commit was not created"
 SEC_CODEX=$(codex_section "$SEC_BASE" "$SEC_HEAD")
 SEC_HEADER=$(security_header "$SEC_BASE" "$SEC_HEAD")
 

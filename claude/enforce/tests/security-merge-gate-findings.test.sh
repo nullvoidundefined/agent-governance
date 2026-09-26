@@ -20,7 +20,8 @@
 # Each case runs against one throwaway repository: `main` and `origin/main`
 # hold a README-only base commit, and a `feature` branch holds two PR commits
 # (the first adds app/middleware/cors_config.py and the artefact files under
-# docs/reviews/, the second rewrites the CORS file), with the checkout left on
+# docs/reviews/, the second rewrites the CORS file), plus an empty third commit
+# that becomes the head for cases 8b and 8c, with the checkout left on
 # `main`, so the artefact exists only at the PR head and never in the working
 # tree. gh is stubbed through CLAUDE_GH_CMD and Semgrep through
 # CLAUDE_SEMGREP_CMD, and HOME is a scratch directory throughout.
@@ -133,8 +134,8 @@ git_in "$REPO_DIR" fetch -q origin
 # record_artefact <path>: records <path> at the PR head in the repository's
 # review ledger (.claude/security-review-ledger.json) the way a reviewer does,
 # by running enforce/security-review-record.sh from a checkout of the head,
-# then checks `main` back out. The ledger is keyed by head, so a later record
-# for the same head replaces the earlier one. Before the record script exists
+# then checks `main` back out. The ledger is keyed by head and keeps the first
+# record for a head, so each record here lands on a distinct head. Before the record script exists
 # (B-10b) the step is skipped and the older gate alone decides.
 RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
 record_artefact() {
@@ -357,8 +358,17 @@ $CLEAN_NOTHING_FOUND"
 expect_r514_ask "case 8a (all fixed in range, clean Nothing found)" "$(run_case case8a "$SECTION" "$PINNED_MERGE")"
 
 # Case 8b (control): an artefact with no findings and only clean Nothing
-# found lines with values. Cases 8b and 8c name the empty artefact, so the
-# review ledger records that one for the head from here on.
+# found lines with values. Cases 8b and 8c name the empty artefact, and the
+# ledger keeps the first record for a head, so an empty third PR commit becomes
+# the PR head and the empty artefact is recorded there.
+git_in "$REPO_DIR" checkout -q feature
+git_in "$REPO_DIR" commit -q --allow-empty -m "docs: empty-findings review"
+EMPTY_REVIEW_HEAD=$(git -C "$REPO_DIR" rev-parse HEAD)
+git_in "$REPO_DIR" push -q origin feature
+git_in "$REPO_DIR" checkout -q main
+[ "$EMPTY_REVIEW_HEAD" != "$REPO_HEAD" ] || report_failure "case 8b setup: the third PR commit was not created"
+REPO_HEAD="$EMPTY_REVIEW_HEAD"
+PINNED_MERGE="gh pr merge 42 --squash --match-head-commit $REPO_HEAD"
 record_artefact "$EMPTY_ARTEFACT_PATH"
 SECTION="$(security_header "$EMPTY_ARTEFACT_PATH")
 
