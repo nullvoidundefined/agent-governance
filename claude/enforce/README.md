@@ -45,6 +45,7 @@ Some rules are repo-specific. A repo may place an optional `.enforce.json` at it
 - `importZones` (R-303): drives ESLint `import/no-restricted-paths`. Files under `target` may not import from `from`. Paths are relative to the repo root. With no zones, import-direction is not enforced.
 - `singleFileFolderExemptions` (R-309): folders that are allowed to hold a single source module (e.g. the portfolio project's intentional single-file service folders, which override R-309 by project convention).
 - `autoDraftPr` (R-518): `false` stops `hooks/draft-pr-on-first-push.sh` from opening a draft pull request after a push. Absent or any other value leaves the hook on.
+- `securitySurfaceExclude` (IAN-381): a list of globs, matched the way `hooks/scope-match.sh` matches scope globs, naming files the security-surface detector (`hooks/security-surface.sh`) skips when it decides whether a PR range needs a security review. The detector reads the list from the range's base commit, never its head, so a range cannot exclude itself by adding the key, and `protected-path-guard.sh` denies agent writes to `.enforce.json` under R-410.
 
 ## Push gate scope
 
