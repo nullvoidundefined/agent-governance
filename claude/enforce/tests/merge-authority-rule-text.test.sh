@@ -44,8 +44,8 @@ requireText "$ROOT/skills/task-start/SKILL.md" 'merge on green CI' "task-start l
 
 # Copilot: one source, the R-514 Spec bullet with the disabled ruleset.
 if grep -qF -- 'Copilot' <<< "$R514_NORM"; then echo "FAIL: CLAUDE.md R-514 still repeats the Copilot clause"; exit 1; fi
-forbidText "$ROOT/skills/task-cleanup/SKILL.md" 'Copilot' "task-cleanup still repeats the Copilot clause"
-forbidText "$ROOT/skills/task-start/SKILL.md" 'Copilot' "task-start still repeats the Copilot clause"
+COPILOT_COPIES=$(grep -rlF -- 'Copilot' "$ROOT/skills" "$ROOT/prompts" || true)
+[ -z "$COPILOT_COPIES" ] || { echo "FAIL: a skill or prompt still repeats the Copilot clause: $COPILOT_COPIES"; exit 1; }
 requireText "$ROOT/rulebook/reference.md" 'Never request Copilot review, on any PR' "reference.md R-514 lost the no-Copilot decision"
 requireText "$ROOT/rulebook/reference.md" 'copilot-review-main-and-slice' "reference.md R-514 lost the disabled Copilot ruleset"
 
