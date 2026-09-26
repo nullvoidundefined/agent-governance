@@ -97,6 +97,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── implementer.md               # Slice role: minimum code to GREEN, never touches tests.
 │   ├── slice-critic.md              # Slice role: read-only fresh-context review, seven questions.
 │   ├── pr-reviewer.md               # R-517 pre-merge reviewer: read-only, diff pasted into its prompt.
+│   ├── security-reviewer.md         # R-109 security reviewer: read-only, strongest model from enforce/security-review-model.json.
 │   └── audit-*.md                   # On-request audit agents (design, financial, etc.)
 ├── audits/                          # Pointer stubs; canonical roles live in agents/audit-*.md.
 │   ├── engineering.md               # Forwards to agents/audit-engineering.md (CTO persona).
@@ -165,6 +166,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── subagent-branch-setup.md     # Reusable worktree snippet for agent dispatches.
 │   ├── codex-spec-review-prompt.md  # Adversarial Codex spec review, run by task-start.
 │   ├── codex-pr-review-prompt.md    # Blocking pre-merge Codex PR review (R-517).
+│   ├── security-review-prompt.md    # R-109 security review on the strongest model: every input source, worst value, and test per control.
 │   └── spec-template.md             # The fixed spec headings the slice loop reads from.
 ├── global-memory/                   # Cross-project lessons and running logs.
 │   ├── INDEX.md                     # Entry point. Auto-loaded by SessionStart.
