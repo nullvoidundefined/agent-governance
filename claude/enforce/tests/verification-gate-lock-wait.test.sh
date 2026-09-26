@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Covers: hook:verification-gate
 # Verifies that the R-509 Stop gate fits a queued fixture run inside the Stop
-# hook's 660-second budget (IAN-351). The fixture runner queues behind a
-# machine-wide lock and gives up after FIXTURE_SHARDS_LOCK_WAIT_SECONDS
+# hook's 660-second budget (IAN-351). The fixture runner queues behind its
+# worktree's lock and a machine-wide run slot (IAN-441) and gives up after
+# FIXTURE_SHARDS_LOCK_WAIT_SECONDS
 # (default 1200, IAN-348), which the harness would cut off at 660 seconds
 # before the runner could say why. So the gate exports a 480-second cap for
 # every check it runs, whatever the caller's shell exported, and does not
@@ -66,7 +67,8 @@ reason=$(gate_reason "$REPO")
 check "a lock give-up blocks the turn" grep -q 'R-509' <<< "$reason"
 check "a lock give-up runs the suite once, with no retry" test "$(wc -l < "$RUN_LOG" | tr -d ' ')" = 1
 check "a lock give-up does not claim an automatic retry" not grep -q 'automatic retry' <<< "$reason"
-check "a lock give-up says another fixture run held the lock" grep -q 'another fixture run held the machine-wide lock' <<< "$reason"
+check "a lock give-up says another fixture run held the worktree lock or every run slot" \
+  grep -q "another fixture run held this worktree's fixture lock, or every machine-wide run slot" <<< "$reason"
 check "a lock give-up keeps the runner's own message" grep -q 'waiting for PID 4242' <<< "$reason"
 
 # Case 3: a 75 from any other check is an ordinary failure. A project's own
@@ -86,6 +88,6 @@ printf 'echo run >> "%s"\nexit 75\n' "$VERIFY_RUN_LOG" > "$REPO/.claude/verify.s
 reason=$(gate_reason "$REPO")
 check "a project check exiting 75 still blocks" grep -q 'R-509' <<< "$reason"
 check "a project check exiting 75 keeps its automatic retry" test "$(wc -l < "$VERIFY_RUN_LOG" | tr -d ' ')" = 2
-check "a project check exiting 75 is not called a fixture lock give-up" not grep -q 'another fixture run held the machine-wide lock' <<< "$reason"
+check "a project check exiting 75 is not called a fixture lock give-up" not grep -q 'another fixture run held' <<< "$reason"
 
 if [ "$fail" -eq 0 ]; then echo "verification-gate-lock-wait: PASS"; else echo "verification-gate-lock-wait: FAIL"; exit 1; fi
