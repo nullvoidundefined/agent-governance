@@ -39,8 +39,8 @@ Fix those, and the owner can widen merge-on-green with evidence rather than by f
 
 - **Harness fix share: inconclusive at 29%.** The ticket's definition counts fix-type conventional commits among harness first-parent commits, pooled over UTC 2026-09-19 to 2026-09-25. That gives 19 of 65 commits, or 29.2%. The figure sits between the 25% "one-time debt" threshold and the 36% "structural" threshold, which is the ticket's own inconclusive branch. A reconstruction of the baseline with the same method gives 37%, against the ticket's recorded 36%, so the method is sound.
 - **Harness share: 75%, down from 85%.** This is 78 of 104 merged PRs across agent-governance, ian-greenough-developer, voyager-2, and doppelscript. It overstates the true share, because template-fastapi-nuxt and job-triage also had product work that was not counted.
-- **Sensitivity.** Seven commits in the window use `R-NNN:` subjects rather than conventional types, so the definition counts them as non-fixes. If all seven were fixes, the share would be 40%. The measurement depends on commit-subject discipline that `commit-message-guard` does not enforce for those subjects.
-- **Composition leans structural.** Commits touching `claude/enforce/hook-hashes.txt` rose from 56% of the baseline window to 66%. Commits touching generated `codex/` or `cursor/` output rose from 35% to 45%. All eight fixes on 2026-09-24 repaired machinery added earlier that week.
+- **Sensitivity.** Seven commits in the window use non-conventional subjects (four of them `R-NNN:`), so the definition counts them as non-fixes. If all seven were fixes, the share would be 40%. The measurement depends on commit-subject discipline that `commit-message-guard` does not enforce for those subjects.
+- **Composition leans structural.** Commits touching `claude/enforce/hook-hashes.txt` rose from 56% of the baseline window to 66%. Commits touching generated `codex/` or `cursor/` output rose from 35% to 45%. All eight fixes on 2026-09-24 repaired harness machinery, five of them machinery added that same week.
 - **Recommendation.** Post "inconclusive, composition structural" on IAN-121 and proceed to the distribution redesign (Finding 3). Only 2 of the 7 promised daily snapshots were posted, which Finding 14 addresses.
 
 ## Open items from prior audits
@@ -51,7 +51,7 @@ Fix those, and the owner can widen merge-on-green with evidence rather than by f
 | 2026-09-18 engineering #1, #3, #4 | R-501 parent-process survival; pinned Ruff contract; live Cursor deny probe | Open |
 | 2026-09-18 criticism #1 | Behavioral benchmark | Open (IAN-288 in Todo) |
 | 2026-09-18 criticism #4 | Clean telemetry, false-positive adjudication | Open (IAN-275, IAN-276, IAN-280 in Todo) |
-| 2026-09-18 criticism #5 | Freeze new governance features | **Not followed.** Nine gates or rule blocks were added since: #78, #83, #118, #124, #137, #140, #141, #142, #143. |
+| 2026-09-18 criticism #5 | Freeze new governance features | **Not followed.** Seven new gates or rule blocks were added since (#78, #83, #118, #124, #137, #140, #141), plus a detector and a reviewer agent (#142, #143). |
 | 2026-09-19 ECC P1 ports | Five ports | 1 of 5 done (IAN-141). IAN-140, IAN-142, IAN-143, IAN-144 in Backlog. |
 | 2026-09-19 maintenance tax | Hash manifest, generated ports, copy sync; override log and retirement rule | Open; see Findings 3 and 7 |
 
@@ -108,14 +108,14 @@ After both, parallel harness branches stop conflicting by construction.
 
 Each change shipped as a multi-file PR (#71 and #121 touched 33 files each), and each one regenerated the ports and hashes of Finding 3. The reversals were sound decisions; #132's body names the problem precisely. The cost comes from trialing in rule text.
 
-*Recommendation:* add a provisional state. A process change runs for two or three sessions as a slice-plan line or a handoff note, and becomes a rule only once it has survived that trial. For autonomy experiments in particular (Finding 16), this is the mechanism that lets the owner try more aggressive settings cheaply.
+*Recommendation:* add a provisional state. A process change runs for two or three sessions as a slice-plan line or a handoff note, and becomes a rule only once it has survived that trial. For autonomy experiments in particular (the autonomy section below), this is the mechanism that lets the owner try more aggressive settings cheaply.
 
 ### 5. High: about 17k tokens load before the first turn, and half of it is an over-cap handoff
 
-- **The measurement.** `hooks/session-start.sh` injects `global-memory/INDEX.md` (7,020 B) and the whole handoff, 40,288 characters in all. `claude/CLAUDE.md` adds 26,948 B more. Every session and every compaction starts at about 17k tokens.
+- **The measurement.** `hooks/session-start.sh` injects `global-memory/INDEX.md` (7,020 B) and the whole handoff, about 40,000 characters in all. `claude/CLAUDE.md` adds 26,948 B more. Every session and every compaction starts at about 17k tokens.
 - **The cap.** The handoff is 32,976 B against R-602's 8 KB cap, and the `handoff-check` hook is advisory only.
 - **Stale pending list.**
-  - IAN-157 has been carried forward in 14 of the 20 handoff versions written since 09-20.
+  - IAN-157 has been carried forward in 14 of the 15 handoff versions written since 09-20.
   - Pending items 1 and 2 ask to land #115, #118, and #119, all of which merged on 09-23.
   - The "last commit" names #132, eleven merges behind `main`.
 - **What does work.** The lessons section is specific and useful.
@@ -142,11 +142,11 @@ Four PreToolUse gates abort under `set -u` when `HOME` is unset, and print nothi
 | `mcp-action-guard.sh` | 112 |
 
 - **The Stop gate.** `verification-gate.sh:103` aborts the same way on Stop, letting a turn end on a red tree.
-- **Latent cases.** Fourteen more gates expand a bare `$HOME` on paths the probe did not reach.
+- **Latent cases.** At least eleven more gates expand a bare `$HOME` on paths the probe did not reach.
 - **jq.** None of the 68 hooks check for `jq`. Without it, `destructive-command-guard` stops denying `git commit --no-verify`.
 - **No crash handler.** No gate has an ERR or EXIT trap that emits a deny when the script dies.
 
-Unset `HOME` and missing `jq` are uncommon on the owner's laptop. They are much more likely in the unattended cloud and scheduled sessions that more autonomy implies. This is the class behind #105 and #134, and the handoff records "absence assertion cannot detect a fail-open" five times.
+Unset `HOME` and missing `jq` are uncommon on the owner's laptop. They are much more likely in the unattended cloud and scheduled sessions that more autonomy implies. This is the class behind #105 and #134, and the handoff records that this failure shape has appeared five separate times.
 
 *Recommendation:*
 
@@ -162,7 +162,7 @@ This closes the class once instead of one incident at a time. It is a prerequisi
 
 - **No override path.** No gate honors an override with a logged reason. The only escapes are whole-repository exemptions (`exempt-repos.txt`) and per-rule `.enforce.json` switches.
 - **Retirement is read but never written.** `session-start.sh` displays `retirement_candidates.md`, but nothing writes that file.
-- **Most reminders are invisible to telemetry.** 11 of the 14 advisory hooks never call `log_rule_fire`, so there is no evidence that R-322, R-341, R-345, R-346, R-351, R-320, and several others ever change anything.
+- **Most reminders are invisible to telemetry.** 18 of the 25 hooks in the manifest's advisory tier never call `log_rule_fire`, so there is no evidence that R-322, R-341, R-345, R-346, R-351, R-320, and several others ever change anything.
 - **One reminder cannot reach the model at all.** `single-file-folder-reminder.sh:77` writes to stderr on exit 0, which the model never sees.
 - **Unused audit agents.** Six of the nine audit agents (customer, design, UX, financial, legal, marketing) have never produced a report. All nine carry Write and Bash with no `role-policy.json` boundary.
 
@@ -173,7 +173,7 @@ For autonomy, a false positive with no override path means an unattended agent e
 1. Build `CLAUDE_GATE_OVERRIDE="R-NNN: <reason>"`, honored by the gates and logged as decision `override`.
 2. Make every advisory hook log `advise`.
 3. Write the 30-day retirement scan that fills `retirement_candidates.md` from fire and override counts.
-4. Delete `single-file-folder-reminder`.
+4. Switch `single-file-folder-reminder` to `additionalContext` so it reaches the model, or delete it and re-tag R-309 as manual, since it is that rule's only enforcer.
 5. Archive the six unused audit agents, and give the remaining three a `docs/audits/` write boundary.
 
 ### 8. Medium: norm lines carry reference-level detail
@@ -198,7 +198,7 @@ For autonomy, a false positive with no override path means an unattended agent e
 
 - **Model routing.** `feedback_model_routing.md` calls itself the canonical model-routing rule, while R-903 names `task-start` as the canonical routing surface.
 - **Pushing.** `feedback_deploy_at_end.md` says never to push until told to, which conflicts with R-518's draft PR on first push.
-- **Subagents.** `lesson_subagent_first_for_multi_file.md` defaults to subagents for more than five files, while `reference.md` records a cold-start cost of about 136k tokens per subagent.
+- **Subagents.** `lesson_subagent_first_for_multi_file.md` defaults to subagents for more than five files, while `reference.md` records about 136k tokens for one subagent that opened one ticket (IAN-343) and 55k to 135k per reviewer run.
 
 **Misplaced and dangling:**
 
@@ -219,14 +219,14 @@ For autonomy, a false positive with no override path means an unattended agent e
   - The R-517 section is still titled `## Codex review` although the default reviewer is `pr-reviewer` on Sonnet.
   - `reference.md:748` still quotes "Codex reviews every PR before merge, blocking".
   - The `git-workflow-guard.sh` deny text frames Codex as the default.
-- **Copilot.** R-514's norm line still ends with "never request Copilot review", as do the two main skills and a now-moot memory file.
-- **Gate 0.** "Gate 0" is used in slice plans and in `voyager-2` but defined nowhere.
+- **Copilot.** R-514's norm line still ends with "never request Copilot review", as do three skills (task-start, task-cleanup, build-by-slice-require-review) and a now-moot memory file.
+- **Gate 0.** "Gate 0" appears in voyager-2's PR descriptions (#4, #5) but is defined nowhere in this repository.
 
 *Recommendation:*
 
 - Rename the section to `## Pre-merge review`, with the gate accepting both names for one release.
 - Drop the Copilot clauses.
-- Rewrite R-211's clause to defer to the slice plan's merge mode. This is the sentence Finding 16 builds on.
+- Rewrite R-211's clause to defer to the slice plan's merge mode. This is the sentence the autonomy section builds on.
 - Define Gate 0 as the spec-approval step, or stop using the term.
 
 ### 11. Medium: overlapping rules govern the same moments
@@ -249,13 +249,13 @@ For autonomy, a false positive with no override path means an unattended agent e
 - **Inconsistent stack-linter tags.** Per-stack push linters appear on R-361 and R-362 but not on R-320, R-342, or R-344.
 - **Spec disagreements.** `reference.md` marks R-203 as manual, while its tag names two hooks.
 - **A mislabeled CI tag.** R-215's `[ci:doc-sha-reachability]` is not a CI job; it runs from the pre-push hook.
-- **Unresolved IDs.** Twelve manifest IDs have no definition line in `reference.md`.
+- **Scattered definitions.** Rule definitions live in four files, with stack suffixes such as `R-314 [ts]:`, so a plain `^R-NNN:` lookup in `reference.md` misses twelve manifest IDs that do resolve elsewhere. Every tooling check has to know this.
 
-*Recommendation:* generate the `CLAUDE.md` tags from `manifest.json`, or add a fixture that diffs the two, and add a doctor check that every manifest ID resolves to exactly one rule.
+*Recommendation:* generate the `CLAUDE.md` tags from `manifest.json`, or add a fixture that diffs the two, and add a doctor check that every manifest ID resolves to exactly one rule definition, stack suffixes and the three rulebook files included.
 
 ### 13. Medium: the Bash hook chain is long, and parsing is duplicated
 
-Every Bash tool call spawns 26 hook processes, about 720 ms of serial time on a plain `ls`, and 13 of the 23 PreToolUse Bash hooks act only on `git push`, `git commit`, or `gh pr`. Commands are parsed three different ways:
+Every Bash tool call spawns 26 hook processes, about 720 ms of serial time on a plain `ls`, and 15 of the 23 PreToolUse Bash hooks act only on `git push`, `git commit`, or `gh pr`. Commands are parsed three different ways:
 
 - the shared tokenizer, used by five hooks;
 - `shell-command-segments.py`;
@@ -267,7 +267,7 @@ At higher parallelism this latency multiplies across sessions.
 
 *Recommendation:*
 
-- Put the eight push-only gates behind one push dispatcher that parses `git push` once.
+- Put the eleven push-only hooks behind one push dispatcher that parses `git push` once.
 - Route every commit and push detector through `shell-command-scan.sh`.
 - Extract repo identity and the exempt-list check into shared helpers.
 
@@ -287,7 +287,7 @@ The last row matters most for the owner's goal. Without an outcome metric, remov
 
 ### 15. Medium: audits repeat strategic findings without an owner or a date
 
-There have been 17 audits since 2026-07-03, nine of them between 09-16 and 09-19. Engineering audits stay productive: each verifies the previous closures and finds new, reproducible defects. The strategic findings, however, recur without action:
+There have been 17 audits since 2026-07-03, eight of them between 09-16 and 09-19. Engineering audits stay productive: each verifies the previous closures and finds new, reproducible defects. The strategic findings, however, recur without action:
 
 | Finding | Where it has appeared |
 |---|---|
@@ -301,7 +301,7 @@ The freeze recommended on 09-18 was not followed.
 
 ## Smaller cleanups (Low)
 
-- **Dated history in `reference.md`.** It carries 52 dates, 45 ticket references, and 16 "owner decision" clauses. The IAN-333 parenthetical appears six times. Move the history to `PROTOCOL.md` and keep one ticket pointer per Spec, which trims an estimated 15 to 20%.
+- **Dated history in `reference.md`.** It carries 52 dates, 45 ticket references, and 18 "owner decision" clauses. The IAN-333 parenthetical appears six times. Move the history to `PROTOCOL.md` and keep one ticket pointer per Spec, which trims an estimated 15 to 20%.
 - **R-333** was planned in the slice-02 plan but never landed or recorded as retired.
 - **Stale counts.** `claude/README.md` gives outdated counts: rules through R-606, 32 memory files, nine ESLint rules, 17 skills.
 - **Contradictory steps in R-001.** Its Spec step 5 says to read the handoff, while step 1 says to read it only when the injected block is absent.
@@ -311,14 +311,14 @@ The freeze recommended on 09-18 was not followed.
 
 ## Sound, no change needed
 
-- Hook wiring is complete. The 16 unregistered files are all sourced helpers with callers.
+- Hook wiring is complete. The 16 unregistered files are sourced helpers or installers, and all but `security-surface.sh` have callers.
 - Fixture coverage is broad: 144 enforce fixtures and 22 hook fixtures, with no fixture pointing at a deleted hook.
 - The bash 3.2 floor has a CI job and a construct-ban fixture.
-- `destructive-command-guard` and `push-semgrep-gate` fail closed on a missing interpreter or tool.
+- `destructive-command-guard` fails closed when python3 is missing, and `push-semgrep-gate` when Semgrep is missing. Neither survives a missing `jq` (Finding 6).
 - Read-only reviewers (`pr-reviewer`, `security-reviewer`, `slice-critic`, `spec-conformance-review`) have read-only tool lists consistent with R-411.
 - The tracker-writes reversal and the R-517 to R-518 renumbering left no residue.
 
-## 16. A path to more autonomy and parallelism without losing reliability
+## A path to more autonomy and parallelism without losing reliability
 
 This section is a proposal rather than a finding.
 
@@ -356,9 +356,9 @@ R-211's plan-scoped autonomy clause (Finding 10) becomes the rule that governs t
 
 1. **Correctness:** Findings 1, 2, and 10. One PR, small.
 2. **Unattended safety:** Finding 6, the shared gate preamble and generic fixture.
-3. **Parallelism unblockers:** Finding 3, the blob-hash integrity check and then generate-at-sync, plus the per-worktree fixture lock from section 16.
+3. **Parallelism unblockers:** Finding 3, the blob-hash integrity check and then generate-at-sync, plus the per-worktree fixture lock from the autonomy section.
 4. **Context diet:** Findings 5, 8, 9, and 11. The expected result is always-loaded context dropping from about 17k tokens to about 11k, with about six fewer rule IDs.
-5. **Lifecycle and measurement:** Findings 7 and 14, then the section 16 trial.
+5. **Lifecycle and measurement:** Findings 7 and 14, then the autonomy trial.
 6. **Hygiene:** Findings 12, 13, and 15, and the Low list.
 
 Until steps 1 to 3 land, hold new rules and new gates. This is the 09-18 freeze, narrowed to the work that blocks the owner's stated goal.
