@@ -309,7 +309,7 @@
             "enforcer": "hook:push-semgrep-gate",
             "severity": "error",
             "autofix": false,
-            "note": "fail-closed pre-push run of the Semgrep security rule pack (enforce/semgrep/) over every whole changed code file; denies on any finding, Semgrep error, skipped or unscanned path, unparseable file, or unresolvable base; fixtures: enforce/tests/push-semgrep-gate.test.sh, enforce/tests/semgrep-rule-pack.test.sh, enforce/tests/r109-rule-text.test.sh"
+            "note": "fail-closed pre-push run of the Semgrep security rule pack (enforce/semgrep/) over every whole changed code file; denies on any finding, Semgrep error, skipped or unscanned path, unparseable file, or unresolvable base; fixtures: enforce/tests/push-semgrep-gate.test.sh, enforce/tests/semgrep-rule-pack.test.sh, enforce/tests/r109-rule-text.test.sh, enforce/tests/r109-rule-text-2.test.sh"
         },
         {
             "id": "R-106",

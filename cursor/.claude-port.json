@@ -67,7 +67,7 @@
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:5a017efbe0a40a261bd73c4ec21d678bdc512284730b8f3342faf4101716b33b",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:a1bf5281f81be4a8bae2a09d3584e74c7a94edb30f23890d00624556a85c0ea6",
     "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:117f8acfbc20a8153b93fd042faaba2f3192e1383a6624f92167471b77ef9730",
-    "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:21930abe2c155b3a14cb480d0f887f3adfee27f8fcee623af488feca6bea71e1",
+    "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:10e2f968a01a42cea85b8c5c05b100c5ca1b4c0c5abdf6ecd6641d7ceae437ae",
     "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:cb2d958e33c10047409b9b96a8e6b886763cdb149039e0e8011d70f4eb92cd6a",
     "rules/structure-conventions.mdc": "sha256:34ee01f6b9f3ab95d8dc02b456c2255b330089c85cfca2b9ef88c5f1ce16772e",
     "rules/styling.mdc": "sha256:098f09fc330ca1fce2ad5d1e4d605b9588bb3806bd9cc3ffd31499b33e08689e",
