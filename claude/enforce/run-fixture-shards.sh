@@ -49,14 +49,21 @@
 # for the same reason as the test options: an exported variable must not be
 # able to shorten the quiet period or overload the gate.
 #
-# Runs queue machine-wide (IAN-348, IAN-359): before running anything a run
-# takes a kernel flock on ${TMPDIR:-/tmp}/claude-fixture-shards.flock through
-# file descriptor 9, which its workers inherit, so the lock lasts until the
-# last process running a fixture for that run has exited, whatever happens to
-# the runner itself. A second run prints one line naming the holder's PID,
-# polls, and exits 75 after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200).
-# The runner exports its PID as FIXTURE_SHARDS_LOCK_HELD, so a fixture that
-# calls the runner again does not wait on its own parent. --list takes no lock.
+# Runs queue per worktree and are capped machine-wide (IAN-348, IAN-359,
+# IAN-441). Before running anything a run takes two kernel flocks, both on
+# file descriptors its workers inherit, so each lasts until the last process
+# running a fixture for that run has exited, whatever happens to the runner
+# itself: its worktree's lock, ${TMPDIR:-/tmp}/claude-fixture-shards.worktree.
+# <cksum of the checkout root>.flock on fd 9, so two runs from one checkout
+# never overlap; then one of FIXTURE_SHARDS_MAX_RUNS machine-wide run slots
+# (default half the CPUs), ${TMPDIR:-/tmp}/claude-fixture-shards.slot.<n>.flock
+# on fd 8, so at most that many worktrees run fixtures at once. A waiting run
+# prints one line per holder or one line for full slots, polls, and exits 75
+# after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. The
+# runner exports its PID as FIXTURE_SHARDS_LOCK_HELD and its worktree lock's
+# path as FIXTURE_SHARDS_LOCK_HELD_FILE, so a fixture that calls the runner
+# again takes neither lock and does not wait on its own parent. --list takes
+# no lock.
 #
 # A fixture passes on exit 0 with a PASS line and no FAIL line, the verdict
 # the sequential runners applied; output is printed in name order once the
@@ -74,14 +81,18 @@ MAX_DEFAULT_JOBS=8
 SERIAL_SETTLE_DEFAULT_SECONDS=5
 SERIAL_SETTLE_MAX_DEFAULT_SECONDS=60
 LOAD_FROM=""
-# The machine-wide run lock (IAN-359): a kernel flock taken through perl,
-# because macOS ships perl but no flock(1). It replaced an mkdir lock with a
+# The run locks (IAN-359, IAN-441): kernel flocks taken through perl, because
+# macOS ships perl but no flock(1). They replaced an mkdir lock with a
 # recorded PID (IAN-348), which a TERM to the runner released while its
-# fixtures still ran, and whose dead-holder takeover could admit two runs. The
-# file name differs from that lock directory's, so a leftover directory is
-# never mistaken for this lock.
+# fixtures still ran, and whose dead-holder takeover could admit two runs.
+# The worktree lock replaced one machine-wide lock file
+# (claude-fixture-shards.flock), which made every worktree wait for every
+# other; neither old name is ever mistaken for these locks. RUN_LOCK_FILE is
+# set once the tests directory, and so the worktree, is known.
 RUN_LOCK_PARENT_DIR="${TMPDIR:-/tmp}"
-RUN_LOCK_FILE="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.flock"
+RUN_LOCK_PREFIX="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards"
+RUN_LOCK_FILE=""
+RUN_SLOT=""
 RUN_LOCK_POLL_SECONDS=2
 RUN_LOCK_WAIT_DEFAULT_SECONDS=1200
 RUN_LOCK_GAVE_UP_STATUS=75
@@ -92,9 +103,10 @@ RUN_LOCK_GAVE_UP_STATUS=75
 run_one_fixture() {
   local result_dir="$1" fixture="$2" name output status
   name=$(basename "$fixture")
-  # fd 9 closed: a background process a fixture leaks must not hold the run
-  # lock after the run ends; this process keeps it while the fixture runs.
-  output=$(bash "$fixture" </dev/null 9>&- 2>&1); status=$?
+  # fds 8 and 9 closed: a background process a fixture leaks must not hold
+  # the run slot or the worktree lock after the run ends; this process keeps
+  # both while the fixture runs.
+  output=$(bash "$fixture" </dev/null 8>&- 9>&- 2>&1); status=$?
   printf '%s\n' "$output" > "$result_dir/$name.out"
   echo "$status" > "$result_dir/$name.status"
   # Here-strings, not pipes: under pipefail, `printf | grep -q` fails when grep
@@ -306,46 +318,103 @@ affected_selection() {
   [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
 }
 
-# run_lock_holder_pid: prints the PID of the run that last took the lock, as
-# it recorded in the lock file; nothing when no run has.
-run_lock_holder_pid() {
-  head -1 "$RUN_LOCK_FILE" 2>/dev/null
+# worktree_root <tests dir>: the top of the checkout holding the tests
+# directory, or the resolved directory itself outside any repository.
+worktree_root() {
+  git -C "$1" rev-parse --show-toplevel 2>/dev/null || (cd "$1" && pwd -P)
 }
 
-# is_run_lock_held: true while some process holds the run lock. Probes on a
-# fresh open of the file, so the probe's own momentary lock is released as
-# soon as perl exits.
-is_run_lock_held() {
-  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 1; flock($f, LOCK_EX|LOCK_NB) ? exit 1 : exit 0' "$RUN_LOCK_FILE"
+# worktree_lock_path <tests dir>: the run lock of the checkout holding the
+# tests directory. One per checkout, so a linked worktree and the main
+# checkout queue separately, while the enforce and hook trees of one checkout
+# share a lock and never run at once.
+worktree_lock_path() {
+  echo "$RUN_LOCK_PREFIX.worktree.$(printf '%s' "$(worktree_root "$1")" | cksum | awk '{print $1}').flock"
 }
 
-# is_nested_run: true when FIXTURE_SHARDS_LOCK_HELD names the run the lock
-# file records as holder and the lock is held right now, that is, this runner
-# was started by one of that run's fixtures and must not wait on its own
-# ancestors. The holder need not be alive: a killed runner's orphaned workers
-# still hold the lock, and their fixtures' nested runs must not queue behind
-# them. A marker naming another PID, or a holder whose run has finished, is
-# stale, left in some shell's environment, and is ignored, so it can never
-# switch queueing off (IAN-359 review).
+# run_slot_path <n>: the lock file of machine-wide run slot n.
+run_slot_path() {
+  echo "$RUN_LOCK_PREFIX.slot.$1.flock"
+}
+
+# max_concurrent_runs: how many worktrees may run fixtures at once machine-wide:
+# FIXTURE_SHARDS_MAX_RUNS when set, else half the CPUs, at least 1. Exits 2
+# on a value that is not a positive whole number. An environment variable by
+# the owner's decision (IAN-441), because raising it adds load but can never
+# skip or shorten a fixture.
+max_concurrent_runs() {
+  local configured="${FIXTURE_SHARDS_MAX_RUNS:-}" half_cpus
+  if [ -n "$configured" ]; then
+    [[ "$configured" =~ ^[1-9][0-9]*$ ]] || usage_error "FIXTURE_SHARDS_MAX_RUNS needs a positive whole number, not '$configured'"
+    echo "$configured"; return
+  fi
+  half_cpus=$(( $(cpu_count) / 2 )); [ "$half_cpus" -lt 1 ] && half_cpus=1
+  echo "$half_cpus"
+}
+
+# lock_holder_pid <lock file>: prints the PID of the run that last took the
+# lock, as it recorded in the file; nothing when no run has.
+lock_holder_pid() {
+  head -1 "$1" 2>/dev/null
+}
+
+# is_file_locked <lock file>: true while some process holds the lock. Probes
+# on a fresh open of the file, so the probe's own momentary lock is released
+# as soon as perl exits.
+is_file_locked() {
+  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 1; flock($f, LOCK_EX|LOCK_NB) ? exit 1 : exit 0' "$1"
+}
+
+# is_nested_run: true when FIXTURE_SHARDS_LOCK_HELD_FILE names a worktree lock
+# under this run's lock directory, FIXTURE_SHARDS_LOCK_HELD names the run that
+# file records as holder, and that lock is held right now, that is, this
+# runner was started by one of that run's fixtures and must not wait on its
+# own ancestors' worktree lock or run slot. The holder need not be alive: a
+# killed runner's orphaned workers still hold its locks, and their fixtures'
+# nested runs must not queue behind them. A marker naming another PID, a
+# holder whose run has finished, or a file outside the lock directory is
+# stale or forged and is ignored, so it can never switch queueing off
+# (IAN-359 review, IAN-441).
 is_nested_run() {
-  local marker="${FIXTURE_SHARDS_LOCK_HELD:-}"
-  [ -n "$marker" ] && [ "$marker" = "$(run_lock_holder_pid)" ] && is_run_lock_held
+  local marker="${FIXTURE_SHARDS_LOCK_HELD:-}" held_file="${FIXTURE_SHARDS_LOCK_HELD_FILE:-}" worktree_key
+  [ -n "$marker" ] && [ -n "$held_file" ] || return 1
+  worktree_key="${held_file#"$RUN_LOCK_PREFIX.worktree."}"
+  [ "$worktree_key" != "$held_file" ] && [[ "$worktree_key" =~ ^[0-9]+\.flock$ ]] || return 1
+  [ "$marker" = "$(lock_holder_pid "$held_file")" ] && is_file_locked "$held_file"
 }
 
-# open_run_lock_file: opens the lock file on fd 9 for the rest of the run.
-# The xargs workers inherit it, which is what keeps the lock held while any
-# of them is still running a fixture.
+# open_run_lock_file: opens the worktree lock file on fd 9 for the rest of
+# the run. The xargs workers inherit it, which is what keeps the lock held
+# while any of them is still running a fixture.
 open_run_lock_file() {
   { exec 9>>"$RUN_LOCK_FILE"; } 2>/dev/null && return 0
   echo "fixture-shards: cannot open the run lock $RUN_LOCK_FILE; point TMPDIR at a writable directory" >&2
   exit 1
 }
 
-# try_run_lock: true when this run now holds the lock. perl locks the runner's
-# own fd 9 (fdopen shares its open file description), so the lock outlives
-# perl and is released only when every process holding fd 9 has exited.
-try_run_lock() {
-  perl -MFcntl=:flock -e 'open(my $f, ">&=", 9) or exit 2; flock($f, LOCK_EX|LOCK_NB) ? exit 0 : exit 1'
+# try_lock_fd <fd>: true when this run now holds the lock on the file open on
+# that fd. perl locks the runner's own fd (fdopen shares its open file
+# description), so the lock outlives perl and is released only when every
+# process holding the fd has exited.
+try_lock_fd() {
+  perl -MFcntl=:flock -e 'open(my $f, ">&=", $ARGV[0]) or exit 2; flock($f, LOCK_EX|LOCK_NB) ? exit 0 : exit 1' "$1"
+}
+
+# try_run_slot <cap>: true when this run now holds one of the cap's run
+# slots, left open and locked on fd 8 for the workers to inherit, with its
+# number in RUN_SLOT and this PID recorded in its file.
+try_run_slot() {
+  local slot slot_file
+  for (( slot = 1; slot <= $1; slot++ )); do
+    slot_file=$(run_slot_path "$slot")
+    { exec 8>>"$slot_file"; } 2>/dev/null || continue
+    if try_lock_fd 8; then
+      RUN_SLOT="$slot"; echo "$$" > "$slot_file"
+      return 0
+    fi
+    exec 8>&-
+  done
+  return 1
 }
 
 # give_up_waiting <wait cap> <holder pid>: the wait cap's clean failure, so a
@@ -355,6 +424,14 @@ try_run_lock() {
 # second full cap past the Stop hook's budget (IAN-351).
 give_up_waiting() {
   echo "fixture-shards: gave up after ${1}s waiting for PID ${2:-unknown} (or the fixtures it started) to release $RUN_LOCK_FILE; rerun once that run finishes" >&2
+  exit "$RUN_LOCK_GAVE_UP_STATUS"
+}
+
+# give_up_waiting_for_slot <wait cap> <run cap>: the same failure when every
+# machine-wide run slot stayed busy. Exiting releases the worktree lock, since
+# no fixture has started to inherit it.
+give_up_waiting_for_slot() {
+  echo "fixture-shards: gave up after ${1}s waiting for one of the $2 run slots under $RUN_LOCK_PARENT_DIR (FIXTURE_SHARDS_MAX_RUNS); rerun once another worktree's run finishes" >&2
   exit "$RUN_LOCK_GAVE_UP_STATUS"
 }
 
@@ -369,18 +446,55 @@ require_lock_parent_dir() {
   fi
 }
 
-# acquire_run_lock: takes the machine-wide run lock (IAN-348, IAN-359),
-# waiting while another run holds it, because two suites at once starved each
-# other past the 600-second tool timeout (2026-09-24). Prints one line per
-# holder it waits on and gives up after FIXTURE_SHARDS_LOCK_WAIT_SECONDS
-# (default 1200). A nested run returns at once and takes nothing. Both are
-# environment variables, unlike the other controls, because neither can make
-# a run shorter or heavier: the marker counts only while the run it names
-# holds the lock, and the cap only decides how long to queue. Without a
-# working perl the run goes ahead unqueued, with a warning, as it did before
-# IAN-348.
+# wait_for_worktree_lock <wait cap> <started>: takes this worktree's run lock
+# on fd 9, printing one line per holder it waits on, and gives up once
+# SECONDS passes started plus the cap. Records this PID in the file and
+# exports both nesting markers.
+wait_for_worktree_lock() {
+  local wait_cap="$1" started="$2" holder announced=""
+  open_run_lock_file
+  until try_lock_fd 9; do
+    holder=$(lock_holder_pid "$RUN_LOCK_FILE")
+    if [ -n "$holder" ] && [ "$holder" != "$announced" ]; then
+      echo "fixture-shards: another fixture run from this worktree holds $RUN_LOCK_FILE; waiting for PID $holder (or the fixtures it started, up to ${wait_cap}s)"
+      announced="$holder"
+    fi
+    [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting "$wait_cap" "$holder"
+    sleep "$RUN_LOCK_POLL_SECONDS"
+  done
+  echo "$$" > "$RUN_LOCK_FILE"
+  export FIXTURE_SHARDS_LOCK_HELD="$$" FIXTURE_SHARDS_LOCK_HELD_FILE="$RUN_LOCK_FILE"
+}
+
+# wait_for_run_slot <wait cap> <started> <run cap>: takes a machine-wide run
+# slot on fd 8, printing one line when all are busy, and gives up once
+# SECONDS passes started plus the cap.
+wait_for_run_slot() {
+  local wait_cap="$1" started="$2" run_cap="$3" announced=""
+  until try_run_slot "$run_cap"; do
+    if [ -z "$announced" ]; then
+      echo "fixture-shards: all $run_cap run slots are busy (FIXTURE_SHARDS_MAX_RUNS, default half the CPUs); waiting for another worktree's run to finish (up to ${wait_cap}s)"
+      announced=1
+    fi
+    [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting_for_slot "$wait_cap" "$run_cap"
+    sleep "$RUN_LOCK_POLL_SECONDS"
+  done
+}
+
+# acquire_run_lock <run cap>: takes this worktree's run lock, then one of the
+# machine-wide run slots (IAN-348, IAN-359, IAN-441), always in that order so
+# two runs can never each hold what the other waits for. Two suites from one
+# checkout at once starved each other past the 600-second tool timeout
+# (2026-09-24), and one machine-wide lock made every worktree wait for every
+# other, so runs queue per worktree and the slots cap the load. Gives up
+# after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. A
+# nested run returns at once and takes neither. The wait and the markers are
+# environment variables, unlike the other controls, because none can make a
+# run shorter: the markers count only while the run they name holds its lock,
+# and the wait only decides how long to queue. Without a working perl the run
+# goes ahead unqueued, with a warning, as it did before IAN-348.
 acquire_run_lock() {
-  local wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS" holder announced=""
+  local run_cap="$1" wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS"
   [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
   command -v perl >/dev/null 2>&1 || { echo "fixture-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
   # A perl that cannot load Fcntl (a bad PERL5OPT or PERL5LIB) would make every
@@ -388,18 +502,8 @@ acquire_run_lock() {
   perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "fixture-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
   is_nested_run && return 0
   require_lock_parent_dir
-  open_run_lock_file
-  until try_run_lock; do
-    holder=$(run_lock_holder_pid)
-    if [ -n "$holder" ] && [ "$holder" != "$announced" ]; then
-      echo "fixture-shards: another fixture run holds $RUN_LOCK_FILE; waiting for PID $holder (or the fixtures it started, up to ${wait_cap}s)"
-      announced="$holder"
-    fi
-    [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting "$wait_cap" "$holder"
-    sleep "$RUN_LOCK_POLL_SECONDS"
-  done
-  echo "$$" > "$RUN_LOCK_FILE"
-  export FIXTURE_SHARDS_LOCK_HELD="$$"
+  wait_for_worktree_lock "$wait_cap" "$started"
+  wait_for_run_slot "$wait_cap" "$started" "$run_cap"
 }
 
 # usage_error <message>: exits 2 with the message and the usage line.
@@ -410,7 +514,7 @@ usage_error() {
 }
 
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap
   [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
   case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
   shift 2
@@ -432,6 +536,8 @@ main() {
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
   [ "$settle_max_seconds" -ge "$settle_seconds" ] || usage_error "--settle-max-seconds ($settle_max_seconds) is below --settle-seconds ($settle_seconds)"
   tests_dir=$(cd "$tests_dir" && pwd)
+  run_cap=$(max_concurrent_runs) || exit 2
+  RUN_LOCK_FILE=$(worktree_lock_path "$tests_dir")
   fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
   [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
   total=$(grep -c . <<< "$fixtures")
@@ -444,9 +550,10 @@ main() {
   count=$(grep -c . <<< "$SELECTED")
   # After --list, which runs nothing, and before the job count, which should
   # read the load once the run ahead has finished.
-  acquire_run_lock
+  acquire_run_lock "$run_cap"
   [ -n "$jobs" ] || jobs=$(default_job_count)
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
+  [ -z "$RUN_SLOT" ] || echo "fixture-shards: run slot $RUN_SLOT of $run_cap (FIXTURE_SHARDS_MAX_RUNS, default half the CPUs)"
   result_dir="${kept_dir:-$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")}"
   export CLAUDE_FIRE_LOG=/dev/null
   run_selected "$SELECTED" "$jobs" "$result_dir" "$settle_seconds" "$settle_max_seconds"

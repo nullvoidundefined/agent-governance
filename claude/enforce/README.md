@@ -199,28 +199,50 @@ example `# Watches: hooks/*.sh settings.json`), and a change matching any of
 them selects it. A scanner whose scope is every file stays in the fast tier
 instead, since a catch-all glob would leave no change unmapped.
 
-Runs queue rather than overlap (IAN-348). Two suites running at once on one
-machine, for example a manual run and a second session's Stop gate, starved
-each other of CPU until single fixtures passed the 600-second tool timeout on
-2026-09-24. A run therefore takes a machine-wide lock before it runs
-anything: a kernel `flock` on `${TMPDIR:-/tmp}/claude-fixture-shards.flock`,
-taken through perl because macOS ships perl but no `flock(1)`, and held on
-file descriptor 9, which the runner's `xargs` workers inherit. The lock
-therefore lasts until the last process running a fixture for that run has
-exited, whatever happens to the runner: a TERM or KILL to the runner cannot
-free it while its fixtures still run, and a crashed run's lock needs no
-takeover because the kernel releases it. Each fixture starts with fd 9
-closed, so a background process a fixture leaks does not hold the lock once
-its run ends. The first design (an `mkdir` lock directory with a recorded PID
-and a dead-holder takeover) had exactly those two holes, found by a post-merge
-review and replaced in IAN-359; the new lock file has a different name, so a
-leftover lock directory is ignored.
+Runs from one worktree queue rather than overlap, and runs from different
+worktrees overlap only up to a machine-wide cap (IAN-348, IAN-359, IAN-441).
+Two suites running at once on one machine, for example a manual run and a
+second session's Stop gate, starved each other of CPU until single fixtures
+passed the 600-second tool timeout on 2026-09-24, which is why runs first
+queued behind one machine-wide lock. That lock then made every worktree wait
+for every other, so a Stop gate on one branch sat for 480 seconds behind a
+suite from an unrelated branch (IAN-429, IAN-430). A run therefore takes two
+locks before it runs anything, both kernel `flock`s taken through perl
+because macOS ships perl but no `flock(1)`:
 
-A second run prints one line naming the PID recorded in the lock file and
-polls every two seconds. After `FIXTURE_SHARDS_LOCK_WAIT_SECONDS` (default
-1200, twenty minutes) it exits 75 with a message naming that PID instead of
-hanging the turn, and a lock parent directory that cannot be written fails at
-once with that reason. When perl is missing, or cannot load its `Fcntl`
+- **Its worktree's lock**, on
+  `${TMPDIR:-/tmp}/claude-fixture-shards.worktree.<cksum>.flock`, where the
+  number is the `cksum` of the checkout's top directory (or of the resolved
+  tests directory outside any repository), held on file descriptor 9. Two runs
+  from one checkout, including one on `enforce/tests` and one on
+  `hooks/tests`, never overlap; a linked worktree has its own lock.
+- **One machine-wide run slot**, the first free of
+  `${TMPDIR:-/tmp}/claude-fixture-shards.slot.<n>.flock` for `n` from 1 to
+  the cap, held on file descriptor 8. The cap is `FIXTURE_SHARDS_MAX_RUNS`,
+  by default half the online CPUs and at least 1; a value that is not a
+  positive whole number is a usage error (exit 2). It is an environment
+  variable by the owner's decision, because raising it adds load but can
+  never skip or shorten a fixture. A run prints the slot it took and the cap.
+
+The worktree lock is always taken first, so two runs can never each hold
+what the other waits for. The runner's `xargs` workers inherit both
+descriptors, so each lock lasts until the last process running a fixture for
+that run has exited, whatever happens to the runner: a TERM or KILL to the
+runner cannot free them while its fixtures still run, and a crashed run's
+locks need no takeover because the kernel releases them. Each fixture starts
+with fds 8 and 9 closed, so a background process a fixture leaks does not
+hold either lock once its run ends. The first design (an `mkdir` lock
+directory with a recorded PID and a dead-holder takeover) had exactly those
+two holes, found by a post-merge review and replaced in IAN-359; neither that
+directory nor the old machine-wide `claude-fixture-shards.flock` is mistaken
+for these locks.
+
+A run waiting on its worktree prints one line naming the PID recorded in the
+lock file, and a run waiting for a slot prints one line saying every slot is
+busy; both poll every two seconds. After `FIXTURE_SHARDS_LOCK_WAIT_SECONDS`
+(default 1200, twenty minutes) across both waits it exits 75 with a message
+naming what it waited for instead of hanging the turn, and a lock parent
+directory that cannot be written fails at once with that reason. When perl is missing, or cannot load its `Fcntl`
 module, the run goes ahead unqueued, with a warning. Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop
 gate (`hooks/verification-gate.sh`) sets the cap to 480 seconds for every
 check it runs, because the Stop hook itself is killed at 660 seconds, and it
@@ -234,13 +256,19 @@ ordinary failure and keeps its one automatic retry. Fixtures:
 "Machine-wide" means every caller that shares `TMPDIR`: on macOS that is the
 per-user directory launchd assigns, which terminal shells and app-launched
 hooks inherit alike, and on Linux it is usually unset, so `/tmp`. The runner
-exports its PID as `FIXTURE_SHARDS_LOCK_HELD`, so a fixture that calls the
-runner again, such as the runner's own fixture, skips the lock instead of
-waiting on its parent. The marker counts only while it names the PID the
-lock file records and that lock is held, so it still works for the fixtures
-of a runner that was killed (its orphaned workers hold the lock), while a
-value left exported in some shell cannot switch queueing off. `--list` runs nothing and takes no lock. Fixture:
-`tests/run-fixture-shards-lock.test.sh`.
+exports its PID as `FIXTURE_SHARDS_LOCK_HELD` and its worktree lock's path as
+`FIXTURE_SHARDS_LOCK_HELD_FILE`, so a fixture that calls the runner again,
+such as the runner's own fixture, takes neither lock instead of waiting on its
+parent's worktree lock or, under a cap of 1, its parent's slot. The markers
+count only while the file is a worktree lock under this run's lock directory,
+the PID is the one that file records, and that lock is held, so they still
+work for the fixtures of a runner that was killed (its orphaned workers hold
+the lock), while a value left exported in some shell, or a marker pointing at
+some other locked file, cannot switch queueing off. `--list` runs nothing and
+takes no lock. Fixtures: `tests/run-fixture-shards-lock.test.sh` (the
+worktree lock) and `tests/run-fixture-shards-run-cap.test.sh` (the cap: with
+it set to 2, two worktrees run at once and a third queues; the default is half
+the CPUs).
 
 Run them from the checkout, not from `~/.claude`. Every fixture resolves the
 implementation it exercises through `enforce/harness-root.sh`, which derives
