@@ -20,6 +20,7 @@ R-105: Obtain explicit confirmation before any destructive MCP action (delete, d
 R-106: Every push of the agent-governance repo (public remote; the source that syncs into `~/.claude`) is publishing: `git diff origin/main` first; no secrets, no local filesystem paths, no client-identifying content. [hook:global-repo-push-guard]
 R-107: Investigate any `core.hooksPath` resolving outside the expected git hooks path before committing; treat the drift as a supply-chain signal. [hook:hookspath-drift-check]
 R-108: Never write a credential-shaped literal into any file or command, fixtures and docs included, even a fake one (a `scheme://user:<password>@host` URI with a real-looking value in the placeholder's place, a `password=`/`secret=`/`token=` assignment with a literal value); secret scanners flag the shape, not the validity; build test values at run time from parts or write a placeholder (`<password>`, `${DB_PASSWORD}`, `changeme`). [hook:secret-scan]
+R-109: Security is the first-order concern: a security finding outranks every other finding, is never deferred, softened, or re-graded to pass a merge, and only the owner waives one; a PR range touching a security control merges only with a clean security rule pack, a current `## Security review` on the strongest model (`securityReviewModel`), and a test feeding each touched control its insecure value. [hook:push-semgrep-gate]
 
 ## Conduct and output (R-2xx)
 
@@ -86,7 +87,7 @@ R-401: Write tests that fail when the implementation is wrong: behavior assertio
 R-403: Fix bugs test-first: write the failing test, confirm it FAILS, apply the smallest root-cause fix, confirm it PASSES, verify per R-509, commit test and fix together. [hook:fix-commit-requires-test]
 R-404: Reproduce failures locally before deploying. [manual]
 R-405: Fix root causes; never weaken the protection that surfaced the failure (CORS, CSP, rate limits, bcrypt rounds). [hook:content-gate]
-R-406: Give every user-input handler one negative-input test (oversized payload, injection, malformed encoding). [manual]
+R-406: Give every user-input handler one negative-input test (oversized payload, injection, malformed encoding), and every security control a test that feeds it its insecure value (`*`, `null`, empty, a weakened flag), configuration included. [manual]
 R-408: Lint/format staged files only in pre-commit; full sweeps in pre-push and CI. [manual]
 R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before committing again. [manual]
 R-410: Never write a gate input (`.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, `.claude/tdd-lock.json`) nor, once a slice is red, any test, fixture, or spec path; the slice's own author fixes its unpushed RED test only through `tdd.sh amend <test>` while red; any other test believed wrong returns `DISPUTE: <test>` to the user. [hook:protected-path-guard]
