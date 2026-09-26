@@ -24,7 +24,17 @@
 #          `model` equal to securityReviewModel in
 #          enforce/security-review-model.json, and a `range` whose head
 #          endpoint is the PR head; a missing detector, an unresolvable range,
-#          or a failed detector counts as security-touching (fail closed)
+#          or a failed detector counts as security-touching (fail closed).
+#          The section's findings are then read: a `Nothing found:` line
+#          naming no values after `tried` denies (B-16); a findings table
+#          (# | Severity | Control | Source | Worst value tried | Evidence |
+#          Fix | Status) that cannot be parsed denies, and so does any `open`
+#          row; a table with rows needs an `artefact` line whose file, read at
+#          the PR head, is JSON grading every row's `#` at a severity no
+#          higher than the table's (B-10); `fixed <sha>` must name a commit in
+#          the PR range (B-11); and a `waived by owner <date>` row, when
+#          nothing denies, turns the merge into an R-109 ask naming each
+#          waived row, so the owner's prompt is the waiver channel (B-12)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -639,12 +649,186 @@ read_security_artefact_verdict() {
   echo ok
 }
 
+# read_empty_nothing_found_lines <section>: prints every `Nothing found:` line
+# whose text after its last `tried` word is empty or punctuation, and every
+# such line with no `tried` word at all, since neither names a value tried.
+read_empty_nothing_found_lines() {
+  awk '
+    {
+      line = $0
+      sub(/^[ \t]*/, "", line)
+      sub(/^[-*+][ \t]+/, "", line)
+      gsub(/\*\*/, "", line)
+      lowered = tolower(line)
+      if (index(lowered, "nothing found:") != 1) next
+      tried_end = 0
+      for (start = 1; (found = index(substr(lowered, start), "tried")) > 0; start += found) {
+        position = start + found - 1
+        before = (position == 1) ? " " : substr(lowered, position - 1, 1)
+        after = substr(lowered, position + 5, 1)
+        if (before !~ /[a-z]/ && after !~ /[a-z]/) tried_end = position + 5
+      }
+      values = tried_end ? substr(line, tried_end) : ""
+      gsub(/[ \t.,;:]/, "", values)
+      if (values == "") print line
+    }' <<< "$1"
+}
+
+# read_findings_rows <section>: prints one `<#>\t<SEVERITY>\t<status>` line
+# per row of the section's findings table, nothing when it holds no table,
+# and, when a table line breaks the expected header, separator, cell count,
+# `#`, severity, or status shape, the reason alone with a non-zero return.
+read_findings_rows() {
+  awk '
+    function trim(text) { sub(/^[ \t]+/, "", text); sub(/[ \t]+$/, "", text); return text }
+    function fault(reason) { print reason; is_faulted = 1; exit 1 }
+    /^[ \t]*\|/ {
+      table_lines++
+      line = trim($0)
+      sub(/^\|/, "", line)
+      sub(/\|$/, "", line)
+      cell_count = split(line, cells, "|")
+      if (cell_count != 8) fault("table line " table_lines " has " cell_count " cells rather than 8")
+      for (i = 1; i <= 8; i++) { cells[i] = trim(cells[i]); gsub(/[ \t]+/, " ", cells[i]) }
+      if (table_lines == 1) {
+        header = tolower(cells[1] "|" cells[2] "|" cells[3] "|" cells[4] "|" cells[5] "|" cells[6] "|" cells[7] "|" cells[8])
+        if (header != "#|severity|control|source|worst value tried|evidence|fix|status") fault("its header is not # | Severity | Control | Source | Worst value tried | Evidence | Fix | Status")
+        next
+      }
+      if (table_lines == 2) {
+        for (i = 1; i <= 8; i++) if (cells[i] !~ /^:?-+:?$/) fault("its second line is not a separator row")
+        next
+      }
+      if (cells[1] !~ /^[0-9]+$/) fault("table line " table_lines " has no number in its # cell")
+      severity = toupper(cells[2])
+      if (severity !~ /^(CRITICAL|HIGH|MEDIUM|LOW)$/) fault("row " cells[1] " has severity " cells[2] ", not CRITICAL, HIGH, MEDIUM, or LOW")
+      status = tolower(cells[8])
+      if (status != "open" && status !~ /^fixed [0-9a-f]+$/ && status !~ /^waived by owner [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) fault("row " cells[1] " has status " cells[8] ", not open, fixed <sha>, or waived by owner <date>")
+      print cells[1] "\t" severity "\t" status
+    }
+    END {
+      if (is_faulted) exit 1
+      if (table_lines == 1) { print "it has a header and no separator row"; exit 1 }
+    }' <<< "$1"
+}
+
+# list_rows_with_status <rows> <status prefix>: prints `row <#>` for each row
+# whose status starts with the prefix, joined by ", ", or nothing.
+list_rows_with_status() {
+  awk -F '\t' -v prefix="$2" 'index($3, prefix) == 1 { names = names (names == "" ? "" : ", ") "row " $1 } END { printf "%s", names }' <<< "$1"
+}
+
+# read_security_artefact_json <section>: prints the `artefact` line's file,
+# read at the PR head (the checkout need not be on the PR branch), as compact
+# JSON holding a findings array of objects with an id and a string severity;
+# otherwise prints why it cannot and returns non-zero.
+read_security_artefact_json() {
+  local artefact_path artefact_text
+  artefact_path=$(read_review_field "$1" artefact)
+  [ -n "$artefact_path" ] ||
+    { echo "its findings table has rows but the section carries no \`artefact\` line naming the reviewer's saved output"; return 1; }
+  artefact_text=$(git -C "$SECURITY_TOP" show "$SECURITY_HEAD:$artefact_path" 2>/dev/null) ||
+    { echo "its artefact \`$artefact_path\` cannot be read at the PR head $(printf '%.7s' "$SECURITY_HEAD")"; return 1; }
+  jq -ce 'select((.findings | type) == "array" and all(.findings[]; type == "object" and has("id") and (.severity | type) == "string"))' <<< "$artefact_text" 2>/dev/null ||
+    { echo "its artefact \`$artefact_path\` is not JSON holding a findings array with an id and a severity on every finding"; return 1; }
+}
+
+# read_severity_rank <severity>: prints 4 for CRITICAL down to 1 for LOW, and
+# 0 for anything else.
+read_severity_rank() {
+  case "$1" in CRITICAL) echo 4 ;; HIGH) echo 3 ;; MEDIUM) echo 2 ;; LOW) echo 1 ;; *) echo 0 ;; esac
+}
+
+# read_artefact_severity <artefact json> <#>: prints the uppercase severity of
+# the artefact's one finding whose id is <#>, or nothing when none or several match.
+read_artefact_severity() {
+  jq -r --arg id "$2" '[.findings[] | select((.id | tostring) == $id) | .severity | ascii_upcase] | if length == 1 then .[0] else "" end' <<< "$1" 2>/dev/null
+}
+
+# read_severity_verdict <rows> <artefact json>: prints "ok" when every row's
+# severity is at least the artefact's for the same id (B-10), otherwise the
+# sentence naming the first row that is downgraded or has no artefact match.
+read_severity_verdict() {
+  local row_id row_severity row_status artefact_severity artefact_rank
+  while IFS=$'\t' read -r row_id row_severity row_status; do
+    artefact_severity=$(read_artefact_severity "$2" "$row_id") ||
+      { echo "the hook could not read row $row_id's severity from the artefact"; return 0; }
+    artefact_rank=$(read_severity_rank "$artefact_severity")
+    [ "$artefact_rank" -gt 0 ] ||
+      { echo "row $row_id has no single finding with id $row_id and a known severity in the artefact"; return 0; }
+    [ "$(read_severity_rank "$row_severity")" -ge "$artefact_rank" ] ||
+      { echo "row $row_id is graded $row_severity in the table but $artefact_severity in the artefact, and a finding is never downgraded"; return 0; }
+  done <<< "$1"
+  echo ok
+}
+
+# is_range_commit <sha>: true when the abbreviated or full object name
+# resolves to one commit in SECURITY_BASE..SECURITY_HEAD; an ambiguous name,
+# a missing object, or a failed ancestry lookup is false.
+is_range_commit() {
+  local commit_oid ancestry_status
+  is_hexadecimal_name "$1" && [ "${#1}" -ge 7 ] || return 1
+  commit_oid=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "$1^{commit}" 2>/dev/null) || return 1
+  git -C "$SECURITY_TOP" merge-base --is-ancestor "$commit_oid" "$SECURITY_HEAD" 2>/dev/null || return 1
+  git -C "$SECURITY_TOP" merge-base --is-ancestor "$commit_oid" "$SECURITY_BASE" 2>/dev/null
+  ancestry_status=$?
+  [ "$ancestry_status" -eq 1 ]
+}
+
+# read_fixed_commit_verdict <rows>: prints "ok" when every `fixed <sha>` row
+# names a commit in the PR range (B-11), otherwise the sentence naming the row.
+read_fixed_commit_verdict() {
+  local row_id row_severity row_status fixed_sha
+  while IFS=$'\t' read -r row_id row_severity row_status; do
+    case "$row_status" in fixed\ *) ;; *) continue ;; esac
+    fixed_sha="${row_status#fixed }"
+    is_range_commit "$fixed_sha" ||
+      { echo "row $row_id is marked fixed by \`$fixed_sha\`, which is not a commit in the PR range $(printf '%.7s' "$SECURITY_BASE")..$(printf '%.7s' "$SECURITY_HEAD")"; return 0; }
+  done <<< "$1"
+  echo ok
+}
+
+# read_table_verdict <section> <rows>: prints "ok" or the deny sentence for a
+# parsed findings table with rows: no open row, a readable artefact, no
+# downgraded severity, and every fix in range; else "waived: <rows>" when a
+# row is waived, so the caller asks the owner.
+read_table_verdict() {
+  local open_rows artefact_json verdict waived_rows
+  open_rows=$(list_rows_with_status "$2" open)
+  [ -z "$open_rows" ] || { echo "its findings table still has $open_rows open"; return 0; }
+  artefact_json=$(read_security_artefact_json "$1") || { echo "$artefact_json"; return 0; }
+  verdict=$(read_severity_verdict "$2" "$artefact_json")
+  [ "$verdict" = ok ] || { echo "$verdict"; return 0; }
+  verdict=$(read_fixed_commit_verdict "$2")
+  [ "$verdict" = ok ] || { echo "$verdict"; return 0; }
+  waived_rows=$(list_rows_with_status "$2" "waived by owner")
+  [ -z "$waived_rows" ] || { echo "waived: $waived_rows"; return 0; }
+  echo ok
+}
+
+# read_security_findings_verdict <section>: prints "ok" when the Security
+# review's findings clear R-109, "waived: <rows>" when only an owner waiver
+# stands between them and the merge, and otherwise the deny sentence. A
+# section with no table and no Nothing-found line is not judged here.
+read_security_findings_verdict() {
+  local empty_lines rows
+  empty_lines=$(read_empty_nothing_found_lines "$1") ||
+    { echo "the hook could not read the section's Nothing found lines"; return 0; }
+  [ -z "$empty_lines" ] ||
+    { echo "its line \`$(printf '%s\n' "$empty_lines" | head -n 1)\` names no values after \`tried\`, so it records no test of the control"; return 0; }
+  rows=$(read_findings_rows "$1") ||
+    { echo "its findings table cannot be parsed ($rows), so every finding in it counts as open"; return 0; }
+  [ -n "$rows" ] || { echo ok; return 0; }
+  read_table_verdict "$1" "$rows"
+}
+
 # read_security_review_verdict: prints "ok" when the PR touches no security
-# surface or its body carries one current Security review artefact; otherwise
-# the sentence naming what is missing. An undecidable range reads as
-# security-touching and, with no resolvable head, can satisfy nothing.
+# surface or its body carries one current Security review artefact whose
+# findings clear R-109, "waived: <rows>" when only owner waivers remain, and
+# otherwise the sentence naming what is missing. An undecidable range reads
+# as security-touching and, with no resolvable head, can satisfy nothing.
 read_security_review_verdict() {
-  local pr_body scan heading_count section
+  local pr_body scan heading_count section artefact_verdict
   SECURITY_HEAD=""
   SECURITY_BASE=""
   is_security_touching_pr || { echo ok; return 0; }
@@ -657,7 +841,9 @@ read_security_review_verdict() {
   if [ "$heading_count" -gt 1 ]; then
     echo "the PR body holds $heading_count \`## Security review\` headings, so the hook cannot say which one describes the state that would merge"
   elif [ -n "$section" ]; then
-    read_security_artefact_verdict "$section"
+    artefact_verdict=$(read_security_artefact_verdict "$section")
+    [ "$artefact_verdict" = ok ] || { echo "$artefact_verdict"; return 0; }
+    read_security_findings_verdict "$section"
   else
     echo "the PR touches a security surface and its body has no \`## Security review\` section with content under it"
   fi
@@ -817,8 +1003,13 @@ if [ "$MERGE_TOTAL" -gt 0 ]; then
   [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
     deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line, a \`range\` line covering the commit this PR would merge, and the findings with their dispositions; then merge again."
   SECURITY_REVIEW_VERDICT=$(read_security_review_verdict)
-  [ "$SECURITY_REVIEW_VERDICT" = "ok" ] ||
-    deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, and a \`range\` line covering the commit this PR would merge; then merge again."
+  case "$SECURITY_REVIEW_VERDICT" in
+    ok) ;;
+    "waived: "*)
+      ask "R-109: the Security review marks ${SECURITY_REVIEW_VERDICT#waived: } as waived by owner, and a waived security finding merges only on the owner's confirmation. Confirm each waived row and this merge (R-514) now, or say so and the merge waits." ;;
+    *)
+      deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, a \`range\` line covering the commit this PR would merge, an \`artefact\` line naming the reviewer's saved output, and the findings table with every row \`fixed <sha>\` in range or \`waived by owner <date>\`; then merge again." ;;
+  esac
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
 
