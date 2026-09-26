@@ -26,6 +26,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`feedback_mechanize_structure_rules.md`](./feedback_mechanize_structure_rules.md): A `[manual]` structure rule loses to the layout already on disk; mechanize it per R-516 the first time it is missed.
 - [`feedback_ask_judgment_calls.md`](./feedback_ask_judgment_calls.md): **Canonical** R-211 detail. Two or more judgment calls in a task: ask them with option tiles, one question per turn, never batched and never decided silently.
 - [`feedback_card_whenever_waiting.md`](./feedback_card_whenever_waiting.md): Any turn that ends waiting on the user (approval, review, decision, information) ends with an AskUserQuestion card, never a prose ask.
+- [`feedback_ask_auto_merge_per_pr.md`](./feedback_ask_auto_merge_per_pr.md): After opening any PR, ask with a card whether to enable auto-merge for it; never enable it unasked, never skip the question.
 
 ## Efficiency lessons (incident-backed)
 - [`lesson_no_reread_auto_injected_context.md`](./lesson_no_reread_auto_injected_context.md): Do not Read files already present in the session's auto-injected context (claudeMd, system-reminder blocks)
