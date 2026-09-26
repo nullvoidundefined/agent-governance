@@ -44,7 +44,7 @@
     "hooks.json": "sha256:4d946e8d19a6be34c33b79d2bc9b382d2c6c6086850ff4afdaf416854590e0a5",
     "rules/000-global-rules.mdc": "sha256:4d9cc5af430cc2bdae4bacd36279c7dbb550828dd1474f12a6cfc4433aedf217",
     "rules/001-session-types.mdc": "sha256:18c406b47904fd2a5cf382719241b4744d33e33ac0c59cab0340f0c93bc61ac6",
-    "rules/002-global-memory-index.mdc": "sha256:af9d7a84172d09bb4eba2c300dcd10abcc1a3bb747f463ee13312ca92d9f6426",
+    "rules/002-global-memory-index.mdc": "sha256:8f7eea3ce470ff8e098892fb2772550a2cfc6b53f24836f1812ef1d268861cf9",
     "rules/backend.mdc": "sha256:99f7ce3176c106d7424d3c5e387a7b53d956732726ba453f6feb6736044ec5d9",
     "rules/cloud-deployment.mdc": "sha256:ef24b5c242f6e71d99596d0648df625e3cb486ce5869ab15ab7f91611650df76",
     "rules/database.mdc": "sha256:7930730f93a0e11ed90bc138e949612c447fcb589d2ca21bba026ca976961e37",
