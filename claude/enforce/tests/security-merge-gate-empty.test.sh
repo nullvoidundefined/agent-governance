@@ -135,10 +135,11 @@ pr_body() {
   printf '## Testing\nGreen.\n'
 }
 
-# run_guard <gh stub> <repo>: the hook's JSON output for
-# `gh pr merge 42 --squash` run from <repo> with the clean Semgrep stub.
+# run_guard <gh stub> <repo> [<merge command>]: the hook's JSON output for
+# <merge command> (default `gh pr merge 42 --squash`) run from <repo> with the
+# clean Semgrep stub.
 run_guard() {
-  jq -nc --arg c 'gh pr merge 42 --squash' --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
+  jq -nc --arg c "${3:-gh pr merge 42 --squash}" --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$1" CLAUDE_SEMGREP_CMD="$CLEAN_STUB" "$HOOK" 2>/dev/null
 }
 
@@ -183,11 +184,11 @@ expect_r109_deny "case 2 (header only)" "$(run_guard "$STUB" "$SEC_DIR")"
 
 # Case 3 (control): the same header plus a `Nothing found:` line reaches the ask.
 STUB=$(write_pr_stub case3 "$(pr_body "$SEC_CODEX" "$(printf '%s\n\nNothing found: CORS: sources env CORS_ORIGIN: tried *, null\n' "$SEC_HEADER")")" "$SEC_HEAD")
-expect_r514_ask "case 3 control (Nothing found line)" "$(run_guard "$STUB" "$SEC_DIR")"
+expect_r514_ask "case 3 control (Nothing found line)" "$(run_guard "$STUB" "$SEC_DIR" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 
 # Case 4 (control): the same header plus a `No security control in range:` line.
 STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(printf '%s\n\nNo security control in range: docs/notes.md\n' "$SEC_HEADER")")" "$SEC_HEAD")
-expect_r514_ask "case 4 control (No security control in range line)" "$(run_guard "$STUB" "$SEC_DIR")"
+expect_r514_ask "case 4 control (No security control in range line)" "$(run_guard "$STUB" "$SEC_DIR" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 
 if [ "$failures" -gt 0 ]; then
   echo "security-merge-gate-empty.test.sh: $failures failure(s)"

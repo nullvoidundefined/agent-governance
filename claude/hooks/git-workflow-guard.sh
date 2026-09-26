@@ -24,9 +24,16 @@
 #          `model` equal to securityReviewModel in
 #          enforce/security-review-model.json, and a `range` whose head
 #          endpoint is the PR head; a missing detector, an unresolvable range,
-#          or a failed detector counts as security-touching (fail closed).
+#          a failed detector, or one that outlives
+#          CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS (default 30; its whole
+#          process group is killed) counts as security-touching (fail closed).
+#          A security-touching merge must carry `--match-head-commit <sha>`
+#          naming the full PR head, so no later push merges unreviewed (B-9c).
 #          The section's findings are then read: a `Nothing found:` line
-#          naming no values after `tried` denies (B-16); a findings table
+#          naming no values after `tried`, or only a placeholder such as
+#          `none`, `n/a`, or `-`, denies (B-16, B-9c); an `artefact` line's
+#          file is read at the PR head, table or not, and any finding id in
+#          it without a table row denies (B-9c); a findings table
 #          (# | Severity | Control | Source | Worst value tried | Evidence |
 #          Fix | Status) that cannot be parsed denies, and so does any `open`
 #          row; a table with rows needs an `artefact` line whose file, read at
@@ -168,25 +175,30 @@ deny() {
 # MERGE_HAS_MERGE_FLAG and MERGE_HAS_REBASE_FLAG (long, short, and bundled
 # short forms such as `-dr`) plus MERGE_VIEW_ARGUMENTS, the `gh pr view`
 # arguments naming the same PR: the first positional argument (a number, URL,
-# or branch) and any --repo/-R. The values of merge's value-taking flags are
+# or branch) and any --repo/-R. It also sets MERGE_MATCH_HEAD_COMMIT to the
+# value of a space-separated `--match-head-commit <sha>`, or empty when the
+# merge carries none. The values of merge's value-taking flags are
 # skipped so a subject or head SHA is never mistaken for the PR or a strategy.
 # The words come from the quote-aware scan, so a quoted value holding a space
 # is one word, as the shell passes it.
 parse_merge_arguments() {
-  local merge_token short_flags short_flag skip_next=0 repo_next=0 pr_selector=""
+  local merge_token short_flags short_flag skip_next=0 repo_next=0 match_next=0 pr_selector=""
   MERGE_HAS_MERGE_FLAG=0
   MERGE_HAS_REBASE_FLAG=0
+  MERGE_MATCH_HEAD_COMMIT=""
   MERGE_VIEW_ARGUMENTS=()
   local -a merge_tokens=(${MERGE_WORDS[@]+"${MERGE_WORDS[@]}"})
   for merge_token in ${merge_tokens[@]+"${merge_tokens[@]}"}; do
     if [ "$repo_next" -eq 1 ]; then MERGE_VIEW_ARGUMENTS+=(--repo "$merge_token"); repo_next=0; continue; fi
+    if [ "$match_next" -eq 1 ]; then MERGE_MATCH_HEAD_COMMIT="$merge_token"; match_next=0; continue; fi
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
     case "$merge_token" in
       --merge | --merge=*) MERGE_HAS_MERGE_FLAG=1 ;;
       --rebase | --rebase=*) MERGE_HAS_REBASE_FLAG=1 ;;
       --repo) repo_next=1 ;;
       --repo=*) MERGE_VIEW_ARGUMENTS+=("$merge_token") ;;
-      --subject | --body | --body-file | --author-email | --match-head-commit) skip_next=1 ;;
+      --match-head-commit) match_next=1 ;;
+      --subject | --body | --body-file | --author-email) skip_next=1 ;;
       --*) ;;
       -?*)
         short_flags="${merge_token#-}"
@@ -608,17 +620,63 @@ resolve_security_range() {
   [ -n "$SECURITY_BASE" ]
 }
 
+# read_security_detector_timeout: prints the detector's deadline in whole
+# seconds, CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS or 30 when that is unset or
+# not a whole number. The default is 30 because the harness kills a PreToolUse
+# hook at 60 seconds (the Claude Code and Codex default; settings.json sets no
+# other for this hook), the gh view deadline takes up to 15 of them, and 30
+# more leaves 15 for git, jq, and the verdict.
+read_security_detector_timeout() {
+  local timeout_seconds="${CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS:-}"
+  case "$timeout_seconds" in '' | *[!0-9]*) timeout_seconds=30 ;; esac
+  printf '%s' "$timeout_seconds"
+}
+
+# run_security_detector_with_deadline: runs is_security_surface on the PR's
+# range in the background and returns its status, polling in 0.2s steps as
+# run_gh_view_with_deadline does. `set -m` puts the detector in its own process
+# group, so on expiry the whole group dies, a Semgrep child and its `sleep`
+# included, and the detector's output goes to a file rather than the hook's
+# stdout, so no orphan can hold the hook's output open. An expired or
+# unlaunchable detector returns 0: a detector that did not answer is failed,
+# and a failed detector means security-touching.
+run_security_detector_with_deadline() {
+  local deadline_steps waited_steps=0 detector_log detector_pid detector_status
+  deadline_steps=$(( $(read_security_detector_timeout) * 5 ))
+  detector_log=$(mktemp) || return 0
+  set -m
+  is_security_surface "$SECURITY_TOP" "$SECURITY_BASE" "$SECURITY_HEAD" >"$detector_log" 2>&1 </dev/null &
+  detector_pid=$!
+  set +m
+  while kill -0 "$detector_pid" 2>/dev/null; do
+    if [ "$waited_steps" -ge "$deadline_steps" ]; then
+      kill -KILL -- "-$detector_pid" 2>/dev/null
+      wait "$detector_pid" 2>/dev/null
+      rm -f "$detector_log"
+      return 0
+    fi
+    sleep 0.2
+    waited_steps=$((waited_steps + 1))
+  done
+  wait "$detector_pid"
+  detector_status=$?
+  cat "$detector_log" >&2
+  rm -f "$detector_log"
+  return "$detector_status"
+}
+
 # is_security_touching_pr: true when the PR's range touches a security
-# surface, as the sourced detector decides, and also whenever the answer
-# cannot be had: a missing helper or an unresolvable range fails closed, and
-# is_security_surface itself answers true when the detector fails.
+# surface, as the sourced detector decides within its deadline, and also
+# whenever the answer cannot be had: a missing helper, an unresolvable range,
+# or an expired detector fails closed, and is_security_surface itself answers
+# true when the detector fails.
 is_security_touching_pr() {
   [ -f "$SECURITY_SURFACE_HELPER" ] || return 0
   # shellcheck source=security-surface.sh
   . "$SECURITY_SURFACE_HELPER" || return 0
   type is_security_surface >/dev/null 2>&1 || return 0
   resolve_security_range || return 0
-  is_security_surface "$SECURITY_TOP" "$SECURITY_BASE" "$SECURITY_HEAD"
+  run_security_detector_with_deadline
 }
 
 # read_security_review_model: prints securityReviewModel from
@@ -653,8 +711,9 @@ read_security_artefact_verdict() {
 }
 
 # read_empty_nothing_found_lines <section>: prints every `Nothing found:` line
-# whose text after its last `tried` word is empty or punctuation, and every
-# such line with no `tried` word at all, since neither names a value tried.
+# whose text after its last `tried` word is empty, punctuation, or only a
+# placeholder (none, nothing, n/a, na, -, tbd, in any case), and every such
+# line with no `tried` word at all, since none of them names a value tried.
 read_empty_nothing_found_lines() {
   awk '
     {
@@ -673,7 +732,7 @@ read_empty_nothing_found_lines() {
       }
       values = tried_end ? substr(line, tried_end) : ""
       gsub(/[ \t.,;:]/, "", values)
-      if (values == "") print line
+      if (values == "" || tolower(values) ~ /^(none|nothing|n\/a|na|-|tbd)$/) print line
     }' <<< "$1"
 }
 
@@ -809,6 +868,33 @@ read_table_verdict() {
   echo ok
 }
 
+# list_rowless_finding_ids <artefact json> <rows>: prints `finding <id>` for
+# each artefact finding id that no table row's `#` names, joined by ", ", or
+# nothing when every finding has a row.
+list_rowless_finding_ids() {
+  local row_ids
+  row_ids=$(awk -F '\t' 'NF { print $1 }' <<< "$2")
+  jq -r --arg row_ids "$row_ids" '($row_ids | split("\n")) as $rows
+    | [.findings[].id] | unique | map(tostring) | map(select(. as $id | $rows | any(. == $id) | not))
+    | map("finding " + .) | join(", ")' <<< "$1" 2>/dev/null
+}
+
+# read_artefact_coverage_verdict <section> <rows>: prints "ok" when the section
+# carries no `artefact` line or every finding in the artefact, read at the PR
+# head, has a table row; otherwise the sentence naming why the artefact cannot
+# be read or each finding with no row, since a row deleted from the table
+# would otherwise let its finding merge unanswered.
+read_artefact_coverage_verdict() {
+  local artefact_json rowless_ids
+  [ -n "$(read_review_field "$1" artefact)" ] || { echo ok; return 0; }
+  artefact_json=$(read_security_artefact_json "$1") || { echo "$artefact_json"; return 0; }
+  rowless_ids=$(list_rowless_finding_ids "$artefact_json" "$2") ||
+    { echo "the hook could not compare the artefact's finding ids with the table rows"; return 0; }
+  [ -z "$rowless_ids" ] ||
+    { echo "its artefact holds $rowless_ids with no row in the findings table, and every finding the reviewer reported needs a row"; return 0; }
+  echo ok
+}
+
 # has_security_record_line <section>: true when a line, after any bullet and
 # bold markers, starts `Nothing found:` or `No security control in range:`.
 has_security_record_line() {
@@ -829,32 +915,67 @@ has_security_record_line() {
 # stands between them and the merge, and otherwise the deny sentence. A
 # section with no table rows, no `Nothing found:` line, and no `No security
 # control in range:` line records nothing it examined and is denied (B-16b).
+# When the section names an artefact, every finding in it needs a table row.
 read_security_findings_verdict() {
-  local empty_lines rows
+  local empty_lines rows verdict
   empty_lines=$(read_empty_nothing_found_lines "$1") ||
     { echo "the hook could not read the section's Nothing found lines"; return 0; }
   [ -z "$empty_lines" ] ||
-    { echo "its line \`$(printf '%s\n' "$empty_lines" | head -n 1)\` names no values after \`tried\`, so it records no test of the control"; return 0; }
+    { echo "its line \`$(printf '%s\n' "$empty_lines" | head -n 1)\` names no values after \`tried\`, only nothing or a placeholder, so it records no test of the control"; return 0; }
   rows=$(read_findings_rows "$1") ||
     { echo "its findings table cannot be parsed ($rows), so every finding in it counts as open"; return 0; }
+  verdict=$(read_artefact_coverage_verdict "$1" "$rows")
+  [ "$verdict" = ok ] || { echo "$verdict"; return 0; }
   [ -n "$rows" ] && { read_table_verdict "$1" "$rows"; return 0; }
   has_security_record_line "$1" ||
     { echo "its section records nothing it examined: it holds no findings table rows, no \`Nothing found:\` line, and no \`No security control in range:\` line"; return 0; }
   echo ok
 }
 
+# read_head_pin_verdict: prints "ok" when the merge carries
+# `--match-head-commit` naming the full head commit SECURITY_HEAD, otherwise
+# the sentence saying the flag is missing or names another commit, so a push
+# landing after the review cannot ride into the merge.
+read_head_pin_verdict() {
+  local pinned_commit head_commit
+  pinned_commit=$(printf '%s' "$MERGE_MATCH_HEAD_COMMIT" | tr 'A-Z' 'a-z')
+  head_commit=$(printf '%s' "$SECURITY_HEAD" | tr 'A-Z' 'a-z')
+  [ -n "$pinned_commit" ] ||
+    { echo "the merge command carries no \`--match-head-commit $SECURITY_HEAD\`, so a push after the review could merge unreviewed; add \`--match-head-commit <full head sha>\` to the merge"; return 0; }
+  [ "$pinned_commit" = "$head_commit" ] ||
+    { echo "the merge's \`--match-head-commit\` names \`$MERGE_MATCH_HEAD_COMMIT\`, not the full head commit $SECURITY_HEAD the review must cover"; return 0; }
+  echo ok
+}
+
 # read_security_review_verdict: prints "ok" when the PR touches no security
-# surface or its body carries one current Security review artefact whose
-# findings clear R-109, "waived: <rows>" when only owner waivers remain, and
-# otherwise the sentence naming what is missing. An undecidable range reads
-# as security-touching and, with no resolvable head, can satisfy nothing.
+# surface, or when its body carries one current Security review artefact whose
+# findings clear R-109 and the merge pins the PR head with
+# `--match-head-commit`; "waived: <rows>" when only owner waivers remain on a
+# pinned merge; and otherwise the sentence naming what is missing, the
+# review's own faults before the pin. An undecidable range reads as
+# security-touching and, with no resolvable head, can satisfy nothing.
 read_security_review_verdict() {
-  local pr_body scan heading_count section artefact_verdict
+  local section_verdict pin_verdict
   SECURITY_HEAD=""
   SECURITY_BASE=""
   is_security_touching_pr || { echo ok; return 0; }
   [ -n "$SECURITY_HEAD" ] && [ -n "$SECURITY_BASE" ] ||
     { echo "the hook could not resolve the PR's range (its head commit is not in this checkout, origin/<base> is missing, or the detector is absent), so it treats the PR as security-touching and cannot tell which tree a review read; fetch the PR head and origin and merge again"; return 0; }
+  section_verdict=$(read_security_section_verdict)
+  case "$section_verdict" in
+    ok | "waived: "*) ;;
+    *) echo "$section_verdict"; return 0 ;;
+  esac
+  pin_verdict=$(read_head_pin_verdict)
+  [ "$pin_verdict" = ok ] || { echo "$pin_verdict"; return 0; }
+  echo "$section_verdict"
+}
+
+# read_security_section_verdict: prints "ok", "waived: <rows>", or the deny
+# sentence for the PR body's `## Security review` section on a
+# security-touching PR whose range is resolved.
+read_security_section_verdict() {
+  local pr_body scan heading_count section artefact_verdict
   pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
   scan=$(read_review_scan "$pr_body" "Security review")
   heading_count=$(printf '%s\n' "$scan" | head -1)

@@ -151,10 +151,11 @@ pr_body() {
   printf '## Testing\nGreen.\n'
 }
 
-# run_guard <gh stub> <repo> <semgrep command>: the hook's JSON output for
-# `gh pr merge 42 --squash` run from <repo>.
+# run_guard <gh stub> <repo> <semgrep command> [<merge command>]: the hook's
+# JSON output for <merge command> (default `gh pr merge 42 --squash`) run from
+# <repo>.
 run_guard() {
-  jq -nc --arg c 'gh pr merge 42 --squash' --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
+  jq -nc --arg c "${4:-gh pr merge 42 --squash}" --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$1" CLAUDE_SEMGREP_CMD="$3" "$HOOK" 2>/dev/null
 }
 
@@ -210,7 +211,7 @@ expect_r109_deny "case 3 (stale range head)" "$(run_guard "$STUB" "$SEC_DIR" "$C
 
 # Case 4: valid reviewer, model, and range: R-109 is satisfied and R-514 asks.
 STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD")
-expect_r514_ask "case 4 (valid security review)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB")"
+expect_r514_ask "case 4 (valid security review)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 
 # Case 4b: an empty reviewer value does not count as a reviewer.
 STUB=$(write_pr_stub case4b "$(pr_body "$SEC_CODEX" "$(printf '## Security review\n- reviewer:\n- model: %s\n- range: %.7s..%.7s\n- Findings: none open.\n' "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD")

@@ -92,6 +92,9 @@ MATCHING_ARTEFACT='{"findings":[{"id":1,"severity":"HIGH"},{"id":2,"severity":"M
 MATCHING_ARTEFACT_PATH=docs/reviews/security-review-pr42.json
 BROKEN_ARTEFACT_PATH=docs/reviews/security-review-broken.json
 ABSENT_ARTEFACT_PATH=docs/reviews/security-review-absent.json
+# The artefact of a clean review: the reviewer found nothing, so no finding
+# needs a table row.
+EMPTY_ARTEFACT_PATH=docs/reviews/security-review-empty.json
 
 # Build the security-touching PR repository. Sets REPO_DIR, REPO_BASE,
 # REPO_FIRST (the older PR commit, which adds the artefacts), and REPO_HEAD.
@@ -108,6 +111,7 @@ mkdir -p "$REPO_DIR/app/middleware" "$REPO_DIR/docs/reviews"
 printf '%s\n' 'ALLOWED_ORIGINS = ["https://app.example.com"]' > "$REPO_DIR/app/middleware/cors_config.py"
 printf '%s\n' "$MATCHING_ARTEFACT" > "$REPO_DIR/$MATCHING_ARTEFACT_PATH"
 printf '%s\n' '{"findings":[{"id":1,"severity":' > "$REPO_DIR/$BROKEN_ARTEFACT_PATH"
+printf '%s\n' '{"findings":[]}' > "$REPO_DIR/$EMPTY_ARTEFACT_PATH"
 git_in "$REPO_DIR" add app docs
 git_in "$REPO_DIR" commit -q -m "feat: first PR commit"
 REPO_FIRST=$(git -C "$REPO_DIR" rev-parse HEAD)
@@ -163,12 +167,13 @@ pr_body() {
   printf '## Summary\nWork.\n\n%s\n\n%s\n\n## Testing\nGreen.\n' "$(codex_section)" "$1"
 }
 
-# run_case <name> <security section>: the hook's JSON output for
-# `gh pr merge 42 --squash` run from the repository with that section.
+# run_case <name> <security section> [<merge command>]: the hook's JSON output
+# for <merge command> (default `gh pr merge 42 --squash`) run from the
+# repository with that section.
 run_case() {
   local stub
   stub=$(write_pr_stub "$1" "$(pr_body "$2")" "$REPO_HEAD")
-  jq -nc --arg c 'gh pr merge 42 --squash' --arg d "$REPO_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
+  jq -nc --arg c "${3:-gh pr merge 42 --squash}" --arg d "$REPO_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$stub" CLAUDE_SEMGREP_CMD="$CLEAN_STUB" "$HOOK" 2>/dev/null
 }
 
@@ -220,6 +225,9 @@ expect_r514_ask() {
 }
 
 FIXED_IN_RANGE="\`fixed $REPO_FIRST\`"
+# The merge command of every case that should clear R-109: it pins the
+# reviewed head with --match-head-commit.
+PINNED_MERGE="gh pr merge 42 --squash --match-head-commit $REPO_HEAD"
 
 # Case 1: row 7 is still open.
 SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
@@ -276,7 +284,7 @@ SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
 $(findings_table HIGH "\`fixed $IN_RANGE_SHORT\`")
 
 $CLEAN_NOTHING_FOUND"
-expect_r514_ask "case 4a (fixed by an in-range short sha)" "$(run_case case4a "$SECTION")"
+expect_r514_ask "case 4a (fixed by an in-range short sha)" "$(run_case case4a "$SECTION" "$PINNED_MERGE")"
 
 # Case 4b (B-11): row 7 "fixed" by the base commit, which is outside base..head.
 SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
@@ -300,7 +308,7 @@ SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
 $(findings_table HIGH '`waived by owner 2026-09-26`')
 
 $CLEAN_NOTHING_FOUND"
-expect_waiver_ask "case 5 (row 7 waived by owner)" "$(run_case case5 "$SECTION")" 7
+expect_waiver_ask "case 5 (row 7 waived by owner)" "$(run_case case5 "$SECTION" "$PINNED_MERGE")" 7
 
 # Case 6a (B-16): a Nothing found line with no values after `tried`, beside a
 # fully fixed table and a valid Nothing found line.
@@ -327,20 +335,22 @@ SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
 $(findings_table HIGH "$FIXED_IN_RANGE")
 
 $CLEAN_NOTHING_FOUND"
-expect_r514_ask "case 8a (all fixed in range, clean Nothing found)" "$(run_case case8a "$SECTION")"
+expect_r514_ask "case 8a (all fixed in range, clean Nothing found)" "$(run_case case8a "$SECTION" "$PINNED_MERGE")"
 
-# Case 8b (control): only clean Nothing found lines with values.
-SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
+# Case 8b (control): an artefact with no findings and only clean Nothing
+# found lines with values.
+SECTION="$(security_header "$EMPTY_ARTEFACT_PATH")
 
 $CLEAN_NOTHING_FOUND
 Nothing found: CORS allowlist: sources env ALLOWED_ORIGINS, settings default: tried *, null, empty, https://user@evil.example"
-expect_r514_ask "case 8b (clean Nothing found lines only)" "$(run_case case8b "$SECTION")"
+expect_r514_ask "case 8b (empty artefact, clean Nothing found lines only)" "$(run_case case8b "$SECTION" "$PINNED_MERGE")"
 
-# Case 8c (control): the range holds no security control.
-SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
+# Case 8c (control): an artefact with no findings, and the range holds no
+# security control.
+SECTION="$(security_header "$EMPTY_ARTEFACT_PATH")
 
-No security control in range: app/middleware/cors_config.py, docs/reviews/security-review-pr42.json"
-expect_r514_ask "case 8c (No security control in range)" "$(run_case case8c "$SECTION")"
+No security control in range: app/middleware/cors_config.py, docs/reviews/security-review-pr42.json, docs/reviews/security-review-empty.json"
+expect_r514_ask "case 8c (empty artefact, No security control in range)" "$(run_case case8c "$SECTION" "$PINNED_MERGE")"
 
 if [ "$failures" -gt 0 ]; then
   echo "security-merge-gate-findings.test.sh: $failures failure(s)"
