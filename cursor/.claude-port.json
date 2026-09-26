@@ -56,7 +56,7 @@
     "rules/frontend.mdc": "sha256:f0b84835c896372d0d2613fa2ff833fbed8873e70c19e07be9a751b8b65af331",
     "rules/go.mdc": "sha256:d30c49f3610248c125fbcf3f0dd341c603e6c7db904c10437083f4b556d23a10",
     "rules/observability.mdc": "sha256:927a0f71e727240f4b37646168b33971b3001a724f0da4608166febb28c115dc",
-    "rules/python.mdc": "sha256:298a8b1b736b99424810edfb4edc87061f733357dd3a5764e6fee78f70f1a711",
+    "rules/python.mdc": "sha256:9e70687d5ca809875e1aba61255332d20184fd3afe3673c462f057b5fc4dd1f5",
     "rules/ruby.mdc": "sha256:19e88c9621286de511f4696c74c1f39b94ef3321fb8290f4e60264d39b56eb47",
     "rules/rulebook-agents.mdc": "sha256:12f149ec09487d25156c65a4273d733fcd0e269c85498ebe40302cc2eb71be98",
     "rules/rulebook-audits.mdc": "sha256:e1738fa78722e7e7bf73b3323aff4d77bc68d479147fb8e693fc8df933179235",

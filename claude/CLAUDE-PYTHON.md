@@ -7,6 +7,8 @@ paths:
 
 The Python track for API services, workers, and scheduled jobs. It mirrors `CLAUDE-BACKEND.md` (the Express track) section for section and restates the parts of `CLAUDE-DATABASE.md` that change shape under SQLAlchemy and Alembic. The universal rules in `CLAUDE.md` still apply; this file carries the Python form of every `[ts]`-tagged rule. Every choice below is the only supported choice: there is one framework, one worker, one package manager, and one logger.
 
+Write idiomatic Python above everything else in this file. Code that works but reads like TypeScript, Java, or C# translated line by line is wrong and gets rewritten; when two forms are equally correct, pick the one an experienced Python developer would write without thinking.
+
 ---
 
 ## Stack
@@ -141,6 +143,25 @@ Order within a module, top to bottom, one blank line between groups (the Python 
 
 - `def` and `async def` only; never a lambda assigned to a name (ruff `E731`)
 - Every public function carries a docstring (ruff `D103`) and full type hints
+
+---
+
+## Idiomatic Python
+
+Every line reads as idiomatic, modern Python (PEP 8, PEP 20, Python 3.13 features). Never port patterns from another language:
+
+- Comprehensions and generator expressions over building lists with `append` in a loop; a plain `for` loop when the body has side effects or needs more than one condition
+- `for item in items` and `enumerate`/`zip`, never `for i in range(len(items))`
+- Truthiness for emptiness (`if not line_items:`), never `len(x) == 0`; `is None` / `is not None` for `None`
+- EAFP: try the operation and catch the specific exception, rather than pre-checking with `if key in d` or `hasattr`, when failure is the rare case
+- `with` for every resource with a lifetime (connections, files, locks, timeouts), never manual `close()` in `finally`
+- f-strings for formatting (never in log messages, R-342), `pathlib.Path` over `os.path`, `dict.get` and `setdefault` over manual key checks
+- Unpacking (`first, *rest = rows`, `trip_id, leg_id = pair`) over index access
+- Generators (`yield`) for streams and large sequences instead of materializing lists
+- Keyword-only parameters (`*,`) for any function taking two or more parameters of the same type or a boolean flag
+- The standard library first: `itertools`, `functools`, `collections`, `contextlib`, `dataclasses`, `enum`, before writing a helper
+- No getters and setters; plain attributes, or `@property` when access needs logic
+- No Hungarian notation, no `I`-prefixed interfaces; `typing.Protocol` for structural interfaces, `abc.ABC` only when implementations share code
 
 ---
 
