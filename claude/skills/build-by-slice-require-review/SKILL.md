@@ -31,7 +31,7 @@ Split a slice into more than one PR only when the diff would pass ~2000 lines or
 5. Commit the slice's edits, the bookkeeping edits included (R-605), then run the pre-merge review (below). Once CI is green and the R-517 review has passed, follow the plan's merge mode (R-514): under the default, hand the PR to the owner with its findings and their dispositions and let them merge it; under the recorded merge-on-green opt-in, merge it yourself. The harness's own `gh pr merge` permission prompt still applies to either mode.
 6. Under the merge-on-green opt-in, go straight to the next PR or slice with no stop between them. Under the default, the owner's merge is the stop, and the next PR starts once they have merged. Report progress as one line inside the work either way. A fork the plan leaves open, a destructive action, or a confirmation gate also stops the run (R-211).
 
-For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge. A stronger reviewer (Codex, or a fresh Claude subagent on `opus`/`fable`) replaces the default reviewer for that PR rather than adding a second review; never Copilot (R-514).
+For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge. A stronger reviewer (Codex, or a fresh Claude subagent on `opus`/`fable`) replaces the default reviewer for that PR rather than adding a second review (R-514).
 
 ## Merge mode (asked once per slice, at Gate 1)
 

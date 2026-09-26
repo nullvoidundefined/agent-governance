@@ -28,10 +28,10 @@ requireText "$ROOT/CLAUDE.md" '`[judge]` is the CI rule judge' "CLAUDE.md still 
 requireText "$ROOT/rulebook/reference.md" 'run the full suite in CI before any merge to main.' "reference.md R-509 must put the full suite in CI only"
 forbidText "$ROOT/rulebook/reference.md" 'Pre-push runs the whole suite' "reference.md R-509 still runs the whole suite at pre-push"
 requireText "$ROOT/rulebook/reference.md" 'trivial-tier PR' "reference.md R-514 lacks the trivial fast path"
-requireText "$ROOT/skills/task-start/SKILL.md" 'no ticket, no PR document, no Copilot review request' "task-start lacks the trivial fast path"
+requireText "$ROOT/skills/task-start/SKILL.md" 'no ticket, no PR document, and no R-517 review' "task-start lacks the trivial fast path"
 forbidText "$ROOT/rulebook/reference.md" 'push-time judge' "reference.md still calls the judge push-time"
 requireText "$ROOT/enforce/README.md" 'R-315, R-316, R-317, R-325, R-334, R-362, R-363, R-364, R-365 |' "enforce/README.md judge row must list every llm-judge rule"
-requireText "$ROOT/rulebook/reference.md" 'under the same merge authorization as any PR' "R-514's trivial path must keep the merge authorization"
+requireText "$ROOT/rulebook/reference.md" 'merges on green CI without per-PR authorization' "R-514's trivial path must state the standing merge exception (owner decision 2026-09-26, IAN-433)"
 PORT_MAP="$REPO_ROOT/translate/cursor-port-map.json"
 if [ -f "$PORT_MAP" ]; then
   forbidText "$PORT_MAP" 'push-time LLM judge' "the Cursor preamble still calls [judge] a push-time judge"

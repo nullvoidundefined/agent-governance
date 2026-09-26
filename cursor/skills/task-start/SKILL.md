@@ -79,7 +79,7 @@ Ticket:         No (only when the user asks)
 TDD:            No (but fix bugs test-first per R-403)
 Model:          Haiku or Sonnet
 Branch:         Yes, its own branch and PR (never a direct push to main)
-PR ceremony:    Minimal: no ticket, no PR document, no Copilot review request, and no R-517 review:
+PR ceremony:    Minimal: no ticket, no PR document, and no R-517 review:
                 R-517 exempts the trivial tier, and the merge guard reads the exemption from the
                 task-tier ledger, never from the PR body.
 Worktree:       No

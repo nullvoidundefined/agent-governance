@@ -140,7 +140,14 @@ relative() {
 
 # --- runner ------------------------------------------------------------------
 
+# resolve_runner [test rel]...: the nearest package's own Vitest or Jest when
+# the named tests sit under one (resolve_package_runner), else the root's, else
+# the harness-bundled Vitest. RUNNER_DIR is the directory the runner starts in,
+# so a package's own config decides what its suite is.
 resolve_runner() {
+  RUNNER_DIR="$ROOT_PHYSICAL"
+  [ "$#" -gt 0 ] && resolve_package_runner "$@" && return 0
+  [ "$#" -gt 0 ] || refuse_unnamed_package_suite
   if [ -x "$ROOT/node_modules/.bin/vitest" ]; then RUNNER="$ROOT/node_modules/.bin/vitest"; RUNNER_KIND=vitest
   elif [ -x "$ROOT/node_modules/.bin/jest" ]; then RUNNER="$ROOT/node_modules/.bin/jest"; RUNNER_KIND=jest
   elif [ -x "$CLAUDE_DIR/enforce/node_modules/.bin/vitest" ]; then
@@ -148,6 +155,54 @@ resolve_runner() {
     say "warning: no vitest or jest in this project's node_modules; using the harness-bundled vitest" >&2
   else
     die "no supported test runner: Vitest or Jest under node_modules/.bin, *.test.sh fixtures, or *.py pytest tests (go test and RSpec are not wired yet)"
+  fi
+}
+
+# package_of <test rel>: the nearest directory at or above the test, never above
+# the repository root, whose node_modules/.bin holds Vitest or Jest; "." when
+# only the root (or nothing) does.
+package_of() {
+  local dir
+  dir=$(dirname "$1")
+  while [ "$dir" != "." ] && [ ! -x "$dir/node_modules/.bin/vitest" ] && [ ! -x "$dir/node_modules/.bin/jest" ]; do
+    dir=$(dirname "$dir")
+  done
+  printf '%s' "$dir"
+}
+
+# refuse_unnamed_package_suite: with no test named (open --refactor without
+# --lock) there is no package to pick. When the root owns no runner but a
+# package does, falling back to the harness-bundled Vitest would run the whole
+# repository and collect files no package runs, so refuse and point at --lock.
+refuse_unnamed_package_suite() {
+  [ -x "$ROOT/node_modules/.bin/vitest" ] || [ -x "$ROOT/node_modules/.bin/jest" ] && return 0
+  local package_runner
+  package_runner=$(find "$ROOT_PHYSICAL" -mindepth 4 -maxdepth 6 -path '*/node_modules/.bin/*' \( -name vitest -o -name jest \) \
+    -not -path "$ROOT_PHYSICAL/node_modules/*" -not -path '*/node_modules/*/node_modules/*' 2>/dev/null | head -1)
+  [ -z "$package_runner" ] && return 0
+  die "this repository keeps its test runner per package (for example ${package_runner#"$ROOT_PHYSICAL"/}) and none at the root, so a suite with no named test has no package to run; name the tests with --lock <test file>"
+}
+
+# resolve_package_runner <test rel>...: in a monorepo whose packages each own
+# their runner (pnpm installs Vitest per package, with no root copy), runs that
+# package's runner from the package directory (IAN-405). Without this the
+# fallback is the harness-bundled Vitest over the whole repository, which
+# collects files no package runs, such as Playwright specs, and refuses every
+# RED. Tests named from two packages are refused, as one run cannot report
+# both. Returns 1 when the tests belong to the root, leaving resolve_runner's
+# root lookup in charge.
+resolve_package_runner() {
+  local rel package="" dir
+  for rel in "$@"; do
+    dir=$(package_of "$rel")
+    if [ -z "$package" ]; then package="$dir"
+    elif [ "$package" != "$dir" ]; then die "a slice runs one package's test runner: $rel belongs to $dir, not $package; split them into separate slices"
+    fi
+  done
+  [ "$package" != "." ] || return 1
+  RUNNER_DIR="$ROOT_PHYSICAL/$package"
+  if [ -x "$RUNNER_DIR/node_modules/.bin/vitest" ]; then RUNNER="$RUNNER_DIR/node_modules/.bin/vitest"; RUNNER_KIND=vitest
+  else RUNNER="$RUNNER_DIR/node_modules/.bin/jest"; RUNNER_KIND=jest
   fi
 }
 
@@ -174,7 +229,7 @@ select_runner() {
     resolve_pytest "$@"
     MISSING_MODULE="$PYTEST_MISSING"; ASSERTION="$PYTEST_ASSERTION"; PARSE_FAILURE="$PYTEST_PARSE_FAILURE"
   else
-    resolve_runner
+    resolve_runner "$@"
   fi
 }
 
@@ -228,8 +283,8 @@ run_suite() {
   select_runner "$@"
   REPORT=$(mktemp)
   case "$RUNNER_KIND" in
-    vitest) "$RUNNER" run --reporter=json --outputFile="$REPORT" >/dev/null 2>&1 || true ;;
-    jest) "$RUNNER" --json --outputFile="$REPORT" >/dev/null 2>&1 || true ;;
+    vitest) (cd "$RUNNER_DIR" && "$RUNNER" run --reporter=json --outputFile="$REPORT") >/dev/null 2>&1 || true ;;
+    jest) (cd "$RUNNER_DIR" && "$RUNNER" --json --outputFile="$REPORT") >/dev/null 2>&1 || true ;;
     shell) run_shell_suite "$@" > "$REPORT" ;;
     pytest) run_pytest_suite "$@" > "$REPORT" ;;
   esac
