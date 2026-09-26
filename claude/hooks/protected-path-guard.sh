@@ -2,8 +2,11 @@
 # protected-path-guard.sh: PreToolUse guard (Write, Edit, Bash) for the TDD
 # slice loop. Three rules, one hook, jq only, no Node:
 #   R-410  the gate inputs (.claude/verify.sh, .enforce.json,
-#          .enforce-baseline.json, the slice lock itself) are never written by
-#          a session, and once a slice is RED every test tree, every locked
+#          .enforce-baseline.json, the slice lock itself, and the shared
+#          Security review ledger directory
+#          $HOME/.claude/security-review-ledger/, which only
+#          enforce/security-review-record.sh writes, B-10e) are never written,
+#          deleted, or moved by a session, and once a slice is RED every test tree, every locked
 #          fixture dir, and the locked spec are read-only until the slice
 #          closes; a test the implementer believes wrong is returned as
 #          `DISPUTE: <test>` for the human, never edited
@@ -35,7 +38,11 @@
 # levels asks instead of passing unread (R-517 review of IAN-342).
 # While a slice is amending (`tdd.sh amend`), only the one test file under
 # amendment is writable.
-# Paths outside the repository root are not governed. Silent on allow.
+# A leading `~`, `$HOME`, or `${HOME}` on a Bash target, quoted or not, is read
+# as $HOME. Paths outside the
+# repository root are not governed, with one exception: the shared Security
+# review ledger directory is denied from any working directory, inside a
+# repository or not. Silent on allow.
 set -uo pipefail
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
@@ -109,30 +116,87 @@ TESTS_PATTERN=$(pattern tests)
 SPECS_PATTERN=$(pattern specs)
 ALWAYS_PROTECTED='^(\.claude/verify\.sh|\.claude/tdd-lock\.json|\.enforce\.json|\.enforce-baseline\.json)$'
 RUNNER_CONFIG='(^|/)(vitest|jest|playwright)\.(config|workspace)\.[cm]?[jt]s$|(^|/)pytest\.ini$|(^|/)\.rspec$'
+# The shared Security review ledger directory's name under $HOME/.claude
+# (R-109, B-10e). Twin of print_security_review_ledger_dir in
+# security-review-ledger-path.sh, spelled here rather than sourced so the guard
+# still holds the directory when that helper is missing; change both together.
+LEDGER_DIR_NAME="security-review-ledger"
+
+# expand_home_prefix <path>: sets EXPANDED_PATH to the path with a leading `~`,
+# `$HOME`, or `${HOME}` (alone or followed by `/`) replaced by the hook's own
+# $HOME, the way the shell expands it before the command runs (B-10f); any
+# other path, or any path while HOME is unset, is left as written. A variable
+# rather than printed output, so a caller pays no subshell.
+expand_home_prefix() {
+  EXPANDED_PATH="$1"
+  [ -n "${HOME:-}" ] || return 0
+  # shellcheck disable=SC2088,SC2016  # the quoted `~` and `$HOME` are the literals the command text carries
+  case "$1" in
+    "~" | '$HOME' | '${HOME}') EXPANDED_PATH="$HOME" ;;
+    "~/"*) EXPANDED_PATH="$HOME/${1#"~/"}" ;;
+    '$HOME/'*) EXPANDED_PATH="$HOME/${1#'$HOME/'}" ;;
+    '${HOME}/'*) EXPANDED_PATH="$HOME/${1#'${HOME}/'}" ;;
+  esac
+}
+
+# is_ledger_target <physical path>: true when the path is the shared Security
+# review ledger directory or anything under it. The comparison ignores case,
+# since the default macOS file system folds it. A path that does not name the
+# directory at all is ruled out before the directory itself is resolved, so an
+# ordinary write pays for no extra process; a symlink to the directory is
+# already resolved in the physical path it is handed.
+is_ledger_target() {
+  local ledger_dir_physical is_match=1
+  [ -n "${HOME:-}" ] || return 1
+  shopt -s nocasematch
+  case "$1" in *"/$LEDGER_DIR_NAME"*) is_match=0 ;; esac
+  if [ "$is_match" -eq 0 ]; then
+    ledger_dir_physical=$(physical_path "$HOME/.claude/$LEDGER_DIR_NAME")
+    is_match=1
+    case "$1" in "$ledger_dir_physical" | "$ledger_dir_physical"/*) is_match=0 ;; esac
+  fi
+  shopt -u nocasematch
+  return "$is_match"
+}
+
+# deny_ledger_target <physical path>: denies the call when the path is in the
+# shared Security review ledger directory; returns quietly otherwise. It runs
+# before the repository root is resolved, because the directory lies outside
+# every repository.
+deny_ledger_target() {
+  is_ledger_target "$1" || return 0
+  emit deny "This call writes, deletes, or moves '$1', inside the shared Security review ledger \$HOME/.claude/$LEDGER_DIR_NAME/, a gate input the session never edits (R-410, R-109): the merge gate reads it to prove which artefact a Security review recorded, and only enforce/security-review-record.sh, run through Bash, writes it. Record a review with that script, or tell the user what must change in the ledger and why."
+}
 
 # Root and lock state are resolved once per call, from the file for Write/Edit
-# and from cwd for Bash.
+# and from cwd for Bash. A Write or Edit into the ledger directory is denied
+# first, since the directory lies outside every repository; a Bash call keeps
+# going with no root so its targets can still be checked against the ledger.
 if [ "$TOOL" = "Bash" ]; then
   ROOT=$(repo_root_for "$CWD")
 else
   FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
   [ -n "$FILE" ] || exit 0
+  expand_home_prefix "$FILE"
+  FILE="$EXPANDED_PATH"
   # physical_path already returns an absolute path with no trailing slash, so
   # its parent is one expansion rather than a `dirname` process.
   FILE_PHYSICAL=$(physical_path "$FILE")
+  deny_ledger_target "$FILE_PHYSICAL"
   FILE_PHYSICAL_PARENT="${FILE_PHYSICAL%/*}"
   [ -n "$FILE_PHYSICAL_PARENT" ] || FILE_PHYSICAL_PARENT="/"
   ROOT=$(repo_root_for "$FILE_PHYSICAL_PARENT")
+  [ -n "$ROOT" ] || exit 0
 fi
-[ -n "$ROOT" ] || exit 0
-ROOT_PHYSICAL=$(cd "$ROOT" && pwd -P)
+ROOT_PHYSICAL=""
+[ -z "$ROOT" ] || ROOT_PHYSICAL=$(cd "$ROOT" && pwd -P)
 
 LOCK="$ROOT/.claude/tdd-lock.json"
 LOCK_STATE="none"
 PHASE=""
 LOCKED=""
 AMENDING=""
-if [ -f "$LOCK" ]; then
+if [ -n "$ROOT" ] && [ -f "$LOCK" ]; then
   if jq -e . "$LOCK" >/dev/null 2>&1; then
     LOCK_STATE="ok"
     PHASE=$(jq -r '.phase // "red"' "$LOCK")
@@ -152,12 +216,13 @@ if [ -n "$AGENT" ] && [ -f "$POLICY" ]; then
   fi
 fi
 
-# Root-relative form of a path, or empty when it lies outside the repository.
+# relative_path <physical path>: the root-relative form of a path already
+# resolved by physical_path, or empty when it lies outside the repository or
+# the call has no repository root at all.
 relative_path() {
-  local physical
-  physical=$(physical_path "$1")
-  case "$physical" in
-    "$ROOT_PHYSICAL"/*) printf '%s' "${physical#"$ROOT_PHYSICAL"/}" ;;
+  [ -n "$ROOT_PHYSICAL" ] || return 0
+  case "$1" in
+    "$ROOT_PHYSICAL"/*) printf '%s' "${1#"$ROOT_PHYSICAL"/}" ;;
     *) printf '' ;;
   esac
 }
@@ -251,7 +316,7 @@ apply_verdict() {
 }
 
 if [ "$TOOL" != "Bash" ]; then
-  apply_verdict "$(relative_path "$FILE")"
+  apply_verdict "$(relative_path "$FILE_PHYSICAL")"
   exit 0
 fi
 
@@ -517,9 +582,14 @@ collect_shell_targets() {
 
 collect_shell_targets "$CMD"
 
+# Each target is checked against the ledger directory first, from any working
+# directory, and then, inside a repository, against the root-relative rules.
 while IFS= read -r target; do
   [ -n "$target" ] || continue
   case "$target" in /dev/* | __Q*__) continue ;; esac
-  apply_verdict "$(relative_path "$target")"
+  expand_home_prefix "$target"
+  target_physical=$(physical_path "$EXPANDED_PATH")
+  deny_ledger_target "$target_physical"
+  apply_verdict "$(relative_path "$target_physical")"
 done <<< "$TARGETS"
 exit 0

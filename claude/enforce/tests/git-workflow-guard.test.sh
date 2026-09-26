@@ -39,31 +39,78 @@ write_gh_stub() {
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
 }
-# stubbed_decision: the hook's decision for command $1 with gh stubbed by $2.
+# Every merge case runs from a real throwaway repository whose PR range is
+# docs-only, so it touches no security surface: main holds a base commit,
+# docs/notes adds one prose file, and refs/remotes/origin/main points at the
+# base. The docs commit is the head every stub reports, so a check that
+# resolves the PR's range locally (R-109) can read it, and the range lines
+# below name that real head.
+MERGE_REPO=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$MERGE_REPO" init -q -b main
+printf '# Fixture\n\nA base commit for the merge cases.\n' >"$MERGE_REPO/README.md"
+git -C "$MERGE_REPO" add README.md
+git -C "$MERGE_REPO" -c user.email=t@example.com -c user.name=T commit -q -m "chore: seed"
+git -C "$MERGE_REPO" checkout -q -b docs/notes
+mkdir -p "$MERGE_REPO/docs"
+printf '# Notes\n\nThese notes describe the fixture in plain prose.\n' >"$MERGE_REPO/docs/notes.md"
+git -C "$MERGE_REPO" add docs/notes.md
+git -C "$MERGE_REPO" -c user.email=t@example.com -c user.name=T commit -q -m "docs: add notes"
+git -C "$MERGE_REPO" update-ref refs/remotes/origin/main "$(git -C "$MERGE_REPO" rev-parse main)"
+# seed_merge_range <repo>: copies the docs-only range into <repo>, with
+# refs/remotes/origin/main at its base, so a merge judged from <repo> resolves it.
+seed_merge_range() {
+  git -C "$1" fetch -q "$MERGE_REPO" '+refs/heads/main:refs/remotes/origin/main' '+refs/heads/docs/notes:refs/remotes/origin/docs/notes'
+}
+# A Semgrep stand-in that reports a complete clean scan, listing every target it
+# was given under paths.scanned, so any scan of a range is deterministic.
+CLEAN_SEMGREP="$STUB_DIR/clean-semgrep"
+cat >"$CLEAN_SEMGREP" <<'STUB'
+#!/bin/sh
+skip_next=0
+targets=""
+for argument in "$@"; do
+  if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
+  case "$argument" in
+    --config) skip_next=1 ;;
+    --*) ;;
+    *) targets="$targets$argument
+" ;;
+  esac
+done
+printf '%s' "$targets" | jq -R . | jq -sc '{results: [], errors: [], paths: {scanned: .}}'
+exit 0
+STUB
+chmod +x "$CLEAN_SEMGREP"
+export CLAUDE_SEMGREP_CMD="$CLEAN_SEMGREP"
+# stubbed_decision: the hook's decision for command $1, run from MERGE_REPO with gh stubbed by $2.
 stubbed_decision() {
   local out
-  out=$(payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null)
+  out=$(payload "$1" "$MERGE_REPO" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null)
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
 }
-# stubbed_reason: the hook's decision reason for command $1 with gh stubbed by $2.
+# stubbed_reason: the hook's decision reason for command $1, run from MERGE_REPO with gh stubbed by $2.
 stubbed_reason() {
-  payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason'
+  payload "$1" "$MERGE_REPO" | CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason'
 }
 # The PR's head commit, and a `## Codex review` section that is a review
 # artefact: it names the reviewer, the model, and a range containing that head
-# commit (IAN-286). CODEX_HEAD_OID is what every stub below reports as
-# `headRefOid`, so a range line naming 8183e6b covers what would merge.
-CODEX_HEAD_OID='8183e6b1f0c4d5a6b7c8d9e0f1a2b3c4d5e6f708'
-CODEX_FIELDS='- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b'
+# commit (IAN-286). CODEX_HEAD_OID is the docs commit, what every stub below
+# reports as `headRefOid`, so a range line naming CODEX_HEAD_SHORT covers what
+# would merge.
+CODEX_HEAD_OID=$(git -C "$MERGE_REPO" rev-parse HEAD)
+CODEX_HEAD_SHORT=${CODEX_HEAD_OID:0:7}
+# Every stub names the PR's base branch and head commit, so the range resolves.
+PR_RANGE_FIELDS='"baseRefName":"main","headRefOid":"'"$CODEX_HEAD_OID"'"'
+CODEX_FIELDS='- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"''
 CODEX_BODY='## Summary\nWork.\n\n## Codex review\n'"$CODEX_FIELDS"'\n- Two findings: one fixed in abc1234, one answered in the thread.\n\n## Testing\nGreen.'
 # write_codex_stub <name> <body>: a gh stand-in answering with <body>, no
-# labels or commits, and CODEX_HEAD_OID as the PR's head commit.
+# labels or commits, main as the base branch, and CODEX_HEAD_OID as the PR's head commit.
 write_codex_stub() {
-  write_gh_stub "$1" '{"body":"'"$2"'","labels":[],"commits":[],"headRefOid":"'"$CODEX_HEAD_OID"'"}'
+  write_gh_stub "$1" '{"body":"'"$2"'","labels":[],"commits":[],'"$PR_RANGE_FIELDS"'}'
 }
-BUNDLE_OK=$(write_gh_stub bundle-ok '{"body":"'"$CODEX_BODY"'","headRefOid":"'"$CODEX_HEAD_OID"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
-NO_LABEL=$(write_gh_stub no-label '{"labels":[{"name":"enhancement"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"Refs: IAN-2"}]}')
-MISSING_REFS=$(write_gh_stub missing-refs '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"No trailer here, Refs: IAN-2 inline only"}]}')
+BUNDLE_OK=$(write_gh_stub bundle-ok '{"body":"'"$CODEX_BODY"'",'"$PR_RANGE_FIELDS"',"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Body.\n\nRefs: IAN-1\nCo-Authored-By: X <x@example.com>"},{"messageHeadline":"fix(b): two","messageBody":"Body.\n\nRefs: IAN-22"}]}')
+NO_LABEL=$(write_gh_stub no-label '{'"$PR_RANGE_FIELDS"',"labels":[{"name":"enhancement"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"Refs: IAN-2"}]}')
+MISSING_REFS=$(write_gh_stub missing-refs '{'"$PR_RANGE_FIELDS"',"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(b): two","messageBody":"No trailer here, Refs: IAN-2 inline only"}]}')
 GH_FAILS=$(write_gh_stub gh-fails '' 1)
 GH_GARBAGE=$(write_gh_stub gh-garbage 'not json')
 
@@ -78,8 +125,10 @@ case "$(stubbed_reason 'gh pr merge 42 --rebase' "$MISSING_REFS")" in *Refs:*) ;
 # The PR selector is the first positional argument, never a flag's value, and
 # --repo is forwarded: this stub answers as a bundle only for `42 --repo o/r`.
 SELECTOR_STUB="$STUB_DIR/selector"
-printf '%s\n' '{"body":"'"$CODEX_BODY"'","headRefOid":"'"$CODEX_HEAD_OID"'","labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
-printf '#!/usr/bin/env bash\n[ "$*" = "pr view 42 --repo o/r --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url" ] || exit 1\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
+printf '%s\n' '{"body":"'"$CODEX_BODY"'",'"$PR_RANGE_FIELDS"',"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"a","messageBody":"Refs: IAN-1"}]}' >"$STUB_DIR/bundle-ok.json"
+# The stub pins the selector and --repo, not the --json field list, so the hook
+# may ask for more fields (baseRefName) without the stub refusing to answer.
+printf '#!/usr/bin/env bash\ncase "$*" in "pr view 42 --repo o/r --json "*) ;; *) exit 1 ;; esac\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SELECTOR_STUB"
 chmod +x "$SELECTOR_STUB"
 [ "$(stubbed_decision 'gh pr merge --subject 7 -R o/r --rebase 42' "$SELECTOR_STUB")" = "ask" ]
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SELECTOR_STUB")" = "deny" ]   # --repo dropped: a different PR
@@ -97,7 +146,7 @@ chmod +x "$SELECTOR_STUB"
 [ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --rebase' "$BUNDLE_OK")" = "deny" ]
 [ "$(stubbed_decision 'GH_REPO=o/other gh pr merge 42 --squash' "$BUNDLE_OK")" = "deny" ]  # R-517 cannot read that PR's body either
 # Two commits naming the same ticket are one ticket's history, not a bundle.
-SAME_TICKET=$(write_gh_stub same-ticket '{"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(a): wip","messageBody":"Refs: IAN-1"}]}')
+SAME_TICKET=$(write_gh_stub same-ticket '{'"$PR_RANGE_FIELDS"',"labels":[{"name":"bundle"}],"commits":[{"messageHeadline":"feat(a): one","messageBody":"Refs: IAN-1"},{"messageHeadline":"fix(a): wip","messageBody":"Refs: IAN-1"}]}')
 [ "$(stubbed_decision 'gh pr merge 42 --rebase' "$SAME_TICKET")" = "deny" ]
 # A gh that hangs is cut off and denied, never left for the hook timeout (an
 # empty hook output is an allow).
@@ -105,7 +154,7 @@ SLOW_GH="$STUB_DIR/slow-gh"
 printf '#!/usr/bin/env bash\nsleep 30\ncat "%s"\n' "$STUB_DIR/bundle-ok.json" >"$SLOW_GH"
 chmod +x "$SLOW_GH"
 SLOW_START=$(date +%s)
-SLOW_OUT=$(payload 'gh pr merge 42 --rebase' "$STUB_DIR" | CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_GH_TIMEOUT_SECONDS=1 "$HOOK" 2>/dev/null)
+SLOW_OUT=$(payload 'gh pr merge 42 --rebase' "$MERGE_REPO" | CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_GH_TIMEOUT_SECONDS=1 "$HOOK" 2>/dev/null)
 [ "$(printf '%s' "$SLOW_OUT" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
 [ $(($(date +%s) - SLOW_START)) -lt 10 ] || { echo "a hung gh must be cut off at the deadline" >&2; exit 1; }
 # A merge-commit strategy is denied before any gh call: this stub leaves a
@@ -120,11 +169,11 @@ chmod +x "$MARKER_GH"
 # body and passes only when a Markdown heading named "Codex review" is followed
 # by at least one non-blank line before the next heading.
 CODEX_OK=$(write_codex_stub codex-ok ''"$CODEX_BODY"'')
-CODEX_LOWER=$(write_codex_stub codex-lower 'Intro.\r\n\r\n### codex review\r\nReviewer: Codex\r\nModel: gpt-5-codex\r\nRange: c20e5a8..8183e6b\r\nNo findings; checked the spec criteria B-1 to B-4.\r\n')
+CODEX_LOWER=$(write_codex_stub codex-lower 'Intro.\r\n\r\n### codex review\r\nReviewer: Codex\r\nModel: gpt-5-codex\r\nRange: c20e5a8..'"$CODEX_HEAD_SHORT"'\r\nNo findings; checked the spec criteria B-1 to B-4.\r\n')
 CODEX_MISSING=$(write_codex_stub codex-missing '## Summary\nWork.\n\n## Testing\nGreen.')
 CODEX_INLINE=$(write_codex_stub codex-inline '## Summary\nCodex review is pending.')
 CODEX_EMPTY=$(write_codex_stub codex-empty '## Codex review\n\n   \n## Testing\nGreen.')
-CODEX_NULL=$(write_gh_stub codex-null '{"body":null,"labels":[],"commits":[]}')
+CODEX_NULL=$(write_gh_stub codex-null '{"body":null,"labels":[],"commits":[],'"$PR_RANGE_FIELDS"'}')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_OK")" = "ask" ]       # section present: on to R-514's ask
 [ "$(stubbed_decision 'gh pr merge 42 --squash --delete-branch' "$CODEX_LOWER")" = "ask" ]  # any heading level, any case, CRLF
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_MISSING")" = "deny" ]  # no section
@@ -212,22 +261,22 @@ CODEX_CODE_SPAN=$(write_codex_stub codex-code-span '## Codex review\n'"$CODEX_FI
 codex_artefact() {
   printf '%s' '## Codex review\n'"$1"
 }
-CODEX_NO_REVIEWER=$(write_codex_stub codex-no-reviewer "$(codex_artefact '- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
-CODEX_NO_MODEL=$(write_codex_stub codex-no-model "$(codex_artefact '- reviewer: Codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_NO_REVIEWER=$(write_codex_stub codex-no-reviewer "$(codex_artefact '- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.')")
+CODEX_NO_MODEL=$(write_codex_stub codex-no-model "$(codex_artefact '- reviewer: Codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.')")
 CODEX_NO_RANGE=$(write_codex_stub codex-no-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- No findings.')")
-CODEX_BLANK_REVIEWER=$(write_codex_stub codex-blank-reviewer "$(codex_artefact '- reviewer:\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_BLANK_REVIEWER=$(write_codex_stub codex-blank-reviewer "$(codex_artefact '- reviewer:\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.')")
 CODEX_STALE_RANGE=$(write_codex_stub codex-stale-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 4f2a1b9..c20e5a8\n- Two HIGH findings, both fixed.')")
-CODEX_SHORT_RANGE=$(write_codex_stub codex-short-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6')")
+CODEX_SHORT_RANGE=$(write_codex_stub codex-short-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"${CODEX_HEAD_OID:0:6}"'')")
 # Two behaviours the parser documents and the suite did not pin: mutating
 # `dots < 2` to `dots < 1` reintroduced a base-less `..<head>`, and deleting
-# the trailing-punctuation strip left `c20e5a8..8183e6b.` accepted; both left
+# the trailing-punctuation strip left `c20e5a8..<head>.` accepted; both left
 # the suite green (R-517 re-review of PR #119).
-CODEX_NO_BASE_RANGE=$(write_codex_stub codex-no-base-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: ..8183e6b')")
-CODEX_PUNCT_RANGE=$(write_codex_stub codex-punct-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b.')")
+CODEX_NO_BASE_RANGE=$(write_codex_stub codex-no-base-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: ..'"$CODEX_HEAD_SHORT"'')")
+CODEX_PUNCT_RANGE=$(write_codex_stub codex-punct-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'.')")
 CODEX_FULL_OID=$(write_codex_stub codex-full-oid "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_OID"'\n- No findings.')")
-CODEX_BOLD_FIELDS=$(write_codex_stub codex-bold-fields "$(codex_artefact '**Reviewer:** Claude subagent (fable), fallback: Codex usage limit reached\n**Model:** fable\n**Range:** c20e5a8..8183e6b\nNo findings; checked B-1 to B-4.')")
-CODEX_RANGE_ELSEWHERE=$(write_codex_stub codex-range-elsewhere "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- No findings.\n\n## Testing\n- range: c20e5a8..8183e6b')")
-CODEX_NO_HEAD_OID=$(write_gh_stub codex-no-head-oid '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[]}')
+CODEX_BOLD_FIELDS=$(write_codex_stub codex-bold-fields "$(codex_artefact '**Reviewer:** Claude subagent (fable), fallback: Codex usage limit reached\n**Model:** fable\n**Range:** c20e5a8..'"$CODEX_HEAD_SHORT"'\nNo findings; checked B-1 to B-4.')")
+CODEX_RANGE_ELSEWHERE=$(write_codex_stub codex-range-elsewhere "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- No findings.\n\n## Testing\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'')")
+CODEX_NO_HEAD_OID=$(write_gh_stub codex-no-head-oid '{"body":"'"$CODEX_BODY"'","baseRefName":"main","labels":[],"commits":[]}')
 # A conforming artefact reaches R-514's ask; the abbreviation may be any length
 # from seven characters up to the whole object name, and the labels may be
 # bulleted, bold, or bare.
@@ -247,13 +296,13 @@ case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_RANGE")" in *no\ \`r
 # anywhere on the line is not evidence of anything: it passes for the head
 # commit pasted into prose or a link, and for a range that puts the head in
 # the BASE position, which is a review of everything except the head.
-CODEX_HEAD_AS_BASE=$(write_codex_stub codex-head-as-base "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 8183e6b..440aaf4\n- No findings.')")
-CODEX_BARE_SHA=$(write_codex_stub codex-bare-sha "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 8183e6b\n- No findings.')")
-CODEX_SHA_IN_PROSE=$(write_codex_stub codex-sha-in-prose "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: read the branch at 8183e6b by hand\n- No findings.')")
-CODEX_SHA_IN_LINK=$(write_codex_stub codex-sha-in-link "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: see https://github.com/o/r/commit/8183e6b for what I read\n- No findings.')")
-CODEX_URL_RANGE=$(write_codex_stub codex-url-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: https://github.com/o/r/compare/c20e5a8..8183e6b\n- No findings.')")
-CODEX_TRIPLE_DOT=$(write_codex_stub codex-triple-dot "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: origin/main...8183e6b\n- No findings.')")
-CODEX_BACKTICK_RANGE=$(write_codex_stub codex-backtick-range "$(codex_artefact '- reviewer: `Codex`\n- model: `gpt-5-codex`\n- range: `c20e5a8..8183e6b`\n- No findings.')")
+CODEX_HEAD_AS_BASE=$(write_codex_stub codex-head-as-base "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: '"$CODEX_HEAD_SHORT"'..440aaf4\n- No findings.')")
+CODEX_BARE_SHA=$(write_codex_stub codex-bare-sha "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: '"$CODEX_HEAD_SHORT"'\n- No findings.')")
+CODEX_SHA_IN_PROSE=$(write_codex_stub codex-sha-in-prose "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: read the branch at '"$CODEX_HEAD_SHORT"' by hand\n- No findings.')")
+CODEX_SHA_IN_LINK=$(write_codex_stub codex-sha-in-link "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: see https://github.com/o/r/commit/'"$CODEX_HEAD_SHORT"' for what I read\n- No findings.')")
+CODEX_URL_RANGE=$(write_codex_stub codex-url-range "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: https://github.com/o/r/compare/c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.')")
+CODEX_TRIPLE_DOT=$(write_codex_stub codex-triple-dot "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: origin/main...'"$CODEX_HEAD_SHORT"'\n- No findings.')")
+CODEX_BACKTICK_RANGE=$(write_codex_stub codex-backtick-range "$(codex_artefact '- reviewer: `Codex`\n- model: `gpt-5-codex`\n- range: `c20e5a8..'"$CODEX_HEAD_SHORT"'`\n- No findings.')")
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_HEAD_AS_BASE")" = "deny" ]
 case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_HEAD_AS_BASE")" in *head\ endpoint*) ;; *) echo "a head-in-base-position deny must name the head endpoint" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_BARE_SHA")" = "deny" ]
@@ -269,16 +318,16 @@ case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_BARE_SHA")" in *range\ 
 # One PR, one review section. Two headings leave the hook unable to say which
 # section describes the state that would merge, and a pair that is complete
 # only when read together is not a review of anything.
-CODEX_DUPLICATE=$(write_codex_stub codex-duplicate "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 4f2a1b9..c20e5a8\n- Two findings.\n\n## Codex review\n- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
-CODEX_SPLIT=$(write_codex_stub codex-split "$(codex_artefact '- reviewer: Codex\n\n## Codex review\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.')")
+CODEX_DUPLICATE=$(write_codex_stub codex-duplicate "$(codex_artefact '- reviewer: Codex\n- model: gpt-5-codex\n- range: 4f2a1b9..c20e5a8\n- Two findings.\n\n## Codex review\n- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.')")
+CODEX_SPLIT=$(write_codex_stub codex-split "$(codex_artefact '- reviewer: Codex\n\n## Codex review\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.')")
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_DUPLICATE")" = "deny" ]
 case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_DUPLICATE")" in *headings*) ;; *) echo "a duplicate-section deny must name the headings it found" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SPLIT")" = "deny" ]
 # The markup exclusions have something real to suppress: each of these carries
 # a complete, current artefact inside markup that is not the PR's own claim.
-EXCLUDED_ARTEFACT='- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..8183e6b\n- No findings.'
+EXCLUDED_ARTEFACT='- reviewer: Codex\n- model: gpt-5-codex\n- range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n- No findings.'
 CODEX_FENCED_ARTEFACT=$(write_codex_stub codex-fenced-artefact '## Summary\nTemplate:\n```\n## Codex review\n'"$EXCLUDED_ARTEFACT"'\n```\n## Testing\nGreen.')
-CODEX_INDENTED_ARTEFACT=$(write_codex_stub codex-indented-artefact '## Summary\nExample:\n\n    ## Codex review\n    - reviewer: Codex\n    - model: gpt-5-codex\n    - range: c20e5a8..8183e6b\n\n## Testing\nGreen.')
+CODEX_INDENTED_ARTEFACT=$(write_codex_stub codex-indented-artefact '## Summary\nExample:\n\n    ## Codex review\n    - reviewer: Codex\n    - model: gpt-5-codex\n    - range: c20e5a8..'"$CODEX_HEAD_SHORT"'\n\n## Testing\nGreen.')
 CODEX_COMMENTED_ARTEFACT=$(write_codex_stub codex-commented-artefact '## Summary\n\n<!--\n## Codex review\n'"$EXCLUDED_ARTEFACT"'\n-->\n\n## Testing\nGreen.')
 CODEX_EXAMPLE_AND_REAL=$(write_codex_stub codex-example-and-real '## Summary\nTemplate:\n```\n## Codex review\n'"$EXCLUDED_ARTEFACT"'\n```\n\n## Codex review\n'"$EXCLUDED_ARTEFACT")
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_FENCED_ARTEFACT")" = "deny" ]
@@ -286,18 +335,18 @@ CODEX_EXAMPLE_AND_REAL=$(write_codex_stub codex-example-and-real '## Summary\nTe
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_COMMENTED_ARTEFACT")" = "deny" ]
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_EXAMPLE_AND_REAL")" = "ask" ]   # the excluded copy is not a second section
 # A stale range is the PR #106 case: the review reported against c20e5a8 while
-# the branch had moved to 8183e6b. It denies, and the deny names the head
+# the branch had moved to the head commit. It denies, and the deny names the head
 # commit the range has to cover, so the remedy is to re-run the review rather
 # than to retype the line.
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_BASE_RANGE")" = "deny" ] || { echo "a base-less ..<head> is not a range and must deny" >&2; exit 1; }
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_PUNCT_RANGE")" = "ask" ] || { echo "a range with trailing punctuation must still be read" >&2; exit 1; }
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" = "deny" ]
-case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" in *8183e6b*) ;; *) echo "a stale-range deny must name the head commit the range misses" >&2; exit 1 ;; esac
+case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_STALE_RANGE")" in *"$CODEX_HEAD_SHORT"*) ;; *) echo "a stale-range deny must name the head commit the range misses" >&2; exit 1 ;; esac
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_SHORT_RANGE")" = "deny" ]      # six characters is too ambiguous to match a head
 # The head commit comes from the one gh pr view the hook already makes; a gh
 # that does not report it leaves the range uncheckable, which fails closed.
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_NO_HEAD_OID")" = "deny" ]
-CODEX_GARBAGE_HEAD=$(write_gh_stub codex-garbage-head '{"body":"'"$CODEX_BODY"'","labels":[],"commits":[],"headRefOid":"not-a-commit"}')
+CODEX_GARBAGE_HEAD=$(write_gh_stub codex-garbage-head '{"body":"'"$CODEX_BODY"'","baseRefName":"main","labels":[],"commits":[],"headRefOid":"not-a-commit"}')
 [ "$(stubbed_decision 'gh pr merge 42 --squash' "$CODEX_GARBAGE_HEAD")" = "deny" ]     # a head that is not an object name is no head
 case "$(stubbed_reason 'gh pr merge 42 --squash' "$CODEX_NO_HEAD_OID")" in *head\ commit*) ;; *) echo "an unreadable head commit must be denied by name" >&2; exit 1 ;; esac
 
@@ -310,6 +359,7 @@ TRIVIAL_REPO=$(mktemp -d)
 git -C "$TRIVIAL_REPO" init -q
 git -C "$TRIVIAL_REPO" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
 git -C "$TRIVIAL_REPO" remote add origin https://github.com/o/r.git
+seed_merge_range "$TRIVIAL_REPO"
 git -C "$TRIVIAL_REPO" checkout -q -b fix/typo
 printf '.claude/task-tier.json\n' >"$TRIVIAL_REPO/.gitignore"
 TIER_SCRIPT="$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh"
@@ -326,12 +376,12 @@ trivial_decision() {
   out=$(payload "$1" "$TRIVIAL_REPO" | HOME="$TRACKERLESS_HOME" CLAUDE_GH_CMD="$2" "$HOOK" 2>/dev/null)
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
 }
-NO_SECTION_FIELDS='"labels":[],"commits":[],"isCrossRepository":false,"url":"https://github.com/o/r/pull/42"'
+NO_SECTION_FIELDS='"labels":[],"commits":[],"isCrossRepository":false,"url":"https://github.com/o/r/pull/42",'"$PR_RANGE_FIELDS"
 TRIVIAL_PR=$(write_gh_stub trivial-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo",'"$NO_SECTION_FIELDS"'}')
 FORGED_MARKER=$(write_gh_stub forged-marker '{"body":"## Summary\nTypo.\n\nTier: trivial\n<!-- r517: trivial -->","headRefName":"fix/typo",'"$NO_SECTION_FIELDS"'}')
 OTHER_BRANCH_PR=$(write_gh_stub other-branch-pr '{"body":"## Summary\nWork.","headRefName":"feat/big",'"$NO_SECTION_FIELDS"'}')
-FORK_PR=$(write_gh_stub fork-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"isCrossRepository":true,"url":"https://github.com/o/r/pull/42"}')
-OTHER_REPO_PR=$(write_gh_stub other-repo-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"isCrossRepository":false,"url":"https://github.com/o/other/pull/42"}')
+FORK_PR=$(write_gh_stub fork-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"isCrossRepository":true,"url":"https://github.com/o/r/pull/42",'"$PR_RANGE_FIELDS"'}')
+OTHER_REPO_PR=$(write_gh_stub other-repo-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"isCrossRepository":false,"url":"https://github.com/o/other/pull/42",'"$PR_RANGE_FIELDS"'}')
 # No ledger: a forged trivial marker in the body is still denied.
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$FORGED_MARKER")" = "deny" ]
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$TRIVIAL_PR")" = "deny" ]
@@ -346,7 +396,7 @@ set_tier trivial
 # The ledger covers only its own branch, repository, and non-fork head.
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$OTHER_BRANCH_PR")" = "deny" ]
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$FORK_PR")" = "deny" ]
-NO_FORK_FLAG_PR=$(write_gh_stub no-fork-flag-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"url":"https://github.com/o/r/pull/42"}')
+NO_FORK_FLAG_PR=$(write_gh_stub no-fork-flag-pr '{"body":"## Summary\nTypo.","headRefName":"fix/typo","labels":[],"commits":[],"url":"https://github.com/o/r/pull/42",'"$PR_RANGE_FIELDS"'}')
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$NO_FORK_FLAG_PR")" = "deny" ]    # an unknown fork flag is not "not a fork"
 [ "$(trivial_decision 'gh pr merge 42 --squash' "$OTHER_REPO_PR")" = "deny" ]
 # The exemption never waives R-512 or the fail-closed reads.
@@ -361,6 +411,7 @@ OTHER_TRIVIAL_REPO=$(mktemp -d)
 git -C "$OTHER_TRIVIAL_REPO" init -q
 git -C "$OTHER_TRIVIAL_REPO" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
 git -C "$OTHER_TRIVIAL_REPO" remote add origin https://github.com/o/r.git
+seed_merge_range "$OTHER_TRIVIAL_REPO"
 git -C "$OTHER_TRIVIAL_REPO" checkout -q -b fix/typo
 printf '.claude/task-tier.json\n' >"$OTHER_TRIVIAL_REPO/.gitignore"
 (cd "$OTHER_TRIVIAL_REPO" && HOME="$TRACKERLESS_HOME" bash "$TIER_SCRIPT" set trivial "fixture reason" >/dev/null 2>&1)
@@ -388,13 +439,15 @@ rm -rf "$TRIVIAL_REPO"
 # hook then finds the worktree checked out on the PR's head branch among the
 # worktrees of the cwd repository and of the repository ~/.claude/.sync-source
 # names, and applies the unchanged ledger, branch, origin, and fork checks there.
-# fixture_repo <owner/repo>: prints a fresh repository on main with one commit and that GitHub origin.
+# fixture_repo <owner/repo>: prints a fresh repository on main with one commit,
+# that GitHub origin, and the docs-only merge range seeded.
 fixture_repo() {
   local repo
   repo=$(mktemp -d)
   git -C "$repo" init -q --initial-branch=main
   git -C "$repo" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
   git -C "$repo" remote add origin "https://github.com/$1.git"
+  seed_merge_range "$repo"
   printf '%s' "$repo"
 }
 # add_trivial_worktree <repo>: adds a worktree of <repo> on fix/typo whose ledger records trivial, prints its path.
@@ -476,7 +529,7 @@ cp "$CLAUDE_HARNESS_ROOT"/hooks/*.sh "$NO_HELPER_HOOKS/"
 rm -f "$NO_HELPER_HOOKS/shell-command-tokens.sh"
 no_helper_decision() {
   local out
-  out=$(payload "$1" "$STUB_DIR" | CLAUDE_GH_CMD="$CODEX_OK" bash "$NO_HELPER_HOOKS/git-workflow-guard.sh" 2>/dev/null)
+  out=$(payload "$1" "$MERGE_REPO" | CLAUDE_GH_CMD="$CODEX_OK" bash "$NO_HELPER_HOOKS/git-workflow-guard.sh" 2>/dev/null)
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
 }
 [ "$(no_helper_decision 'gh pr merge 42 --squash')" = "deny" ]
@@ -592,6 +645,6 @@ for sample in 'app/pages/trips/index.vue' 'server/api/users/[id].post.ts' 'serve
   unstage_path "$sample"
 done
 [ "$PARITY_CHECKED" -eq 8 ]
-rm -rf "$REPO"
+rm -rf "$REPO" "$MERGE_REPO"
 
 echo "git-workflow-guard.test.sh PASS"

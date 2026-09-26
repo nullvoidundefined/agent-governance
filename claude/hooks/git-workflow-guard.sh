@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # git-workflow-guard.sh: the R-5xx rules that are decidable from a git or gh
-# command plus the index. One PreToolUse(Bash) hook, five rules:
+# command plus the index. One PreToolUse(Bash) hook, six rules:
 #   R-514  a push whose target branch is main/master asks first, and so does
 #          `gh pr merge` (authorization is per turn, never standing)
 #   R-512  `gh pr merge --merge` (`-m`) is denied, and so is `--rebase` (`-r`)
@@ -17,6 +17,48 @@
 #          ledger records the trivial tier for the PR's own head branch in the
 #          same origin repository, read in the merge's checkout or in a local
 #          worktree on that head branch (never a body marker)
+#   R-109  `gh pr merge` of a PR whose range (merge base with
+#          origin/<baseRefName> .. headRefOid) touches a security surface, as
+#          hooks/security-surface.sh decides, is denied unless the PR body
+#          carries one `## Security review` section with a `reviewer`, a
+#          `model` equal to securityReviewModel in
+#          enforce/security-review-model.json, a `range` whose head endpoint
+#          is the PR head, and an `artefact` line naming the reviewer's saved
+#          output (B-10c); a missing detector, an unresolvable range,
+#          a failed detector, or one that outlives
+#          CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS (default 30; its whole
+#          process group is killed and the temporary directory the hook
+#          created for it is removed) counts as security-touching (fail
+#          closed). A security-touching merge must carry
+#          `--match-head-commit <sha>` or `--match-head-commit=<sha>` naming
+#          the full PR head, so no later push merges unreviewed (B-9c, B-10c).
+#          The section's findings are then read: a `Nothing found:` line
+#          naming no values after `tried`, or only a placeholder such as
+#          `none`, `n/a`, or `-`, denies (B-16, B-9c); the `artefact` line's
+#          file is read at the PR head, table or not, and any finding id in
+#          it without a table row denies (B-9c); a findings table
+#          (# | Severity | Control | Source | Worst value tried | Evidence |
+#          Fix | Status) that cannot be parsed denies, and so does any `open`
+#          row; a table with rows needs the `artefact` line's file, read at
+#          the PR head, to be JSON grading every row's `#` at a severity no
+#          higher than the table's (B-10); `fixed <sha>` must name a commit in
+#          the PR range (B-11); and a `waived by owner <date>` row, when
+#          nothing denies, turns the merge into an R-109 ask naming each
+#          waived row, so the owner's prompt is the waiver channel (B-12); a
+#          section holding no findings table rows, no `Nothing found:` line,
+#          and no `No security control in range:` line records nothing it
+#          examined and denies, prose such as `Findings: none` included (B-16b).
+#          The section denies when the merge checkout's origin, normalized
+#          to `host/owner/repo`, is missing, cannot be normalized, or is not
+#          the repository the PR's own GitHub url names (B-10f), and unless
+#          the shared ledger $HOME/.claude/security-review-ledger/<sha256 of
+#          that host/owner/repo>.json, written by
+#          enforce/security-review-record.sh at review time, holds an entry
+#          for the PR head whose path is the artefact line's and whose blob is
+#          the artefact's blob at the PR head; the old in-checkout ledger is
+#          never read (B-10e); and a
+#          security-touching merge denies when gh reports no baseRefOid or one
+#          that differs from the local origin/<baseRefName> (B-10b)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -147,25 +189,31 @@ deny() {
 # MERGE_HAS_MERGE_FLAG and MERGE_HAS_REBASE_FLAG (long, short, and bundled
 # short forms such as `-dr`) plus MERGE_VIEW_ARGUMENTS, the `gh pr view`
 # arguments naming the same PR: the first positional argument (a number, URL,
-# or branch) and any --repo/-R. The values of merge's value-taking flags are
+# or branch) and any --repo/-R. It also sets MERGE_MATCH_HEAD_COMMIT to the
+# value of `--match-head-commit <sha>` or `--match-head-commit=<sha>`, or
+# empty when the merge carries none. The values of merge's value-taking flags are
 # skipped so a subject or head SHA is never mistaken for the PR or a strategy.
 # The words come from the quote-aware scan, so a quoted value holding a space
 # is one word, as the shell passes it.
 parse_merge_arguments() {
-  local merge_token short_flags short_flag skip_next=0 repo_next=0 pr_selector=""
+  local merge_token short_flags short_flag skip_next=0 repo_next=0 match_next=0 pr_selector=""
   MERGE_HAS_MERGE_FLAG=0
   MERGE_HAS_REBASE_FLAG=0
+  MERGE_MATCH_HEAD_COMMIT=""
   MERGE_VIEW_ARGUMENTS=()
   local -a merge_tokens=(${MERGE_WORDS[@]+"${MERGE_WORDS[@]}"})
   for merge_token in ${merge_tokens[@]+"${merge_tokens[@]}"}; do
     if [ "$repo_next" -eq 1 ]; then MERGE_VIEW_ARGUMENTS+=(--repo "$merge_token"); repo_next=0; continue; fi
+    if [ "$match_next" -eq 1 ]; then MERGE_MATCH_HEAD_COMMIT="$merge_token"; match_next=0; continue; fi
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
     case "$merge_token" in
       --merge | --merge=*) MERGE_HAS_MERGE_FLAG=1 ;;
       --rebase | --rebase=*) MERGE_HAS_REBASE_FLAG=1 ;;
       --repo) repo_next=1 ;;
       --repo=*) MERGE_VIEW_ARGUMENTS+=("$merge_token") ;;
-      --subject | --body | --body-file | --author-email | --match-head-commit) skip_next=1 ;;
+      --match-head-commit) match_next=1 ;;
+      --match-head-commit=*) MERGE_MATCH_HEAD_COMMIT="${merge_token#--match-head-commit=}" ;;
+      --subject | --body | --body-file | --author-email) skip_next=1 ;;
       --*) ;;
       -?*)
         short_flags="${merge_token#-}"
@@ -188,7 +236,11 @@ parse_merge_arguments() {
 
 # run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $MERGE_CWD,
 # asking for the labels, commits, body, and the head branch, fork flag, and
-# URL the R-517 trivial exemption checks and the head commit its range check reads, and prints its output, returning non-zero when gh fails or outlives
+# URL the R-517 trivial exemption checks, the head commit its range check
+# reads, and the base branch the R-109 security range starts from with the
+# base commit GitHub holds for it, which R-109 compares with the local
+# origin/<base> so a stale fetch cannot shift the range, and prints
+# its output, returning non-zero when gh fails or outlives
 # CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
 # fail-closed: a hook killed by the harness timeout prints nothing, and an
 # empty PreToolUse output is an allow. Polls in 0.2s steps rather than using a
@@ -198,7 +250,7 @@ run_gh_view_with_deadline() {
   local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
   deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
   view_output_file=$(mktemp) || return 1
-  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
+  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
     if [ "$waited_steps" -ge "$deadline_steps" ]; then
@@ -267,8 +319,9 @@ read_bundle_verdict() {
   echo ok
 }
 
-# read_codex_review_scan <body>: prints how many Markdown headings (any level,
-# any case) whose text starts with "Codex review" the PR body holds, then the
+# read_review_scan <body> <heading>: prints how many Markdown headings (any
+# level, any case) whose text starts with <heading> ("Codex review" for R-517,
+# "Security review" for R-109) the PR body holds, then the
 # non-blank lines under the last one, up to the next heading. The count leads
 # the output because two review sections are refused rather than merged: a
 # reviewer line in one and a range in another satisfy nothing jointly, and an
@@ -287,8 +340,8 @@ read_bundle_verdict() {
 # dropped, so a `<!--` quoted in a code span opens nothing.
 # A heading is indented by at most three spaces, since four make it an
 # indented code block. No regex intervals: older mawk lacks them.
-read_codex_review_scan() {
-  printf '%s\n' "$1" | tr -d '\r' | awk '
+read_review_scan() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -v wanted_heading="$(printf '%s' "$2" | tr 'A-Z' 'a-z')" '
     # hold_code_spans <text>: drops the backticks of every inline code span and
     # holds the characters inside it that the comment and heading rules react
     # to, so the span contributes its text and nothing else.
@@ -345,7 +398,7 @@ read_codex_review_scan() {
     line ~ /^( |  |   )?#+[ \t]/ {
       heading = tolower(line)
       sub(/^[ \t]*#+[ \t]+/, "", heading)
-      in_section = (index(heading, "codex review") == 1)
+      in_section = (index(heading, wanted_heading) == 1)
       if (in_section) { headings++; section = "" }
       next
     }
@@ -353,11 +406,11 @@ read_codex_review_scan() {
     END { print headings + 0; printf "%s", section }'
 }
 
-# read_codex_review_field <section> <label>: prints the value of the section's
+# read_review_field <section> <label>: prints the value of a review section's
 # first `<label>: <value>` line, or nothing when no line carries that label
 # with a value. A leading bullet and surrounding `**`/`__` emphasis are part of
 # the labelling, not of the name, so `- **Reviewer:** Codex` reads as `Codex`.
-read_codex_review_field() {
+read_review_field() {
   printf '%s\n' "$1" | awk -v label="$2" '
     {
       line = $0
@@ -439,13 +492,13 @@ is_head_commit_prefix() {
 # head, and a head commit pasted into prose or a link reviewed nothing.
 read_codex_artefact_verdict() {
   local section="$1" reviewer model range head_oid range_head
-  reviewer=$(read_codex_review_field "$section" reviewer)
+  reviewer=$(read_review_field "$section" reviewer)
   [ -n "$reviewer" ] ||
     { echo "its \`## Codex review\` section carries no \`reviewer\` line with a value, so nothing in the PR records who or what read the diff"; return 0; }
-  model=$(read_codex_review_field "$section" model)
+  model=$(read_review_field "$section" model)
   [ -n "$model" ] ||
     { echo "its \`## Codex review\` section carries no \`model\` line with a value, so nothing in the PR records which model the review ran on"; return 0; }
-  range=$(read_codex_review_field "$section" range)
+  range=$(read_review_field "$section" range)
   [ -n "$range" ] ||
     { echo "its \`## Codex review\` section carries no \`range\` line with a value, so nothing in the PR records which diff was read"; return 0; }
   head_oid=$(printf '%s' "$PR_JSON" | jq -r '.headRefOid // "" | strings' 2>/dev/null || true)
@@ -541,7 +594,7 @@ read_codex_review_verdict() {
     return 0
   fi
   pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
-  scan=$(read_codex_review_scan "$pr_body")
+  scan=$(read_review_scan "$pr_body" "Codex review")
   heading_count=$(printf '%s\n' "$scan" | head -1)
   section=$(printf '%s\n' "$scan" | tail -n +2)
   if [ "$heading_count" -gt 1 ]; then
@@ -560,6 +613,512 @@ read_codex_review_verdict() {
     return 0
   fi
   echo "$verdict, and task-start's ledger does not exempt it as a trivial-tier PR (the ledger holds: $(read_ledger_state); a later task-tier.sh set on this checkout replaces it)."
+}
+
+# The enforce directory beside this hook, resolved as the push gates resolve
+# it; empty when it does not exist, which leaves the review model unreadable.
+ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)"
+SECURITY_SURFACE_HELPER="$(dirname "${BASH_SOURCE[0]}")/security-surface.sh"
+
+# resolve_security_range: sets SECURITY_TOP, SECURITY_BASE, and SECURITY_HEAD
+# to the merge checkout's top level and the PR's range: the head is the
+# headRefOid gh reports, resolved as a commit in that checkout, and the base
+# is its merge base with origin/<baseRefName>. Returns non-zero when any of
+# them cannot be resolved, never substituting the checkout's own HEAD.
+resolve_security_range() {
+  local base_ref_name
+  SECURITY_TOP=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) || return 1
+  SECURITY_HEAD=$(printf '%s' "$PR_JSON" | jq -r '.headRefOid // "" | strings' 2>/dev/null) || return 1
+  is_hexadecimal_name "$SECURITY_HEAD" || return 1
+  git -C "$SECURITY_TOP" rev-parse --verify --quiet "$SECURITY_HEAD^{commit}" >/dev/null 2>&1 || return 1
+  base_ref_name=$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null) || return 1
+  [ -n "$base_ref_name" ] || return 1
+  SECURITY_BASE=$(git -C "$SECURITY_TOP" merge-base "refs/remotes/origin/$base_ref_name" "$SECURITY_HEAD" 2>/dev/null) || return 1
+  [ -n "$SECURITY_BASE" ]
+}
+
+# read_security_detector_timeout: prints the detector's deadline in whole
+# seconds, CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS or 30 when that is unset or
+# not a whole number. The default is 30 because the harness kills a PreToolUse
+# hook at 60 seconds (the Claude Code and Codex default; settings.json sets no
+# other for this hook), the gh view deadline takes up to 15 of them, and 30
+# more leaves 15 for git, jq, and the verdict.
+read_security_detector_timeout() {
+  local timeout_seconds="${CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS:-}"
+  case "$timeout_seconds" in '' | *[!0-9]*) timeout_seconds=30 ;; esac
+  printf '%s' "$timeout_seconds"
+}
+
+# run_security_detector_with_deadline: runs is_security_surface on the PR's
+# range in the background and returns its status, polling in 0.2s steps as
+# run_gh_view_with_deadline does. `set -m` puts the detector in its own process
+# group, so on expiry the whole group dies, a Semgrep child and its `sleep`
+# included, and the detector's output goes to a file rather than the hook's
+# stdout, so no orphan can hold the hook's output open. The detector's log and
+# its work directory both live under one root the hook creates under TMPDIR
+# and hands to the detector as SECURITY_SURFACE_WORK_ROOT, because a killed
+# detector never reaches its own cleanup; the hook removes that root on every
+# path. An expired or unlaunchable detector returns 0: a detector that did not
+# answer is failed, and a failed detector means security-touching.
+run_security_detector_with_deadline() {
+  local deadline_steps waited_steps=0 detector_root detector_log detector_pid detector_status
+  deadline_steps=$(( $(read_security_detector_timeout) * 5 ))
+  detector_root=$(mktemp -d "${TMPDIR:-/tmp}/security-detector.XXXXXX") || return 0
+  detector_log="$detector_root/detector.log"
+  # shellcheck disable=SC2034  # read by the sourced security-surface.sh in the detector subshell
+  SECURITY_SURFACE_WORK_ROOT="$detector_root"
+  set -m
+  is_security_surface "$SECURITY_TOP" "$SECURITY_BASE" "$SECURITY_HEAD" >"$detector_log" 2>&1 </dev/null &
+  detector_pid=$!
+  set +m
+  while kill -0 "$detector_pid" 2>/dev/null; do
+    if [ "$waited_steps" -ge "$deadline_steps" ]; then
+      kill -KILL -- "-$detector_pid" 2>/dev/null
+      wait "$detector_pid" 2>/dev/null
+      rm -rf "$detector_root"
+      return 0
+    fi
+    sleep 0.2
+    waited_steps=$((waited_steps + 1))
+  done
+  wait "$detector_pid"
+  detector_status=$?
+  cat "$detector_log" >&2
+  rm -rf "$detector_root"
+  return "$detector_status"
+}
+
+# is_security_touching_pr: true when the PR's range touches a security
+# surface, as the sourced detector decides within its deadline, and also
+# whenever the answer cannot be had: a missing helper, an unresolvable range,
+# or an expired detector fails closed, and is_security_surface itself answers
+# true when the detector fails.
+is_security_touching_pr() {
+  [ -f "$SECURITY_SURFACE_HELPER" ] || return 0
+  # shellcheck source=security-surface.sh
+  . "$SECURITY_SURFACE_HELPER" || return 0
+  type is_security_surface >/dev/null 2>&1 || return 0
+  resolve_security_range || return 0
+  run_security_detector_with_deadline
+}
+
+# read_security_review_model: prints securityReviewModel from
+# enforce/security-review-model.json, or nothing when it cannot be read.
+read_security_review_model() {
+  [ -n "$ENFORCE_DIR" ] || return 0
+  jq -er '.securityReviewModel | strings | select(length > 0)' "$ENFORCE_DIR/security-review-model.json" 2>/dev/null || true
+}
+
+# read_security_artefact_verdict <section>: prints "ok" when the Security
+# review section names a reviewer, ran on exactly the strongest model
+# securityReviewModel names, read a range whose head endpoint is the PR's
+# head commit, and carries an `artefact` line naming the reviewer's saved
+# output (B-10c); otherwise the sentence naming the first condition that failed.
+read_security_artefact_verdict() {
+  local section="$1" reviewer model expected_model range range_head
+  reviewer=$(read_review_field "$section" reviewer)
+  [ -n "$reviewer" ] ||
+    { echo "its \`## Security review\` section carries no \`reviewer\` line with a value"; return 0; }
+  expected_model=$(read_security_review_model)
+  [ -n "$expected_model" ] ||
+    { echo "the hook cannot read \`securityReviewModel\` from enforce/security-review-model.json, so no model can satisfy the review"; return 0; }
+  model=$(read_review_field "$section" model)
+  [ "$model" = "$expected_model" ] ||
+    { echo "its \`## Security review\` section gives the model as \`$model\`, but the security review must run on \`$expected_model\`, the model securityReviewModel names"; return 0; }
+  range=$(read_review_field "$section" range)
+  range_head=$(read_range_head "$range")
+  [ -n "$range_head" ] ||
+    { echo "its \`## Security review\` section carries no \`range\` line holding a \`<base>..<head>\` expression"; return 0; }
+  is_head_commit_prefix "$range_head" "$SECURITY_HEAD" ||
+    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, so the review is stale"; return 0; }
+  [ -n "$(read_review_field "$section" artefact)" ] ||
+    { echo "its \`## Security review\` section carries no \`artefact\` line naming the reviewer's saved output, so nothing proves what the review found; commit the artefact, record it with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head, and name it on an \`artefact\` line"; return 0; }
+  echo ok
+}
+
+# read_empty_nothing_found_lines <section>: prints every `Nothing found:` line
+# whose text after its last `tried` word is empty, punctuation, or only a
+# placeholder (none, nothing, n/a, na, -, tbd, in any case), and every such
+# line with no `tried` word at all, since none of them names a value tried.
+read_empty_nothing_found_lines() {
+  awk '
+    {
+      line = $0
+      sub(/^[ \t]*/, "", line)
+      sub(/^[-*+][ \t]+/, "", line)
+      gsub(/\*\*/, "", line)
+      lowered = tolower(line)
+      if (index(lowered, "nothing found:") != 1) next
+      tried_end = 0
+      for (start = 1; (found = index(substr(lowered, start), "tried")) > 0; start += found) {
+        position = start + found - 1
+        before = (position == 1) ? " " : substr(lowered, position - 1, 1)
+        after = substr(lowered, position + 5, 1)
+        if (before !~ /[a-z]/ && after !~ /[a-z]/) tried_end = position + 5
+      }
+      values = tried_end ? substr(line, tried_end) : ""
+      gsub(/[ \t.,;:]/, "", values)
+      if (values == "" || tolower(values) ~ /^(none|nothing|n\/a|na|-|tbd)$/) print line
+    }' <<< "$1"
+}
+
+# read_findings_rows <section>: prints one `<#>\t<SEVERITY>\t<status>` line
+# per row of the section's findings table, nothing when it holds no table,
+# and, when a table line breaks the expected header, separator, cell count,
+# `#`, severity, or status shape, the reason alone with a non-zero return.
+read_findings_rows() {
+  awk '
+    function trim(text) { sub(/^[ \t]+/, "", text); sub(/[ \t]+$/, "", text); return text }
+    function fault(reason) { print reason; is_faulted = 1; exit 1 }
+    /^[ \t]*\|/ {
+      table_lines++
+      line = trim($0)
+      sub(/^\|/, "", line)
+      sub(/\|$/, "", line)
+      cell_count = split(line, cells, "|")
+      if (cell_count != 8) fault("table line " table_lines " has " cell_count " cells rather than 8")
+      for (i = 1; i <= 8; i++) { cells[i] = trim(cells[i]); gsub(/[ \t]+/, " ", cells[i]) }
+      if (table_lines == 1) {
+        header = tolower(cells[1] "|" cells[2] "|" cells[3] "|" cells[4] "|" cells[5] "|" cells[6] "|" cells[7] "|" cells[8])
+        if (header != "#|severity|control|source|worst value tried|evidence|fix|status") fault("its header is not # | Severity | Control | Source | Worst value tried | Evidence | Fix | Status")
+        next
+      }
+      if (table_lines == 2) {
+        for (i = 1; i <= 8; i++) if (cells[i] !~ /^:?-+:?$/) fault("its second line is not a separator row")
+        next
+      }
+      if (cells[1] !~ /^[0-9]+$/) fault("table line " table_lines " has no number in its # cell")
+      severity = toupper(cells[2])
+      if (severity !~ /^(CRITICAL|HIGH|MEDIUM|LOW)$/) fault("row " cells[1] " has severity " cells[2] ", not CRITICAL, HIGH, MEDIUM, or LOW")
+      status = tolower(cells[8])
+      if (status != "open" && status !~ /^fixed [0-9a-f]+$/ && status !~ /^waived by owner [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) fault("row " cells[1] " has status " cells[8] ", not open, fixed <sha>, or waived by owner <date>")
+      print cells[1] "\t" severity "\t" status
+    }
+    END {
+      if (is_faulted) exit 1
+      if (table_lines == 1) { print "it has a header and no separator row"; exit 1 }
+    }' <<< "$1"
+}
+
+# list_rows_with_status <rows> <status prefix>: prints `row <#>` for each row
+# whose status starts with the prefix, joined by ", ", or nothing.
+list_rows_with_status() {
+  awk -F '\t' -v prefix="$2" 'index($3, prefix) == 1 { names = names (names == "" ? "" : ", ") "row " $1 } END { printf "%s", names }' <<< "$1"
+}
+
+# read_security_artefact_json <section>: prints the `artefact` line's file,
+# read at the PR head (the checkout need not be on the PR branch), as compact
+# JSON holding a findings array of objects with an id and a string severity;
+# otherwise prints why it cannot and returns non-zero.
+read_security_artefact_json() {
+  local artefact_path artefact_text
+  artefact_path=$(read_review_field "$1" artefact)
+  [ -n "$artefact_path" ] ||
+    { echo "the section carries no \`artefact\` line naming the reviewer's saved output"; return 1; }
+  artefact_text=$(git -C "$SECURITY_TOP" show "$SECURITY_HEAD:$artefact_path" 2>/dev/null) ||
+    { echo "its artefact \`$artefact_path\` cannot be read at the PR head $(printf '%.7s' "$SECURITY_HEAD")"; return 1; }
+  jq -ce 'select((.findings | type) == "array" and all(.findings[]; type == "object" and has("id") and (.severity | type) == "string"))' <<< "$artefact_text" 2>/dev/null ||
+    { echo "its artefact \`$artefact_path\` is not JSON holding a findings array with an id and a severity on every finding"; return 1; }
+}
+
+# read_severity_rank <severity>: prints 4 for CRITICAL down to 1 for LOW, and
+# 0 for anything else.
+read_severity_rank() {
+  case "$1" in CRITICAL) echo 4 ;; HIGH) echo 3 ;; MEDIUM) echo 2 ;; LOW) echo 1 ;; *) echo 0 ;; esac
+}
+
+# read_artefact_severity <artefact json> <#>: prints the uppercase severity of
+# the artefact's one finding whose id is <#>, or nothing when none or several match.
+read_artefact_severity() {
+  jq -r --arg id "$2" '[.findings[] | select((.id | tostring) == $id) | .severity | ascii_upcase] | if length == 1 then .[0] else "" end' <<< "$1" 2>/dev/null
+}
+
+# read_severity_verdict <rows> <artefact json>: prints "ok" when every row's
+# severity is at least the artefact's for the same id (B-10), otherwise the
+# sentence naming the first row that is downgraded or has no artefact match.
+read_severity_verdict() {
+  local row_id row_severity row_status artefact_severity artefact_rank
+  while IFS=$'\t' read -r row_id row_severity row_status; do
+    artefact_severity=$(read_artefact_severity "$2" "$row_id") ||
+      { echo "the hook could not read row $row_id's severity from the artefact"; return 0; }
+    artefact_rank=$(read_severity_rank "$artefact_severity")
+    [ "$artefact_rank" -gt 0 ] ||
+      { echo "row $row_id has no single finding with id $row_id and a known severity in the artefact"; return 0; }
+    [ "$(read_severity_rank "$row_severity")" -ge "$artefact_rank" ] ||
+      { echo "row $row_id is graded $row_severity in the table but $artefact_severity in the artefact, and a finding is never downgraded"; return 0; }
+  done <<< "$1"
+  echo ok
+}
+
+# is_range_commit <sha>: true when the abbreviated or full object name
+# resolves to one commit in SECURITY_BASE..SECURITY_HEAD; an ambiguous name,
+# a missing object, or a failed ancestry lookup is false.
+is_range_commit() {
+  local commit_oid ancestry_status
+  is_hexadecimal_name "$1" && [ "${#1}" -ge 7 ] || return 1
+  commit_oid=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "$1^{commit}" 2>/dev/null) || return 1
+  git -C "$SECURITY_TOP" merge-base --is-ancestor "$commit_oid" "$SECURITY_HEAD" 2>/dev/null || return 1
+  git -C "$SECURITY_TOP" merge-base --is-ancestor "$commit_oid" "$SECURITY_BASE" 2>/dev/null
+  ancestry_status=$?
+  [ "$ancestry_status" -eq 1 ]
+}
+
+# read_fixed_commit_verdict <rows>: prints "ok" when every `fixed <sha>` row
+# names a commit in the PR range (B-11), otherwise the sentence naming the row.
+read_fixed_commit_verdict() {
+  local row_id row_severity row_status fixed_sha
+  while IFS=$'\t' read -r row_id row_severity row_status; do
+    case "$row_status" in fixed\ *) ;; *) continue ;; esac
+    fixed_sha="${row_status#fixed }"
+    is_range_commit "$fixed_sha" ||
+      { echo "row $row_id is marked fixed by \`$fixed_sha\`, which is not a commit in the PR range $(printf '%.7s' "$SECURITY_BASE")..$(printf '%.7s' "$SECURITY_HEAD")"; return 0; }
+  done <<< "$1"
+  echo ok
+}
+
+# read_table_verdict <section> <rows>: prints "ok" or the deny sentence for a
+# parsed findings table with rows: no open row, a readable artefact, no
+# downgraded severity, and every fix in range; else "waived: <rows>" when a
+# row is waived, so the caller asks the owner.
+read_table_verdict() {
+  local open_rows artefact_json verdict waived_rows
+  open_rows=$(list_rows_with_status "$2" open)
+  [ -z "$open_rows" ] || { echo "its findings table still has $open_rows open"; return 0; }
+  artefact_json=$(read_security_artefact_json "$1") || { echo "$artefact_json"; return 0; }
+  verdict=$(read_severity_verdict "$2" "$artefact_json")
+  [ "$verdict" = ok ] || { echo "$verdict"; return 0; }
+  verdict=$(read_fixed_commit_verdict "$2")
+  [ "$verdict" = ok ] || { echo "$verdict"; return 0; }
+  waived_rows=$(list_rows_with_status "$2" "waived by owner")
+  [ -z "$waived_rows" ] || { echo "waived: $waived_rows"; return 0; }
+  echo ok
+}
+
+# list_rowless_finding_ids <artefact json> <rows>: prints `finding <id>` for
+# each artefact finding id that no table row's `#` names, joined by ", ", or
+# nothing when every finding has a row.
+list_rowless_finding_ids() {
+  local row_ids
+  row_ids=$(awk -F '\t' 'NF { print $1 }' <<< "$2")
+  jq -r --arg row_ids "$row_ids" '($row_ids | split("\n")) as $rows
+    | [.findings[].id] | unique | map(tostring) | map(select(. as $id | $rows | any(. == $id) | not))
+    | map("finding " + .) | join(", ")' <<< "$1" 2>/dev/null
+}
+
+# read_artefact_coverage_verdict <section> <rows>: prints "ok" when every
+# finding in the artefact, read at the PR head, has a table row; otherwise the
+# sentence naming why the artefact cannot be read (a missing `artefact` line
+# included) or each finding with no row, since a row deleted from the table
+# would otherwise let its finding merge unanswered.
+read_artefact_coverage_verdict() {
+  local artefact_json rowless_ids
+  artefact_json=$(read_security_artefact_json "$1") || { echo "$artefact_json"; return 0; }
+  rowless_ids=$(list_rowless_finding_ids "$artefact_json" "$2") ||
+    { echo "the hook could not compare the artefact's finding ids with the table rows"; return 0; }
+  [ -z "$rowless_ids" ] ||
+    { echo "its artefact holds $rowless_ids with no row in the findings table, and every finding the reviewer reported needs a row"; return 0; }
+  echo ok
+}
+
+# has_security_record_line <section>: true when a line, after any bullet and
+# bold markers, starts `Nothing found:` or `No security control in range:`.
+has_security_record_line() {
+  awk '
+    {
+      line = $0
+      sub(/^[ \t]*/, "", line)
+      sub(/^[-*+][ \t]+/, "", line)
+      gsub(/\*\*/, "", line)
+      lowered = tolower(line)
+      if (index(lowered, "nothing found:") == 1 || index(lowered, "no security control in range:") == 1) is_found = 1
+    }
+    END { exit is_found ? 0 : 1 }' <<< "$1"
+}
+
+# read_security_findings_verdict <section>: prints "ok" when the Security
+# review's findings clear R-109, "waived: <rows>" when only an owner waiver
+# stands between them and the merge, and otherwise the deny sentence. A
+# section with no table rows, no `Nothing found:` line, and no `No security
+# control in range:` line records nothing it examined and is denied (B-16b).
+# Every finding in the section's artefact needs a table row.
+read_security_findings_verdict() {
+  local empty_lines rows verdict
+  empty_lines=$(read_empty_nothing_found_lines "$1") ||
+    { echo "the hook could not read the section's Nothing found lines"; return 0; }
+  [ -z "$empty_lines" ] ||
+    { echo "its line \`$(printf '%s\n' "$empty_lines" | head -n 1)\` names no values after \`tried\`, only nothing or a placeholder, so it records no test of the control"; return 0; }
+  rows=$(read_findings_rows "$1") ||
+    { echo "its findings table cannot be parsed ($rows), so every finding in it counts as open"; return 0; }
+  verdict=$(read_artefact_coverage_verdict "$1" "$rows")
+  [ "$verdict" = ok ] || { echo "$verdict"; return 0; }
+  [ -n "$rows" ] && { read_table_verdict "$1" "$rows"; return 0; }
+  has_security_record_line "$1" ||
+    { echo "its section records nothing it examined: it holds no findings table rows, no \`Nothing found:\` line, and no \`No security control in range:\` line"; return 0; }
+  echo ok
+}
+
+# read_head_pin_verdict: prints "ok" when the merge carries
+# `--match-head-commit` naming the full head commit SECURITY_HEAD, otherwise
+# the sentence saying the flag is missing or names another commit, so a push
+# landing after the review cannot ride into the merge.
+read_head_pin_verdict() {
+  local pinned_commit head_commit
+  pinned_commit=$(printf '%s' "$MERGE_MATCH_HEAD_COMMIT" | tr 'A-Z' 'a-z')
+  head_commit=$(printf '%s' "$SECURITY_HEAD" | tr 'A-Z' 'a-z')
+  [ -n "$pinned_commit" ] ||
+    { echo "the merge command carries no \`--match-head-commit $SECURITY_HEAD\`, so a push after the review could merge unreviewed; add \`--match-head-commit <full head sha>\` to the merge"; return 0; }
+  [ "$pinned_commit" = "$head_commit" ] ||
+    { echo "the merge's \`--match-head-commit\` names \`$MERGE_MATCH_HEAD_COMMIT\`, not the full head commit $SECURITY_HEAD the review must cover"; return 0; }
+  echo ok
+}
+
+# read_base_currency_verdict: prints "ok" when gh reports a baseRefOid and the
+# local refs/remotes/origin/<baseRefName> names the same commit; otherwise the
+# sentence saying the base is unknown or stale, since a stale origin/<base>
+# moves the merge base the range, the detector, and every `fixed <sha>` check
+# read from.
+read_base_currency_verdict() {
+  local base_ref_oid base_ref_name local_base_oid
+  base_ref_oid=$(printf '%s' "$PR_JSON" | jq -r '.baseRefOid // "" | strings' 2>/dev/null) ||
+    { echo "the hook could not read the PR's baseRefOid from gh pr view"; return 0; }
+  [ -n "$base_ref_oid" ] ||
+    { echo "gh pr view reported no baseRefOid, so the hook cannot tell whether the local base the range starts from is current"; return 0; }
+  base_ref_name=$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null) ||
+    { echo "the hook could not read the PR's baseRefName from gh pr view"; return 0; }
+  local_base_oid=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "refs/remotes/origin/$base_ref_name" 2>/dev/null)
+  [ "$(printf '%s' "$local_base_oid" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$base_ref_oid" | tr 'A-Z' 'a-z')" ] ||
+    { echo "the local origin/$base_ref_name is at $(printf '%.7s' "${local_base_oid:-nothing}") but GitHub's base is $(printf '%.7s' "$base_ref_oid"), so the range the hook read is stale; run \`git fetch origin\` and merge again"; return 0; }
+  echo ok
+}
+
+# read_ledger_entry_field <ledger path> <field>: prints the named field of the
+# ledger's entry for SECURITY_HEAD, and returns non-zero when the ledger is
+# missing or unreadable, holds no object entry for the head, or the field is
+# not a non-empty string.
+read_ledger_entry_field() {
+  jq -er --arg head "$SECURITY_HEAD" --arg field "$2" \
+    '.[$head] | objects | .[$field] | strings | select(length > 0)' "$1" 2>/dev/null
+}
+
+SECURITY_LEDGER_PATH_HELPER="$(dirname "${BASH_SOURCE[0]}")/security-review-ledger-path.sh"
+
+# load_security_ledger_path_helper: sources the helper
+# enforce/security-review-record.sh computes the ledger path through (B-10e);
+# returns non-zero when it is missing or cannot be loaded, so the caller denies.
+load_security_ledger_path_helper() {
+  [ -f "$SECURITY_LEDGER_PATH_HELPER" ] || return 1
+  # shellcheck source=security-review-ledger-path.sh
+  . "$SECURITY_LEDGER_PATH_HELPER"
+}
+
+# read_pr_repository_identity: prints the normalized `host/owner/repo` of the
+# repository the PR's GitHub url (https://github.com/<owner>/<repo>/pull/<n>)
+# names; returns non-zero when the url is absent, is not a pull request url,
+# or does not normalize. The helper must already be loaded.
+read_pr_repository_identity() {
+  local pr_url
+  pr_url=$(printf '%s' "$PR_JSON" | jq -r '.url // "" | strings' 2>/dev/null) || return 1
+  [[ "$pr_url" =~ ^(.+)/pull/[0-9]+/?$ ]] || return 1
+  print_repository_identity "${BASH_REMATCH[1]}"
+}
+
+# read_security_repository_verdict: prints "ok <identity>" when the helper
+# loads, the PR's url and the merge checkout's origin both normalize, and the
+# two identities are one repository (B-10f); otherwise the sentence naming
+# which of those failed, so a checkout whose origin was re-pointed at another
+# repository cannot read that repository's ledger.
+read_security_repository_verdict() {
+  local pr_identity origin_identity
+  load_security_ledger_path_helper ||
+    { echo "the ledger path helper $SECURITY_LEDGER_PATH_HELPER is missing or cannot be loaded, so the repository's origin cannot be checked and no artefact recorded at review time can be found; re-run ./sync.sh"; return 0; }
+  pr_identity=$(read_pr_repository_identity) ||
+    { echo "the PR's url cannot be normalized to host/owner/repo, so the hook cannot tell which repository's origin and ledger the merge must match"; return 0; }
+  origin_identity=$(print_origin_repository_identity "$SECURITY_TOP") ||
+    { echo "the merge checkout has no \`origin\` remote, or its origin URL cannot be normalized to host/owner/repo, so it cannot be shown to be $pr_identity, the repository the PR belongs to; point origin at that repository and merge again"; return 0; }
+  [ "$origin_identity" = "$pr_identity" ] ||
+    { echo "the merge checkout's origin is $origin_identity, not $pr_identity, the repository the PR belongs to, so a record made under that origin cannot stand for this PR; merge from a checkout of $pr_identity"; return 0; }
+  echo "ok $pr_identity"
+}
+
+# read_security_ledger_verdict <section>: prints "ok" when the merge
+# checkout's origin is the PR's repository and the shared ledger
+# enforce/security-review-record.sh wrote for that repository holds an entry
+# for SECURITY_HEAD whose path is the section's artefact line's and whose blob
+# is that path's blob at SECURITY_HEAD; otherwise the sentence naming the
+# first mismatch (B-10b), a missing artefact line first (B-10c), then an
+# origin that is missing, unreadable, or another repository (B-10e, B-10f).
+read_security_ledger_verdict() {
+  local artefact_path repository_verdict ledger_path recorded_path recorded_blob head_blob
+  artefact_path=$(read_review_field "$1" artefact)
+  [ -n "$artefact_path" ] ||
+    { echo "its \`## Security review\` section carries no \`artefact\` line, so no artefact recorded at review time can be matched to it"; return 0; }
+  repository_verdict=$(read_security_repository_verdict)
+  case "$repository_verdict" in "ok "*) ;; *) echo "$repository_verdict"; return 0 ;; esac
+  ledger_path=$(load_security_ledger_path_helper && print_security_review_ledger_path_for_identity "${repository_verdict#ok }") ||
+    { echo "no artefact recorded at review time can be found for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger ~/.claude/security-review-ledger/<key>.json cannot be located (HOME is unset or the digest failed)"; return 0; }
+  recorded_path=$(read_ledger_entry_field "$ledger_path" path) ||
+    { echo "no artefact was recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger $ledger_path is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
+  [ "$recorded_path" = "$artefact_path" ] ||
+    { echo "the artefact recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") is \`$recorded_path\`, not \`$artefact_path\` as the section names"; return 0; }
+  recorded_blob=$(read_ledger_entry_field "$ledger_path" blob) ||
+    { echo "the ledger entry recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") carries no blob"; return 0; }
+  head_blob=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "$SECURITY_HEAD:$artefact_path" 2>/dev/null) ||
+    { echo "its artefact \`$artefact_path\` cannot be read at the PR head $(printf '%.7s' "$SECURITY_HEAD") to compare with the blob recorded at review time"; return 0; }
+  [ "$recorded_blob" = "$head_blob" ] ||
+    { echo "its artefact \`$artefact_path\` at the PR head is blob $(printf '%.7s' "$head_blob"), not blob $(printf '%.7s' "$recorded_blob") recorded at review time, so it changed after the review"; return 0; }
+  echo ok
+}
+
+# read_security_review_verdict: prints "ok" when the PR touches no security
+# surface, or when the local base is current, its body carries one current
+# Security review artefact whose findings clear R-109 and whose artefact
+# matches the ledger recorded at review time, and the merge pins the PR head
+# with `--match-head-commit`; "waived: <rows>" when only owner waivers remain
+# on a pinned merge; and otherwise the sentence naming what is missing: the
+# base first, then the review's own faults, then the pin. An undecidable range
+# reads as security-touching and, with no resolvable head, can satisfy nothing.
+read_security_review_verdict() {
+  local base_verdict section_verdict pin_verdict
+  SECURITY_HEAD=""
+  SECURITY_BASE=""
+  is_security_touching_pr || { echo ok; return 0; }
+  [ -n "$SECURITY_HEAD" ] && [ -n "$SECURITY_BASE" ] ||
+    { echo "the hook could not resolve the PR's range (its head commit is not in this checkout, origin/<base> is missing, or the detector is absent), so it treats the PR as security-touching and cannot tell which tree a review read; fetch the PR head and origin and merge again"; return 0; }
+  base_verdict=$(read_base_currency_verdict)
+  [ "$base_verdict" = ok ] || { echo "$base_verdict"; return 0; }
+  section_verdict=$(read_security_section_verdict)
+  case "$section_verdict" in
+    ok | "waived: "*) ;;
+    *) echo "$section_verdict"; return 0 ;;
+  esac
+  pin_verdict=$(read_head_pin_verdict)
+  [ "$pin_verdict" = ok ] || { echo "$pin_verdict"; return 0; }
+  echo "$section_verdict"
+}
+
+# read_security_section_verdict: prints "ok", "waived: <rows>", or the deny
+# sentence for the PR body's `## Security review` section on a
+# security-touching PR whose range is resolved. The ledger is checked only
+# once the findings clear, so a finding's own fault is reported first.
+read_security_section_verdict() {
+  local pr_body scan heading_count section artefact_verdict findings_verdict ledger_verdict
+  pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
+  scan=$(read_review_scan "$pr_body" "Security review")
+  heading_count=$(printf '%s\n' "$scan" | head -1)
+  section=$(printf '%s\n' "$scan" | tail -n +2)
+  if [ "$heading_count" -gt 1 ]; then
+    echo "the PR body holds $heading_count \`## Security review\` headings, so the hook cannot say which one describes the state that would merge"
+  elif [ -n "$section" ]; then
+    artefact_verdict=$(read_security_artefact_verdict "$section")
+    [ "$artefact_verdict" = ok ] || { echo "$artefact_verdict"; return 0; }
+    findings_verdict=$(read_security_findings_verdict "$section")
+    case "$findings_verdict" in ok | "waived: "*) ;; *) echo "$findings_verdict"; return 0 ;; esac
+    ledger_verdict=$(read_security_ledger_verdict "$section")
+    [ "$ledger_verdict" = ok ] || { echo "$ledger_verdict"; return 0; }
+    echo "$findings_verdict"
+  else
+    echo "the PR touches a security surface and its body has no \`## Security review\` section with content under it"
+  fi
 }
 
 # classify_merge_commands <command> <is-nested>: walks the command's simple
@@ -679,10 +1238,11 @@ classify_simple_command() {
   return 0
 }
 
-# R-512, R-517, and R-514 on the merge path. A merge-commit strategy is denied
-# from the command alone, before any gh call. Every other merge consults gh
-# once, from the command's working directory: a rebase for the bundle
-# conditions, and every merge for the Codex review section in the PR body.
+# R-512, R-517, R-109, and R-514 on the merge path. A merge-commit strategy is
+# denied from the command alone, before any gh call. Every other merge
+# consults gh once, from the command's working directory: a rebase for the
+# bundle conditions, and every merge for the Codex review section in the PR
+# body and, when its range touches security code, the Security review section.
 MERGE_TOTAL=0
 MERGE_CANONICAL=0
 MERGE_WORDS=()
@@ -714,6 +1274,14 @@ if [ "$MERGE_TOTAL" -gt 0 ]; then
   CODEX_REVIEW_VERDICT=$(read_codex_review_verdict)
   [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
     deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line, a \`range\` line covering the commit this PR would merge, and the findings with their dispositions; then merge again."
+  SECURITY_REVIEW_VERDICT=$(read_security_review_verdict)
+  case "$SECURITY_REVIEW_VERDICT" in
+    ok) ;;
+    "waived: "*)
+      ask "R-109: the Security review marks ${SECURITY_REVIEW_VERDICT#waived: } as waived by owner, and a waived security finding merges only on the owner's confirmation. Confirm each waived row and this merge (R-514) now, or say so and the merge waits." ;;
+    *)
+      deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, a \`range\` line covering the commit this PR would merge, an \`artefact\` line naming the reviewer's saved output (recorded at review time with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head), and the findings table with every row \`fixed <sha>\` in range or \`waived by owner <date>\`; then merge again." ;;
+  esac
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
 

@@ -12,6 +12,10 @@
 #     `content`, or `semgrep`; a path hit reports line 0. Returns 2 after
 #     printing what it found when the detector itself failed.
 #
+# A caller that may kill the detector sets SECURITY_SURFACE_WORK_ROOT to a
+# directory it owns, and the detector's work directory is created inside it,
+# so the caller can remove it when the detector never reaches its own cleanup.
+#
 # <head-oid> defaults to HEAD and names the commit whose file list, diffs, and
 # blobs are read. A range is marked by any of three triggers: a changed path
 # matching a `paths` regex in enforce/security-surface.json, an added or
@@ -340,12 +344,24 @@ collect_security_surface_hits() {
   list_semgrep_hits "$repo_top" "$head_oid" "$included_files" "$work_dir" || return 1
 }
 
+# create_security_surface_work_dir: creates and prints a fresh work directory,
+# inside SECURITY_SURFACE_WORK_ROOT when the caller set it (so a caller that
+# kills the detector can still remove everything it wrote), otherwise wherever
+# a bare `mktemp -d` places it. Returns non-zero when it cannot be created.
+create_security_surface_work_dir() {
+  if [ -n "${SECURITY_SURFACE_WORK_ROOT:-}" ]; then
+    mktemp -d "$SECURITY_SURFACE_WORK_ROOT/work.XXXXXX"
+  else
+    mktemp -d
+  fi
+}
+
 # list_security_surface_hits <repo-top> <base-oid> [<head-oid>]: prints each
 # hit once as `path:line trigger`. Returns 2 when the detector failed, after
 # printing the hits it did find and naming the failure on stderr.
 list_security_surface_hits() {
   local repo_top="$1" base_oid="$2" head_oid="${3:-HEAD}" work_dir hits collect_status
-  work_dir=$(mktemp -d) || return 2
+  work_dir=$(create_security_surface_work_dir) || return 2
   hits=$(collect_security_surface_hits "$repo_top" "$base_oid" "$head_oid" "$work_dir")
   collect_status=$?
   rm -rf "$work_dir"
