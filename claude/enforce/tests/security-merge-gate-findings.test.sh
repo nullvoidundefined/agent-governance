@@ -25,6 +25,12 @@
 # `main`, so the artefact exists only at the PR head and never in the working
 # tree. gh is stubbed through CLAUDE_GH_CMD and Semgrep through
 # CLAUDE_SEMGREP_CMD, and HOME is a scratch directory throughout.
+#
+# Origin scheme (B-10f): the repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/sec.git, and its push URL is the bare
+# repository beside it, so `git remote get-url origin` prints the GitHub URL
+# and a push still lands in the bare repository. The gh stub answers with url
+# https://github.com/fixture/sec/pull/42, the same repository.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
@@ -75,7 +81,7 @@ write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
   pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$REPO_BASE" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/fixture/sec/pull/42"}')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
@@ -128,6 +134,10 @@ git_in "$REPO_DIR" push -q origin main feature
 git_in "$REPO_DIR" fetch -q origin
 [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
   { echo "FAIL security-merge-gate-findings.test.sh: fixture setup could not point origin/main at the base"; exit 1; }
+git_in "$REPO_DIR" remote set-url origin https://github.com/fixture/sec.git
+git_in "$REPO_DIR" remote set-url --push origin "$ORIGIN_DIR"
+[ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = https://github.com/fixture/sec.git ] ||
+  { echo "FAIL security-merge-gate-findings.test.sh: fixture setup could not point origin at https://github.com/fixture/sec.git"; exit 1; }
 [ -e "$REPO_DIR/$MATCHING_ARTEFACT_PATH" ] &&
   { echo "FAIL security-merge-gate-findings.test.sh: fixture setup left the artefact in the main working tree"; exit 1; }
 

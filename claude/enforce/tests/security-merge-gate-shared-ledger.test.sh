@@ -5,9 +5,10 @@
 # and is guarded against being written, deleted, or moved by a session.
 #
 # The location: enforce/security-review-record.sh <artefact path> writes to
-# $HOME/.claude/security-review-ledger/<key>.json, where <key> is the sha256 hex
-# digest of the repository's `git remote get-url origin` output with its
-# trailing newline removed (`printf '%s' "$url" | shasum -a 256`). The JSON
+# $HOME/.claude/security-review-ledger/<key>.json, where <key> is derived from
+# the repository's origin (B-10e; normalized in B-10f). This fixture asks
+# hooks/security-review-ledger-path.sh for the path rather than spelling the
+# key, which security-merge-gate-repo-key.test.sh asserts. The JSON
 # shape is unchanged: one object keyed by the full head sha, each entry
 # {path, blob, recordedAt}. The script exits non-zero and writes nothing when
 # the repository has no `origin`, and the first record for a head stands, so a
@@ -15,9 +16,10 @@
 # origin is refused and the shared ledger stays byte for byte as it was.
 #
 # The gate: hooks/git-workflow-guard.sh reads the ledger from the same place,
-# keyed by the merge checkout's `origin` URL, and denies `gh pr merge` with a
-# reason naming R-109 and "recorded at review time" when the checkout has no
-# `origin` or the ledger holds no matching record. The old in-checkout
+# keyed by the repository's identity, and denies `gh pr merge` with a reason
+# naming R-109 and `origin` when the checkout has no `origin`, and with R-109
+# and "recorded at review time" when the ledger holds no matching record. The
+# old in-checkout
 # .claude/security-review-ledger.json is never read, so a matching record left
 # only there denies.
 #
@@ -36,11 +38,19 @@
 # checkout left on `main` and `origin` a bare repository beside it. gh is
 # stubbed through CLAUDE_GH_CMD and Semgrep through CLAUDE_SEMGREP_CMD, and
 # HOME is a scratch directory throughout.
+#
+# Origin scheme (B-10f): each repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/<name>.git, and its push URL is the bare
+# repository beside it, so `git remote get-url origin` prints the GitHub URL
+# and a push still lands in the bare repository. A clone of the bare
+# repository is re-pointed at the same GitHub URL. The gh stub for a
+# repository answers with url https://github.com/fixture/<name>/pull/42.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
 GUARD="$CLAUDE_HARNESS_ROOT/hooks/protected-path-guard.sh"
 RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
+LEDGER_PATH_HELPER="$CLAUDE_HARNESS_ROOT/hooks/security-review-ledger-path.sh"
 MODEL_FILE="$CLAUDE_HARNESS_ROOT/enforce/security-review-model.json"
 export CLAUDE_ROLE_POLICY_FILE="$CLAUDE_HARNESS_ROOT/enforce/role-policy.json"
 unset CLAUDE_ENFORCE_BASE CLAUDE_GH_CMD CLAUDE_SEMGREP_CMD GH_REPO GH_HOST CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS
@@ -94,14 +104,15 @@ chmod +x "$CLEAN_STUB"
 
 STUB_DIR="$WORK/gh-stubs"
 mkdir -p "$STUB_DIR"
-# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
-# for PR 42 of a same-repository `feature` branch into `main`, headed at
-# <head oid>, whose baseRefOid is <base oid>.
+# write_pr_stub <name> <body> <head oid> <base oid> <repo name>: a gh
+# stand-in answering for PR 42 of a same-repository `feature` branch into
+# `main` of https://github.com/fixture/<repo name>, headed at <head oid>, whose
+# baseRefOid is <base oid>.
 write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" --arg url "https://github.com/fixture/$5/pull/42" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: $url}')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
@@ -114,12 +125,11 @@ git_in() {
   git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.com -c commit.gpgsign=false "$@" >/dev/null 2>&1
 }
 
-# ledger_path_for <repo>: the shared ledger file for <repo>, keyed by the
-# sha256 hex of its `origin` URL; empty when the repository has no origin.
+# ledger_path_for <repo>: the shared ledger file for <repo>, as
+# print_security_review_ledger_path in hooks/security-review-ledger-path.sh
+# computes it from the repository's origin; empty when it computes none.
 ledger_path_for() {
-  local origin_url
-  origin_url=$(git -C "$1" remote get-url origin 2>/dev/null) || return 0
-  printf '%s/%s.json' "$LEDGER_DIR" "$(printf '%s' "$origin_url" | shasum -a 256 | awk '{print $1}')"
+  (. "$LEDGER_PATH_HELPER" && print_security_review_ledger_path "$1") 2>/dev/null || return 0
 }
 
 # build_pr_repo <name>: builds the security-touching PR repository described
@@ -153,6 +163,10 @@ build_pr_repo() {
   git_in "$REPO_DIR" fetch -q origin
   [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
     { echo "FAIL security-merge-gate-shared-ledger.test.sh: fixture setup could not point origin/main at the base in $1"; exit 1; }
+  git_in "$REPO_DIR" remote set-url origin "https://github.com/fixture/$1.git"
+  git_in "$REPO_DIR" remote set-url --push origin "$REPO_ORIGIN"
+  [ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = "https://github.com/fixture/$1.git" ] ||
+    { echo "FAIL security-merge-gate-shared-ledger.test.sh: fixture setup could not point origin at https://github.com/fixture/$1.git"; exit 1; }
   REPO_LEDGER=$(ledger_path_for "$REPO_DIR")
   [ -n "$REPO_LEDGER" ] && [ ! -e "$REPO_LEDGER" ] ||
     { echo "FAIL security-merge-gate-shared-ledger.test.sh: fixture setup found a shared ledger before any record in $1"; exit 1; }
@@ -245,7 +259,7 @@ fi
 [ ! -e "$REC_DIR/docs/$OLD_LEDGER_REL" ] || report_failure "case 1: security-review-record.sh wrote a ledger under the subdirectory it ran from"
 
 # Control: the record just made reaches the R-514 ask.
-STUB=$(write_pr_stub case1 "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$REC_BASE")
+STUB=$(write_pr_stub case1 "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$REC_BASE" recorded)
 expect_r514_ask "case 1 control (recorded in the shared ledger, base current)" "$(run_merge "$STUB" "$REC_DIR" "$REC_HEAD")"
 
 # --- Case 2: the record script refuses a repository with no origin -------------
@@ -275,8 +289,8 @@ NOMERGE_DIR="$REPO_DIR" NOMERGE_BASE="$REPO_BASE" NOMERGE_HEAD="$REPO_HEAD"
 git_in "$NOMERGE_DIR" remote remove origin
 git_in "$NOMERGE_DIR" update-ref refs/remotes/origin/main "$NOMERGE_BASE"
 [ -z "$(git -C "$NOMERGE_DIR" remote)" ] || report_failure "case 3 setup: the repository still has a remote"
-STUB=$(write_pr_stub case3 "$(pr_body "$NOMERGE_BASE" "$NOMERGE_HEAD" "$ARTEFACT_PATH")" "$NOMERGE_HEAD" "$NOMERGE_BASE")
-expect_r109_deny "case 3 (merge checkout has no origin)" "$(run_merge "$STUB" "$NOMERGE_DIR" "$NOMERGE_HEAD")" "recorded at review time"
+STUB=$(write_pr_stub case3 "$(pr_body "$NOMERGE_BASE" "$NOMERGE_HEAD" "$ARTEFACT_PATH")" "$NOMERGE_HEAD" "$NOMERGE_BASE" no-origin-merge)
+expect_r109_deny "case 3 (merge checkout has no origin)" "$(run_merge "$STUB" "$NOMERGE_DIR" "$NOMERGE_HEAD")" "origin"
 
 # --- Case 4: a matching record left only at the old in-checkout path -----------
 build_pr_repo old-path
@@ -286,7 +300,7 @@ mkdir -p "$OLD_DIR/.claude"
 jq -nc --arg h "$OLD_HEAD" --arg p "$ARTEFACT_PATH" --arg b "$OLD_BLOB" \
   '{($h): {path: $p, blob: $b, recordedAt: "2026-09-26T00:00:00Z"}}' > "$OLD_DIR/$OLD_LEDGER_REL"
 [ ! -e "$OLD_SHARED_LEDGER" ] || report_failure "case 4 setup: a shared ledger exists for the old-path repository"
-STUB=$(write_pr_stub case4 "$(pr_body "$OLD_BASE" "$OLD_HEAD" "$ARTEFACT_PATH")" "$OLD_HEAD" "$OLD_BASE")
+STUB=$(write_pr_stub case4 "$(pr_body "$OLD_BASE" "$OLD_HEAD" "$ARTEFACT_PATH")" "$OLD_HEAD" "$OLD_BASE" old-path)
 expect_r109_deny "case 4 (matching record only at the old $OLD_LEDGER_REL)" "$(run_merge "$STUB" "$OLD_DIR" "$OLD_HEAD")" "recorded at review time"
 
 # --- Case 5: one ledger for every worktree and clone ---------------------------
@@ -301,7 +315,7 @@ git_in "$SHARED_DIR" worktree add -q -b worktree-two-main "$WORKTREE_TWO" "$SHAR
   { echo "FAIL security-merge-gate-shared-ledger.test.sh: fixture setup could not add the two worktrees"; exit 1; }
 [ "$(run_record "$WORKTREE_ONE" "$SHARED_HEAD" "$ARTEFACT_PATH")" = 0 ] ||
   report_failure "case 5a setup: security-review-record.sh could not record $ARTEFACT_PATH in worktree 1"
-STUB=$(write_pr_stub case5 "$(pr_body "$SHARED_BASE" "$SHARED_HEAD" "$ARTEFACT_PATH")" "$SHARED_HEAD" "$SHARED_BASE")
+STUB=$(write_pr_stub case5 "$(pr_body "$SHARED_BASE" "$SHARED_HEAD" "$ARTEFACT_PATH")" "$SHARED_HEAD" "$SHARED_BASE" shared)
 expect_r514_ask "case 5a (recorded in worktree 1, merged from worktree 2)" "$(run_merge "$STUB" "$WORKTREE_TWO" "$SHARED_HEAD")"
 [ ! -e "$WORKTREE_ONE/$OLD_LEDGER_REL" ] || report_failure "case 5a: the record landed in worktree 1's own $OLD_LEDGER_REL"
 
@@ -315,9 +329,12 @@ if [ -f "$SHARED_LEDGER" ]; then
     report_failure "case 5b: the shared ledger changed when worktree 2 recorded the same head again: $(cat "$SHARED_LEDGER")"
   [ ! -e "$WORKTREE_TWO/$OLD_LEDGER_REL" ] || report_failure "case 5b: worktree 2 wrote its own $OLD_LEDGER_REL"
 
-  # A clone of the same origin shares the ledger too.
+  # A clone of the same origin shares the ledger too. The clone is made from
+  # the bare repository and then pointed at the same GitHub URL.
   CLONE_DIR="$WORK/shared-clone"
   git clone -q "$SHARED_ORIGIN" "$CLONE_DIR" >/dev/null 2>&1
+  git_in "$CLONE_DIR" remote set-url origin https://github.com/fixture/shared.git
+  git_in "$CLONE_DIR" remote set-url --push origin "$SHARED_ORIGIN"
   [ "$(ledger_path_for "$CLONE_DIR")" = "$SHARED_LEDGER" ] ||
     report_failure "case 5c setup: the clone's origin URL does not key the same ledger"
   CLONE_STATUS=$(run_record "$CLONE_DIR" "$SHARED_HEAD" "$OTHER_ARTEFACT_PATH")
@@ -347,7 +364,7 @@ if [ -f "$FIRST_LEDGER" ]; then
     report_failure "case 6a: security-review-record.sh exited 0 when replacing the ledger entry for head $(printf '%.7s' "$FIRST_HEAD")"
   cmp -s "$WORK/first-ledger-before.json" "$FIRST_LEDGER" ||
     report_failure "case 6a: the shared ledger changed when a second record for the same head was refused: $(cat "$FIRST_LEDGER")"
-  STUB=$(write_pr_stub case6 "$(pr_body "$FIRST_BASE" "$FIRST_HEAD" "$ARTEFACT_PATH")" "$FIRST_HEAD" "$FIRST_BASE")
+  STUB=$(write_pr_stub case6 "$(pr_body "$FIRST_BASE" "$FIRST_HEAD" "$ARTEFACT_PATH")" "$FIRST_HEAD" "$FIRST_BASE" first-wins)
   expect_r514_ask "case 6a (first record still decides after a refused second record)" "$(run_merge "$STUB" "$FIRST_DIR" "$FIRST_HEAD")"
   # 6b: a record for a different head succeeds and keeps the earlier entry.
   OTHER_HEAD_STATUS=$(run_record "$FIRST_DIR" "$FIRST_FIRST" "$OTHER_ARTEFACT_PATH")

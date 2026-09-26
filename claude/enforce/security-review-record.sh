@@ -11,20 +11,23 @@
 # checked out. It reads the artefact's git blob at HEAD (`git rev-parse
 # HEAD:<path>`, never the working-tree copy) and writes it into the shared
 # ledger $HOME/.claude/security-review-ledger/<key>.json, where <key> is the
-# sha256 hex digest of the repository's `origin` URL (B-10e; the path is
-# computed in hooks/security-review-ledger-path.sh, which the merge gate reads
-# it through too). The ledger sits outside the checkout, so every worktree and
-# every clone of the same origin shares it. It is one JSON object keyed by the
-# full head sha:
+# sha256 hex digest of the repository identity `host/owner/repo` normalized
+# from its `origin` URL (B-10e, B-10f; the path is computed in
+# hooks/security-review-ledger-path.sh, which the merge gate reads it through
+# too). The ledger sits outside the checkout, so every worktree and every
+# clone of the same repository shares it, whichever spelling of the URL its
+# origin uses. It is one JSON object keyed by the full head sha:
 #   { "<head sha>": { "path": "<path>", "blob": "<blob oid>",
 #                     "recordedAt": "YYYY-MM-DDTHH:MM:SSZ" } }
 # An existing ledger is merged into, and entries for other heads are kept. The
 # first record for a head stands (B-10c): recording again for a head the
-# ledger already holds is refused, from any worktree or clone, so an artefact
-# cannot be swapped for another after the review. The write goes to a
+# ledger already holds is refused, from any worktree or clone and under any
+# spelling of the origin URL, so an artefact cannot be swapped for another
+# after the review. The write goes to a
 # temporary file first and is moved into place, so a failure leaves the old
 # ledger as it was. It exits non-zero and writes nothing when it is not in a
-# repository, when the repository has no `origin`, when the path does not
+# repository, when the repository has no `origin` or its URL cannot be
+# normalized to `host/owner/repo` (a file path, for one), when the path does not
 # exist at HEAD, when an existing ledger is not a JSON object, or when the
 # ledger already holds an entry for the head. The ledger is a gate input:
 # protected-path-guard.sh denies every Write, Edit, and Bash write, delete, or
@@ -74,7 +77,7 @@ write_ledger_entry() {
 }
 
 # record_security_review <artefact path>: resolves the repository top level,
-# the shared ledger path from its origin, the head, and the artefact's blob at
+# the shared ledger path from its origin's normalized identity, the head, and the artefact's blob at
 # HEAD, reads the existing ledger, refuses a head it already holds, then
 # writes the ledger entry.
 record_security_review() {
@@ -82,7 +85,7 @@ record_security_review() {
   [ -n "$artefact_path" ] || fail_record "usage: security-review-record.sh <artefact repo-relative path>"
   repository_top=$(git rev-parse --show-toplevel 2>/dev/null) || fail_record "not inside a git repository"
   ledger_path=$(print_security_review_ledger_path "$repository_top") ||
-    fail_record "the repository has no \`origin\` remote (or HOME is unset), so the shared ledger it is keyed by cannot be located; add the origin and record again"
+    fail_record "the repository has no \`origin\` remote, its origin URL cannot be normalized to host/owner/repo, or HOME is unset, so the shared ledger it is keyed by cannot be located; point origin at the repository's URL and record again"
   head_commit=$(git -C "$repository_top" rev-parse --verify --quiet HEAD 2>/dev/null) || fail_record "the repository has no HEAD commit"
   artefact_blob=$(git -C "$repository_top" rev-parse --verify --quiet "HEAD:$artefact_path" 2>/dev/null) ||
     fail_record "\`$artefact_path\` does not exist at HEAD $head_commit; commit the artefact before recording it"

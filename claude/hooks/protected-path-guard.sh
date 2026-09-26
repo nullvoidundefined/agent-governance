@@ -38,7 +38,8 @@
 # levels asks instead of passing unread (R-517 review of IAN-342).
 # While a slice is amending (`tdd.sh amend`), only the one test file under
 # amendment is writable.
-# A leading `~` or `~/` on a Bash target is read as $HOME. Paths outside the
+# A leading `~`, `$HOME`, or `${HOME}` on a Bash target, quoted or not, is read
+# as $HOME. Paths outside the
 # repository root are not governed, with one exception: the shared Security
 # review ledger directory is denied from any working directory, inside a
 # repository or not. Silent on allow.
@@ -121,17 +122,20 @@ RUNNER_CONFIG='(^|/)(vitest|jest|playwright)\.(config|workspace)\.[cm]?[jt]s$|(^
 # still holds the directory when that helper is missing; change both together.
 LEDGER_DIR_NAME="security-review-ledger"
 
-# expand_home_prefix <path>: sets EXPANDED_PATH to the path with a leading `~`
-# or `~/` replaced by $HOME, the way the shell expands it before the command
-# runs; any other path, or any path while HOME is unset, is left as written.
-# A variable rather than printed output, so a caller pays no subshell.
+# expand_home_prefix <path>: sets EXPANDED_PATH to the path with a leading `~`,
+# `$HOME`, or `${HOME}` (alone or followed by `/`) replaced by the hook's own
+# $HOME, the way the shell expands it before the command runs (B-10f); any
+# other path, or any path while HOME is unset, is left as written. A variable
+# rather than printed output, so a caller pays no subshell.
 expand_home_prefix() {
   EXPANDED_PATH="$1"
   [ -n "${HOME:-}" ] || return 0
-  # shellcheck disable=SC2088  # the quoted `~` is the literal the command text carries
+  # shellcheck disable=SC2088,SC2016  # the quoted `~` and `$HOME` are the literals the command text carries
   case "$1" in
-    "~") EXPANDED_PATH="$HOME" ;;
+    "~" | '$HOME' | '${HOME}') EXPANDED_PATH="$HOME" ;;
     "~/"*) EXPANDED_PATH="$HOME/${1#"~/"}" ;;
+    '$HOME/'*) EXPANDED_PATH="$HOME/${1#'$HOME/'}" ;;
+    '${HOME}/'*) EXPANDED_PATH="$HOME/${1#'${HOME}/'}" ;;
   esac
 }
 

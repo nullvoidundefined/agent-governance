@@ -16,6 +16,12 @@
 # the PR head, a gh stub answering
 # with baseRefName, baseRefOid, and headRefOid, a clean Semgrep stub that lists its targets,
 # a valid Codex review, and a scratch HOME.
+#
+# Origin scheme (B-10f): the repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/sec.git, and its push URL is the bare
+# repository beside it, so `git remote get-url origin` prints the GitHub URL
+# and a push still lands in the bare repository. The gh stub answers with url
+# https://github.com/fixture/sec/pull/42, the same repository.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
@@ -76,7 +82,7 @@ write_pr_stub() {
   local pr_json
   pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/fixture/sec/pull/42"}')
   write_gh_stub "$1" "$pr_json"
 }
 
@@ -117,6 +123,10 @@ build_pr_repo() {
   git_in "$REPO_DIR" fetch -q origin
   [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
     { echo "FAIL security-merge-gate-empty.test.sh: fixture setup could not point origin/main at the base in $name"; exit 1; }
+  git_in "$REPO_DIR" remote set-url origin "https://github.com/fixture/$name.git"
+  git_in "$REPO_DIR" remote set-url --push origin "$origin_dir"
+  [ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = "https://github.com/fixture/$name.git" ] ||
+    { echo "FAIL security-merge-gate-empty.test.sh: fixture setup could not point origin at https://github.com/fixture/$name.git"; exit 1; }
 }
 
 # codex_section <base> <head>: a valid R-517 `## Codex review` section.

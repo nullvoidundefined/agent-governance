@@ -48,13 +48,15 @@
 #          section holding no findings table rows, no `Nothing found:` line,
 #          and no `No security control in range:` line records nothing it
 #          examined and denies, prose such as `Findings: none` included (B-16b).
-#          The section denies unless the shared ledger
-#          $HOME/.claude/security-review-ledger/<sha256 of the merge
-#          checkout's origin URL>.json, written by
+#          The section denies when the merge checkout's origin, normalized
+#          to `host/owner/repo`, is missing, cannot be normalized, or is not
+#          the repository the PR's own GitHub url names (B-10f), and unless
+#          the shared ledger $HOME/.claude/security-review-ledger/<sha256 of
+#          that host/owner/repo>.json, written by
 #          enforce/security-review-record.sh at review time, holds an entry
 #          for the PR head whose path is the artefact line's and whose blob is
-#          the artefact's blob at the PR head; a checkout with no origin
-#          denies, and the old in-checkout ledger is never read (B-10e); and a
+#          the artefact's blob at the PR head; the old in-checkout ledger is
+#          never read (B-10e); and a
 #          security-touching merge denies when gh reports no baseRefOid or one
 #          that differs from the local origin/<baseRefName> (B-10b)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
@@ -1000,31 +1002,60 @@ read_ledger_entry_field() {
 
 SECURITY_LEDGER_PATH_HELPER="$(dirname "${BASH_SOURCE[0]}")/security-review-ledger-path.sh"
 
-# read_security_ledger_path: prints the shared ledger file for the merge
-# checkout, $HOME/.claude/security-review-ledger/<sha256 of its origin URL>.json,
-# through the helper enforce/security-review-record.sh writes it through
-# (B-10e); returns non-zero when the helper is missing or the checkout has no
-# origin, so the caller denies.
-read_security_ledger_path() {
+# load_security_ledger_path_helper: sources the helper
+# enforce/security-review-record.sh computes the ledger path through (B-10e);
+# returns non-zero when it is missing or cannot be loaded, so the caller denies.
+load_security_ledger_path_helper() {
   [ -f "$SECURITY_LEDGER_PATH_HELPER" ] || return 1
   # shellcheck source=security-review-ledger-path.sh
-  . "$SECURITY_LEDGER_PATH_HELPER" || return 1
-  print_security_review_ledger_path "$SECURITY_TOP"
+  . "$SECURITY_LEDGER_PATH_HELPER"
 }
 
-# read_security_ledger_verdict <section>: prints "ok" when the shared ledger
-# enforce/security-review-record.sh wrote for the merge checkout's origin
-# holds an entry for SECURITY_HEAD whose path is the section's artefact line's
-# and whose blob is that path's blob at SECURITY_HEAD; otherwise the sentence
-# naming the first mismatch (B-10b), a missing artefact line first (B-10c),
-# then a checkout with no origin to key the ledger by (B-10e).
+# read_pr_repository_identity: prints the normalized `host/owner/repo` of the
+# repository the PR's GitHub url (https://github.com/<owner>/<repo>/pull/<n>)
+# names; returns non-zero when the url is absent, is not a pull request url,
+# or does not normalize. The helper must already be loaded.
+read_pr_repository_identity() {
+  local pr_url
+  pr_url=$(printf '%s' "$PR_JSON" | jq -r '.url // "" | strings' 2>/dev/null) || return 1
+  [[ "$pr_url" =~ ^(.+)/pull/[0-9]+/?$ ]] || return 1
+  print_repository_identity "${BASH_REMATCH[1]}"
+}
+
+# read_security_repository_verdict: prints "ok <identity>" when the helper
+# loads, the PR's url and the merge checkout's origin both normalize, and the
+# two identities are one repository (B-10f); otherwise the sentence naming
+# which of those failed, so a checkout whose origin was re-pointed at another
+# repository cannot read that repository's ledger.
+read_security_repository_verdict() {
+  local pr_identity origin_identity
+  load_security_ledger_path_helper ||
+    { echo "the ledger path helper $SECURITY_LEDGER_PATH_HELPER is missing or cannot be loaded, so the repository's origin cannot be checked and no artefact recorded at review time can be found; re-run ./sync.sh"; return 0; }
+  pr_identity=$(read_pr_repository_identity) ||
+    { echo "the PR's url cannot be normalized to host/owner/repo, so the hook cannot tell which repository's origin and ledger the merge must match"; return 0; }
+  origin_identity=$(print_origin_repository_identity "$SECURITY_TOP") ||
+    { echo "the merge checkout has no \`origin\` remote, or its origin URL cannot be normalized to host/owner/repo, so it cannot be shown to be $pr_identity, the repository the PR belongs to; point origin at that repository and merge again"; return 0; }
+  [ "$origin_identity" = "$pr_identity" ] ||
+    { echo "the merge checkout's origin is $origin_identity, not $pr_identity, the repository the PR belongs to, so a record made under that origin cannot stand for this PR; merge from a checkout of $pr_identity"; return 0; }
+  echo "ok $pr_identity"
+}
+
+# read_security_ledger_verdict <section>: prints "ok" when the merge
+# checkout's origin is the PR's repository and the shared ledger
+# enforce/security-review-record.sh wrote for that repository holds an entry
+# for SECURITY_HEAD whose path is the section's artefact line's and whose blob
+# is that path's blob at SECURITY_HEAD; otherwise the sentence naming the
+# first mismatch (B-10b), a missing artefact line first (B-10c), then an
+# origin that is missing, unreadable, or another repository (B-10e, B-10f).
 read_security_ledger_verdict() {
-  local artefact_path ledger_path recorded_path recorded_blob head_blob
+  local artefact_path repository_verdict ledger_path recorded_path recorded_blob head_blob
   artefact_path=$(read_review_field "$1" artefact)
   [ -n "$artefact_path" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line, so no artefact recorded at review time can be matched to it"; return 0; }
-  ledger_path=$(read_security_ledger_path) ||
-    { echo "no artefact recorded at review time can be found for head $(printf '%.7s' "$SECURITY_HEAD"): the merge checkout has no \`origin\` remote (or the ledger path helper is missing), so the shared ledger ~/.claude/security-review-ledger/<key>.json it is keyed by cannot be located"; return 0; }
+  repository_verdict=$(read_security_repository_verdict)
+  case "$repository_verdict" in "ok "*) ;; *) echo "$repository_verdict"; return 0 ;; esac
+  ledger_path=$(load_security_ledger_path_helper && print_security_review_ledger_path_for_identity "${repository_verdict#ok }") ||
+    { echo "no artefact recorded at review time can be found for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger ~/.claude/security-review-ledger/<key>.json cannot be located (HOME is unset or the digest failed)"; return 0; }
   recorded_path=$(read_ledger_entry_field "$ledger_path" path) ||
     { echo "no artefact was recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger $ledger_path is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
   [ "$recorded_path" = "$artefact_path" ] ||

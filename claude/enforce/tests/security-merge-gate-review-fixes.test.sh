@@ -34,6 +34,12 @@
 # empty-findings artefacts under docs/reviews/, the second rewrites the CORS
 # file), with the checkout left on `main`. gh is stubbed through CLAUDE_GH_CMD,
 # Semgrep through CLAUDE_SEMGREP_CMD, and HOME is a scratch directory.
+#
+# Origin scheme (B-10f): each repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/<name>.git, and its push URL is the bare
+# repository beside it, so `git remote get-url origin` prints the GitHub URL
+# and a push still lands in the bare repository. The gh stub for a repository
+# answers with url https://github.com/fixture/<name>/pull/42.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
@@ -96,14 +102,15 @@ chmod +x "$SLOW_STUB"
 
 STUB_DIR="$WORK/gh-stubs"
 mkdir -p "$STUB_DIR"
-# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
-# for PR 42 of a same-repository `feature` branch into `main`, headed at
-# <head oid>, whose baseRefOid is <base oid>.
+# write_pr_stub <name> <body> <head oid> <base oid> <repo name>: a gh
+# stand-in answering for PR 42 of a same-repository `feature` branch into
+# `main` of https://github.com/fixture/<repo name>, headed at <head oid>, whose
+# baseRefOid is <base oid>.
 write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" --arg url "https://github.com/fixture/$5/pull/42" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: $url}')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
@@ -150,6 +157,10 @@ build_repo() {
   git_in "$REPO_DIR" fetch -q origin
   [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
     { echo "FAIL security-merge-gate-review-fixes.test.sh: fixture setup could not point origin/main at the base in $1"; exit 1; }
+  git_in "$REPO_DIR" remote set-url origin "https://github.com/fixture/$1.git"
+  git_in "$REPO_DIR" remote set-url --push origin "$origin_dir"
+  [ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = "https://github.com/fixture/$1.git" ] ||
+    { echo "FAIL security-merge-gate-review-fixes.test.sh: fixture setup could not point origin at https://github.com/fixture/$1.git"; exit 1; }
   [ "$REPO_FIRST" != "$REPO_HEAD" ] ||
     { echo "FAIL security-merge-gate-review-fixes.test.sh: fixture setup did not create the second PR commit in $1"; exit 1; }
 }
@@ -249,20 +260,20 @@ $CLEAN_NOTHING_FOUND"
 # --- A: a Security review with no artefact line --------------------------------
 # Control: the same section with the recorded artefact's line reaches the ask,
 # so the deny below comes from the missing line alone.
-STUB=$(write_pr_stub casea-control "$(pr_body "$SEC_BASE" "$SEC_HEAD" "$VALID_SECTION")" "$SEC_HEAD" "$SEC_BASE")
+STUB=$(write_pr_stub casea-control "$(pr_body "$SEC_BASE" "$SEC_HEAD" "$VALID_SECTION")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r514_ask "case A control (artefact line naming the recorded artefact)" "$(run_merge "$STUB" "$SEC_DIR" "$PINNED_MERGE")"
 
 # A1: reviewer, model, range, and a clean Nothing found line; no table and no
 # artefact line.
 STUB=$(write_pr_stub casea1 "$(pr_body "$SEC_BASE" "$SEC_HEAD" "$SEC_HEADER
 
-$CLEAN_NOTHING_FOUND")" "$SEC_HEAD" "$SEC_BASE")
+$CLEAN_NOTHING_FOUND")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r109_deny "case A1 (Nothing found line, no artefact line)" "$(run_merge "$STUB" "$SEC_DIR" "$PINNED_MERGE")" artefact
 
 # A2: reviewer, model, range, and a lone No security control in range line.
 STUB=$(write_pr_stub casea2 "$(pr_body "$SEC_BASE" "$SEC_HEAD" "$SEC_HEADER
 
-No security control in range: docs/notes.md")" "$SEC_HEAD" "$SEC_BASE")
+No security control in range: docs/notes.md")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r109_deny "case A2 (No security control in range line, no artefact line)" "$(run_merge "$STUB" "$SEC_DIR" "$PINNED_MERGE")" artefact
 
 # --- B: moved to security-merge-gate-shared-ledger.test.sh case 6 (B-10e) ------
@@ -278,7 +289,7 @@ PIN_SECTION="$(security_header "$PIN_BASE" "$PIN_HEAD")
 - artefact: $ARTEFACT_PATH
 
 $CLEAN_NOTHING_FOUND"
-STUB=$(write_pr_stub casec "$(pr_body "$PIN_BASE" "$PIN_HEAD" "$PIN_SECTION")" "$PIN_HEAD" "$PIN_BASE")
+STUB=$(write_pr_stub casec "$(pr_body "$PIN_BASE" "$PIN_HEAD" "$PIN_SECTION")" "$PIN_HEAD" "$PIN_BASE" pin)
 # C0 (control): the space-separated form reaches the ask, so C1 differs from it
 # in the flag's form alone.
 expect_r514_ask "case C0 control (--match-head-commit <full head sha>)" \
@@ -302,7 +313,7 @@ fi
 build_repo plain write_plain_code_file
 PLAIN_DIR="$REPO_DIR" PLAIN_BASE="$REPO_BASE" PLAIN_HEAD="$REPO_HEAD"
 HOOK_TMPDIR=$(cd "$(mktemp -d "$WORK/hook-tmp.XXXXXX")" && pwd -P)
-STUB=$(write_pr_stub cased "$(pr_body "$PLAIN_BASE" "$PLAIN_HEAD" "")" "$PLAIN_HEAD" "$PLAIN_BASE")
+STUB=$(write_pr_stub cased "$(pr_body "$PLAIN_BASE" "$PLAIN_HEAD" "")" "$PLAIN_HEAD" "$PLAIN_BASE" plain)
 EXPIRY_START=$(date +%s)
 EXPIRY_OUTPUT=$(jq -nc --arg c "gh pr merge 42 --squash --match-head-commit $PLAIN_HEAD" --arg d "$PLAIN_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
   TMPDIR="$HOOK_TMPDIR" CLAUDE_GH_CMD="$STUB" CLAUDE_SEMGREP_CMD="$SLOW_STUB" CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS=2 "$HOOK" 2>/dev/null)

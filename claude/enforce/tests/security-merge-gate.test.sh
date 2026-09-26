@@ -21,6 +21,13 @@
 # than whatever happens to be checked out. gh is stubbed through CLAUDE_GH_CMD
 # and Semgrep through CLAUDE_SEMGREP_CMD, so neither GitHub nor Semgrep is a
 # variable, and HOME is a scratch directory throughout.
+#
+# Origin scheme (B-10f): each repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/<name>.git, and its push URL is the bare
+# repository beside it, so `git remote get-url origin` prints the GitHub URL
+# and a push still lands in the bare repository. The gh stub for a repository
+# answers with url https://github.com/fixture/<name>/pull/42, so the PR url and
+# the merge checkout's origin name the same repository.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
@@ -82,15 +89,16 @@ write_gh_stub() {
   printf '%s' "$stub_path"
 }
 
-# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
-# for PR 42 of a same-repository `feature` branch into `main`, headed at
-# <head oid>, whose baseRefOid is <base oid> (the local origin/main, so the
-# base the gate reads is current).
+# write_pr_stub <name> <body> <head oid> <base oid> <repo name>: a gh
+# stand-in answering for PR 42 of a same-repository `feature` branch into
+# `main` of https://github.com/fixture/<repo name>, headed at <head oid>, whose
+# baseRefOid is <base oid> (the local origin/main, so the base the gate reads
+# is current).
 write_pr_stub() {
   local pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" --arg url "https://github.com/fixture/$5/pull/42" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: $url}')
   write_gh_stub "$1" "$pr_json"
 }
 
@@ -133,6 +141,10 @@ build_pr_repo() {
   git_in "$REPO_DIR" fetch -q origin
   [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
     { echo "FAIL security-merge-gate.test.sh: fixture setup could not point origin/main at the base in $name"; exit 1; }
+  git_in "$REPO_DIR" remote set-url origin "https://github.com/fixture/$name.git"
+  git_in "$REPO_DIR" remote set-url --push origin "$origin_dir"
+  [ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = "https://github.com/fixture/$name.git" ] ||
+    { echo "FAIL security-merge-gate.test.sh: fixture setup could not point origin at https://github.com/fixture/$name.git"; exit 1; }
 }
 
 # codex_section <base> <head>: a valid R-517 `## Codex review` section.
@@ -217,11 +229,11 @@ git_in "$SEC_DIR" checkout -q main
 SEC_CODEX=$(codex_section "$SEC_BASE" "$SEC_HEAD")
 
 # Case 1: valid Codex review, no Security review section.
-STUB=$(write_pr_stub case1 "$(pr_body "$SEC_CODEX")" "$SEC_HEAD" "$SEC_BASE")
+STUB=$(write_pr_stub case1 "$(pr_body "$SEC_CODEX")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r109_deny "case 1 (no security review)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB")"
 
 # Case 2: Security review on the wrong model; the reason names the expected one.
-STUB=$(write_pr_stub case2 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$WRONG_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE")
+STUB=$(write_pr_stub case2 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$WRONG_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE" sec)
 OUTPUT=$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB")
 if expect_r109_deny "case 2 (wrong model $WRONG_MODEL)" "$OUTPUT"; then
   case "$(read_reason "$OUTPUT")" in
@@ -231,23 +243,23 @@ if expect_r109_deny "case 2 (wrong model $WRONG_MODEL)" "$OUTPUT"; then
 fi
 
 # Case 3: Security review whose range head is the older PR commit.
-STUB=$(write_pr_stub case3 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_FIRST")")" "$SEC_HEAD" "$SEC_BASE")
+STUB=$(write_pr_stub case3 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_FIRST")")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r109_deny "case 3 (stale range head)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB")"
 
 # Case 4: valid reviewer, model, and range, and an artefact line naming the
 # artefact recorded at the PR head: R-109 is satisfied and R-514 asks.
-STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE")
+STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(security_section security-reviewer "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r514_ask "case 4 (valid security review)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 
 # Case 4b: an empty reviewer value does not count as a reviewer.
-STUB=$(write_pr_stub case4b "$(pr_body "$SEC_CODEX" "$(printf '## Security review\n- reviewer:\n- model: %s\n- range: %.7s..%.7s\n- Findings: none open.\n' "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE")
+STUB=$(write_pr_stub case4b "$(pr_body "$SEC_CODEX" "$(printf '## Security review\n- reviewer:\n- model: %s\n- range: %.7s..%.7s\n- Findings: none open.\n' "$EXPECTED_MODEL" "$SEC_BASE" "$SEC_HEAD")")" "$SEC_HEAD" "$SEC_BASE" sec)
 expect_r109_deny "case 4b (empty reviewer)" "$(run_guard "$STUB" "$SEC_DIR" "$CLEAN_STUB")"
 
 # Case 5 (B-14): a docs-only PR with a valid Codex review and no Security
 # review reaches the same R-514 ask as before the gate existed.
 build_pr_repo docs docs/guide.md 'Read the guide.' 'Read the guide carefully.'
 DOCS_DIR="$REPO_DIR" DOCS_BASE="$REPO_BASE" DOCS_HEAD="$REPO_HEAD"
-STUB=$(write_pr_stub case5 "$(pr_body "$(codex_section "$DOCS_BASE" "$DOCS_HEAD")")" "$DOCS_HEAD" "$DOCS_BASE")
+STUB=$(write_pr_stub case5 "$(pr_body "$(codex_section "$DOCS_BASE" "$DOCS_HEAD")")" "$DOCS_HEAD" "$DOCS_BASE" docs)
 expect_r514_ask "case 5 (no security surface)" "$(run_guard "$STUB" "$DOCS_DIR" "$CLEAN_STUB")"
 
 # Case 6a (fail closed): a code change with no security path or content, whose
@@ -256,14 +268,14 @@ expect_r514_ask "case 5 (no security surface)" "$(run_guard "$STUB" "$DOCS_DIR" 
 # from the detector failure alone.
 build_pr_repo code app/greeting.py 'GREETING = "hello"' 'GREETING = "hello there"'
 CODE_DIR="$REPO_DIR" CODE_BASE="$REPO_BASE" CODE_HEAD="$REPO_HEAD"
-STUB=$(write_pr_stub case6 "$(pr_body "$(codex_section "$CODE_BASE" "$CODE_HEAD")")" "$CODE_HEAD" "$CODE_BASE")
+STUB=$(write_pr_stub case6 "$(pr_body "$(codex_section "$CODE_BASE" "$CODE_HEAD")")" "$CODE_HEAD" "$CODE_BASE" code)
 expect_r514_ask "case 6a control (clean scan of a non-security code change)" "$(run_guard "$STUB" "$CODE_DIR" "$CLEAN_STUB")"
 expect_r109_deny "case 6a (detector fails)" "$(run_guard "$STUB" "$CODE_DIR" "$CRASH_STUB")"
 
 # Case 6b (fail closed): the PR head gh reports does not exist locally, so the
 # range cannot be read; the checkout's own HEAD must not stand in for it.
 MISSING_HEAD=$(printf 'deadbeef%.0s' 1 2 3 4 5)
-STUB=$(write_pr_stub case6b "$(pr_body "$(codex_section "$DOCS_BASE" "$MISSING_HEAD")")" "$MISSING_HEAD" "$DOCS_BASE")
+STUB=$(write_pr_stub case6b "$(pr_body "$(codex_section "$DOCS_BASE" "$MISSING_HEAD")")" "$MISSING_HEAD" "$DOCS_BASE" docs)
 expect_r109_deny "case 6b (PR head not resolvable)" "$(run_guard "$STUB" "$DOCS_DIR" "$CLEAN_STUB")"
 
 if [ "$failures" -gt 0 ]; then

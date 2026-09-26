@@ -7,8 +7,10 @@
 # The record: enforce/security-review-record.sh <artefact repo-relative path>,
 # run from anywhere inside a repository, writes the artefact's git blob at HEAD
 # (`git rev-parse HEAD:<path>`, never the working-tree copy) into the shared
-# ledger $HOME/.claude/security-review-ledger/<key>.json, where <key> is the
-# sha256 hex of the repository's origin URL (B-10e). The ledger is one JSON
+# ledger $HOME/.claude/security-review-ledger/<key>.json, where <key> is
+# derived from the repository's origin (B-10e, B-10f); this fixture asks
+# hooks/security-review-ledger-path.sh for the path rather than spelling the
+# key, which security-merge-gate-repo-key.test.sh asserts. The ledger is one JSON
 # object keyed by the full head sha:
 #   { "<head sha>": { "path": "<path>", "blob": "<blob oid>",
 #                     "recordedAt": "YYYY-MM-DDTHH:MM:SSZ" } }
@@ -32,11 +34,18 @@
 # content under docs/reviews/, the second rewrites the CORS file), with the
 # checkout left on `main`. gh is stubbed through CLAUDE_GH_CMD and Semgrep
 # through CLAUDE_SEMGREP_CMD, and HOME is a scratch directory throughout.
+#
+# Origin scheme (B-10f): each repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/<name>.git, and its push URL is the bare
+# repository beside it, so `git remote get-url origin` prints the GitHub URL
+# and a push still lands in the bare repository. The gh stub for a repository
+# answers with url https://github.com/fixture/<name>/pull/42.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
 GUARD="$CLAUDE_HARNESS_ROOT/hooks/protected-path-guard.sh"
 RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
+LEDGER_PATH_HELPER="$CLAUDE_HARNESS_ROOT/hooks/security-review-ledger-path.sh"
 MODEL_FILE="$CLAUDE_HARNESS_ROOT/enforce/security-review-model.json"
 export CLAUDE_ROLE_POLICY_FILE="$CLAUDE_HARNESS_ROOT/enforce/role-policy.json"
 unset CLAUDE_ENFORCE_BASE CLAUDE_GH_CMD CLAUDE_SEMGREP_CMD GH_REPO GH_HOST CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS
@@ -90,14 +99,15 @@ chmod +x "$CLEAN_STUB"
 
 STUB_DIR="$WORK/gh-stubs"
 mkdir -p "$STUB_DIR"
-# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
-# for PR 42 of a same-repository `feature` branch into `main`, headed at
-# <head oid>. An empty <base oid> leaves baseRefOid out of the answer.
+# write_pr_stub <name> <body> <head oid> <base oid> <repo name>: a gh
+# stand-in answering for PR 42 of a same-repository `feature` branch into
+# `main` of https://github.com/fixture/<repo name>, headed at <head oid>. An
+# empty <base oid> leaves baseRefOid out of the answer.
 write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" --arg url "https://github.com/fixture/$5/pull/42" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: $url}
     | if $base == "" then del(.baseRefOid) else . end')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
@@ -111,12 +121,11 @@ git_in() {
   git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.com -c commit.gpgsign=false "$@" >/dev/null 2>&1
 }
 
-# ledger_path_for <repo>: the shared ledger file for <repo>, keyed by the
-# sha256 hex of its `origin` URL; empty when the repository has no origin.
+# ledger_path_for <repo>: the shared ledger file for <repo>, as
+# print_security_review_ledger_path in hooks/security-review-ledger-path.sh
+# computes it from the repository's origin; empty when it computes none.
 ledger_path_for() {
-  local origin_url
-  origin_url=$(git -C "$1" remote get-url origin 2>/dev/null) || return 0
-  printf '%s/%s.json' "$LEDGER_DIR" "$(printf '%s' "$origin_url" | shasum -a 256 | awk '{print $1}')"
+  (. "$LEDGER_PATH_HELPER" && print_security_review_ledger_path "$1") 2>/dev/null || return 0
 }
 
 # build_pr_repo <name>: builds the security-touching PR repository described
@@ -149,6 +158,10 @@ build_pr_repo() {
   git_in "$REPO_DIR" fetch -q origin
   [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
     { echo "FAIL security-merge-gate-ledger.test.sh: fixture setup could not point origin/main at the base in $1"; exit 1; }
+  git_in "$REPO_DIR" remote set-url origin "https://github.com/fixture/$1.git"
+  git_in "$REPO_DIR" remote set-url --push origin "$origin_dir"
+  [ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = "https://github.com/fixture/$1.git" ] ||
+    { echo "FAIL security-merge-gate-ledger.test.sh: fixture setup could not point origin at https://github.com/fixture/$1.git"; exit 1; }
   REPO_LEDGER=$(ledger_path_for "$REPO_DIR")
   [ -n "$REPO_LEDGER" ] && [ ! -e "$REPO_LEDGER" ] ||
     { echo "FAIL security-merge-gate-ledger.test.sh: fixture setup found a shared ledger before any record in $1"; exit 1; }
@@ -232,12 +245,12 @@ git_in "$REC_DIR" checkout -q main
 [ "$RECORD_STATUS" -eq 0 ] || report_failure "record setup: security-review-record.sh $ARTEFACT_PATH exited $RECORD_STATUS at an existing path"
 
 # --- Case a: a matching record and a current base reach the R-514 ask ---------
-STUB=$(write_pr_stub casea "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$REC_BASE")
+STUB=$(write_pr_stub casea "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$REC_BASE" recorded)
 expect_r514_ask "case a (artefact recorded at review time, base current)" "$(run_merge "$STUB" "$REC_DIR" "$REC_HEAD")"
 
 # --- Case b: no ledger at all ------------------------------------------------
 build_pr_repo unrecorded
-STUB=$(write_pr_stub caseb "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE")
+STUB=$(write_pr_stub caseb "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE" unrecorded)
 expect_r109_deny "case b (no ledger)" "$(run_merge "$STUB" "$REPO_DIR" "$REPO_HEAD")" "recorded at review time"
 
 # --- Case c: recorded at an older head, then the artefact changed -------------
@@ -254,7 +267,7 @@ git_in "$MOVED_DIR" commit -q -m "docs: edit the review artefact"
 MOVED_HEAD=$(git -C "$MOVED_DIR" rev-parse HEAD)
 git_in "$MOVED_DIR" checkout -q main
 [ "$MOVED_HEAD" != "$MOVED_OLD_HEAD" ] || report_failure "case c setup: the later PR commit was not created"
-STUB=$(write_pr_stub casec "$(pr_body "$MOVED_BASE" "$MOVED_HEAD" "$ARTEFACT_PATH")" "$MOVED_HEAD" "$MOVED_BASE")
+STUB=$(write_pr_stub casec "$(pr_body "$MOVED_BASE" "$MOVED_HEAD" "$ARTEFACT_PATH")" "$MOVED_HEAD" "$MOVED_BASE" moved)
 expect_r109_deny "case c (ledger has no entry for the new head)" "$(run_merge "$STUB" "$MOVED_DIR" "$MOVED_HEAD")" "recorded at review time"
 
 # --- Case d: the entry for the head records a different blob -----------------
@@ -265,7 +278,7 @@ OTHER_BLOB=$(git -C "$REPO_DIR" rev-parse "$REPO_HEAD:README.md")
 mkdir -p "$LEDGER_DIR"
 jq -nc --arg h "$REPO_HEAD" --arg p "$ARTEFACT_PATH" --arg b "$OTHER_BLOB" \
   '{($h): {path: $p, blob: $b, recordedAt: "2026-09-26T00:00:00Z"}}' > "$REPO_LEDGER"
-STUB=$(write_pr_stub cased "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE")
+STUB=$(write_pr_stub cased "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE" tampered)
 expect_r109_deny "case d (ledger blob differs from the artefact at the head)" "$(run_merge "$STUB" "$REPO_DIR" "$REPO_HEAD")" "recorded at review time"
 
 # --- Case d2: the entry for the head records a different path ----------------
@@ -273,7 +286,7 @@ expect_r109_deny "case d (ledger blob differs from the artefact at the head)" "$
 build_pr_repo other-path
 [ "$(run_record "$REPO_DIR" "$REPO_HEAD" . "$OTHER_ARTEFACT_PATH")" = 0 ] ||
   report_failure "case d2 setup: security-review-record.sh could not record $OTHER_ARTEFACT_PATH"
-STUB=$(write_pr_stub cased2 "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE")
+STUB=$(write_pr_stub cased2 "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE" other-path)
 expect_r109_deny "case d2 (ledger path differs from the review's artefact)" "$(run_merge "$STUB" "$REPO_DIR" "$REPO_HEAD")" "recorded at review time"
 
 # --- Case e: the script refuses a path that does not exist at HEAD -----------
@@ -305,11 +318,11 @@ fi
 # of the checkout (B-10e).
 
 # --- Case g: the local origin/main is behind the base gh reports -------------
-STUB=$(write_pr_stub caseg "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$STALE_BASE_OID")
+STUB=$(write_pr_stub caseg "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$STALE_BASE_OID" recorded)
 expect_r109_deny "case g (baseRefOid differs from the local origin/main)" "$(run_merge "$STUB" "$REC_DIR" "$REC_HEAD")" "git fetch"
 
 # --- Case h: gh reports no baseRefOid ----------------------------------------
-STUB=$(write_pr_stub caseh "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "")
+STUB=$(write_pr_stub caseh "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "" recorded)
 expect_r109_deny "case h (no baseRefOid from gh)" "$(run_merge "$STUB" "$REC_DIR" "$REC_HEAD")"
 
 if [ "$failures" -gt 0 ]; then

@@ -22,6 +22,12 @@
 # rewrites the CORS file), with the checkout left on `main`. gh is stubbed
 # through CLAUDE_GH_CMD, Semgrep through CLAUDE_SEMGREP_CMD, and HOME is a
 # scratch directory throughout.
+#
+# Origin scheme (B-10f): each repository's `origin` fetch URL is the GitHub
+# spelling https://github.com/fixture/<name>.git (`sec` or `docs`), and its
+# push URL is the bare repository beside it, so `git remote get-url origin`
+# prints the GitHub URL and a push still lands in the bare repository. The gh
+# stub for a repository answers with url https://github.com/fixture/<name>/pull/42.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
@@ -71,15 +77,16 @@ chmod +x "$SLOW_STUB"
 
 STUB_DIR="$WORK/gh-stubs"
 mkdir -p "$STUB_DIR"
-# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
-# for PR 42 of a same-repository `feature` branch into `main`, headed at
-# <head oid>, whose baseRefOid is <base oid> (the local origin/main, so the
-# base the gate reads is current).
+# write_pr_stub <name> <body> <head oid> <base oid> <repo name>: a gh
+# stand-in answering for PR 42 of a same-repository `feature` branch into
+# `main` of https://github.com/fixture/<repo name>, headed at <head oid>, whose
+# baseRefOid is <base oid> (the local origin/main, so the base the gate reads
+# is current).
 write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" --arg url "https://github.com/fixture/$5/pull/42" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: $url}')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
@@ -125,6 +132,10 @@ git_in "$REPO_DIR" push -q origin main feature
 git_in "$REPO_DIR" fetch -q origin
 [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
   { echo "FAIL security-merge-gate-hardening.test.sh: fixture setup could not point origin/main at the base"; exit 1; }
+git_in "$REPO_DIR" remote set-url origin https://github.com/fixture/sec.git
+git_in "$REPO_DIR" remote set-url --push origin "$ORIGIN_DIR"
+[ "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)" = https://github.com/fixture/sec.git ] ||
+  { echo "FAIL security-merge-gate-hardening.test.sh: fixture setup could not point origin at https://github.com/fixture/sec.git"; exit 1; }
 
 # Build the docs-only PR repository for the B-14 control. Sets DOCS_DIR,
 # DOCS_BASE, and DOCS_HEAD.
@@ -149,6 +160,10 @@ git_in "$DOCS_DIR" push -q origin main feature
 git_in "$DOCS_DIR" fetch -q origin
 [ "$(git -C "$DOCS_DIR" rev-parse origin/main 2>/dev/null)" = "$DOCS_BASE" ] ||
   { echo "FAIL security-merge-gate-hardening.test.sh: fixture setup could not point the docs origin/main at the base"; exit 1; }
+git_in "$DOCS_DIR" remote set-url origin https://github.com/fixture/docs.git
+git_in "$DOCS_DIR" remote set-url --push origin "$DOCS_ORIGIN_DIR"
+[ "$(git -C "$DOCS_DIR" remote get-url origin 2>/dev/null)" = https://github.com/fixture/docs.git ] ||
+  { echo "FAIL security-merge-gate-hardening.test.sh: fixture setup could not point the docs origin at https://github.com/fixture/docs.git"; exit 1; }
 
 # Record the artefact every case names at the PR head in the repository's
 # review ledger ($HOME/.claude/security-review-ledger/<key>.json, B-10e) the way a reviewer does,
@@ -210,7 +225,7 @@ pr_body() {
 # for <merge command> run from the security repository with that section.
 run_case() {
   local stub
-  stub=$(write_pr_stub "$1" "$(pr_body "$2")" "$REPO_HEAD" "$REPO_BASE")
+  stub=$(write_pr_stub "$1" "$(pr_body "$2")" "$REPO_HEAD" "$REPO_BASE" sec)
   jq -nc --arg c "$3" --arg d "$REPO_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$stub" CLAUDE_SEMGREP_CMD="$CLEAN_STUB" "$HOOK" 2>/dev/null
 }
@@ -254,7 +269,7 @@ expect_r514_ask() {
 # deadline is 2 seconds. The PR touches app/core/settings.py, a code file, so
 # Semgrep runs, and the body carries no Security review, so the answer is a
 # deny; it must arrive well before Semgrep would have finished.
-SLOW_GH=$(write_pr_stub case1 "$(pr_body "")" "$REPO_HEAD" "$REPO_BASE")
+SLOW_GH=$(write_pr_stub case1 "$(pr_body "")" "$REPO_HEAD" "$REPO_BASE" sec)
 SLOW_START=$(date +%s)
 SLOW_OUT=$(jq -nc --arg c "$PINNED_MERGE" --arg d "$REPO_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
   CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_SEMGREP_CMD="$SLOW_STUB" CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS=2 "$HOOK" 2>/dev/null)
@@ -343,7 +358,7 @@ expect_r109_deny "case 8c (--match-head-commit names another commit)" \
 
 # Case 9 (control, B-14): a docs-only PR merged without --match-head-commit
 # reaches the plain R-514 ask.
-DOCS_STUB=$(write_pr_stub case9 "$(printf '## Summary\nDocs.\n\n%s\n\n## Testing\nGreen.\n' "$(codex_section "$DOCS_BASE" "$DOCS_HEAD")")" "$DOCS_HEAD" "$DOCS_BASE")
+DOCS_STUB=$(write_pr_stub case9 "$(printf '## Summary\nDocs.\n\n%s\n\n## Testing\nGreen.\n' "$(codex_section "$DOCS_BASE" "$DOCS_HEAD")")" "$DOCS_HEAD" "$DOCS_BASE" docs)
 expect_r514_ask "case 9 (no security surface, unpinned merge)" \
   "$(jq -nc --arg c "$UNPINNED_MERGE" --arg d "$DOCS_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$DOCS_STUB" CLAUDE_SEMGREP_CMD="$CLEAN_STUB" "$HOOK" 2>/dev/null)"
