@@ -34,7 +34,10 @@
 #          higher than the table's (B-10); `fixed <sha>` must name a commit in
 #          the PR range (B-11); and a `waived by owner <date>` row, when
 #          nothing denies, turns the merge into an R-109 ask naming each
-#          waived row, so the owner's prompt is the waiver channel (B-12)
+#          waived row, so the owner's prompt is the waiver channel (B-12); a
+#          section holding no findings table rows, no `Nothing found:` line,
+#          and no `No security control in range:` line records nothing it
+#          examined and denies, prose such as `Findings: none` included (B-16b)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -806,10 +809,26 @@ read_table_verdict() {
   echo ok
 }
 
+# has_security_record_line <section>: true when a line, after any bullet and
+# bold markers, starts `Nothing found:` or `No security control in range:`.
+has_security_record_line() {
+  awk '
+    {
+      line = $0
+      sub(/^[ \t]*/, "", line)
+      sub(/^[-*+][ \t]+/, "", line)
+      gsub(/\*\*/, "", line)
+      lowered = tolower(line)
+      if (index(lowered, "nothing found:") == 1 || index(lowered, "no security control in range:") == 1) is_found = 1
+    }
+    END { exit is_found ? 0 : 1 }' <<< "$1"
+}
+
 # read_security_findings_verdict <section>: prints "ok" when the Security
 # review's findings clear R-109, "waived: <rows>" when only an owner waiver
 # stands between them and the merge, and otherwise the deny sentence. A
-# section with no table and no Nothing-found line is not judged here.
+# section with no table rows, no `Nothing found:` line, and no `No security
+# control in range:` line records nothing it examined and is denied (B-16b).
 read_security_findings_verdict() {
   local empty_lines rows
   empty_lines=$(read_empty_nothing_found_lines "$1") ||
@@ -818,8 +837,10 @@ read_security_findings_verdict() {
     { echo "its line \`$(printf '%s\n' "$empty_lines" | head -n 1)\` names no values after \`tried\`, so it records no test of the control"; return 0; }
   rows=$(read_findings_rows "$1") ||
     { echo "its findings table cannot be parsed ($rows), so every finding in it counts as open"; return 0; }
-  [ -n "$rows" ] || { echo ok; return 0; }
-  read_table_verdict "$1" "$rows"
+  [ -n "$rows" ] && { read_table_verdict "$1" "$rows"; return 0; }
+  has_security_record_line "$1" ||
+    { echo "its section records nothing it examined: it holds no findings table rows, no \`Nothing found:\` line, and no \`No security control in range:\` line"; return 0; }
+  echo ok
 }
 
 # read_security_review_verdict: prints "ok" when the PR touches no security
