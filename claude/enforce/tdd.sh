@@ -147,6 +147,7 @@ relative() {
 resolve_runner() {
   RUNNER_DIR="$ROOT_PHYSICAL"
   [ "$#" -gt 0 ] && resolve_package_runner "$@" && return 0
+  [ "$#" -gt 0 ] || refuse_unnamed_package_suite
   if [ -x "$ROOT/node_modules/.bin/vitest" ]; then RUNNER="$ROOT/node_modules/.bin/vitest"; RUNNER_KIND=vitest
   elif [ -x "$ROOT/node_modules/.bin/jest" ]; then RUNNER="$ROOT/node_modules/.bin/jest"; RUNNER_KIND=jest
   elif [ -x "$CLAUDE_DIR/enforce/node_modules/.bin/vitest" ]; then
@@ -167,6 +168,19 @@ package_of() {
     dir=$(dirname "$dir")
   done
   printf '%s' "$dir"
+}
+
+# refuse_unnamed_package_suite: with no test named (open --refactor without
+# --lock) there is no package to pick. When the root owns no runner but a
+# package does, falling back to the harness-bundled Vitest would run the whole
+# repository and collect files no package runs, so refuse and point at --lock.
+refuse_unnamed_package_suite() {
+  [ -x "$ROOT/node_modules/.bin/vitest" ] || [ -x "$ROOT/node_modules/.bin/jest" ] && return 0
+  local package_runner
+  package_runner=$(find "$ROOT_PHYSICAL" -mindepth 4 -maxdepth 6 -path '*/node_modules/.bin/*' \( -name vitest -o -name jest \) \
+    -not -path "$ROOT_PHYSICAL/node_modules/*" -not -path '*/node_modules/*/node_modules/*' 2>/dev/null | head -1)
+  [ -z "$package_runner" ] && return 0
+  die "this repository keeps its test runner per package (for example ${package_runner#"$ROOT_PHYSICAL"/}) and none at the root, so a suite with no named test has no package to run; name the tests with --lock <test file>"
 }
 
 # resolve_package_runner <test rel>...: in a monorepo whose packages each own

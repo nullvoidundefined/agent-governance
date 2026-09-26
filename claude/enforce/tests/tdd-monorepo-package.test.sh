@@ -83,5 +83,20 @@ mkdir -p "$APP/src/services"
 printf 'export function score() { return 2; }\n' > "$APP/src/services/score.ts"
 out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green in a package must succeed; output: $out"; exit 1; }
 [ "$(lock_field . .phase)" = "green" ] || { echo "FAIL: green must move the phase to green"; exit 1; }
+git add -A && git commit -qm "feat(score): score returns 2"
+bash "$TDD" close >/dev/null
+
+# open --refactor with no named test has no package to pick, and the root owns
+# no runner, so it is refused with the way forward (name the tests with --lock)
+# rather than falling back to the harness vitest over the whole repository,
+# which would collect the root e2e spec and report the suite red.
+expect_fail "refactor with no named tests in a rootless monorepo" bash "$TDD" open --refactor "tidy score" \
+  | grep -q -- '--lock' || { echo "FAIL: a refactor naming no tests in a rootless monorepo must be refused, pointing at --lock"; exit 1; }
+[ ! -f .claude/tdd-lock.json ] || { echo "FAIL: a refused refactor open must not write a lock"; exit 1; }
+
+# Naming the package's tests runs that package's runner and opens the refactor.
+out=$(bash "$TDD" open --refactor "tidy score" --lock "$APP/src/__tests__/score.test.ts" 2>&1) \
+  || { echo "FAIL: a refactor naming a package's tests must open; output: $out"; exit 1; }
+[ "$(lock_field . .phase)" = "refactor" ] || { echo "FAIL: open --refactor must write phase refactor"; exit 1; }
 
 echo "PASS: tdd.sh runs the nearest package's vitest in a monorepo"
