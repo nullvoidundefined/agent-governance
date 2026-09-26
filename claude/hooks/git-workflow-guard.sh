@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # git-workflow-guard.sh: the R-5xx rules that are decidable from a git or gh
-# command plus the index. One PreToolUse(Bash) hook, five rules:
+# command plus the index. One PreToolUse(Bash) hook, six rules:
 #   R-514  a push whose target branch is main/master asks first, and so does
 #          `gh pr merge` (authorization is per turn, never standing)
 #   R-512  `gh pr merge --merge` (`-m`) is denied, and so is `--rebase` (`-r`)
@@ -17,6 +17,14 @@
 #          ledger records the trivial tier for the PR's own head branch in the
 #          same origin repository, read in the merge's checkout or in a local
 #          worktree on that head branch (never a body marker)
+#   R-109  `gh pr merge` of a PR whose range (merge base with
+#          origin/<baseRefName> .. headRefOid) touches a security surface, as
+#          hooks/security-surface.sh decides, is denied unless the PR body
+#          carries one `## Security review` section with a `reviewer`, a
+#          `model` equal to securityReviewModel in
+#          enforce/security-review-model.json, and a `range` whose head
+#          endpoint is the PR head; a missing detector, an unresolvable range,
+#          or a failed detector counts as security-touching (fail closed)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -188,7 +196,9 @@ parse_merge_arguments() {
 
 # run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $MERGE_CWD,
 # asking for the labels, commits, body, and the head branch, fork flag, and
-# URL the R-517 trivial exemption checks and the head commit its range check reads, and prints its output, returning non-zero when gh fails or outlives
+# URL the R-517 trivial exemption checks, the head commit its range check
+# reads, and the base branch the R-109 security range starts from, and prints
+# its output, returning non-zero when gh fails or outlives
 # CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
 # fail-closed: a hook killed by the harness timeout prints nothing, and an
 # empty PreToolUse output is an allow. Polls in 0.2s steps rather than using a
@@ -198,7 +208,7 @@ run_gh_view_with_deadline() {
   local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
   deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
   view_output_file=$(mktemp) || return 1
-  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
+  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,baseRefName,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
     if [ "$waited_steps" -ge "$deadline_steps" ]; then
@@ -267,8 +277,9 @@ read_bundle_verdict() {
   echo ok
 }
 
-# read_codex_review_scan <body>: prints how many Markdown headings (any level,
-# any case) whose text starts with "Codex review" the PR body holds, then the
+# read_review_scan <body> <heading>: prints how many Markdown headings (any
+# level, any case) whose text starts with <heading> ("Codex review" for R-517,
+# "Security review" for R-109) the PR body holds, then the
 # non-blank lines under the last one, up to the next heading. The count leads
 # the output because two review sections are refused rather than merged: a
 # reviewer line in one and a range in another satisfy nothing jointly, and an
@@ -287,8 +298,8 @@ read_bundle_verdict() {
 # dropped, so a `<!--` quoted in a code span opens nothing.
 # A heading is indented by at most three spaces, since four make it an
 # indented code block. No regex intervals: older mawk lacks them.
-read_codex_review_scan() {
-  printf '%s\n' "$1" | tr -d '\r' | awk '
+read_review_scan() {
+  printf '%s\n' "$1" | tr -d '\r' | awk -v wanted_heading="$(printf '%s' "$2" | tr 'A-Z' 'a-z')" '
     # hold_code_spans <text>: drops the backticks of every inline code span and
     # holds the characters inside it that the comment and heading rules react
     # to, so the span contributes its text and nothing else.
@@ -345,7 +356,7 @@ read_codex_review_scan() {
     line ~ /^( |  |   )?#+[ \t]/ {
       heading = tolower(line)
       sub(/^[ \t]*#+[ \t]+/, "", heading)
-      in_section = (index(heading, "codex review") == 1)
+      in_section = (index(heading, wanted_heading) == 1)
       if (in_section) { headings++; section = "" }
       next
     }
@@ -353,11 +364,11 @@ read_codex_review_scan() {
     END { print headings + 0; printf "%s", section }'
 }
 
-# read_codex_review_field <section> <label>: prints the value of the section's
+# read_review_field <section> <label>: prints the value of a review section's
 # first `<label>: <value>` line, or nothing when no line carries that label
 # with a value. A leading bullet and surrounding `**`/`__` emphasis are part of
 # the labelling, not of the name, so `- **Reviewer:** Codex` reads as `Codex`.
-read_codex_review_field() {
+read_review_field() {
   printf '%s\n' "$1" | awk -v label="$2" '
     {
       line = $0
@@ -439,13 +450,13 @@ is_head_commit_prefix() {
 # head, and a head commit pasted into prose or a link reviewed nothing.
 read_codex_artefact_verdict() {
   local section="$1" reviewer model range head_oid range_head
-  reviewer=$(read_codex_review_field "$section" reviewer)
+  reviewer=$(read_review_field "$section" reviewer)
   [ -n "$reviewer" ] ||
     { echo "its \`## Codex review\` section carries no \`reviewer\` line with a value, so nothing in the PR records who or what read the diff"; return 0; }
-  model=$(read_codex_review_field "$section" model)
+  model=$(read_review_field "$section" model)
   [ -n "$model" ] ||
     { echo "its \`## Codex review\` section carries no \`model\` line with a value, so nothing in the PR records which model the review ran on"; return 0; }
-  range=$(read_codex_review_field "$section" range)
+  range=$(read_review_field "$section" range)
   [ -n "$range" ] ||
     { echo "its \`## Codex review\` section carries no \`range\` line with a value, so nothing in the PR records which diff was read"; return 0; }
   head_oid=$(printf '%s' "$PR_JSON" | jq -r '.headRefOid // "" | strings' 2>/dev/null || true)
@@ -541,7 +552,7 @@ read_codex_review_verdict() {
     return 0
   fi
   pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
-  scan=$(read_codex_review_scan "$pr_body")
+  scan=$(read_review_scan "$pr_body" "Codex review")
   heading_count=$(printf '%s\n' "$scan" | head -1)
   section=$(printf '%s\n' "$scan" | tail -n +2)
   if [ "$heading_count" -gt 1 ]; then
@@ -560,6 +571,96 @@ read_codex_review_verdict() {
     return 0
   fi
   echo "$verdict, and task-start's ledger does not exempt it as a trivial-tier PR (the ledger holds: $(read_ledger_state); a later task-tier.sh set on this checkout replaces it)."
+}
+
+# The enforce directory beside this hook, resolved as the push gates resolve
+# it; empty when it does not exist, which leaves the review model unreadable.
+ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)"
+SECURITY_SURFACE_HELPER="$(dirname "${BASH_SOURCE[0]}")/security-surface.sh"
+
+# resolve_security_range: sets SECURITY_TOP, SECURITY_BASE, and SECURITY_HEAD
+# to the merge checkout's top level and the PR's range: the head is the
+# headRefOid gh reports, resolved as a commit in that checkout, and the base
+# is its merge base with origin/<baseRefName>. Returns non-zero when any of
+# them cannot be resolved, never substituting the checkout's own HEAD.
+resolve_security_range() {
+  local base_ref_name
+  SECURITY_TOP=$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null) || return 1
+  SECURITY_HEAD=$(printf '%s' "$PR_JSON" | jq -r '.headRefOid // "" | strings' 2>/dev/null) || return 1
+  is_hexadecimal_name "$SECURITY_HEAD" || return 1
+  git -C "$SECURITY_TOP" rev-parse --verify --quiet "$SECURITY_HEAD^{commit}" >/dev/null 2>&1 || return 1
+  base_ref_name=$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null) || return 1
+  [ -n "$base_ref_name" ] || return 1
+  SECURITY_BASE=$(git -C "$SECURITY_TOP" merge-base "refs/remotes/origin/$base_ref_name" "$SECURITY_HEAD" 2>/dev/null) || return 1
+  [ -n "$SECURITY_BASE" ]
+}
+
+# is_security_touching_pr: true when the PR's range touches a security
+# surface, as the sourced detector decides, and also whenever the answer
+# cannot be had: a missing helper or an unresolvable range fails closed, and
+# is_security_surface itself answers true when the detector fails.
+is_security_touching_pr() {
+  [ -f "$SECURITY_SURFACE_HELPER" ] || return 0
+  # shellcheck source=security-surface.sh
+  . "$SECURITY_SURFACE_HELPER" || return 0
+  type is_security_surface >/dev/null 2>&1 || return 0
+  resolve_security_range || return 0
+  is_security_surface "$SECURITY_TOP" "$SECURITY_BASE" "$SECURITY_HEAD"
+}
+
+# read_security_review_model: prints securityReviewModel from
+# enforce/security-review-model.json, or nothing when it cannot be read.
+read_security_review_model() {
+  [ -n "$ENFORCE_DIR" ] || return 0
+  jq -er '.securityReviewModel | strings | select(length > 0)' "$ENFORCE_DIR/security-review-model.json" 2>/dev/null || true
+}
+
+# read_security_artefact_verdict <section>: prints "ok" when the Security
+# review section names a reviewer, ran on exactly the strongest model
+# securityReviewModel names, and read a range whose head endpoint is the PR's
+# head commit; otherwise the sentence naming the first condition that failed.
+read_security_artefact_verdict() {
+  local section="$1" reviewer model expected_model range range_head
+  reviewer=$(read_review_field "$section" reviewer)
+  [ -n "$reviewer" ] ||
+    { echo "its \`## Security review\` section carries no \`reviewer\` line with a value"; return 0; }
+  expected_model=$(read_security_review_model)
+  [ -n "$expected_model" ] ||
+    { echo "the hook cannot read \`securityReviewModel\` from enforce/security-review-model.json, so no model can satisfy the review"; return 0; }
+  model=$(read_review_field "$section" model)
+  [ "$model" = "$expected_model" ] ||
+    { echo "its \`## Security review\` section gives the model as \`$model\`, but the security review must run on \`$expected_model\`, the model securityReviewModel names"; return 0; }
+  range=$(read_review_field "$section" range)
+  range_head=$(read_range_head "$range")
+  [ -n "$range_head" ] ||
+    { echo "its \`## Security review\` section carries no \`range\` line holding a \`<base>..<head>\` expression"; return 0; }
+  is_head_commit_prefix "$range_head" "$SECURITY_HEAD" ||
+    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, so the review is stale"; return 0; }
+  echo ok
+}
+
+# read_security_review_verdict: prints "ok" when the PR touches no security
+# surface or its body carries one current Security review artefact; otherwise
+# the sentence naming what is missing. An undecidable range reads as
+# security-touching and, with no resolvable head, can satisfy nothing.
+read_security_review_verdict() {
+  local pr_body scan heading_count section
+  SECURITY_HEAD=""
+  SECURITY_BASE=""
+  is_security_touching_pr || { echo ok; return 0; }
+  [ -n "$SECURITY_HEAD" ] && [ -n "$SECURITY_BASE" ] ||
+    { echo "the hook could not resolve the PR's range (its head commit is not in this checkout, origin/<base> is missing, or the detector is absent), so it treats the PR as security-touching and cannot tell which tree a review read; fetch the PR head and origin and merge again"; return 0; }
+  pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
+  scan=$(read_review_scan "$pr_body" "Security review")
+  heading_count=$(printf '%s\n' "$scan" | head -1)
+  section=$(printf '%s\n' "$scan" | tail -n +2)
+  if [ "$heading_count" -gt 1 ]; then
+    echo "the PR body holds $heading_count \`## Security review\` headings, so the hook cannot say which one describes the state that would merge"
+  elif [ -n "$section" ]; then
+    read_security_artefact_verdict "$section"
+  else
+    echo "the PR touches a security surface and its body has no \`## Security review\` section with content under it"
+  fi
 }
 
 # classify_merge_commands <command> <is-nested>: walks the command's simple
@@ -679,10 +780,11 @@ classify_simple_command() {
   return 0
 }
 
-# R-512, R-517, and R-514 on the merge path. A merge-commit strategy is denied
-# from the command alone, before any gh call. Every other merge consults gh
-# once, from the command's working directory: a rebase for the bundle
-# conditions, and every merge for the Codex review section in the PR body.
+# R-512, R-517, R-109, and R-514 on the merge path. A merge-commit strategy is
+# denied from the command alone, before any gh call. Every other merge
+# consults gh once, from the command's working directory: a rebase for the
+# bundle conditions, and every merge for the Codex review section in the PR
+# body and, when its range touches security code, the Security review section.
 MERGE_TOTAL=0
 MERGE_CANONICAL=0
 MERGE_WORDS=()
@@ -714,6 +816,9 @@ if [ "$MERGE_TOTAL" -gt 0 ]; then
   CODEX_REVIEW_VERDICT=$(read_codex_review_verdict)
   [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
     deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line, a \`range\` line covering the commit this PR would merge, and the findings with their dispositions; then merge again."
+  SECURITY_REVIEW_VERDICT=$(read_security_review_verdict)
+  [ "$SECURITY_REVIEW_VERDICT" = "ok" ] ||
+    deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, and a \`range\` line covering the commit this PR would merge; then merge again."
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
 
