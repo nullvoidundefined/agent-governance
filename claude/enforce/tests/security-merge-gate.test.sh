@@ -136,9 +136,10 @@ codex_section() {
 }
 
 # security_section <reviewer> <model> <base> <head>: a `## Security review`
-# section with the given fields.
+# section with the given fields and a clean control written in the prompt's
+# `Nothing found:` form, so the section records what was tried.
 security_section() {
-  printf '## Security review\n- reviewer: %s\n- model: %s\n- range: %.7s..%.7s\n- Findings: none open. Tried origin values *, null, and https://evil.example against the CORS allowlist; each was refused.\n' "$1" "$2" "$3" "$4"
+  printf '## Security review\n- reviewer: %s\n- model: %s\n- range: %.7s..%.7s\n\nNothing found: CORS: sources env CORS_ORIGIN: tried *, null, https://evil.example\n' "$1" "$2" "$3" "$4"
 }
 
 # pr_body <section>...: a PR body holding a summary, the given sections, and a
