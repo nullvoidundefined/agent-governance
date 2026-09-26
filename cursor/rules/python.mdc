@@ -141,10 +141,46 @@ Order within a module, top to bottom, one blank line between groups (the Python 
 5. The primary public function or class
 6. Private helpers (`_leading_underscore`), ordered by call sequence, caller above callee
 
-- Prefer module-level functions over classes for stateless logic; a class earns its place by holding state
-- Carve-out: a repository that holds request-scoped state (the `AsyncConnection` and the scoping `user_id`) may be a small class built by a dependency; its methods follow the same naming rules
 - `def` and `async def` only; never a lambda assigned to a name (ruff `E731`)
 - Every public function carries a docstring (ruff `D103`) and full type hints
+
+---
+
+## Functions, Classes, and Data Models
+
+Functions for logic, objects for state and boundaries, data models for data. Default to the simplest form and move down the list only when the code demands it:
+
+1. **Functions** for transformations, calculations, validation, orchestration, and stateless business logic
+2. **Data models** for structured data: Pydantic `BaseModel` at boundaries, `@dataclass(slots=True, frozen=True)` for internal values, `TypedDict` for typed dict shapes (Python Typing Patterns below)
+3. **Classes** only for meaningful mutable state, a lifecycle (start, stop, open, close), interchangeable implementations behind one interface, or an object that owns behavior over time
+
+- Never write a class to group related functions; the module is the grouping. A TypeScript-style `FooService`, `FooManager`, or `FooUtils` class becomes a `foo.py` module of plain functions
+- Never write a class whose only state is constructor arguments consumed by one method; pass them as function parameters
+- Carve-out: a repository that holds request-scoped state (the `AsyncConnection` and the scoping `user_id`) may be a small class built by a dependency; its methods follow the same naming rules
+- Favoring functions is not pure functional programming: use loops, mutation of local state, exceptions, context managers, generators, and closures where they read most plainly; never force `map`/`reduce` chains or monadic patterns onto Python
+
+```python
+# A function: the class would add nothing
+def calculate_order_total(line_items: list[LineItem], tax_rate: Decimal) -> Decimal:
+    """Return the order total including tax."""
+    subtotal = sum((item.price * item.quantity for item in line_items), Decimal(0))
+    return subtotal * (1 + tax_rate)
+
+
+# A class: dependencies, mutable state, and a lifecycle
+class JobRunner:
+    """Pull jobs from a queue until stopped."""
+
+    def __init__(self, job_queue: JobQueue) -> None:
+        self._job_queue = job_queue
+        self.is_running = False
+
+    def start_runner(self) -> None:
+        self.is_running = True
+
+    def stop_runner(self) -> None:
+        self.is_running = False
+```
 
 ---
 
