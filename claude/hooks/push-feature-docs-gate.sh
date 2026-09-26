@@ -23,6 +23,9 @@
 # Spec: docs/superpowers/specs/2026-09-18-product-docs-design.md (R-607);
 # rulebook/reference.md R-608.
 set -uo pipefail
+# A session can start this hook with HOME unset; under set -u every $HOME
+# expansion below would abort before a decision, which is an allow (IAN-436).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 
 # shellcheck source=../enforce/resolve-outgoing-base.sh
 ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)"

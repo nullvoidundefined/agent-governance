@@ -285,4 +285,13 @@ GOT=$(PATH="$REPO/stub-bin:$PATH" gate "$REPO")
 grep -q 'RELATED_MARKER' <<< "$GOT" || { echo "FAIL: 16 expected the related-test block, got: $GOT"; exit 1; }
 grep -q 'related tests only' <<< "$GOT" || { echo "FAIL: 16 a related-test failure must carry the note, got: $GOT"; exit 1; }
 
+# No HOME (program row 2a, IAN-436): a dirty tree with a failing check still
+# blocks when the session starts the gate with HOME unset and no memo-dir
+# override, instead of aborting on the `$HOME` fallback before deciding. A red
+# run writes no memo, so nothing lands under the account's real home.
+REPO=$(new_repo)
+write_package_json "$REPO" 1
+GOT=$(unset HOME CLAUDE_VERIFY_MEMO_DIR; gate "$REPO")
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: with HOME unset the gate must still block a failing check, got: $GOT"; exit 1; }
+
 echo "verification-gate.test.sh PASS"

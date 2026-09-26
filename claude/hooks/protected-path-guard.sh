@@ -44,6 +44,9 @@
 # review ledger directory is denied from any working directory, inside a
 # repository or not. Silent on allow.
 set -uo pipefail
+# A session can start this hook with HOME unset; under set -u every $HOME
+# expansion below would abort before a decision, which is an allow (IAN-436).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in Write | Edit | Bash) ;; *) exit 0 ;; esac
