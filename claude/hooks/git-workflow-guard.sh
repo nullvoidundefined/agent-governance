@@ -44,7 +44,14 @@
 #          waived row, so the owner's prompt is the waiver channel (B-12); a
 #          section holding no findings table rows, no `Nothing found:` line,
 #          and no `No security control in range:` line records nothing it
-#          examined and denies, prose such as `Findings: none` included (B-16b)
+#          examined and denies, prose such as `Findings: none` included (B-16b).
+#          A section with an `artefact` line denies unless the untracked
+#          ledger .claude/security-review-ledger.json at the merge checkout's
+#          top level, written by enforce/security-review-record.sh at review
+#          time, holds an entry for the PR head whose path is the artefact
+#          line's and whose blob is the artefact's blob at the PR head; and a
+#          security-touching merge denies when gh reports no baseRefOid or one
+#          that differs from the local origin/<baseRefName> (B-10b)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
 #          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
@@ -222,7 +229,9 @@ parse_merge_arguments() {
 # run_gh_view_with_deadline: runs `gh pr view` for the merge's PR from $MERGE_CWD,
 # asking for the labels, commits, body, and the head branch, fork flag, and
 # URL the R-517 trivial exemption checks, the head commit its range check
-# reads, and the base branch the R-109 security range starts from, and prints
+# reads, and the base branch the R-109 security range starts from with the
+# base commit GitHub holds for it, which R-109 compares with the local
+# origin/<base> so a stale fetch cannot shift the range, and prints
 # its output, returning non-zero when gh fails or outlives
 # CLAUDE_GH_TIMEOUT_SECONDS (default 15). The deadline keeps the guard
 # fail-closed: a hook killed by the harness timeout prints nothing, and an
@@ -233,7 +242,7 @@ run_gh_view_with_deadline() {
   local gh_command="${CLAUDE_GH_CMD:-gh}" deadline_steps waited_steps=0 view_output_file gh_pid gh_status
   deadline_steps=$(( ${CLAUDE_GH_TIMEOUT_SECONDS:-15} * 5 ))
   view_output_file=$(mktemp) || return 1
-  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,baseRefName,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
+  (cd "$MERGE_CWD" && exec "$gh_command" pr view ${MERGE_VIEW_ARGUMENTS[@]+"${MERGE_VIEW_ARGUMENTS[@]}"} --json labels,commits,body,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository,url) >"$view_output_file" 2>/dev/null &
   gh_pid=$!
   while kill -0 "$gh_pid" 2>/dev/null; do
     if [ "$waited_steps" -ge "$deadline_steps" ]; then
@@ -947,20 +956,74 @@ read_head_pin_verdict() {
   echo ok
 }
 
+# read_base_currency_verdict: prints "ok" when gh reports a baseRefOid and the
+# local refs/remotes/origin/<baseRefName> names the same commit; otherwise the
+# sentence saying the base is unknown or stale, since a stale origin/<base>
+# moves the merge base the range, the detector, and every `fixed <sha>` check
+# read from.
+read_base_currency_verdict() {
+  local base_ref_oid base_ref_name local_base_oid
+  base_ref_oid=$(printf '%s' "$PR_JSON" | jq -r '.baseRefOid // "" | strings' 2>/dev/null) ||
+    { echo "the hook could not read the PR's baseRefOid from gh pr view"; return 0; }
+  [ -n "$base_ref_oid" ] ||
+    { echo "gh pr view reported no baseRefOid, so the hook cannot tell whether the local base the range starts from is current"; return 0; }
+  base_ref_name=$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null) ||
+    { echo "the hook could not read the PR's baseRefName from gh pr view"; return 0; }
+  local_base_oid=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "refs/remotes/origin/$base_ref_name" 2>/dev/null)
+  [ "$(printf '%s' "$local_base_oid" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$base_ref_oid" | tr 'A-Z' 'a-z')" ] ||
+    { echo "the local origin/$base_ref_name is at $(printf '%.7s' "${local_base_oid:-nothing}") but GitHub's base is $(printf '%.7s' "$base_ref_oid"), so the range the hook read is stale; run \`git fetch origin\` and merge again"; return 0; }
+  echo ok
+}
+
+# read_ledger_entry_field <ledger path> <field>: prints the named field of the
+# ledger's entry for SECURITY_HEAD, and returns non-zero when the ledger is
+# missing or unreadable, holds no object entry for the head, or the field is
+# not a non-empty string.
+read_ledger_entry_field() {
+  jq -er --arg head "$SECURITY_HEAD" --arg field "$2" \
+    '.[$head] | objects | .[$field] | strings | select(length > 0)' "$1" 2>/dev/null
+}
+
+# read_security_ledger_verdict <section>: prints "ok" when the section names no
+# artefact, or when the ledger enforce/security-review-record.sh wrote at the
+# merge checkout's top level holds an entry for SECURITY_HEAD whose path is the
+# artefact line's and whose blob is that path's blob at SECURITY_HEAD;
+# otherwise the sentence naming the first mismatch (B-10b).
+read_security_ledger_verdict() {
+  local artefact_path ledger_path recorded_path recorded_blob head_blob
+  artefact_path=$(read_review_field "$1" artefact)
+  [ -n "$artefact_path" ] || { echo ok; return 0; }
+  ledger_path="$SECURITY_TOP/.claude/security-review-ledger.json"
+  recorded_path=$(read_ledger_entry_field "$ledger_path" path) ||
+    { echo "no artefact was recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD"): .claude/security-review-ledger.json is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
+  [ "$recorded_path" = "$artefact_path" ] ||
+    { echo "the artefact recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") is \`$recorded_path\`, not \`$artefact_path\` as the section names"; return 0; }
+  recorded_blob=$(read_ledger_entry_field "$ledger_path" blob) ||
+    { echo "the ledger entry recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") carries no blob"; return 0; }
+  head_blob=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "$SECURITY_HEAD:$artefact_path" 2>/dev/null) ||
+    { echo "its artefact \`$artefact_path\` cannot be read at the PR head $(printf '%.7s' "$SECURITY_HEAD") to compare with the blob recorded at review time"; return 0; }
+  [ "$recorded_blob" = "$head_blob" ] ||
+    { echo "its artefact \`$artefact_path\` at the PR head is blob $(printf '%.7s' "$head_blob"), not blob $(printf '%.7s' "$recorded_blob") recorded at review time, so it changed after the review"; return 0; }
+  echo ok
+}
+
 # read_security_review_verdict: prints "ok" when the PR touches no security
-# surface, or when its body carries one current Security review artefact whose
-# findings clear R-109 and the merge pins the PR head with
-# `--match-head-commit`; "waived: <rows>" when only owner waivers remain on a
-# pinned merge; and otherwise the sentence naming what is missing, the
-# review's own faults before the pin. An undecidable range reads as
-# security-touching and, with no resolvable head, can satisfy nothing.
+# surface, or when the local base is current, its body carries one current
+# Security review artefact whose findings clear R-109 and whose artefact
+# matches the ledger recorded at review time, and the merge pins the PR head
+# with `--match-head-commit`; "waived: <rows>" when only owner waivers remain
+# on a pinned merge; and otherwise the sentence naming what is missing: the
+# base first, then the review's own faults, then the pin. An undecidable range
+# reads as security-touching and, with no resolvable head, can satisfy nothing.
 read_security_review_verdict() {
-  local section_verdict pin_verdict
+  local base_verdict section_verdict pin_verdict
   SECURITY_HEAD=""
   SECURITY_BASE=""
   is_security_touching_pr || { echo ok; return 0; }
   [ -n "$SECURITY_HEAD" ] && [ -n "$SECURITY_BASE" ] ||
     { echo "the hook could not resolve the PR's range (its head commit is not in this checkout, origin/<base> is missing, or the detector is absent), so it treats the PR as security-touching and cannot tell which tree a review read; fetch the PR head and origin and merge again"; return 0; }
+  base_verdict=$(read_base_currency_verdict)
+  [ "$base_verdict" = ok ] || { echo "$base_verdict"; return 0; }
   section_verdict=$(read_security_section_verdict)
   case "$section_verdict" in
     ok | "waived: "*) ;;
@@ -973,9 +1036,10 @@ read_security_review_verdict() {
 
 # read_security_section_verdict: prints "ok", "waived: <rows>", or the deny
 # sentence for the PR body's `## Security review` section on a
-# security-touching PR whose range is resolved.
+# security-touching PR whose range is resolved. The ledger is checked only
+# once the findings clear, so a finding's own fault is reported first.
 read_security_section_verdict() {
-  local pr_body scan heading_count section artefact_verdict
+  local pr_body scan heading_count section artefact_verdict findings_verdict ledger_verdict
   pr_body=$(printf '%s' "$PR_JSON" | jq -r '.body // "" | strings' 2>/dev/null || true)
   scan=$(read_review_scan "$pr_body" "Security review")
   heading_count=$(printf '%s\n' "$scan" | head -1)
@@ -985,7 +1049,11 @@ read_security_section_verdict() {
   elif [ -n "$section" ]; then
     artefact_verdict=$(read_security_artefact_verdict "$section")
     [ "$artefact_verdict" = ok ] || { echo "$artefact_verdict"; return 0; }
-    read_security_findings_verdict "$section"
+    findings_verdict=$(read_security_findings_verdict "$section")
+    case "$findings_verdict" in ok | "waived: "*) ;; *) echo "$findings_verdict"; return 0 ;; esac
+    ledger_verdict=$(read_security_ledger_verdict "$section")
+    [ "$ledger_verdict" = ok ] || { echo "$ledger_verdict"; return 0; }
+    echo "$findings_verdict"
   else
     echo "the PR touches a security surface and its body has no \`## Security review\` section with content under it"
   fi
@@ -1150,7 +1218,7 @@ if [ "$MERGE_TOTAL" -gt 0 ]; then
     "waived: "*)
       ask "R-109: the Security review marks ${SECURITY_REVIEW_VERDICT#waived: } as waived by owner, and a waived security finding merges only on the owner's confirmation. Confirm each waived row and this merge (R-514) now, or say so and the merge waits." ;;
     *)
-      deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, a \`range\` line covering the commit this PR would merge, an \`artefact\` line naming the reviewer's saved output, and the findings table with every row \`fixed <sha>\` in range or \`waived by owner <date>\`; then merge again." ;;
+      deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, a \`range\` line covering the commit this PR would merge, an \`artefact\` line naming the reviewer's saved output (recorded at review time with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head), and the findings table with every row \`fixed <sha>\` in range or \`waived by owner <date>\`; then merge again." ;;
   esac
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi

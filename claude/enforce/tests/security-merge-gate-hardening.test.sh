@@ -71,13 +71,15 @@ chmod +x "$SLOW_STUB"
 
 STUB_DIR="$WORK/gh-stubs"
 mkdir -p "$STUB_DIR"
-# write_pr_stub <name> <body> <head oid>: a gh stand-in answering for PR 42 of
-# a same-repository `feature` branch into `main`, headed at <head oid>.
+# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
+# for PR 42 of a same-repository `feature` branch into `main`, headed at
+# <head oid>, whose baseRefOid is <base oid> (the local origin/main, so the
+# base the gate reads is current).
 write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
@@ -148,6 +150,19 @@ git_in "$DOCS_DIR" fetch -q origin
 [ "$(git -C "$DOCS_DIR" rev-parse origin/main 2>/dev/null)" = "$DOCS_BASE" ] ||
   { echo "FAIL security-merge-gate-hardening.test.sh: fixture setup could not point the docs origin/main at the base"; exit 1; }
 
+# Record the artefact every case names at the PR head in the repository's
+# review ledger (.claude/security-review-ledger.json) the way a reviewer does,
+# by running enforce/security-review-record.sh from a checkout of the head,
+# then check `main` back out. Before the record script exists (B-10b) the step
+# is skipped and the older gate alone decides.
+RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
+if [ -f "$RECORD_SCRIPT" ]; then
+  git_in "$REPO_DIR" checkout -q --detach "$REPO_HEAD"
+  (cd "$REPO_DIR" && bash "$RECORD_SCRIPT" "$MATCHING_ARTEFACT_PATH" >/dev/null 2>&1) ||
+    report_failure "setup: security-review-record.sh could not record $MATCHING_ARTEFACT_PATH at the PR head"
+  git_in "$REPO_DIR" checkout -q main
+fi
+
 FIXED_IN_RANGE="\`fixed $REPO_FIRST\`"
 CLEAN_NOTHING_FOUND='Nothing found: CSRF token check: sources request header X-CSRF-Token, session row: tried empty, null, oversized, mixed case'
 PINNED_MERGE="gh pr merge 42 --squash --match-head-commit $REPO_HEAD"
@@ -195,7 +210,7 @@ pr_body() {
 # for <merge command> run from the security repository with that section.
 run_case() {
   local stub
-  stub=$(write_pr_stub "$1" "$(pr_body "$2")" "$REPO_HEAD")
+  stub=$(write_pr_stub "$1" "$(pr_body "$2")" "$REPO_HEAD" "$REPO_BASE")
   jq -nc --arg c "$3" --arg d "$REPO_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$stub" CLAUDE_SEMGREP_CMD="$CLEAN_STUB" "$HOOK" 2>/dev/null
 }
@@ -239,7 +254,7 @@ expect_r514_ask() {
 # deadline is 2 seconds. The PR touches app/core/settings.py, a code file, so
 # Semgrep runs, and the body carries no Security review, so the answer is a
 # deny; it must arrive well before Semgrep would have finished.
-SLOW_GH=$(write_pr_stub case1 "$(pr_body "")" "$REPO_HEAD")
+SLOW_GH=$(write_pr_stub case1 "$(pr_body "")" "$REPO_HEAD" "$REPO_BASE")
 SLOW_START=$(date +%s)
 SLOW_OUT=$(jq -nc --arg c "$PINNED_MERGE" --arg d "$REPO_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
   CLAUDE_GH_CMD="$SLOW_GH" CLAUDE_SEMGREP_CMD="$SLOW_STUB" CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS=2 "$HOOK" 2>/dev/null)
@@ -328,7 +343,7 @@ expect_r109_deny "case 8c (--match-head-commit names another commit)" \
 
 # Case 9 (control, B-14): a docs-only PR merged without --match-head-commit
 # reaches the plain R-514 ask.
-DOCS_STUB=$(write_pr_stub case9 "$(printf '## Summary\nDocs.\n\n%s\n\n## Testing\nGreen.\n' "$(codex_section "$DOCS_BASE" "$DOCS_HEAD")")" "$DOCS_HEAD")
+DOCS_STUB=$(write_pr_stub case9 "$(printf '## Summary\nDocs.\n\n%s\n\n## Testing\nGreen.\n' "$(codex_section "$DOCS_BASE" "$DOCS_HEAD")")" "$DOCS_HEAD" "$DOCS_BASE")
 expect_r514_ask "case 9 (no security surface, unpinned merge)" \
   "$(jq -nc --arg c "$UNPINNED_MERGE" --arg d "$DOCS_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' |
     CLAUDE_GH_CMD="$DOCS_STUB" CLAUDE_SEMGREP_CMD="$CLEAN_STUB" "$HOOK" 2>/dev/null)"

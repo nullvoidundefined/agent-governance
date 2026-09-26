@@ -68,12 +68,13 @@ chmod +x "$CLEAN_STUB"
 STUB_DIR="$WORK/gh-stubs"
 mkdir -p "$STUB_DIR"
 # write_pr_stub <name> <body> <head oid>: a gh stand-in answering for PR 42 of
-# a same-repository `feature` branch into `main`, headed at <head oid>.
+# a same-repository `feature` branch into `main`, headed at <head oid>, whose
+# baseRefOid is the base commit the local origin/main holds.
 write_pr_stub() {
   local stub_path="$STUB_DIR/$1" pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$REPO_BASE" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
   printf '#!/usr/bin/env bash\ncat <<'"'"'JSON'"'"'\n%s\nJSON\nexit 0\n' "$pr_json" >"$stub_path"
   chmod +x "$stub_path"
   printf '%s' "$stub_path"
@@ -128,6 +129,24 @@ git_in "$REPO_DIR" fetch -q origin
   { echo "FAIL security-merge-gate-findings.test.sh: fixture setup could not point origin/main at the base"; exit 1; }
 [ -e "$REPO_DIR/$MATCHING_ARTEFACT_PATH" ] &&
   { echo "FAIL security-merge-gate-findings.test.sh: fixture setup left the artefact in the main working tree"; exit 1; }
+
+# record_artefact <path>: records <path> at the PR head in the repository's
+# review ledger (.claude/security-review-ledger.json) the way a reviewer does,
+# by running enforce/security-review-record.sh from a checkout of the head,
+# then checks `main` back out. The ledger is keyed by head, so a later record
+# for the same head replaces the earlier one. Before the record script exists
+# (B-10b) the step is skipped and the older gate alone decides.
+RECORD_SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh"
+record_artefact() {
+  [ -f "$RECORD_SCRIPT" ] || return 0
+  git_in "$REPO_DIR" checkout -q --detach "$REPO_HEAD"
+  (cd "$REPO_DIR" && bash "$RECORD_SCRIPT" "$1" >/dev/null 2>&1) ||
+    report_failure "setup: security-review-record.sh could not record $1 at the PR head"
+  git_in "$REPO_DIR" checkout -q main
+}
+
+# Every valid case from 4a to 8a names the matching artefact.
+record_artefact "$MATCHING_ARTEFACT_PATH"
 
 IN_RANGE_SHORT=$(printf '%.7s' "$REPO_FIRST")
 MISSING_SHA=$(printf 'deadbeef%.0s' 1 2 3 4 5)
@@ -338,7 +357,9 @@ $CLEAN_NOTHING_FOUND"
 expect_r514_ask "case 8a (all fixed in range, clean Nothing found)" "$(run_case case8a "$SECTION" "$PINNED_MERGE")"
 
 # Case 8b (control): an artefact with no findings and only clean Nothing
-# found lines with values.
+# found lines with values. Cases 8b and 8c name the empty artefact, so the
+# review ledger records that one for the head from here on.
+record_artefact "$EMPTY_ARTEFACT_PATH"
 SECTION="$(security_header "$EMPTY_ARTEFACT_PATH")
 
 $CLEAN_NOTHING_FOUND

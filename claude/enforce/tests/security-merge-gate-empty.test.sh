@@ -12,7 +12,7 @@
 #
 # The setup mirrors security-merge-gate.test.sh: a throwaway repository whose
 # `feature` branch touches app/middleware/cors_config.py, a gh stub answering
-# with baseRefName and headRefOid, a clean Semgrep stub that lists its targets,
+# with baseRefName, baseRefOid, and headRefOid, a clean Semgrep stub that lists its targets,
 # a valid Codex review, and a scratch HOME.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -66,13 +66,15 @@ write_gh_stub() {
   printf '%s' "$stub_path"
 }
 
-# write_pr_stub <name> <body> <head oid>: a gh stand-in answering for PR 42 of
-# a same-repository `feature` branch into `main`, headed at <head oid>.
+# write_pr_stub <name> <body> <head oid> <base oid>: a gh stand-in answering
+# for PR 42 of a same-repository `feature` branch into `main`, headed at
+# <head oid>, whose baseRefOid is <base oid> (the local origin/main, so the
+# base the gate reads is current).
 write_pr_stub() {
   local pr_json
-  pr_json=$(jq -nc --arg body "$2" --arg head "$3" '{
+  pr_json=$(jq -nc --arg body "$2" --arg head "$3" --arg base "$4" '{
     body: $body, labels: [], commits: [], headRefName: "feature", headRefOid: $head,
-    baseRefName: "main", isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
+    baseRefName: "main", baseRefOid: $base, isCrossRepository: false, url: "https://github.com/example/app/pull/42"}')
   write_gh_stub "$1" "$pr_json"
 }
 
@@ -175,19 +177,19 @@ SEC_CODEX=$(codex_section "$SEC_BASE" "$SEC_HEAD")
 SEC_HEADER=$(security_header "$SEC_BASE" "$SEC_HEAD")
 
 # Case 1: a prose findings line is not a record of what was examined.
-STUB=$(write_pr_stub case1 "$(pr_body "$SEC_CODEX" "$(printf '%s\n- Findings: none open. Everything looked fine.\n' "$SEC_HEADER")")" "$SEC_HEAD")
+STUB=$(write_pr_stub case1 "$(pr_body "$SEC_CODEX" "$(printf '%s\n- Findings: none open. Everything looked fine.\n' "$SEC_HEADER")")" "$SEC_HEAD" "$SEC_BASE")
 expect_r109_deny "case 1 (prose findings line only)" "$(run_guard "$STUB" "$SEC_DIR")"
 
 # Case 2: reviewer, model, and range with nothing after them.
-STUB=$(write_pr_stub case2 "$(pr_body "$SEC_CODEX" "$SEC_HEADER")" "$SEC_HEAD")
+STUB=$(write_pr_stub case2 "$(pr_body "$SEC_CODEX" "$SEC_HEADER")" "$SEC_HEAD" "$SEC_BASE")
 expect_r109_deny "case 2 (header only)" "$(run_guard "$STUB" "$SEC_DIR")"
 
 # Case 3 (control): the same header plus a `Nothing found:` line reaches the ask.
-STUB=$(write_pr_stub case3 "$(pr_body "$SEC_CODEX" "$(printf '%s\n\nNothing found: CORS: sources env CORS_ORIGIN: tried *, null\n' "$SEC_HEADER")")" "$SEC_HEAD")
+STUB=$(write_pr_stub case3 "$(pr_body "$SEC_CODEX" "$(printf '%s\n\nNothing found: CORS: sources env CORS_ORIGIN: tried *, null\n' "$SEC_HEADER")")" "$SEC_HEAD" "$SEC_BASE")
 expect_r514_ask "case 3 control (Nothing found line)" "$(run_guard "$STUB" "$SEC_DIR" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 
 # Case 4 (control): the same header plus a `No security control in range:` line.
-STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(printf '%s\n\nNo security control in range: docs/notes.md\n' "$SEC_HEADER")")" "$SEC_HEAD")
+STUB=$(write_pr_stub case4 "$(pr_body "$SEC_CODEX" "$(printf '%s\n\nNo security control in range: docs/notes.md\n' "$SEC_HEADER")")" "$SEC_HEAD" "$SEC_BASE")
 expect_r514_ask "case 4 control (No security control in range line)" "$(run_guard "$STUB" "$SEC_DIR" "gh pr merge 42 --squash --match-head-commit $SEC_HEAD")"
 
 if [ "$failures" -gt 0 ]; then

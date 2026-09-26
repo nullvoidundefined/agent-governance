@@ -2,7 +2,9 @@
 # protected-path-guard.sh: PreToolUse guard (Write, Edit, Bash) for the TDD
 # slice loop. Three rules, one hook, jq only, no Node:
 #   R-410  the gate inputs (.claude/verify.sh, .enforce.json,
-#          .enforce-baseline.json, the slice lock itself) are never written by
+#          .enforce-baseline.json, the slice lock itself, and the Security
+#          review ledger .claude/security-review-ledger.json, which only
+#          enforce/security-review-record.sh writes) are never written by
 #          a session, and once a slice is RED every test tree, every locked
 #          fixture dir, and the locked spec are read-only until the slice
 #          closes; a test the implementer believes wrong is returned as
@@ -107,7 +109,7 @@ matches() { [ -n "$2" ] && grep -qE "$2" <<< "$1"; }
 
 TESTS_PATTERN=$(pattern tests)
 SPECS_PATTERN=$(pattern specs)
-ALWAYS_PROTECTED='^(\.claude/verify\.sh|\.claude/tdd-lock\.json|\.enforce\.json|\.enforce-baseline\.json)$'
+ALWAYS_PROTECTED='^(\.claude/verify\.sh|\.claude/tdd-lock\.json|\.claude/security-review-ledger\.json|\.enforce\.json|\.enforce-baseline\.json)$'
 RUNNER_CONFIG='(^|/)(vitest|jest|playwright)\.(config|workspace)\.[cm]?[jt]s$|(^|/)pytest\.ini$|(^|/)\.rspec$'
 
 # Root and lock state are resolved once per call, from the file for Write/Edit
@@ -180,7 +182,7 @@ is_locked() {
 verdict_for() {
   local rel="$1"
   if matches "$rel" "$ALWAYS_PROTECTED"; then
-    printf 'deny|%s' "This write targets '$rel', a gate input the session never edits (R-410): .claude/verify.sh decides what the verification gate runs, .enforce.json and .enforce-baseline.json decide what the linters and the ratchet enforce, and .claude/tdd-lock.json is the slice lock. Change it outside the session, or tell the user what must change and why."
+    printf 'deny|%s' "This write targets '$rel', a gate input the session never edits (R-410): .claude/verify.sh decides what the verification gate runs, .enforce.json and .enforce-baseline.json decide what the linters and the ratchet enforce, .claude/tdd-lock.json is the slice lock, and .claude/security-review-ledger.json is written only by enforce/security-review-record.sh. Change it outside the session, or tell the user what must change and why."
     return
   fi
   if [ "$LOCK_STATE" = "unreadable" ]; then
