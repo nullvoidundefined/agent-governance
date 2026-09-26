@@ -76,6 +76,11 @@ done <<< "$GUARDS"
 # directory; the static half covers the expansions those payloads cannot
 # reach (a push gate's HOME line runs only deep inside a real push).
 HOME_NORMALIZER=': "${HOME:=$(cd ~ 2>/dev/null && pwd)}"'
+# The fill resolves the account's real home, so the probes read (never write)
+# that home's config. It must resolve to an existing directory: a container
+# with no account entry would leave HOME empty and every guard path at /.claude.
+RESOLVED_HOME=$(env -u HOME bash -c ': "${HOME:=$(cd ~ 2>/dev/null && pwd)}"; printf "%s" "$HOME"')
+[ -n "$RESOLVED_HOME" ] && [ -d "$RESOLVED_HOME" ] || { echo "FAIL: with HOME unset the account home did not resolve (got '$RESOLVED_HOME'), so the fill would leave every guard reading /.claude"; fail=1; }
 NO_HOME_CWD=$(mktemp -d)
 probe_without_home() {
   local hook="$1" label="$2" payload="$3" name out status
@@ -100,10 +105,10 @@ while IFS= read -r hook; do
   probe_without_home "$hook" "a gh pr create" '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t --body b"}}'
   probe_without_home "$hook" "a source Write" '{"tool_name":"Write","tool_input":{"file_path":"'"$NO_HOME_CWD"'/src/probe.ts","content":"export const probe = 1;\n"}}'
   probe_without_home "$hook" "an MCP call" '{"tool_name":"mcp__linear__save_issue","tool_input":{"title":"t"}}'
-  # A guard that checks `[ -n "${HOME:-}" ]` first takes an explicit degraded
-  # path instead (ticket-at-start-gate, IAN-149's test R-6), which never crashes.
+  # ticket-at-start-gate alone takes an explicit degraded path instead (IAN-149's
+  # test R-6, kept by owner decision): named, so no other guard can borrow it.
   if grep -qE '\$HOME|\$\{HOME' "$hook" && ! grep -qF -- "$HOME_NORMALIZER" "$hook" \
-    && ! grep -qF -- '[ -n "${HOME:-}" ]' "$hook"; then
+    && [ "$(basename "$hook")" != "ticket-at-start-gate.sh" ]; then
     echo "FAIL: $(basename "$hook") expands \$HOME without first filling it from the account entry ($HOME_NORMALIZER)"
     fail=1
   fi

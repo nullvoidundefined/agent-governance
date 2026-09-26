@@ -27,6 +27,9 @@
 # HARNESS_SYNC_HOME overrides the live directory's parent (fixtures).
 set -uo pipefail
 
+# A session can start with HOME unset; under set -u the default below would
+# abort before the jq warning ever runs (IAN-436, PR #151 review).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 INPUT=$(cat 2>/dev/null || true)
 HOME_DIR="${HARNESS_SYNC_HOME:-$HOME}"
 LIVE="$HOME_DIR/.claude"
