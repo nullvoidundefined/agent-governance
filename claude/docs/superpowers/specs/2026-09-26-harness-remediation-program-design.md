@@ -281,5 +281,6 @@ Stack and build-versus-buy options. Codex recommended keeping the current choice
 
 ## Amendments
 
+- 2026-09-26, row 1 (IAN-433), owner decisions at row start: R-109 and the R-517 security-review exception stay with PR #144 (IAN-381), which already carries them; the `## Pre-merge review` rename moves to IAN-452, after PR #145 finishes rewriting `git-workflow-guard.sh`; the no-Copilot decision keeps one source, the R-514 Spec bullet with the disabled ruleset, and only its copies are cut; a trivial-tier PR merges on green CI without per-PR authorization, replacing the IAN-98 wording that required the same authorization as any PR. `push-eslint-gate` needs no manifest entry, because `enforcement-guard-check.sh` maps every `eslint:` enforcer to it, and "Gate 0" was already absent from rules and skills.
 - 2026-09-26, before merge, from the R-517 review of PR #148: row 5a gains F5's fourth recommendation (a handoff of lessons and production warnings only); row 1 regenerates the committed ports; the `R-NNN:` subject-bypass item moves from row 7a to row 7b because it tightens a gate; row 5b covers F9's dangling memory references.
 - 2026-09-26, before merge: row 3d's merge path changed from on green to owner, because the merge policy's owner class includes concurrency and 3d replaces a lock. Found while opening the row tickets.
