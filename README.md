@@ -232,6 +232,7 @@ so you never have to guess which kind you are relying on.
 call. They catch what a rule cannot: a `DROP TABLE` aimed at a remote database, a secret-shaped
 literal about to be written to a file, a commit message that does not parse, a turn trying to end on
 a red suite, a `git push` of a public repository carrying a local filesystem path.
+`claude/hooks/security-surface.sh` is a sourced helper rather than a hook: it decides whether a PR range touches a security surface, by path, by added-line content, or by a Semgrep rule-pack finding, and it fails closed when it cannot tell.
 
 **Skills** are the procedural layer: named workflows with a fixed sequence of steps, invoked by the
 agent when the work matches. They are how a decision that would otherwise be an implicit judgment
