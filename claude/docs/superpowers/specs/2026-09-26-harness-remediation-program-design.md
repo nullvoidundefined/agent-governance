@@ -50,8 +50,8 @@ The comparison's other three items (behavioral tests for skills, a skill-activat
 | 6b | IAN-446 | Owner-granted override and advisory telemetry | F7 | Complex | owner | 2a, 3c |
 | 6c | IAN-434 | Fix-after-merge metric | F14 | Standard | on green | none |
 | 6d | IAN-449 | Autonomy trial | the audit's autonomy proposal | n/a | n/a | 3c, 3d, 6a, 6b, 6c |
-| 7a | IAN-448 | Enforcer-tag and manifest reconciliation | F12, Low list | Standard | on green | 3c |
-| 7b | IAN-447 | Bash hook chain consolidation | F13 | Complex | owner | 2a, 3c |
+| 7a | IAN-448 | Enforcer-tag and manifest reconciliation | F12, six Low items | Standard | on green | 3c |
+| 7b | IAN-447 | Bash hook chain consolidation | F13, one Low item | Complex | owner | 2a, 3c |
 | 7c | IAN-435 | Audit hygiene | F15 | Standard | on green | 0 |
 
 "On green" means the PR merges on green CI plus a passed R-517 review, without an owner stop. "Owner" means the owner reads and merges. A row marked "on green" still goes to the owner when its PR falls in the owner class (see Merge policy).
@@ -71,7 +71,7 @@ Each row states its scope and its done condition. A done condition is conjunctiv
 - R-517's "only review before merge" clause names the R-109 security review as the one addition on a security-touching range.
 - F10: rename the R-517 section to `## Pre-merge review`, with `git-workflow-guard.sh` accepting both names for one release; drop every Copilot clause (R-514, three skills, the memory file); rewrite R-211's autonomy clause to defer to the slice plan's merge mode; define Gate 0 as the spec-approval step or remove the term.
 
-Done when: `grep` finds R-109 in `CLAUDE.md`, `reference.md`, and `manifest.json`, with manifest entries for both push gates; R-514's norm line, its Spec, `task-cleanup`, and `task-start` state the same trivial path; the manifest fixture passes; `git-workflow-guard.sh` fixtures pass for both section names; `grep -ri copilot` finds no instruction clause in rules, skills, or global memory; R-211's norm line names the merge mode; and "Gate 0" is either defined in `reference.md` or absent from rules and skills. The rule changes take effect when this row merges.
+Done when: `grep` finds R-109 in `CLAUDE.md`, `reference.md`, and `manifest.json`, with manifest entries for both push gates; R-514's norm line, its Spec, `task-cleanup`, and `task-start` state the same trivial path; the manifest fixture passes; `git-workflow-guard.sh` fixtures pass for both section names; `grep -ri copilot` finds no instruction clause in rules, skills, or global memory; R-211's norm line names the merge mode; "Gate 0" is either defined in `reference.md` or absent from rules and skills; and the committed `codex/` and `cursor/` ports are regenerated through `translate/` in the same PR, with CI's port check passing, so the mirrors of these texts (F2 names them) are not left stale until row 3c. The rule changes take effect when this row merges.
 
 ### Wave 2: unattended safety
 
@@ -124,18 +124,19 @@ IAN-432 (make `redact-output.sh` redact through the same field) shares this tran
 
 ### Wave 5: context diet
 
-**Row 5a, handoff and injection diet.** Truncate the SessionStart injection at 8 KB with a pointer to the rest, and generate the handoff's pending list from Linear at write time (F5). Enforce R-602's cap before the write lands: `handoff-check` today runs after `Write` succeeds and ignores `Edit` (`claude/settings.json:354-370`, `hooks/handoff-check.sh:27-28,65-67`), so this row adds a PreToolUse check on `Write` and `Edit` to the handoff path that denies when the resulting file would exceed the cap. This is a new blocking gate, so the row is owner class and waits for the freeze to lift.
+**Row 5a, handoff and injection diet.** Truncate the SessionStart injection at 8 KB with a pointer to the rest, generate the handoff's pending list from Linear at write time, and cut the handoff template to lessons and production warnings plus that generated list (F5). Enforce R-602's cap before the write lands: `handoff-check` today runs after `Write` succeeds and ignores `Edit` (`claude/settings.json:354-370`, `hooks/handoff-check.sh:27-28,65-67`), so this row adds a PreToolUse check on `Write` and `Edit` to the handoff path that denies when the resulting file would exceed the cap. This is a new blocking gate, so the row is owner class and waits for the freeze to lift.
 
 Done when:
 
 - a fixture shows a SessionStart injection of an oversized handoff truncated at 8 KB with the pointer present;
 - fixtures show an oversized `Write` and an oversized `Edit` to the handoff denied and an in-cap one allowed;
 - a fixture shows the pending list generated from a stubbed tracker response;
+- the handoff template in `reference.md` (R-602's section order) and `handoff-check` carry only the lessons, production-warnings, and generated pending-list sections;
 - a fresh session's pre-turn context is measured before and after in the PR.
 
-**Row 5b, rule and memory consolidation.** Cut the eight long norm lines to one sentence each (F8). Delete the five duplicate global-memory files and resolve the three conflicts by naming one routing source, scoping `feedback_deploy_at_end` to deploys, and settling the subagent-threshold lesson against `reference.md` (F9). Move R-211's canonical detail from memory into `reference.md` (F9). Merge the overlapping rule pairs and add one sentence to R-212 on how it behaves during an approved plan (F11).
+**Row 5b, rule and memory consolidation.** Cut the eight long norm lines to one sentence each (F8). Delete the five duplicate global-memory files and resolve the three conflicts by naming one routing source, scoping `feedback_deploy_at_end` to deploys, and settling the subagent-threshold lesson against `reference.md` (F9). Move R-211's canonical detail from memory into `reference.md`, and fix or delete the two memory files that reference files that do not exist (F9). Merge the overlapping rule pairs and add one sentence to R-212 on how it behaves during an approved plan (F11).
 
-Done when: `CLAUDE.md` is at least 5 KB smaller; the five duplicate memory files are gone and `INDEX.md` no longer lists them; each of the three conflicts has one surviving statement; R-211's detail is in `reference.md` and no memory file is its canonical source; R-212 carries the approved-plan sentence; every removed rule ID resolves to its surviving rule in `reference.md`; and the manifest fixture passes. This row waits for 3c so the rule edits do not regenerate committed ports.
+Done when: `CLAUDE.md` is at least 5 KB smaller; the five duplicate memory files are gone and `INDEX.md` no longer lists them; each of the three conflicts has one surviving statement; R-211's detail is in `reference.md` and no memory file is its canonical source; no global-memory file references a path that does not exist; R-212 carries the approved-plan sentence; every removed rule ID resolves to its surviving rule in `reference.md`; and the manifest fixture passes. This row waits for 3c so the rule edits do not regenerate committed ports.
 
 ### Wave 6: measure, then trial
 
@@ -164,9 +165,9 @@ This program's own risk-tiered merges before 6d are a plan-authorized merge poli
 
 ### Wave 7: hygiene
 
-**Row 7a, enforcer-tag and manifest reconciliation.** Generate the `CLAUDE.md` enforcer tags from `manifest.json` or add a fixture that diffs the two, and add a doctor check that every manifest ID resolves to exactly one rule definition (F12). Fold in the Low list: move dated history to `PROTOCOL.md`, record R-333's status, fix the stale README counts and R-001's contradictory steps, mark `security-surface.sh` as staged until it has a caller, pin local Semgrep and Ruff to CI's versions, and close the `R-NNN:` subject bypass. Done when the new fixture and doctor check pass and each of the seven Low items is fixed or has a ticket.
+**Row 7a, enforcer-tag and manifest reconciliation.** Generate the `CLAUDE.md` enforcer tags from `manifest.json` or add a fixture that diffs the two, and add a doctor check that every manifest ID resolves to exactly one rule definition (F12). Fold in the Low list: move dated history to `PROTOCOL.md`, record R-333's status, fix the stale README counts and R-001's contradictory steps, mark `security-surface.sh` as staged until it has a caller, and pin local Semgrep and Ruff to CI's versions. The seventh Low item, closing the `R-NNN:` subject bypass, tightens `commit-message-guard` and so moves to row 7b, which is owner class. Done when the new fixture and doctor check pass and each of these six Low items is fixed, or has a ticket named in the PR with the owner's agreement.
 
-**Row 7b, Bash hook chain consolidation.** Put every push-only hook behind one push dispatcher, route every commit and push detector through `shell-command-scan.sh`, and extract repository identity and the exempt-list check into shared helpers (F13). Done when: `grep` finds no commit or push detection regex outside `shell-command-scan.sh`; every hook that computed repository identity or checked the exempt list uses the shared helpers; the push-only hooks are registered only through the dispatcher; every moved detector's existing fixtures pass unchanged plus a `bash -c` and an `eval` fixture each; and the hook-process count for a plain `ls` is measured before and after in the PR. This is owner class because it rewrites how gates detect the commands they guard.
+**Row 7b, Bash hook chain consolidation.** Put every push-only hook behind one push dispatcher, route every commit and push detector through `shell-command-scan.sh`, and extract repository identity and the exempt-list check into shared helpers (F13). Also close the `R-NNN:` commit-subject bypass of R-505 in `commit-message-guard` (from the Low list). Done when: `grep` finds no commit or push detection regex outside `shell-command-scan.sh`; every hook that computed repository identity or checked the exempt list uses the shared helpers; the push-only hooks are registered only through the dispatcher; every moved detector's existing fixtures pass unchanged plus a `bash -c` and an `eval` fixture each; the hook-process count for a plain `ls` is measured before and after in the PR; and a fixture shows an `R-NNN:` subject denied under R-505. This is owner class because it rewrites how gates detect the commands they guard.
 
 **Row 7c, audit hygiene.** Each audit opens with the prior audits' open items and their status, a recurring strategic finding gets a dated ticket or an explicit "won't do", and no new audit is commissioned while more than three earlier High findings are open without a ticket (F15). Done when the audit role files and `rulebook/audits.md` carry these three rules.
 
@@ -280,4 +281,5 @@ Stack and build-versus-buy options. Codex recommended keeping the current choice
 
 ## Amendments
 
+- 2026-09-26, before merge, from the R-517 review of PR #148: row 5a gains F5's fourth recommendation (a handoff of lessons and production warnings only); row 1 regenerates the committed ports; the `R-NNN:` subject-bypass item moves from row 7a to row 7b because it tightens a gate; row 5b covers F9's dangling memory references.
 - 2026-09-26, before merge: row 3d's merge path changed from on green to owner, because the merge policy's owner class includes concurrency and 3d replaces a lock. Found while opening the row tickets.
