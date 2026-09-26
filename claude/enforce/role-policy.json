@@ -19,6 +19,11 @@
         "any"
       ]
     },
+    "security-reviewer": {
+      "deny": [
+        "any"
+      ]
+    },
     "slice-critic": {
       "deny": [
         "any"
