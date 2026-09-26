@@ -16,6 +16,9 @@
 # The MCP path below reuses this file's statement classification rather than
 # duplicating it: one authority for what "destructive" means.
 set -uo pipefail
+# A session can start this hook with HOME unset; under set -u every $HOME
+# expansion below would abort before a decision, which is an allow (IAN-436).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 
 input="$(cat)"
 tool="$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)"

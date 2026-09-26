@@ -28,6 +28,9 @@
 # spelling and this hook blocks with the top-level `decision` shape that
 # ConfigChange takes (audit P1-4).
 set -uo pipefail
+# A session can start this hook with HOME unset; under set -u every $HOME
+# expansion below would abort before a decision, which is an allow (IAN-436).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 
 INPUT=$(cat 2>/dev/null || true)
 SOURCE=$(printf '%s' "$INPUT" | jq -r '.source // ""' 2>/dev/null || true)

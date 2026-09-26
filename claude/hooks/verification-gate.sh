@@ -60,6 +60,9 @@
 # exactly like the main session. .claude/verify.sh is a gate input protected
 # by hooks/protected-path-guard.sh (R-410).
 set -uo pipefail
+# A session can start this hook with HOME unset; under set -u every $HOME
+# expansion below would abort before a decision, which is an allow (IAN-436).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 
 INPUT=$(cat)
 

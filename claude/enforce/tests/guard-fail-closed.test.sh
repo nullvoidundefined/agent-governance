@@ -69,6 +69,47 @@ while IFS= read -r hook; do
   probe "$hook" "a non-string command" '{"tool_name":"Bash","tool_input":{"command":{"nested":true}}}'
 done <<< "$GUARDS"
 
+# No HOME (program row 2a, IAN-436). Unattended and cloud sessions can start
+# a hook with HOME unset, and under `set -u` a bare `$HOME`, even inside a
+# `${VAR:-$HOME/...}` default, aborts the guard before it decides, which is
+# an allow. The dynamic half feeds realistic payloads from a throwaway working
+# directory; the static half covers the expansions those payloads cannot
+# reach (a push gate's HOME line runs only deep inside a real push).
+HOME_NORMALIZER=': "${HOME:=$(cd ~ 2>/dev/null && pwd)}"'
+NO_HOME_CWD=$(mktemp -d)
+probe_without_home() {
+  local hook="$1" label="$2" payload="$3" name out status
+  name=$(basename "$hook")
+  out=$(cd "$NO_HOME_CWD" && printf '%s' "$payload" | env -u HOME bash "$hook" 2>/dev/null)
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "FAIL: $name exited $status on $label with HOME unset; it crashed before deciding, so the call proceeds unguarded"
+    fail=1
+    return
+  fi
+  if [ -n "$out" ] && ! printf '%s' "$out" | jq empty >/dev/null 2>&1; then
+    echo "FAIL: $name emitted unparseable output on $label with HOME unset: $out"
+    fail=1
+  fi
+}
+
+while IFS= read -r hook; do
+  [ -n "$hook" ] || continue
+  case "$(basename "$hook")" in install-git-hooks.sh|pre-push.sample) continue ;; esac
+  probe_without_home "$hook" "a git push" '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
+  probe_without_home "$hook" "a gh pr create" '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t --body b"}}'
+  probe_without_home "$hook" "a source Write" '{"tool_name":"Write","tool_input":{"file_path":"'"$NO_HOME_CWD"'/src/probe.ts","content":"export const probe = 1;\n"}}'
+  probe_without_home "$hook" "an MCP call" '{"tool_name":"mcp__linear__save_issue","tool_input":{"title":"t"}}'
+  # A guard that checks `[ -n "${HOME:-}" ]` first takes an explicit degraded
+  # path instead (ticket-at-start-gate, IAN-149's test R-6), which never crashes.
+  if grep -qE '\$HOME|\$\{HOME' "$hook" && ! grep -qF -- "$HOME_NORMALIZER" "$hook" \
+    && ! grep -qF -- '[ -n "${HOME:-}" ]' "$hook"; then
+    echo "FAIL: $(basename "$hook") expands \$HOME without first filling it from the account entry ($HOME_NORMALIZER)"
+    fail=1
+  fi
+done <<< "$GUARDS"
+rm -rf "$NO_HOME_CWD"
+
 if [ "$checked" -lt "$MIN_GUARDS" ]; then
   echo "FAIL: probed only $checked guards, expected at least $MIN_GUARDS; the hook tree is wrong or empty"
   fail=1

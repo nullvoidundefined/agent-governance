@@ -15,6 +15,9 @@
 # allow; a guard fails closed by structure, never open by accident
 # (2026-09-16 audit P2-8; convention documented in enforce/README.md).
 set -uo pipefail
+# A session can start this hook with HOME unset; under set -u every $HOME
+# expansion below would abort before a decision, which is an allow (IAN-436).
+: "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 
 # shellcheck source=../enforce/resolve-outgoing-base.sh
 ENFORCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)"
