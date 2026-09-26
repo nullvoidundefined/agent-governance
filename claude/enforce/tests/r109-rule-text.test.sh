@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: hook:push-semgrep-gate
 # Asserts the IAN-381 security-first rule, R-109, and the R-406 extension that
 # comes with it (spec 2026-09-25-security-first-gate-design.md, B-17).
 #
@@ -8,15 +9,16 @@
 # control merges only with a clean security rule pack, a current
 # `## Security review` on the strongest model (`securityReviewModel`), and a
 # test that feeds each touched control its insecure value. The fixture checks
-# that the rule is present in the norm line in CLAUDE.md, the Spec and
-# Enforcement entry in rulebook/reference.md, and the general reviewer prompt's
-# SECURITY item, which must hand a security-touching PR to the separate R-109
-# review. The manifest registration (R-516) is asserted by the commit that adds it.
+# that the rule is present in all four places that carry it: the norm line in
+# CLAUDE.md, the Spec and Enforcement entry in rulebook/reference.md, the
+# manifest registration (R-516), and the general reviewer prompt's SECURITY
+# item, which must hand a security-touching PR to the separate R-109 review.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 ROOT="$CLAUDE_HARNESS_ROOT"
 CLAUDE_FILE="$ROOT/CLAUDE.md"
 REFERENCE_FILE="$ROOT/rulebook/reference.md"
+MANIFEST_FILE="$ROOT/enforce/manifest.json"
 PROMPT_FILE="$ROOT/prompts/codex-pr-review-prompt.md"
 ENFORCER='hook:push-semgrep-gate'
 
@@ -114,7 +116,20 @@ requirePhrase "$REF_ENTRY" '`## Security review`' \
 requirePhrase "$REF_ENTRY" 'insecure value' \
     "rulebook/reference.md R-109 Spec does not require the insecure-value test"
 
-# Item 3 (the R-109 manifest entry) and its `# Covers:` header land together in the registration commit that follows this slice.
+# ---------------------------------------------------------------------------
+# Item 3: the manifest registers R-109 under the Semgrep pre-push gate (R-516).
+# ---------------------------------------------------------------------------
+R109_ENTRY=$(jq -c --arg e "$ENFORCER" '[.rules[] | select(.id == "R-109" and .enforcer == $e)] | first // empty' "$MANIFEST_FILE")
+[ -n "$R109_ENTRY" ] || fail "enforce/manifest.json has no R-109 entry with enforcer $ENFORCER"
+[ "$(jq -r '.tier' <<< "$R109_ENTRY")" = ast ] \
+    || fail "enforce/manifest.json R-109 tier must be ast, as the neighbouring push-*-gate linter entries are"
+[ "$(jq -r '.severity' <<< "$R109_ENTRY")" = error ] \
+    || fail "enforce/manifest.json R-109 severity must be error"
+R109_NOTE=$(jq -r '.note // ""' <<< "$R109_ENTRY")
+requirePhrase "$R109_NOTE" 'push-semgrep-gate.test.sh' \
+    "enforce/manifest.json R-109 note does not name the push-semgrep-gate fixture"
+requirePhrase "$R109_NOTE" 'r109-rule-text.test.sh' \
+    "enforce/manifest.json R-109 note does not name the r109-rule-text fixture"
 
 # ---------------------------------------------------------------------------
 # Item 5: the general reviewer prompt's SECURITY item defers to the R-109 review.
