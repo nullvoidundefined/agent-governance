@@ -4,6 +4,66 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 **Over R-602's 8 KB by about 18.6 KiB, deliberately, and the overage grows every session it survives.** That limit assumes one session per handoff. Everything historical here is already one line apiece and pushed onto its ticket; what remains is the pending list, the production warnings and the next-session rules, and cutting those to satisfy a size check trades the document's purpose for its metric. The earlier attempt to obey the cap is the direct cause of this session's worst finding: compressing four sessions into 8179 bytes silently dropped a retraction, and only an adversarial review caught it. Filed as IAN-266; **IAN-260 is the actual fix**, giving each session its own uncapped file behind a capped index, at which point this note goes away.
 
+## Newest: IAN-381 security-first governance, 2026-09-25 to 09-26
+
+This session's own handoff sits here, above the older multi-session notes below. It follows R-602's six sections and supersedes the older notes only where they conflict.
+
+**1. Last commit.** `db7f483` feat(hooks): merge gate requires a current strongest-model Security review on security-touching PRs (IAN-381) (#145). The owner squash-merged it on 2026-09-26, pinned to the reviewed head. It was verified on `origin/main` by reading the merged files, not by trusting the PR badge.
+
+**2. Production state.**
+- `main` carries six of IAN-381's eight parts:
+  - Part 1: convention fixes (#139)
+  - Part 2: the Semgrep push gate (#141)
+  - Part 3: the security-surface detector (#142)
+  - Part 4: the security-reviewer agent (#143)
+  - Part 6: the R-109 rule (#144, `e57c337`)
+  - Part 5: the R-109 merge gate (#145)
+- Run `./sync.sh` from a `main` checkout so the live `~/.claude` picks up the gate. This session did not run it after the #145 merge.
+- **The gate takes effect on the next security-touching merge.** Before merging one, record the review artefact with `bash enforce/security-review-record.sh <artefact path>`. Run it in the same turn the security reviewer returns, then merge with `--match-head-commit <full 40-char sha>`. gh rejects the short sha.
+
+**3. Session metrics.**
+- About 30 working hours over two days.
+- Rework: #145 took five Fable review rounds and six fix slices (B-9c, B-10b, B-10c, B-10e, B-10f).
+- **Velocity flag:** the review loop on #145 ran long. Each round found a real forgery path, so every round was a genuine finding, not churn.
+
+**4. What shipped.** Everything is under IAN-381, and the ticket carries the full table.
+- **#145 merge gate.** On a security-touching PR, the merge is denied unless all of these hold:
+  - a single `## Security review` section, on `securityReviewModel`, whose range head equals the PR head
+  - a findings table where every artefact finding has a row
+  - no open or downgraded rows
+  - `fixed <sha>` commits that fall inside the range
+  - waivers routed to the owner's permission prompt
+  - an artefact whose blob matches the ledger entry recorded at review time
+  - a local `origin/<base>` equal to `baseRefOid`
+  - a merge pinned with `--match-head-commit`
+- **Ledger.** It lives at `~/.claude/security-review-ledger/<sha256 of host/owner/repo>.json`, and the first record for a head wins. protected-path-guard denies writes, deletes, and moves aimed at it, including `~`, `$HOME`, and `${HOME}` spellings.
+- **The detector has a deadline** and fails closed.
+- **Also shipped:** #144 merged after main was merged into it (conflict in task-cleanup step 1, resolved to keep both intents), with a round-4 review.
+
+**5. Pending, by urgency.**
+- **HIGH:**
+  - IAN-381 Part 7: a reusable `.github/workflows/security.yml` (Semgrep plus CodeQL), wired into the templates. About 3 hours.
+  - IAN-381 Part 5b: the gate requires green Semgrep and CodeQL checks and an insecure-value test in the diff, and the dispatcher uses one variable for both the Agent `model` and `{{MODEL}}`. This depends on Part 7's check names. About 3 hours.
+- **HIGH:** IAN-456 covers guard command-parsing evasions, all owner-waived for #145: `cd`-follow, ancestor delete, a `HOME=` prefix, and `${HOME:-}` or command-substitution forms. It is Complex; build the parser first. About 3 hours.
+- **HIGH:** IAN-425 needs a review record that agents cannot reach, signed or held by CI. This is the accepted residual for a deliberately forging agent. About 4 hours.
+- **MEDIUM:** IAN-381 Part 8: sweep `production/` and `templates/` for the #27 CORS class and file tickets. About 2 hours.
+- **MEDIUM:** IAN-426: protected-path-guard reads `2>/dev/null` as a write target. About 45 minutes.
+- **Later:**
+  - IAN-402: three build skills (`build-slice-require-review`, `build-standard`, `build-fast`) with up-front estimates. It now includes the in-PR test checkpoint (owner decision 2026-09-26): RED is pushed alone for review, then the implementation.
+  - IAN-401 (`build-fast`), IAN-382 (question-card Stop hook), IAN-394, IAN-395, IAN-399 (`tdd.sh release`).
+- **Close IAN-381** with actuals once Parts 5b, 7, and 8 land.
+
+**6. Next session.**
+- Start with Part 7, then 5b.
+- Read, in order:
+  1. `claude/docs/superpowers/specs/2026-09-25-security-first-gate-design.md` (B-9, B-13 to B-17)
+  2. `claude/hooks/git-workflow-guard.sh` (`read_security_review_verdict` and its helpers)
+  3. `claude/agents/security-reviewer.md`
+  4. `claude/prompts/security-review-prompt.md`
+- **Subagents stall often.** The watchdog killed them at 600s. Give each one a narrow brief and plain one-command Bash calls, with no heredocs and no `2>`.
+- **Other sessions share one test lock.** `run-fixture-shards` holds a machine-wide lock, so a parallel session's full run blocks this session's pre-stop test check for up to 8 minutes.
+- **Stale worktrees can go:** `r109-rule-ian381` and `merge-gate-ian381` both hold merged branches.
+
 ## 1. Last commit
 
 `6a4188c` chore(skills): make merge-on-green an opt-in chosen per slice (IAN-352). PR #132 squash-merged 2026-09-24 at 11:21:48Z with all four checks green, verified by reading the changed files at `origin/main` rather than the PR badge, and synced into the live `~/.claude`, `~/.cursor` and `~/.codex`. This supersedes every entry below as the newest commit on `main`. Only this SHA is cited for that change: the branch's own six commits are unreachable after the squash merge, which is what `doc-sha-reachability` is for.
