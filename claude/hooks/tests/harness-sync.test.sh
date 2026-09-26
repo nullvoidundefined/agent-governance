@@ -287,5 +287,13 @@ OUT=$(printf '{}' | bash "$HOOK" "$CO" 2>/dev/null)
 check "sync refusal reported" reports "sync.sh failed"
 check "sync refusal leaves the live tree absent" test ! -e "$FAKE/.claude/CLAUDE.md"
 
+# No jq (program row 2a, IAN-436). Every blocking gate parses its input with
+# jq, so a session without it runs every gate as an allow. HARNESS_SYNC_JQ
+# names the binary so the fixture can simulate its absence on any host; the
+# warning must reach the model even though say_context itself needs jq.
+OUT=$(printf '{}' | HARNESS_SYNC_JQ=no-such-jq-binary bash "$HOOK" "$CO" 2>/dev/null)
+check "missing jq emits valid JSON" bash -c 'printf "%s" "$0" | jq empty' "$OUT"
+check "missing jq names jq and the gates it disables" bash -c 'printf "%s" "$0" | jq -r ".hookSpecificOutput.additionalContext" | grep -q "jq is not installed" && printf "%s" "$0" | grep -q "every blocking gate"' "$OUT"
+
 [ "$fail" -eq 0 ] && echo "harness-sync.test.sh PASS"
 exit "$fail"

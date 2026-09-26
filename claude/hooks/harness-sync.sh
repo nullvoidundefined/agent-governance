@@ -36,6 +36,22 @@ say_context() {
   jq -n --arg m "$1" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null || true
 }
 
+# Every blocking gate parses its input with jq, so a session without it runs
+# every gate as an allow (IAN-436). A remote container installs it the way it
+# installs rsync below; when it is still missing, the warning is written as
+# fixed JSON, because say_context itself needs jq. HARNESS_SYNC_JQ names the
+# binary so the fixture can simulate its absence.
+JQ_BIN="${HARNESS_SYNC_JQ:-jq}"
+if ! command -v "$JQ_BIN" >/dev/null 2>&1; then
+  if [ "$REMOTE" = "true" ] && [ -z "${HARNESS_SYNC_JQ:-}" ] && command -v apt-get >/dev/null 2>&1; then
+    (apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq jq >/dev/null 2>&1) || true
+  fi
+  if ! command -v "$JQ_BIN" >/dev/null 2>&1; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"harness-sync (R-003, IAN-436): jq is not installed, and every blocking gate reads its input with jq, so every blocking gate will allow every call this session. Install jq before relying on any guard, and tell the user."}}'
+    exit 0
+  fi
+fi
+
 is_checkout() { [ -f "$1/sync.sh" ] && [ -f "$1/claude/CLAUDE.md" ] && git -C "$1" rev-parse --show-toplevel >/dev/null 2>&1; }
 
 CHECKOUT=""
