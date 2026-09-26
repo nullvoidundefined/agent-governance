@@ -51,7 +51,7 @@
     "skills/audit-ux/SKILL.md": "sha256:58a8e3b1748b87bcd4c21933d801b284bc0625accb7b38cb3a7e0e10aef8fd9c",
     "skills/bug-hunt/SKILL.md": "sha256:6ed8d92d5c55d97dc08f0c86039a1972bdb0189fc75c239c8d0b36ada44929d6",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:d21d9f30895901dad6ed8dc20c6691388d67de8479896e15ff345c696a469f5c",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:8ff7e80e437b6abf3db4c03441a123800dd440299e3e58f0bf2d0a2b8e15b1a8",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:0414853899097a42da75e1b2e9914f1443ceefb651d9a8de4a409d090e50907b",
     "skills/cleanup-specs-plans/scripts/inventory.sh": "sha256:91417ec9bfed28e29a18b3b511cd5f2d102e6e3071a3531f8b8c9f44e5fafa5b",
     "skills/documentation-create/SKILL.md": "sha256:c2c783b2f519c341e1abfde943efd41c4432a486899aadcc86acfc085217b2d0",
