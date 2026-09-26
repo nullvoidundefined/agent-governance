@@ -12,8 +12,13 @@
 # derived from the core count; that a bad cap is a usage error; that a nested
 # run under a cap of 1 does not wait on its own parent's slot; that a killed
 # runner's fixtures keep its slot; that a leaked background process does not;
-# that a full cap gives up with 75; and that a forged marker naming a file
-# outside the lock directory cannot skip the queue.
+# that a full cap gives up with 75; that a stray marker naming a file outside
+# the lock directory cannot skip the queue. The review cases (IAN-441) add
+# that a bad wait cap is a usage error; that an unopenable slot file fails at
+# once; that a symlinked or shared lock directory is refused before anything
+# is written through it; that a nested run finds its parent's lock under
+# another spelling of TMPDIR; and that a marker naming another worktree's
+# live runner is not honoured.
 #
 # Every run points TMPDIR at the sandbox, so the locks under test are never
 # the real ones, and clears the markers this fixture inherits from the runner
@@ -42,6 +47,9 @@ cleanup_sandbox() {
 }
 trap cleanup_sandbox EXIT
 LOCK_TMPDIR="$SANDBOX/tmp"
+# The runner keeps its locks in a private per-user directory under TMPDIR
+# (IAN-441 review), so no other user can plant a file or symlink among them.
+LOCK_DIR="$LOCK_TMPDIR/claude-fixture-shards.$(id -u)"
 EVENTS="$SANDBOX/events"
 LOAD_FILE="$SANDBOX/load"
 mkdir -p "$LOCK_TMPDIR"
@@ -84,6 +92,19 @@ mkdir -p "$W1/nested-tests"
 cat > "$W1/nested-tests/outer.test.sh" <<'FIXTURE'
 #!/usr/bin/env bash
 if RUN_NAME=inner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=4 bash "$RUNNER" "$SANDBOX/nested-inner" --all --jobs 1 --settle-seconds 0 --load-from "$LOAD_FILE" > "$SANDBOX/nested-inner.out" 2>&1; then
+  echo "outer PASS"
+else
+  echo "outer FAIL"
+fi
+FIXTURE
+# The alias-nested fixture does the same through a TMPDIR spelled by a
+# symlink to the sandbox TMPDIR, so the inner run sees its parent's lock file
+# under a different spelling of the same directory.
+ln -s "$LOCK_TMPDIR" "$SANDBOX/tmp-alias"
+mkdir -p "$W1/alias-nested-tests"
+cat > "$W1/alias-nested-tests/outer.test.sh" <<'FIXTURE'
+#!/usr/bin/env bash
+if TMPDIR="$SANDBOX/tmp-alias" RUN_NAME=alias-inner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=4 bash "$RUNNER" "$SANDBOX/nested-inner" --all --jobs 1 --settle-seconds 0 --load-from "$LOAD_FILE" > "$SANDBOX/alias-inner.out" 2>&1; then
   echo "outer PASS"
 else
   echo "outer FAIL"
@@ -163,7 +184,7 @@ is_before() {
 
 # slot_file <n>: the path of machine-wide run slot n in the sandbox.
 slot_file() {
-  echo "$LOCK_TMPDIR/claude-fixture-shards.slot.$1.flock"
+  echo "$LOCK_DIR/claude-fixture-shards.slot.$1.flock"
 }
 
 # is_file_lock_free <file>: true when a fresh process can lock the file at once.
@@ -266,7 +287,7 @@ check "full cap: the message says it gave up waiting for one of the 1 run slots"
   grep -q "gave up after 2s waiting for one of the 1 run slots" "$SANDBOX/full.out"
 check "full cap: no fixture ran" test ! -s "$EVENTS"
 check "full cap: the run released its worktree lock on giving up" \
-  is_file_lock_free "$LOCK_TMPDIR/claude-fixture-shards.worktree.$(printf '%s' "$W3" | cksum | awk '{print $1}').flock"
+  is_file_lock_free "$LOCK_DIR/claude-fixture-shards.worktree.$(printf '%s' "$W3" | cksum | awk '{print $1}').flock"
 
 # Case 9: a marker naming a live lock holder on a file outside the lock
 # directory is forged and does not skip the queue.
@@ -278,5 +299,88 @@ run_with_deadline 30 "$SANDBOX/forged.out" "$W3/tests" forged FIXTURE_SHARDS_MAX
 check "forged marker: the run still queues and gives up with 75" test "$forged_status" -eq 75
 check "forged marker: no fixture ran" test ! -s "$EVENTS"
 kill "$slot_holder_pid" "$forger_pid" 2>/dev/null; wait "$slot_holder_pid" "$forger_pid" 2>/dev/null
+
+# Case 10: a wait cap that is not a whole number is a usage error, and runs
+# no fixture; an empty one falls back to the default and runs (IAN-441
+# security review: the control had no insecure-value test).
+for bad_wait in abc -1 1.5; do
+  : > "$EVENTS"
+  run_with_deadline 30 "$SANDBOX/bad-wait.out" "$W2/tests" bad-wait FIXTURE_SHARDS_LOCK_WAIT_SECONDS="$bad_wait"; bad_wait_status=$?
+  check "wait '$bad_wait' exits 2" test "$bad_wait_status" -eq 2
+  check "wait '$bad_wait' names FIXTURE_SHARDS_LOCK_WAIT_SECONDS" grep -q "FIXTURE_SHARDS_LOCK_WAIT_SECONDS" "$SANDBOX/bad-wait.out"
+  check "wait '$bad_wait' runs no fixture" test ! -s "$EVENTS"
+done
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/empty-wait.out" "$W2/tests" empty-wait FIXTURE_SHARDS_LOCK_WAIT_SECONDS=; empty_wait_status=$?
+check "an empty wait falls back to the default and the run passes" test "$empty_wait_status" -eq 0
+check "an empty wait still runs the fixture" grep -q "start empty-wait" "$EVENTS"
+
+# Case 11: a slot file the runner cannot open fails the run at once with the
+# path, instead of reading as a busy slot until the wait cap (IAN-441 review).
+# Skipped as root, which can open a mode-000 file.
+if [ "$(id -u)" -ne 0 ]; then
+  : > "$EVENTS"
+  chmod 000 "$(slot_file 1)"
+  run_with_deadline 30 "$SANDBOX/unopenable.out" "$W2/tests" unopenable FIXTURE_SHARDS_MAX_RUNS=1 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=20; unopenable_status=$?
+  chmod 600 "$(slot_file 1)"
+  check "unopenable slot: the run exits 1" test "$unopenable_status" -eq 1
+  check "unopenable slot: the message names the slot file" grep -q "cannot open the run slot $(slot_file 1)" "$SANDBOX/unopenable.out"
+  check "unopenable slot: not reported as busy slots" not grep -q "busy\|gave up after" "$SANDBOX/unopenable.out"
+  check "unopenable slot: no fixture ran" test ! -s "$EVENTS"
+fi
+
+# Case 12: a lock directory that is a symlink, as another user could plant in
+# a shared /tmp, is refused before anything is written through it, and the
+# file it points at is untouched (IAN-441 review).
+EVIL_TMPDIR="$SANDBOX/evil-tmp"
+VICTIM_DIR="$SANDBOX/victim"
+mkdir -p "$EVIL_TMPDIR" "$VICTIM_DIR"
+echo "victim contents" > "$VICTIM_DIR/claude-fixture-shards.slot.1.flock"
+ln -s "$VICTIM_DIR" "$EVIL_TMPDIR/claude-fixture-shards.$(id -u)"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/symlink-dir.out" "$W2/tests" symlink-dir FIXTURE_SHARDS_MAX_RUNS=1 TMPDIR="$EVIL_TMPDIR"; symlink_dir_status=$?
+check "symlinked lock directory: the run exits 1" test "$symlink_dir_status" -eq 1
+check "symlinked lock directory: the message says it is not private" grep -q "not a private directory" "$SANDBOX/symlink-dir.out"
+check "symlinked lock directory: the file behind it is untouched" test "$(cat "$VICTIM_DIR/claude-fixture-shards.slot.1.flock")" = "victim contents"
+check "symlinked lock directory: nothing new appears behind it" test "$(ls "$VICTIM_DIR" | wc -l | tr -d ' ')" = 1
+check "symlinked lock directory: no fixture ran" test ! -s "$EVENTS"
+
+# Case 13: a lock directory that others can write is refused the same way.
+OPEN_TMPDIR="$SANDBOX/open-tmp"
+mkdir -p "$OPEN_TMPDIR/claude-fixture-shards.$(id -u)"
+chmod 777 "$OPEN_TMPDIR/claude-fixture-shards.$(id -u)"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/open-dir.out" "$W2/tests" open-dir TMPDIR="$OPEN_TMPDIR"; open_dir_status=$?
+check "world-writable lock directory: the run exits 1" test "$open_dir_status" -eq 1
+check "world-writable lock directory: the message says it is not private" grep -q "not a private directory" "$SANDBOX/open-dir.out"
+check "world-writable lock directory: no fixture ran" test ! -s "$EVENTS"
+# is_private_directory <dir>: true when the directory exists and neither its
+# group nor others can read or write it.
+is_private_directory() {
+  [ -d "$1" ] && [ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 \))" ]
+}
+check "a lock directory the runner creates is private (mode 700)" is_private_directory "$LOCK_DIR"
+
+# Case 14: a nested run whose TMPDIR spells the lock directory another way
+# (a symlink, as /var and /private/var are on macOS) still recognises its
+# parent's lock file and does not wait on its parent's slot under a cap of 1.
+: > "$EVENTS"
+run_with_deadline 60 "$SANDBOX/alias-nested.out" "$W1/alias-nested-tests" alias-outer FIXTURE_SHARDS_MAX_RUNS=1; alias_nested_status=$?
+check "alias-spelled nested run under cap 1: the outer run passes" test "$alias_nested_status" -eq 0
+check "alias-spelled nested run under cap 1: the inner run ran its fixture" grep -q "start alias-inner" "$EVENTS"
+
+# Case 15: a marker naming another worktree's live runner and its lock file
+# is foreign, since that runner is not this run's ancestor, and skips neither
+# the queue nor the cap (IAN-441 security review).
+: > "$EVENTS"
+start_runner_in_background "$SANDBOX/foreign-holder.out" "$W1/tests" foreign-holder FIXTURE_SHARDS_MAX_RUNS=1
+foreign_runner_pid=$STARTED_RUNNER_PID
+wait_for_line 15 "start foreign-holder" "$EVENTS"
+foreign_lock_file="$LOCK_DIR/claude-fixture-shards.worktree.$(printf '%s' "$W1" | cksum | awk '{print $1}').flock"
+run_with_deadline 30 "$SANDBOX/foreign.out" "$W2/tests" foreign FIXTURE_SHARDS_MAX_RUNS=1 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2 \
+  FIXTURE_SHARDS_LOCK_HELD="$foreign_runner_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$foreign_lock_file"; foreign_status=$?
+wait "$foreign_runner_pid"
+check "foreign live marker: the run queues for the slot and gives up with 75" test "$foreign_status" -eq 75
+check "foreign live marker: the run ran no fixture" not grep -q "start foreign\$" "$EVENTS"
 
 if [ "$fail" -eq 0 ]; then echo "run-fixture-shards-run-cap: PASS"; else echo "run-fixture-shards-run-cap: FAIL"; exit 1; fi

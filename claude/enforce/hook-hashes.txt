@@ -149,8 +149,8 @@ a1e4a6d65885401d4c170497ab7f989d56982e50d366bdcc1d0ad44a9d9103e6  enforce/tests/
 1a7d9c596b6d2c15c5c5e97f520195980a93ce07113c7c3a42c6b3811cb36c7d  enforce/tests/repo-setup.test.sh
 07c5c7dfcb2f10875999740ec7ac35cee4538bfbf6c712da3d81a3e85109e9cb  enforce/tests/require-feature-checklist.test.sh
 2c5894e55fe293fc92c92390e3033b146527aa36140ba1c5308a20e95c94fd4b  enforce/tests/require-stack-observability-docs.test.sh
-56452c55902c1acbc0c5af9c0a874031b8554c9e4f6decf163274c4f949a35b1  enforce/tests/run-fixture-shards-lock.test.sh
-9d3392a86130b9c561227e08adc133d3f7df9e2a485c8c426710bd726bbdfe0d  enforce/tests/run-fixture-shards-run-cap.test.sh
+f92cc4f523bdc3274591487c8a5681dd7f95cb2b5d711edd583f3aae9cff1bbf  enforce/tests/run-fixture-shards-lock.test.sh
+355b74f787392b0305f64a6c714372de6c6107f2239052326808381666cbefa4  enforce/tests/run-fixture-shards-run-cap.test.sh
 cb3b3694eebfa2119cb6763cb38371355f49f29fad63401292465ab43dd26adf  enforce/tests/run-fixture-shards.test.sh
 f11f97660a6cb0e9cd84ccdfa15fb20119e44b520637fd4c7cac39df2aaa83b3  enforce/tests/run-tests.sh
 1d55f02478973319efbe447a75ed790d225fb5a18fefc1bec735558f14d13cbd  enforce/tests/scope-widening-gate.test.sh

@@ -12,8 +12,10 @@
 # replaced let both happen, IAN-359). The cases prove that concurrent runs
 # execute one after the other; that a killed runner's fixtures keep the lock
 # until they finish; that a lock file naming a dead PID is no obstacle; that a
-# background process a fixture leaks does not hold the lock; that a nested run
-# skips the lock only for a live holder's PID; and that the wait cap exits 75.
+# background process a fixture leaks does not hold the lock; that a marker
+# skips the lock only for the holder the lock file records, and only when that
+# holder is the run's own ancestor or a killed runner whose orphans still hold
+# the lock; and that the wait cap exits 75.
 #
 # Every run points TMPDIR at the sandbox, so the lock under test is never the
 # real one, and clears the marker this fixture inherits from the runner that
@@ -46,6 +48,9 @@ LEAK_TESTS="$SANDBOX/leak-tests"
 EVENTS="$SANDBOX/events"
 LOAD_FILE="$SANDBOX/load"
 mkdir -p "$LOCK_TMPDIR" "$TESTS" "$LEAK_TESTS"
+# The runner keeps its locks in a private per-user directory under TMPDIR
+# (IAN-441 review), so no other user can plant a file or symlink among them.
+LOCK_DIR="$LOCK_TMPDIR/claude-fixture-shards.$(id -u)"
 
 # worktree_lock_file <tests dir>: the run lock of the checkout holding the
 # tests directory, or of the directory itself outside any repository, derived
@@ -53,7 +58,7 @@ mkdir -p "$LOCK_TMPDIR" "$TESTS" "$LEAK_TESTS"
 worktree_lock_file() {
   local root
   root=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || root=$(cd "$1" && pwd -P)
-  echo "$LOCK_TMPDIR/claude-fixture-shards.worktree.$(printf '%s' "$root" | cksum | awk '{print $1}').flock"
+  echo "$LOCK_DIR/claude-fixture-shards.worktree.$(printf '%s' "$root" | cksum | awk '{print $1}').flock"
 }
 LOCK_FILE=$(worktree_lock_file "$TESTS")
 LEAK_LOCK_FILE=$(worktree_lock_file "$LEAK_TESTS")
@@ -205,18 +210,21 @@ RUNNER_TESTS="$LEAK_TESTS" run_with_deadline 30 "$SANDBOX/leak.out" run_locked_r
 check "the leaking fixture's run passes" test "$leak_status" -eq 0
 check "a fixture's leaked background process does not hold the lock" is_lock_free "$LEAK_LOCK_FILE"
 check "a fixture's leaked background process does not hold a run slot" \
-  is_lock_free "$LOCK_TMPDIR/claude-fixture-shards.slot.1.flock"
+  is_lock_free "$LOCK_DIR/claude-fixture-shards.slot.1.flock"
 
-# Case 5: a nested run whose marker names the live holder skips the lock and
-# leaves it held; a marker naming a dead PID is stale and does not.
+# Case 5: a marker naming the live holder, when that holder is not an
+# ancestor of the run (here a stand-in process, as another session's runner
+# would be), is foreign and does not skip the lock (IAN-441 security review);
+# a marker naming a dead PID that the file does not record is stale and does
+# not either. A real nested run, whose marker names its live ancestor, is
+# run-fixture-shards-run-cap.test.sh Case 5.
 start_lock_holder
 holder_pid="$LOCK_HOLDER_PID"
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$holder_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; nested_status=$?
-check "a nested run naming the live holder passes" test "$nested_status" -eq 0
-check "a nested run naming the live holder ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
-check "a nested run naming the live holder does not wait" not grep -q "waiting for PID" "$SANDBOX/nested.out"
-check "a nested run leaves its parent's lock held" not is_lock_free
+check "a marker naming a live holder that is not an ancestor does not skip the lock: 75" test "$nested_status" -eq 75
+check "a marker naming a live non-ancestor holder runs no fixture" test ! -s "$EVENTS"
+check "a run refused a foreign marker leaves the holder's lock held" not is_lock_free
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/stale-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$(dead_pid_of_finished_process)" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; stale_marker_status=$?
 check "a stale marker does not skip the lock: the run queues and gives up with 75" test "$stale_marker_status" -eq 75
