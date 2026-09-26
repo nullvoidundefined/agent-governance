@@ -10,10 +10,9 @@
 # security control in range:` line. The same section with an `artefact` line
 # naming the artefact recorded at the PR head reaches the plain R-514 ask.
 #
-# B (MEDIUM): enforce/security-review-record.sh <path> keeps the first record
-# for a head. Recording a second path for a head the ledger already holds exits
-# non-zero and leaves .claude/security-review-ledger.json byte for byte as it
-# was; recording a different head succeeds and keeps the earlier head's entry.
+# B (MEDIUM): the first record for a head stands. With the ledger's move to
+# $HOME/.claude/security-review-ledger/ (B-10e) this case moved to
+# security-merge-gate-shared-ledger.test.sh case 6.
 #
 # C (LOW): `--match-head-commit=<full head sha>` pins the merge exactly as the
 # space-separated form does, so a valid review reaches the R-514 ask, and the
@@ -25,8 +24,9 @@
 # under the TMPDIR it ran with, nor is the temporary directory the detector
 # ran Semgrep from, wherever mktemp placed it.
 #
-# E (LOW): protected-path-guard.sh denies a Bash redirection and a Bash cp onto
-# the ledger, and allows running the record script itself through Bash.
+# E (LOW): protected-path-guard.sh allows running the record script itself
+# through Bash. The Bash redirection and cp denies moved with the ledger to
+# security-merge-gate-shared-ledger.test.sh cases 7f and 7h (B-10e).
 #
 # The security repository mirrors security-merge-gate-ledger.test.sh: `main`
 # and `origin/main` hold a README-only base commit, and a `feature` branch holds
@@ -57,7 +57,6 @@ EXPECTED_MODEL=$(jq -er '.securityReviewModel | strings | select(length > 0)' "$
   exit 1
 }
 
-LEDGER_REL=.claude/security-review-ledger.json
 ARTEFACT_PATH=docs/reviews/security-review-pr42.json
 # A second artefact with the same content, so a record naming it differs from
 # the first in path alone.
@@ -266,31 +265,7 @@ STUB=$(write_pr_stub casea2 "$(pr_body "$SEC_BASE" "$SEC_HEAD" "$SEC_HEADER
 No security control in range: docs/notes.md")" "$SEC_HEAD" "$SEC_BASE")
 expect_r109_deny "case A2 (No security control in range line, no artefact line)" "$(run_merge "$STUB" "$SEC_DIR" "$PINNED_MERGE")" artefact
 
-# --- B: the ledger keeps the first record for a head ---------------------------
-LEDGER="$SEC_DIR/$LEDGER_REL"
-if [ -f "$LEDGER" ]; then
-  cp "$LEDGER" "$WORK/ledger-before-b.json"
-  HEAD_ENTRY_BEFORE=$(jq -c --arg h "$SEC_HEAD" '.[$h]' "$LEDGER" 2>/dev/null)
-  # B1: a second record for the same head, naming another path, is refused.
-  SAME_HEAD_STATUS=$(run_record "$SEC_DIR" "$SEC_HEAD" "$OTHER_ARTEFACT_PATH")
-  [ "$SAME_HEAD_STATUS" != 0 ] ||
-    report_failure "case B1: security-review-record.sh exited 0 when replacing the ledger entry for head $(printf '%.7s' "$SEC_HEAD")"
-  cmp -s "$WORK/ledger-before-b.json" "$LEDGER" ||
-    report_failure "case B1: the ledger changed when a second record for the same head was refused: $(cat "$LEDGER")"
-  # B1 follow-through: the gate still honors the first record.
-  STUB=$(write_pr_stub caseb1 "$(pr_body "$SEC_BASE" "$SEC_HEAD" "$VALID_SECTION")" "$SEC_HEAD" "$SEC_BASE")
-  expect_r514_ask "case B1 (first record still decides after a refused second record)" "$(run_merge "$STUB" "$SEC_DIR" "$PINNED_MERGE")"
-  # B2: a record for a different head succeeds and keeps the earlier entry.
-  OTHER_HEAD_STATUS=$(run_record "$SEC_DIR" "$SEC_FIRST" "$OTHER_ARTEFACT_PATH")
-  [ "$OTHER_HEAD_STATUS" = 0 ] ||
-    report_failure "case B2: security-review-record.sh exited $OTHER_HEAD_STATUS recording a different head"
-  [ "$(jq -r --arg h "$SEC_FIRST" '.[$h].path // ""' "$LEDGER" 2>/dev/null)" = "$OTHER_ARTEFACT_PATH" ] ||
-    report_failure "case B2: the ledger has no entry for the different head naming $OTHER_ARTEFACT_PATH: $(cat "$LEDGER")"
-  [ "$(jq -c --arg h "$SEC_HEAD" '.[$h]' "$LEDGER" 2>/dev/null)" = "$HEAD_ENTRY_BEFORE" ] ||
-    report_failure "case B2: recording a different head changed the earlier head's entry: $(cat "$LEDGER")"
-else
-  report_failure "case B setup: security-review-record.sh wrote no ledger at $LEDGER_REL"
-fi
+# --- B: moved to security-merge-gate-shared-ledger.test.sh case 6 (B-10e) ------
 
 # --- C: the `=` form of --match-head-commit ------------------------------------
 # A fresh repository with its own single record, so the outcome of case B
@@ -354,7 +329,9 @@ done
 [ -z "$leftover_entries" ] ||
   report_failure "case D: the expired detector left its temporary files behind (under the hook's TMPDIR or the directory Semgrep ran from): $(printf '%s' "$leftover_entries" | tr '\n' ' ')"
 
-# --- E: Bash writes onto the ledger are refused -------------------------------
+# --- E: running the record script through Bash is allowed ---------------------
+# The redirection (E1) and cp (E2) denies onto the ledger moved to
+# security-merge-gate-shared-ledger.test.sh cases 7f and 7h (B-10e).
 # guard_bash_decision <command>: protected-path-guard's decision for a Bash
 # call running <command> from the security repository, "allow" when silent.
 guard_bash_decision() {
@@ -362,10 +339,6 @@ guard_bash_decision() {
   guard_output=$(jq -nc --arg c "$1" --arg d "$SEC_DIR" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' | "$GUARD" 2>/dev/null)
   if [ -z "$guard_output" ]; then echo allow; else printf '%s' "$guard_output" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; fi
 }
-E1_DECISION=$(guard_bash_decision "printf '{}' > $SEC_DIR/$LEDGER_REL")
-[ "$E1_DECISION" = deny ] || report_failure "case E1: a Bash redirection onto $LEDGER_REL was '$E1_DECISION', expected deny"
-E2_DECISION=$(guard_bash_decision "cp $SEC_DIR/x.json $SEC_DIR/$LEDGER_REL")
-[ "$E2_DECISION" = deny ] || report_failure "case E2: a Bash cp onto $LEDGER_REL was '$E2_DECISION', expected deny"
 E3_DECISION=$(guard_bash_decision "bash $CLAUDE_HARNESS_ROOT/enforce/security-review-record.sh docs/x.json")
 [ "$E3_DECISION" != deny ] || report_failure "case E3: running security-review-record.sh through Bash was denied"
 

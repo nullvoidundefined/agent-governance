@@ -9,24 +9,30 @@
 #
 # Run it from any directory inside the repository with the reviewed head
 # checked out. It reads the artefact's git blob at HEAD (`git rev-parse
-# HEAD:<path>`, never the working-tree copy) and writes it into the untracked
-# ledger .claude/security-review-ledger.json at the repository top level, one
-# JSON object keyed by the full head sha:
+# HEAD:<path>`, never the working-tree copy) and writes it into the shared
+# ledger $HOME/.claude/security-review-ledger/<key>.json, where <key> is the
+# sha256 hex digest of the repository's `origin` URL (B-10e; the path is
+# computed in hooks/security-review-ledger-path.sh, which the merge gate reads
+# it through too). The ledger sits outside the checkout, so every worktree and
+# every clone of the same origin shares it. It is one JSON object keyed by the
+# full head sha:
 #   { "<head sha>": { "path": "<path>", "blob": "<blob oid>",
 #                     "recordedAt": "YYYY-MM-DDTHH:MM:SSZ" } }
 # An existing ledger is merged into, and entries for other heads are kept. The
 # first record for a head stands (B-10c): recording again for a head the
-# ledger already holds is refused, so an artefact cannot be swapped for another
-# after the review. The write goes to a temporary file first and is moved into
-# place, so a failure leaves the old ledger as it was. It exits non-zero and
-# writes nothing when it is not in a repository, when the path does not exist
-# at HEAD, when an existing ledger is not a JSON object, or when the ledger
-# already holds an entry for the head. The ledger is a gate
-# input: protected-path-guard.sh denies a Write tool call to it, so this
-# script, run through Bash, is its only writer.
+# ledger already holds is refused, from any worktree or clone, so an artefact
+# cannot be swapped for another after the review. The write goes to a
+# temporary file first and is moved into place, so a failure leaves the old
+# ledger as it was. It exits non-zero and writes nothing when it is not in a
+# repository, when the repository has no `origin`, when the path does not
+# exist at HEAD, when an existing ledger is not a JSON object, or when the
+# ledger already holds an entry for the head. The ledger is a gate input:
+# protected-path-guard.sh denies every Write, Edit, and Bash write, delete, or
+# move aimed at the ledger directory, so this script, run through Bash, is its
+# only writer.
 set -uo pipefail
 
-LEDGER_RELATIVE_PATH=".claude/security-review-ledger.json"
+LEDGER_PATH_HELPER="$(dirname "${BASH_SOURCE[0]}")/../hooks/security-review-ledger-path.sh"
 
 # fail_record <message>: prints the message to stderr and exits non-zero.
 fail_record() {
@@ -68,24 +74,31 @@ write_ledger_entry() {
 }
 
 # record_security_review <artefact path>: resolves the repository top level,
-# the head, and the artefact's blob at HEAD, reads the existing ledger, refuses
-# a head it already holds, then writes the ledger entry.
+# the shared ledger path from its origin, the head, and the artefact's blob at
+# HEAD, reads the existing ledger, refuses a head it already holds, then
+# writes the ledger entry.
 record_security_review() {
   local artefact_path="$1" repository_top head_commit artefact_blob recorded_at ledger_path existing_ledger
   [ -n "$artefact_path" ] || fail_record "usage: security-review-record.sh <artefact repo-relative path>"
   repository_top=$(git rev-parse --show-toplevel 2>/dev/null) || fail_record "not inside a git repository"
+  ledger_path=$(print_security_review_ledger_path "$repository_top") ||
+    fail_record "the repository has no \`origin\` remote (or HOME is unset), so the shared ledger it is keyed by cannot be located; add the origin and record again"
   head_commit=$(git -C "$repository_top" rev-parse --verify --quiet HEAD 2>/dev/null) || fail_record "the repository has no HEAD commit"
   artefact_blob=$(git -C "$repository_top" rev-parse --verify --quiet "HEAD:$artefact_path" 2>/dev/null) ||
     fail_record "\`$artefact_path\` does not exist at HEAD $head_commit; commit the artefact before recording it"
   recorded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) || fail_record "could not read the current time"
-  ledger_path="$repository_top/$LEDGER_RELATIVE_PATH"
   existing_ledger=$(read_existing_ledger "$ledger_path") ||
-    fail_record "$LEDGER_RELATIVE_PATH exists but is not a JSON object; it is left as it is"
+    fail_record "$ledger_path exists but is not a JSON object; it is left as it is"
   ! is_head_recorded "$existing_ledger" "$head_commit" ||
-    fail_record "$LEDGER_RELATIVE_PATH already holds the record for head $head_commit, and the first record for a head stands; commit the new artefact so it lands on a new head, then record it there"
+    fail_record "$ledger_path already holds the record for head $head_commit, and the first record for a head stands; commit the new artefact so it lands on a new head, then record it there"
   write_ledger_entry "$ledger_path" "$existing_ledger" "$head_commit" "$artefact_path" "$artefact_blob" "$recorded_at" ||
-    fail_record "could not write $LEDGER_RELATIVE_PATH; the existing ledger is left as it is"
-  echo "security-review-record.sh: recorded $artefact_path (blob $artefact_blob) for head $head_commit in $LEDGER_RELATIVE_PATH"
+    fail_record "could not write $ledger_path; the existing ledger is left as it is"
+  echo "security-review-record.sh: recorded $artefact_path (blob $artefact_blob) for head $head_commit in $ledger_path"
 }
 
+# The ledger path helper is required: without it the script cannot tell which
+# ledger to write, so it refuses rather than guessing.
+[ -f "$LEDGER_PATH_HELPER" ] || fail_record "the helper $LEDGER_PATH_HELPER is missing; re-run ./sync.sh to restore it"
+# shellcheck source=../hooks/security-review-ledger-path.sh
+source "$LEDGER_PATH_HELPER" || fail_record "could not load $LEDGER_PATH_HELPER"
 record_security_review "${1:-}"

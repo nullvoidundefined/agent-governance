@@ -151,7 +151,7 @@ git_in "$DOCS_DIR" fetch -q origin
   { echo "FAIL security-merge-gate-hardening.test.sh: fixture setup could not point the docs origin/main at the base"; exit 1; }
 
 # Record the artefact every case names at the PR head in the repository's
-# review ledger (.claude/security-review-ledger.json) the way a reviewer does,
+# review ledger ($HOME/.claude/security-review-ledger/<key>.json, B-10e) the way a reviewer does,
 # by running enforce/security-review-record.sh from a checkout of the head,
 # then check `main` back out. Before the record script exists (B-10b) the step
 # is skipped and the older gate alone decides.

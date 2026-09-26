@@ -48,11 +48,13 @@
 #          section holding no findings table rows, no `Nothing found:` line,
 #          and no `No security control in range:` line records nothing it
 #          examined and denies, prose such as `Findings: none` included (B-16b).
-#          The section denies unless the untracked
-#          ledger .claude/security-review-ledger.json at the merge checkout's
-#          top level, written by enforce/security-review-record.sh at review
-#          time, holds an entry for the PR head whose path is the artefact
-#          line's and whose blob is the artefact's blob at the PR head; and a
+#          The section denies unless the shared ledger
+#          $HOME/.claude/security-review-ledger/<sha256 of the merge
+#          checkout's origin URL>.json, written by
+#          enforce/security-review-record.sh at review time, holds an entry
+#          for the PR head whose path is the artefact line's and whose blob is
+#          the artefact's blob at the PR head; a checkout with no origin
+#          denies, and the old in-checkout ledger is never read (B-10e); and a
 #          security-touching merge denies when gh reports no baseRefOid or one
 #          that differs from the local origin/<baseRefName> (B-10b)
 #   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
@@ -996,19 +998,35 @@ read_ledger_entry_field() {
     '.[$head] | objects | .[$field] | strings | select(length > 0)' "$1" 2>/dev/null
 }
 
-# read_security_ledger_verdict <section>: prints "ok" when the ledger
-# enforce/security-review-record.sh wrote at the merge checkout's top level
+SECURITY_LEDGER_PATH_HELPER="$(dirname "${BASH_SOURCE[0]}")/security-review-ledger-path.sh"
+
+# read_security_ledger_path: prints the shared ledger file for the merge
+# checkout, $HOME/.claude/security-review-ledger/<sha256 of its origin URL>.json,
+# through the helper enforce/security-review-record.sh writes it through
+# (B-10e); returns non-zero when the helper is missing or the checkout has no
+# origin, so the caller denies.
+read_security_ledger_path() {
+  [ -f "$SECURITY_LEDGER_PATH_HELPER" ] || return 1
+  # shellcheck source=security-review-ledger-path.sh
+  . "$SECURITY_LEDGER_PATH_HELPER" || return 1
+  print_security_review_ledger_path "$SECURITY_TOP"
+}
+
+# read_security_ledger_verdict <section>: prints "ok" when the shared ledger
+# enforce/security-review-record.sh wrote for the merge checkout's origin
 # holds an entry for SECURITY_HEAD whose path is the section's artefact line's
 # and whose blob is that path's blob at SECURITY_HEAD; otherwise the sentence
-# naming the first mismatch (B-10b), a missing artefact line first (B-10c).
+# naming the first mismatch (B-10b), a missing artefact line first (B-10c),
+# then a checkout with no origin to key the ledger by (B-10e).
 read_security_ledger_verdict() {
   local artefact_path ledger_path recorded_path recorded_blob head_blob
   artefact_path=$(read_review_field "$1" artefact)
   [ -n "$artefact_path" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line, so no artefact recorded at review time can be matched to it"; return 0; }
-  ledger_path="$SECURITY_TOP/.claude/security-review-ledger.json"
+  ledger_path=$(read_security_ledger_path) ||
+    { echo "no artefact recorded at review time can be found for head $(printf '%.7s' "$SECURITY_HEAD"): the merge checkout has no \`origin\` remote (or the ledger path helper is missing), so the shared ledger ~/.claude/security-review-ledger/<key>.json it is keyed by cannot be located"; return 0; }
   recorded_path=$(read_ledger_entry_field "$ledger_path" path) ||
-    { echo "no artefact was recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD"): .claude/security-review-ledger.json is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
+    { echo "no artefact was recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger $ledger_path is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
   [ "$recorded_path" = "$artefact_path" ] ||
     { echo "the artefact recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") is \`$recorded_path\`, not \`$artefact_path\` as the section names"; return 0; }
   recorded_blob=$(read_ledger_entry_field "$ledger_path" blob) ||

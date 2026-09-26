@@ -6,14 +6,15 @@
 #
 # The record: enforce/security-review-record.sh <artefact repo-relative path>,
 # run from anywhere inside a repository, writes the artefact's git blob at HEAD
-# (`git rev-parse HEAD:<path>`, never the working-tree copy) into the untracked
-# ledger .claude/security-review-ledger.json at the repository top level. The
-# ledger is one JSON object keyed by the full head sha:
+# (`git rev-parse HEAD:<path>`, never the working-tree copy) into the shared
+# ledger $HOME/.claude/security-review-ledger/<key>.json, where <key> is the
+# sha256 hex of the repository's origin URL (B-10e). The ledger is one JSON
+# object keyed by the full head sha:
 #   { "<head sha>": { "path": "<path>", "blob": "<blob oid>",
 #                     "recordedAt": "YYYY-MM-DDTHH:MM:SSZ" } }
 # The script exits non-zero and writes nothing when the path does not exist at
-# HEAD. The ledger is a gate input: protected-path-guard.sh denies a Write tool
-# call to it, so the script run through Bash is its only writer.
+# HEAD. The ledger's shape, its location, and the guard that keeps sessions off
+# it are covered by security-merge-gate-shared-ledger.test.sh.
 #
 # The check: on a security-touching PR whose `## Security review` names an
 # `artefact`, `gh pr merge` is denied with a reason naming R-109 and "recorded
@@ -45,8 +46,11 @@ report_failure() { echo "FAIL security-merge-gate-ledger.test.sh: $1"; failures=
 
 WORK=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$WORK"' EXIT
-export HOME="$WORK/home"
-mkdir -p "$HOME"
+# The scratch home every hook and the record script run under; the ledger
+# path below is spelled from it, never from the live install.
+SCRATCH_HOME="$WORK/home"
+export HOME="$SCRATCH_HOME"
+mkdir -p "$SCRATCH_HOME"
 export GIT_CONFIG_NOSYSTEM=1
 
 EXPECTED_MODEL=$(jq -er '.securityReviewModel | strings | select(length > 0)' "$MODEL_FILE" 2>/dev/null) || {
@@ -54,7 +58,7 @@ EXPECTED_MODEL=$(jq -er '.securityReviewModel | strings | select(length > 0)' "$
   exit 1
 }
 
-LEDGER_REL=.claude/security-review-ledger.json
+LEDGER_DIR="$SCRATCH_HOME/.claude/security-review-ledger"
 ARTEFACT_PATH=docs/reviews/security-review-pr42.json
 # A second artefact with the same content, so its blob equals the first one's
 # and a record naming it differs from the review in path alone.
@@ -107,9 +111,17 @@ git_in() {
   git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.com -c commit.gpgsign=false "$@" >/dev/null 2>&1
 }
 
+# ledger_path_for <repo>: the shared ledger file for <repo>, keyed by the
+# sha256 hex of its `origin` URL; empty when the repository has no origin.
+ledger_path_for() {
+  local origin_url
+  origin_url=$(git -C "$1" remote get-url origin 2>/dev/null) || return 0
+  printf '%s/%s.json' "$LEDGER_DIR" "$(printf '%s' "$origin_url" | shasum -a 256 | awk '{print $1}')"
+}
+
 # build_pr_repo <name>: builds the security-touching PR repository described
-# in the header. Sets REPO_DIR, REPO_BASE (also the local origin/main), and
-# REPO_HEAD.
+# in the header. Sets REPO_DIR, REPO_BASE (also the local origin/main),
+# REPO_HEAD, and REPO_LEDGER.
 build_pr_repo() {
   REPO_DIR="$WORK/$1"
   local origin_dir="$WORK/$1-origin.git"
@@ -137,8 +149,9 @@ build_pr_repo() {
   git_in "$REPO_DIR" fetch -q origin
   [ "$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null)" = "$REPO_BASE" ] ||
     { echo "FAIL security-merge-gate-ledger.test.sh: fixture setup could not point origin/main at the base in $1"; exit 1; }
-  [ ! -e "$REPO_DIR/$LEDGER_REL" ] ||
-    { echo "FAIL security-merge-gate-ledger.test.sh: fixture setup found a ledger before any record in $1"; exit 1; }
+  REPO_LEDGER=$(ledger_path_for "$REPO_DIR")
+  [ -n "$REPO_LEDGER" ] && [ ! -e "$REPO_LEDGER" ] ||
+    { echo "FAIL security-merge-gate-ledger.test.sh: fixture setup found a shared ledger before any record in $1"; exit 1; }
 }
 
 # run_record <repo> <head> <subdirectory> <path>: runs the record script for
@@ -203,31 +216,20 @@ expect_r514_ask() {
   case "$reason" in *R-109*) report_failure "$1: ask reason names R-109: $reason" ;; esac
 }
 
-# --- Case a0: the record script writes the ledger shape ----------------------
+# --- Record the artefact at the head -----------------------------------------
 # Run from the docs/ subdirectory with an uncommitted edit to the artefact, so
-# the record must land at the top level and carry the blob at HEAD.
+# the record must carry the blob at HEAD. The ledger's shape and location are
+# asserted in security-merge-gate-shared-ledger.test.sh case 1 (moved from
+# case a0 here, B-10e); cases a, g, and h below use this record.
 build_pr_repo recorded
-REC_DIR="$REPO_DIR" REC_BASE="$REPO_BASE" REC_HEAD="$REPO_HEAD"
-REC_BLOB=$(git -C "$REC_DIR" rev-parse "$REC_HEAD:$ARTEFACT_PATH")
+REC_DIR="$REPO_DIR" REC_BASE="$REPO_BASE" REC_HEAD="$REPO_HEAD" REC_LEDGER="$REPO_LEDGER"
 git_in "$REC_DIR" checkout -q --detach "$REC_HEAD"
 printf '%s\n' '{"findings":[{"id":1,"severity":"LOW"}]}' > "$REC_DIR/$ARTEFACT_PATH"
 (cd "$REC_DIR/docs" && bash "$RECORD_SCRIPT" "$ARTEFACT_PATH" >/dev/null 2>&1)
 RECORD_STATUS=$?
 git_in "$REC_DIR" checkout -q -- "$ARTEFACT_PATH"
 git_in "$REC_DIR" checkout -q main
-[ "$RECORD_STATUS" -eq 0 ] || report_failure "case a0: security-review-record.sh $ARTEFACT_PATH exited $RECORD_STATUS at an existing path"
-[ ! -e "$REC_DIR/docs/$LEDGER_REL" ] || report_failure "case a0: the ledger was written under the subdirectory the script ran from, not the repository top level"
-if [ -f "$REC_DIR/$LEDGER_REL" ]; then
-  jq -e . "$REC_DIR/$LEDGER_REL" >/dev/null 2>&1 || report_failure "case a0: $LEDGER_REL is not JSON"
-  [ "$(jq -r --arg h "$REC_HEAD" '.[$h].path // ""' "$REC_DIR/$LEDGER_REL" 2>/dev/null)" = "$ARTEFACT_PATH" ] ||
-    report_failure "case a0: ledger .[\"<head>\"].path is not $ARTEFACT_PATH: $(cat "$REC_DIR/$LEDGER_REL")"
-  [ "$(jq -r --arg h "$REC_HEAD" '.[$h].blob // ""' "$REC_DIR/$LEDGER_REL" 2>/dev/null)" = "$REC_BLOB" ] ||
-    report_failure "case a0: ledger .[\"<head>\"].blob is not the artefact blob at HEAD ($REC_BLOB): $(cat "$REC_DIR/$LEDGER_REL")"
-  jq -e --arg h "$REC_HEAD" '.[$h].recordedAt | strings | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "$REC_DIR/$LEDGER_REL" >/dev/null 2>&1 ||
-    report_failure "case a0: ledger .[\"<head>\"].recordedAt is not a UTC timestamp YYYY-MM-DDTHH:MM:SSZ: $(cat "$REC_DIR/$LEDGER_REL")"
-else
-  report_failure "case a0: security-review-record.sh wrote no ledger at $LEDGER_REL"
-fi
+[ "$RECORD_STATUS" -eq 0 ] || report_failure "record setup: security-review-record.sh $ARTEFACT_PATH exited $RECORD_STATUS at an existing path"
 
 # --- Case a: a matching record and a current base reach the R-514 ask ---------
 STUB=$(write_pr_stub casea "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$REC_BASE")
@@ -256,18 +258,13 @@ STUB=$(write_pr_stub casec "$(pr_body "$MOVED_BASE" "$MOVED_HEAD" "$ARTEFACT_PAT
 expect_r109_deny "case c (ledger has no entry for the new head)" "$(run_merge "$STUB" "$MOVED_DIR" "$MOVED_HEAD")" "recorded at review time"
 
 # --- Case d: the entry for the head records a different blob -----------------
+# The shared ledger for this repository holds the review's path at the head
+# with another file's blob, written directly as a tampered ledger would be.
 build_pr_repo tampered
-[ "$(run_record "$REPO_DIR" "$REPO_HEAD" . "$ARTEFACT_PATH")" = 0 ] ||
-  report_failure "case d setup: security-review-record.sh could not record $ARTEFACT_PATH"
 OTHER_BLOB=$(git -C "$REPO_DIR" rev-parse "$REPO_HEAD:README.md")
-if [ -f "$REPO_DIR/$LEDGER_REL" ]; then
-  jq --arg h "$REPO_HEAD" --arg b "$OTHER_BLOB" '.[$h].blob = $b' "$REPO_DIR/$LEDGER_REL" > "$WORK/tampered-ledger.json" &&
-    cp "$WORK/tampered-ledger.json" "$REPO_DIR/$LEDGER_REL"
-else
-  mkdir -p "$REPO_DIR/.claude"
-  jq -nc --arg h "$REPO_HEAD" --arg p "$ARTEFACT_PATH" --arg b "$OTHER_BLOB" \
-    '{($h): {path: $p, blob: $b, recordedAt: "2026-09-26T00:00:00Z"}}' > "$REPO_DIR/$LEDGER_REL"
-fi
+mkdir -p "$LEDGER_DIR"
+jq -nc --arg h "$REPO_HEAD" --arg p "$ARTEFACT_PATH" --arg b "$OTHER_BLOB" \
+  '{($h): {path: $p, blob: $b, recordedAt: "2026-09-26T00:00:00Z"}}' > "$REPO_LEDGER"
 STUB=$(write_pr_stub cased "$(pr_body "$REPO_BASE" "$REPO_HEAD" "$ARTEFACT_PATH")" "$REPO_HEAD" "$REPO_BASE")
 expect_r109_deny "case d (ledger blob differs from the artefact at the head)" "$(run_merge "$STUB" "$REPO_DIR" "$REPO_HEAD")" "recorded at review time"
 
@@ -283,7 +280,7 @@ expect_r109_deny "case d2 (ledger path differs from the review's artefact)" "$(r
 build_pr_repo absent
 ABSENT_STATUS=$(run_record "$REPO_DIR" "$REPO_HEAD" . docs/reviews/security-review-absent.json)
 [ "$ABSENT_STATUS" != 0 ] || report_failure "case e: security-review-record.sh exited 0 for a path absent at HEAD"
-[ ! -e "$REPO_DIR/$LEDGER_REL" ] || report_failure "case e: security-review-record.sh wrote a ledger for a path absent at HEAD"
+[ ! -e "$REPO_LEDGER" ] || report_failure "case e: security-review-record.sh wrote a shared ledger for a path absent at HEAD"
 # A file present only in the working tree is not at HEAD either.
 git_in "$REPO_DIR" checkout -q --detach "$REPO_HEAD"
 printf '%s\n' "$ARTEFACT_CONTENT" > "$REPO_DIR/docs/reviews/security-review-untracked.json"
@@ -292,26 +289,20 @@ UNTRACKED_STATUS=$?
 rm -f "$REPO_DIR/docs/reviews/security-review-untracked.json"
 git_in "$REPO_DIR" checkout -q main
 [ "$UNTRACKED_STATUS" != 0 ] || report_failure "case e: security-review-record.sh exited 0 for a path only in the working tree"
-[ ! -e "$REPO_DIR/$LEDGER_REL" ] || report_failure "case e: security-review-record.sh wrote a ledger for a path only in the working tree"
-# An existing ledger is left byte for byte as it was.
-if [ -f "$REC_DIR/$LEDGER_REL" ]; then
-  cp "$REC_DIR/$LEDGER_REL" "$WORK/ledger-before.json"
+[ ! -e "$REPO_LEDGER" ] || report_failure "case e: security-review-record.sh wrote a shared ledger for a path only in the working tree"
+# An existing shared ledger is left byte for byte as it was. Before B-10e the
+# record lands in the checkout instead, so there is no shared ledger to compare.
+if [ -f "$REC_LEDGER" ]; then
+  cp "$REC_LEDGER" "$WORK/ledger-before.json"
   EXISTING_STATUS=$(run_record "$REC_DIR" "$REC_HEAD" . docs/reviews/security-review-absent.json)
   [ "$EXISTING_STATUS" != 0 ] || report_failure "case e: security-review-record.sh exited 0 for an absent path beside an existing ledger"
-  cmp -s "$WORK/ledger-before.json" "$REC_DIR/$LEDGER_REL" ||
+  cmp -s "$WORK/ledger-before.json" "$REC_LEDGER" ||
     report_failure "case e: security-review-record.sh changed the existing ledger for an absent path"
 fi
 
-# --- Case f: the ledger is a gate input the Write tool never writes ----------
-guard_decision() {
-  local guard_output
-  guard_output=$(jq -nc --arg f "$1" --arg d "$REC_DIR" '{tool_name:"Write",cwd:$d,tool_input:{file_path:$f,content:"{}"}}' | "$GUARD" 2>/dev/null)
-  if [ -z "$guard_output" ]; then echo allow; else printf '%s' "$guard_output" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; fi
-}
-[ "$(guard_decision "$REC_DIR/.claude/review-notes.json")" = allow ] ||
-  report_failure "case f control: protected-path-guard denied a Write to an ordinary .claude file, so case f cannot isolate the ledger"
-LEDGER_DECISION=$(guard_decision "$REC_DIR/$LEDGER_REL")
-[ "$LEDGER_DECISION" = deny ] || report_failure "case f: protected-path-guard answered $LEDGER_DECISION for a Write to $LEDGER_REL, expected deny"
+# Case f (the guard denies a Write to the ledger) moved to
+# security-merge-gate-shared-ledger.test.sh case 7a with the ledger's move out
+# of the checkout (B-10e).
 
 # --- Case g: the local origin/main is behind the base gh reports -------------
 STUB=$(write_pr_stub caseg "$(pr_body "$REC_BASE" "$REC_HEAD" "$ARTEFACT_PATH")" "$REC_HEAD" "$STALE_BASE_OID")

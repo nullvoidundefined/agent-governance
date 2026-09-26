@@ -132,7 +132,7 @@ git_in "$REPO_DIR" fetch -q origin
   { echo "FAIL security-merge-gate-findings.test.sh: fixture setup left the artefact in the main working tree"; exit 1; }
 
 # record_artefact <path>: records <path> at the PR head in the repository's
-# review ledger (.claude/security-review-ledger.json) the way a reviewer does,
+# review ledger ($HOME/.claude/security-review-ledger/<key>.json, B-10e) the way a reviewer does,
 # by running enforce/security-review-record.sh from a checkout of the head,
 # then checks `main` back out. The ledger is keyed by head and keeps the first
 # record for a head, so each record here lands on a distinct head. Before the record script exists
