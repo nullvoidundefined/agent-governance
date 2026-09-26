@@ -150,6 +150,7 @@ cb3b3694eebfa2119cb6763cb38371355f49f29fad63401292465ab43dd26adf  enforce/tests/
 f11f97660a6cb0e9cd84ccdfa15fb20119e44b520637fd4c7cac39df2aaa83b3  enforce/tests/run-tests.sh
 1d55f02478973319efbe447a75ed790d225fb5a18fefc1bec735558f14d13cbd  enforce/tests/scope-widening-gate.test.sh
 8d63626a7208ed6b970c82775327a91408a8c3a333f6bbc86c774a1697e45dcd  enforce/tests/secret-scan.test.sh
+71ebdb2b22b7ae2697f0b82c2fdc082d8c660acd5607a21e7bbe5d91272dbdd4  enforce/tests/security-merge-gate-empty.test.sh
 0e62976dfa4c0cc586fb0f2e6462ed9abaf1b4237625e71fbf201094edef9b2a  enforce/tests/security-merge-gate-findings.test.sh
 f18e830d11fcafe0b777eb47af26febd913ff88a5cf8e1221591cf16b72b7e34  enforce/tests/security-merge-gate.test.sh
 5af1efc2b3b337193508d906f83b034f8411194561f2d06a85eb38d38cd2026a  enforce/tests/security-reviewer-contract-2.test.sh
