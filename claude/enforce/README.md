@@ -208,21 +208,31 @@ queued behind one machine-wide lock. That lock then made every worktree wait
 for every other, so a Stop gate on one branch sat for 480 seconds behind a
 suite from an unrelated branch (IAN-429, IAN-430). A run therefore takes two
 locks before it runs anything, both kernel `flock`s taken through perl
-because macOS ships perl but no `flock(1)`:
+because macOS ships perl but no `flock(1)`, and both in the directory
+`${TMPDIR:-/tmp}/claude-fixture-shards.<uid>/`. The runner creates that
+directory mode 700 and exits 1 when it is a symlink, belongs to another
+user, or is open to group or others, because the lock names are fixed and
+in a shared `/tmp` another user could otherwise plant a symlink where the
+runner writes (PR #154 review):
 
-- **Its worktree's lock**, on
-  `${TMPDIR:-/tmp}/claude-fixture-shards.worktree.<cksum>.flock`, where the
-  number is the `cksum` of the checkout's top directory (or of the resolved
-  tests directory outside any repository), held on file descriptor 9. Two runs
-  from one checkout, including one on `enforce/tests` and one on
-  `hooks/tests`, never overlap; a linked worktree has its own lock.
+- **Its worktree's lock**, `claude-fixture-shards.worktree.<cksum>.flock`,
+  where the number is the `cksum` of the checkout's top directory, held on
+  file descriptor 9. Two runs from one checkout, including one on
+  `enforce/tests` and one on `hooks/tests`, never overlap; a linked worktree
+  has its own lock. Outside any repository (a tree without git, such as a
+  synced `~/.claude`) the key is the resolved tests directory, so there the
+  two trees are keyed apart and may run at once.
 - **One machine-wide run slot**, the first free of
-  `${TMPDIR:-/tmp}/claude-fixture-shards.slot.<n>.flock` for `n` from 1 to
-  the cap, held on file descriptor 8. The cap is `FIXTURE_SHARDS_MAX_RUNS`,
-  by default half the online CPUs and at least 1; a value that is not a
-  positive whole number is a usage error (exit 2). It is an environment
-  variable by the owner's decision, because raising it adds load but can
-  never skip or shorten a fixture. A run prints the slot it took and the cap.
+  `claude-fixture-shards.slot.<n>.flock` for `n` from 1 to the cap, held on
+  file descriptor 8. Nothing is written into a slot file, and a slot file
+  that cannot be opened fails the run at once with its path. The cap is
+  `FIXTURE_SHARDS_MAX_RUNS`, by default half the online CPUs and at least 1;
+  a value that is not a positive whole number is a usage error (exit 2). It
+  is an environment variable by the owner's decision, because raising it
+  adds load but can never skip or shorten a fixture. Each run probes only
+  the slots up to its own cap, so the cap holds machine-wide only while every
+  caller uses the same value, which the default guarantees. A run prints the
+  slot it took and the cap.
 
 The worktree lock is always taken first, so two runs can never each hold
 what the other waits for. The runner's `xargs` workers inherit both
@@ -260,11 +270,17 @@ exports its PID as `FIXTURE_SHARDS_LOCK_HELD` and its worktree lock's path as
 `FIXTURE_SHARDS_LOCK_HELD_FILE`, so a fixture that calls the runner again,
 such as the runner's own fixture, takes neither lock instead of waiting on its
 parent's worktree lock or, under a cap of 1, its parent's slot. The markers
-count only while the file is a worktree lock under this run's lock directory,
-the PID is the one that file records, and that lock is held, so they still
-work for the fixtures of a runner that was killed (its orphaned workers hold
-the lock), while a value left exported in some shell, or a marker pointing at
-some other locked file, cannot switch queueing off. `--list` runs nothing and
+count only while the file is a worktree lock in this run's lock directory
+(compared after resolving symlinks, so `/var` and `/private/var` agree), the
+PID is the one that file records, that lock is held, and that PID is the
+run's own ancestor or no longer exists. So they still work for the fixtures
+of a runner that was killed (its orphaned workers hold the lock), while a
+value left exported in some shell, a marker pointing at some other locked
+file, or a marker naming another worktree's live runner cannot switch
+queueing off. The markers stop stray and foreign values, not a same-user
+process set on fabricating a held lock file; nothing under one user's
+`TMPDIR` can stop that, and such a process could skip the runner anyway.
+`--list` runs nothing and
 takes no lock. Fixtures: `tests/run-fixture-shards-lock.test.sh` (the
 worktree lock) and `tests/run-fixture-shards-run-cap.test.sh` (the cap: with
 it set to 2, two worktrees run at once and a third queues; the default is half

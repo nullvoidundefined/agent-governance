@@ -53,11 +53,13 @@
 # IAN-441). Before running anything a run takes two kernel flocks, both on
 # file descriptors its workers inherit, so each lasts until the last process
 # running a fixture for that run has exited, whatever happens to the runner
-# itself: its worktree's lock, ${TMPDIR:-/tmp}/claude-fixture-shards.worktree.
-# <cksum of the checkout root>.flock on fd 9, so two runs from one checkout
-# never overlap; then one of FIXTURE_SHARDS_MAX_RUNS machine-wide run slots
-# (default half the CPUs), ${TMPDIR:-/tmp}/claude-fixture-shards.slot.<n>.flock
-# on fd 8, so at most that many worktrees run fixtures at once. A waiting run
+# itself. Both live in the private directory
+# ${TMPDIR:-/tmp}/claude-fixture-shards.<uid>/: its worktree's lock,
+# claude-fixture-shards.worktree.<cksum of the checkout root>.flock on fd 9,
+# so two runs from one checkout never overlap; then one of
+# FIXTURE_SHARDS_MAX_RUNS machine-wide run slots (default half the CPUs),
+# claude-fixture-shards.slot.<n>.flock on fd 8, so at most that many worktrees
+# run fixtures at once, as long as every caller uses the same cap. A waiting run
 # prints one line per holder or one line for full slots, polls, and exits 75
 # after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. The
 # runner exports its PID as FIXTURE_SHARDS_LOCK_HELD and its worktree lock's
@@ -87,10 +89,15 @@ LOAD_FROM=""
 # fixtures still ran, and whose dead-holder takeover could admit two runs.
 # The worktree lock replaced one machine-wide lock file
 # (claude-fixture-shards.flock), which made every worktree wait for every
-# other; neither old name is ever mistaken for these locks. RUN_LOCK_FILE is
-# set once the tests directory, and so the worktree, is known.
+# other; neither old name is ever mistaken for these locks. They live in a
+# directory private to the user, created mode 700 and refused when it is a
+# symlink, another user's, or open to others, because their names are fixed
+# and a shared /tmp would let another user plant a symlink where the runner
+# writes (PR #154 review). RUN_LOCK_FILE is set once the tests directory, and
+# so the worktree, is known.
 RUN_LOCK_PARENT_DIR="${TMPDIR:-/tmp}"
-RUN_LOCK_PREFIX="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards"
+RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.$(id -u)"
+RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-fixture-shards"
 RUN_LOCK_FILE=""
 RUN_SLOT=""
 RUN_LOCK_POLL_SECONDS=2
@@ -365,22 +372,55 @@ is_file_locked() {
   perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 1; flock($f, LOCK_EX|LOCK_NB) ? exit 1 : exit 0' "$1"
 }
 
-# is_nested_run: true when FIXTURE_SHARDS_LOCK_HELD_FILE names a worktree lock
-# under this run's lock directory, FIXTURE_SHARDS_LOCK_HELD names the run that
-# file records as holder, and that lock is held right now, that is, this
-# runner was started by one of that run's fixtures and must not wait on its
-# own ancestors' worktree lock or run slot. The holder need not be alive: a
-# killed runner's orphaned workers still hold its locks, and their fixtures'
-# nested runs must not queue behind them. A marker naming another PID, a
-# holder whose run has finished, or a file outside the lock directory is
-# stale or forged and is ignored, so it can never switch queueing off
-# (IAN-359 review, IAN-441).
+# is_process_alive <pid>: true while the process exists, whoever owns it
+# (kill -0 would read another user's live process as gone).
+is_process_alive() {
+  ps -p "$1" > /dev/null 2>&1
+}
+
+# is_ancestor_process <pid>: true when the process is this runner's parent,
+# grandparent, or further up, walking at most 64 levels.
+is_ancestor_process() {
+  local ancestor_pid=$$ depth=0
+  while [ "$depth" -lt 64 ]; do
+    ancestor_pid=$(ps -o ppid= -p "$ancestor_pid" 2>/dev/null | tr -d ' ')
+    [[ "$ancestor_pid" =~ ^[0-9]+$ ]] && [ "$ancestor_pid" -gt 1 ] || return 1
+    [ "$ancestor_pid" = "$1" ] && return 0
+    depth=$(( depth + 1 ))
+  done
+  return 1
+}
+
+# is_lock_dir_file <path>: true when the path names a worktree lock file in
+# this run's lock directory, however the directory is spelled (a symlinked
+# TMPDIR, such as /var and /private/var on macOS, names the same directory).
+is_lock_dir_file() {
+  local held_dir own_dir
+  [[ "$(basename "$1")" =~ ^claude-fixture-shards\.worktree\.[0-9]+\.flock$ ]] || return 1
+  held_dir=$(cd "$(dirname "$1")" 2>/dev/null && pwd -P) || return 1
+  own_dir=$(cd "$RUN_LOCK_DIR" 2>/dev/null && pwd -P) || return 1
+  [ "$held_dir" = "$own_dir" ]
+}
+
+# is_nested_run: true when this runner was started by one of another run's
+# fixtures and so must not wait on that run's worktree lock or run slot:
+# FIXTURE_SHARDS_LOCK_HELD_FILE names a worktree lock in this run's lock
+# directory, FIXTURE_SHARDS_LOCK_HELD names the run that file records as
+# holder, that lock is held right now, and the holder is this runner's
+# ancestor or no longer exists (a killed runner, whose orphaned workers still
+# hold its locks and whose fixtures' nested runs must not queue behind them).
+# A marker naming another PID, a holder whose run has finished, a file
+# outside the lock directory, or a live runner that is not an ancestor, such
+# as another worktree's, is stray or foreign and is ignored, so none can
+# switch queueing off (IAN-359 review, PR #154 review). The markers are not
+# proof against a same-user process that fabricates a held lock file and
+# kills its own holder; nothing under one user's TMPDIR can be.
 is_nested_run() {
-  local marker="${FIXTURE_SHARDS_LOCK_HELD:-}" held_file="${FIXTURE_SHARDS_LOCK_HELD_FILE:-}" worktree_key
-  [ -n "$marker" ] && [ -n "$held_file" ] || return 1
-  worktree_key="${held_file#"$RUN_LOCK_PREFIX.worktree."}"
-  [ "$worktree_key" != "$held_file" ] && [[ "$worktree_key" =~ ^[0-9]+\.flock$ ]] || return 1
-  [ "$marker" = "$(lock_holder_pid "$held_file")" ] && is_file_locked "$held_file"
+  local marker="${FIXTURE_SHARDS_LOCK_HELD:-}" held_file="${FIXTURE_SHARDS_LOCK_HELD_FILE:-}"
+  [[ "$marker" =~ ^[0-9]+$ ]] && [ -n "$held_file" ] || return 1
+  is_lock_dir_file "$held_file" || return 1
+  [ "$marker" = "$(lock_holder_pid "$held_file")" ] && is_file_locked "$held_file" || return 1
+  is_ancestor_process "$marker" || ! is_process_alive "$marker"
 }
 
 # open_run_lock_file: opens the worktree lock file on fd 9 for the rest of
@@ -402,14 +442,19 @@ try_lock_fd() {
 
 # try_run_slot <cap>: true when this run now holds one of the cap's run
 # slots, left open and locked on fd 8 for the workers to inherit, with its
-# number in RUN_SLOT and this PID recorded in its file.
+# number in RUN_SLOT. Nothing is written into a slot file. A slot file that
+# cannot be opened exits 1 at once with its path, rather than reading as a
+# busy slot until the wait cap (PR #154 review).
 try_run_slot() {
   local slot slot_file
   for (( slot = 1; slot <= $1; slot++ )); do
     slot_file=$(run_slot_path "$slot")
-    { exec 8>>"$slot_file"; } 2>/dev/null || continue
+    if ! { exec 8>>"$slot_file"; } 2>/dev/null; then
+      echo "fixture-shards: cannot open the run slot $slot_file; remove it or point TMPDIR at a writable directory" >&2
+      exit 1
+    fi
     if try_lock_fd 8; then
-      RUN_SLOT="$slot"; echo "$$" > "$slot_file"
+      RUN_SLOT="$slot"
       return 0
     fi
     exec 8>&-
@@ -442,6 +487,24 @@ require_lock_parent_dir() {
   mkdir -p "$RUN_LOCK_PARENT_DIR" 2>/dev/null
   if [ ! -d "$RUN_LOCK_PARENT_DIR" ] || [ ! -w "$RUN_LOCK_PARENT_DIR" ]; then
     echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is missing or not writable; point TMPDIR at a writable directory" >&2
+    exit 1
+  fi
+}
+
+# is_group_or_other_accessible <dir>: true when the directory's group or
+# others can read or write it.
+is_group_or_other_accessible() {
+  [ -n "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 \) 2>/dev/null)" ]
+}
+
+# require_private_lock_dir: creates the per-user lock directory mode 700 and
+# exits 1 unless it is a real directory, owned by this user, closed to
+# everyone else, so no other user can have planted a symlink or file where
+# the locks are opened (PR #154 review).
+require_private_lock_dir() {
+  mkdir -m 700 "$RUN_LOCK_DIR" 2>/dev/null
+  if [ -L "$RUN_LOCK_DIR" ] || [ ! -d "$RUN_LOCK_DIR" ] || [ ! -O "$RUN_LOCK_DIR" ] || is_group_or_other_accessible "$RUN_LOCK_DIR"; then
+    echo "fixture-shards: $RUN_LOCK_DIR is not a private directory owned by you (it is a symlink, another user's, or open to others); remove it or point TMPDIR elsewhere" >&2
     exit 1
   fi
 }
@@ -502,6 +565,7 @@ acquire_run_lock() {
   perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "fixture-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
   is_nested_run && return 0
   require_lock_parent_dir
+  require_private_lock_dir
   wait_for_worktree_lock "$wait_cap" "$started"
   wait_for_run_slot "$wait_cap" "$started" "$run_cap"
 }
