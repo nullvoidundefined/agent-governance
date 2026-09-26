@@ -304,6 +304,14 @@
             "note": "credential-shaped literals (URI userinfo password, password/secret/token assignment with a literal) in Bash argv, Write content, or Edit new_string; placeholder shapes pass; fixture: tests/secret-scan.test.sh; tree closure (every tracked file through the hook): tests/credential-shape-scan.test.sh"
         },
         {
+            "id": "R-109",
+            "tier": "ast",
+            "enforcer": "hook:push-semgrep-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "fail-closed pre-push run of the Semgrep security rule pack (enforce/semgrep/) over every whole changed code file; denies on any finding, Semgrep error, skipped or unscanned path, unparseable file, or unresolvable base; fixtures: enforce/tests/push-semgrep-gate.test.sh, enforce/tests/semgrep-rule-pack.test.sh, enforce/tests/r109-rule-text.test.sh, enforce/tests/r109-rule-text-2.test.sh"
+        },
+        {
             "id": "R-106",
             "tier": "regex",
             "enforcer": "hook:global-repo-push-guard",

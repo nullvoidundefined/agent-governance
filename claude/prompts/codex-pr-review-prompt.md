@@ -36,7 +36,7 @@ Find, with evidence:
 1. UNMET CRITERIA: every acceptance criterion this PR claims that the diff does not satisfy, or satisfies only partly.
 2. TESTS THAT WOULD NOT FAIL: every claimed criterion whose test would still pass if the feature were missing or wrong (asserting on a mock call instead of behavior, asserting only that no error was thrown, or testing a fixture rather than the code).
 3. CORRECTNESS BUGS: logic errors, unhandled failure modes, wrong status codes or return shapes, off-by-one and boundary errors, race conditions, and ordering or concurrency cases the code gets wrong.
-4. SECURITY AND DATA-INTEGRITY: authentication or authorization gaps, injection, missing input validation, secrets in code or logs, unsafe migrations, missing idempotency, and weakened protections (CORS, CSP, rate limits).
+4. SECURITY AND DATA-INTEGRITY: authentication or authorization gaps, injection, missing input validation, secrets in code or logs, unsafe migrations, missing idempotency, and weakened protections (CORS, CSP, rate limits). A security-touching PR also gets a separate R-109 review on the strongest model; this item does not replace it. Never grade a security finding below HIGH because configuration is trusted.
 5. CONVENTION VIOLATIONS: places the diff contradicts a convention file above, citing the section.
 6. SPEC DRIFT: behavior the diff adds that the spec does not ask for, or a spec requirement the diff silently changes.
 
