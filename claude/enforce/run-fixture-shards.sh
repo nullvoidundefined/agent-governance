@@ -346,13 +346,14 @@ run_slot_path() {
 
 # max_concurrent_runs: how many worktrees may run fixtures at once machine-wide:
 # FIXTURE_SHARDS_MAX_RUNS when set, else half the CPUs, at least 1. Exits 2
-# on a value that is not a positive whole number. An environment variable by
-# the owner's decision (IAN-441), because raising it adds load but can never
-# skip or shorten a fixture.
+# on a value that is not a whole number from 1 to 9999; a longer one would
+# wrap in bash arithmetic and stall every run until the wait cap (PR #154
+# review round 2). An environment variable by the owner's decision (IAN-441),
+# because raising it adds load but can never skip or shorten a fixture.
 max_concurrent_runs() {
   local configured="${FIXTURE_SHARDS_MAX_RUNS:-}" half_cpus
   if [ -n "$configured" ]; then
-    [[ "$configured" =~ ^[1-9][0-9]*$ ]] || usage_error "FIXTURE_SHARDS_MAX_RUNS needs a positive whole number, not '$configured'"
+    [[ "$configured" =~ ^[1-9][0-9]{0,3}$ ]] || usage_error "FIXTURE_SHARDS_MAX_RUNS needs a whole number from 1 to 9999, not '$configured'"
     echo "$configured"; return
   fi
   half_cpus=$(( $(cpu_count) / 2 )); [ "$half_cpus" -lt 1 ] && half_cpus=1
@@ -372,20 +373,32 @@ is_file_locked() {
   perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 1; flock($f, LOCK_EX|LOCK_NB) ? exit 1 : exit 0' "$1"
 }
 
+# can_inspect_processes: true when ps answers a parent-PID query about this
+# runner. Without it no holder can be proved an ancestor or gone, so the
+# markers are refused rather than every holder being read as dead (PR #154
+# review round 2).
+can_inspect_processes() {
+  [[ "$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ')" =~ ^[0-9]+$ ]]
+}
+
 # is_process_alive <pid>: true while the process exists, whoever owns it
-# (kill -0 would read another user's live process as gone).
+# (kill -0 would read another user's live process as gone). A zombie or a
+# reused PID also reads as alive, which refuses a dead holder's orphans their
+# fallback; they then queue, which fails closed.
 is_process_alive() {
   ps -p "$1" > /dev/null 2>&1
 }
 
 # is_ancestor_process <pid>: true when the process is this runner's parent,
-# grandparent, or further up, walking at most 64 levels.
+# grandparent, or further up, walking at most 64 levels. PID 1 counts, so a
+# runner started as a container's init is still found.
 is_ancestor_process() {
   local ancestor_pid=$$ depth=0
   while [ "$depth" -lt 64 ]; do
     ancestor_pid=$(ps -o ppid= -p "$ancestor_pid" 2>/dev/null | tr -d ' ')
-    [[ "$ancestor_pid" =~ ^[0-9]+$ ]] && [ "$ancestor_pid" -gt 1 ] || return 1
+    [[ "$ancestor_pid" =~ ^[0-9]+$ ]] && [ "$ancestor_pid" -gt 0 ] || return 1
     [ "$ancestor_pid" = "$1" ] && return 0
+    [ "$ancestor_pid" -gt 1 ] || return 1
     depth=$(( depth + 1 ))
   done
   return 1
@@ -420,6 +433,7 @@ is_nested_run() {
   [[ "$marker" =~ ^[0-9]+$ ]] && [ -n "$held_file" ] || return 1
   is_lock_dir_file "$held_file" || return 1
   [ "$marker" = "$(lock_holder_pid "$held_file")" ] && is_file_locked "$held_file" || return 1
+  can_inspect_processes || return 1
   is_ancestor_process "$marker" || ! is_process_alive "$marker"
 }
 
@@ -492,9 +506,10 @@ require_lock_parent_dir() {
 }
 
 # is_group_or_other_accessible <dir>: true when the directory's group or
-# others can read or write it.
+# others can read, write, or traverse it; traversal alone would let another
+# user open and flock a lock file by its fixed name (PR #154 review round 2).
 is_group_or_other_accessible() {
-  [ -n "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 \) 2>/dev/null)" ]
+  [ -n "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 -o -perm -010 -o -perm -001 \) 2>/dev/null)" ]
 }
 
 # require_private_lock_dir: creates the per-user lock directory mode 700 and
@@ -563,9 +578,11 @@ acquire_run_lock() {
   # A perl that cannot load Fcntl (a bad PERL5OPT or PERL5LIB) would make every
   # try below fail and read as a busy lock until the cap (PR #136 review).
   perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "fixture-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
-  is_nested_run && return 0
+  # The directory is checked before the markers, which open files in it
+  # (PR #154 review round 2).
   require_lock_parent_dir
   require_private_lock_dir
+  is_nested_run && return 0
   wait_for_worktree_lock "$wait_cap" "$started"
   wait_for_run_slot "$wait_cap" "$started" "$run_cap"
 }
@@ -600,7 +617,6 @@ main() {
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
   [ "$settle_max_seconds" -ge "$settle_seconds" ] || usage_error "--settle-max-seconds ($settle_max_seconds) is below --settle-seconds ($settle_seconds)"
   tests_dir=$(cd "$tests_dir" && pwd)
-  run_cap=$(max_concurrent_runs) || exit 2
   RUN_LOCK_FILE=$(worktree_lock_path "$tests_dir")
   fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
   [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
@@ -612,8 +628,9 @@ main() {
     exit 0
   fi
   count=$(grep -c . <<< "$SELECTED")
-  # After --list, which runs nothing, and before the job count, which should
-  # read the load once the run ahead has finished.
+  # After --list, which runs nothing and so ignores a bad cap, and before the
+  # job count, which should read the load once the run ahead has finished.
+  run_cap=$(max_concurrent_runs) || exit 2
   acquire_run_lock "$run_cap"
   [ -n "$jobs" ] || jobs=$(default_job_count)
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"

@@ -211,7 +211,8 @@ locks before it runs anything, both kernel `flock`s taken through perl
 because macOS ships perl but no `flock(1)`, and both in the directory
 `${TMPDIR:-/tmp}/claude-fixture-shards.<uid>/`. The runner creates that
 directory mode 700 and exits 1 when it is a symlink, belongs to another
-user, or is open to group or others, because the lock names are fixed and
+user, or lets group or others read, write, or traverse it, checking it
+before it reads any nesting marker, because the lock names are fixed and
 in a shared `/tmp` another user could otherwise plant a symlink where the
 runner writes (PR #154 review):
 
@@ -227,7 +228,8 @@ runner writes (PR #154 review):
   file descriptor 8. Nothing is written into a slot file, and a slot file
   that cannot be opened fails the run at once with its path. The cap is
   `FIXTURE_SHARDS_MAX_RUNS`, by default half the online CPUs and at least 1;
-  a value that is not a positive whole number is a usage error (exit 2). It
+  a value that is not a whole number from 1 to 9999 is a usage error (exit 2),
+  except under `--list`, which runs nothing and ignores it. It
   is an environment variable by the owner's decision, because raising it
   adds load but can never skip or shorten a fixture. Each run probes only
   the slots up to its own cap, so the cap holds machine-wide only while every
@@ -277,7 +279,11 @@ run's own ancestor or no longer exists. So they still work for the fixtures
 of a runner that was killed (its orphaned workers hold the lock), while a
 value left exported in some shell, a marker pointing at some other locked
 file, or a marker naming another worktree's live runner cannot switch
-queueing off. The markers stop stray and foreign values, not a same-user
+queueing off. The ancestry and liveness checks use `ps`; when `ps` cannot
+answer (missing, BusyBox without `-p`, or denied by a sandbox), the markers
+are refused and the run queues, and a zombie or reused holder PID reads as
+alive with the same result, so both failures fail closed. The markers stop
+stray and foreign values, not a same-user
 process set on fabricating a held lock file; nothing under one user's
 `TMPDIR` can stop that, and such a process could skip the runner anyway.
 `--list` runs nothing and
