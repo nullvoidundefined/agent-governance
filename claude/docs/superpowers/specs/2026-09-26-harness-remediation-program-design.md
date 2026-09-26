@@ -1,7 +1,7 @@
 # Harness remediation program
 
 **Ticket:** IAN-427
-**Status:** draft, spec review folded in, awaiting owner review
+**Status:** approved by the owner 2026-09-26
 **Date:** 2026-09-26
 **Sources:** the process and rule-system audit, `docs/audits/2026-09-26-process-and-rules.md` (IAN-419, PR #147), and a comparison of this harness against community harnesses supplied by the owner on 2026-09-26.
 
@@ -33,26 +33,26 @@ The comparison's other three items (behavioral tests for skills, a skill-activat
 
 ## Program table
 
-| Row | Sub-project | Covers | Tier | Merge path | Depends on |
-|---|---|---|---|---|---|
-| 0 | Merge the audit | PR #147 | n/a | owner | none |
-| 1 | Correctness pass | F1, F2, F10 | Standard | on green | 0 |
-| 2a | Shared gate preamble | F6 | Complex | owner | 1 |
-| 2b | Sandbox enablement | comparison item 2 | Standard | owner | 2a |
-| 3a | Integrity check against the installed revision | F3 step 1 | Complex | owner | 2a |
-| 3b | Ports spike | comparison item 3, F3 step 2 | Investigation | on green | 1 |
-| 3c | Ports build | the 3b verdict | Complex | on green | 3a, 3b |
-| 3d | Per-worktree fixture lock | autonomy prerequisite 5 | Standard | on green | 2a |
-| 4 | Injection scan | comparison item 1 | Complex | owner | 2a, 3a, 3c, 3d |
-| 5a | Handoff and injection diet | F5 | Standard | owner | 1, 3c |
-| 5b | Rule and memory consolidation | F8, F9, F11 | Standard | on green | 1, 3c |
-| 6a | Provisional-state mechanism | F4 | Standard | on green | 1 |
-| 6b | Owner-granted override and advisory telemetry | F7 | Complex | owner | 2a, 3c |
-| 6c | Fix-after-merge metric | F14 | Standard | on green | none |
-| 6d | Autonomy trial | the audit's autonomy proposal | n/a | n/a | 3c, 3d, 6a, 6b, 6c |
-| 7a | Enforcer-tag and manifest reconciliation | F12, Low list | Standard | on green | 3c |
-| 7b | Bash hook chain consolidation | F13 | Complex | owner | 2a, 3c |
-| 7c | Audit hygiene | F15 | Standard | on green | 0 |
+| Row | Ticket | Sub-project | Covers | Tier | Merge path | Depends on |
+|---|---|---|---|---|---|---|
+| 0 | IAN-419 | Merge the audit | PR #147 | n/a | owner | none |
+| 1 | IAN-433 | Correctness pass | F1, F2, F10 | Standard | on green | 0 |
+| 2a | IAN-436 | Shared gate preamble | F6 | Complex | owner | 1 |
+| 2b | IAN-439 | Sandbox enablement | comparison item 2 | Standard | owner | 2a |
+| 3a | IAN-440 | Integrity check against the installed revision | F3 step 1 | Complex | owner | 2a |
+| 3b | IAN-437 | Ports spike | comparison item 3, F3 step 2 | Investigation | on green | 1 |
+| 3c | IAN-442 | Ports build | the 3b verdict | Complex | on green | 3a, 3b |
+| 3d | IAN-441 | Per-worktree fixture lock | autonomy prerequisite 5 | Standard | owner | 2a |
+| 4 | IAN-443 | Injection scan | comparison item 1 | Complex | owner | 2a, 3a, 3c, 3d |
+| 5a | IAN-444 | Handoff and injection diet | F5 | Standard | owner | 1, 3c |
+| 5b | IAN-445 | Rule and memory consolidation | F8, F9, F11 | Standard | on green | 1, 3c |
+| 6a | IAN-438 | Provisional-state mechanism | F4 | Standard | on green | 1 |
+| 6b | IAN-446 | Owner-granted override and advisory telemetry | F7 | Complex | owner | 2a, 3c |
+| 6c | IAN-434 | Fix-after-merge metric | F14 | Standard | on green | none |
+| 6d | IAN-449 | Autonomy trial | the audit's autonomy proposal | n/a | n/a | 3c, 3d, 6a, 6b, 6c |
+| 7a | IAN-448 | Enforcer-tag and manifest reconciliation | F12, Low list | Standard | on green | 3c |
+| 7b | IAN-447 | Bash hook chain consolidation | F13 | Complex | owner | 2a, 3c |
+| 7c | IAN-435 | Audit hygiene | F15 | Standard | on green | 0 |
 
 "On green" means the PR merges on green CI plus a passed R-517 review, without an owner stop. "Owner" means the owner reads and merges. A row marked "on green" still goes to the owner when its PR falls in the owner class (see Merge policy).
 
@@ -208,7 +208,7 @@ This program merges on a risk-tiered basis, using the mechanism R-514 already pr
 
 ## Ticketing
 
-- On the owner's approval of this spec, one Backlog ticket is opened per row (owner decision, 2026-09-26, following R-214), each related to IAN-427, naming its row number, and carrying its dependencies as Linear blockers so the blocker graph shows which rows can start.
+- On the owner's approval of this spec (given 2026-09-26), one Backlog ticket was opened per row (owner decision, 2026-09-26, following R-214), each related to IAN-427, naming its row number, and carrying its dependencies as Linear blockers so the blocker graph shows which rows can start.
 - Each ticket moves to `in-progress` when its row starts.
 - IAN-427 closes when this spec is approved and merged and the row tickets exist. The program's progress is read from the row tickets.
 
@@ -233,7 +233,7 @@ This program merges on a risk-tiered basis, using the mechanism R-514 already pr
 - Community orchestrators (SuperClaude, gstack, Claude Code PM) and Ralph loops.
 - Container-per-agent isolation (Container Use and similar). Row 2b enables the native sandbox only.
 - Designing any row in detail. Complex rows get their own design specs.
-- The three defects found while writing this spec, which are separate tickets: IAN-429, IAN-430, and IAN-432.
+- The four defects found while writing this spec, which are separate tickets: IAN-429, IAN-430, IAN-432, and IAN-450.
 
 ## Dependencies
 
@@ -280,4 +280,4 @@ Stack and build-versus-buy options. Codex recommended keeping the current choice
 
 ## Amendments
 
-None yet.
+- 2026-09-26, before merge: row 3d's merge path changed from on green to owner, because the merge policy's owner class includes concurrency and 3d replaces a lock. Found while opening the row tickets.
