@@ -33,6 +33,12 @@ requirePhrase() {
     grep -qiF -- "$2" <<< "$1" || fail "$3"
 }
 
+# requireEitherPhrase <haystack text> <literal> <alternative literal> <failure message>
+# Fails unless the text contains either literal, compared case-insensitively.
+requireEitherPhrase() {
+    grep -qiF -- "$2" <<< "$1" || grep -qiF -- "$3" <<< "$1" || fail "$4"
+}
+
 # lineNumberOf <file> <extended regex>: prints the first matching line number, or nothing.
 lineNumberOf() {
     { grep -nE -- "$2" "$1" || true; } | head -1 | cut -d: -f1
@@ -53,11 +59,11 @@ CONDUCT_HEADING=$(lineNumberOf "$CLAUDE_FILE" '^## Conduct and output \(R-2xx\)'
     || fail "CLAUDE.md R-109 must sit in the Secrets and trust (R-1xx) section"
 
 R109_NORM=$(sed -n "${R109_LINE}p" "$CLAUDE_FILE")
-requirePhrase "$R109_NORM" 'security is the first-order concern' \
+requireEitherPhrase "$R109_NORM" 'security is the first-order concern' 'treat security as the first-order concern' \
     "CLAUDE.md R-109 does not make security the first-order concern"
 requirePhrase "$R109_NORM" 'outranks every other finding' \
     "CLAUDE.md R-109 does not rank a security finding above every other finding"
-requirePhrase "$R109_NORM" 'never deferred, softened, or re-graded' \
+requireEitherPhrase "$R109_NORM" 'never deferred, softened, or re-graded' 'never defer, soften, or re-grade' \
     "CLAUDE.md R-109 does not forbid deferring, softening, or re-grading a security finding"
 requirePhrase "$R109_NORM" 'only the owner waives' \
     "CLAUDE.md R-109 does not reserve the waiver of a security finding to the owner"
