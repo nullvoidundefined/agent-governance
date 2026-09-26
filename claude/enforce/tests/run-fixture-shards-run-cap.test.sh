@@ -244,12 +244,19 @@ check "default cap: the run passes" test "$default_status" -eq 0
 check "default cap: the run reports a cap of half the $cpus CPUs ($expected_cap)" \
   grep -q "run slot [0-9]* of $expected_cap (" "$SANDBOX/default.out"
 
-# Case 4: a cap that is not a positive whole number is a usage error.
-for bad_cap in 0 abc -1; do
+# Case 4: a cap that is not a positive whole number up to 9999 is a usage
+# error; an oversized value would otherwise wrap in bash arithmetic and stall
+# every run until the wait cap (PR #154 review round 2). --list runs nothing,
+# so a bad cap does not stop it.
+for bad_cap in 0 abc -1 10000 99999999999999999999; do
   run_with_deadline 30 "$SANDBOX/bad-cap.out" "$W2/tests" bad FIXTURE_SHARDS_MAX_RUNS="$bad_cap"; bad_status=$?
   check "cap '$bad_cap' exits 2" test "$bad_status" -eq 2
   check "cap '$bad_cap' names FIXTURE_SHARDS_MAX_RUNS" grep -q "FIXTURE_SHARDS_MAX_RUNS" "$SANDBOX/bad-cap.out"
 done
+list_with_bad_cap=$(env -u FIXTURE_SHARDS_LOCK_HELD -u FIXTURE_SHARDS_LOCK_HELD_FILE TMPDIR="$LOCK_TMPDIR" FIXTURE_SHARDS_MAX_RUNS=abc \
+  bash "$RUNNER" "$W2/tests" --all --list 2>&1); list_with_bad_cap_status=$?
+check "--list ignores a bad cap" test "$list_with_bad_cap_status" -eq 0
+check "--list with a bad cap still lists the fixtures" grep -qx "sleeper.test.sh" <<< "$list_with_bad_cap"
 
 # Case 5: under a cap of 1, a nested run started by one of the run's own
 # fixtures takes neither lock, so it does not wait on its parent's slot.
@@ -331,14 +338,17 @@ fi
 
 # Case 12: a lock directory that is a symlink, as another user could plant in
 # a shared /tmp, is refused before anything is written through it, and the
-# file it points at is untouched (IAN-441 review).
+# file it points at is untouched (IAN-441 review), even with nesting markers
+# naming a file behind it, which the runner must not open before it has
+# checked the directory (PR #154 review round 2).
 EVIL_TMPDIR="$SANDBOX/evil-tmp"
 VICTIM_DIR="$SANDBOX/victim"
 mkdir -p "$EVIL_TMPDIR" "$VICTIM_DIR"
 echo "victim contents" > "$VICTIM_DIR/claude-fixture-shards.slot.1.flock"
 ln -s "$VICTIM_DIR" "$EVIL_TMPDIR/claude-fixture-shards.$(id -u)"
 : > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/symlink-dir.out" "$W2/tests" symlink-dir FIXTURE_SHARDS_MAX_RUNS=1 TMPDIR="$EVIL_TMPDIR"; symlink_dir_status=$?
+run_with_deadline 30 "$SANDBOX/symlink-dir.out" "$W2/tests" symlink-dir FIXTURE_SHARDS_MAX_RUNS=1 TMPDIR="$EVIL_TMPDIR" \
+  FIXTURE_SHARDS_LOCK_HELD=12345 FIXTURE_SHARDS_LOCK_HELD_FILE="$EVIL_TMPDIR/claude-fixture-shards.$(id -u)/claude-fixture-shards.worktree.1.flock"; symlink_dir_status=$?
 check "symlinked lock directory: the run exits 1" test "$symlink_dir_status" -eq 1
 check "symlinked lock directory: the message says it is not private" grep -q "not a private directory" "$SANDBOX/symlink-dir.out"
 check "symlinked lock directory: the file behind it is untouched" test "$(cat "$VICTIM_DIR/claude-fixture-shards.slot.1.flock")" = "victim contents"
@@ -357,9 +367,21 @@ check "world-writable lock directory: no fixture ran" test ! -s "$EVENTS"
 # is_private_directory <dir>: true when the directory exists and neither its
 # group nor others can read or write it.
 is_private_directory() {
-  [ -d "$1" ] && [ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 \))" ]
+  [ -d "$1" ] && [ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 -o -perm -010 -o -perm -001 \))" ]
 }
 check "a lock directory the runner creates is private (mode 700)" is_private_directory "$LOCK_DIR"
+
+# Case 13a: a lock directory others can traverse (mode 711), which would let
+# another user open and flock a lock file by its fixed name, is refused too
+# (PR #154 review round 2).
+TRAVERSE_TMPDIR="$SANDBOX/traverse-tmp"
+mkdir -p "$TRAVERSE_TMPDIR/claude-fixture-shards.$(id -u)"
+chmod 711 "$TRAVERSE_TMPDIR/claude-fixture-shards.$(id -u)"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/traverse-dir.out" "$W2/tests" traverse-dir TMPDIR="$TRAVERSE_TMPDIR"; traverse_dir_status=$?
+check "traversable lock directory (711): the run exits 1" test "$traverse_dir_status" -eq 1
+check "traversable lock directory (711): the message says it is not private" grep -q "not a private directory" "$SANDBOX/traverse-dir.out"
+check "traversable lock directory (711): no fixture ran" test ! -s "$EVENTS"
 
 # Case 14: a nested run whose TMPDIR spells the lock directory another way
 # (a symlink, as /var and /private/var are on macOS) still recognises its
@@ -371,16 +393,40 @@ check "alias-spelled nested run under cap 1: the inner run ran its fixture" grep
 
 # Case 15: a marker naming another worktree's live runner and its lock file
 # is foreign, since that runner is not this run's ancestor, and skips neither
-# the queue nor the cap (IAN-441 security review).
+# the queue nor the cap (IAN-441 security review). The holder's fixture sleeps
+# far longer than the refused run's two-second wait, so a loaded shard cannot
+# free the slot in time and pass the case by accident (PR #154 review round
+# 2). Case 16 reuses the same holder.
+mkdir -p "$W1/long-tests"
+cat > "$W1/long-tests/long-sleeper.test.sh" <<'FIXTURE'
+#!/usr/bin/env bash
+echo "start $RUN_NAME" >> "$EVENTS"
+sleep 20
+echo "end $RUN_NAME" >> "$EVENTS"
+echo "long-sleeper PASS"
+FIXTURE
 : > "$EVENTS"
-start_runner_in_background "$SANDBOX/foreign-holder.out" "$W1/tests" foreign-holder FIXTURE_SHARDS_MAX_RUNS=1
+start_runner_in_background "$SANDBOX/foreign-holder.out" "$W1/long-tests" foreign-holder FIXTURE_SHARDS_MAX_RUNS=1
 foreign_runner_pid=$STARTED_RUNNER_PID
 wait_for_line 15 "start foreign-holder" "$EVENTS"
 foreign_lock_file="$LOCK_DIR/claude-fixture-shards.worktree.$(printf '%s' "$W1" | cksum | awk '{print $1}').flock"
 run_with_deadline 30 "$SANDBOX/foreign.out" "$W2/tests" foreign FIXTURE_SHARDS_MAX_RUNS=1 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2 \
   FIXTURE_SHARDS_LOCK_HELD="$foreign_runner_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$foreign_lock_file"; foreign_status=$?
-wait "$foreign_runner_pid"
 check "foreign live marker: the run queues for the slot and gives up with 75" test "$foreign_status" -eq 75
 check "foreign live marker: the run ran no fixture" not grep -q "start foreign\$" "$EVENTS"
+
+# Case 16: with a ps that fails (missing, BusyBox without -p, or denied by a
+# sandbox), the runner cannot prove the holder is an ancestor or gone, so it
+# refuses the marker instead of reading every holder as dead (PR #154 review
+# round 2, both reviewers).
+BROKEN_PS_BIN="$SANDBOX/broken-ps-bin"
+mkdir -p "$BROKEN_PS_BIN"
+printf '#!/bin/sh\nexit 2\n' > "$BROKEN_PS_BIN/ps"
+chmod +x "$BROKEN_PS_BIN/ps"
+run_with_deadline 30 "$SANDBOX/broken-ps.out" "$W2/tests" broken-ps FIXTURE_SHARDS_MAX_RUNS=1 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2 \
+  PATH="$BROKEN_PS_BIN:$PATH" FIXTURE_SHARDS_LOCK_HELD="$foreign_runner_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$foreign_lock_file"; broken_ps_status=$?
+check "broken ps: a foreign live marker is still refused, and the run gives up with 75" test "$broken_ps_status" -eq 75
+check "broken ps: the run ran no fixture" not grep -q "start broken-ps\$" "$EVENTS"
+kill "$foreign_runner_pid" 2>/dev/null; pkill -P "$foreign_runner_pid" 2>/dev/null; wait "$foreign_runner_pid" 2>/dev/null
 
 if [ "$fail" -eq 0 ]; then echo "run-fixture-shards-run-cap: PASS"; else echo "run-fixture-shards-run-cap: FAIL"; exit 1; fi
