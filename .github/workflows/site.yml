@@ -1,0 +1,74 @@
+# site.yml: tests the landing site on every PR that touches it, and on main,
+# on a published release, or by hand, builds it with the latest release's
+# version and checksum, tests the served container, and deploys it to GitHub
+# Pages. With no release published the build fails instead of deploying
+# placeholders. Permissions are least-privilege per job; actions are pinned
+# by commit SHA.
+name: site
+
+on:
+  pull_request:
+    paths: ['site/**', '.github/workflows/site.yml', 'claude/enforce/manifest.json']
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/site.yml', 'claude/enforce/manifest.json']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+      - name: Install Chromium
+        working-directory: site
+        run: npx playwright install --with-deps chromium
+      - name: Build, serve, and test the site
+        run: bash site/tests/site.test.sh
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+      - name: Build with the latest release's version and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --json tagName --jq .tagName)
+          gh release download "$tag" --pattern '*.tar.gz.sha256' --dir "$RUNNER_TEMP/release"
+          sha256=$(awk '{print $1}' "$RUNNER_TEMP/release/agent-governance-$tag.tar.gz.sha256")
+          bash site/scripts/build-site.sh "$tag" "$sha256"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site/dist
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
