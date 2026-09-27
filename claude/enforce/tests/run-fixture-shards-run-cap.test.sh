@@ -535,21 +535,24 @@ check "broken find: no fixture ran" test ! -s "$EVENTS"
 # Case 13g: the ownership check is fed an owner that is neither the user nor
 # root (PR #154 security review round 8). Unprivileged, a find shim that
 # fails owner queries makes root's own ancestors unprovable, which the check
-# must refuse as another user's; as root, a real chown to nobody is used.
-BROKEN_OWNER_FIND_BIN="$SANDBOX/broken-owner-find-bin"
-mkdir -p "$BROKEN_OWNER_FIND_BIN"
-cat > "$BROKEN_OWNER_FIND_BIN/find" <<SHIM
+# must refuse as another user's; as root, which owns every directory it
+# makes, so the shim is never consulted, a real chown to nobody is used
+# instead (PR #154 review round 9).
+if [ "$(id -u)" -ne 0 ]; then
+  BROKEN_OWNER_FIND_BIN="$SANDBOX/broken-owner-find-bin"
+  mkdir -p "$BROKEN_OWNER_FIND_BIN"
+  cat > "$BROKEN_OWNER_FIND_BIN/find" <<SHIM
 #!/bin/sh
 case " \$* " in *" -user "*) exit 1 ;; esac
 exec "$real_find" "\$@"
 SHIM
-chmod +x "$BROKEN_OWNER_FIND_BIN/find"
-: > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/broken-owner.out" "$W2/tests" broken-owner PATH="$BROKEN_OWNER_FIND_BIN:$PATH"; broken_owner_status=$?
-check "unprovable owner: the run exits 1" test "$broken_owner_status" -eq 1
-check "unprovable owner: the refusal says another user owns a directory" grep -q "belongs to another user" "$SANDBOX/broken-owner.out"
-check "unprovable owner: no fixture ran" test ! -s "$EVENTS"
-if [ "$(id -u)" -eq 0 ]; then
+  chmod +x "$BROKEN_OWNER_FIND_BIN/find"
+  : > "$EVENTS"
+  run_with_deadline 30 "$SANDBOX/broken-owner.out" "$W2/tests" broken-owner PATH="$BROKEN_OWNER_FIND_BIN:$PATH"; broken_owner_status=$?
+  check "unprovable owner: the run exits 1" test "$broken_owner_status" -eq 1
+  check "unprovable owner: the refusal says another user owns a directory" grep -q "belongs to another user" "$SANDBOX/broken-owner.out"
+  check "unprovable owner: no fixture ran" test ! -s "$EVENTS"
+else
   FOREIGN_PARENT="$SANDBOX/foreign-parent"
   mkdir -p "$FOREIGN_PARENT/mine"
   chmod 755 "$FOREIGN_PARENT"

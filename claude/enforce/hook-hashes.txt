@@ -150,7 +150,7 @@ a1e4a6d65885401d4c170497ab7f989d56982e50d366bdcc1d0ad44a9d9103e6  enforce/tests/
 07c5c7dfcb2f10875999740ec7ac35cee4538bfbf6c712da3d81a3e85109e9cb  enforce/tests/require-feature-checklist.test.sh
 2c5894e55fe293fc92c92390e3033b146527aa36140ba1c5308a20e95c94fd4b  enforce/tests/require-stack-observability-docs.test.sh
 82f567d82ac0221179eed3f64ea6476d7e0b36a2bbe47b1acd921086022b2ffe  enforce/tests/run-fixture-shards-lock.test.sh
-26ce7bb3838e23f2663680b6399f0304c9014f273bd3fbe4485d1932c41a739e  enforce/tests/run-fixture-shards-run-cap.test.sh
+82aa3002dba5ce34c1d5c3fe60869442d69b8382b8ca86a918455ae238c1d337  enforce/tests/run-fixture-shards-run-cap.test.sh
 cb3b3694eebfa2119cb6763cb38371355f49f29fad63401292465ab43dd26adf  enforce/tests/run-fixture-shards.test.sh
 f11f97660a6cb0e9cd84ccdfa15fb20119e44b520637fd4c7cac39df2aaa83b3  enforce/tests/run-tests.sh
 1d55f02478973319efbe447a75ed790d225fb5a18fefc1bec735558f14d13cbd  enforce/tests/scope-widening-gate.test.sh
