@@ -411,19 +411,21 @@ HARNESS_OWNER_REPOSITORY="nullvoidundefined/agent-governance"
 
 # run_harness_step <script> <harness repository> <harness sha> <caller
 # repository> <is-ancestor status>: runs the extracted harness step with the
-# stub git first on PATH and a fresh RUNNER_TEMP. Sets HARNESS_STATUS and
-# HARNESS_GIT_LOG (the path of the stub's call log).
+# stub git first on PATH and a fresh RUNNER_TEMP. Sets HARNESS_STATUS,
+# HARNESS_GIT_LOG (the path of the stub's call log), and HARNESS_STEP_OUTPUT
+# (the path of the step's combined stdout and stderr).
 run_harness_step() {
   local script="$1" harness_repository="$2" harness_sha="$3" caller_repository="$4" is_ancestor="$5"
   local runner_temp
   runner_temp=$(mktemp -d "$WORK/runner.XXXXXX")
   HARNESS_GIT_LOG="$runner_temp.gitlog"
+  HARNESS_STEP_OUTPUT="$runner_temp.out"
   : > "$HARNESS_GIT_LOG"
   env -i PATH="$STUB_BIN:$PATH" HOME="$WORK" RUNNER_TEMP="$runner_temp" \
     HARNESS_REPOSITORY="$harness_repository" HARNESS_SHA="$harness_sha" \
     GITHUB_REPOSITORY="$caller_repository" STUB_IS_ANCESTOR="$is_ancestor" \
     STUB_GIT_LOG="$HARNESS_GIT_LOG" \
-    bash --noprofile --norc -eo pipefail "$script" > "$runner_temp.out" 2>&1
+    bash --noprofile --norc -eo pipefail "$script" > "$HARNESS_STEP_OUTPUT" 2>&1
   HARNESS_STATUS=$?
 }
 
@@ -472,6 +474,18 @@ for job_name in semgrep languages; do
   # 3. An empty SHA is refused before any fetch.
   run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" '' acme/app 0
   expect_refused_before_fetch "10a.3 $job_name empty SHA"
+
+  # 3a-3d. The SHA check is anchored at both ends: 41 hex characters, 40 hex
+  #        characters with a trailing or leading `x`, and a branch name are each
+  #        refused with an ::error line before any fetch.
+  for malformed_sha in "${VALID_SHA}a" "${VALID_SHA}x" "x${VALID_SHA}" main; do
+    run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" "$malformed_sha" acme/app 0
+    label="10a.3 $job_name malformed SHA [$malformed_sha]"
+    expect_refused_before_fetch "$label"
+    [ -f "$HARNESS_GIT_LOG" ] || report_failure "$label: the stub git log must exist"
+    grep -Fq '::error::' "$HARNESS_STEP_OUTPUT" \
+      || report_failure "$label: the step must print an ::error:: line; got [$(cat "$HARNESS_STEP_OUTPUT")]"
+  done
 
   # 4. A SHA that is not an ancestor of agent-governance main is refused: the
   #    ancestry check runs, and the pinned commit is never fetched or checked out.
