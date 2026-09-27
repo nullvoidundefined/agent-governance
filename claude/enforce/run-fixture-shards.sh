@@ -674,7 +674,10 @@ main() {
   # Cleared before any git query, not only before the fixtures run: an
   # inherited GIT_DIR (a linked-worktree hook exports one) would otherwise
   # make change detection read another repository (PR #42 review round 4).
-  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+  # GIT_CEILING_DIRECTORIES could stop git short of the checkout and split its
+  # worktree lock key between the enforce and hook trees (PR #154 review
+  # round 8).
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_CEILING_DIRECTORIES
   [ "$settle_max_seconds" -ge "$settle_seconds" ] || usage_error "--settle-max-seconds ($settle_max_seconds) is below --settle-seconds ($settle_seconds)"
   tests_dir=$(cd "$tests_dir" && pwd)
   RUN_LOCK_KEY=$(worktree_lock_key "$tests_dir")

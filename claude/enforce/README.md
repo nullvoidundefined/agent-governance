@@ -233,7 +233,10 @@ runner writes (PR #154 review):
   where the number is the `cksum` of the checkout's top directory, held on
   file descriptor 9. Two runs from one checkout, including one on
   `enforce/tests` and one on `hooks/tests`, never overlap; a linked worktree
-  has its own lock. Outside any repository (a tree without git, such as a
+  has its own lock. The runner clears `GIT_CEILING_DIRECTORIES` along with
+  the other inherited git variables, so an exported value cannot stop git
+  short of the checkout and split its key. Outside any repository (a tree
+  without git, such as a
   synced `~/.claude`) the key is the resolved tests directory, so there the
   two trees are keyed apart and may run at once.
 - **One machine-wide run slot**, the first free of
