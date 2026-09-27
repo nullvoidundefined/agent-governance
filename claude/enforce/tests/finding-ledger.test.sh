@@ -18,6 +18,14 @@
 #   4. `open` lists a finding carrying no ticket; `ticket` attaches a key and
 #      `open` then drops it while `list` keeps it.
 #   5. A malformed tracker key is refused rather than recorded.
+#  14. A finding with no --value, or a value outside breaking, high, medium,
+#      low, none, is refused and leaves the ledger unchanged. The rating is
+#      what decides whether the work waits, so an unrated finding is the gap
+#      the week of 2026-09-21 fell through (IAN-471).
+#  15. A low finding prints Linear priority 3 and a none finding priority 4,
+#      each with the instruction not to work it in this session.
+#  16. A breaking, high, or medium finding names no fixed priority and no
+#      do-not-work instruction, and list shows each finding's value.
 #
 # Gate invariants (commit-message-guard.sh, R-214 half):
 #   6. A commit staging only in-scope files passes.
@@ -63,14 +71,14 @@ printf 'build/\n' > "$REPO/.gitignore"
 git -C "$REPO" add -A && git -C "$REPO" commit -qm "init"
 
 # --- ledger ---
-OUT=$( (cd "$REPO" && bash "$FINDING" add "the rate limiter drops the first request" --kind bug --where src/api) 2>&1 )
+OUT=$( (cd "$REPO" && bash "$FINDING" add "the rate limiter drops the first request" --kind bug --value medium --where src/api) 2>&1 )
 check "1. add records the finding, got: $OUT" "$(says "$OUT" "finding 1 recorded")"
 
-OUT=$( (cd "$REPO" && bash "$FINDING" add "tidy this later" --kind nice) 2>&1 ); ST=$?
+OUT=$( (cd "$REPO" && bash "$FINDING" add "tidy this later" --kind nice --value low) 2>&1 ); ST=$?
 check "2. an unrecognised kind exits non-zero" "$([ "$ST" -ne 0 ] && echo 0 || echo 1)"
 check "2. the refusal names the three kinds, got: $OUT" "$(says "$OUT" "bug, task, or optimization")"
 
-OUT=$( (cd "$REPO" && bash "$FINDING" add "" --kind task) 2>&1 ); ST=$?
+OUT=$( (cd "$REPO" && bash "$FINDING" add "" --kind task --value low) 2>&1 ); ST=$?
 check "3. an empty description is refused" "$([ "$ST" -ne 0 ] && echo 0 || echo 1)"
 
 OUT=$( (cd "$REPO" && bash "$FINDING" open) 2>&1 )
@@ -82,8 +90,32 @@ check "4. open drops a ticketed finding, got: $OUT" "$(says "$OUT" "none recorde
 OUT=$( (cd "$REPO" && bash "$FINDING" list) 2>&1 )
 check "4. list keeps a ticketed finding, got: $OUT" "$(says "$OUT" "IAN-404")"
 
-OUT=$( (cd "$REPO" && bash "$FINDING" add "x" --kind task --ticket not-a-key) 2>&1 ); ST=$?
+OUT=$( (cd "$REPO" && bash "$FINDING" add "x" --kind task --value low --ticket not-a-key) 2>&1 ); ST=$?
 check "5. a malformed tracker key is refused" "$([ "$ST" -ne 0 ] && echo 0 || echo 1)"
+
+# --- value rating (IAN-471) ---
+BEFORE=$( (cd "$REPO" && bash "$FINDING" list) 2>&1 )
+OUT=$( (cd "$REPO" && bash "$FINDING" add "rename a helper" --kind optimization) 2>&1 ); ST=$?
+check "14. a finding with no --value exits non-zero" "$([ "$ST" -ne 0 ] && echo 0 || echo 1)"
+check "14. the refusal names the five values, got: $OUT" "$(says "$OUT" "breaking, high, medium, low, or none")"
+OUT=$( (cd "$REPO" && bash "$FINDING" add "rename a helper" --kind optimization --value meh) 2>&1 ); ST=$?
+check "14. a value outside the scale exits non-zero" "$([ "$ST" -ne 0 ] && echo 0 || echo 1)"
+AFTER=$( (cd "$REPO" && bash "$FINDING" list) 2>&1 )
+check "14. a refused finding leaves the ledger unchanged" "$([ "$BEFORE" = "$AFTER" ] && echo 0 || echo 1)"
+
+OUT=$( (cd "$REPO" && bash "$FINDING" add "reword a hook message" --kind optimization --value low) 2>&1 )
+check "15. a low finding files at Linear priority 3, got: $OUT" "$(says "$OUT" "Linear priority 3")"
+check "15. a low finding is not worked now, got: $OUT" "$(says "$OUT" "do not work it in this session")"
+OUT=$( (cd "$REPO" && bash "$FINDING" add "delete an unused fixture" --kind task --value none) 2>&1 )
+check "15. a none finding files at Linear priority 4, got: $OUT" "$(says "$OUT" "Linear priority 4")"
+check "15. a none finding is not worked now, got: $OUT" "$(says "$OUT" "do not work it in this session")"
+OUT=$( (cd "$REPO" && bash "$FINDING" add "the guard fails open" --kind bug --value high) 2>&1 )
+check "16. a high finding gets no do-not-work instruction, got: $OUT" "$([ "$(says "$OUT" "do not work it")" -ne 0 ] && echo 0 || echo 1)"
+check "16. a high finding names no fixed priority, got: $OUT" "$([ "$(says "$OUT" "Linear priority")" -ne 0 ] && echo 0 || echo 1)"
+check "16. a high finding is still recorded, got: $OUT" "$(says "$OUT" "recorded")"
+OUT=$( (cd "$REPO" && bash "$FINDING" list) 2>&1 )
+check "16. list shows the low rating, got: $OUT" "$(says "$OUT" "optimization, low: reword a hook message")"
+check "16. list shows the none rating, got: $OUT" "$(says "$OUT" "task, none: delete an unused fixture")"
 
 # --- gate ---
 ledger() { # ledger <scope-json> [ticket]; an explicit empty ticket omits the key
