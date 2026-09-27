@@ -198,7 +198,7 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 ### Skills
 
-Skills are named workflows the agent invokes when the work matches. There are 18 of them.
+Skills are named workflows the agent invokes when the work matches. There are 19 of them.
 
 | Stage | Skills |
 |---|---|

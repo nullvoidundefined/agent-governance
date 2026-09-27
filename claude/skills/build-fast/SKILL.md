@@ -6,13 +6,13 @@ model: haiku
 
 # Build Fast
 
-Get the requested change working, reviewed, and merged in the least wall time. Reliability comes from the deterministic gates and one strong review after the build, not from extra passes.
+Get the requested change working, reviewed, and merged in the least wall time.
 
 **Announce at start:** "I'm using the build-fast skill: Haiku builds, the strongest model reviews once while CI runs."
 
 ## Hard rules
 
-1. **Speed first.** Skip any step that does not change whether the requested change works or is safe.
+1. **Speed first.** Spend no agent pass that does not change whether the requested change works or is safe; the flow's own steps are never skipped.
 2. **No bug or issue hunting.** Run no bug-hunt, audit, code-review, or "look for other issues" pass. The only reviews are the R-517 review after the build and, when the owner opted in, the approach review before it.
 3. **No yak-shaving.** Stay on the direct path. For an off-path blocker, take a different path to the change and file the blocker with `finding.sh add ... --kind bug|task` and its ticket. Never investigate a side issue inline. A workaround that masks a symptom needs the owner's acceptance first (R-204).
 4. **Route around, never bypass.** Hooks, the TDD lock, secret scan, Semgrep, and CI stay on. Fix what fires; never bypass a gate. When a gate itself blocks, stop and ask the owner.

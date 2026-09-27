@@ -24,7 +24,9 @@
 #                             opening batch (IAN-401); a later set keeps each one it does
 #                             not restate only for the same branch and the same ticket
 #   task-tier.sh get          prints the ledger as JSON (exit 1 when none)
-#   task-tier.sh summary      one line: tier, reason, elapsed, branch
+#   task-tier.sh summary      one line: tier, reason, elapsed, branch; a second
+#                             line names the build-fast lane, override, and merge
+#                             mode when the ledger carries any
 #   task-tier.sh clear        removes the ledger (task-cleanup's last step)
 # The ledger is session state like .claude/tdd-lock.json: keep it out of
 # commits (the script warns once when the project does not ignore it).

@@ -13,23 +13,29 @@ BUILD_LANE_RULES_FILE="${BUILD_LANE_RULES:-$BUILD_LANE_DIR/../lane-rules.json}"
 BUILD_LANE_HARNESS_ROOT="${CLAUDE_HARNESS_ROOT:-$(cd "$BUILD_LANE_DIR/../../.." && pwd)}"
 BUILD_LANE_SECURITY_FILE="$BUILD_LANE_HARNESS_ROOT/enforce/security-surface.json"
 BUILD_LANE_DETECTOR="$BUILD_LANE_HARNESS_ROOT/hooks/security-surface.sh"
+BUILD_LANE_SCOPE_MATCH="$BUILD_LANE_DIR/../../../hooks/scope-match.sh"
 
-# printRawLane <lane> <reason>: prints the one output line and exits 0.
+# printRawLane <lane> <reason>: prints the one output line and exits 0; a
+# newline or carriage return inside the reason is flattened to a space, so the
+# output is always exactly one line.
 printRawLane() {
-  printf '%s %s\n' "$1" "$2"
+  printf '%s %s\n' "$1" "$(printf '%s' "$2" | tr '\r\n' '  ')"
   exit 0
 }
 
 # readLaneOverride: prints laneOverride from the checkout's task-tier ledger
-# when the ledger parses and names the checked-out branch; nothing otherwise,
-# so an empty, truncated, or foreign ledger never changes the lane.
+# when the ledger is exactly one JSON object naming the checked-out branch and
+# the value is exactly fast or guarded; nothing otherwise, so an empty,
+# malformed, foreign, or misspelled override never changes the lane.
 readLaneOverride() {
   local top branch ledger
   top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
   branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || return 0
   ledger="$top/.claude/task-tier.json"
   [ -s "$ledger" ] || return 0
-  jq -r --arg b "$branch" 'select(.branch == $b) | .laneOverride // "" | strings' "$ledger" 2>/dev/null || true
+  jq -rs --arg b "$branch" \
+    'if length == 1 and (.[0] | type) == "object" and .[0].branch == $b and (.[0].laneOverride == "fast" or .[0].laneOverride == "guarded") then .[0].laneOverride else empty end' \
+    "$ledger" 2>/dev/null || true
 }
 
 # printLane <lane> <reason>: applies the owner's lane override, then prints.
@@ -85,7 +91,7 @@ findGuardedPattern() {
 # when gh is absent, fails, or finds no PR.
 readPrBaseRef() {
   command -v gh >/dev/null 2>&1 || return 0
-  gh pr view --json baseRefName -q .baseRefName 2>/dev/null </dev/null || true
+  gh pr view --json baseRefName -q .baseRefName 2>/dev/null </dev/null | head -n 1 || true
 }
 
 # readDefaultBaseRef: prints origin's default branch name from origin/HEAD, or
@@ -128,14 +134,14 @@ readDetectorTimeout() {
 # runDetectorWithDeadline: runs list_security_surface_hits on the resolved range
 # in its own process group, copied from git-workflow-guard.sh's
 # run_security_detector_with_deadline rather than extracted, so the guard stays
-# untouched. Sets DETECTOR_FIRST_HIT and returns the detector's status, or 3 on
-# a timeout or when no work directory can be made. The work root is removed on
+# untouched. Sets DETECTOR_FIRST_HIT and returns the detector's status, 3 on a
+# timeout, or 4 when no work directory can be made. The work root is removed on
 # every path, a killed detector included.
 runDetectorWithDeadline() {
   local deadlineSteps waitedSteps=0 detectorRoot detectorPid detectorStatus
   DETECTOR_FIRST_HIT=""
   deadlineSteps=$(( $(readDetectorTimeout) * 5 ))
-  detectorRoot=$(mktemp -d "${TMPDIR:-/tmp}/build-lane-detector.XXXXXX") || return 3
+  detectorRoot=$(mktemp -d "${TMPDIR:-/tmp}/build-lane-detector.XXXXXX" 2>/dev/null) || return 4
   # shellcheck disable=SC2034  # read by the sourced security-surface.sh in the detector subshell
   SECURITY_SURFACE_WORK_ROOT="$detectorRoot"
   set -m
@@ -171,6 +177,7 @@ classifySecurity() {
   case "$detectorStatus" in
     0) [ -z "$DETECTOR_FIRST_HIT" ] || printLane guarded "security-surface: $DETECTOR_FIRST_HIT" ;;
     3) printLane guarded "detector-failure: no answer within $(readDetectorTimeout)s" ;;
+    4) printLane guarded "detector-failure: could not create a work directory under ${TMPDIR:-/tmp}" ;;
     *) printLane guarded "detector-failure: security-surface.sh returned $detectorStatus" ;;
   esac
 }
@@ -195,41 +202,62 @@ classifyRange() {
   printLane fast "clear: $changedCount files"
 }
 
-# listScopeCandidates <glob>...: prints each glob's text, then every tracked
-# file the glob matches, its * crossing directory separators as
-# scope-widening-gate.sh matches scope entries.
+# listScopeCandidates <entry>...: prints each scope entry's text, then every
+# tracked file the entry covers, matched by scope-match.sh's is_in_scope (a glob
+# entry as a shell pattern whose * crosses separators, any other entry as a
+# directory prefix), exactly as scope-widening-gate.sh reads the same entries.
 listScopeCandidates() {
-  local scopeGlob trackedPath
-  for scopeGlob in "$@"; do
-    printf '%s\n' "$scopeGlob"
+  local scopeEntry trackedPath
+  for scopeEntry in "$@"; do
+    printf '%s\n' "$scopeEntry"
     while IFS= read -r trackedPath; do
-      # shellcheck disable=SC2053  # the glob is intentionally unquoted to match
-      [[ "$trackedPath" == $scopeGlob ]] && printf '%s\n' "$trackedPath"
+      is_in_scope "$trackedPath" "$scopeEntry" && printf '%s\n' "$trackedPath"
     done < <(git ls-files 2>/dev/null)
   done
 }
 
-# findSecurityPathPattern <path>: prints the first enforce/security-surface.json
+# loadSecurityPathPatterns: fills SECURITY_PATH_PATTERNS from the `paths` list
+# of enforce/security-surface.json, or sets LANE_RULES_ERROR and returns 1 when
+# the list is missing, empty, holds a non-string or empty entry, or holds a
+# pattern grep -E rejects, so predict fails closed as loadLaneRules does.
+loadSecurityPathPatterns() {
+  local pattern grepStatus
+  SECURITY_PATH_PATTERNS=()
+  jq -e '.paths | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' "$BUILD_LANE_SECURITY_FILE" >/dev/null 2>&1 \
+    || { LANE_RULES_ERROR="$BUILD_LANE_SECURITY_FILE paths must be a non-empty list of non-empty strings"; return 1; }
+  while IFS= read -r pattern; do
+    printf 'x\n' | grep -Eiq -- "$pattern" 2>/dev/null
+    grepStatus=$?
+    [ "$grepStatus" -le 1 ] || { LANE_RULES_ERROR="security-surface.json paths pattern rejected by grep -E: $pattern"; return 1; }
+    SECURITY_PATH_PATTERNS+=("$pattern")
+  done < <(jq -r '.paths[]' "$BUILD_LANE_SECURITY_FILE")
+}
+
+# findSecurityPathPattern <path>: prints the first loaded security-surface
 # `paths` regex the path matches, case-insensitively; returns 1 when none does.
 findSecurityPathPattern() {
   local candidatePath="$1" pattern
-  while IFS= read -r pattern; do
-    [ -n "$pattern" ] || continue
+  for pattern in "${SECURITY_PATH_PATTERNS[@]}"; do
     if printf '%s\n' "$candidatePath" | grep -Eiq -- "$pattern"; then
       printf '%s' "$pattern"
       return 0
     fi
-  done < <(jq -r '.paths[]? // empty' "$BUILD_LANE_SECURITY_FILE" 2>/dev/null)
+  done
   return 1
 }
 
 # predictScope <glob>...: the predict command: a security path first, then a
 # guarded path, else fast.
 predictScope() {
-  local candidatePath matchedPattern
+  local candidatePath matchedPattern scopeEntry
   [ $# -gt 0 ] || printLane guarded "config-failure: predict needs at least one scope glob"
-  jq -e '.paths | type == "array"' "$BUILD_LANE_SECURITY_FILE" >/dev/null 2>&1 \
-    || printLane guarded "config-failure: $BUILD_LANE_SECURITY_FILE unreadable"
+  for scopeEntry in "$@"; do
+    case "$scopeEntry" in *[![:space:]]*) ;; *) printLane guarded "config-failure: empty scope glob" ;; esac
+  done
+  loadSecurityPathPatterns || printLane guarded "config-failure: $LANE_RULES_ERROR"
+  [ -f "$BUILD_LANE_SCOPE_MATCH" ] || printLane guarded "config-failure: $BUILD_LANE_SCOPE_MATCH missing"
+  # shellcheck source=/dev/null
+  . "$BUILD_LANE_SCOPE_MATCH"
   while IFS= read -r candidatePath; do
     matchedPattern=$(findSecurityPathPattern "$candidatePath") && printLane guarded "security-surface: predicted $matchedPattern"
   done < <(listScopeCandidates "$@")
