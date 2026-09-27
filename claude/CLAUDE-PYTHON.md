@@ -7,6 +7,8 @@ paths:
 
 The Python track for API services, workers, and scheduled jobs. It mirrors `CLAUDE-BACKEND.md` (the Express track) section for section and restates the parts of `CLAUDE-DATABASE.md` that change shape under SQLAlchemy and Alembic. The universal rules in `CLAUDE.md` still apply; this file carries the Python form of every `[ts]`-tagged rule. Every choice below is the only supported choice: there is one framework, one worker, one package manager, and one logger.
 
+Write idiomatic Python above everything else in this file. Code that works but reads like TypeScript, Java, or C# translated line by line is wrong and gets rewritten; when two forms are equally correct, pick the one an experienced Python developer would write without thinking.
+
 ---
 
 ## Stack
@@ -139,10 +141,36 @@ Order within a module, top to bottom, one blank line between groups (the Python 
 5. The primary public function or class
 6. Private helpers (`_leading_underscore`), ordered by call sequence, caller above callee
 
-- Prefer module-level functions over classes for stateless logic; a class earns its place by holding state
-- Carve-out: a repository that holds request-scoped state (the `AsyncConnection` and the scoping `user_id`) may be a small class built by a dependency; its methods follow the same naming rules
 - `def` and `async def` only; never a lambda assigned to a name (ruff `E731`)
 - Every public function carries a docstring (ruff `D103`) and full type hints
+
+---
+
+## Idiomatic Python
+
+Every line reads as idiomatic, modern Python (PEP 8, PEP 20, Python 3.13 features). Never port patterns from another language:
+
+- Comprehensions and generator expressions over `append` in a loop (a plain `for` loop when the body has side effects); `for item in items` and `enumerate`/`zip`, never `range(len(items))`; unpacking (`first, *rest = rows`) over index access
+- Truthiness for emptiness (`if not line_items:`), never `len(x) == 0`; `is None` for `None`; EAFP (try, then catch the specific exception) over pre-checking with `in` or `hasattr` when failure is rare
+- `with` for every resource with a lifetime (connections, files, locks, timeouts), never manual `close()`; generators (`yield`) for streams and large sequences instead of materialized lists
+- f-strings for formatting (never in log messages, R-342), `pathlib.Path` over `os.path`, `dict.get` and `setdefault` over manual key checks; the standard library (`itertools`, `functools`, `collections`, `contextlib`) before a hand-written helper
+- Keyword-only parameters (`*,`) for any function taking a boolean flag or two parameters of the same type
+- No getters and setters (plain attributes, or `@property` when access needs logic); no `I`-prefixed interfaces: `typing.Protocol` for structural interfaces, `abc.ABC` only when implementations share code
+
+---
+
+## Functions, Classes, and Data Models
+
+Functions for logic, objects for state and boundaries, data models for data. Default to the simplest form and move down the list only when the code demands it:
+
+1. **Functions** for transformations, calculations, validation, orchestration, and stateless business logic
+2. **Data models** for structured data: Pydantic `BaseModel` at boundaries, `@dataclass(slots=True, frozen=True)` for internal values, `TypedDict` for typed dict shapes (Python Typing Patterns below)
+3. **Classes** only for meaningful mutable state, a lifecycle (start, stop, open, close), interchangeable implementations behind one interface, or an object that owns behavior over time
+
+- Never write a class to group related functions; the module is the grouping. A TypeScript-style `FooService`, `FooManager`, or `FooUtils` class becomes a `foo.py` module of plain functions
+- Never write a class whose only state is constructor arguments consumed by one method: `calculate_order_total(line_items, tax_rate)` is a function, never a `TotalCalculator(tax_rate).calculate(line_items)`. A `JobRunner` holding a queue, an `is_running` flag, and `start`/`stop` methods is a class, because it has dependencies, mutable state, and a lifecycle
+- Carve-out: a repository that holds request-scoped state (the `AsyncConnection` and the scoping `user_id`) may be a small class built by a dependency; its methods follow the same naming rules
+- Favoring functions is not pure functional programming: use loops, mutation of local state, exceptions, context managers, generators, and closures where they read most plainly; never force `map`/`reduce` chains or monadic patterns onto Python
 
 ---
 
