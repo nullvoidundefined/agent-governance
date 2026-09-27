@@ -54,7 +54,7 @@
     "skills/build-by-slice-require-review/SKILL.md": "sha256:8ff7e80e437b6abf3db4c03441a123800dd440299e3e58f0bf2d0a2b8e15b1a8",
     "skills/build-fast/SKILL.md": "sha256:91a813c6a8bd2e504a2752836cc512601a65b30746909c979ee172416384f534",
     "skills/build-fast/lane-rules.json": "sha256:14fc46df58a5a09d0ceef2165375d75cfeb82f88784961d56e3830cd4bf40ff9",
-    "skills/build-fast/scripts/build-lane.sh": "sha256:9036fb547137dd4a2bf77c8e71d4774f1c352482e6c9b96ee28dfacded2b5a33",
+    "skills/build-fast/scripts/build-lane.sh": "sha256:57f1bf8d7f5b714ee426f7819f5dc93314a64a1221a61e184e5d1e9bd7ef40f1",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:0414853899097a42da75e1b2e9914f1443ceefb651d9a8de4a409d090e50907b",
     "skills/cleanup-specs-plans/scripts/inventory.sh": "sha256:91417ec9bfed28e29a18b3b511cd5f2d102e6e3071a3531f8b8c9f44e5fafa5b",
     "skills/documentation-create/SKILL.md": "sha256:c2c783b2f519c341e1abfde943efd41c4432a486899aadcc86acfc085217b2d0",
@@ -90,7 +90,7 @@
     "skills/task-start/SKILL.md": "sha256:1c8bdcbfe283b6f8293178baad3e475fc26d69792bf0b91b9168554c6b986726",
     "skills/task-start/scripts/finding.sh": "sha256:1093603bacdf34684e826d1c2a45027ad47baea7c587643be7c153842e5bd86c",
     "skills/task-start/scripts/task-provenance.sh": "sha256:376189563db5db8f512d5cbd53ca39924ac1747a24fde77916ed73a6e1f2b919",
-    "skills/task-start/scripts/task-tier.sh": "sha256:2537e1932db4839aa3fc63160014ccc4fa08beeab4834ac034de401e7e829b5f",
+    "skills/task-start/scripts/task-tier.sh": "sha256:7f9447d0f26a13c4f58eb6a4cca76bd112c152dc6a6f6947c10835d9a413927c",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:517ccfad768a1231731d8b1565bb75b267a4eb99cedf6202a7440d24e23c7b4f",
     "skills/ticket-lifecycle/SKILL.md": "sha256:8c76a9e05a6c84a4e6256b8af1124e67678dfe36c9a2c2a526953eaee36ea9ec"
   },
