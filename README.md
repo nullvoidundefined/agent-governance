@@ -28,7 +28,7 @@ cd agent-governance
 - [What you get](#what-you-get)
 - [Features](#features)
 - [How a feature actually gets built](#how-a-feature-actually-gets-built)
-- [The two build skills, and how to tell them apart](#the-two-build-skills-and-how-to-tell-them-apart)
+- [The build skills, and how to tell them apart](#the-build-skills-and-how-to-tell-them-apart)
 - [The four layers](#the-four-layers)
 - [Repository layout](#repository-layout)
 - [One source, three tools](#one-source-three-tools)
@@ -201,13 +201,13 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 ### Skills
 
-Skills are named workflows the agent invokes when the work matches. There are 18 of them.
+Skills are named workflows the agent invokes when the work matches. There are 19 of them.
 
 | Stage | Skills |
 |---|---|
 | Starting work | `task-start` (classify the task into a tier that fixes its process), `ticket-lifecycle` (open, advance, and close the tracker ticket with estimates and actuals), `feature-create` (the worktree and product-doc rows for an approved plan), `repo-setup` (bring a new repository to the hygiene baseline) |
 | Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
-| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
+| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
 | Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `known-issues` (prior deployment incidents), `resolve-user-feedback` (triage an application's feedback table) |
 | Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
 
@@ -261,7 +261,7 @@ section is missing or empty.
 list and user stories, closes the ticket with measured actuals, and writes the session handoff so
 the next session starts from state rather than from scratch.
 
-## The two build skills, and how to tell them apart
+## The build skills, and how to tell them apart
 
 Two skills in this repository both look like "the one that builds things," and their triggers
 overlap enough that their own frontmatter cross-references the ambiguity. They are not alternatives.
@@ -344,6 +344,20 @@ refuses rather than guessing, and the cycle still applies by hand.
 **Reach for it when** the question is "how do I build this one behavior so that the test genuinely
 came first and nobody can quietly make a red thing green."
 
+### `build-fast` trades ceremony for wall time, on opt-in
+
+`build-fast` runs only when the owner says "build fast" or invokes `/build-fast`, and it exists for
+interviews, critical bug fixes, and any change where time to a working, merged change matters most
+(IAN-401). It asks every question once, up front, then builds on Haiku, the fastest model, in one
+test-first cycle for the whole change, and has the strongest model review the finished diff while CI
+runs, so the review adds almost no wall time. Before the first edit,
+`skills/build-fast/scripts/build-lane.sh predict` sorts the change into a `fast` or `guarded` lane from
+the declared file scope, and `classify` checks the committed range again before the review: anything
+touching a security surface, a migration, concurrency, or payments is `guarded`, which means the full
+Complex process when predicted, or an added security review and an owner merge when it only shows up
+after the code exists. It skips bug hunting and side quests, but it never skips a gate: hooks, the
+test lock, Semgrep, the secret scan, and CI all stay on.
+
 ### Side by side
 
 | | `build-by-slice-require-review` | `tdd-gated-dispatch` |
@@ -405,7 +419,7 @@ agent-governance/
 │   ├── rules/             Session types and the path-scoped convention symlinks
 │   ├── hooks/             73 guards and helpers, 23 fixtures under tests/
 │   ├── enforce/           tdd.sh, doctor.sh, the manifest, ESLint rules, 157 fixtures
-│   ├── skills/            18 workflow skills
+│   ├── skills/            19 workflow skills
 │   ├── agents/            9 audit, 4 build, and 2 reviewer roles
 │   ├── prompts/           Review prompts and document templates
 │   └── global-memory/     Cross-project lessons, loaded at session start
