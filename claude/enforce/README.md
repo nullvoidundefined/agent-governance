@@ -212,12 +212,16 @@ because macOS ships perl but no `flock(1)`, and both in the directory
 `${TMPDIR:-/tmp}/claude-fixture-shards.<uid>/`. The runner creates that
 directory mode 700 and exits 1 when it is a symlink, belongs to another
 user, or lets group or others read, write, or traverse it, checking it
-before it reads any nesting marker. It also judges `TMPDIR` itself, after
-resolving symlinks: the directory must belong to the user or to root, and
-must be closed to writes by others or carry the sticky bit, or another user
-could swap the checked directory for a symlink before the locks are opened
-(`/tmp` is root's and sticky, and macOS's per-user `TMPDIR` is the user's
-and private, so neither is affected). All of this
+before it reads any nesting marker. It also judges `TMPDIR` and every
+directory above it, after resolving symlinks, the check OpenSSH's
+`safe_path` makes: each must belong to the user or to root, and must be
+closed to writes by others or carry the sticky bit, or another user could
+swap an entry below it for a symlink before the locks are opened. The locks
+are then opened through that resolved path, never through a symlink that
+could be re-pointed after the check, and a `TMPDIR` that does not exist is
+refused rather than created. `/tmp` (root's and sticky, under root's `/`)
+and macOS's per-user `TMPDIR` (the user's, under root's directories) both
+pass. All of this
 is because the lock names are fixed and
 in a shared `/tmp` another user could otherwise plant a symlink where the
 runner writes (PR #154 review):

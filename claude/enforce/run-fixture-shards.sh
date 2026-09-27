@@ -93,12 +93,14 @@ LOAD_FROM=""
 # directory private to the user, created mode 700 and refused when it is a
 # symlink, another user's, or open to others, because their names are fixed
 # and a shared /tmp would let another user plant a symlink where the runner
-# writes (PR #154 review). RUN_LOCK_FILE is set once the tests directory, and
-# so the worktree, is known.
+# writes (PR #154 review). RUN_LOCK_KEY is set once the tests directory, and
+# so the worktree, is known; require_lock_parent_dir then rebuilds the
+# directory and prefix on TMPDIR's resolved path and sets RUN_LOCK_FILE.
 RUN_LOCK_PARENT_DIR="${TMPDIR:-/tmp}"
 RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.$(id -u)"
 RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-fixture-shards"
 RUN_LOCK_FILE=""
+RUN_LOCK_KEY=""
 RUN_SLOT=""
 RUN_LOCK_POLL_SECONDS=2
 RUN_LOCK_WAIT_DEFAULT_SECONDS=1200
@@ -331,12 +333,12 @@ worktree_root() {
   git -C "$1" rev-parse --show-toplevel 2>/dev/null || (cd "$1" && pwd -P)
 }
 
-# worktree_lock_path <tests dir>: the run lock of the checkout holding the
-# tests directory. One per checkout, so a linked worktree and the main
-# checkout queue separately, while the enforce and hook trees of one checkout
-# share a lock and never run at once.
-worktree_lock_path() {
-  echo "$RUN_LOCK_PREFIX.worktree.$(printf '%s' "$(worktree_root "$1")" | cksum | awk '{print $1}').flock"
+# worktree_lock_key <tests dir>: the number naming the run lock of the
+# checkout holding the tests directory. One per checkout, so a linked worktree
+# and the main checkout queue separately, while the enforce and hook trees of
+# one checkout share a lock and never run at once.
+worktree_lock_key() {
+  printf '%s' "$(worktree_root "$1")" | cksum | awk '{print $1}'
 }
 
 # run_slot_path <n>: the lock file of machine-wide run slot n.
@@ -494,39 +496,62 @@ give_up_waiting_for_slot() {
   exit "$RUN_LOCK_GAVE_UP_STATUS"
 }
 
-# require_lock_parent_dir: exits 1 when the lock's parent directory cannot be
-# created or written, which would otherwise read as a busy lock (PR #129
-# review).
+# require_lock_parent_dir: exits 1 when TMPDIR is missing, cannot be written,
+# or is not safe to hold the locks, which would otherwise read as a busy lock
+# (PR #129 review). A missing TMPDIR is refused rather than created, since
+# mkdir -p would make it under the caller's umask inside directories nobody
+# checked (PR #154 review round 5). Once TMPDIR passes, the lock directory,
+# prefix, and worktree lock file are rebuilt on its resolved path, so every
+# lock is opened through the path that was checked, never through a symlink
+# that could be re-pointed afterwards.
 require_lock_parent_dir() {
-  mkdir -p "$RUN_LOCK_PARENT_DIR" 2>/dev/null
-  if [ ! -d "$RUN_LOCK_PARENT_DIR" ] || [ ! -w "$RUN_LOCK_PARENT_DIR" ]; then
-    echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is missing or not writable; point TMPDIR at a writable directory" >&2
+  local resolved_parent
+  if [ ! -d "$RUN_LOCK_PARENT_DIR" ]; then
+    echo "fixture-shards: the run lock parent $RUN_LOCK_PARENT_DIR does not exist; create it or point TMPDIR at an existing directory" >&2
     exit 1
   fi
-  require_safe_lock_parent_dir
-}
-
-# require_safe_lock_parent_dir: exits 1 unless the lock parent, judged after
-# resolving symlinks (find reads a symlink's own mode, 0777 on Linux and 0755
-# on macOS, while the lock lives in its target), is owned by this user or by
-# root, and is either closed to writes by others or sticky. Otherwise another
-# user could rename the checked lock directory and plant a symlink in its
-# place before the locks are opened: the sticky bit stops other users but not
-# the directory's owner. /tmp is root's and sticky, and macOS's per-user
-# TMPDIR is the user's and private (PR #154 review rounds 3 and 4).
-require_safe_lock_parent_dir() {
-  local resolved_parent
+  if [ ! -w "$RUN_LOCK_PARENT_DIR" ]; then
+    echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is not writable; point TMPDIR at a writable directory" >&2
+    exit 1
+  fi
   resolved_parent=$(cd "$RUN_LOCK_PARENT_DIR" 2>/dev/null && pwd -P) || {
     echo "fixture-shards: cannot resolve the run lock parent $RUN_LOCK_PARENT_DIR; point TMPDIR at a writable directory" >&2
     exit 1
   }
-  if [ ! -O "$resolved_parent" ] && [ -z "$(find "$resolved_parent" -maxdepth 0 -user 0 2>/dev/null)" ]; then
-    echo "fixture-shards: $resolved_parent belongs to another user, who could replace the run lock directory; point TMPDIR at your own or root's directory" >&2
-    exit 1
+  require_safe_directory_chain "$resolved_parent"
+  RUN_LOCK_DIR="${resolved_parent%/}/claude-fixture-shards.$(id -u)"
+  RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-fixture-shards"
+  RUN_LOCK_FILE="$RUN_LOCK_PREFIX.worktree.$RUN_LOCK_KEY.flock"
+}
+
+# require_safe_directory_chain <resolved dir>: exits 1 unless the directory
+# and every ancestor up to / is owned by this user or by root and is closed to
+# writes by others or sticky, the check OpenSSH's safe_path makes. Any other
+# directory on the chain would let another user rename an entry below it and
+# plant a symlink before the locks are opened: the sticky bit stops other
+# users but not the directory's owner. The path is already resolved, so find
+# reads each directory's own mode rather than a symlink's (0777 on Linux,
+# 0755 on macOS). /tmp is root's and sticky, and macOS's per-user TMPDIR sits
+# under root's directories (PR #154 review rounds 3, 4, and 5).
+require_safe_directory_chain() {
+  local chain_dir="$1"
+  while :; do
+    is_safe_chain_directory "$chain_dir" || exit 1
+    [ "$chain_dir" = / ] && return 0
+    chain_dir=$(dirname "$chain_dir")
+  done
+}
+
+# is_safe_chain_directory <dir>: true when the directory is owned by this user
+# or root and is closed to writes by others or sticky; otherwise prints why.
+is_safe_chain_directory() {
+  if [ ! -O "$1" ] && [ -z "$(find "$1" -maxdepth 0 -user 0 2>/dev/null)" ]; then
+    echo "fixture-shards: $1 belongs to another user, who could replace the run lock directory below it; point TMPDIR at a directory whose every ancestor is yours or root's" >&2
+    return 1
   fi
-  if [ -n "$(find "$resolved_parent" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ] && [ ! -k "$resolved_parent" ]; then
-    echo "fixture-shards: $resolved_parent can be written by others and lacks the sticky bit, so the run lock cannot be kept safely there; point TMPDIR at a private or sticky directory" >&2
-    exit 1
+  if [ -n "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ] && [ ! -k "$1" ]; then
+    echo "fixture-shards: $1 can be written by others and lacks the sticky bit, so the run lock cannot be kept safely below it; point TMPDIR at a directory whose every ancestor is private or sticky" >&2
+    return 1
   fi
 }
 
@@ -644,7 +669,7 @@ main() {
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
   [ "$settle_max_seconds" -ge "$settle_seconds" ] || usage_error "--settle-max-seconds ($settle_max_seconds) is below --settle-seconds ($settle_seconds)"
   tests_dir=$(cd "$tests_dir" && pwd)
-  RUN_LOCK_FILE=$(worktree_lock_path "$tests_dir")
+  RUN_LOCK_KEY=$(worktree_lock_key "$tests_dir")
   fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
   [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
   total=$(grep -c . <<< "$fixtures")
