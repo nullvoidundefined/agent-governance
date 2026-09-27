@@ -56,9 +56,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+      # --ignore-scripts: this job holds pages: write and id-token: write, so
+      # no dependency lifecycle script runs here; the build only copies fonts.
       - name: Install site dependencies
         working-directory: site
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Build with the latest release's version and checksum
         env:
           GH_TOKEN: ${{ github.token }}
