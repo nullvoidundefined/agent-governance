@@ -573,7 +573,10 @@ run_with_deadline 30 "$SANDBOX/broken-ps.out" "$W2/tests" broken-ps FIXTURE_SHAR
   PATH="$BROKEN_PS_BIN:$PATH" FIXTURE_SHARDS_LOCK_HELD="$foreign_runner_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$foreign_lock_file"; broken_ps_status=$?
 check "broken ps: a foreign live marker is still refused, and the run gives up with 75" test "$broken_ps_status" -eq 75
 check "broken ps: the run ran no fixture" not grep -q "start broken-ps\$" "$EVENTS"
-kill "$foreign_runner_pid" 2>/dev/null; pkill -P "$foreign_runner_pid" 2>/dev/null; wait "$foreign_runner_pid" 2>/dev/null
+# Let the holder finish rather than kill it: a kill reaches the runner but not
+# its worker's fixture, which would keep slot 1 and write to EVENTS during the
+# next case (PR #154 review round 8).
+wait "$foreign_runner_pid" 2>/dev/null
 
 # Case 17: a marker naming a file in the lock directory that is not a worktree
 # lock, here slot 1, is refused by name. The slot records a dead PID while a
@@ -591,6 +594,6 @@ run_with_deadline 30 "$SANDBOX/slot-marker.out" "$W2/tests" slot-marker FIXTURE_
   FIXTURE_SHARDS_LOCK_HELD="$slot_marker_dead_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$(slot_file 1)"; slot_marker_status=$?
 kill "$slot_marker_holder_pid" 2>/dev/null; wait "$slot_marker_holder_pid" 2>/dev/null
 check "slot-file marker: the run queues for the held slot and gives up with 75" test "$slot_marker_status" -eq 75
-check "slot-file marker: no fixture ran" test ! -s "$EVENTS"
+check "slot-file marker: no fixture ran" not grep -q "start slot-marker" "$EVENTS"
 
 if [ "$fail" -eq 0 ]; then echo "run-fixture-shards-run-cap: PASS"; else echo "run-fixture-shards-run-cap: FAIL"; exit 1; fi
