@@ -9,7 +9,12 @@
 # has no leading comment or docstring. Stays silent for non-code files, tests,
 # type decls, stories, configs, and migrations, and for files that already start
 # with a comment or docstring. Never blocks.
-jq -rc '
+hook_input=$(cat)
+file_path=$(printf '%s' "$hook_input" | jq -r '.tool_input.file_path // ""' 2>/dev/null)
+# The build-fast fast lane silences this advisory reminder (IAN-401, B-6).
+. "$(dirname "$0")/build-lane-quiet.sh"
+is_reminder_quiet "$file_path" && exit 0
+printf '%s' "$hook_input" | jq -rc '
   .tool_input as $i
   | ($i.file_path // "") as $p
   | ($i.content // "") as $c

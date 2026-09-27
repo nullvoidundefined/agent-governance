@@ -33,6 +33,9 @@ BASE=$(resolve_outgoing_base)
 
 TOP="$(run_git_on_target rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$TOP" ] || exit 0
+# The build-fast fast lane silences this advisory reminder (IAN-401, B-6).
+. "$(dirname "${BASH_SOURCE[0]}")/build-lane-quiet.sh"
+if is_reminder_quiet "$TOP"; then exit 0; fi
 # Go is deliberately absent: single-file packages are idiomatic Go, so the
 # R-309 advisory does not apply to .go trees.
 FILES=$(run_git_on_target diff --name-only --diff-filter=ACMR "$BASE"..HEAD 2>/dev/null | grep -E '\.(tsx?|py|rb)$' || true)

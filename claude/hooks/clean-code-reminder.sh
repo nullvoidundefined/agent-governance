@@ -11,6 +11,9 @@
 file_path=$(jq -rc '.tool_input.file_path // ""' 2>/dev/null)
 [ -z "$file_path" ] && exit 0
 [ -f "$file_path" ] || exit 0
+# The build-fast fast lane silences this advisory reminder (IAN-401, B-6).
+. "$(dirname "$0")/build-lane-quiet.sh"
+is_reminder_quiet "$file_path" && exit 0
 
 case "$file_path" in
     *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs | *.py | *.rb | *.go) : ;;
