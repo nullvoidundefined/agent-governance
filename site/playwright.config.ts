@@ -3,7 +3,7 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
+    projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
     testDir: 'tests/e2e',
     use: { baseURL: `http://localhost:${process.env.SITE_PORT ?? '3000'}` },
-    projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 });
