@@ -384,7 +384,16 @@ check "world-writable lock directory: no fixture ran" test ! -s "$EVENTS"
 is_private_directory() {
   [ -d "$1" ] && [ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 -o -perm -010 -o -perm -001 \))" ]
 }
-check "a lock directory the runner creates is private (mode 700)" is_private_directory "$LOCK_DIR"
+# The runner must set the mode itself: this fixture runs under umask 077,
+# which would make any directory private, so the run that creates the lock
+# directory here runs under umask 022 (PR #154 review round 5).
+FRESH_TMPDIR="$SANDBOX/fresh-tmp"
+mkdir -p "$FRESH_TMPDIR"
+: > "$EVENTS"
+( umask 022; run_with_deadline 30 "$SANDBOX/fresh.out" "$W2/tests" fresh TMPDIR="$FRESH_TMPDIR" ); fresh_status=$?
+check "under umask 022 the run that creates the lock directory passes" test "$fresh_status" -eq 0
+check "under umask 022 the lock directory the runner creates is still private (mode 700)" \
+  is_private_directory "$FRESH_TMPDIR/claude-fixture-shards.$(id -u)"
 
 # Case 13a: a lock directory others can traverse (mode 711), which would let
 # another user open and flock a lock file by its fixed name, is refused too
@@ -437,6 +446,42 @@ ln -s "$PRIVATE_TARGET" "$SANDBOX/private-link"
 run_with_deadline 30 "$SANDBOX/private-link.out" "$W2/tests" private-link TMPDIR="$SANDBOX/private-link"; private_link_status=$?
 check "symlink to a private TMPDIR: the run passes" test "$private_link_status" -eq 0
 check "symlink to a private TMPDIR: the fixture ran" grep -q "start private-link" "$EVENTS"
+check "symlink to a private TMPDIR: the lock directory is made in the resolved target" \
+  test -d "$PRIVATE_TARGET/claude-fixture-shards.$(id -u)"
+
+# Case 13d: every ancestor of TMPDIR is judged, not only TMPDIR: a private
+# directory of the user's inside a shared non-sticky one is refused, because
+# the shared directory's other writers could rename it away and put a
+# symlink in its place; the same private directory inside a sticky shared one
+# is accepted (PR #154 review round 5, the check OpenSSH's safe_path makes).
+SHARED_NONSTICKY="$SANDBOX/shared-nonsticky"
+mkdir -p "$SHARED_NONSTICKY/mine"
+chmod 700 "$SHARED_NONSTICKY/mine"
+chmod 777 "$SHARED_NONSTICKY"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/ancestor.out" "$W2/tests" ancestor TMPDIR="$SHARED_NONSTICKY/mine"; ancestor_status=$?
+check "private TMPDIR in a shared non-sticky ancestor: the run exits 1" test "$ancestor_status" -eq 1
+check "private TMPDIR in a shared non-sticky ancestor: the message names that ancestor" grep -q "$SHARED_NONSTICKY" "$SANDBOX/ancestor.out"
+check "private TMPDIR in a shared non-sticky ancestor: no fixture ran" test ! -s "$EVENTS"
+check "private TMPDIR in a shared non-sticky ancestor: no lock directory is made" test ! -e "$SHARED_NONSTICKY/mine/claude-fixture-shards.$(id -u)"
+SHARED_STICKY="$SANDBOX/shared-sticky"
+mkdir -p "$SHARED_STICKY/mine"
+chmod 700 "$SHARED_STICKY/mine"
+chmod 1777 "$SHARED_STICKY"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/sticky-ancestor.out" "$W2/tests" sticky-ancestor TMPDIR="$SHARED_STICKY/mine"; sticky_ancestor_status=$?
+check "private TMPDIR in a sticky shared ancestor: the run passes" test "$sticky_ancestor_status" -eq 0
+check "private TMPDIR in a sticky shared ancestor: the fixture ran" grep -q "start sticky-ancestor" "$EVENTS"
+
+# Case 13e: a TMPDIR that does not exist is refused, not created: mkdir -p
+# would make it under the caller's umask inside a directory nobody checked
+# (PR #154 review round 5).
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/missing.out" "$W2/tests" missing TMPDIR="$SANDBOX/no-such-tmp/deeper"; missing_status=$?
+check "missing TMPDIR: the run exits 1" test "$missing_status" -eq 1
+check "missing TMPDIR: the message says it does not exist" grep -q "does not exist" "$SANDBOX/missing.out"
+check "missing TMPDIR: it is not created" test ! -e "$SANDBOX/no-such-tmp"
+check "missing TMPDIR: no fixture ran" test ! -s "$EVENTS"
 
 # Case 14: a nested run whose TMPDIR spells the lock directory another way
 # (a symlink, as /var and /private/var are on macOS) still recognises its

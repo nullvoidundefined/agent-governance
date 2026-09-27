@@ -233,6 +233,17 @@ check "a run refused a foreign marker leaves the holder's lock held" not is_lock
 run_with_deadline 30 "$SANDBOX/stale-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$(dead_pid_of_finished_process)" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; stale_marker_status=$?
 check "a stale marker does not skip the lock: the run queues and gives up with 75" test "$stale_marker_status" -eq 75
 check "a run with a stale marker runs no fixture while the lock is held" test ! -s "$EVENTS"
+# The marker shapes most likely in the field (PR #154 security review round
+# 5): a PID left exported by a pre-IAN-441 runner with no file marker beside
+# it, and a non-numeric PID beside the real file. Both are refused and queue.
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/pid-only-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; pid_only_status=$?
+check "a PID marker with no file marker does not skip the lock: 75" test "$pid_only_status" -eq 75
+check "a PID marker with no file marker runs no fixture" test ! -s "$EVENTS"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/star-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD='*' FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; star_status=$?
+check "a non-numeric PID marker does not skip the lock: 75" test "$star_status" -eq 75
+check "a non-numeric PID marker runs no fixture" test ! -s "$EVENTS"
 
 # Case 6: the wait cap. A live holder never lets go, so the run gives up after
 # the cap with exit 75, the code the gate does not retry (IAN-351), a message
