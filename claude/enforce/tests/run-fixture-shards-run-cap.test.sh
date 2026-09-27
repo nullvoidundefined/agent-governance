@@ -251,6 +251,25 @@ check "GIT_CEILING_DIRECTORIES: both runs pass" test "$ceiling_first_status" -eq
 check "GIT_CEILING_DIRECTORIES: the second run still starts after the first ends" \
   test "$(tr '\n' ' ' < "$EVENTS")" = "start ceiling-a end ceiling-a start ceiling-b end ceiling-b "
 
+# Case 2b: when git refuses the checkout (its dubious-ownership check on a
+# checkout another user owns, or git missing), the key still comes from the
+# checkout's top directory, found through the nearest .git, so its two tests
+# directories still queue on one lock (PR #154 security review round 10). A
+# git shim that always fails stands in for the refusal.
+REFUSING_GIT_BIN="$SANDBOX/refusing-git-bin"
+mkdir -p "$REFUSING_GIT_BIN"
+printf '#!/bin/sh\necho "fatal: detected dubious ownership" >&2\nexit 128\n' > "$REFUSING_GIT_BIN/git"
+chmod +x "$REFUSING_GIT_BIN/git"
+: > "$EVENTS"
+start_runner_in_background "$SANDBOX/refused-first.out" "$W1/tests" refused-a FIXTURE_SHARDS_MAX_RUNS=2 PATH="$REFUSING_GIT_BIN:$PATH"
+refused_first_pid=$STARTED_RUNNER_PID
+wait_for_line 15 "start refused-a" "$EVENTS"
+run_with_deadline 60 "$SANDBOX/refused-second.out" "$W1/other-tests" refused-b FIXTURE_SHARDS_MAX_RUNS=2 PATH="$REFUSING_GIT_BIN:$PATH"; refused_second_status=$?
+wait "$refused_first_pid"; refused_first_status=$?
+check "git refusing the checkout: both runs pass" test "$refused_first_status" -eq 0 -a "$refused_second_status" -eq 0
+check "git refusing the checkout: the second run still starts after the first ends" \
+  test "$(tr '\n' ' ' < "$EVENTS")" = "start refused-a end refused-a start refused-b end refused-b "
+
 # Case 3: the default cap is half the online CPUs, at least 1, and the run
 # names its slot and the cap.
 cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
