@@ -341,12 +341,16 @@ worktree_root() {
 # nearest_git_root <dir>: the nearest directory at or above the resolved
 # directory holding a .git entry (a directory, or a linked worktree's file),
 # or the resolved directory itself when there is none. Reads the filesystem
-# only, never a repository's configuration.
+# only, never a repository's configuration. A directory that can no longer be
+# entered is returned as given, since walking an empty path would reach "."
+# and never end; the run then finds no fixtures there and exits 1 (PR #154
+# review round 11). The walk also stops at any path that is not absolute.
 nearest_git_root() {
   local resolved_dir candidate_dir
-  resolved_dir=$(cd "$1" && pwd -P)
+  resolved_dir=$(cd "$1" 2>/dev/null && pwd -P) || { echo "$1"; return 0; }
   candidate_dir="$resolved_dir"
   while :; do
+    case "$candidate_dir" in /*) ;; *) break ;; esac
     [ -e "$candidate_dir/.git" ] && { echo "$candidate_dir"; return 0; }
     [ "$candidate_dir" = / ] && break
     candidate_dir=$(dirname "$candidate_dir")
