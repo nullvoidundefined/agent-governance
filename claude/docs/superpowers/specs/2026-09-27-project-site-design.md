@@ -119,12 +119,14 @@ None. The only state is the set of published releases, owned by GitHub.
 - The site sets a strict CSP, `frame-ancestors 'none'` in the nginx header, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`.
 - GitHub Pages cannot set response headers, so the deployed site carries only the meta-tag CSP and `<meta name="referrer" content="no-referrer">`. `frame-ancestors 'none'` and `X-Content-Type-Options: nosniff` are sent by the nginx container alone, so the Pages deployment can be framed. The page is static, with no forms, sign-in, or scripts, so framing it can at most overlay its download link. The owner waived this gap on 2026-09-27 (PR 159 security review, finding 1).
 - Workflow permissions are least-privilege per job: the release job holds `contents: write`; the site deploy job holds `pages: write` and `id-token: write`; the test job holds `contents: read`.
+- The release job runs in the protected `release` environment, whose required reviewer is the owner, so no tag push publishes a release without the owner's approval (PR 159 security review, finding 5). The deploy job installs with `npm ci --ignore-scripts`, and the site image is pinned by digest (findings 3 and 4). `release/tests/workflow-hardening.test.sh` asserts all of these, plus SHA-pinned actions and per-job write permissions (finding 2).
 
 ### Deploy steps that need the owner's yes
 
 1. Enabling GitHub Pages with source "GitHub Actions", which is a repository settings change.
-2. Pushing the `v0.1.0` tag, which publishes a release on the public remote (R-106).
-3. Merging the PR.
+2. Creating the `release` environment with the owner as required reviewer, which is a repository settings change.
+3. Pushing the `v0.1.0` tag, which publishes a release on the public remote (R-106).
+4. Merging the PR.
 
 ## Domain vocabulary
 
