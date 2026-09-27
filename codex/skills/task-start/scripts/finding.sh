@@ -13,8 +13,12 @@
 #
 # Usage:
 #   finding.sh add "<what was found>" --kind bug|task|optimization
+#                                     --value breaking|high|medium|low|none
 #                                     [--where <path or area>] [--ticket <KEY>]
-#       records one finding. --ticket attaches the tracker key when the ticket
+#       records one finding. --value rates what fixing it is worth (IAN-471):
+#       a low finding files at Linear priority 3 and a none finding at 4, and
+#       neither is worked in the session that found it; only the owner pulls
+#       one in. --ticket attaches the tracker key when the ticket
 #       already exists; leaving it off records the finding as open, and
 #       `finding.sh open` is then the list of things still owed a ticket.
 #   finding.sh ticket <id> <KEY>   attaches a key to an already-recorded finding
@@ -70,14 +74,15 @@ warn_when_tracked() {
 }
 
 cmd_add() {
-  local description="${1:-}" kind="" where="" ticket="" next_id
+  local description="${1:-}" kind="" value="" where="" ticket="" next_id
   shift 1 2>/dev/null || true
   while [ $# -gt 0 ]; do
     case "$1" in
       --kind) kind="${2:-}"; shift 2 2>/dev/null || shift ;;
+      --value) value="${2:-}"; shift 2 2>/dev/null || shift ;;
       --where) where="${2:-}"; shift 2 2>/dev/null || shift ;;
       --ticket) ticket="${2:-}"; shift 2 2>/dev/null || shift ;;
-      *) die "unknown option '$1' (expected --kind, --where, or --ticket)" ;;
+      *) die "unknown option '$1' (expected --kind, --value, --where, or --ticket)" ;;
     esac
   done
   [ -n "$description" ] || die "say what was found as the first argument, in one sentence"
@@ -85,26 +90,43 @@ cmd_add() {
     bug | task | optimization) ;;
     *) die "--kind must be bug, task, or optimization (got '${kind}'); a bug is broken behavior, a task is work that needs doing, an optimization is something that works but could be better" ;;
   esac
+  case "$value" in
+    breaking | high | medium | low | none) ;;
+    *) die "--value must be breaking, high, medium, low, or none (got '${value}'); rate what fixing it is worth, since a low or none finding is filed and never worked in this session" ;;
+  esac
   if [ -n "$ticket" ] && ! printf '%s' "$ticket" | grep -qE '^[A-Z][A-Z0-9]+-[0-9]+$'; then
     die "--ticket takes a tracker key such as IAN-201 (got '${ticket}')"
   fi
   mkdir -p "$ROOT/.claude"
   next_id=$(read_ledger | jq '(map(.id) | max // 0) + 1')
   write_ledger '
-    . + [ {id: $id, kind: $kind, description: $description, foundAt: $iso, branch: $branch}
+    . + [ {id: $id, kind: $kind, value: $value, description: $description, foundAt: $iso, branch: $branch}
           + (if $where != "" then {where: $where} else {} end)
           + (if $ticket != "" then {ticket: $ticket} else {} end) ]
-  ' --argjson id "$next_id" --arg description "$description" --arg kind "$kind" \
+  ' --argjson id "$next_id" --arg description "$description" --arg kind "$kind" --arg value "$value" \
     --arg where "$where" --arg ticket "$ticket" \
     --arg branch "$(git -C "$ROOT" branch --show-current 2>/dev/null)" \
     --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   warn_when_tracked
+  print_value_instruction "$value"
   if [ -n "$ticket" ]; then
     printf 'finding %d recorded (%s, %s): %s\n' "$next_id" "$kind" "$ticket" "$description"
   else
     printf 'finding %d recorded (%s, no ticket yet): %s\n' "$next_id" "$kind" "$description"
     printf 'Open its ticket with /ticket-lifecycle, then: finding.sh ticket %d <KEY>\n' "$next_id"
   fi
+}
+
+# print_value_instruction <value>: tells the session what a low or none rating
+# means before it can drift into the work (IAN-471). The owner mapped low to
+# Linear priority 3 and none to 4; a breaking, high, or medium finding keeps
+# its priority by urgency and still needs the owner's yes before it widens
+# the task (R-212).
+print_value_instruction() {
+  case "$1" in
+    low) printf 'finding: rated low: file its ticket at Linear priority 3 and do not work it in this session; the owner pulls it in\n' ;;
+    none) printf 'finding: rated none: file its ticket at Linear priority 4 and do not work it in this session; the owner pulls it in\n' ;;
+  esac
 }
 
 cmd_ticket() {
@@ -121,7 +143,7 @@ cmd_ticket() {
 # drift into showing different columns for the same row.
 print_findings() {
   local rows
-  rows=$(read_ledger | jq -r "$1"' | .[] | "  [\(.id)] \(.kind): \(.description)" + (if .where then " (\(.where))" else "" end) + " -> " + (.ticket // "NO TICKET")')
+  rows=$(read_ledger | jq -r "$1"' | .[] | "  [\(.id)] \(.kind)" + (if .value then ", \(.value)" else "" end) + ": \(.description)" + (if .where then " (\(.where))" else "" end) + " -> " + (.ticket // "NO TICKET")')
   [ -n "$rows" ] || { printf 'finding: none recorded\n'; return 0; }
   printf '%s\n' "$rows"
 }
@@ -132,5 +154,5 @@ case "${1:-}" in
   list) print_findings '.' ;;
   open) print_findings 'map(select(.ticket == null or .ticket == ""))' ;;
   clear) rm -f "$LEDGER" && printf 'finding: cleared\n' ;;
-  *) die "usage: finding.sh add \"<what>\" --kind bug|task|optimization [--where <path>] [--ticket <KEY>] | ticket <id> <KEY> | list | open | clear" ;;
+  *) die "usage: finding.sh add \"<what>\" --kind bug|task|optimization --value breaking|high|medium|low|none [--where <path>] [--ticket <KEY>] | ticket <id> <KEY> | list | open | clear" ;;
 esac
