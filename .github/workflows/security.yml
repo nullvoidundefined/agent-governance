@@ -1,0 +1,180 @@
+# The reusable security CI workflow (IAN-381 Part 7; spec
+# claude/docs/superpowers/specs/2026-09-25-security-first-gate-design.md,
+# "Part 7 addendum", B-23).
+#
+# The pre-push security gate (hooks/push-semgrep-gate.sh) runs on the author's
+# machine, so `--no-verify` skips it. This workflow runs the same rule pack
+# somewhere the author does not control. An adopting repository calls it from
+# a short caller workflow pinned to a full commit SHA of agent-governance:
+#
+#   jobs:
+#     security:
+#       uses: nullvoidundefined/agent-governance/.github/workflows/security.yml@<40-char sha>
+#
+# and grants the caller `contents: read`, `security-events: write`, and
+# `actions: read`. The checks it produces are `security / semgrep`,
+# `security / codeql (<language>)`, and GitHub's own `CodeQL` code-scanning
+# check, which is what blocks a PR on a new CodeQL alert.
+#
+# It takes no inputs, so a caller cannot soften it: the scan targets come from
+# the base commit's `.enforce.json`, and the CodeQL languages are derived from
+# the tracked files. The harness (the rule pack and the scripts) is fetched
+# from `job.workflow_repository` at `job.workflow_sha`, the exact commit the
+# caller pinned, into $RUNNER_TEMP, outside the workspace the scanners read.
+# Event values reach scripts only through `env:`, never as `${{ }}` inside a
+# `run:` line, so a branch name or a PR title cannot inject shell.
+name: security
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse pull_request_target
+        if: github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::security.yml refuses pull_request_target, which runs fork code with a write token; call it on pull_request."
+          exit 2
+
+      # PR mode scans the PR head, not the merge ref, so the scanned bytes are
+      # the ones the merge gate's range head names; full history lets the
+      # lister find the merge base.
+      - name: Check out the caller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the harness at the pinned commit
+        env:
+          HARNESS_REPOSITORY: ${{ job.workflow_repository }}
+          HARNESS_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$HARNESS_REPOSITORY" != "nullvoidundefined/agent-governance" ]; then
+            echo "::error::unexpected harness repository '$HARNESS_REPOSITORY'"; exit 2
+          fi
+          if ! printf '%s' "$HARNESS_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::the harness commit '$HARNESS_SHA' is not a 40-character SHA"; exit 2
+          fi
+          harness_dir="$RUNNER_TEMP/harness"
+          git init --quiet "$harness_dir"
+          git -C "$harness_dir" fetch --quiet --depth 1 "https://github.com/$HARNESS_REPOSITORY.git" "$HARNESS_SHA"
+          git -C "$harness_dir" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$harness_dir" rev-parse HEAD)" = "$HARNESS_SHA"
+
+      - name: Install Semgrep
+        run: pipx install semgrep==1.178.0
+
+      - name: Scan with the security rule pack and p/default
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          scanner="$RUNNER_TEMP/harness/claude/enforce/security-ci-semgrep.sh"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            bash "$scanner" --mode pr --base "$BASE_SHA"
+          else
+            bash "$scanner" --mode full
+          fi
+
+  languages:
+    name: languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      list: ${{ steps.derive.outputs.list }}
+    steps:
+      - name: Refuse pull_request_target
+        if: github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::security.yml refuses pull_request_target; call it on pull_request."
+          exit 2
+
+      - name: Check out the caller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Fetch the harness at the pinned commit
+        env:
+          HARNESS_REPOSITORY: ${{ job.workflow_repository }}
+          HARNESS_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$HARNESS_REPOSITORY" != "nullvoidundefined/agent-governance" ]; then
+            echo "::error::unexpected harness repository '$HARNESS_REPOSITORY'"; exit 2
+          fi
+          if ! printf '%s' "$HARNESS_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::the harness commit '$HARNESS_SHA' is not a 40-character SHA"; exit 2
+          fi
+          harness_dir="$RUNNER_TEMP/harness"
+          git init --quiet "$harness_dir"
+          git -C "$harness_dir" fetch --quiet --depth 1 "https://github.com/$HARNESS_REPOSITORY.git" "$HARNESS_SHA"
+          git -C "$harness_dir" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$harness_dir" rev-parse HEAD)" = "$HARNESS_SHA"
+
+      - name: Derive the CodeQL languages
+        id: derive
+        run: |
+          set -euo pipefail
+          language_list=$(bash "$RUNNER_TEMP/harness/claude/enforce/security-ci-codeql-languages.sh")
+          echo "CodeQL languages: $language_list"
+          echo "list=$language_list" >> "$GITHUB_OUTPUT"
+
+  codeql:
+    name: codeql (${{ matrix.language }})
+    needs: languages
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.languages.outputs.list) }}
+    steps:
+      - name: Check out the caller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: /language:${{ matrix.language }}
+
+  # A skipped job reads as passing, so a private repository gets a visible
+  # notice saying why CodeQL did not run.
+  codeql-skipped:
+    name: codeql (skipped)
+    if: ${{ github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Explain the skip
+        run: echo "::notice::CodeQL is skipped because this repository is private and code scanning is not free here; Semgrep still ran."

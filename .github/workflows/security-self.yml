@@ -1,0 +1,21 @@
+# Runs the reusable security CI workflow (security.yml) on this repository's
+# own pull requests, so every change to the workflow, the rule pack, or the
+# scripts is exercised before any adopting repository pins it (IAN-381 Part
+# 7, spec component 6).
+#
+# Pull requests only: a full-mode scan of this repository would always be
+# red, because enforce/tests/testdata/semgrep/ holds bad samples that are
+# findings by design.
+name: security-self
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  security:
+    uses: ./.github/workflows/security.yml
