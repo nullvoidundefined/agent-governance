@@ -130,41 +130,73 @@ A security finding moves from `open` to `fixed <sha>` when a commit in the range
 
 ## Part 7 addendum: the reusable CI workflow (2026-09-27)
 
-Part 7 moves the rule pack from a local pre-push hook, which `--no-verify` skips, to a CI check that the author does not control. The owner settled four choices on 2026-09-27: callers pin the workflow by full commit SHA, Semgrep runs the custom rule pack plus the free `p/default` registry ruleset, a pull request fails only on findings in the files it changes, and all three template repositories adopt it in this rollout.
+Part 7 moves the rule pack from a local pre-push hook, which `--no-verify` skips, to a CI check that the author does not control. The owner settled five choices on 2026-09-27: callers pin the workflow by full commit SHA; Semgrep runs the custom rule pack plus the free `p/default` registry ruleset; a pull request fails only on Semgrep findings in the files it changes; CodeQL blocks through GitHub's own code-scanning check rather than a custom SARIF reader; and all three template repositories adopt the workflow in this rollout.
 
 ### Vocabulary
 
 - Security CI workflow - `.github/workflows/security.yml`, a `workflow_call` workflow that other repositories call - chosen over: "security action" because it is a reusable workflow with jobs, not a composite action.
 - Caller workflow - the short workflow in an adopting repository that calls the security CI workflow with a pinned SHA - chosen over: "wrapper" because GitHub's own documentation calls it the caller.
-- Scan targets - the files a run scans: in PR mode, the files the PR adds or modifies that no base-commit `securitySurfaceExclude` glob covers; in full mode, every tracked file no such glob covers - chosen over: "changed files" because full mode is not about changes.
-- PR mode and full mode - PR mode runs on `pull_request` against the PR's base; full mode runs on every other event (push to `main`, the weekly schedule, manual dispatch) - chosen over: "diff scan" and "baseline scan" to keep one word per mode.
+- Harness checkout - the copy of agent-governance at the pinned commit that the workflow checks out beside the caller, holding the rule pack and the scripts - chosen over: "rules checkout" because it also carries the scripts.
+- Scan targets - the files a run scans: in PR mode, the files the PR adds, copies, modifies, or renames into (relative to the merge base of the PR's base and head) that no base-commit `securitySurfaceExclude` glob covers; in full mode, every tracked file no HEAD glob covers - chosen over: "changed files" because full mode is not about changes.
+- PR mode and full mode - PR mode runs on `pull_request`; full mode runs on every other event (push to `main`, the weekly schedule, manual dispatch) - chosen over: "diff scan" and "baseline scan" to keep one word per mode.
 
 ### Components
 
-1. `claude/enforce/security-ci-targets.sh` lists the scan targets. It reuses `list_included_changed_files` and `read_security_surface_excludes` from `hooks/security-surface.sh`, so the CI and the merge gate agree on what a PR changed and what is excluded.
-2. `claude/enforce/security-ci-semgrep.sh` exports the targets' HEAD content into a scratch directory with an empty `.semgrepignore`, runs Semgrep with the rule pack and `p/default`, `--error`, `--disable-nosem`, `--metrics=off`, and `--max-target-bytes=0`, and prints each finding as a GitHub `::error` annotation.
-3. `claude/enforce/security-ci-codeql-gate.sh` reads the SARIF that CodeQL wrote and fails on any result in a scan target, because `codeql-action/analyze` itself passes whatever it finds.
-4. `.github/workflows/security.yml` checks out the caller, checks out `job.workflow_repository` at `job.workflow_sha` (the exact commit the caller pinned, so the rules and the scripts can never drift from the workflow), and runs the two jobs `semgrep` and `codeql (<language>)`. Every third-party action is pinned by commit SHA with its tag in a comment, and every checkout sets `persist-credentials: false`.
-5. `.github/workflows/security-self.yml` calls the workflow from agent-governance itself with `uses: ./.github/workflows/security.yml`, so every PR here exercises it.
-6. One caller workflow in each of template-express, template-express-next, and template-fastapi-nuxt, one PR per repository.
+1. `claude/enforce/security-ci-targets.sh` lists the scan targets. It reuses `list_included_changed_files` and `read_security_surface_excludes` from `hooks/security-surface.sh`, so the CI and the merge gate agree on what is excluded, and then keeps only paths that exist at HEAD, because the helper lists deletions too. It diffs from `git merge-base <base> HEAD`, so a base branch that moved on adds nothing to the list, and it exits 2 whenever git or the helper fails, so a failed listing can never read as an empty one.
+2. `claude/enforce/security-ci-semgrep.sh` runs the lister and exits 2 if the lister does. It exports the targets' HEAD content into a scratch directory with an empty `.semgrepignore`, runs Semgrep with the rule pack and `p/default`, `--error`, `--disable-nosem`, `--metrics=off`, and `--max-target-bytes=0`, and prints each finding as a GitHub `::error` annotation. The workflow installs Semgrep at the version `enforce.yml` pins (1.178.0). `p/default` itself stays a moving registry target: the Semgrep Rules License does not permit redistributing it in this public repository, so it cannot be vendored, and a registry change is visible as a new red, never as a silent pass.
+3. `claude/enforce/security-ci-codeql-languages.sh` derives the CodeQL language list from the caller's tracked files (`python`, `javascript-typescript`, `go`, `ruby`, and `actions` for `.github/workflows/`), as a JSON array, and exits 2 on an empty list. The caller passes no language input, so a caller cannot soften the gate by listing fewer languages.
+4. `.github/workflows/security.yml`:
+   - takes no inputs;
+   - exits 2 on `pull_request_target`, which would run fork code with a write token;
+   - checks out the caller at `github.event.pull_request.head.sha` in PR mode, not the merge ref, so the scanned bytes are the ones the merge gate's `range` head names, with the full history the merge base needs;
+   - checks out `job.workflow_repository` at `job.workflow_sha` into `$RUNNER_TEMP/harness`, outside the caller's workspace, so neither Semgrep nor CodeQL scans the harness's own bad samples; GitHub documents both properties for exactly this purpose (a reusable workflow checking out its own source), and a step asserts the repository is `nullvoidundefined/agent-governance` and the SHA is 40 hexadecimal characters before anything runs;
+   - passes every event value to scripts through `env:`, never through `${{ }}` inside a `run:` line, so a branch name or PR title cannot inject shell;
+   - pins every third-party action by commit SHA with its tag in a comment, and sets `persist-credentials: false` on every checkout;
+   - runs three jobs: `semgrep`, `languages`, and `codeql (<language>)` as a matrix over the `languages` output. The `codeql` jobs run `init` and `analyze` over the caller's workspace and upload to code scanning; they carry the only elevated permissions, `security-events: write` and `actions: read`. On a private repository the `codeql` job is skipped and a `codeql-skipped` job prints a notice naming the reason.
+5. GitHub's code-scanning check, named `CodeQL`, is what blocks a PR on CodeQL alerts. It fails on new alerts at high severity or above under each repository's default code-scanning settings. This is weaker than the Semgrep rule: an alert already present in a file the PR touches does not block it. The Part 8 sweep files those existing alerts as tickets.
+6. `.github/workflows/security-self.yml` calls the workflow from agent-governance itself with `uses: ./.github/workflows/security.yml` on `pull_request` only, so every PR here exercises it. It runs no full mode, because this repository's `enforce/tests/testdata/semgrep/` bad samples are findings by design.
+7. One caller workflow in each of template-express, template-express-next, and template-fastapi-nuxt, one PR per repository, granting `contents: read`, `security-events: write`, and `actions: read` and nothing else.
 
-The check names Part 5b will require are `security / semgrep` and `security / codeql (<language>)`, as GitHub composes them from the caller job id `security`.
+The checks Part 5b will require are `security / semgrep`, `security / codeql (<language>)` for each derived language, and `CodeQL`. The merge gate reads each check's conclusion, and it must treat a skipped or absent `security / semgrep` as a deny, and a skipped `codeql` job as acceptable only on a private repository, because branch protection counts a skipped job as passing.
+
+Local and CI runs differ on purpose, and an author should expect it: the pre-push gate scans code files with the custom pack only and reads no excludes, while CI also runs `p/default` over every target type and honors the base commit's excludes. `security-ci-semgrep.sh` runs locally with the same arguments CI uses, which reproduces a CI red.
 
 ### Acceptance criteria
 
-- B-18: In PR mode the target list holds every added or modified file, omits deleted files, omits files a base-commit `securitySurfaceExclude` glob covers, and ignores an exclude glob that the PR itself adds.
+- B-18: In PR mode the target list holds every added, copied, modified, or renamed-into file relative to the merge base, omits deleted files, omits files a base-commit `securitySurfaceExclude` glob covers, ignores an exclude glob that the PR itself adds, and exits 2 with nothing on stdout when the base is not a reachable commit.
 - B-19: In full mode the target list holds every tracked file that no HEAD `securitySurfaceExclude` glob covers.
-- B-20: The Semgrep step exits 1 and annotates each finding when the scan reports one, exits 0 on a clean scan or an empty target list, and exits 2, failing closed, when Semgrep cannot be resolved, crashes, prints unreadable JSON, reports an error-level error, or leaves a code target unscanned. A `# nosemgrep` comment cannot silence a finding.
+- B-20: The Semgrep step exits 1 and annotates each finding when the scan reports one, exits 0 on a clean scan or an empty target list, and exits 2, failing closed, when the target lister exits non-zero, Semgrep cannot be resolved, crashes, prints unreadable JSON, reports an error-level error, or leaves a code target unscanned. A `# nosemgrep` comment cannot silence a finding.
 - B-21: A #27-shaped file (the `cors-unvalidated-setting` bad sample) in the targets makes the Semgrep step exit 1 with a real Semgrep run, not a stub.
-- B-22: The CodeQL gate exits 1 on a SARIF result inside the targets, exits 0 when every result is outside them in PR mode, exits 1 on any result in full mode, and exits 2 when no SARIF file exists or one does not parse.
-- B-23: `security.yml` is a `workflow_call` workflow whose every external `uses:` is pinned to a 40-character SHA, whose every checkout sets `persist-credentials: false`, whose harness checkout reads `job.workflow_repository` at `job.workflow_sha`, whose jobs grant no permission beyond `contents: read` except CodeQL's `security-events: write` and `actions: read`, and which skips CodeQL with a visible notice on a private repository or an empty language list.
-- B-24: A live PR in template-fastapi-nuxt carrying the #27 shape turns `security / semgrep` red, and the same PR without it turns it green; the throwaway PR is closed afterwards.
+- B-22: The language script prints the exact JSON array of CodeQL languages present in the tracked files, and exits 2 when there are none.
+- B-23: `security.yml` is a `workflow_call` workflow with no inputs, whose every external `uses:` is pinned to a 40-character SHA, whose every checkout sets `persist-credentials: false`, whose caller checkout in PR mode reads `github.event.pull_request.head.sha`, whose harness checkout reads `job.workflow_repository` at `job.workflow_sha` into `$RUNNER_TEMP`, whose `run:` lines contain no `${{ }}` expression, which refuses `pull_request_target`, whose jobs grant no permission beyond `contents: read` except the `codeql` job's `security-events: write` and `actions: read`, which installs Semgrep 1.178.0, and which skips CodeQL only on a private repository, with a notice.
+
+### Rollout checklist (not an acceptance criterion)
+
+- A throwaway draft PR in template-fastapi-nuxt carrying the #27 shape turns `security / semgrep` red, and the same branch without it turns it green; the PR is closed afterwards. B-21 is the automated proof; this confirms the wiring end to end.
 
 ### Failure modes
 
 - Registry unreachable (`p/default` cannot download): Semgrep exits with an error, the step exits 2, and the check is red. A scan that ran without its rulesets is not a clean scan.
-- `job.workflow_sha` empty (a GitHub change or a local `act` run): the harness checkout fails and the job is red.
-- A fork PR: the harness checkout reads a public repository, so it still works; CodeQL's upload needs `security-events: write`, which GitHub withholds from fork PRs, so CodeQL may fail there. None of the adopting repositories accepts fork PRs today.
+- `job.workflow_sha` or `job.workflow_repository` empty or unexpected (a GitHub change, GitHub Enterprise Server, or a local `act` run): the assertion step exits 2 and the job is red.
+- A fork PR: the harness checkout reads a public repository, so Semgrep still runs; CodeQL's upload needs `security-events: write`, which GitHub withholds from fork PRs, so the `codeql` job fails red there. None of the adopting repositories accepts fork PRs today.
+
+### Spec review of this addendum
+
+Reviewer: `pr-reviewer` subagent (fable), 2026-09-27, adversarial review of the first draft of this addendum. Eleven findings:
+
+1. HIGH, rejected with evidence: the review said `job.workflow_sha` and `job.workflow_repository` do not exist. GitHub's contexts reference lists both, with a reusable-workflow example that checks out its own source through them; the suggested `github.workflow_sha` names the caller's workflow in a called workflow. The suggested assertion step was adopted.
+2. HIGH, fixed: a skipped CodeQL job reads as passing. Languages are derived, not input; only a private repository skips; Part 5b's gate reads conclusions.
+3. HIGH, fixed: the harness is checked out under `$RUNNER_TEMP`, outside the scanned workspace.
+4. HIGH, fixed: a failed listing now exits 2 at both the lister and the Semgrep step (B-18, B-20).
+5. MEDIUM, fixed: the lister keeps only paths present at HEAD after calling the helper.
+6. MEDIUM, fixed: PR mode checks out the head SHA; event values reach scripts through `env:` only (B-23).
+7. MEDIUM, answered: a PR widening `securitySurfaceExclude` changes `.enforce.json`, which `security-surface.json` lists as a security-surface path, so it already needs a strongest-model security review before it merges.
+8. MEDIUM, fixed: the workflow refuses `pull_request_target`.
+9. MEDIUM, partly fixed: Semgrep is pinned at 1.178.0; `p/default` cannot be vendored under its license, as component 2 records.
+10. LOW, fixed: the local and CI difference is documented, and the script reproduces CI locally.
+11. LOW, fixed: the live PR moved to the rollout checklist.
+
+Build versus buy: the owner chose GitHub's code-scanning check over a custom SARIF gate on 2026-09-27, which removed the custom gate script and its criterion. `semgrep --baseline-commit` was not adopted, because it reports only findings new since the base, weaker than the settled any-finding-in-a-changed-file rule.
 
 ## Observability
 
