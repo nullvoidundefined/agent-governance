@@ -1,0 +1,38 @@
+{
+  "pr": "nullvoidundefined/agent-governance#161",
+  "ticket": "IAN-401",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "934869c4a6310bacf578034e0bf523b9a9ad3408",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds the build-fast lane classifier, its ledger fields, and rule clauses; the detector flagged it through a CORS content line in a test fixture and because it fails closed without Semgrep. Four findings, all fixed in d6012dd with a failing test first; a confirming review of the head that adds this file follows.",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "control": "lane override lowering",
+      "finding": "any laneOverride other than exactly guarded acted as fast",
+      "status": "fixed d6012dd0b5a27e74f1b27f6e11f7eaa41241f3f2"
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "control": "predict security-path rules",
+      "finding": "invalid or empty security-surface.json paths made predict answer fast",
+      "status": "fixed d6012dd0b5a27e74f1b27f6e11f7eaa41241f3f2"
+    },
+    {
+      "id": 3,
+      "severity": "LOW",
+      "control": "predict scope input",
+      "finding": "an empty scope glob predicted fast",
+      "status": "fixed d6012dd0b5a27e74f1b27f6e11f7eaa41241f3f2"
+    },
+    {
+      "id": 4,
+      "severity": "LOW",
+      "control": "range base resolution output",
+      "finding": "a newline in the gh base ref split the output into two lines",
+      "status": "fixed d6012dd0b5a27e74f1b27f6e11f7eaa41241f3f2"
+    }
+  ]
+}
