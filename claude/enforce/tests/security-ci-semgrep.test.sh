@@ -45,7 +45,7 @@ export CLAUDE_HARNESS_ROOT
 STEP="$CLAUDE_HARNESS_ROOT/enforce/security-ci-semgrep.sh"
 RULES_DIR="$CLAUDE_HARNESS_ROOT/enforce/semgrep"
 SAMPLES_DIR="$CLAUDE_HARNESS_ROOT/enforce/tests/testdata/semgrep"
-BAD_SAMPLE="$SAMPLES_DIR/cors-unvalidated-setting_bad.py"
+BAD_SAMPLE="$SAMPLES_DIR/cors-unvalidated-setting_bad.py.sample"
 BASH_BIN=$(command -v bash)
 unset CLAUDE_SEMGREP_CMD
 
@@ -401,7 +401,7 @@ else
   expect_annotation "real Semgrep, #27 shape under nosemgrep" "::error file=app/settings_cors.py,line=16"
 
   # 11. The good sample in its place -> exit 0.
-  cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py" "$REAL_REPO/app/settings_cors.py"
+  cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py.sample" "$REAL_REPO/app/settings_cors.py"
   commit_all_changes "$REAL_REPO" "validated cors setting"
   run_step "$REAL_REPO" "" --mode pr --base main
   expect_status "real Semgrep, #45 shape" 0
@@ -432,8 +432,9 @@ else
   # the sample from a fresh scratch directory, the way the step runs it, so
   # it is the id Semgrep would honor.
   DERIVE_DIR=$(mktemp -d)
+  cp "$BAD_SAMPLE" "$DERIVE_DIR/settings_cors.py"
   CORS_CHECK_ID=$(cd "$DERIVE_DIR" && $REAL_SEMGREP --config "$RULES_DIR" --json --metrics=off \
-    --disable-version-check --quiet "$BAD_SAMPLE" \
+    --disable-version-check --quiet "settings_cors.py" \
     | jq -r 'first(.results[] | select(.start.line == 16) | .check_id) // empty')
   rm -rf "$DERIVE_DIR"
   case "$CORS_CHECK_ID" in
