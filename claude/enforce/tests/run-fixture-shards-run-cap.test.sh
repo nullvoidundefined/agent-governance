@@ -448,6 +448,19 @@ check "symlink to a private TMPDIR: the run passes" test "$private_link_status" 
 check "symlink to a private TMPDIR: the fixture ran" grep -q "start private-link" "$EVENTS"
 check "symlink to a private TMPDIR: the lock directory is made in the resolved target" \
   test -d "$PRIVATE_TARGET/claude-fixture-shards.$(id -u)"
+# The locks are opened through the resolved path, not through the symlink,
+# which another user could re-point after the check: with the worktree lock
+# held, the waiting run names the lock file under the target (PR #154 review
+# round 6; the directory check above passes either way).
+resolved_worktree_lock="$PRIVATE_TARGET/claude-fixture-shards.$(id -u)/claude-fixture-shards.worktree.$(printf '%s' "$W2" | cksum | awk '{print $1}').flock"
+start_file_holder "$resolved_worktree_lock"
+resolved_holder_pid=$FILE_HOLDER_PID
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/resolved-open.out" "$W2/tests" resolved-open TMPDIR="$SANDBOX/private-link" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; resolved_open_status=$?
+kill "$resolved_holder_pid" 2>/dev/null; wait "$resolved_holder_pid" 2>/dev/null
+check "symlink to a private TMPDIR: a held worktree lock makes the run give up with 75" test "$resolved_open_status" -eq 75
+check "symlink to a private TMPDIR: the lock is opened through the resolved path" \
+  grep -q "holds $resolved_worktree_lock" "$SANDBOX/resolved-open.out"
 
 # Case 13d: every ancestor of TMPDIR is judged, not only TMPDIR: a private
 # directory of the user's inside a shared non-sticky one is refused, because
@@ -472,6 +485,25 @@ chmod 1777 "$SHARED_STICKY"
 run_with_deadline 30 "$SANDBOX/sticky-ancestor.out" "$W2/tests" sticky-ancestor TMPDIR="$SHARED_STICKY/mine"; sticky_ancestor_status=$?
 check "private TMPDIR in a sticky shared ancestor: the run passes" test "$sticky_ancestor_status" -eq 0
 check "private TMPDIR in a sticky shared ancestor: the fixture ran" grep -q "start sticky-ancestor" "$EVENTS"
+
+# Case 13f: a find that fails its mode queries (missing features, or denied by
+# a sandbox) prints nothing, which must refuse the directory rather than read
+# as "not writable by others" (PR #154 security review round 6). The shim
+# passes ownership queries through to the real find, so the case isolates
+# the mode checks, and TMPDIR is shared, non-sticky, and the user's own.
+BROKEN_FIND_BIN="$SANDBOX/broken-find-bin"
+mkdir -p "$BROKEN_FIND_BIN"
+real_find=$(PATH=/usr/bin:/bin command -v find)
+cat > "$BROKEN_FIND_BIN/find" <<SHIM
+#!/bin/sh
+case " \$* " in *" -perm "*|*" ! "*) exit 1 ;; esac
+exec "$real_find" "\$@"
+SHIM
+chmod +x "$BROKEN_FIND_BIN/find"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/broken-find.out" "$W2/tests" broken-find TMPDIR="$NONSTICKY_TMPDIR" PATH="$BROKEN_FIND_BIN:$PATH"; broken_find_status=$?
+check "broken find: a shared non-sticky TMPDIR is still refused" test "$broken_find_status" -eq 1
+check "broken find: no fixture ran" test ! -s "$EVENTS"
 
 # Case 13e: a TMPDIR that does not exist is refused, not created: mkdir -p
 # would make it under the caller's umask inside a directory nobody checked
