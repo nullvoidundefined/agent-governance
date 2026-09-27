@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: ci:security-workflow
 # Verifies the security CI Semgrep step, enforce/security-ci-semgrep.sh
 # (IAN-381, spec Part 7 addendum, component 2, criteria B-20 and B-21). The
 # step runs with its working directory inside the repository to scan:

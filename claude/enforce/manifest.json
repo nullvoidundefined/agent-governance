@@ -312,6 +312,14 @@
             "note": "fail-closed pre-push run of the Semgrep security rule pack (enforce/semgrep/) over every whole changed code file; denies on any finding, Semgrep error, skipped or unscanned path, unparseable file, or unresolvable base; fixtures: enforce/tests/push-semgrep-gate.test.sh, enforce/tests/semgrep-rule-pack.test.sh, enforce/tests/r109-rule-text.test.sh, enforce/tests/r109-rule-text-2.test.sh"
         },
         {
+            "id": "R-109",
+            "tier": "ast",
+            "enforcer": "ci:security-workflow",
+            "severity": "error",
+            "autofix": false,
+            "note": "the reusable .github/workflows/security.yml, pinned by SHA from each adopting repository: runs the security rule pack plus Semgrep p/default over every file a PR adds or modifies (every tracked file on other events), reading no exclude list, and fails closed on a failed listing, a crashed or partial scan, or unreadable JSON; runs CodeQL over languages derived from the tracked files, blocking through GitHub's CodeQL code-scanning check; fixtures: enforce/tests/security-ci-targets.test.sh, enforce/tests/security-ci-semgrep.test.sh, enforce/tests/security-ci-codeql-languages.test.sh, enforce/tests/security-ci-workflow.test.sh (IAN-381 Part 7)"
+        },
+        {
             "id": "R-106",
             "tier": "regex",
             "enforcer": "hook:global-repo-push-guard",

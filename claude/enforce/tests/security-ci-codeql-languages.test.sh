@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: ci:security-workflow
 # Verifies the CodeQL language deriver, enforce/security-ci-codeql-languages.sh
 # (IAN-381, spec Part 7 addendum, component 3 and criterion B-22). The script
 # runs with its working directory inside the repository to scan, reads only the

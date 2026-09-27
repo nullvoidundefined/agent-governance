@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: ci:security-workflow
 # Verifies the security CI scan-target lister, enforce/security-ci-targets.sh
 # (IAN-381, spec Part 7 addendum, criteria B-18 and B-19). The lister runs
 # with its working directory inside the repository to scan and prints the scan

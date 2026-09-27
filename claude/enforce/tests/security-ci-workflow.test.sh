@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Covers: ci:security-workflow
 # Verifies the structure of the security CI workflow and its self-caller
 # (IAN-381, spec Part 7 addendum, components 4 and 6, criterion B-23):
 #

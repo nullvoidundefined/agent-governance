@@ -349,6 +349,24 @@ Name that CI job as a required status check under your repository's branch setti
 pre-push hook can be skipped with `--no-verify` by anyone who wants to, so it is advisory however it
 is written; the required check is the one that runs where it cannot be skipped.
 
+The security rule pack has the same weakness locally, since its pre-push gate is skipped by the same
+`--no-verify`. `.github/workflows/security.yml` is a reusable workflow that runs it in CI instead: an
+adopting repository calls it from a short caller workflow pinned to a full commit SHA of this
+repository, granting `contents: read`, `security-events: write`, and `actions: read`:
+
+```yaml
+jobs:
+  security:
+    uses: nullvoidundefined/agent-governance/.github/workflows/security.yml@<40-character sha>
+```
+
+It takes no inputs, so a caller cannot narrow it. On a pull request, Semgrep runs the rule pack plus
+`p/default` over every file the PR adds or modifies, and CodeQL runs over the languages the
+repository's tracked files contain. Require `security / semgrep`, each `security / codeql
+(<language>)`, and GitHub's `CodeQL` check as status checks. The design and its acceptance criteria
+are in the Part 7 addendum of
+`claude/docs/superpowers/specs/2026-09-25-security-first-gate-design.md`.
+
 One install step is easy to miss. The ESLint-backed fixtures need `claude/enforce/node_modules`,
 which is gitignored and therefore absent from a fresh clone. `./sync.sh` installs it with a locked
 `npm ci`. To do it by hand, run `npm ci --prefix ~/.claude/enforce`, never `npm install`, which can
