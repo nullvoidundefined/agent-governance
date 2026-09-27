@@ -238,6 +238,19 @@ check "same worktree: the second run starts after the first ends" \
 check "same worktree: the second run names the first run's PID" \
   grep -q "waiting for PID $same_first_pid" "$SANDBOX/same-second.out"
 
+# Case 2a: an exported GIT_CEILING_DIRECTORIES that stops git short of the
+# checkout must not split its lock key: the two tests directories of one
+# worktree still queue on one lock (PR #154 security review round 8).
+: > "$EVENTS"
+start_runner_in_background "$SANDBOX/ceiling-first.out" "$W1/tests" ceiling-a FIXTURE_SHARDS_MAX_RUNS=2 GIT_CEILING_DIRECTORIES="$W1"
+ceiling_first_pid=$STARTED_RUNNER_PID
+wait_for_line 15 "start ceiling-a" "$EVENTS"
+run_with_deadline 60 "$SANDBOX/ceiling-second.out" "$W1/other-tests" ceiling-b FIXTURE_SHARDS_MAX_RUNS=2 GIT_CEILING_DIRECTORIES="$W1"; ceiling_second_status=$?
+wait "$ceiling_first_pid"; ceiling_first_status=$?
+check "GIT_CEILING_DIRECTORIES: both runs pass" test "$ceiling_first_status" -eq 0 -a "$ceiling_second_status" -eq 0
+check "GIT_CEILING_DIRECTORIES: the second run still starts after the first ends" \
+  test "$(tr '\n' ' ' < "$EVENTS")" = "start ceiling-a end ceiling-a start ceiling-b end ceiling-b "
+
 # Case 3: the default cap is half the online CPUs, at least 1, and the run
 # names its slot and the cap.
 cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -518,6 +531,44 @@ chmod +x "$BROKEN_FIND_BIN/find"
 run_with_deadline 30 "$SANDBOX/broken-find.out" "$W2/tests" broken-find TMPDIR="$NONSTICKY_TMPDIR" PATH="$BROKEN_FIND_BIN:$PATH"; broken_find_status=$?
 check "broken find: a shared non-sticky TMPDIR is still refused" test "$broken_find_status" -eq 1
 check "broken find: no fixture ran" test ! -s "$EVENTS"
+
+# Case 13g: the ownership check is fed an owner that is neither the user nor
+# root (PR #154 security review round 8). Unprivileged, a find shim that
+# fails owner queries makes root's own ancestors unprovable, which the check
+# must refuse as another user's; as root, a real chown to nobody is used.
+BROKEN_OWNER_FIND_BIN="$SANDBOX/broken-owner-find-bin"
+mkdir -p "$BROKEN_OWNER_FIND_BIN"
+cat > "$BROKEN_OWNER_FIND_BIN/find" <<SHIM
+#!/bin/sh
+case " \$* " in *" -user "*) exit 1 ;; esac
+exec "$real_find" "\$@"
+SHIM
+chmod +x "$BROKEN_OWNER_FIND_BIN/find"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/broken-owner.out" "$W2/tests" broken-owner PATH="$BROKEN_OWNER_FIND_BIN:$PATH"; broken_owner_status=$?
+check "unprovable owner: the run exits 1" test "$broken_owner_status" -eq 1
+check "unprovable owner: the refusal says another user owns a directory" grep -q "belongs to another user" "$SANDBOX/broken-owner.out"
+check "unprovable owner: no fixture ran" test ! -s "$EVENTS"
+if [ "$(id -u)" -eq 0 ]; then
+  FOREIGN_PARENT="$SANDBOX/foreign-parent"
+  mkdir -p "$FOREIGN_PARENT/mine"
+  chmod 755 "$FOREIGN_PARENT"
+  chown 65534 "$FOREIGN_PARENT"
+  : > "$EVENTS"
+  run_with_deadline 30 "$SANDBOX/foreign-parent.out" "$W2/tests" foreign-parent TMPDIR="$FOREIGN_PARENT/mine"; foreign_parent_status=$?
+  check "ancestor owned by another user: the run exits 1" test "$foreign_parent_status" -eq 1
+  check "ancestor owned by another user: the refusal names it" grep -q "$FOREIGN_PARENT belongs to another user" "$SANDBOX/foreign-parent.out"
+  check "ancestor owned by another user: no lock directory is made" test ! -e "$FOREIGN_PARENT/mine/claude-fixture-shards.0"
+  FOREIGN_LOCK_TMPDIR="$SANDBOX/foreign-lock-tmp"
+  mkdir -p "$FOREIGN_LOCK_TMPDIR/claude-fixture-shards.0"
+  chmod 700 "$FOREIGN_LOCK_TMPDIR/claude-fixture-shards.0"
+  chown 65534 "$FOREIGN_LOCK_TMPDIR/claude-fixture-shards.0"
+  : > "$EVENTS"
+  run_with_deadline 30 "$SANDBOX/foreign-lock.out" "$W2/tests" foreign-lock TMPDIR="$FOREIGN_LOCK_TMPDIR"; foreign_lock_status=$?
+  check "lock directory owned by another user: the run exits 1" test "$foreign_lock_status" -eq 1
+  check "lock directory owned by another user: the refusal says it is not private" grep -q "not a private directory" "$SANDBOX/foreign-lock.out"
+  check "lock directory owned by another user: no fixture ran" test ! -s "$EVENTS"
+fi
 
 # Case 13e: a TMPDIR that does not exist is refused, not created: mkdir -p
 # would make it under the caller's umask inside a directory nobody checked
