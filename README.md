@@ -204,7 +204,7 @@ Skills are named workflows the agent invokes when the work matches. There are 18
 |---|---|
 | Starting work | `task-start` (classify the task into a tier that fixes its process), `ticket-lifecycle` (open, advance, and close the tracker ticket with estimates and actuals), `feature-create` (the worktree and product-doc rows for an approved plan), `repo-setup` (bring a new repository to the hygiene baseline) |
 | Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
-| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
+| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
 | Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `known-issues` (prior deployment incidents), `resolve-user-feedback` (triage an application's feedback table) |
 | Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
 
@@ -416,7 +416,7 @@ agent-governance/
 │   ├── rules/             Session types and the path-scoped convention symlinks
 │   ├── hooks/             73 guards and helpers, 23 fixtures under tests/
 │   ├── enforce/           tdd.sh, doctor.sh, the manifest, ESLint rules, 157 fixtures
-│   ├── skills/            18 workflow skills
+│   ├── skills/            19 workflow skills
 │   ├── agents/            9 audit, 4 build, and 2 reviewer roles
 │   ├── prompts/           Review prompts and document templates
 │   └── global-memory/     Cross-project lessons, loaded at session start
