@@ -1,0 +1,9 @@
+{
+  "pr": "nullvoidundefined/agent-governance#156",
+  "ticket": "IAN-471",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "903a81222830e0fe1a69a69666c6e075134659f5",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The review of e31c721..903a812 found no findings: the finding.sh --value validation refuses every worst value before any ledger write, and the commit-message-guard change is deny-message text only with its decision logic untouched. The confirming review of the head that adds this file is recorded in the PR body.",
+  "findings": []
+}

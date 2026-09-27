@@ -1,0 +1,9 @@
+{
+  "pr": "nullvoidundefined/agent-governance#157",
+  "ticket": "none (trivial tier)",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "af3cfa9127891420ead82eb6b7fbacaf9ede3c9e",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range changes README.md only (a documentation features catalog and refreshed counts); the detector flagged it because semgrep is not installed and the detector fails closed. The review of the reviewed code above found no security control in range and no public-repository leak; the confirming review of the head that adds this file found none.",
+  "findings": []
+}
