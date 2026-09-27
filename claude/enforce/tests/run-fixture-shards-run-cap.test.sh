@@ -461,6 +461,19 @@ kill "$resolved_holder_pid" 2>/dev/null; wait "$resolved_holder_pid" 2>/dev/null
 check "symlink to a private TMPDIR: a held worktree lock makes the run give up with 75" test "$resolved_open_status" -eq 75
 check "symlink to a private TMPDIR: the lock is opened through the resolved path" \
   grep -q "holds $resolved_worktree_lock" "$SANDBOX/resolved-open.out"
+# The lock directory itself is also checked on the resolved path: a target
+# whose lock directory is open to others is refused under the target's name,
+# not the symlink's (PR #154 review round 7).
+OPEN_TARGET="$SANDBOX/open-target"
+mkdir -p "$OPEN_TARGET/claude-fixture-shards.$(id -u)"
+chmod 700 "$OPEN_TARGET"
+chmod 777 "$OPEN_TARGET/claude-fixture-shards.$(id -u)"
+ln -s "$OPEN_TARGET" "$SANDBOX/open-link"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/open-link.out" "$W2/tests" open-link TMPDIR="$SANDBOX/open-link"; open_link_status=$?
+check "symlink to a TMPDIR with an open lock directory: the run exits 1" test "$open_link_status" -eq 1
+check "symlink to a TMPDIR with an open lock directory: the refusal names the resolved lock directory" \
+  grep -q "$OPEN_TARGET/claude-fixture-shards.$(id -u) is not a private directory" "$SANDBOX/open-link.out"
 
 # Case 13d: every ancestor of TMPDIR is judged, not only TMPDIR: a private
 # directory of the user's inside a shared non-sticky one is refused, because
@@ -474,7 +487,8 @@ chmod 777 "$SHARED_NONSTICKY"
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/ancestor.out" "$W2/tests" ancestor TMPDIR="$SHARED_NONSTICKY/mine"; ancestor_status=$?
 check "private TMPDIR in a shared non-sticky ancestor: the run exits 1" test "$ancestor_status" -eq 1
-check "private TMPDIR in a shared non-sticky ancestor: the message names that ancestor" grep -q "$SHARED_NONSTICKY" "$SANDBOX/ancestor.out"
+check "private TMPDIR in a shared non-sticky ancestor: the refusal is for that ancestor" \
+  grep -q "$SHARED_NONSTICKY can be written by others" "$SANDBOX/ancestor.out"
 check "private TMPDIR in a shared non-sticky ancestor: no fixture ran" test ! -s "$EVENTS"
 check "private TMPDIR in a shared non-sticky ancestor: no lock directory is made" test ! -e "$SHARED_NONSTICKY/mine/claude-fixture-shards.$(id -u)"
 SHARED_STICKY="$SANDBOX/shared-sticky"
@@ -560,5 +574,23 @@ run_with_deadline 30 "$SANDBOX/broken-ps.out" "$W2/tests" broken-ps FIXTURE_SHAR
 check "broken ps: a foreign live marker is still refused, and the run gives up with 75" test "$broken_ps_status" -eq 75
 check "broken ps: the run ran no fixture" not grep -q "start broken-ps\$" "$EVENTS"
 kill "$foreign_runner_pid" 2>/dev/null; pkill -P "$foreign_runner_pid" 2>/dev/null; wait "$foreign_runner_pid" 2>/dev/null
+
+# Case 17: a marker naming a file in the lock directory that is not a worktree
+# lock, here slot 1, is refused by name. The slot records a dead PID while a
+# separate process holds it, which is exactly what the other marker checks
+# accept for a killed runner, so only the file-name check stands between this
+# marker and a run that skips both locks (PR #154 security review round 7).
+slot_marker_dead_pid=$(sh -c 'echo $$')
+echo "$slot_marker_dead_pid" > "$(slot_file 1)"
+perl -MFcntl=:flock -e 'open(my $f, "<", $ARGV[0]) or die; flock($f, LOCK_EX) or die; sleep 60' "$(slot_file 1)" &
+slot_marker_holder_pid=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $slot_marker_holder_pid"
+sleep 1
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/slot-marker.out" "$W2/tests" slot-marker FIXTURE_SHARDS_MAX_RUNS=1 FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2 \
+  FIXTURE_SHARDS_LOCK_HELD="$slot_marker_dead_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$(slot_file 1)"; slot_marker_status=$?
+kill "$slot_marker_holder_pid" 2>/dev/null; wait "$slot_marker_holder_pid" 2>/dev/null
+check "slot-file marker: the run queues for the held slot and gives up with 75" test "$slot_marker_status" -eq 75
+check "slot-file marker: no fixture ran" test ! -s "$EVENTS"
 
 if [ "$fail" -eq 0 ]; then echo "run-fixture-shards-run-cap: PASS"; else echo "run-fixture-shards-run-cap: FAIL"; exit 1; fi
