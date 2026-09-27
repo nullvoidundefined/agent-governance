@@ -59,7 +59,18 @@ for skillLiteral in \
   'No bug or issue hunting' \
   'No yak-shaving' \
   'never bypass' \
-  'only the owner waives'; do
+  'only the owner waives' \
+  'raises a new finding' \
+  'a security finding is unfixed' \
+  'CI is red after the fix round' \
+  'a gate blocks' \
+  'widen the declared scope' \
+  'mask a symptom' \
+  'an action is destructive' \
+  'gh pr merge' \
+  'landed on `main`' \
+  'completed_at' \
+  'actual_minutes'; do
   requireText "$SKILL" "$skillLiteral" "build-fast SKILL.md lacks: $skillLiteral"
 done
 
@@ -83,4 +94,16 @@ fi
 if [ -f "$REPO_ROOT/cursor/rules/000-global-rules.mdc" ]; then
   requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$R514_BUILD_FAST" "cursor global rules were not regenerated"
 fi
+
+# PR 161 review fix: the speed rule limits agent passes, never the flow's own
+# steps, and the skill no longer claims the gates alone carry reliability.
+# forbidText <file> <literal> <failure message>
+# Fails the fixture when the file contains the literal text.
+forbidText() {
+  if grep -qF -- "$2" "$1"; then echo "FAIL: $3"; exit 1; fi
+}
+forbidText "$SKILL" 'Skip any step that does not change whether' "build-fast SKILL.md still lets a step be skipped"
+forbidText "$SKILL" 'Reliability comes from the deterministic gates' "build-fast SKILL.md still carries the old reliability sentence"
+requireText "$SKILL" "Spend no agent pass that does not change whether the requested change works or is safe; the flow's own steps are never skipped" \
+  "build-fast SKILL.md lacks the revised speed rule"
 echo "build-fast-rule-text.test.sh PASS"

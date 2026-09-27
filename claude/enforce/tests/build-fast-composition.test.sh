@@ -70,6 +70,15 @@ setLedger() {
   (cd "$REPO" && HOME="$TRACKERLESS_HOME" bash "$TIER" set standard "fixture reason" "$@" >/dev/null 2>&1)
 }
 
+# assertLedgerFastGreen <label>: the last setLedger really wrote lane fast and
+# merge mode green, so the unchanged decisions below are not a ledger that
+# silently failed to record the build-fast fields.
+assertLedgerFastGreen() {
+  local ledger="$REPO/.claude/task-tier.json"
+  check "$1: ledger records lane fast" test "$(jq -r '.lane' "$ledger" 2>/dev/null)" = "fast"
+  check "$1: ledger records merge mode green" test "$(jq -r '.mergeMode' "$ledger" 2>/dev/null)" = "green"
+}
+
 # mergeGuardOutput: the merge guard's full output for `gh pr merge 42 --squash`.
 mergeGuardOutput() {
   jq -nc --arg c 'gh pr merge 42 --squash' --arg d "$REPO" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' \
@@ -87,6 +96,7 @@ testAuthorGuardOutput() {
 setLedger
 withoutLane=$(mergeGuardOutput)
 setLedger --lane fast --merge-mode green
+assertLedgerFastGreen "merge guard case"
 withLane=$(mergeGuardOutput)
 check "merge guard asks without a lane" grep -qF "R-514: merging a PR needs explicit user authorization" <<< "$withoutLane"
 check "merge guard still asks with lane fast and merge mode green" grep -qF "R-514: merging a PR needs explicit user authorization" <<< "$withLane"
@@ -96,6 +106,7 @@ check "merge guard decision unchanged by build-fast fields" test "$(jq -r '.hook
 setLedger
 withoutLane=$(testAuthorGuardOutput)
 setLedger --lane fast --merge-mode green
+assertLedgerFastGreen "test-author guard case"
 withLane=$(testAuthorGuardOutput)
 check "test-author guard output unchanged by build-fast fields" test "$withoutLane" = "$withLane"
 

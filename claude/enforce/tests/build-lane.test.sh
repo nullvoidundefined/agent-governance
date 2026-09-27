@@ -29,6 +29,18 @@
 # for another branch or an empty ledger, and never lowers a detector, range,
 # or config failure. `predict` maps a scope glob to `guarded path: predicted`,
 # `guarded security-surface: predicted`, or `fast predicted`.
+#
+# PR 161 review fixes: a laneOverride that is not exactly "fast" or "guarded"
+# (an uppercase, unknown, or non-string value) is ignored, and so is a ledger
+# that is not one JSON document; `predict` validates security-surface.json's
+# `paths` the way lane rules are validated (a fixture harness root carries a
+# bad copy) and refuses an empty or whitespace-only glob with `guarded
+# config-failure:`; a scope entry with no glob character covers every tracked
+# path under `<entry>/`, as hooks/scope-match.sh matches scope entries; the
+# output stays one line when the PR base ref or a reason carries a newline; a
+# detector work directory that cannot be made is reported as that, not as a
+# timeout; and the stale-main case lets only the classifier's own fetch
+# advance origin/main.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 LANE="$CLAUDE_HARNESS_ROOT/skills/build-fast/scripts/build-lane.sh"
@@ -305,13 +317,18 @@ git -C "$SB/stale-other" config user.name t
 git -C "$SB/stale-other" checkout -q main
 commitFile "$SB/stale-other" migrations/0003_add_totals.txt "add totals"
 git -C "$SB/stale-other" push -q origin main 2>/dev/null
-git -C "$STALE" fetch -q origin
-git -C "$STALE" rebase -q origin/main 2>/dev/null
+# feat/x is rebased onto origin's new main taken from the other clone's path,
+# never from the origin remote, so the checkout's refs/remotes/origin/main
+# stays stale and only the classifier's own fetch can make it current.
+git -C "$STALE" fetch -q "$SB/stale-other" main 2>/dev/null
+git -C "$STALE" rebase -q FETCH_HEAD 2>/dev/null
+originMain=$(git --git-dir="$SB/stale.git" rev-parse main)
 localMainIsStale() {
-  [ "$(git -C "$STALE" rev-parse main)" != "$(git -C "$STALE" rev-parse origin/main)" ] \
-    && git -C "$STALE" merge-base --is-ancestor origin/main HEAD
+  [ "$(git -C "$STALE" rev-parse main)" != "$originMain" ] \
+    && [ "$(git -C "$STALE" rev-parse refs/remotes/origin/main)" != "$originMain" ] \
+    && git -C "$STALE" merge-base --is-ancestor "$originMain" HEAD
 }
-check "precondition: local main is stale and feat/x sits on origin/main" localMainIsStale
+check "precondition: local main and origin/main are stale and feat/x sits on origin's main" localMainIsStale
 runLane "$STALE" classify
 assertLine "stale local main: the base comes from origin/main" "fast clear: 1 files"
 
@@ -431,6 +448,119 @@ writeLedger "$PREDICT" feat/x guarded
 runLane "$PREDICT" predict README.md
 assertLine "a raised prediction" "guarded predicted; override from fast"
 rm -f "$PREDICT/.claude/task-tier.json"
+
+# ---- Review fix: only an exact "fast" or "guarded" override applies --------
+#
+# Each ledger below names the checked-out branch, so only the value or the
+# ledger's shape decides; a lower of this security-surface range would print
+# `fast ...`, so the detected line unchanged proves the override was ignored.
+SECURITY_LINE="guarded security-surface: docs/deploy.md:1 content"
+git -C "$SECURITY" checkout -q feat/content
+for overrideValue in FAST yes x; do
+  writeLedger "$SECURITY" feat/content "$overrideValue"
+  runLane "$SECURITY" classify
+  assertLine "laneOverride \"$overrideValue\" is ignored" "$SECURITY_LINE"
+done
+
+# writeRawLedger <repo> <text>: writes <text> verbatim as the checkout's ledger.
+writeRawLedger() {
+  mkdir -p "$1/.claude"
+  printf '%s\n' "$2" > "$1/.claude/task-tier.json"
+}
+
+writeRawLedger "$SECURITY" '{"tier":"standard","reason":"r","branch":"feat/content","ticket":"IAN-401","laneOverride":["fast"]}'
+runLane "$SECURITY" classify
+assertLine "a non-string laneOverride is ignored" "$SECURITY_LINE"
+
+writeRawLedger "$SECURITY" 'branch feat/content laneOverride fast { not json'
+runLane "$SECURITY" classify
+assertLine "a ledger that is not JSON is ignored" "$SECURITY_LINE"
+
+writeRawLedger "$SECURITY" '{"branch":"feat/content","laneOverride":"fast"}{"branch":"feat/content","laneOverride":"fast"}'
+runLane "$SECURITY" classify
+assertLine "a ledger holding two concatenated JSON documents is ignored" "$SECURITY_LINE"
+rm -f "$SECURITY/.claude/task-tier.json"
+
+# ---- Review fix: predict validates security-surface.json -------------------
+#
+# newFixtureHarness <name> <paths JSON>: builds $SB/<name>, a harness root
+# whose enforce/security-surface.json holds that `paths` value, and prints its
+# path. build-lane.sh reads the file from CLAUDE_HARNESS_ROOT.
+newFixtureHarness() {
+  local harness="$SB/$1"
+  mkdir -p "$harness/enforce"
+  jq --argjson p "$2" '.paths = $p' "$CLAUDE_HARNESS_ROOT/enforce/security-surface.json" \
+    > "$harness/enforce/security-surface.json"
+  printf '%s' "$harness"
+}
+
+controlHarness=$(newFixtureHarness harness-control "$(jq -c '.paths' "$CLAUDE_HARNESS_ROOT/enforce/security-surface.json")")
+CLAUDE_HARNESS_ROOT="$controlHarness" runLane "$PREDICT" predict 'src/auth/**'
+assertPrefix "precondition: a fixture harness with the real paths is read" "guarded security-surface: predicted "
+
+securityPathsCase=0
+for badPaths in '["(unclosed"]' '[]' '[""]'; do
+  securityPathsCase=$((securityPathsCase + 1))
+  badHarness=$(newFixtureHarness "harness-bad-$securityPathsCase" "$badPaths")
+  CLAUDE_HARNESS_ROOT="$badHarness" runLane "$PREDICT" predict 'src/auth/**'
+  assertPrefix "security-surface.json paths $badPaths fails closed" "guarded config-failure:"
+done
+
+# ---- Review fix: an empty or whitespace-only glob fails closed -------------
+
+runLane "$PREDICT" predict ''
+assertPrefix "predict with an empty glob" "guarded config-failure:"
+runLane "$PREDICT" predict '  '
+assertPrefix "predict with a whitespace-only glob" "guarded config-failure:"
+
+# ---- Review fix: the output is one line whatever the reason holds ----------
+
+newOriginRepo multiline
+MULTILINE="$SB/multiline"
+MULTILINE_BIN="$SB/multiline-bin"; mkdir -p "$MULTILINE_BIN"
+# A gh stand-in whose `pr view` base ref carries an embedded newline.
+cat > "$MULTILINE_BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+for argument in "$@"; do
+  case "$argument" in --jq|-q|--jq=*) printf 'main\nfeat/x\n'; exit 0 ;; esac
+done
+printf '{"baseRefName":"main\\nfeat/x"}\n'
+STUB
+chmod +x "$MULTILINE_BIN/gh"
+PATH="$MULTILINE_BIN:$PATH" runLane "$MULTILINE" classify
+assertOneLine "a PR base ref holding a newline"
+startsWithLaneWord() { case "$1" in "guarded "* | "fast "*) return 0 ;; *) return 1 ;; esac; }
+check "a PR base ref holding a newline: starts with a lane word (got: $OUT)" startsWithLaneWord "$OUT"
+
+runLane "$MULTILINE" classify --base "$(printf 'abc\ndef')"
+assertPrefix "a base argument holding a newline is flattened into one line" "guarded range-failure:"
+
+# ---- Review fix: a scope entry with no glob character is a prefix ----------
+
+newOriginRepo prefix
+PREFIX="$SB/prefix"
+commitFile "$PREFIX" src/auth/login.ts "export const loginCount = 1;"
+runLane "$PREFIX" predict src
+assertPrefix "predict src covers the tracked src/auth/login.ts" "guarded security-surface: predicted "
+runLane "$PREFIX" predict sr
+assertLine "predict sr does not cover src/ (a prefix ends on a separator)" "fast predicted"
+
+newOriginRepo prefixpath
+PREFIX_PATH="$SB/prefixpath"
+commitFile "$PREFIX_PATH" src/billing/x.ts "export const billingCount = 1;"
+commitFile "$PREFIX_PATH" app/ledger/invoice.ts "export const invoiceCount = 1;"
+runLane "$PREFIX_PATH" predict src/billing
+assertPrefix "predict src/billing covers the tracked src/billing/x.ts" "guarded path: predicted "
+runLane "$PREFIX_PATH" predict app
+assertPrefix "predict app covers the tracked app/ledger/invoice.ts" "guarded path: predicted "
+
+# ---- Review fix: a work directory that cannot be made is not a timeout -----
+
+git -C "$SECURITY" checkout -q feat/slow
+TMPDIR="$SB/no-such-tmp-dir" runLane "$SECURITY" classify
+assertPrefix "no detector work directory can be made" "guarded detector-failure:"
+reasonOmitsTimeout() { case "$1" in *"no answer within"*) return 1 ;; *) return 0 ;; esac; }
+check "no detector work directory: the reason is not a timeout (got: $OUT)" reasonOmitsTimeout "$OUT"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "build-lane.test.sh PASS"
