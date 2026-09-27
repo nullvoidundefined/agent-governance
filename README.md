@@ -11,6 +11,9 @@ long session, under pressure to finish, on the change that touches production. P
 carry a guarantee. So this repository takes every rule that can be made mechanical and makes it
 mechanical, and it is honest about which ones are still prose.
 
+The project site, <https://nullvoidundefined.github.io/agent-governance/>, carries the current
+release, its SHA-256 checksum, and the verify-then-install steps. Contributors clone instead:
+
 ```bash
 git clone https://github.com/nullvoidundefined/agent-governance.git
 cd agent-governance
@@ -410,6 +413,8 @@ agent-governance/
 ├── codex/               Generated from claude/ by translate/codex.mjs
 ├── translate/           The exporters and their port maps
 ├── docs/                Audits, pull request documents, slice plans, handoffs
+├── release/             Builds the checksummed release archive, with its fixtures
+├── site/                The project landing page; never shipped in a release
 ├── sync.sh              Installs each payload into its tool's live directory
 ├── RECIPES.md           Task-shaped entry points into the workflows above
 └── AGENTS.md            This repository's own project config for Codex
@@ -454,6 +459,32 @@ and the ESLint push gate), and `python3` (the manifest closure test and the late
 Per-stack linters (`ruff`, `rubocop`, `golangci-lint`) are optional at runtime and fail open when
 absent, with one exception: `ruff` must be on `PATH` to run the fixture suite, because one fixture
 drives the real binary.
+
+### Install from a release
+
+Each release on GitHub carries `agent-governance-<version>.tar.gz` and its `.sha256` checksum, and
+the [project site](https://nullvoidundefined.github.io/agent-governance/) links the current one.
+Verify the checksum, unpack the archive, read `sync.sh` before you run it, and then run it:
+
+```bash
+shasum -a 256 -c agent-governance-v0.1.0.tar.gz.sha256
+tar -xzf agent-governance-v0.1.0.tar.gz
+less agent-governance-v0.1.0/sync.sh
+./agent-governance-v0.1.0/sync.sh
+```
+
+The checksum proves the file you downloaded matches the release; it does not prove who made the
+release, because releases are not signed. A release install writes only to `~/.claude`,
+`~/.cursor`, and `~/.codex`, and runs `npm ci` for the enforcement tools' lockfile-pinned
+dependencies. The archive is not a git checkout, so `sync.sh` installs the files its
+`RELEASE-FILES` list names. It refuses to run, before writing anything, if that list names an
+absolute path, a path that climbs out with `..`, a file the archive does not hold, a symlink that
+points outside the archive, or a path reached through a directory symlink, and it refuses a
+directory that holds both `.git` and `RELEASE-FILES`, because its source would be ambiguous. A release install does not update
+itself: the `harness-sync` hook resyncs only from a git checkout, so you update by installing the
+next release.
+
+### Install from a checkout (contributors)
 
 ```bash
 git clone https://github.com/nullvoidundefined/agent-governance.git

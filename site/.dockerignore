@@ -1,0 +1,11 @@
+node_modules
+tests
+test-results
+playwright-report
+public
+scripts
+package.json
+package-lock.json
+playwright.config.ts
+.git
+.env*
