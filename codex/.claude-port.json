@@ -54,7 +54,7 @@
     "skills/build-by-slice-require-review/SKILL.md": "sha256:8ff7e80e437b6abf3db4c03441a123800dd440299e3e58f0bf2d0a2b8e15b1a8",
     "skills/build-fast/SKILL.md": "sha256:9583a2780f48e7dc2e3466ab1f29c5a5d142899e4af46b3968a67bfa8c6f89a7",
     "skills/build-fast/lane-rules.json": "sha256:14fc46df58a5a09d0ceef2165375d75cfeb82f88784961d56e3830cd4bf40ff9",
-    "skills/build-fast/scripts/build-lane.sh": "sha256:9ed5992b657508ea71bc780a3c70451958c833ed8d421c6ac3a127e75c543d6a",
+    "skills/build-fast/scripts/build-lane.sh": "sha256:f1f52f0dffd6a21dd1c4f1f13a6489c1c21c5a29c04451847de0e916fe70a253",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:0414853899097a42da75e1b2e9914f1443ceefb651d9a8de4a409d090e50907b",
     "skills/cleanup-specs-plans/scripts/inventory.sh": "sha256:91417ec9bfed28e29a18b3b511cd5f2d102e6e3071a3531f8b8c9f44e5fafa5b",
     "skills/documentation-create/SKILL.md": "sha256:c2c783b2f519c341e1abfde943efd41c4432a486899aadcc86acfc085217b2d0",

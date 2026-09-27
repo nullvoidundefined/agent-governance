@@ -91,7 +91,7 @@ findGuardedPattern() {
 # when gh is absent, fails, or finds no PR.
 readPrBaseRef() {
   command -v gh >/dev/null 2>&1 || return 0
-  gh pr view --json baseRefName -q .baseRefName 2>/dev/null </dev/null | head -n 1 || true
+  gh pr view --json baseRefName -q .baseRefName 2>/dev/null </dev/null || true
 }
 
 # readDefaultBaseRef: prints origin's default branch name from origin/HEAD, or
@@ -100,6 +100,18 @@ readDefaultBaseRef() {
   local symbolic
   symbolic=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) || return 1
   printf '%s' "${symbolic#origin/}"
+}
+
+# isSafeBaseRef <ref>: true only for a single-line branch name that does not
+# start with a dash and that git check-ref-format --branch accepts, so a base
+# ref can never reach git fetch as an option (an option-shaped name such as
+# --upload-pack=<command> would otherwise run a command).
+isSafeBaseRef() {
+  local candidateRef="$1"
+  case "$candidateRef" in
+    '' | -* | *[[:space:]]*) return 1 ;;
+  esac
+  git check-ref-format --branch "$candidateRef" >/dev/null 2>&1
 }
 
 # resolveRange <base-arg> <head-arg>: sets RANGE_TOP, RANGE_BASE, and RANGE_HEAD
@@ -118,7 +130,8 @@ resolveRange() {
   if [ -z "$baseRef" ]; then
     baseRef=$(readDefaultBaseRef) || { RANGE_ERROR="no PR base and no origin/HEAD"; return 1; }
   fi
-  git fetch --quiet origin "$baseRef" 2>/dev/null </dev/null || true
+  isSafeBaseRef "$baseRef" || { RANGE_ERROR="base ref is not a safe branch name"; return 1; }
+  git fetch --quiet -- origin "$baseRef" 2>/dev/null </dev/null || true
   git rev-parse --verify --quiet "refs/remotes/origin/$baseRef^{commit}" >/dev/null || { RANGE_ERROR="origin/$baseRef does not resolve"; return 1; }
   RANGE_BASE=$(git merge-base "refs/remotes/origin/$baseRef" "$RANGE_HEAD" 2>/dev/null) || { RANGE_ERROR="no merge base with origin/$baseRef"; return 1; }
 }
@@ -246,13 +259,28 @@ findSecurityPathPattern() {
   return 1
 }
 
+# isNamedScopeEntry <entry>: false for an entry that scope-match.sh would
+# normalize to nothing or that names the repository root or climbs out of it
+# (".", "./", "/", an absolute path, any ".." component), so such a scope can
+# never predict fast by matching no tracked file.
+isNamedScopeEntry() {
+  local scopeEntry="${1#./}"
+  scopeEntry="${scopeEntry%/}"
+  case "$scopeEntry" in
+    '' | . | /* | .. | ../* | */.. | */../*) return 1 ;;
+  esac
+  return 0
+}
+
 # predictScope <glob>...: the predict command: a security path first, then a
 # guarded path, else fast.
 predictScope() {
   local candidatePath matchedPattern scopeEntry
   [ $# -gt 0 ] || printLane guarded "config-failure: predict needs at least one scope glob"
+  git rev-parse --show-toplevel >/dev/null 2>&1 || printLane guarded "config-failure: predict runs inside a git repository"
   for scopeEntry in "$@"; do
     case "$scopeEntry" in *[![:space:]]*) ;; *) printLane guarded "config-failure: empty scope glob" ;; esac
+    isNamedScopeEntry "$scopeEntry" || printLane guarded "config-failure: scope entry '$scopeEntry' names the repository root or leaves it"
   done
   loadSecurityPathPatterns || printLane guarded "config-failure: $LANE_RULES_ERROR"
   [ -f "$BUILD_LANE_SCOPE_MATCH" ] || printLane guarded "config-failure: $BUILD_LANE_SCOPE_MATCH missing"
