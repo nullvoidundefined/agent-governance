@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Covers: ci:security-workflow
 # Verifies the security CI Semgrep step, enforce/security-ci-semgrep.sh
-# (IAN-381, spec Part 7 addendum, component 2, criteria B-20 and B-21). The
-# step runs with its working directory inside the repository to scan:
+# (IAN-381, spec Part 7 addendum, component 2, criteria B-20, B-21, B-24,
+# B-26, and B-27). The step runs with its working directory inside the
+# repository to scan:
 #
 #   security-ci-semgrep.sh --mode pr --base <base-ref>
 #   security-ci-semgrep.sh --mode full
@@ -12,9 +13,14 @@
 # on PATH, else `uvx semgrep`, and runs it with the harness rule pack
 # (`--config <harness>/enforce/semgrep`) plus every config named in
 # SECURITY_CI_REGISTRY_CONFIGS (space-separated, default "p/default"), with
-# `--json --error --disable-nosem --metrics=off --max-target-bytes=0`, over a
-# scratch export of the targets' HEAD content. Every case here sets
-# SECURITY_CI_REGISTRY_CONFIGS to the empty string so no network is needed.
+# `--json --error --disable-nosem --no-git-ignore --metrics=off
+# --max-target-bytes=0`, over a scratch export of the targets' HEAD content.
+# The targets come after a literal `--` argument, so a file named like an
+# option (`--severity=INFO`, `--exclude-rule=<id>`) is a file, never an option
+# (B-24). Every `.semgrepignore` the PR supplies is removed from the scratch
+# export and a `.gitignore` cannot hide a target (B-26). Every case here sets
+# SECURITY_CI_REGISTRY_CONFIGS to the empty string or to a local rule file,
+# so no network is needed.
 #
 # Exit codes: 0 on a clean scan or an empty target list; 1 when the report has
 # results, printing one `::error file=<repo-relative path>,line=<start line>`
@@ -22,19 +28,24 @@
 # % CR LF as %25 %0D %0A; property values also escape : and , as %3A %2C);
 # 2, failing closed with a message on stderr, when the lister exits non-zero,
 # no Semgrep resolves, Semgrep exits other than 0 or 1, its stdout is not
-# JSON, `.errors[]` holds an entry whose `.level` is "error", or a code target
-# (.py .ts .tsx .mts .cts .js .jsx .mjs .cjs .go .rb) is missing from
-# `.paths.scanned`.
+# JSON, `.errors[]` holds an entry whose `.level` is "error", `.paths.skipped`
+# holds any entry at all (B-26), or a code target (.py .ts .tsx .mts .cts .js
+# .jsx .mjs .cjs .go .rb) is missing from `.paths.scanned`. Every value from
+# Semgrep's report that reaches stdout or stderr, diagnostics included, is
+# escaped for GitHub's workflow-command parser (B-27), so no line the step
+# prints can start a workflow command Semgrep's report smuggled in.
 #
-# Cases 1 to 9 and 12 drive the step through Semgrep stand-ins wired in with
-# CLAUDE_SEMGREP_CMD. Cases 10 and 11 run the real Semgrep (`semgrep` on PATH,
-# else `uvx semgrep`) against the #27-shaped CORS sample, and the fixture fails
-# rather than skips when neither resolves.
+# Cases 1 to 9, 12, and 13 to 16 drive the step through Semgrep stand-ins
+# wired in with CLAUDE_SEMGREP_CMD. Cases 10, 11, and 17 to 20 run the real
+# Semgrep (`semgrep` on PATH, else `uvx semgrep`) against the #27-shaped CORS
+# sample, and the fixture fails rather than skips when neither resolves.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 export CLAUDE_HARNESS_ROOT
 STEP="$CLAUDE_HARNESS_ROOT/enforce/security-ci-semgrep.sh"
+RULES_DIR="$CLAUDE_HARNESS_ROOT/enforce/semgrep"
 SAMPLES_DIR="$CLAUDE_HARNESS_ROOT/enforce/tests/testdata/semgrep"
+BAD_SAMPLE="$SAMPLES_DIR/cors-unvalidated-setting_bad.py"
 BASH_BIN=$(command -v bash)
 unset CLAUDE_SEMGREP_CMD
 
@@ -43,23 +54,25 @@ report_failure() { echo "FAIL: $1"; failures=$((failures + 1)); }
 
 WORK=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$WORK"' EXIT
+STUB_ARGV_FILE="$WORK/stub-argv.txt"
 
-# git_clean <args...>: runs git with every GIT_* location variable stripped, so
-# a fixture run from inside a hook or a worktree never touches the outer repo.
-git_clean() {
+# run_git_isolated <args...>: runs git with every GIT_* location variable
+# stripped, so a fixture run from inside a hook or a worktree never touches the
+# outer repo.
+run_git_isolated() {
   env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
     -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR git "$@"
 }
 
-# new_repo <name>: creates a throwaway repository on branch main and prints
+# create_repo <name>: creates a throwaway repository on branch main and prints
 # its path.
-new_repo() {
+create_repo() {
   local repo="$WORK/$1"
   mkdir -p "$repo"
-  git_clean -C "$repo" init -q --initial-branch=main
-  git_clean -C "$repo" config user.email t@t
-  git_clean -C "$repo" config user.name t
-  git_clean -C "$repo" config commit.gpgsign false
+  run_git_isolated -C "$repo" init -q --initial-branch=main
+  run_git_isolated -C "$repo" config user.email t@t
+  run_git_isolated -C "$repo" config user.name t
+  run_git_isolated -C "$repo" config commit.gpgsign false
   printf '%s' "$repo"
 }
 
@@ -70,31 +83,51 @@ write_file() {
   printf '%s' "$3" > "$1/$2"
 }
 
-# commit_all <repo> <message>: commits every change in the repository.
-commit_all() {
-  git_clean -C "$1" add -A
-  git_clean -C "$1" commit -q --allow-empty -m "$2"
+# commit_all_changes <repo> <message>: commits every change in the repository.
+commit_all_changes() {
+  run_git_isolated -C "$1" add -A
+  run_git_isolated -C "$1" commit -q --allow-empty -m "$2"
+}
+
+# create_feature_repo <name>: creates a repository whose main holds README.md
+# and checks out a new branch `feature`, then prints its path.
+create_feature_repo() {
+  local repo
+  repo=$(create_repo "$1")
+  write_file "$repo" README.md $'# Base\n'
+  commit_all_changes "$repo" "base"
+  run_git_isolated -C "$repo" checkout -q -b feature
+  printf '%s' "$repo"
 }
 
 # make_stub <mode>: writes a Semgrep stand-in for the mode and prints its path.
 # The stand-in reads the targets it was given (everything after `--`, or every
 # non-option argument that is not an option's value), expands a directory
 # target into its files the way Semgrep reports them, and prints a report:
-#   crash       garbage on stdout, exit 99, before looking at any target
-#   clean       no results, no errors, every target scanned, exit 0
-#   warnonly    as clean, plus one warn-level error, exit 0
-#   result      one result at line 7 of the first scanned .py file, exit 1
-#   inject      as result, with a message carrying a newline and a workflow
-#               command, exit 1
-#   nonjson     text that is not JSON, exit 0
-#   exit7       a clean report, exit 7
-#   errorlevel  no results, one error-level error, exit 0
-#   omitpy      no results, every target scanned except the .py files, exit 0
+#   crash         garbage on stdout, exit 99, before looking at any target
+#   clean         no results, no errors, every target scanned, exit 0
+#   record        as clean, and writes its argv, one argument per line, to
+#                 STUB_ARGV_FILE first
+#   warnonly      as clean, plus one warn-level error, exit 0
+#   result        one result at line 7 of the first scanned .py file, exit 1
+#   inject        as result, with a message carrying a newline and a workflow
+#                 command, exit 1
+#   nonjson       text that is not JSON, exit 0
+#   exit7         a clean report, exit 7
+#   errorlevel    no results, one error-level error, exit 0
+#   errorinject   no results, one error-level error whose message carries a
+#                 newline and a workflow command, exit 0
+#   omitpy        no results, every target scanned except the .py files, exit 0
+#   skipnoncode   no results, every target scanned, plus one `paths.skipped`
+#                 entry for the non-code target Dockerfile, exit 0
 make_stub() {
   local mode="$1" stub_path="$WORK/semgrep-stub-$1"
   {
-    printf '#!/usr/bin/env bash\nSTUB_MODE=%s\n' "$mode"
+    printf '#!/usr/bin/env bash\nSTUB_MODE=%s\nSTUB_ARGV_FILE=%s\n' "$mode" "$STUB_ARGV_FILE"
     cat <<'STUB'
+if [ "$STUB_MODE" = record ]; then
+  printf '%s\n' "$@" > "$STUB_ARGV_FILE"
+fi
 if [ "$STUB_MODE" = crash ]; then
   echo "garbage {{{ not json"
   echo "stub: internal error" >&2
@@ -135,7 +168,7 @@ finding_path=$(printf '%s\n' "$scanned_list" | grep '\.py$' | head -n 1)
 finding_message="stub finding"
 [ "$STUB_MODE" = inject ] && finding_message=$'stub finding\n::add-mask::x'
 case "$STUB_MODE" in
-  clean|exit7|omitpy)
+  clean|record|exit7|omitpy)
     jq -n --argjson scanned "$scanned_json" '{results: [], errors: [], paths: {scanned: $scanned}}' ;;
   warnonly)
     jq -n --argjson scanned "$scanned_json" \
@@ -143,6 +176,12 @@ case "$STUB_MODE" in
   errorlevel)
     jq -n --argjson scanned "$scanned_json" \
       '{results: [], errors: [{level: "error", message: "x"}], paths: {scanned: $scanned}}' ;;
+  errorinject)
+    jq -n --argjson scanned "$scanned_json" --arg message $'stub error\n::add-mask::x' \
+      '{results: [], errors: [{level: "error", type: "StubError", message: $message}], paths: {scanned: $scanned}}' ;;
+  skipnoncode)
+    jq -n --argjson scanned "$scanned_json" \
+      '{results: [], errors: [], paths: {scanned: $scanned, skipped: [{path: "Dockerfile", reason: "too_big"}]}}' ;;
   result|inject)
     jq -n --argjson scanned "$scanned_json" --arg path "$finding_path" --arg message "$finding_message" \
       '{results: [{check_id: "stub.rule", path: $path, start: {line: 7, col: 1, offset: 0}, end: {line: 7, col: 5, offset: 4}, extra: {message: $message, severity: "ERROR", lines: "x"}}], errors: [], paths: {scanned: $scanned}}' ;;
@@ -160,9 +199,11 @@ STUB
 
 # run_step <repo> <semgrep command, empty to leave CLAUDE_SEMGREP_CMD unset>
 # <args...>: runs the step from inside the repository with the GIT_* variables
-# stripped, SECURITY_CI_REGISTRY_CONFIGS empty, and PATH set to STEP_PATH.
-# Sets STEP_STDOUT, STEP_STDERR, and STEP_STATUS.
+# stripped, SECURITY_CI_REGISTRY_CONFIGS set to STEP_REGISTRY_CONFIGS (empty
+# unless a case sets it), and PATH set to STEP_PATH. Sets STEP_STDOUT,
+# STEP_STDERR, and STEP_STATUS.
 STEP_PATH="$PATH"
+STEP_REGISTRY_CONFIGS=""
 run_step() {
   local repo="$1" semgrep_command="$2"
   shift 2
@@ -172,7 +213,7 @@ run_step() {
     unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR CLAUDE_SEMGREP_CMD
     if [ -n "$semgrep_command" ]; then export CLAUDE_SEMGREP_CMD="$semgrep_command"; fi
-    export SECURITY_CI_REGISTRY_CONFIGS=""
+    export SECURITY_CI_REGISTRY_CONFIGS="$STEP_REGISTRY_CONFIGS"
     PATH="$STEP_PATH" "$BASH_BIN" "$STEP" "$@"
   ) > "$out_file" 2> "$err_file"
   STEP_STATUS=$?
@@ -186,9 +227,9 @@ expect_status() {
     || report_failure "$1: step must exit $2; got $STEP_STATUS (stdout: ${STEP_STDOUT:-<none>}; stderr: ${STEP_STDERR:-<none>})"
 }
 
-# expect_fail_closed <label>: the last run must exit 2 and explain itself on
-# stderr.
-expect_fail_closed() {
+# expect_closed_failure <label>: the last run must exit 2 and explain itself
+# on stderr.
+expect_closed_failure() {
   expect_status "$1" 2
   [ -n "$STEP_STDERR" ] || report_failure "$1: step must print a message on stderr"
 }
@@ -206,13 +247,10 @@ expect_annotation() {
 APP_SOURCE=$'"""A small module for the stub cases."""\n\nFIRST = 1\nSECOND = 2\nTHIRD = 3\n\n\ndef read_value():\n    """Return the first value."""\n    return FIRST\n'
 
 # --- Shared repository: a PR adding app.py and notes.md ---------------------
-REPO=$(new_repo pr-range)
-write_file "$REPO" README.md $'# Base\n'
-commit_all "$REPO" "base"
-git_clean -C "$REPO" checkout -q -b feature
+REPO=$(create_feature_repo pr-range)
 write_file "$REPO" app.py "$APP_SOURCE"
 write_file "$REPO" notes.md $'# Notes\n'
-commit_all "$REPO" "head"
+commit_all_changes "$REPO" "head"
 
 # --- 1. A reported result -> exit 1 with an annotation (B-20) ---------------
 run_step "$REPO" "$(make_stub result)" --mode pr --base main
@@ -230,27 +268,27 @@ expect_status "warn-level error only" 0
 # --- 3. An empty target list -> exit 0 without running Semgrep (B-20) -------
 # head == base, so the PR changes nothing; the wired-in stand-in crashes, so
 # running it would turn the exit non-zero.
-EMPTY_REPO=$(new_repo empty-range)
+EMPTY_REPO=$(create_repo empty-range)
 write_file "$EMPTY_REPO" app.py "$APP_SOURCE"
-commit_all "$EMPTY_REPO" "base"
+commit_all_changes "$EMPTY_REPO" "base"
 run_step "$EMPTY_REPO" "$(make_stub crash)" --mode pr --base main
 expect_status "empty target list" 0
 
 # --- 4. Unreadable JSON -> exit 2 (B-20) -------------------------------------
 run_step "$REPO" "$(make_stub nonjson)" --mode pr --base main
-expect_fail_closed "non-JSON report"
+expect_closed_failure "non-JSON report"
 
 # --- 5. Semgrep crashes (exit 7) -> exit 2 (B-20) ----------------------------
 run_step "$REPO" "$(make_stub exit7)" --mode pr --base main
-expect_fail_closed "Semgrep exit 7"
+expect_closed_failure "Semgrep exit 7"
 
 # --- 6. An error-level error -> exit 2 (B-20) --------------------------------
 run_step "$REPO" "$(make_stub errorlevel)" --mode pr --base main
-expect_fail_closed "error-level error"
+expect_closed_failure "error-level error"
 
 # --- 7. A code target left unscanned -> exit 2 (B-20) ------------------------
 run_step "$REPO" "$(make_stub omitpy)" --mode pr --base main
-expect_fail_closed "unscanned .py target"
+expect_closed_failure "unscanned .py target"
 
 # --- 8. No Semgrep resolves -> exit 2 (B-20) ---------------------------------
 # PATH carries only bash, git, and jq plus the system dirs, so neither
@@ -267,21 +305,18 @@ fi
 STEP_PATH="$BARE_PATH"
 run_step "$REPO" "$WORK/no-such-semgrep" --mode pr --base main
 STEP_PATH="$PATH"
-expect_fail_closed "Semgrep missing"
+expect_closed_failure "Semgrep missing"
 
 # --- 9. The lister fails (bad base) -> exit 2 even with a clean stub (B-20) -
 run_step "$REPO" "$(make_stub clean)" --mode pr --base no-such-branch-anywhere
-expect_fail_closed "lister failure"
+expect_closed_failure "lister failure"
 
 # --- 12. Annotation escaping: a hostile path and message (B-20) -------------
 # The result's path must be escaped as a property value and its message as
 # data, so a newline in the message cannot start a second workflow command.
-HOSTILE_REPO=$(new_repo hostile-path)
-write_file "$HOSTILE_REPO" README.md $'# Base\n'
-commit_all "$HOSTILE_REPO" "base"
-git_clean -C "$HOSTILE_REPO" checkout -q -b feature
+HOSTILE_REPO=$(create_feature_repo hostile-path)
 write_file "$HOSTILE_REPO" "a,b:c%d.py" "$APP_SOURCE"
-commit_all "$HOSTILE_REPO" "hostile name"
+commit_all_changes "$HOSTILE_REPO" "hostile name"
 run_step "$HOSTILE_REPO" "$(make_stub inject)" --mode pr --base main
 expect_status "hostile path and message" 1
 HOSTILE_PREFIX="::error file=a%2Cb%3Ac%25d.py,line="
@@ -295,7 +330,50 @@ if printf '%s\n' "$STEP_STDOUT" | grep -q '^::add-mask'; then
   report_failure "hostile path and message: no stdout line may start '::add-mask'; got: $STEP_STDOUT"
 fi
 
-# --- 10 and 11. The real Semgrep against the #27 shape (B-21, B-20) ---------
+# --- 13. A skipped non-code target -> exit 2 (B-26) --------------------------
+# Any entry in `paths.skipped` fails the step closed, not only a code target's:
+# here the stand-in scans every target but reports the Dockerfile skipped as
+# too big, with no results.
+SKIP_REPO=$(create_feature_repo skipped-noncode)
+write_file "$SKIP_REPO" Dockerfile $'FROM scratch\n'
+write_file "$SKIP_REPO" app.py "$APP_SOURCE"
+commit_all_changes "$SKIP_REPO" "add a Dockerfile and app.py"
+run_step "$SKIP_REPO" "$(make_stub skipnoncode)" --mode pr --base main
+expect_closed_failure "skipped non-code target"
+
+# --- 14. An error message carrying a workflow command is escaped (B-27) -----
+# The error-level error fails the step closed, and the diagnostic that names
+# it escapes the message's newline as %0A, so no line of stdout or stderr can
+# start `::add-mask`.
+run_step "$REPO" "$(make_stub errorinject)" --mode pr --base main
+expect_closed_failure "error message carrying a workflow command"
+grep -qF -- '%0A::add-mask::x' <<< "$STEP_STDERR" \
+  || report_failure "error message carrying a workflow command: stderr must carry the message newline escaped as '%0A::add-mask::x'; got: ${STEP_STDERR:-<none>}"
+if printf '%s\n%s\n' "$STEP_STDOUT" "$STEP_STDERR" | grep -q '^::add-mask'; then
+  report_failure "error message carrying a workflow command: no stdout or stderr line may start '::add-mask'; got stdout: ${STEP_STDOUT:-<none>}; stderr: ${STEP_STDERR:-<none>}"
+fi
+
+# --- 15. Full mode passes every tracked file after `--` (B-19, B-24) --------
+FULL_REPO=$(create_repo full-mode)
+write_file "$FULL_REPO" alpha.py "$APP_SOURCE"
+write_file "$FULL_REPO" beta.md $'# Beta\n'
+commit_all_changes "$FULL_REPO" "two tracked files"
+rm -f "$STUB_ARGV_FILE"
+run_step "$FULL_REPO" "$(make_stub record)" --mode full
+expect_status "full mode, clean" 0
+if [ -f "$STUB_ARGV_FILE" ]; then
+  ARGV_AFTER_DASHES=$(awk 'seen_dashes { print } $0 == "--" { seen_dashes = 1 }' "$STUB_ARGV_FILE")
+  grep -qFx -- '--' "$STUB_ARGV_FILE" \
+    || report_failure "full mode, clean: Semgrep's argv must hold a literal '--'; got: $(tr '\n' ' ' < "$STUB_ARGV_FILE")"
+  for tracked_file in alpha.py beta.md; do
+    grep -qE -- "(^|/)$tracked_file\$" <<< "$ARGV_AFTER_DASHES" \
+      || report_failure "full mode, clean: '$tracked_file' must be a Semgrep target after '--'; got after '--': [$(printf '%s' "$ARGV_AFTER_DASHES" | tr '\n' '|')]"
+  done
+else
+  report_failure "full mode, clean: the Semgrep stand-in must have run and recorded its argv"
+fi
+
+# --- 10, 11, 17 to 20. The real Semgrep against the #27 shape ---------------
 REAL_SEMGREP=""
 if command -v semgrep >/dev/null 2>&1; then
   REAL_SEMGREP=semgrep
@@ -305,31 +383,95 @@ fi
 if [ -z "$REAL_SEMGREP" ]; then
   report_failure "precondition: neither semgrep nor uvx is on PATH; B-21 needs a real Semgrep run"
 else
-  REAL_REPO=$(new_repo real-semgrep)
-  write_file "$REAL_REPO" README.md $'# Base\n'
-  commit_all "$REAL_REPO" "base"
-  git_clean -C "$REAL_REPO" checkout -q -b feature
+  REAL_REPO=$(create_feature_repo real-semgrep)
   mkdir -p "$REAL_REPO/app"
 
-  # 10. The bad sample -> exit 1 with an annotation naming the file.
-  cp "$SAMPLES_DIR/cors-unvalidated-setting_bad.py" "$REAL_REPO/app/settings_cors.py"
-  commit_all "$REAL_REPO" "bad cors setting"
+  # 10. The bad sample -> exit 1 with an annotation naming the file (B-21).
+  cp "$BAD_SAMPLE" "$REAL_REPO/app/settings_cors.py"
+  commit_all_changes "$REAL_REPO" "bad cors setting"
   run_step "$REAL_REPO" "" --mode pr --base main
   expect_status "real Semgrep, #27 shape" 1
   expect_annotation "real Semgrep, #27 shape" "::error file=app/settings_cors.py,line=16"
 
   # 10b. The same file with `# nosemgrep` on every line -> still exit 1.
-  sed 's/$/  # nosemgrep/' "$SAMPLES_DIR/cors-unvalidated-setting_bad.py" > "$REAL_REPO/app/settings_cors.py"
-  commit_all "$REAL_REPO" "bad cors setting with nosemgrep"
+  sed 's/$/  # nosemgrep/' "$BAD_SAMPLE" > "$REAL_REPO/app/settings_cors.py"
+  commit_all_changes "$REAL_REPO" "bad cors setting with nosemgrep"
   run_step "$REAL_REPO" "" --mode pr --base main
   expect_status "real Semgrep, #27 shape under nosemgrep" 1
   expect_annotation "real Semgrep, #27 shape under nosemgrep" "::error file=app/settings_cors.py,line=16"
 
   # 11. The good sample in its place -> exit 0.
   cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py" "$REAL_REPO/app/settings_cors.py"
-  commit_all "$REAL_REPO" "validated cors setting"
+  commit_all_changes "$REAL_REPO" "validated cors setting"
   run_step "$REAL_REPO" "" --mode pr --base main
   expect_status "real Semgrep, #45 shape" 0
+
+  # 17. A file named `--severity=INFO` beside the #27 sample (B-24). Were the
+  # name read as an option, Semgrep would run only INFO rules; the local
+  # INFO-only rule file keeps that run from failing for want of rules.
+  INFO_RULE_FILE="$(mktemp "$WORK/info-rule.XXXXXX")"
+  mv "$INFO_RULE_FILE" "$INFO_RULE_FILE.yml"
+  INFO_RULE_FILE="$INFO_RULE_FILE.yml"
+  printf '%s\n' 'rules:' '  - id: fixture-info-only' '    languages: [python]' '    severity: INFO' \
+    '    message: fixture rule that never matches' \
+    '    pattern: fixture_function_that_appears_nowhere(...)' > "$INFO_RULE_FILE"
+  SEVERITY_REPO=$(create_feature_repo severity-option-name)
+  write_file "$SEVERITY_REPO" --severity=INFO $'x = 1\n'
+  mkdir -p "$SEVERITY_REPO/app"
+  cp "$BAD_SAMPLE" "$SEVERITY_REPO/app/settings_cors.py"
+  commit_all_changes "$SEVERITY_REPO" "bad cors setting beside an option-shaped name"
+  [ -f "$SEVERITY_REPO/--severity=INFO" ] || report_failure "precondition: the file '--severity=INFO' must exist"
+  STEP_REGISTRY_CONFIGS="$INFO_RULE_FILE"
+  run_step "$SEVERITY_REPO" "" --mode pr --base main
+  STEP_REGISTRY_CONFIGS=""
+  expect_status "real Semgrep, file named --severity=INFO" 1
+  expect_annotation "real Semgrep, file named --severity=INFO" "::error file=app/settings_cors.py,line=16"
+
+  # 18. A file named `--exclude-rule=<id>` naming the rule that flags line 16
+  # of the #27 sample (B-24). The id is derived from a real Semgrep run over
+  # the sample from a fresh scratch directory, the way the step runs it, so
+  # it is the id Semgrep would honor.
+  DERIVE_DIR=$(mktemp -d)
+  CORS_CHECK_ID=$(cd "$DERIVE_DIR" && $REAL_SEMGREP --config "$RULES_DIR" --json --metrics=off \
+    --disable-version-check --quiet "$BAD_SAMPLE" \
+    | jq -r 'first(.results[] | select(.start.line == 16) | .check_id) // empty')
+  rm -rf "$DERIVE_DIR"
+  case "$CORS_CHECK_ID" in
+    *cors-unvalidated-setting*) ;;
+    *) report_failure "precondition: could not derive the check_id flagging line 16 of the #27 sample; got '$CORS_CHECK_ID'" ;;
+  esac
+  EXCLUDE_REPO=$(create_feature_repo exclude-option-name)
+  write_file "$EXCLUDE_REPO" "--exclude-rule=$CORS_CHECK_ID" $'x = 1\n'
+  mkdir -p "$EXCLUDE_REPO/app"
+  cp "$BAD_SAMPLE" "$EXCLUDE_REPO/app/settings_cors.py"
+  commit_all_changes "$EXCLUDE_REPO" "bad cors setting beside an exclude-rule name"
+  [ -f "$EXCLUDE_REPO/--exclude-rule=$CORS_CHECK_ID" ] \
+    || report_failure "precondition: the file '--exclude-rule=$CORS_CHECK_ID' must exist"
+  run_step "$EXCLUDE_REPO" "" --mode pr --base main
+  expect_status "real Semgrep, file named --exclude-rule=<id>" 1
+  expect_annotation "real Semgrep, file named --exclude-rule=<id>" "::error file=app/settings_cors.py,line=16"
+
+  # 19. A nested .semgrepignore the PR supplies cannot hide the sample (B-26).
+  IGNORE_REPO=$(create_feature_repo nested-semgrepignore)
+  write_file "$IGNORE_REPO" app/sub/.semgrepignore $'*.py\n'
+  cp "$BAD_SAMPLE" "$IGNORE_REPO/app/sub/cors.py"
+  commit_all_changes "$IGNORE_REPO" "bad cors setting under a semgrepignore"
+  run_step "$IGNORE_REPO" "" --mode pr --base main
+  expect_status "real Semgrep, nested .semgrepignore" 1
+  expect_annotation "real Semgrep, nested .semgrepignore" "::error file=app/sub/cors.py,line=16"
+
+  # 20. A .gitignore the PR supplies cannot hide the sample (B-26). The sample
+  # is force-added, since the .gitignore names it.
+  GITIGNORE_REPO=$(create_feature_repo gitignore-hides)
+  write_file "$GITIGNORE_REPO" .gitignore $'cors.py\n'
+  cp "$BAD_SAMPLE" "$GITIGNORE_REPO/cors.py"
+  run_git_isolated -C "$GITIGNORE_REPO" add -f cors.py
+  commit_all_changes "$GITIGNORE_REPO" "bad cors setting under a gitignore"
+  [ -n "$(run_git_isolated -C "$GITIGNORE_REPO" ls-files cors.py)" ] \
+    || report_failure "precondition: cors.py must be tracked despite the .gitignore"
+  run_step "$GITIGNORE_REPO" "" --mode pr --base main
+  expect_status "real Semgrep, .gitignore names the sample" 1
+  expect_annotation "real Semgrep, .gitignore names the sample" "::error file=cors.py,line=16"
 fi
 
 if [ "$failures" -gt 0 ]; then
