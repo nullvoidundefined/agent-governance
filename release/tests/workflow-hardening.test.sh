@@ -5,7 +5,9 @@
 # read; contents: write appears only on release.yml's release job and pages:
 # write or id-token: write only on site.yml's deploy job; no run block
 # interpolates `${{ }}`; the deploy job installs with --ignore-scripts; and
-# the site Dockerfile pins its base image by sha256 digest. Each check is also
+# the site Dockerfile pins its base image by sha256 digest; and the release
+# job runs in the protected `release` environment (finding 5), so each release
+# waits for the owner's approval. Each check is also
 # fed a hardened file broken in exactly one way and must reject it, so a
 # checker that stopped checking cannot pass.
 set -euo pipefail
@@ -29,6 +31,11 @@ allowed_writes = {
   top = workflow["permissions"]
   problems << "#{path}: top-level permissions are not {contents: read}" unless top == { "contents" => "read" }
   (workflow["jobs"] || {}).each do |job_name, job|
+    if path == release_path && job_name == "release"
+      environment = job["environment"]
+      environment_name = environment.is_a?(Hash) ? environment["name"] : environment
+      problems << "#{path}: job release does not run in the protected release environment" unless environment_name == "release"
+    end
     writes = (job["permissions"] || {}).select { |_, level| level == "write" }.keys
     extra = writes - allowed_writes.fetch([path, job_name], [])
     problems << "#{path}: job #{job_name} holds write on #{extra.join(', ')}" unless extra.empty?
@@ -83,5 +90,8 @@ assertRejected "a tag-only base image" "$RELEASE" "$SITE" "$TMP/Dockerfile.tag" 
 
 sed 's#^  contents: read#  contents: write#' "$RELEASE" > "$TMP/release-top.yml"
 assertRejected "a top-level contents: write" "$TMP/release-top.yml" "$SITE" "$DOCKERFILE" "top-level permissions"
+
+grep -v '^    environment: release$' "$RELEASE" > "$TMP/release-noenv.yml"
+assertRejected "a release job outside the protected environment" "$TMP/release-noenv.yml" "$SITE" "$DOCKERFILE" "protected release environment"
 
 echo "workflow-hardening.test.sh PASS"
