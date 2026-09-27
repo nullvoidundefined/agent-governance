@@ -44,26 +44,28 @@ Every build today runs one fixed ceremony that task-start picks by size, not by 
 
 ### B-2: the lane on the ledger
 
-`task-tier.sh set` accepts `--lane <fast|checked|guarded>` and writes `lane` into `.claude/task-tier.json`; `task-tier.sh summary` prints it; a reclassification without `--lane` keeps the recorded lane. An unknown lane value is refused.
+`task-tier.sh set` accepts `--lane <fast|checked|guarded>` and `--merge-mode <owner|green>` and writes `lane` and `mergeMode` into `.claude/task-tier.json`; `task-tier.sh summary` prints both; a reclassification without either flag keeps the recorded value. An unknown value for either is refused.
 
 ### B-3: the skill flow
 
 `claude/skills/build-fast/SKILL.md` states, in order:
 
 1. The opening batch: the requested change as understood, the merge mode (owner merges by default, or merge on green), and any other fork, all as option tiles in one `AskUserQuestion` call (at most four questions, per the tool).
-2. Ticket: open or advance it in one direct tracker call (R-605), and `task-tier.sh set <tier> ... --ticket <KEY> --lane <lane>` with the lane from `build-lane.sh classify main` run against the planned paths once the first commit exists, and `fast` before it.
+2. Ticket: open or advance it in one direct tracker call (R-605), and `task-tier.sh set <tier> ... --ticket <KEY> --lane fast --merge-mode <owner|green>`; the ticket's transition comment records the merge mode too.
 3. Fast and checked lanes: one `tdd.sh` slice for the whole change (open, failing tests, red, implement, green, close); no spec, no spec review. Guarded lane: hand off to task-start's Complex process unchanged.
-4. Push, then start the R-517 review in the background at the same time CI runs; the review's model follows the lane (`sonnet` fast, `opus` checked, the R-517 rules for guarded).
-5. One fix round for review findings, test-first; re-review only when a fix changed behaviour.
-6. Re-run `build-lane.sh classify` on the final range; when the lane rose, apply the higher lane's review before merge.
-7. The paperwork commit, then merge per the opening batch's merge mode (R-514).
-8. Close the ticket with `actual_minutes` and the lane in the transition comment (R-606).
+4. After the slice closes, run `build-lane.sh classify main HEAD` and record the result with `task-tier.sh set ... --lane <lane>`; a guarded result hands off to task-start's Complex process from here.
+5. The paperwork commit (PR body source, product-doc rows, handoff), so the pushed head is the head the review reads (R-517).
+6. Push, then start the R-517 review in the background at the same time CI runs; the review's model follows the lane (`sonnet` fast, `opus` checked). A security-surface range also starts the R-109 review in the same batch.
+7. One fix round for review findings, test-first; when a fix commit lands, re-run `build-lane.sh classify` and re-run the review on the new range (R-517 requires the review's head to be the PR head), in parallel with the new CI run.
+8. Merge per the recorded merge mode (R-514), then close the ticket with `actual_minutes` and the lane in the transition comment (R-606).
 
 It also states the hard rules from decisions 3 to 6 verbatim in imperative form.
 
-### B-4: the R-211 exception
+### B-4: the R-211 and R-514 exceptions
 
 `claude/CLAUDE.md` R-211 and its reference.md Spec gain one clause: under build-fast, the forks are asked once in the opening batch, several questions in one tile call, and the run then continues without stopping to ask. Every other session keeps one question per turn.
+
+R-514 and its reference.md Spec gain one clause: under build-fast, the merge mode the owner chose in the opening batch, recorded as `mergeMode` on the task-tier ledger for the PR's head branch and in the ticket's transition comment, stands in for a slice plan's `**Merge mode:**` line.
 
 ### B-5: reminder-only hooks go quiet under a lane (PR 2)
 
@@ -73,8 +75,8 @@ Each reminder-only hook exits 0 with no output when the current checkout's `.cla
 
 1. B-1: a fixture repo range touching only a README classifies `fast`; one with 401 changed lines classifies `checked`; one touching a path the security-surface config lists classifies `guarded`; one touching `migrations/` classifies `guarded`; a range where the detector is forced to fail classifies `guarded detector-failure`.
 2. B-1: `--lane fast` on a security-surface range prints `fast override` and the reason names the R-109 requirement.
-3. B-2: `task-tier.sh set standard r --lane checked` writes `"lane":"checked"`; `--lane quick` exits non-zero; a later `set` without `--lane` on the same branch keeps `checked`.
-4. B-3 and B-4: the skill file and R-211 text contain each step and rule above (checked by a text fixture test, as other skills' prose tests do).
+3. B-2: `task-tier.sh set standard r --lane checked --merge-mode green` writes `"lane":"checked"` and `"mergeMode":"green"`; `--lane quick` and `--merge-mode auto` exit non-zero; a later `set` without either flag on the same branch keeps both values.
+4. B-3 and B-4: the skill file and the R-211 and R-514 text contain each step and rule above (checked by a text fixture test, as other skills' prose tests do).
 5. B-5: with a lane on the ledger, each reminder-only hook prints nothing for an input that otherwise triggers it; without a lane it prints its reminder; `protected-path-guard.sh` and `scope-widening-gate.sh` behave the same with and without a lane.
 
 ## Non-goals
