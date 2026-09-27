@@ -419,6 +419,16 @@ run_with_deadline 30 "$SANDBOX/traverse-dir.out" "$W2/tests" traverse-dir TMPDIR
 check "traversable lock directory (711): the run exits 1" test "$traverse_dir_status" -eq 1
 check "traversable lock directory (711): the message says it is not private" grep -q "not a private directory" "$SANDBOX/traverse-dir.out"
 check "traversable lock directory (711): no fixture ran" test ! -s "$EVENTS"
+# The group bits count as well as the others bits: a lock directory the group
+# can read and traverse (750) is refused (PR #154 security review round 9).
+GROUP_LOCK_TMPDIR="$SANDBOX/group-lock-tmp"
+mkdir -p "$GROUP_LOCK_TMPDIR/claude-fixture-shards.$(id -u)"
+chmod 750 "$GROUP_LOCK_TMPDIR/claude-fixture-shards.$(id -u)"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/group-lock.out" "$W2/tests" group-lock TMPDIR="$GROUP_LOCK_TMPDIR"; group_lock_status=$?
+check "group-accessible lock directory (750): the run exits 1" test "$group_lock_status" -eq 1
+check "group-accessible lock directory (750): the message says it is not private" grep -q "not a private directory" "$SANDBOX/group-lock.out"
+check "group-accessible lock directory (750): no fixture ran" test ! -s "$EVENTS"
 
 # Case 13b: a TMPDIR that others can write without the sticky bit is refused,
 # because another user could rename the runner's checked lock directory and
@@ -439,6 +449,17 @@ chmod 1777 "$STICKY_TMPDIR"
 run_with_deadline 30 "$SANDBOX/sticky.out" "$W2/tests" sticky TMPDIR="$STICKY_TMPDIR"; sticky_status=$?
 check "sticky shared TMPDIR: the run passes" test "$sticky_status" -eq 0
 check "sticky shared TMPDIR: the fixture ran" grep -q "start sticky" "$EVENTS"
+# A TMPDIR only its group can write, without the sticky bit (770, a shared
+# team directory), is refused like one everyone can write (PR #154 security
+# review round 9).
+GROUP_TMPDIR="$SANDBOX/group-tmp"
+mkdir -p "$GROUP_TMPDIR"
+chmod 770 "$GROUP_TMPDIR"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/group-tmp.out" "$W2/tests" group-tmp TMPDIR="$GROUP_TMPDIR"; group_tmp_status=$?
+check "group-writable non-sticky TMPDIR (770): the run exits 1" test "$group_tmp_status" -eq 1
+check "group-writable non-sticky TMPDIR (770): the message names the missing sticky bit" grep -q "sticky" "$SANDBOX/group-tmp.out"
+check "group-writable non-sticky TMPDIR (770): no fixture ran" test ! -s "$EVENTS"
 
 # Case 13c: the parent is judged after resolving symlinks, since find reads a
 # symlink's own mode (0777 on Linux, 0755 on macOS) while the lock lives in
