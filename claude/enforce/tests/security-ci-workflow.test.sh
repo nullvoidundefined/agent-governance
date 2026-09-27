@@ -2,7 +2,9 @@
 # Covers: ci:security-workflow
 # Verifies the structure of the security CI workflow and its self-caller
 # (IAN-381, spec Part 7 addendum, components 4 and 6, criteria B-23, B-28,
-# B-29, and B-30):
+# B-29, B-30, B-34, B-35, and B-36), and the hash-pinned Semgrep requirements
+# file claude/enforce/security-ci-semgrep-requirements.txt that the workflow
+# installs from (B-36):
 #
 #   .github/workflows/security.yml       the reusable workflow_call workflow
 #   .github/workflows/security-self.yml  agent-governance calling it on PRs
@@ -14,7 +16,10 @@
 # workflow that drops a guard, widens a permission, unpins an action, or
 # interpolates an expression into a shell line fails with its own message.
 #
-# Two guards are executed rather than only inspected. The first step of the
+# Three steps are executed rather than only inspected. The languages job's
+# visibility step (B-35) is extracted and run against a stub `gh`, so the
+# fixture sees that only the exact answers true and false reach GITHUB_OUTPUT.
+# The first step of the
 # semgrep and languages jobs is an event allowlist (B-29): its own `run` text
 # is extracted and run under each event name. The harness-fetch step (B-30) is
 # extracted and run against a stub `git` that logs every call, so the fixture
@@ -190,6 +195,31 @@ derive_step = list_job_steps(find_job.call('languages')).find do |step|
 end || {}
 emit_fact 'languages_derive_event_env', read_text(coerce_hash(derive_step['env'])['EVENT_NAME'])
 emit_fact 'languages_derive_modes', format_yes_no(['--mode pr', '--mode full'].all? { |marker| read_text(derive_step['run']).include?(marker) })
+derive_env = coerce_hash(derive_step['env'])
+emit_fact 'languages_derive_default_branch_env', read_text(derive_env['DEFAULT_BRANCH'])
+emit_fact 'languages_derive_git_ref_env', read_text(derive_env['GIT_REF'])
+emit_fact 'languages_derive_ref_args', format_yes_no(['--ref "$GIT_REF"', '--default-branch "$DEFAULT_BRANCH"'].all? { |marker| read_text(derive_step['run']).include?(marker) })
+
+emit_fact 'languages_outputs_is_private', read_text(languages_outputs['is_private'])
+visibility_step = list_job_steps(find_job.call('languages')).find { |step| step['id'] == 'visibility' } || {}
+emit_fact 'languages_visibility_step', (visibility_step.empty? ? 'absent' : 'present')
+emit_fact 'languages_visibility_gh_token_env', read_text(coerce_hash(visibility_step['env'])['GH_TOKEN'])
+emit_fact 'codeql_skipped_needs_languages', format_yes_no(Array(find_job.call('codeql-skipped')['needs']).map(&:to_s).include?('languages'))
+all_ifs = jobs.values.map { |each_job| coerce_hash(each_job)['if'] } + all_steps.map { |step| step['if'] }
+emit_fact 'ifs_reading_payload_private', all_ifs.count { |condition| condition.to_s.include?('github.event.repository.private') }
+env_values = (jobs.values.map { |each_job| coerce_hash(each_job)['env'] } + all_steps.map { |step| step['env'] })
+  .flat_map { |env| coerce_hash(env).values.map(&:to_s) }
+emit_fact 'payload_default_branch_reads', (run_values + env_values).count { |text| text.include?('github.event.repository.default_branch') }
+
+requirements_marker = '-r "$RUNNER_TEMP/harness/claude/enforce/security-ci-semgrep-requirements.txt"'
+install_step = semgrep_steps.find { |step| read_text(step['run']).include?('security-ci-semgrep-requirements.txt') } || {}
+install_run = read_text(install_step['run'])
+emit_fact 'semgrep_install_step', (install_step.empty? ? 'absent' : 'present')
+['python3 -m venv', '--require-hashes', '--no-deps', requirements_marker].each_with_index do |marker, index|
+  emit_fact "semgrep_install_marker_#{index}", format_yes_no(install_run.include?(marker))
+end
+emit_fact 'semgrep_install_github_path', format_yes_no(install_run.lines.any? { |line| line.include?('/bin') && line =~ />>\s*"?\$\{?GITHUB_PATH\}?"?/ })
+emit_fact 'run_with_pipx_semgrep', run_values.count { |run| run.include?('pipx install semgrep') }
 
 list_action_refs = ->(prefix) { uses_values.map { |value| value[/\A#{Regexp.escape(prefix)}@(.*)\z/, 1] }.compact.uniq.sort.join(',') }
 emit_fact 'codeql_init_refs', list_action_refs.call('github/codeql-action/init')
@@ -214,10 +244,10 @@ emit_fact 'self_permissions', self_permissions
 RUBY
 
 # --- Step extraction (Ruby) ----------------------------------------------------
-# extract_run.rb <workflow> <job> <first|harness> <out file>: writes the `run`
-# text of the job's first step, or of its step whose env names both
-# HARNESS_REPOSITORY and HARNESS_SHA, to the out file; exits 3 when that step
-# or its run text is missing.
+# extract_run.rb <workflow> <job> <first|harness|id:<step id>> <out file>:
+# writes the `run` text of the job's first step, of its step whose env names
+# both HARNESS_REPOSITORY and HARNESS_SHA, or of its step with the given `id`,
+# to the out file; exits 3 when that step or its run text is missing.
 cat > "$WORK/extract_run.rb" <<'RUBY'
 require 'yaml'
 
@@ -228,6 +258,7 @@ job = jobs[job_name].is_a?(Hash) ? jobs[job_name] : {}
 steps = job['steps'].is_a?(Array) ? job['steps'].select { |step| step.is_a?(Hash) } : []
 chosen_step =
   if selector == 'first' then steps.first
+  elsif selector.start_with?('id:') then steps.find { |step| step['id'] == selector.sub('id:', '') }
   else
     steps.find do |step|
       step['env'].is_a?(Hash) && step['env'].key?('HARNESS_REPOSITORY') && step['env'].key?('HARNESS_SHA')
@@ -336,10 +367,98 @@ expect_fact "7 codeql job name" codeql_name 'codeql (${{ matrix.language }})'
 expect_fact "7 codeql needs languages" codeql_needs_languages yes
 expect_fact "7 codeql matrix language" codeql_matrix_language '${{ fromJSON(needs.languages.outputs.list) }}'
 
-# --- 8. CodeQL skipped only on a private repository, with a notice -------------
-expect_fact "8 codeql if" codeql_if '${{ !github.event.repository.private }}'
-expect_fact "8 codeql-skipped if" codeql_skipped_if '${{ github.event.repository.private }}'
+# --- 8. CodeQL skipped only on a private repository, with a notice (B-35) ------
+# Visibility comes from the languages job's API read, never from the event
+# payload, which a schedule event lacks: a missing payload field must not read
+# as "not private" or as "private".
+expect_fact "8 codeql if" codeql_if "\${{ needs.languages.outputs.is_private == 'false' }}"
+expect_fact "8 codeql-skipped if" codeql_skipped_if "\${{ needs.languages.outputs.is_private == 'true' }}"
+expect_fact "8 codeql-skipped needs languages" codeql_skipped_needs_languages yes
 expect_fact "8 codeql-skipped notice" codeql_skipped_notice yes
+expect_fact "8 no if reads github.event.repository.private" ifs_reading_payload_private 0
+expect_fact "8 languages outputs.is_private" languages_outputs_is_private '${{ steps.visibility.outputs.is_private }}'
+expect_fact "8 languages has a visibility step" languages_visibility_step present
+expect_fact "8 visibility step GH_TOKEN env" languages_visibility_gh_token_env '${{ github.token }}'
+
+# --- 8a. the visibility step, executed against a stub gh (B-35) ----------------
+# One API read (B-34, B-35) answers both the visibility and the default
+# branch. The stub logs each argument on its own line to $STUB_GH_LOG, prints
+# two lines, $STUB_PRIVATE then $STUB_DEFAULT_BRANCH (default main), and exits
+# $STUB_GH_EXIT (default 0). The step must write exactly `is_private=<true or
+# false>` and `default_branch=<name>` to GITHUB_OUTPUT. On any other
+# visibility answer, an empty default branch, a default branch holding a space
+# or starting with `-`, or a failed API call, it must exit 2 and write neither
+# line, so neither CodeQL job's `if` can match and the deriver never runs.
+GH_STUB_BIN="$WORK/gh-stub-bin"
+mkdir -p "$GH_STUB_BIN"
+cat > "$GH_STUB_BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >> "$STUB_GH_LOG"
+printf '%s\n' "$STUB_PRIVATE"
+printf '%s\n' "${STUB_DEFAULT_BRANCH-main}"
+exit "${STUB_GH_EXIT:-0}"
+STUB
+chmod +x "$GH_STUB_BIN/gh"
+# Built at run time so no credential-shaped literal sits in this file (R-108).
+stub_gh_credential="fixture-$$"
+
+# run_visibility_step <script> <STUB_PRIVATE> <STUB_DEFAULT_BRANCH>
+# <STUB_GH_EXIT>: runs the extracted visibility step with the stub gh first on
+# PATH and a fresh GITHUB_OUTPUT. Sets VISIBILITY_STATUS, and the paths
+# VISIBILITY_OUTPUT_FILE, VISIBILITY_GH_LOG, and VISIBILITY_STEP_OUTPUT.
+run_visibility_step() {
+  local script="$1" stub_private="$2" stub_default_branch="$3" stub_gh_exit="$4" run_dir
+  run_dir=$(mktemp -d "$WORK/visibility.XXXXXX")
+  VISIBILITY_OUTPUT_FILE="$run_dir/github_output"
+  VISIBILITY_GH_LOG="$run_dir/gh.log"
+  VISIBILITY_STEP_OUTPUT="$run_dir/step.out"
+  : > "$VISIBILITY_OUTPUT_FILE"
+  : > "$VISIBILITY_GH_LOG"
+  env -i PATH="$GH_STUB_BIN:$PATH" HOME="$WORK" RUNNER_TEMP="$run_dir" \
+    GITHUB_OUTPUT="$VISIBILITY_OUTPUT_FILE" GITHUB_REPOSITORY=acme/app \
+    GH_TOKEN="$stub_gh_credential" STUB_GH_LOG="$VISIBILITY_GH_LOG" \
+    STUB_PRIVATE="$stub_private" STUB_DEFAULT_BRANCH="$stub_default_branch" \
+    STUB_GH_EXIT="$stub_gh_exit" \
+    bash --noprofile --norc -eo pipefail "$script" > "$VISIBILITY_STEP_OUTPUT" 2>&1
+  VISIBILITY_STATUS=$?
+}
+
+visibility_script="$WORK/visibility.sh"
+if extract_step_run languages id:visibility "$visibility_script"; then
+  # Accepted answers: each case is <visibility>:<default branch>. The two
+  # output lines may come in either order, so both sides are sorted.
+  for accepted_case in 'false:main' 'true:trunk'; do
+    visibility_answer="${accepted_case%%:*}"
+    default_branch_answer="${accepted_case#*:}"
+    run_visibility_step "$visibility_script" "$visibility_answer" "$default_branch_answer" 0
+    label="8a visibility [$visibility_answer], default branch [$default_branch_answer]"
+    [ "$VISIBILITY_STATUS" = 0 ] \
+      || report_failure "$label: step must exit 0; got $VISIBILITY_STATUS ($(cat "$VISIBILITY_STEP_OUTPUT"))"
+    expected_output=$(printf '%s\n' "is_private=$visibility_answer" "default_branch=$default_branch_answer" | sort)
+    actual_output=$(sort "$VISIBILITY_OUTPUT_FILE")
+    [ "$actual_output" = "$expected_output" ] \
+      || report_failure "$label: GITHUB_OUTPUT must hold exactly the lines is_private=$visibility_answer and default_branch=$default_branch_answer; got [$(cat "$VISIBILITY_OUTPUT_FILE")]"
+    grep -qx 'api' "$VISIBILITY_GH_LOG" \
+      || report_failure "$label: gh must be called with the argument api; argv: [$(cat "$VISIBILITY_GH_LOG")]"
+    grep -Fq 'repos/acme/app' "$VISIBILITY_GH_LOG" \
+      || report_failure "$label: gh must be called for repos/acme/app; argv: [$(cat "$VISIBILITY_GH_LOG")]"
+    grep -qx -- '--jq' "$VISIBILITY_GH_LOG" \
+      || report_failure "$label: gh must be called with --jq; argv: [$(cat "$VISIBILITY_GH_LOG")]"
+  done
+
+  # Fail closed: each case is <visibility>|<default branch>|<gh exit status>.
+  for refused_case in 'false||0' 'maybe|main|0' '|main|0' 'false|main|1' 'false|bad name|0' 'false|-x|0'; do
+    IFS='|' read -r visibility_answer default_branch_answer gh_exit_status <<< "$refused_case"
+    run_visibility_step "$visibility_script" "$visibility_answer" "$default_branch_answer" "$gh_exit_status"
+    label="8a visibility [$visibility_answer], default branch [$default_branch_answer], gh exit $gh_exit_status"
+    [ "$VISIBILITY_STATUS" = 2 ] \
+      || report_failure "$label: step must exit 2; got $VISIBILITY_STATUS ($(cat "$VISIBILITY_STEP_OUTPUT"))"
+    [ "$(grep -c 'is_private=' "$VISIBILITY_OUTPUT_FILE")" = 0 ] \
+      || report_failure "$label: GITHUB_OUTPUT must hold no is_private line; got [$(cat "$VISIBILITY_OUTPUT_FILE")]"
+    [ "$(grep -c 'default_branch=' "$VISIBILITY_OUTPUT_FILE")" = 0 ] \
+      || report_failure "$label: GITHUB_OUTPUT must hold no default_branch line; got [$(cat "$VISIBILITY_OUTPUT_FILE")]"
+  done
+fi
 
 # --- 9. an event allowlist runs first in semgrep and languages (B-29) ----------
 # The step has no `if`, so it runs on every event; it reads the event name from
@@ -527,8 +646,43 @@ for job_name in semgrep languages; do
 done
 
 # --- 11. Semgrep install and scan ----------------------------------------------
-expect_fact "11 semgrep 1.178.0 install" semgrep_install yes
+# B-36: Semgrep and every dependency install into a venv from the harness's
+# hash-pinned requirements file, so the verdict never depends on what PyPI
+# serves that day; pipx resolved dependencies unpinned.
+expect_fact "11 semgrep install step reads the requirements file" semgrep_install_step present
+expect_fact "11 semgrep install runs python3 -m venv" semgrep_install_marker_0 yes
+expect_fact "11 semgrep install passes --require-hashes" semgrep_install_marker_1 yes
+expect_fact "11 semgrep install passes --no-deps" semgrep_install_marker_2 yes
+expect_fact "11 semgrep install reads the harness requirements file" semgrep_install_marker_3 yes
+expect_fact "11 semgrep install appends the venv bin to GITHUB_PATH" semgrep_install_github_path yes
+expect_fact "11 no pipx install semgrep" run_with_pipx_semgrep 0
 expect_fact "11 semgrep scan step" semgrep_scan_step yes
+
+# --- 11a. the hash-pinned requirements file (B-36) -----------------------------
+SEMGREP_REQUIREMENTS="$REPO_ROOT/claude/enforce/security-ci-semgrep-requirements.txt"
+if [ ! -f "$SEMGREP_REQUIREMENTS" ]; then
+  report_failure "11a $SEMGREP_REQUIREMENTS does not exist"
+else
+  grep -Eq '^semgrep==1\.178\.0([^0-9]|$)' "$SEMGREP_REQUIREMENTS" \
+    || report_failure "11a the requirements file must pin semgrep==1.178.0"
+  requirement_hash_count=$(grep -oE -- '--hash=sha256:[0-9a-f]{64}' "$SEMGREP_REQUIREMENTS" | wc -l | tr -d ' ')
+  [ "$requirement_hash_count" -ge 20 ] \
+    || report_failure "11a the requirements file must carry at least 20 --hash=sha256: entries; got $requirement_hash_count"
+  # Every requirement must carry at least one hash, on its own line or on the
+  # continuation lines before the next requirement.
+  unhashed_requirements=$(awk '
+    /^[a-z0-9][a-z0-9._-]*==/ {
+      if (current != "" && !hashed) print current
+      current = $1; hashed = 0
+    }
+    /--hash=sha256:/ { hashed = 1 }
+    END { if (current != "" && !hashed) print current }
+  ' "$SEMGREP_REQUIREMENTS")
+  requirement_count=$(grep -cE '^[a-z0-9][a-z0-9._-]*==' "$SEMGREP_REQUIREMENTS")
+  [ "$requirement_count" -ge 1 ] || report_failure "11a the requirements file must list at least one requirement"
+  [ -z "$unhashed_requirements" ] \
+    || report_failure "11a every requirement must carry a --hash=sha256: entry; unhashed: [$unhashed_requirements]"
+fi
 
 # --- 12. languages output ------------------------------------------------------
 expect_fact "12 languages outputs.list" languages_outputs_list present
@@ -537,6 +691,14 @@ expect_fact "12 languages list step" languages_list_step yes
 # reading the event name from env.
 expect_fact "12 languages derive step EVENT_NAME env" languages_derive_event_env '${{ github.event_name }}'
 expect_fact "12 languages derive step passes both modes" languages_derive_modes yes
+# B-34: full mode lists go only on the default branch, so the derive step
+# passes the ref and the default branch through env.
+expect_fact "12 languages derive step DEFAULT_BRANCH env" languages_derive_default_branch_env '${{ steps.visibility.outputs.default_branch }}'
+# The event payload lacks the repository on a schedule event, so the default
+# branch comes from the visibility step's API read, never from the payload.
+expect_fact "12 no run or env reads github.event.repository.default_branch" payload_default_branch_reads 0
+expect_fact "12 languages derive step GIT_REF env" languages_derive_git_ref_env '${{ github.ref }}'
+expect_fact "12 languages derive step passes --ref and --default-branch" languages_derive_ref_args yes
 
 # --- 13. CodeQL init and analyze on the same SHA -------------------------------
 init_refs=$(read_fact codeql_init_refs)

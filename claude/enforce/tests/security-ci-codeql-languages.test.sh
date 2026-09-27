@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Covers: ci:security-workflow
 # Verifies the CodeQL language deriver, enforce/security-ci-codeql-languages.sh
-# (IAN-381, spec Part 7 addendum, component 3 and criteria B-22 and B-28). The
-# script requires exactly `--mode pr` or `--mode full`; a missing or unknown
-# argument exits 2 with nothing on stdout. It runs with its working directory
+# (IAN-381, spec Part 7 addendum, component 3 and criteria B-22, B-28, and
+# B-34). The script requires exactly `--mode pr`, or `--mode full` together
+# with `--ref <git ref>` and a non-empty `--default-branch <name>` in any
+# order; a missing or unknown argument exits 2 with nothing on stdout. In full
+# mode `go` is listed only when the ref is refs/heads/<default branch>, so an
+# unmerged branch never runs Go's autobuild beside the write token; on any
+# other ref a `::notice::` names go. It runs with its working directory
 # inside the repository to scan, reads only the files tracked at HEAD
 # (committed files; untracked and merely staged files do not count), and
 # prints a compact JSON array of the CodeQL languages present, with no spaces,
@@ -117,7 +121,7 @@ write_file "$MIXED_REPO" server/app.py $'APP = 1\n'
 write_file "$MIXED_REPO" web/src/main.ts $'export const main = 1;\n'
 write_file "$MIXED_REPO" web/App.vue $'<template><div /></template>\n'
 commit_all_changes "$MIXED_REPO" "mixed"
-run_deriver "$MIXED_REPO" --mode full
+run_deriver "$MIXED_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_languages "workflows, TypeScript, Vue, Python" '["actions","javascript-typescript","python"]'
 
 # --- 2. Go and Ruby, with a non-code file beside them ------------------------
@@ -126,7 +130,7 @@ write_file "$GO_RUBY_REPO" tool.go $'package main\n'
 write_file "$GO_RUBY_REPO" lib/x.rb $'X = 1\n'
 write_file "$GO_RUBY_REPO" README.md $'# Go and Ruby\n'
 commit_all_changes "$GO_RUBY_REPO" "go and ruby"
-run_deriver "$GO_RUBY_REPO" --mode full
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_languages "Go and Ruby, full mode" '["go","ruby"]'
 
 # --- 3. No supported language (fail closed) ----------------------------------
@@ -134,14 +138,14 @@ DOCS_REPO=$(create_repo docs-only)
 write_file "$DOCS_REPO" README.md $'# Docs\n'
 write_file "$DOCS_REPO" docs/a.txt $'text\n'
 commit_all_changes "$DOCS_REPO" "docs only"
-run_deriver "$DOCS_REPO" --mode full
+run_deriver "$DOCS_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_fail_closed "no supported language"
 
 # --- 4. An untracked Python file does not count ------------------------------
 # extra.py sits in the working tree but was never committed, so the tracked
 # files at HEAD still hold no supported language.
 write_file "$DOCS_REPO" extra.py $'EXTRA = 1\n'
-run_deriver "$DOCS_REPO" --mode full
+run_deriver "$DOCS_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_fail_closed "untracked Python file"
 
 # --- 5. A nested workflow directory is not a workflow ------------------------
@@ -149,7 +153,7 @@ NESTED_REPO=$(create_repo nested-workflow)
 write_file "$NESTED_REPO" .github/workflows/nested/deep.yml $'name: deep\n'
 write_file "$NESTED_REPO" README.md $'# Nested\n'
 commit_all_changes "$NESTED_REPO" "nested workflow"
-run_deriver "$NESTED_REPO" --mode full
+run_deriver "$NESTED_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_fail_closed "nested workflow directory"
 
 # --- 6. A repository with no commits (fail closed) ---------------------------
@@ -158,7 +162,7 @@ expect_fail_closed "nested workflow directory"
 EMPTY_REPO=$(create_repo no-commits)
 write_file "$EMPTY_REPO" staged.py $'STAGED = 1\n'
 run_clean_git -C "$EMPTY_REPO" add -A
-run_deriver "$EMPTY_REPO" --mode full
+run_deriver "$EMPTY_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_fail_closed "no commits"
 
 # --- 7. PR mode drops Go and says so (B-28) ----------------------------------
@@ -179,7 +183,7 @@ write_file "$GO_ONLY_REPO" README.md $'# Go only\n'
 commit_all_changes "$GO_ONLY_REPO" "go only"
 run_deriver "$GO_ONLY_REPO" --mode pr
 expect_fail_closed "Go only, PR mode"
-run_deriver "$GO_ONLY_REPO" --mode full
+run_deriver "$GO_ONLY_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_languages "Go only, full mode" '["go"]'
 
 # --- 9. The mode argument is required and closed (B-28) ----------------------
@@ -190,6 +194,44 @@ run_deriver "$GO_RUBY_REPO" --mode sideways
 expect_fail_closed "unknown mode sideways"
 run_deriver "$GO_RUBY_REPO" --mode
 expect_fail_closed "--mode with no value"
+
+# --- 10. Full mode lists Go only on the default branch (B-34) -----------------
+# CodeQL analyzes Go by running the repository's build beside the code-scanning
+# write token, so full mode lists go only when --ref is refs/heads/<the name
+# given by --default-branch>. On any other branch or on a tag, go is dropped
+# with a ::notice:: naming it, and a Go-only repository fails closed.
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/main --default-branch main
+expect_languages "Go and Ruby, full mode on the default branch" '["go","ruby"]'
+run_deriver "$GO_RUBY_REPO" --default-branch main --ref refs/heads/main --mode full
+expect_languages "Go and Ruby, full mode, flags in another order" '["go","ruby"]'
+
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/feature --default-branch main
+expect_languages "Go and Ruby, full mode on a feature branch" '["ruby"]'
+printf '%s\n' "$DERIVER_STDERR" | grep -Fq '::notice::' \
+  || report_failure "Go and Ruby, full mode on a feature branch: stderr must carry a ::notice:: line; got [${DERIVER_STDERR}]"
+printf '%s\n' "$DERIVER_STDERR" | grep -F '::notice::' | grep -wq 'go' \
+  || report_failure "Go and Ruby, full mode on a feature branch: the notice must name go; got [${DERIVER_STDERR}]"
+
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/tags/v1 --default-branch main
+expect_languages "Go and Ruby, full mode on a tag" '["ruby"]'
+
+# A branch whose name merely ends in the default branch's name is not it.
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/feature/main --default-branch main
+expect_languages "Go and Ruby, full mode on refs/heads/feature/main" '["ruby"]'
+
+run_deriver "$GO_ONLY_REPO" --mode full --ref refs/heads/feature --default-branch main
+expect_fail_closed "Go only, full mode on a feature branch"
+
+# --- 11. Full mode requires both --ref and a non-empty --default-branch (B-34) -
+# A missing ref or default branch must not fall back to listing go.
+run_deriver "$GO_RUBY_REPO" --mode full --default-branch main
+expect_fail_closed "full mode without --ref"
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/main
+expect_fail_closed "full mode without --default-branch"
+run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/main --default-branch ''
+expect_fail_closed "full mode with an empty --default-branch"
+run_deriver "$GO_RUBY_REPO" --mode full
+expect_fail_closed "full mode with neither --ref nor --default-branch"
 
 if [ "$failures" -gt 0 ]; then
   echo "security-ci-codeql-languages.test.sh FAIL ($failures)"
