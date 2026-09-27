@@ -50,12 +50,18 @@ sha256Tool() {
 }
 SHA256=$(sha256Tool)
 
-# resolveSourceMode(): "git" when REPO_ROOT is the top level of its own git
-# work tree, "release" when it holds RELEASE-FILES, "none" otherwise. An
-# extract untarred inside some other repository is "release": that
-# repository's ls-files would name none of these files.
+# resolveSourceMode(): "ambiguous" when REPO_ROOT holds both .git and
+# RELEASE-FILES (git mode would skip every list check, so neither is
+# trusted), "git" when it is the top level of its own git work tree,
+# "release" when it holds RELEASE-FILES, "none" otherwise. An extract untarred
+# inside some other repository is "release": that repository's ls-files would
+# name none of these files.
 resolveSourceMode() {
   local top
+  if [ -e "$REPO_ROOT/.git" ] && [ -e "$REPO_ROOT/RELEASE-FILES" ]; then
+    echo ambiguous
+    return
+  fi
   top=$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || true)
   if [ -n "$top" ] && [ "$(cd "$top" && pwd -P)" = "$(cd "$REPO_ROOT" && pwd -P)" ]; then
     echo git
@@ -251,6 +257,7 @@ SOURCE_MODE=$(resolveSourceMode)
 case "$SOURCE_MODE" in
   git) echo "source: git checkout" ;;
   release) validateReleaseFileList; echo "source: release archive RELEASE-FILES" ;;
+  ambiguous) echo "REFUSED: $REPO_ROOT holds both .git and RELEASE-FILES, so its source is ambiguous; delete RELEASE-FILES from a checkout, or install from a clean release archive; nothing synced" >&2; exit 1 ;;
   *) echo "REFUSED: $REPO_ROOT is neither a git checkout nor a release archive (no RELEASE-FILES); nothing synced" >&2; exit 1 ;;
 esac
 
