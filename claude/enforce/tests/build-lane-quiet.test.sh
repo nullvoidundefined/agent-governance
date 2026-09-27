@@ -66,11 +66,12 @@ git -C "$REPO" add -A; git -C "$REPO" commit -qm "add voices"
 
 # --- Hook drivers --------------------------------------------------------------
 # Each driver runs its hook from inside the sandbox repository and leaves the
-# hook's stdout in OUT, its stderr in ERR, and its exit status in ST.
+# hook's stdout in OUT, its stderr in ERR, and its exit status in ST. DRIVE_HOOKS
+# points the drivers at another hooks directory (a copy missing the helper).
 drive() { # drive <hook-name> <payload> [env assignments...]
   local hook="$1" payload="$2"; shift 2
   local out_file="$SB/out" err_file="$SB/err"
-  (cd "$REPO" && printf '%s' "$payload" | env "$@" bash "$HOOKS/$hook.sh" >"$out_file" 2>"$err_file")
+  (cd "$REPO" && printf '%s' "$payload" | env "$@" bash "${DRIVE_HOOKS:-$HOOKS}/$hook.sh" >"$out_file" 2>"$err_file")
   ST=$?
   OUT=$(cat "$out_file"); ERR=$(cat "$err_file")
 }
@@ -90,7 +91,7 @@ run_flat_directory() { drive flat-directory-reminder "$(post_write "$REPO/over/m
 run_single_file_folder() {
   drive single-file-folder-reminder \
     "$(jq -nc --arg d "$REPO" '{tool_name:"Bash",cwd:$d,tool_input:{command:"git push origin feat/q"}}')" \
-    CLAUDE_ENFORCE_BASE=HEAD~1 CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"
+    CLAUDE_ENFORCE_BASE="${SFF_BASE:-HEAD~1}" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"
 }
 
 # Reminder predicates: the same text each hook's own fixture asserts.
@@ -109,6 +110,8 @@ set_ledger() { # set_ledger <state>
     guarded) printf '{"branch":"feat/q","lane":"guarded"}\n' > "$LEDGER" ;;
     other-branch) printf '{"branch":"other","lane":"fast"}\n' > "$LEDGER" ;;
     malformed) printf '{' > "$LEDGER" ;;
+    concatenated) printf '{"branch":"feat/q","lane":"fast"}{"branch":"feat/q","lane":"fast"}\n' > "$LEDGER" ;;
+    array) printf '[{"branch":"feat/q","lane":"fast"}]\n' > "$LEDGER" ;;
     absent) rm -f "$LEDGER" ;;
   esac
 }
@@ -144,6 +147,92 @@ for gate in protected-path-guard scope-widening-gate; do
   check "$gate: identical output with a declared scope, with and without the fast lane" test "$WITHOUT_LANE" = "$WITH_LANE"
   check "$gate: the scoped Write draws a decision rather than silence" test "$WITH_LANE" != "exit=0"
 done
+
+# --- Hardening: ledger shapes, HEAD state, ledger provenance, helper loss ------
+REMINDER_HOOKS="clean_code observability new_file_header dockerfile flat_directory single_file_folder"
+check_all_remind() { # check_all_remind <label>: every reminder hook prints its reminder
+  local hook
+  for hook in $REMINDER_HOOKS; do
+    "run_$hook"
+    check "$hook: $1 still prints the reminder" "reminds_$hook"
+  done
+}
+
+# Two concatenated objects and a one-element array are not one ledger object.
+for state in concatenated array; do
+  set_ledger "$state"; check_all_remind "ledger of shape $state"
+done
+
+# A detached HEAD names no branch, so no ledger can name the checked-out branch.
+set_ledger fast
+git -C "$REPO" checkout -q --detach
+check_all_remind "detached HEAD with the fast ledger"
+git -C "$REPO" checkout -q feat/q
+set_ledger absent
+
+# A committed ledger is repository content, not the owner's session opt-in.
+set_ledger fast
+git -C "$REPO" add -f .claude/task-tier.json
+git -C "$REPO" commit -qm "track ledger"
+SFF_BASE=HEAD~2 check_all_remind "tracked (committed) fast ledger"
+git -C "$REPO" reset -q --hard HEAD~1
+mkdir -p "$REPO/.claude"
+set_ledger absent
+check "tracked-ledger case restored the sandbox history" test "$(git -C "$REPO" log -1 --format=%s)" = "add voices"
+
+# A ledger that is a symlink to a file outside the repository is not trusted.
+OUTSIDE_LEDGER="$SB/outside-ledger.json"
+printf '{"branch":"feat/q","lane":"fast"}\n' > "$OUTSIDE_LEDGER"
+ln -s "$OUTSIDE_LEDGER" "$LEDGER"
+check_all_remind "symlinked fast ledger pointing outside the repository"
+rm -f "$LEDGER"
+
+# A relative path starting with a dash resolves as a path: the nested
+# repository at -nested/ has no ledger, so the outer fast lane must not apply.
+set_ledger fast
+git -C "$REPO" init -q -b feat/q -- "$REPO/-nested" 2>/dev/null || (mkdir -p "$REPO/-nested" && cd "$REPO/-nested" && git init -q -b feat/q)
+dash_path_quiet_status() {
+  (cd "$REPO" && . "$HOOKS/build-lane-quiet.sh" && is_reminder_quiet "-nested/sub/x.ts" 2>/dev/null)
+  echo $?
+}
+check "is_reminder_quiet -nested/sub/x.ts answers for the nested repository (returns 1)" test "$(dash_path_quiet_status)" = "1"
+rm -rf "$REPO/-nested"
+set_ledger absent
+
+# A hooks directory missing build-lane-quiet.sh still reminds, exits 0, and
+# says nothing about the missing helper on stderr.
+NOHELPER="$SB/nohelper"
+mkdir -p "$NOHELPER/enforce"
+cp -R "$HOOKS" "$NOHELPER/hooks"
+rm -rf "$NOHELPER/hooks/build-lane-quiet.sh" "$NOHELPER/hooks/tests"
+cp "$CLAUDE_HARNESS_ROOT"/enforce/*.sh "$NOHELPER/enforce/"
+for hook in $REMINDER_HOOKS; do
+  DRIVE_HOOKS="$NOHELPER/hooks" "run_$hook"
+  check "$hook: without build-lane-quiet.sh exits 0" test "$ST" -eq 0
+  check "$hook: without build-lane-quiet.sh prints the reminder" "reminds_$hook"
+  check "$hook: without build-lane-quiet.sh keeps stderr free of the helper name" \
+    bash -c '! grep -q build-lane-quiet <<< "$1"' _ "$ERR"
+done
+
+# Exactly the six reminder hooks source the helper.
+HELPER_USERS=$(cd "$HOOKS" && grep -l 'build-lane-quiet' -- *.sh | grep -vx 'build-lane-quiet.sh' | sort | tr '\n' ' ')
+EXPECTED_USERS=$(printf '%s\n' clean-code-reminder.sh dockerfile-reminder.sh flat-directory-reminder.sh \
+  new-file-header-reminder.sh observability-reminder.sh single-file-folder-reminder.sh | sort | tr '\n' ' ')
+check "only the six reminder hooks reference build-lane-quiet" test "$HELPER_USERS" = "$EXPECTED_USERS"
+
+# new-file-header-reminder's own exemption: content opening with a comment.
+set_ledger absent
+drive new-file-header-reminder "$(post_write "$REPO/src/services/headed.ts" '// header
+export const x = 1;
+')" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"
+check "new_file_header: content opening with a comment is silent with no ledger" is_quiet
+
+# The real ledger writer's fast lane silences a reminder.
+(cd "$REPO" && bash "$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh" set standard r --ticket IAN-1 --lane fast >/dev/null 2>&1)
+check "task-tier.sh --lane fast wrote a fast ledger" test "$(jq -r '.lane' "$LEDGER" 2>/dev/null)" = "fast"
+run_clean_code
+check "clean_code: a ledger written by task-tier.sh --lane fast is quiet" is_quiet
+set_ledger absent
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
 echo "build-lane-quiet.test.sh PASS"
