@@ -503,12 +503,29 @@ require_lock_parent_dir() {
     echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is missing or not writable; point TMPDIR at a writable directory" >&2
     exit 1
   fi
-  # A parent others can write without the sticky bit would let another user
-  # rename the checked lock directory and plant a symlink in its place before
-  # the locks are opened; /tmp is sticky, and macOS's per-user TMPDIR is
-  # private (PR #154 review round 3).
-  if [ -n "$(find "$RUN_LOCK_PARENT_DIR" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ] && [ ! -k "$RUN_LOCK_PARENT_DIR" ]; then
-    echo "fixture-shards: $RUN_LOCK_PARENT_DIR can be written by others and lacks the sticky bit, so the run lock cannot be kept safely there; point TMPDIR at a private or sticky directory" >&2
+  require_safe_lock_parent_dir
+}
+
+# require_safe_lock_parent_dir: exits 1 unless the lock parent, judged after
+# resolving symlinks (find reads a symlink's own mode, 0777 on Linux and 0755
+# on macOS, while the lock lives in its target), is owned by this user or by
+# root, and is either closed to writes by others or sticky. Otherwise another
+# user could rename the checked lock directory and plant a symlink in its
+# place before the locks are opened: the sticky bit stops other users but not
+# the directory's owner. /tmp is root's and sticky, and macOS's per-user
+# TMPDIR is the user's and private (PR #154 review rounds 3 and 4).
+require_safe_lock_parent_dir() {
+  local resolved_parent
+  resolved_parent=$(cd "$RUN_LOCK_PARENT_DIR" 2>/dev/null && pwd -P) || {
+    echo "fixture-shards: cannot resolve the run lock parent $RUN_LOCK_PARENT_DIR; point TMPDIR at a writable directory" >&2
+    exit 1
+  }
+  if [ ! -O "$resolved_parent" ] && [ -z "$(find "$resolved_parent" -maxdepth 0 -user 0 2>/dev/null)" ]; then
+    echo "fixture-shards: $resolved_parent belongs to another user, who could replace the run lock directory; point TMPDIR at your own or root's directory" >&2
+    exit 1
+  fi
+  if [ -n "$(find "$resolved_parent" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ] && [ ! -k "$resolved_parent" ]; then
+    echo "fixture-shards: $resolved_parent can be written by others and lacks the sticky bit, so the run lock cannot be kept safely there; point TMPDIR at a private or sticky directory" >&2
     exit 1
   fi
 }
