@@ -140,7 +140,9 @@ hasSymlinkAncestor() {
 
 # validateReleaseFileList(): every entry is non-empty, relative, free of ".",
 # "..", and empty components and of a trailing slash, a regular file or a
-# symlink but never a directory (rsync would copy a listed directory whole),
+# symlink but never a directory (rsync would copy a listed directory whole) or
+# a special file such as a fifo (rsync would install it, and jq would block
+# reading one named *.json),
 # reached through no directory symlink, and, when it is a symlink, pointing
 # inside its payload folder. Runs once, before the first target, so a bad
 # list never leaves one target synced and the others not.
@@ -154,8 +156,10 @@ validateReleaseFileList() {
     case "/$entry/" in */../*) refuseReleaseFileList "the path $entry, which climbs out with .." ;; esac
     case "/$entry/" in */./*|*//*) refuseReleaseFileList "the path $entry, which has a . or empty component or a trailing slash" ;; esac
     [ -e "$REPO_ROOT/$entry" ] || [ -L "$REPO_ROOT/$entry" ] || refuseReleaseFileList "the path $entry, which is not in this extract"
-    if [ -d "$REPO_ROOT/$entry" ] && [ ! -L "$REPO_ROOT/$entry" ]; then
+    if [ ! -L "$REPO_ROOT/$entry" ] && [ -d "$REPO_ROOT/$entry" ]; then
       refuseReleaseFileList "the directory $entry; list its files one by one"
+    elif [ ! -L "$REPO_ROOT/$entry" ] && [ ! -f "$REPO_ROOT/$entry" ]; then
+      refuseReleaseFileList "the special file $entry, which is neither a regular file nor a symlink"
     fi
     hasSymlinkAncestor "$entry" && refuseReleaseFileList "the path $entry, which is reached through a directory symlink"
     if [ -L "$REPO_ROOT/$entry" ] && ! isSymlinkInsideExtract "$entry"; then
