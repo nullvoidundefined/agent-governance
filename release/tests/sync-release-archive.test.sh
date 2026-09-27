@@ -110,6 +110,21 @@ for directoryEntry in "claude/" "claude/." "claude/hooks" "claude/hooks/" "claud
   assertTargetsAbsent "$dir-live" "$label"
 done
 
+# --- B-3d, special files (security review round 6): a listed fifo is neither
+# a regular file nor a symlink, so it refuses before any target is written,
+# including one named *.json that would otherwise block the JSON pre-check.
+caseNumber=0
+for fifoEntry in "claude/pipe" "claude/settings.json"; do
+  caseNumber=$((caseNumber + 1))
+  label="B-3d special file '$fifoEntry'"
+  dir="$TMP/b3d-fifo-$caseNumber"; makeExtract "$dir"
+  mkfifo "$dir/$fifoEntry"
+  printf '%s\n' "$fifoEntry" >> "$dir/RELEASE-FILES"
+  if runSyncFrom "$dir" "$dir-live" > "$dir.out" 2>&1; then fail "$label: sync accepted it"; fi
+  grep -q "REFUSED: RELEASE-FILES" "$dir.out" || { cat "$dir.out"; fail "$label: no RELEASE-FILES refusal"; }
+  assertTargetsAbsent "$dir-live" "$label"
+done
+
 # --- B-3e (security review round 5, finding 2): a symlink target that climbs
 # out of its payload folder and re-enters by the folder's name resolves inside
 # the extract but outside the live target, so it refuses; a link that climbs
