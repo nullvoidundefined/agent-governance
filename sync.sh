@@ -6,12 +6,15 @@
 # copy is a locked `npm ci` of the live enforce/ dependencies when the synced
 # lockfile no longer matches what is installed (see the end of this file).
 #
-# Only files tracked by git in each source folder are ever synced. Untracked
-# or gitignored working-directory state (build artifacts, installed
-# dependencies, caches) must never reach the destination and must never be
-# considered by the JSON pre-flight check: a source folder is a git checkout,
-# not a scratch directory, and its local side effects (e.g. `npm ci` dropping
-# node_modules/ under claude/enforce/) are not part of what ships.
+# Only files the source ships are ever synced. In a git checkout that is what
+# git tracks in each source folder; in an extracted release archive (a
+# directory that is not the top level of its own git work tree) it is what
+# RELEASE-FILES lists, and every entry is validated before any target is
+# written (IAN-478). Untracked or gitignored working-directory state (build
+# artifacts, installed dependencies, caches) must never reach the destination
+# and must never be considered by the JSON pre-flight check: its local side
+# effects (e.g. `npm ci` dropping node_modules/ under claude/enforce/) are not
+# part of what ships.
 #
 # Never deletes anything it did not install (no rsync --delete). An earlier
 # version did, gated by a hand-maintained per-tool exclude list meant to
@@ -46,6 +49,52 @@ sha256Tool() {
   if command -v sha256sum >/dev/null 2>&1; then echo "sha256sum"; else echo "shasum -a 256"; fi
 }
 SHA256=$(sha256Tool)
+
+# resolveSourceMode(): "git" when REPO_ROOT is the top level of its own git
+# work tree, "release" when it holds RELEASE-FILES, "none" otherwise. An
+# extract untarred inside some other repository is "release": that
+# repository's ls-files would name none of these files.
+resolveSourceMode() {
+  local top
+  top=$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -n "$top" ] && [ "$(cd "$top" && pwd -P)" = "$(cd "$REPO_ROOT" && pwd -P)" ]; then
+    echo git
+  elif [ -f "$REPO_ROOT/RELEASE-FILES" ]; then
+    echo release
+  else
+    echo none
+  fi
+}
+
+# refuseReleaseFileList(reason): stops the run before any target is written.
+refuseReleaseFileList() {
+  echo "REFUSED: RELEASE-FILES lists $1; $TARGET_CLAUDE, $TARGET_CURSOR and $TARGET_CODEX left untouched" >&2
+  exit 1
+}
+
+# validateReleaseFileList(): every entry is non-empty, relative, free of ".."
+# components, and present in the extract. Runs once, before the first target,
+# so a bad list never leaves one target synced and the others not.
+validateReleaseFileList() {
+  local entry
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    case "$entry" in
+      "") refuseReleaseFileList "an empty line" ;;
+      /*) refuseReleaseFileList "the absolute path $entry" ;;
+    esac
+    case "/$entry/" in */../*) refuseReleaseFileList "the path $entry, which climbs out with .." ;; esac
+    [ -e "$REPO_ROOT/$entry" ] || [ -L "$REPO_ROOT/$entry" ] || refuseReleaseFileList "the path $entry, which is not in this extract"
+  done < "$REPO_ROOT/RELEASE-FILES"
+}
+
+# listSourceFiles(folder): the shipped files under folder, one per line.
+listSourceFiles() {
+  if [ "$SOURCE_MODE" = git ]; then
+    git -C "$REPO_ROOT" ls-files -- "$1"
+  else
+    grep "^$1/" "$REPO_ROOT/RELEASE-FILES" || true
+  fi
+}
 
 # hashLiveEntry(path): the manifest hash of one path, the content hash for a
 # regular file and the hash of "symlink:<target>" for a symlink, so a tracked
@@ -131,12 +180,13 @@ sync_one() {
   # copy decides by content too, never by size and mtime alone.
   local rsync_args=(-a --checksum)
 
-  # Stage a copy of only the git-tracked files for this folder. Building a
-  # clean staging tree keeps the "only ship what's tracked" semantics simple
-  # and correct: the final rsync below copies exactly that tree, nothing more.
+  # Stage a copy of only the shipped files for this folder (listSourceFiles).
+  # Building a clean staging tree keeps the "only ship what's tracked"
+  # semantics simple and correct: the final rsync below copies exactly that
+  # tree, nothing more.
   local filelist staging
   filelist=$(mktemp)
-  git -C "$REPO_ROOT" ls-files -- "$folder" > "$filelist"
+  listSourceFiles "$folder" > "$filelist"
 
   staging=$(mktemp -d)
   mkdir -p "$staging/$folder"
@@ -164,6 +214,13 @@ sync_one() {
   mv "$new_manifest" "$dest/.sync-manifest"
   echo "synced $REPO_ROOT/$folder -> $dest"
 }
+
+SOURCE_MODE=$(resolveSourceMode)
+case "$SOURCE_MODE" in
+  git) echo "source: git checkout" ;;
+  release) validateReleaseFileList; echo "source: release archive RELEASE-FILES" ;;
+  *) echo "REFUSED: $REPO_ROOT is neither a git checkout nor a release archive (no RELEASE-FILES); nothing synced" >&2; exit 1 ;;
+esac
 
 sync_one claude "$TARGET_CLAUDE"
 sync_one cursor "$TARGET_CURSOR"
