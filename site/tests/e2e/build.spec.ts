@@ -29,7 +29,14 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('build-site.sh', () => {
     const badVersions = ['0.0.1', 'v0.0.1"><script>', 'v0.0.1\nx', ''];
-    const badChecksums = ['ABCDEF'.padEnd(64, '0'), goodSha256.slice(1), `${goodSha256.slice(0, 63)}<`, ''];
+    const badChecksums = [
+        'ABCDEF'.padEnd(64, '0'),
+        goodSha256.slice(1),
+        `${goodSha256.slice(0, 63)}<`,
+        `${goodSha256.slice(0, 63)}"`,
+        `${goodSha256.slice(0, 32)}\n${goodSha256.slice(0, 31)}`,
+        '',
+    ];
 
     test.afterAll(() => {
         runBuild(goodVersion, goodSha256);
@@ -57,7 +64,8 @@ test.describe('build-site.sh', () => {
 
     test('B-11 leaves no placeholder in dist and substitutes both values', () => {
         expect(runBuild(goodVersion, goodSha256).exitCode).toBe(0);
-        const textFiles = listFiles(distDir).filter((file) => /\.(html|css|txt)$/.test(file));
+        // Every file but the woff2 fonts, matching the build script's own grep -I sweep.
+        const textFiles = listFiles(distDir).filter((file) => !file.endsWith('.woff2'));
         expect(textFiles.length).toBeGreaterThan(0);
         for (const file of textFiles) {
             expect(readFileSync(file, 'utf8'), file).not.toContain('{{');
