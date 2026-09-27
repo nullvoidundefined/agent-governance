@@ -182,6 +182,15 @@ The R-517 review (opus) and the R-109 security review (fable) of the first imple
 - B-29: The workflow runs only on `pull_request`, `push`, `schedule`, and `workflow_dispatch`, and exits 2 on any other event.
 - B-30: The harness step refuses a repository other than `nullvoidundefined/agent-governance`, a SHA that is not 40 hexadecimal characters, and, except when the caller is agent-governance itself, a SHA that is not an ancestor of agent-governance `main`; the fixture executes the step's own shell with each of those values and asserts exit 2 before any fetch of the pinned commit.
 
+Round 2 of both reviews (2026-09-27) verified every round-1 fix and added:
+
+- B-31: A #27-shaped file under a directory Semgrep ignores by default (`tests/`, `vendor/`, `node_modules/`) is still scanned and reported, proven with a real Semgrep run.
+- B-32: Semgrep's own stderr never reaches the runner raw: the step captures it and, on any non-clean exit, prints it line by line escaped for the workflow-command parser under a fixed prefix.
+- B-33: Every script works from any subdirectory of the repository and prints the same repository-relative result as from the root.
+- B-34: `go` is listed in full mode only when the ref is the repository's default branch (`--ref` and `--default-branch`), so an unmerged branch pushed by someone with write access never runs autobuild beside the write token; elsewhere a notice says why.
+- B-35: CodeQL skips only on a private repository, decided by the `languages` job reading the repository's visibility through the API with the job token, not from the event payload, which a `schedule` event lacks.
+- B-36: Semgrep and its dependencies install from a hash-pinned requirements file in the harness (`pip install --require-hashes`), so the verdict never depends on what PyPI serves that day.
+
 Finding 6 of the security review has a residual this PR cannot close: GitHub resolves a `uses:` SHA from any fork of agent-governance, so a malicious pin brings its own copy of this workflow and skips the ancestry check. The real control is at the adopting repository: each template's caller PR adds a CODEOWNERS entry on `.github/workflows/`, and **Part 5b's merge gate must verify that the caller file's pin is an ancestor of agent-governance `main`** (owner decision 2026-09-27).
 
 ### Rollout checklist (not an acceptance criterion)
