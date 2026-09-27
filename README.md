@@ -198,6 +198,20 @@ refuses rather than guessing, and the cycle still applies by hand.
 **Reach for it when** the question is "how do I build this one behavior so that the test genuinely
 came first and nobody can quietly make a red thing green."
 
+### `build-fast` trades ceremony for wall time, on opt-in
+
+`build-fast` runs only when the owner says "build fast" or invokes `/build-fast`, and it exists for
+interviews, critical bug fixes, and any change where time to a working, merged change matters most
+(IAN-401). It asks every question once, up front, then builds on Haiku, the fastest model, in one
+test-first cycle for the whole change, and has the strongest model review the finished diff while CI
+runs, so the review adds almost no wall time. Before the first edit,
+`skills/build-fast/scripts/build-lane.sh predict` sorts the change into a `fast` or `guarded` lane from
+the declared file scope, and `classify` checks the committed range again before the review: anything
+touching a security surface, a migration, concurrency, or payments is `guarded`, which means the full
+Complex process when predicted, or an added security review and an owner merge when it only shows up
+after the code exists. It skips bug hunting and side quests, but it never skips a gate: hooks, the
+test lock, Semgrep, the secret scan, and CI all stay on.
+
 ### Side by side
 
 | | `build-by-slice-require-review` | `tdd-gated-dispatch` |
