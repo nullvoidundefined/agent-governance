@@ -371,6 +371,14 @@
             "autofix": false
         },
         {
+            "id": "R-605",
+            "tier": "regex",
+            "enforcer": "hook:linear-todo-label-gate",
+            "severity": "error",
+            "autofix": false,
+            "note": "PreToolUse on the active tracker's create/update tool (exact names from ~/.claude/TICKET-TRACKER.json): denies a save whose state is the status the config maps specced and planned onto, or the unstarted state type, unless addLabels or labels in the same call carries the specced or planned label; silent without a tracker config and on every other state. A state passed as a raw UUID is not classified. Linear UI moves are outside any hook and are reported by the weekday linear-todo-sweep scheduled task (IAN-473). Fixture: enforce/tests/linear-todo-label-gate.test.sh"
+        },
+        {
             "id": "R-105",
             "tier": "regex",
             "enforcer": "hook:mcp-action-guard",
