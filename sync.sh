@@ -78,16 +78,40 @@ refuseReleaseFileList() {
   exit 1
 }
 
+# isTargetWithinPayloadLexically(entry, target): true when walking target's
+# components from the entry's own folder never climbs above its payload
+# folder (claude/, cursor/, or codex/). "." and empty components stay put,
+# ".." climbs one level, anything else descends one. This is judged on the
+# text, not the extract's directories, because the link is resolved again
+# from the live target once installed: claude/x -> ../claude/y resolves
+# inside the extract but to ~/claude/y from ~/.claude.
+isTargetWithinPayloadLexically() {
+  local entry="$1" remaining="$2/" depth=0 component folder
+  folder=$(dirname "$entry")
+  while [ "${folder#*/}" != "$folder" ]; do folder="${folder#*/}"; depth=$((depth + 1)); done
+  while [ -n "$remaining" ]; do
+    component="${remaining%%/*}"
+    remaining="${remaining#*/}"
+    case "$component" in
+      ""|.) ;;
+      ..) depth=$((depth - 1)); [ "$depth" -ge 0 ] || return 1 ;;
+      *) depth=$((depth + 1)) ;;
+    esac
+  done
+  return 0
+}
+
 # isSymlinkInsideExtract(entry): true when the symlink at entry points at a
-# relative target whose directory exists inside the entry's own payload
-# folder (claude/, cursor/, or codex/), the folder that becomes one live
-# target. An absolute target, or one whose directory is missing or resolves
-# outside that folder, is false: a link from claude/ into codex/ stays inside
-# the extract but points outside ~/.claude once installed.
+# relative target that stays inside the entry's own payload folder, the folder
+# that becomes one live target, both on the text of the target
+# (isTargetWithinPayloadLexically) and on the extract's real directories (pwd
+# -P, which follows any directory symlink the target passes through). An
+# absolute target, or one whose directory is missing, is false.
 isSymlinkInsideExtract() {
   local entry="$1" target root resolved targetDirectory
   target=$(readlink "$REPO_ROOT/$entry")
-  case "$target" in /*) return 1 ;; esac
+  case "$target" in /*|"") return 1 ;; esac
+  isTargetWithinPayloadLexically "$entry" "$target" || return 1
   root=$(cd "$REPO_ROOT/${entry%%/*}" 2>/dev/null && pwd -P) || return 1
   # A target whose last component is "." or ".." names a directory itself,
   # and dirname would drop exactly the part that climbs (dirname ".." is ".").
@@ -114,11 +138,12 @@ hasSymlinkAncestor() {
   return 1
 }
 
-# validateReleaseFileList(): every entry is non-empty, relative, free of ".."
-# components, present in the extract, reached through no directory symlink,
-# and, when it is a symlink itself, pointing inside the extract. Runs once,
-# before the first target, so a bad list never leaves one target synced and
-# the others not.
+# validateReleaseFileList(): every entry is non-empty, relative, free of ".",
+# "..", and empty components and of a trailing slash, a regular file or a
+# symlink but never a directory (rsync would copy a listed directory whole),
+# reached through no directory symlink, and, when it is a symlink, pointing
+# inside its payload folder. Runs once, before the first target, so a bad
+# list never leaves one target synced and the others not.
 validateReleaseFileList() {
   local entry
   while IFS= read -r entry || [ -n "$entry" ]; do
@@ -127,7 +152,11 @@ validateReleaseFileList() {
       /*) refuseReleaseFileList "the absolute path $entry" ;;
     esac
     case "/$entry/" in */../*) refuseReleaseFileList "the path $entry, which climbs out with .." ;; esac
+    case "/$entry/" in */./*|*//*) refuseReleaseFileList "the path $entry, which has a . or empty component or a trailing slash" ;; esac
     [ -e "$REPO_ROOT/$entry" ] || [ -L "$REPO_ROOT/$entry" ] || refuseReleaseFileList "the path $entry, which is not in this extract"
+    if [ -d "$REPO_ROOT/$entry" ] && [ ! -L "$REPO_ROOT/$entry" ]; then
+      refuseReleaseFileList "the directory $entry; list its files one by one"
+    fi
     hasSymlinkAncestor "$entry" && refuseReleaseFileList "the path $entry, which is reached through a directory symlink"
     if [ -L "$REPO_ROOT/$entry" ] && ! isSymlinkInsideExtract "$entry"; then
       refuseReleaseFileList "the symlink $entry, which points outside this extract"
