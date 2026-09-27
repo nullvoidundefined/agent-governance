@@ -213,10 +213,13 @@ because macOS ships perl but no `flock(1)`, and both in the directory
 directory mode 700 and exits 1 when it is a symlink, belongs to another
 user, or lets group or others read, write, or traverse it, checking it
 before it reads any nesting marker. It also judges `TMPDIR` and every
-directory above it, after resolving symlinks, the check OpenSSH's
-`safe_path` makes: each must belong to the user or to root, and must be
-closed to writes by others or carry the sticky bit, or another user could
-swap an entry below it for a symlink before the locks are opened. The locks
+directory above it, after resolving symlinks, in a walk modelled on
+OpenSSH's `safe_path` (which, unlike this one, refuses sticky shared
+directories, and which this check cannot follow for `/tmp`): each must
+belong to the user or to root, and must be closed to writes by others or
+carry the sticky bit, or another user could swap an entry below it for a
+symlink before the locks are opened. Only mode bits are read, not ACLs, and
+a `find` that fails refuses the directory rather than passing it. The locks
 are then opened through that resolved path, never through a symlink that
 could be re-pointed after the check, and a `TMPDIR` that does not exist is
 refused rather than created. `/tmp` (root's and sticky, under root's `/`)

@@ -526,7 +526,10 @@ require_lock_parent_dir() {
 
 # require_safe_directory_chain <resolved dir>: exits 1 unless the directory
 # and every ancestor up to / is owned by this user or by root and is closed to
-# writes by others or sticky, the check OpenSSH's safe_path makes. Any other
+# writes by others or sticky. The walk is modelled on OpenSSH's safe_path,
+# which refuses sticky shared directories that this check must accept for
+# /tmp; like the rest of the runner it reads mode bits only and does not
+# check ACLs, which only a directory's owner can add. Any other
 # directory on the chain would let another user rename an entry below it and
 # plant a symlink before the locks are opened: the sticky bit stops other
 # users but not the directory's owner. The path is already resolved, so find
@@ -544,12 +547,14 @@ require_safe_directory_chain() {
 
 # is_safe_chain_directory <dir>: true when the directory is owned by this user
 # or root and is closed to writes by others or sticky; otherwise prints why.
+# Each find prints the directory only when it passes, so a find that fails
+# prints nothing and the directory is refused (PR #154 review round 6).
 is_safe_chain_directory() {
   if [ ! -O "$1" ] && [ -z "$(find "$1" -maxdepth 0 -user 0 2>/dev/null)" ]; then
     echo "fixture-shards: $1 belongs to another user, who could replace the run lock directory below it; point TMPDIR at a directory whose every ancestor is yours or root's" >&2
     return 1
   fi
-  if [ -n "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ] && [ ! -k "$1" ]; then
+  if [ -z "$(find "$1" -maxdepth 0 ! -perm -020 ! -perm -002 2>/dev/null)" ] && [ ! -k "$1" ]; then
     echo "fixture-shards: $1 can be written by others and lacks the sticky bit, so the run lock cannot be kept safely below it; point TMPDIR at a directory whose every ancestor is private or sticky" >&2
     return 1
   fi
@@ -559,7 +564,10 @@ is_safe_chain_directory() {
 # others can read, write, or traverse it; traversal alone would let another
 # user open and flock a lock file by its fixed name (PR #154 review round 2).
 is_group_or_other_accessible() {
-  [ -n "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 -o -perm -040 -o -perm -004 -o -perm -010 -o -perm -001 \) 2>/dev/null)" ]
+  # find prints the directory only when it is closed to group and others, so
+  # a find that fails prints nothing and reads as accessible (PR #154 review
+  # round 6).
+  [ -z "$(find "$1" -maxdepth 0 ! -perm -020 ! -perm -002 ! -perm -040 ! -perm -004 ! -perm -010 ! -perm -001 2>/dev/null)" ]
 }
 
 # require_private_lock_dir: creates the per-user lock directory mode 700 and
