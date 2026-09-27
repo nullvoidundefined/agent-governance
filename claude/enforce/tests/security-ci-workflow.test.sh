@@ -19,8 +19,8 @@
 # Three steps are executed rather than only inspected. The languages job's
 # visibility step (B-35) is extracted and run against a stub `gh`, so the
 # fixture sees that only the exact answers true and false reach GITHUB_OUTPUT.
-# The first step of the
-# semgrep and languages jobs is an event allowlist (B-29): its own `run` text
+# The first step of the semgrep and languages jobs is an event allowlist
+# (B-29): its own `run` text
 # is extracted and run under each event name. The harness-fetch step (B-30) is
 # extracted and run against a stub `git` that logs every call, so the fixture
 # sees whether a refused repository or SHA ever reached a fetch, and that the
@@ -175,7 +175,6 @@ allowlist_markers = %w[pull_request push schedule workflow_dispatch] + ['exit 2'
 end
 
 semgrep_steps = list_job_steps(find_job.call('semgrep'))
-emit_fact 'semgrep_install', format_yes_no(semgrep_steps.any? { |step| read_text(step['run']).include?('semgrep==1.178.0') })
 scan_markers = ['security-ci-semgrep.sh', '--mode pr --base "$BASE_SHA"', '--mode full']
 scan_step = semgrep_steps.any? do |step|
   env = coerce_hash(step['env'])

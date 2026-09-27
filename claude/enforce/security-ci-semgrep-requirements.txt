@@ -1,3 +1,13 @@
+# Hash-locked install set for the Semgrep step of .github/workflows/security.yml
+# (IAN-381, B-36): the workflow installs it into a venv with
+# `pip install --require-hashes --no-deps -r`, so the scan never depends on
+# what PyPI serves on the day. The input is the single line `semgrep==1.178.0`
+# (the "semgrep-req.in" named below). Regenerate with:
+#   echo 'semgrep==1.178.0' > semgrep-req.in
+#   uv pip compile semgrep-req.in --generate-hashes --python-version 3.12 \
+#     --python-platform x86_64-manylinux_2_28 --no-header -o <this file>
+# then restore this header, and bump the version in enforce.yml's pipx
+# install in the same change.
 annotated-types==0.8.0 \
     --hash=sha256:13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7 \
     --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0

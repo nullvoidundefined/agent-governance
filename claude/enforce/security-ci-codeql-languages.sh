@@ -17,9 +17,8 @@
 # write token (owner decision 2026-09-27), whether it arrives as a PR or as a
 # pushed feature branch. Exits 2 with a message on stderr when the mode is
 # missing or unknown, full mode lacks --ref or --default-branch, git cannot
-# list HEAD, or no language remains,
-# because an empty matrix would skip CodeQL and GitHub counts a skipped job as
-# passing. bash 3.2 compatible.
+# list HEAD, or no language remains, because an empty matrix would skip CodeQL
+# and GitHub counts a skipped job as passing. bash 3.2 compatible.
 set -uo pipefail
 
 # exit_with_failure <message>: reports why no language list can be trusted and

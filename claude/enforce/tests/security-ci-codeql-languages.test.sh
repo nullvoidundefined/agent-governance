@@ -133,6 +133,10 @@ commit_all_changes "$GO_RUBY_REPO" "go and ruby"
 run_deriver "$GO_RUBY_REPO" --mode full --ref refs/heads/main --default-branch main
 expect_languages "Go and Ruby, full mode" '["go","ruby"]'
 
+# B-33: run from a subdirectory, the deriver still reads the whole tree.
+run_deriver "$GO_RUBY_REPO/lib" --mode full --ref refs/heads/main --default-branch main
+expect_languages "Go and Ruby, full mode, run from lib/" '["go","ruby"]'
+
 # --- 3. No supported language (fail closed) ----------------------------------
 DOCS_REPO=$(create_repo docs-only)
 write_file "$DOCS_REPO" README.md $'# Docs\n'
