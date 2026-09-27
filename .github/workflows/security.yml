@@ -95,8 +95,16 @@ jobs:
           git -C "$harness_dir" checkout --quiet --detach FETCH_HEAD
           test "$(git -C "$harness_dir" rev-parse HEAD)" = "$HARNESS_SHA"
 
-      - name: Install Semgrep
-        run: pipx install semgrep==1.178.0
+      # Every package is pinned by hash in the harness, so the scan's verdict
+      # never depends on what PyPI serves that day (B-36).
+      - name: Install Semgrep from hash-pinned requirements
+        run: |
+          set -euo pipefail
+          semgrep_venv="$RUNNER_TEMP/semgrep-venv"
+          python3 -m venv "$semgrep_venv"
+          "$semgrep_venv/bin/pip" install --quiet --require-hashes --no-deps \
+            -r "$RUNNER_TEMP/harness/claude/enforce/security-ci-semgrep-requirements.txt"
+          echo "$semgrep_venv/bin" >> "$GITHUB_PATH"
 
       - name: Scan with the security rule pack and p/default
         env:
@@ -119,6 +127,7 @@ jobs:
       contents: read
     outputs:
       list: ${{ steps.derive.outputs.list }}
+      is_private: ${{ steps.visibility.outputs.is_private }}
     steps:
       - name: Allow only the supported events
         env:
@@ -162,17 +171,42 @@ jobs:
           git -C "$harness_dir" checkout --quiet --detach FETCH_HEAD
           test "$(git -C "$harness_dir" rev-parse HEAD)" = "$HARNESS_SHA"
 
+      # A schedule event's payload carries no repository object, so the
+      # visibility and the default branch come from the API with the job
+      # token, and anything but a plain true or false and a plain branch name
+      # fails the job rather than skipping CodeQL or misjudging Go (B-34, B-35).
+      - name: Read the repository visibility and default branch
+        id: visibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repository_facts=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.private, .default_branch') || {
+            echo "::error::could not read this repository's visibility and default branch"; exit 2; }
+          is_private=$(printf '%s\n' "$repository_facts" | sed -n 1p)
+          default_branch=$(printf '%s\n' "$repository_facts" | sed -n 2p)
+          case "$is_private" in
+            true|false) ;;
+            *) echo "::error::unexpected repository visibility"; exit 2 ;;
+          esac
+          if ! printf '%s' "$default_branch" | grep -Eq '^[A-Za-z0-9._/][A-Za-z0-9._/-]*$'; then
+            echo "::error::unexpected default branch name"; exit 2
+          fi
+          printf 'is_private=%s\ndefault_branch=%s\n' "$is_private" "$default_branch" >> "$GITHUB_OUTPUT"
+
       - name: Derive the CodeQL languages
         id: derive
         env:
           EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ steps.visibility.outputs.default_branch }}
         run: |
           set -euo pipefail
           languages_script="$RUNNER_TEMP/harness/claude/enforce/security-ci-codeql-languages.sh"
           if [ "$EVENT_NAME" = "pull_request" ]; then
             language_list=$(bash "$languages_script" --mode pr)
           else
-            language_list=$(bash "$languages_script" --mode full)
+            language_list=$(bash "$languages_script" --mode full --ref "$GIT_REF" --default-branch "$DEFAULT_BRANCH")
           fi
           echo "CodeQL languages: $language_list"
           echo "list=$language_list" >> "$GITHUB_OUTPUT"
@@ -180,7 +214,7 @@ jobs:
   codeql:
     name: codeql (${{ matrix.language }})
     needs: languages
-    if: ${{ !github.event.repository.private }}
+    if: ${{ needs.languages.outputs.is_private == 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -213,7 +247,8 @@ jobs:
   # notice saying why CodeQL did not run.
   codeql-skipped:
     name: codeql (skipped)
-    if: ${{ github.event.repository.private }}
+    needs: languages
+    if: ${{ needs.languages.outputs.is_private == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions: {}
