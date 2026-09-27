@@ -76,7 +76,9 @@ done
 caseNumber=0
 # "../codex/AGENTS.md" and "../sync.sh" stay inside the extract but leave the
 # claude/ payload, so once installed into ~/.claude they point outside it.
-for escapingTarget in "/etc/passwd" "../../../../outside" "../missing-dir/x" "../codex/AGENTS.md" "../sync.sh"; do
+# ".." and "../" name the extract root itself, which a dirname-based check
+# mistakes for the payload folder (security review round 4).
+for escapingTarget in "/etc/passwd" "../../../../outside" "../missing-dir/x" "../codex/AGENTS.md" "../sync.sh" ".." "../" "hooks/../.."; do
   caseNumber=$((caseNumber + 1))
   label="B-3b symlink to '$escapingTarget'"
   dir="$TMP/b3b-$caseNumber"; makeExtract "$dir"
