@@ -503,6 +503,14 @@ require_lock_parent_dir() {
     echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is missing or not writable; point TMPDIR at a writable directory" >&2
     exit 1
   fi
+  # A parent others can write without the sticky bit would let another user
+  # rename the checked lock directory and plant a symlink in its place before
+  # the locks are opened; /tmp is sticky, and macOS's per-user TMPDIR is
+  # private (PR #154 review round 3).
+  if [ -n "$(find "$RUN_LOCK_PARENT_DIR" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ] && [ ! -k "$RUN_LOCK_PARENT_DIR" ]; then
+    echo "fixture-shards: $RUN_LOCK_PARENT_DIR can be written by others and lacks the sticky bit, so the run lock cannot be kept safely there; point TMPDIR at a private or sticky directory" >&2
+    exit 1
+  fi
 }
 
 # is_group_or_other_accessible <dir>: true when the directory's group or
@@ -573,7 +581,9 @@ wait_for_run_slot() {
 # goes ahead unqueued, with a warning, as it did before IAN-348.
 acquire_run_lock() {
   local run_cap="$1" wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS"
-  [[ "$wait_cap" =~ ^[0-9]+$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number"
+  # Bounded at five digits: a longer value made the give-up comparison error
+  # out, so a queued run polled forever (PR #154 review round 3).
+  [[ "$wait_cap" =~ ^[0-9]{1,5}$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number of seconds up to 99999"
   command -v perl >/dev/null 2>&1 || { echo "fixture-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
   # A perl that cannot load Fcntl (a bad PERL5OPT or PERL5LIB) would make every
   # try below fail and read as a busy lock until the cap (PR #136 review).

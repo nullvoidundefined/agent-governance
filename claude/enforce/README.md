@@ -212,7 +212,11 @@ because macOS ships perl but no `flock(1)`, and both in the directory
 `${TMPDIR:-/tmp}/claude-fixture-shards.<uid>/`. The runner creates that
 directory mode 700 and exits 1 when it is a symlink, belongs to another
 user, or lets group or others read, write, or traverse it, checking it
-before it reads any nesting marker, because the lock names are fixed and
+before it reads any nesting marker; it also refuses a `TMPDIR` that others
+can write without the sticky bit, where another user could swap the checked
+directory for a symlink before the locks are opened (`/tmp` is sticky and
+macOS's per-user `TMPDIR` is private, so neither is affected). All of this
+is because the lock names are fixed and
 in a shared `/tmp` another user could otherwise plant a symlink where the
 runner writes (PR #154 review):
 
@@ -252,7 +256,8 @@ for these locks.
 A run waiting on its worktree prints one line naming the PID recorded in the
 lock file, and a run waiting for a slot prints one line saying every slot is
 busy; both poll every two seconds. After `FIXTURE_SHARDS_LOCK_WAIT_SECONDS`
-(default 1200, twenty minutes) across both waits it exits 75 with a message
+(default 1200, twenty minutes; a whole number up to 99999, else exit 2)
+across both waits it exits 75 with a message
 naming what it waited for instead of hanging the turn, and a lock parent
 directory that cannot be written fails at once with that reason. When perl is missing, or cannot load its `Fcntl`
 module, the run goes ahead unqueued, with a warning. Both `run-tests.sh` wrappers pass that 75 through. The R-509 Stop
