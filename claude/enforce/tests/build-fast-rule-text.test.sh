@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Covers: hook:git-workflow-guard
+# Asserts the build-fast prose (IAN-401, spec B-4 and B-5, acceptance
+# criterion 7): the build-fast skill runs on Haiku through its frontmatter and
+# states each step, stop condition, and hard rule; the R-211, R-514, and R-517
+# norm lines and their reference.md Specs carry the build-fast clauses;
+# task-start defers the process to build-fast's lane and tier matrix; and the
+# generated Codex and Cursor ports carry the new R-514 norm line.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
+ROOT="$CLAUDE_HARNESS_ROOT"
+REPO_ROOT="$(cd "$ROOT/.." && pwd)"
+SKILL="$ROOT/skills/build-fast/SKILL.md"
+R211_BUILD_FAST='under build-fast, the forks are asked in the opening batch'
+R514_BUILD_FAST='under build-fast, the merge mode the owner chose in the opening batch'
+R517_BUILD_FAST='under build-fast, the reviewer runs on `securityReviewModel`'
+TASK_START_BUILD_FAST="build-fast's lane and tier matrix decides the process"
+
+# requireText <file> <literal> <failure message>
+# Fails the fixture unless the file contains the literal text.
+requireText() {
+  grep -qF -- "$2" "$1" || { echo "FAIL: $3"; exit 1; }
+}
+
+# normLine <rule id>
+# Prints the rule's one norm line from CLAUDE.md.
+normLine() {
+  grep -E "^$1:" "$ROOT/CLAUDE.md" || true
+}
+
+# requireNormText <rule id> <literal>
+# Fails the fixture unless the rule's own norm line contains the literal text.
+requireNormText() {
+  local ruleNorm
+  ruleNorm=$(normLine "$1")
+  grep -qF -- "$2" <<< "$ruleNorm" || { echo "FAIL: CLAUDE.md $1 norm line lacks: $2"; exit 1; }
+}
+
+# The skill runs on Haiku through its frontmatter, not through its body text.
+[ -f "$SKILL" ] || { echo "FAIL: skills/build-fast/SKILL.md is missing"; exit 1; }
+SKILL_FRONTMATTER=$(awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { exit } inside { print }' "$SKILL")
+grep -qxF -- 'model: haiku' <<< "$SKILL_FRONTMATTER" || { echo "FAIL: build-fast frontmatter lacks model: haiku"; exit 1; }
+
+# Each step, stop condition, and hard rule of B-4.
+for skillLiteral in \
+  'Opening batch' \
+  'build-lane.sh predict' \
+  'Approach review, only when opted in' \
+  'tdd.sh' \
+  'Paperwork commit' \
+  'build-lane.sh classify' \
+  'security-review-record.sh' \
+  'in parallel with CI' \
+  'One fix round' \
+  'Stop conditions' \
+  'securityReviewModel' \
+  'task-tier.sh set' \
+  '--merge-mode' \
+  'No bug or issue hunting' \
+  'No yak-shaving' \
+  'never bypass' \
+  'only the owner waives'; do
+  requireText "$SKILL" "$skillLiteral" "build-fast SKILL.md lacks: $skillLiteral"
+done
+
+# B-5: the norm lines carry their build-fast clauses on the rule's own line.
+requireNormText 'R-211' "$R211_BUILD_FAST"
+requireNormText 'R-514' "$R514_BUILD_FAST"
+requireNormText 'R-517' "$R517_BUILD_FAST"
+
+# B-5: the reference.md Specs carry the same clauses.
+requireText "$ROOT/rulebook/reference.md" "$R211_BUILD_FAST" "reference.md R-211 Spec lacks the build-fast opening-batch clause"
+requireText "$ROOT/rulebook/reference.md" "$R514_BUILD_FAST" "reference.md R-514 Spec lacks the build-fast merge-mode clause"
+requireText "$ROOT/rulebook/reference.md" "$R517_BUILD_FAST" "reference.md R-517 Spec lacks the build-fast reviewer clause"
+
+# B-5: task-start defers the process to build-fast's lane and tier matrix.
+requireText "$ROOT/skills/task-start/SKILL.md" "$TASK_START_BUILD_FAST" "task-start SKILL.md lacks the build-fast paragraph"
+
+# The generated ports carry the new R-514 norm line.
+if [ -f "$REPO_ROOT/codex/AGENTS.md" ]; then
+  requireText "$REPO_ROOT/codex/AGENTS.md" "$R514_BUILD_FAST" "codex/AGENTS.md was not regenerated"
+fi
+if [ -f "$REPO_ROOT/cursor/rules/000-global-rules.mdc" ]; then
+  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$R514_BUILD_FAST" "cursor global rules were not regenerated"
+fi
+echo "build-fast-rule-text.test.sh PASS"
