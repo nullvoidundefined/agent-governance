@@ -2,8 +2,8 @@
 # Covers: ci:security-workflow
 # Verifies the security CI Semgrep step, enforce/security-ci-semgrep.sh
 # (IAN-381, spec Part 7 addendum, component 2, criteria B-20, B-21, B-24,
-# B-26, and B-27). The step runs with its working directory inside the
-# repository to scan:
+# B-26, B-27, and B-31 to B-33). The step runs with its working directory
+# anywhere inside the repository to scan:
 #
 #   security-ci-semgrep.sh --mode pr --base <base-ref>
 #   security-ci-semgrep.sh --mode full
@@ -35,10 +35,18 @@
 # escaped for GitHub's workflow-command parser (B-27), so no line the step
 # prints can start a workflow command Semgrep's report smuggled in.
 #
-# Cases 1 to 9, 12, and 13 to 16 drive the step through Semgrep stand-ins
-# wired in with CLAUDE_SEMGREP_CMD. Cases 10, 11, and 17 to 20 run the real
-# Semgrep (`semgrep` on PATH, else `uvx semgrep`) against the #27-shaped CORS
-# sample, and the fixture fails rather than skips when neither resolves.
+# Semgrep's own stderr is captured and, on any non-clean exit, relayed line
+# by line under the fixed prefix `security-ci-semgrep: semgrep stderr: `,
+# escaped as workflow-command data (B-32). The step works from any
+# subdirectory of the repository and hands Semgrep the same
+# repository-relative targets as from the root (B-33).
+#
+# Cases 1 to 9, 12, 13 to 16, 21, and 22 drive the step through Semgrep
+# stand-ins wired in with CLAUDE_SEMGREP_CMD. Cases 10, 11, 17 to 20, and 23
+# run the real Semgrep (`semgrep` on PATH, else `uvx semgrep`) against the
+# #27-shaped CORS sample, and the fixture fails rather than skips when
+# neither resolves. Case 23 puts the sample under tests/, vendor/, and
+# node_modules/, which Semgrep ignores by default (B-31).
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 export CLAUDE_HARNESS_ROOT
@@ -120,6 +128,9 @@ create_feature_repo() {
 #   omitpy        no results, every target scanned except the .py files, exit 0
 #   skipnoncode   no results, every target scanned, plus one `paths.skipped`
 #                 entry for the non-code target Dockerfile, exit 0
+#   stderrinject  before looking at any target, writes three lines to stderr
+#                 (`::add-mask::x`, `::error::fake stub diagnostic`, `100%`),
+#                 prints text that is not JSON on stdout, and exits 7
 make_stub() {
   local mode="$1" stub_path="$WORK/semgrep-stub-$1"
   {
@@ -127,6 +138,11 @@ make_stub() {
     cat <<'STUB'
 if [ "$STUB_MODE" = record ]; then
   printf '%s\n' "$@" > "$STUB_ARGV_FILE"
+fi
+if [ "$STUB_MODE" = stderrinject ]; then
+  printf '%s\n' '::add-mask::x' '::error::fake stub diagnostic' '100%' >&2
+  echo "stub stdout that is not json {{{"
+  exit 7
 fi
 if [ "$STUB_MODE" = crash ]; then
   echo "garbage {{{ not json"
@@ -373,7 +389,51 @@ else
   report_failure "full mode, clean: the Semgrep stand-in must have run and recorded its argv"
 fi
 
-# --- 10, 11, 17 to 20. The real Semgrep against the #27 shape ---------------
+# --- 21. Semgrep's own stderr never reaches the runner raw (B-32) -----------
+# The stand-in writes two workflow commands and a bare `%` to stderr, prints
+# text that is not JSON, and exits 7. The step fails closed, no line it prints
+# on stdout or stderr starts either workflow command, and it relays each of
+# Semgrep's stderr lines under the fixed prefix `security-ci-semgrep: semgrep
+# stderr: `, escaped as workflow-command data (`%` as `%25`).
+# Failure messages flatten the captured output onto one line joined by `|`,
+# so the fixture's own report never starts a line with a workflow command.
+STDERR_PREFIX="security-ci-semgrep: semgrep stderr: "
+run_step "$REPO" "$(make_stub stderrinject)" --mode pr --base main
+FLAT_STDOUT=$(printf '%s' "$STEP_STDOUT" | tr '\n' '|')
+FLAT_STDERR=$(printf '%s' "$STEP_STDERR" | tr '\n' '|')
+[ "$STEP_STATUS" -eq 2 ] \
+  || report_failure "Semgrep stderr carrying workflow commands: step must exit 2; got $STEP_STATUS (stdout: [$FLAT_STDOUT]; stderr: [$FLAT_STDERR])"
+if printf '%s\n%s\n' "$STEP_STDOUT" "$STEP_STDERR" | grep -qE '^(::add-mask|::error::fake)'; then
+  report_failure "Semgrep stderr carrying workflow commands: no stdout or stderr line may start '::add-mask' or '::error::fake'; got stdout: [$FLAT_STDOUT]; stderr: [$FLAT_STDERR]"
+fi
+for relayed_line in '::add-mask::x' '::error::fake stub diagnostic' '100%25'; do
+  [ -n "$(printf '%s\n' "$STEP_STDERR" | awk -v p="$STDERR_PREFIX$relayed_line" 'index($0, p) == 1')" ] \
+    || report_failure "Semgrep stderr carrying workflow commands: stderr must hold a line starting '$STDERR_PREFIX$relayed_line'; got: [$FLAT_STDERR]"
+done
+
+# --- 22. Run from a subdirectory: the same repository-relative targets (B-33)
+# The step runs once from the repository root and once from its app/
+# directory; both runs must exit 0 and hand Semgrep exactly the targets
+# app/x.py and lib.py after `--`.
+NESTED_REPO=$(create_feature_repo nested-cwd)
+write_file "$NESTED_REPO" app/x.py "$APP_SOURCE"
+write_file "$NESTED_REPO" lib.py "$APP_SOURCE"
+commit_all_changes "$NESTED_REPO" "add app/x.py and lib.py"
+NESTED_EXPECTED=$(printf '%s\n' app/x.py lib.py | LC_ALL=C sort)
+for nested_cwd in "$NESTED_REPO" "$NESTED_REPO/app"; do
+  rm -f "$STUB_ARGV_FILE"
+  run_step "$nested_cwd" "$(make_stub record)" --mode pr --base main
+  expect_status "run from $nested_cwd" 0
+  if [ -f "$STUB_ARGV_FILE" ]; then
+    NESTED_TARGETS=$(awk 'seen_dashes { print } $0 == "--" { seen_dashes = 1 }' "$STUB_ARGV_FILE" | LC_ALL=C sort)
+    [ "$NESTED_TARGETS" = "$NESTED_EXPECTED" ] \
+      || report_failure "run from $nested_cwd: Semgrep's targets after '--' must be exactly [$(printf '%s' "$NESTED_EXPECTED" | tr '\n' '|')]; got [$(printf '%s' "$NESTED_TARGETS" | tr '\n' '|')]"
+  else
+    report_failure "run from $nested_cwd: the Semgrep stand-in must have run and recorded its argv"
+  fi
+done
+
+# --- 10, 11, 17 to 20, 23. The real Semgrep against the #27 shape ---------------
 REAL_SEMGREP=""
 if command -v semgrep >/dev/null 2>&1; then
   REAL_SEMGREP=semgrep
@@ -473,6 +533,23 @@ else
   run_step "$GITIGNORE_REPO" "" --mode pr --base main
   expect_status "real Semgrep, .gitignore names the sample" 1
   expect_annotation "real Semgrep, .gitignore names the sample" "::error file=cors.py,line=16"
+
+  # 23. The sample under directories Semgrep ignores by default (B-31). The
+  # copies are force-added so no global excludes file can keep them untracked.
+  DEFAULT_IGNORED_REPO=$(create_feature_repo default-ignored-dirs)
+  for ignored_path in tests/cors.py vendor/cors.py node_modules/pkg/cors.py; do
+    mkdir -p "$(dirname "$DEFAULT_IGNORED_REPO/$ignored_path")"
+    cp "$BAD_SAMPLE" "$DEFAULT_IGNORED_REPO/$ignored_path"
+    run_git_isolated -C "$DEFAULT_IGNORED_REPO" add -f -- "$ignored_path"
+    [ -n "$(run_git_isolated -C "$DEFAULT_IGNORED_REPO" ls-files -- "$ignored_path")" ] \
+      || report_failure "precondition: $ignored_path must be tracked"
+  done
+  commit_all_changes "$DEFAULT_IGNORED_REPO" "bad cors setting under default-ignored directories"
+  run_step "$DEFAULT_IGNORED_REPO" "" --mode pr --base main
+  expect_status "real Semgrep, default-ignored directories" 1
+  for ignored_path in tests/cors.py vendor/cors.py node_modules/pkg/cors.py; do
+    expect_annotation "real Semgrep, $ignored_path" "::error file=$ignored_path,line=16"
+  done
 fi
 
 if [ "$failures" -gt 0 ]; then

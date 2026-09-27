@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Covers: ci:security-workflow
 # Verifies the security CI scan-target lister, enforce/security-ci-targets.sh
-# (IAN-381, spec Part 7 addendum, criteria B-18, B-19, and B-25). The lister
-# runs with its working directory inside the repository to scan and prints the
+# (IAN-381, spec Part 7 addendum, criteria B-18, B-19, B-25, and B-33). The
+# lister runs with its working directory anywhere inside the repository to
+# scan (B-33: a subdirectory prints the same set as the root) and prints the
 # scan targets, one repository-relative path per line, exiting 0:
 #
 #   security-ci-targets.sh --mode pr --base <base-ref>
@@ -145,6 +146,15 @@ expect_targets "PR mode" "$(printf '%s\n' .enforce.json added.py late/excluded-b
 # included.
 run_lister "$REPO" --mode full
 expect_targets "full mode" "$(printf '%s\n' .enforce.json added.py keep.py late/excluded-by-head.py modify.py vendor/excluded.py | LC_ALL=C sort)"
+
+# --- 2b. Run from a subdirectory (B-33) --------------------------------------
+# Run from the tracked subdirectory vendor/, both modes print exactly the
+# repository-relative sets cases 1 and 2 expect from the root.
+[ -d "$REPO/vendor" ] || report_failure "precondition: $REPO/vendor must exist"
+run_lister "$REPO/vendor" --mode pr --base main
+expect_targets "PR mode from vendor/" "$(printf '%s\n' .enforce.json added.py late/excluded-by-head.py modify.py vendor/excluded.py | LC_ALL=C sort)"
+run_lister "$REPO/vendor" --mode full
+expect_targets "full mode from vendor/" "$(printf '%s\n' .enforce.json added.py keep.py late/excluded-by-head.py modify.py vendor/excluded.py | LC_ALL=C sort)"
 
 # --- 3. Unresolvable base (fail closed) --------------------------------------
 run_lister "$REPO" --mode pr --base no-such-branch-anywhere

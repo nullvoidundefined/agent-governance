@@ -39,20 +39,20 @@ else
 fi
 
 scan_dir=$(mktemp -d)
-src_dir="$scan_dir/src"
-mkdir -p "$src_dir"
+staged_sample_dir="$scan_dir/src"
+mkdir -p "$staged_sample_dir"
 trap 'rm -rf "$scan_dir"' EXIT
 
-# Copies a sample (named `<...>.sample`) into $src_dir under its real
-# extension, so Semgrep infers the language from the name it actually scans.
-# Prints the copy's path.
+# stage_sample <sample path>: copies a sample (named `<...>.sample`) into
+# $staged_sample_dir under its real extension, so Semgrep infers the language
+# from the name it actually scans, and prints the copy's path.
 stage_sample() {
   local sample="$1"
   local real_name
   real_name=$(basename "$sample" .sample)
-  local dest="$src_dir/$real_name"
-  cp "$sample" "$dest"
-  echo "$dest"
+  local staged_sample_path="$staged_sample_dir/$real_name"
+  cp "$sample" "$staged_sample_path"
+  echo "$staged_sample_path"
 }
 
 # Runs one rule file over the given samples and leaves the JSON report in
@@ -101,35 +101,41 @@ for rule in $RULE_IDS; do
     report_failure "$rule: rule file $rule_file does not exist"
     continue
   fi
-  staged_bad=""
+  # Each sample is staged once; the parallel lists pair the on-disk sample
+  # (index i) with its staged copy (the same index).
+  bad_sample_paths=()
+  staged_bad_paths=()
   for sample in $bad_samples; do
-    staged_bad="$staged_bad $(stage_sample "$sample")"
+    bad_sample_paths+=("$sample")
+    staged_bad_paths+=("$(stage_sample "$sample")")
   done
-  staged_good=""
+  good_sample_paths=()
+  staged_good_paths=()
   for sample in $good_samples; do
-    staged_good="$staged_good $(stage_sample "$sample")"
+    good_sample_paths+=("$sample")
+    staged_good_paths+=("$(stage_sample "$sample")")
   done
-  # shellcheck disable=SC2086  # the staged lists are newline/space-separated paths with no spaces
-  if ! run_rule "$rule" $staged_bad $staged_good; then
+  if ! run_rule "$rule" ${staged_bad_paths[@]+"${staged_bad_paths[@]}"} \
+    ${staged_good_paths[@]+"${staged_good_paths[@]}"}; then
     report_failure "$rule: Semgrep crashed or printed no JSON report: $(head -c 400 "$scan_dir/$rule.err")"
     continue
   fi
   report="$scan_dir/$rule.json"
-  for sample in $bad_samples; do
-    name=$(basename "$sample")
-    staged=$(stage_sample "$sample")
-    check_scanned "$report" "$staged" "$rule" "$name"
-    if [ "$(count_results "$report" "$staged" "$rule")" -lt 1 ]; then
+  for ((sample_index = 0; sample_index < ${#bad_sample_paths[@]}; sample_index++)); do
+    name=$(basename "${bad_sample_paths[$sample_index]}")
+    staged_sample_path="${staged_bad_paths[$sample_index]}"
+    check_scanned "$report" "$staged_sample_path" "$rule" "$name"
+    if [ "$(count_results "$report" "$staged_sample_path" "$rule")" -lt 1 ]; then
       report_failure "$rule: bad sample $name produced no finding with check_id $rule"
     fi
   done
-  for sample in $good_samples; do
-    name=$(basename "$sample")
-    staged=$(stage_sample "$sample")
-    check_scanned "$report" "$staged" "$rule" "$name"
-    found=$(count_results "$report" "$staged")
-    if [ "$found" -ne 0 ]; then
-      report_failure "$rule: good sample $name produced $found finding(s), expected none"
+  for ((sample_index = 0; sample_index < ${#good_sample_paths[@]}; sample_index++)); do
+    name=$(basename "${good_sample_paths[$sample_index]}")
+    staged_sample_path="${staged_good_paths[$sample_index]}"
+    check_scanned "$report" "$staged_sample_path" "$rule" "$name"
+    good_finding_count=$(count_results "$report" "$staged_sample_path")
+    if [ "$good_finding_count" -ne 0 ]; then
+      report_failure "$rule: good sample $name produced $good_finding_count finding(s), expected none"
     fi
   done
 done
