@@ -150,18 +150,12 @@ Order within a module, top to bottom, one blank line between groups (the Python 
 
 Every line reads as idiomatic, modern Python (PEP 8, PEP 20, Python 3.13 features). Never port patterns from another language:
 
-- Comprehensions and generator expressions over building lists with `append` in a loop; a plain `for` loop when the body has side effects or needs more than one condition
-- `for item in items` and `enumerate`/`zip`, never `for i in range(len(items))`
-- Truthiness for emptiness (`if not line_items:`), never `len(x) == 0`; `is None` / `is not None` for `None`
-- EAFP: try the operation and catch the specific exception, rather than pre-checking with `if key in d` or `hasattr`, when failure is the rare case
-- `with` for every resource with a lifetime (connections, files, locks, timeouts), never manual `close()` in `finally`
-- f-strings for formatting (never in log messages, R-342), `pathlib.Path` over `os.path`, `dict.get` and `setdefault` over manual key checks
-- Unpacking (`first, *rest = rows`, `trip_id, leg_id = pair`) over index access
-- Generators (`yield`) for streams and large sequences instead of materializing lists
-- Keyword-only parameters (`*,`) for any function taking two or more parameters of the same type or a boolean flag
-- The standard library first: `itertools`, `functools`, `collections`, `contextlib`, `dataclasses`, `enum`, before writing a helper
-- No getters and setters; plain attributes, or `@property` when access needs logic
-- No Hungarian notation, no `I`-prefixed interfaces; `typing.Protocol` for structural interfaces, `abc.ABC` only when implementations share code
+- Comprehensions and generator expressions over `append` in a loop (a plain `for` loop when the body has side effects); `for item in items` and `enumerate`/`zip`, never `range(len(items))`; unpacking (`first, *rest = rows`) over index access
+- Truthiness for emptiness (`if not line_items:`), never `len(x) == 0`; `is None` for `None`; EAFP (try, then catch the specific exception) over pre-checking with `in` or `hasattr` when failure is rare
+- `with` for every resource with a lifetime (connections, files, locks, timeouts), never manual `close()`; generators (`yield`) for streams and large sequences instead of materialized lists
+- f-strings for formatting (never in log messages, R-342), `pathlib.Path` over `os.path`, `dict.get` and `setdefault` over manual key checks; the standard library (`itertools`, `functools`, `collections`, `contextlib`) before a hand-written helper
+- Keyword-only parameters (`*,`) for any function taking a boolean flag or two parameters of the same type
+- No getters and setters (plain attributes, or `@property` when access needs logic); no `I`-prefixed interfaces: `typing.Protocol` for structural interfaces, `abc.ABC` only when implementations share code
 
 ---
 
@@ -174,32 +168,9 @@ Functions for logic, objects for state and boundaries, data models for data. Def
 3. **Classes** only for meaningful mutable state, a lifecycle (start, stop, open, close), interchangeable implementations behind one interface, or an object that owns behavior over time
 
 - Never write a class to group related functions; the module is the grouping. A TypeScript-style `FooService`, `FooManager`, or `FooUtils` class becomes a `foo.py` module of plain functions
-- Never write a class whose only state is constructor arguments consumed by one method; pass them as function parameters
+- Never write a class whose only state is constructor arguments consumed by one method: `calculate_order_total(line_items, tax_rate)` is a function, never a `TotalCalculator(tax_rate).calculate(line_items)`. A `JobRunner` holding a queue, an `is_running` flag, and `start`/`stop` methods is a class, because it has dependencies, mutable state, and a lifecycle
 - Carve-out: a repository that holds request-scoped state (the `AsyncConnection` and the scoping `user_id`) may be a small class built by a dependency; its methods follow the same naming rules
 - Favoring functions is not pure functional programming: use loops, mutation of local state, exceptions, context managers, generators, and closures where they read most plainly; never force `map`/`reduce` chains or monadic patterns onto Python
-
-```python
-# A function: the class would add nothing
-def calculate_order_total(line_items: list[LineItem], tax_rate: Decimal) -> Decimal:
-    """Return the order total including tax."""
-    subtotal = sum((item.price * item.quantity for item in line_items), Decimal(0))
-    return subtotal * (1 + tax_rate)
-
-
-# A class: dependencies, mutable state, and a lifecycle
-class JobRunner:
-    """Pull jobs from a queue until stopped."""
-
-    def __init__(self, job_queue: JobQueue) -> None:
-        self._job_queue = job_queue
-        self.is_running = False
-
-    def start_runner(self) -> None:
-        self.is_running = True
-
-    def stop_runner(self) -> None:
-        self.is_running = False
-```
 
 ---
 
