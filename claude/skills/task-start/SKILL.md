@@ -29,6 +29,8 @@ Read the user's request. Check the codebase for context (files involved, cross-p
 | **Saga** | Multi-surface, multi-package, multiple independent subsystems that must ship together | Extension + web + server feature, full feature with spec + plan + E2E + docs |
 | **Investigation** | The deliverable is an answer, not a change: audit, research, debugging a cause, reading code to explain it, evaluating an approach | Run a security audit, find why a hook fires, compare two libraries, answer "how does X work here" |
 
+**build-fast.** When the owner invokes build-fast, task-start classifies and tickets the task, and build-fast's lane and tier matrix decides the process and the build model (IAN-401).
+
 **Announce the classification:** "This is a **[tier]** task. Here's why: [one sentence]." Then estimate and open the ticket (below), create the branch or worktree, and record all of it on that branch, so it survives compaction and task-cleanup can read it (R-503's ledger: the tier, the reason, the start timestamp, the branch, the ticket key, and the task's share of the work when it is one of several):
 
 ```bash

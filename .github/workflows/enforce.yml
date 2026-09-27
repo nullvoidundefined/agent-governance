@@ -165,6 +165,11 @@ jobs:
       - name: Sync fixture
         run: bash sync-tests/sync.test.sh
 
+      # The release fixtures (IAN-477, IAN-478): sync.sh installing from an
+      # extracted release archive, and the archive the release workflow builds.
+      - name: Release fixtures
+        run: for fixture in release/tests/*.test.sh; do bash "$fixture"; done
+
       # Fails the moment a generated port tree drifts from claude/ (a source
       # edit landed without --write, or a hand edit touched a generated file)
       # instead of waiting for the next contributor to notice by hand. The
@@ -349,3 +354,8 @@ jobs:
       # start.
       - name: Sync fixture
         run: bash sync-tests/sync.test.sh
+
+      # The release fixtures (IAN-477, IAN-478): sync.sh installing from an
+      # extracted release archive, and the archive the release workflow builds.
+      - name: Release fixtures
+        run: for fixture in release/tests/*.test.sh; do bash "$fixture"; done
