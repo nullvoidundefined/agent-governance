@@ -21,6 +21,10 @@
 # real one, and clears the marker this fixture inherits from the runner that
 # is running it, or the runs under test would skip the lock altogether.
 set -uo pipefail
+# Every directory the fixture makes is private unless a case sets its mode, so
+# a caller's umask 002 cannot make the sandbox TMPDIR group-writable and trip
+# the runner's shared-parent check (PR #154 review round 4).
+umask 077
 . "$(dirname "${BASH_SOURCE[0]}")/../harness-root.sh"
 RUNNER="$CLAUDE_HARNESS_ROOT/enforce/run-fixture-shards.sh"
 

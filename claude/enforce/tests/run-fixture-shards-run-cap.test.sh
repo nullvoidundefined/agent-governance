@@ -24,6 +24,10 @@
 # the real ones, and clears the markers this fixture inherits from the runner
 # that is running it.
 set -uo pipefail
+# Every directory the fixture makes is private unless a case sets its mode, so
+# a caller's umask 002 cannot make the sandbox TMPDIR group-writable and trip
+# the runner's shared-parent check (PR #154 review round 4).
+umask 077
 . "$(dirname "${BASH_SOURCE[0]}")/../harness-root.sh"
 RUNNER="$CLAUDE_HARNESS_ROOT/enforce/run-fixture-shards.sh"
 
@@ -413,6 +417,26 @@ chmod 1777 "$STICKY_TMPDIR"
 run_with_deadline 30 "$SANDBOX/sticky.out" "$W2/tests" sticky TMPDIR="$STICKY_TMPDIR"; sticky_status=$?
 check "sticky shared TMPDIR: the run passes" test "$sticky_status" -eq 0
 check "sticky shared TMPDIR: the fixture ran" grep -q "start sticky" "$EVENTS"
+
+# Case 13c: the parent is judged after resolving symlinks, since find reads a
+# symlink's own mode (0777 on Linux, 0755 on macOS) while the lock lives in
+# its target (PR #154 review round 4). A TMPDIR that is a symlink to the
+# non-sticky shared directory is refused; one that is a symlink to a private
+# directory is accepted.
+ln -s "$NONSTICKY_TMPDIR" "$SANDBOX/nonsticky-link"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/nonsticky-link.out" "$W2/tests" nonsticky-link TMPDIR="$SANDBOX/nonsticky-link"; nonsticky_link_status=$?
+check "symlink to a non-sticky shared TMPDIR: the run exits 1" test "$nonsticky_link_status" -eq 1
+check "symlink to a non-sticky shared TMPDIR: the message names the missing sticky bit" grep -q "sticky" "$SANDBOX/nonsticky-link.out"
+check "symlink to a non-sticky shared TMPDIR: no fixture ran" test ! -s "$EVENTS"
+PRIVATE_TARGET="$SANDBOX/private-target"
+mkdir -p "$PRIVATE_TARGET"
+chmod 700 "$PRIVATE_TARGET"
+ln -s "$PRIVATE_TARGET" "$SANDBOX/private-link"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/private-link.out" "$W2/tests" private-link TMPDIR="$SANDBOX/private-link"; private_link_status=$?
+check "symlink to a private TMPDIR: the run passes" test "$private_link_status" -eq 0
+check "symlink to a private TMPDIR: the fixture ran" grep -q "start private-link" "$EVENTS"
 
 # Case 14: a nested run whose TMPDIR spells the lock directory another way
 # (a symlink, as /var and /private/var are on macOS) still recognises its
