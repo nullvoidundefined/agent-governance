@@ -41,6 +41,13 @@
 # detector work directory that cannot be made is reported as that, not as a
 # timeout; and the stale-main case lets only the classifier's own fetch
 # advance origin/main.
+#
+# PR 161 security round 2: a PR base ref that is option-shaped (an
+# --upload-pack command injection, or any leading '-'), that git
+# check-ref-format --branch refuses, or that holds a newline prints `guarded
+# range-failure:` and runs no command; a `predict` scope naming the root (`.`,
+# `./`, `/`) or reaching outside it (`../p/src`), and `predict` outside a git
+# work tree, print `guarded config-failure:`.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 LANE="$CLAUDE_HARNESS_ROOT/skills/build-fast/scripts/build-lane.sh"
@@ -528,9 +535,10 @@ printf '{"baseRefName":"main\\nfeat/x"}\n'
 STUB
 chmod +x "$MULTILINE_BIN/gh"
 PATH="$MULTILINE_BIN:$PATH" runLane "$MULTILINE" classify
-assertOneLine "a PR base ref holding a newline"
-startsWithLaneWord() { case "$1" in "guarded "* | "fast "*) return 0 ;; *) return 1 ;; esac; }
-check "a PR base ref holding a newline: starts with a lane word (got: $OUT)" startsWithLaneWord "$OUT"
+# The classifier refuses a base ref holding a newline outright rather than
+# taking its first line, so the answer is a range failure, not a lane decided
+# from `main`.
+assertPrefix "a PR base ref holding a newline is refused" "guarded range-failure:"
 
 runLane "$MULTILINE" classify --base "$(printf 'abc\ndef')"
 assertPrefix "a base argument holding a newline is flattened into one line" "guarded range-failure:"
@@ -561,6 +569,76 @@ TMPDIR="$SB/no-such-tmp-dir" runLane "$SECURITY" classify
 assertPrefix "no detector work directory can be made" "guarded detector-failure:"
 reasonOmitsTimeout() { case "$1" in *"no answer within"*) return 1 ;; *) return 0 ;; esac; }
 check "no detector work directory: the reason is not a timeout (got: $OUT)" reasonOmitsTimeout "$OUT"
+
+# ---- Security fix: a PR base ref is validated before git reads it ----------
+#
+# writeBaseRefGh <dir> <base ref>: writes a gh stand-in into <dir> whose `pr
+# view` names <base ref> as the PR's base branch, verbatim under --jq or -q and
+# as JSON otherwise, so the classifier sees exactly the text a hostile or
+# malformed PR base would carry.
+writeBaseRefGh() {
+  mkdir -p "$1"
+  printf '%s' "$2" > "$1/base-ref.txt"
+  cat > "$1/gh" <<'STUB'
+#!/usr/bin/env bash
+baseRefFile="$(dirname "$0")/base-ref.txt"
+for argument in "$@"; do
+  case "$argument" in --jq|-q|--jq=*) cat "$baseRefFile"; echo; exit 0 ;; esac
+done
+jq -Rsc '{baseRefName: .}' "$baseRefFile"
+STUB
+  chmod +x "$1/gh"
+}
+
+newOriginRepo baseref
+BASEREF="$SB/baseref"
+PWNED="$SB/pwned"
+
+# An option-shaped base ref: git fetch would parse it as --upload-pack and run
+# the command through the shell (command injection from the PR's base name).
+writeBaseRefGh "$SB/baseref-upload-bin" "--upload-pack=touch $PWNED;"
+PATH="$SB/baseref-upload-bin:$PATH" runLane "$BASEREF" classify
+pwnedIsAbsent() { [ ! -e "$PWNED" ]; }
+check "an --upload-pack base ref runs no command (no $PWNED created)" pwnedIsAbsent
+assertPrefix "an --upload-pack base ref" "guarded range-failure:"
+rm -f "$PWNED"
+
+# A base ref starting with '-' that names a ref which does exist locally
+# (refs/remotes/origin/-x on main), so only the validation can refuse it.
+git -C "$BASEREF" update-ref "refs/remotes/origin/-x" "$(git -C "$BASEREF" rev-parse main)"
+dashRefResolves() { git -C "$BASEREF" rev-parse --verify --quiet "refs/remotes/origin/-x^{commit}" >/dev/null; }
+check "precondition: refs/remotes/origin/-x resolves" dashRefResolves
+writeBaseRefGh "$SB/baseref-dash-bin" "-x"
+PATH="$SB/baseref-dash-bin:$PATH" runLane "$BASEREF" classify
+assertPrefix "a base ref starting with '-'" "guarded range-failure:"
+
+# Base refs that git check-ref-format --branch refuses; main~0 resolves under
+# refs/remotes/origin/ today, so only the validation can refuse it.
+refusedRefCase=0
+for refusedRef in 'a..b' 'main~0'; do
+  refusedRefCase=$((refusedRefCase + 1))
+  writeBaseRefGh "$SB/baseref-refused-bin-$refusedRefCase" "$refusedRef"
+  PATH="$SB/baseref-refused-bin-$refusedRefCase:$PATH" runLane "$BASEREF" classify
+  assertPrefix "a base ref check-ref-format refuses ($refusedRef)" "guarded range-failure:"
+done
+
+# ---- Security fix: a root or out-of-tree scope fails closed ----------------
+#
+# A scope that names the repository root (or reaches outside it) would cover
+# everything or nothing; either way predict cannot vouch for it.
+newOriginRepo rootscope
+ROOTSCOPE="$SB/rootscope"
+commitFile "$ROOTSCOPE" src/auth/login.ts "export const loginCount = 1;"
+for rootScope in . ./ / ../p/src; do
+  runLane "$ROOTSCOPE" predict "$rootScope"
+  assertPrefix "predict $rootScope" "guarded config-failure:"
+done
+
+# ---- Security fix: predict outside a git work tree fails closed ------------
+
+PREDICT_NOT_REPO="$SB/predict-not-a-repo"; mkdir -p "$PREDICT_NOT_REPO"
+GIT_CEILING_DIRECTORIES="$(cd "$SB" && pwd -P)" runLane "$PREDICT_NOT_REPO" predict 'lib/**'
+assertPrefix "predict outside any git work tree" "guarded config-failure:"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "build-lane.test.sh PASS"
