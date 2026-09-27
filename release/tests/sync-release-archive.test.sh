@@ -107,13 +107,27 @@ for directoryTarget in "$TMP/outside-dir" "../../outside-dir"; do
   assertTargetsAbsent "$dir-live" "$label"
 done
 
-# --- B-4: in a real checkout a stray RELEASE-FILES never widens the sync.
+# --- B-4: a directory holding both .git and RELEASE-FILES is ambiguous, and
+# git mode would skip every list check, so it refuses and touches nothing.
+# That holds for a real checkout with a stray list and for an archive that
+# ships its own .git; a checkout without the list still uses git ls-files.
 makeExtract "$TMP/b4"
 git -C "$TMP/b4" init -q
 git -C "$TMP/b4" -c user.email=t@example.com -c user.name=t add claude/CLAUDE.md cursor codex sync.sh
 git -C "$TMP/b4" -c user.email=t@example.com -c user.name=t commit -q -m fixture
-runSyncFrom "$TMP/b4" "$TMP/live-b4" > "$TMP/b4.out" 2>&1 || { cat "$TMP/b4.out"; fail "B-4: sync from a checkout exited nonzero"; }
-grep -q "source: git checkout" "$TMP/b4.out" || fail "B-4: a checkout did not use git ls-files"
-[ ! -e "$TMP/live-b4/claude/hooks/guard.sh" ] || fail "B-4: an untracked file named only in RELEASE-FILES was installed"
+if runSyncFrom "$TMP/b4" "$TMP/live-b4" > "$TMP/b4.out" 2>&1; then fail "B-4: a checkout holding RELEASE-FILES was synced"; fi
+grep -q "REFUSED: .*both .git and RELEASE-FILES" "$TMP/b4.out" || { cat "$TMP/b4.out"; fail "B-4: the refusal did not name the ambiguity"; }
+assertTargetsAbsent "$TMP/live-b4" "B-4 checkout"
+
+makeExtract "$TMP/b4-shipped"
+mkdir "$TMP/b4-shipped/.git"
+if runSyncFrom "$TMP/b4-shipped" "$TMP/live-b4-shipped" > "$TMP/b4-shipped.out" 2>&1; then fail "B-4: an archive shipping .git was synced"; fi
+grep -q "REFUSED: .*both .git and RELEASE-FILES" "$TMP/b4-shipped.out" || { cat "$TMP/b4-shipped.out"; fail "B-4: the shipped-.git refusal did not name the ambiguity"; }
+assertTargetsAbsent "$TMP/live-b4-shipped" "B-4 shipped .git"
+
+rm "$TMP/b4/RELEASE-FILES"
+runSyncFrom "$TMP/b4" "$TMP/live-b4-clean" > "$TMP/b4-clean.out" 2>&1 || { cat "$TMP/b4-clean.out"; fail "B-4: a clean checkout exited nonzero"; }
+grep -q "source: git checkout" "$TMP/b4-clean.out" || fail "B-4: a clean checkout did not use git ls-files"
+[ ! -e "$TMP/live-b4-clean/claude/hooks/guard.sh" ] || fail "B-4: an untracked file was installed from a checkout"
 
 echo "sync-release-archive.test.sh PASS"
