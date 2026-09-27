@@ -94,6 +94,46 @@ printf '%s\n' claude/alias.md >> "$TMP/b3b-inside/RELEASE-FILES"
 runSyncFrom "$TMP/b3b-inside" "$TMP/live-b3b-inside" > "$TMP/b3b-inside.out" 2>&1 || { cat "$TMP/b3b-inside.out"; fail "B-3b: a symlink inside the extract was refused"; }
 [ "$(readlink "$TMP/live-b3b-inside/claude/alias.md")" = "CLAUDE.md" ] || fail "B-3b: an inside symlink was not installed as a link"
 
+# --- B-3d (security review round 5, finding 1): an entry naming a directory,
+# or carrying a "." or empty component or a trailing slash, refuses the run;
+# rsync would copy a listed directory whole, unlisted files and unchecked
+# symlinks included.
+caseNumber=0
+for directoryEntry in "claude/" "claude/." "claude/hooks" "claude/hooks/" "claude/hooks/." "claude/./CLAUDE.md" "claude//CLAUDE.md"; do
+  caseNumber=$((caseNumber + 1))
+  label="B-3d entry '$directoryEntry'"
+  dir="$TMP/b3d-$caseNumber"; makeExtract "$dir"
+  ln -s /etc/passwd "$dir/claude/hooks/evil"
+  printf '%s\n' "$directoryEntry" >> "$dir/RELEASE-FILES"
+  if runSyncFrom "$dir" "$dir-live" > "$dir.out" 2>&1; then fail "$label: sync accepted it"; fi
+  grep -q "REFUSED: RELEASE-FILES" "$dir.out" || { cat "$dir.out"; fail "$label: no RELEASE-FILES refusal"; }
+  assertTargetsAbsent "$dir-live" "$label"
+done
+
+# --- B-3e (security review round 5, finding 2): a symlink target that climbs
+# out of its payload folder and re-enters by the folder's name resolves inside
+# the extract but outside the live target, so it refuses; a link that climbs
+# only as far as the payload folder, like the tracked claude/rules links,
+# installs.
+caseNumber=0
+for reenteringCase in "claude/escape.md ../claude/CLAUDE.md" "claude/escape.md ../claude/." "claude/escape.md hooks/../../claude/hooks/guard.sh" "claude/hooks/escape.md ../../claude/CLAUDE.md"; do
+  caseNumber=$((caseNumber + 1))
+  linkEntry="${reenteringCase%% *}"; linkTarget="${reenteringCase#* }"
+  label="B-3e $linkEntry -> $linkTarget"
+  dir="$TMP/b3e-$caseNumber"; makeExtract "$dir"
+  ln -s "$linkTarget" "$dir/$linkEntry"
+  printf '%s\n' "$linkEntry" >> "$dir/RELEASE-FILES"
+  if runSyncFrom "$dir" "$dir-live" > "$dir.out" 2>&1; then fail "$label: sync accepted it"; fi
+  grep -q "REFUSED: RELEASE-FILES" "$dir.out" || { cat "$dir.out"; fail "$label: no RELEASE-FILES refusal"; }
+  assertTargetsAbsent "$dir-live" "$label"
+done
+makeExtract "$TMP/b3e-inside"
+mkdir -p "$TMP/b3e-inside/claude/rules"
+ln -s ../CLAUDE.md "$TMP/b3e-inside/claude/rules/alias.md"
+printf '%s\n' claude/rules/alias.md >> "$TMP/b3e-inside/RELEASE-FILES"
+runSyncFrom "$TMP/b3e-inside" "$TMP/live-b3e-inside" > "$TMP/b3e-inside.out" 2>&1 || { cat "$TMP/b3e-inside.out"; fail "B-3e: a rules link to ../CLAUDE.md was refused"; }
+[ "$(readlink "$TMP/live-b3e-inside/claude/rules/alias.md")" = "../CLAUDE.md" ] || fail "B-3e: the rules link was not installed as a link"
+
 # --- B-3c (security review round 2, finding 1): a listed file reached
 # through an unlisted directory symlink refuses the run, wherever that
 # directory symlink points: absolute, or relative and climbing out.
