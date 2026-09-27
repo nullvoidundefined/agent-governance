@@ -5,14 +5,20 @@
 # targets, one repository-relative path per line, exiting 0:
 #
 #   security-ci-targets.sh --mode pr --base <base-ref>
-#     PR mode: every file the range <base-ref>..HEAD adds or modifies, minus
-#     deleted files and minus every file that a `securitySurfaceExclude` glob
-#     read from the BASE commit's `.enforce.json` covers. A glob that the PR
-#     itself adds to `.enforce.json` must not exclude anything, because a PR
-#     must not be able to exempt its own files from the scan.
+#     PR mode: every file that HEAD adds, copies, modifies, or renames into,
+#     relative to `git merge-base <base-ref> HEAD`, minus deleted files. The
+#     diff starts at the merge base, so a file the base branch gained after
+#     the PR branch was cut is not a target, and a renamed file is listed under
+#     its new name only.
 #   security-ci-targets.sh --mode full
-#     Full mode: every tracked file at HEAD that no HEAD `.enforce.json`
-#     `securitySurfaceExclude` glob covers.
+#     Full mode: every file tracked at HEAD.
+#
+# Neither mode reads `.enforce.json` `securitySurfaceExclude`, from the base
+# commit or from HEAD. R-109 scopes that list to the security-surface detector
+# and gives the Semgrep rule pack no exclude list at all (owner decision
+# 2026-09-27), so a path may leave the security review's view but never the
+# rule pack's. The fixtures therefore put files under both a base-commit glob
+# and a glob the PR adds, and expect every one of them among the targets.
 #
 # The lister fails closed: when git cannot resolve the base ref, or the mode
 # or arguments are invalid, it exits 2 with a message on stderr and prints no
@@ -120,17 +126,18 @@ write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["vendor/**", "la
 commit_all "$REPO" "head"
 
 # --- 1. PR mode (B-18) -------------------------------------------------------
-# Added and modified files are targets; the deleted file, the untouched file,
-# and the file under the base-commit glob are not; the glob the PR adds
-# (late/**) excludes nothing, and the changed .enforce.json is itself a target.
+# Added and modified files are targets, including the modified file under the
+# base-commit glob (vendor/**) and the added file under the glob the PR adds
+# (late/**), because no exclude list applies; the changed .enforce.json is
+# itself a target. The deleted file and the untouched file are not.
 run_lister "$REPO" --mode pr --base main
-expect_targets "PR mode" "$(printf '%s\n' .enforce.json added.py late/excluded-by-head.py modify.py | LC_ALL=C sort)"
+expect_targets "PR mode" "$(printf '%s\n' .enforce.json added.py late/excluded-by-head.py modify.py vendor/excluded.py | LC_ALL=C sort)"
 
 # --- 2. Full mode (B-19) -----------------------------------------------------
-# Every tracked HEAD file except those the HEAD globs (vendor/**, late/**)
-# cover.
+# Every tracked HEAD file, the files the HEAD globs (vendor/**, late/**) cover
+# included.
 run_lister "$REPO" --mode full
-expect_targets "full mode" "$(printf '%s\n' .enforce.json added.py keep.py modify.py | LC_ALL=C sort)"
+expect_targets "full mode" "$(printf '%s\n' .enforce.json added.py keep.py late/excluded-by-head.py modify.py vendor/excluded.py | LC_ALL=C sort)"
 
 # --- 3. Unresolvable base (fail closed) --------------------------------------
 run_lister "$REPO" --mode pr --base no-such-branch-anywhere
@@ -150,6 +157,37 @@ write_file "$SPACE_REPO" plain.py $'PLAIN = 1\n'
 commit_all "$SPACE_REPO" "add spaced file"
 run_lister "$SPACE_REPO" --mode pr --base main
 expect_targets "path with a space" "$(printf '%s\n' "app dir/has space.py" plain.py | LC_ALL=C sort)"
+
+# --- 7. Base branch moved on after the branch was cut (B-18) -----------------
+# The diff runs from the merge base, not from the base tip, so a file main
+# gained after the PR branch was cut is not a target, and neither is the file
+# main modified after the cut.
+MOVED_REPO=$(new_repo moved-base)
+write_file "$MOVED_REPO" shared.py $'SHARED = 1\n'
+commit_all "$MOVED_REPO" "base"
+git_clean -C "$MOVED_REPO" checkout -q -b feature
+write_file "$MOVED_REPO" feature.py $'FEATURE = 1\n'
+commit_all "$MOVED_REPO" "feature work"
+git_clean -C "$MOVED_REPO" checkout -q main
+write_file "$MOVED_REPO" base-only.py $'BASE_ONLY = 1\n'
+write_file "$MOVED_REPO" shared.py $'SHARED = 2\n'
+commit_all "$MOVED_REPO" "main moves on"
+git_clean -C "$MOVED_REPO" checkout -q feature
+run_lister "$MOVED_REPO" --mode pr --base main
+expect_targets "base moved on" "feature.py"
+
+# --- 8. A renamed file (B-18) ------------------------------------------------
+# A file renamed on the branch with its content unchanged is listed under its
+# new name only; the old name no longer exists at HEAD and is not a target.
+RENAME_REPO=$(new_repo renamed-file)
+write_file "$RENAME_REPO" old.py $'RENAMED_VALUE = 1\nSECOND_LINE = 2\nTHIRD_LINE = 3\n'
+write_file "$RENAME_REPO" README.md $'# Rename\n'
+commit_all "$RENAME_REPO" "base"
+git_clean -C "$RENAME_REPO" checkout -q -b feature
+git_clean -C "$RENAME_REPO" mv old.py renamed.py
+commit_all "$RENAME_REPO" "rename"
+run_lister "$RENAME_REPO" --mode pr --base main
+expect_targets "renamed file" "renamed.py"
 
 if [ "$failures" -gt 0 ]; then
   echo "security-ci-targets.test.sh FAIL ($failures)"
