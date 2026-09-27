@@ -8,7 +8,7 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 This session's own handoff, above the older notes; it supersedes them only where they conflict.
 
-**1. Last commit.** `d2f38bd` feat(build-fast): speed-first build skill with risk lanes (IAN-401) (#161), squash-merged on 2026-09-27 at the reviewed head `293a221` and verified on `origin/main` by reading the merged files. PR 2 (reminder-only hooks quiet in the fast lane) is on `feat/build-fast-reminder-quiet`.
+**1. Last commit.** `d2f38bd` feat(build-fast): speed-first build skill with risk lanes (IAN-401) (#161), squash-merged on 2026-09-27 at its reviewed head and verified on `origin/main` by reading the merged files. PR 2 (reminder-only hooks quiet in the fast lane) is on `feat/build-fast-reminder-quiet`.
 
 **2. Production state.** `build-fast` is live in `claude/skills/build-fast/` with Codex and Cursor ports. `build-lane.sh predict|classify` prints one `fast` or `guarded` line and fails closed on every error. `task-tier.sh` records `--lane`, `--lane-override`, and `--merge-mode`. R-211, R-514, and R-517 carry build-fast clauses. No blocking gate changed.
 
