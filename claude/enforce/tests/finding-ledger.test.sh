@@ -30,7 +30,8 @@
 # Gate invariants (commit-message-guard.sh, R-214 half):
 #   6. A commit staging only in-scope files passes.
 #   7. A commit staging an out-of-scope file is denied, and the denial names
-#      the file and the rule.
+#      the file and the rule, and its finding.sh remediation passes --value, since
+#      finding.sh refuses an unrated finding (IAN-471).
 #   8. A second `Refs:` trailer naming another ticket satisfies the gate,
 #      because the work is then recorded somewhere the user can find it.
 #   9. A `Refs:` naming only the task's own ticket does not satisfy it, since
@@ -144,6 +145,7 @@ OUT=$(run_commit 'git commit -m "feat(api): handle the thing"')
 check "7. an out-of-scope commit is denied, got: '$(decision "$OUT")'" "$([ "$(decision "$OUT")" = "deny" ] && echo 0 || echo 1)"
 check "7. the denial cites R-214, got: $(reason "$OUT")" "$(says "$(reason "$OUT")" "R-214")"
 check "7. the denial names the file, got: $(reason "$OUT")" "$(says "$(reason "$OUT")" "docs/notes.md")"
+check "7. the denial's finding.sh remediation carries --value (IAN-471), got: $(reason "$OUT")" "$(says "$(reason "$OUT")" "--kind bug|task|optimization --value breaking|high|medium|low|none")"
 
 OUT=$(run_commit 'git commit -m "feat(api): handle the thing" -m "Refs: IAN-300, IAN-777"')
 check "8. a second ticket in Refs satisfies the gate, got: $(decision "$OUT") $(reason "$OUT")" "$([ "$(decision "$OUT")" != "deny" ] && echo 0 || echo 1)"
