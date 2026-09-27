@@ -19,7 +19,7 @@
     "translate/render-cursor-stack-rules.mjs": "sha256:45e956eec91b77b34794f4c7d86070fc63784ed506d1f42a25d2b11a9ee718c9"
   },
   "files": {
-    ".gitignore": "sha256:c4ab4bd26f89bcf7d2a5d4d632b97834bbd0d32877a9566303292893d4963c37",
+    ".gitignore": "sha256:074e697e665e92f9824d51c9823ad18ec674341e3d05e20685f873559453bb8f",
     "PORT-STATUS.md": "sha256:c4f48124ff647227173a2453f851f58ca0f8a19df8d24515528ba2434c2dd255",
     "agents/audit-criticism.md": "sha256:d2c130cb9ec0f35995a7aadb6786b0e5e0a176f91731df0dbc64a6dc7c1419cb",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",
@@ -76,6 +76,9 @@
     "skills/bug-hunt/SKILL.md": "sha256:70218ef3f427f002ddcaab1cc615ab46fcdf83df93cd1a799dd3608e1f10298a",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
     "skills/build-by-slice-require-review/SKILL.md": "sha256:6bedd12d0cad396334c4ab322c82043d24b039a7a4884f2792cf6319c7e7da22",
+    "skills/build-fast/SKILL.md": "sha256:56b28ff703df9cb14fa9a9a756bb7f2411fa441bcb86ab78ddf4db88e19ef61e",
+    "skills/build-fast/lane-rules.json": "sha256:14fc46df58a5a09d0ceef2165375d75cfeb82f88784961d56e3830cd4bf40ff9",
+    "skills/build-fast/scripts/build-lane.sh": "sha256:9036fb547137dd4a2bf77c8e71d4774f1c352482e6c9b96ee28dfacded2b5a33",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:4eab93dd6b29b80ace6614dd36464bd0bd6e373e84483ac35239f01302e247ad",
     "skills/cleanup-specs-plans/scripts/inventory.sh": "sha256:91417ec9bfed28e29a18b3b511cd5f2d102e6e3071a3531f8b8c9f44e5fafa5b",
     "skills/documentation-create/SKILL.md": "sha256:be0709c3ff22da344f7b7b0c7159882f3436996483c0446cb61c5379dc5278b9",
@@ -176,6 +179,9 @@
     "skills/bug-hunt/SKILL.md": "generated",
     "skills/bug-hunt/scripts/dangling-refs.sh": "generated",
     "skills/build-by-slice-require-review/SKILL.md": "generated",
+    "skills/build-fast/SKILL.md": "generated",
+    "skills/build-fast/lane-rules.json": "generated",
+    "skills/build-fast/scripts/build-lane.sh": "generated",
     "skills/cleanup-specs-plans/SKILL.md": "generated",
     "skills/cleanup-specs-plans/scripts/inventory.sh": "generated",
     "skills/documentation-create/SKILL.md": "generated",
