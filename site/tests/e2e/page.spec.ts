@@ -49,6 +49,14 @@ test('B-14 strict CSP in the meta tag and the response header', async ({ page })
     expect(headerPolicy).not.toContain('unsafe-inline');
 });
 
+test('B-14b nosniff and no-referrer in the headers, and the referrer meta tag', async ({ page }) => {
+    const response = await page.goto('/');
+    const headers = response?.headers() ?? {};
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['referrer-policy']).toBe('no-referrer');
+    await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer');
+});
+
 for (const width of [1440, 390]) {
     test(`B-15 axe reports no violations at ${width}`, async ({ page }) => {
         await page.setViewportSize({ width, height: 900 });

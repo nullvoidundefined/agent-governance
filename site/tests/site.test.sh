@@ -14,6 +14,11 @@ bash scripts/build-site.sh "$SITE_TEST_VERSION" "$SITE_TEST_SHA256"
 if [ -f Dockerfile ]; then
   trap 'docker compose down >/dev/null 2>&1 || true' EXIT
   docker compose up -d --build --wait
+  # The served container runs nginx as uid 101 on a read-only filesystem.
+  container_uid=$(docker compose exec -T site id -u | tr -d '\r')
+  [ "$container_uid" = "101" ] || { echo "FAIL: the site container runs as uid '$container_uid', not 101"; exit 1; }
+  read_only_root=$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$(docker compose ps -q site)")
+  [ "$read_only_root" = "true" ] || { echo "FAIL: the site container's root filesystem is writable"; exit 1; }
 fi
 # The fixture runner reads a FAIL line as a failed assertion and needs a PASS
 # line, besides exit 0, to count the fixture as passing.
