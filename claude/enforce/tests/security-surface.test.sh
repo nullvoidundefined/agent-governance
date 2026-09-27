@@ -275,6 +275,43 @@ commit_all "$REPO" "add session notes"
 expect_unmarked "auth doc under an excluded glob" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 expect_hits "auth doc under an excluded glob" "" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 
+# A plain entry names one repository-relative path, never a file of the same
+# name elsewhere: excluding the root README.md must leave a nested README.md
+# that describes a security control on the surface (IAN-480).
+REPO=$(new_repo exclude-root-readme-only)
+write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["README.md"] }\n'
+commit_all "$REPO" "exclude the root README from the security surface"
+BASE=$(head_of "$REPO")
+write_file "$REPO" claude/README.md $'Cookies are set with SameSite=Strict.\n'
+commit_all "$REPO" "document the cookie policy in a nested README"
+expect_marked "nested README under a root-only entry" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "nested README under a root-only entry" "claude/README.md:1 content" \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
+# Matching is case-sensitive: an entry for docs/ must not exclude a file under
+# Docs/, so a differently cased directory cannot slip past the list (IAN-480).
+REPO=$(new_repo exclude-case-variant)
+write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["docs/*.md"] }\n'
+commit_all "$REPO" "exclude docs Markdown from the security surface"
+BASE=$(head_of "$REPO")
+write_file "$REPO" Docs/auth-session.md $'# Sessions\n\nNotes on how sign-in works.\n'
+commit_all "$REPO" "add session notes under a differently cased directory"
+expect_marked "case variant of an excluded directory" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "case variant of an excluded directory" "Docs/auth-session.md:0 path" \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
+# The list is read from the base commit: a range whose head adds an exclude
+# list covering everything, alongside a security file, stays marked, because
+# the head's list never applies to the range that introduces it (IAN-480).
+REPO=$(new_repo exclude-head-only)
+BASE=$(head_of "$REPO")
+write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["**"] }\n'
+write_file "$REPO" docs/auth-session.md $'# Sessions\n\nNotes on how sign-in works.\n'
+commit_all "$REPO" "exclude everything and add session notes in one range"
+expect_marked "exclude list added only at the head" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "exclude list added only at the head" $'.enforce.json:0 path\ndocs/auth-session.md:0 path' \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
 # --- 6. The exclude list is protected (B-8, R-410) ---------------------------
 GUARD_REPO=$(new_repo guard)
 GUARD_HOME=$(mktemp -d "$WORK/home.XXXXXX")
