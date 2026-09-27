@@ -4,7 +4,27 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 **Over R-602's 8 KB by about 18.6 KiB, deliberately, and the overage grows every session it survives.** That limit assumes one session per handoff. Everything historical here is already one line apiece and pushed onto its ticket; what remains is the pending list, the production warnings and the next-session rules, and cutting those to satisfy a size check trades the document's purpose for its metric. The earlier attempt to obey the cap is the direct cause of this session's worst finding: compressing four sessions into 8179 bytes silently dropped a retraction, and only an adversarial review caught it. Filed as IAN-266; **IAN-260 is the actual fix**, giving each session its own uncapped file behind a capped index, at which point this note goes away.
 
-## Newest: IAN-381 security-first governance, 2026-09-25 to 09-26
+## Newest: IAN-401 build-fast, 2026-09-27
+
+This session's own handoff, above the older notes; it supersedes them only where they conflict.
+
+**1. Last commit.** `d2f38bd` feat(build-fast): speed-first build skill with risk lanes (IAN-401) (#161), squash-merged on 2026-09-27 at the reviewed head `293a221` and verified on `origin/main` by reading the merged files. PR 2 (reminder-only hooks quiet in the fast lane) is on `feat/build-fast-reminder-quiet`.
+
+**2. Production state.** `build-fast` is live in `claude/skills/build-fast/` with Codex and Cursor ports. `build-lane.sh predict|classify` prints one `fast` or `guarded` line and fails closed on every error. `task-tier.sh` records `--lane`, `--lane-override`, and `--merge-mode`. R-211, R-514, and R-517 carry build-fast clauses. No blocking gate changed.
+
+**3. Session metrics.** One session. The full-suite `tdd.sh red` and `green` runs cost about 12 minutes each; grouping Tasks 2 to 5 into one lock cycle (owner choice) saved about 70 minutes. Reviews on `claude-fable-5-1`: three rounds each of R-517 and R-109 on #161.
+
+**4. What shipped.** The skill (Haiku builds, questions asked once up front, one Fable review in parallel with CI, no bug hunting, no yak-shaving, never bypass a gate), the lane classifier, the ledger fields, the rule clauses, and 18 review fixes, the most serious a command injection through an option-shaped PR base ref reaching `git fetch` (fixed with `isSafeBaseRef` and `git fetch -- origin`).
+
+**5. Pending, by urgency.**
+- **HIGH:** PR 2 of IAN-401 through review and merge; then close IAN-401 with actuals.
+- **MEDIUM:** IAN-479, `security-merge-gate-review-fixes.test.sh` flakes under the sharded run and refused three `tdd.sh` runs this session.
+- **MEDIUM:** IAN-472, `task-tier.sh set` resets `startedAt` on every call.
+- **Later:** IAN-474, evaluate Haiku as the build model after 3 to 5 real build-fast runs; IAN-402, estimates across the build skills.
+
+**6. Next session.** Use `/build-fast` on a real small task and record the lane, actual minutes, and review findings on the ticket as IAN-474's evidence.
+
+## Previous: IAN-381 security-first governance, 2026-09-25 to 09-26
 
 This session's own handoff sits here, above the older multi-session notes below. It follows R-602's six sections and supersedes the older notes only where they conflict.
 
