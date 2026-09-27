@@ -71,6 +71,25 @@ for bad in "/etc/passwd" "claude/../../escape" "" "claude/missing.md"; do
   assertTargetsAbsent "$dir-live" "$label"
 done
 
+# --- B-3b (security review #6): a listed symlink whose target leaves the
+# extract refuses the run; a symlink that stays inside it installs as a link.
+caseNumber=0
+for escapingTarget in "/etc/passwd" "../../../../outside" "../missing-dir/x"; do
+  caseNumber=$((caseNumber + 1))
+  label="B-3b symlink to '$escapingTarget'"
+  dir="$TMP/b3b-$caseNumber"; makeExtract "$dir"
+  ln -s "$escapingTarget" "$dir/claude/escape.md"
+  printf '%s\n' claude/escape.md >> "$dir/RELEASE-FILES"
+  if runSyncFrom "$dir" "$dir-live" > "$dir.out" 2>&1; then fail "$label: sync accepted an escaping symlink"; fi
+  grep -q "REFUSED: RELEASE-FILES" "$dir.out" || { cat "$dir.out"; fail "$label: no RELEASE-FILES refusal"; }
+  assertTargetsAbsent "$dir-live" "$label"
+done
+makeExtract "$TMP/b3b-inside"
+ln -s CLAUDE.md "$TMP/b3b-inside/claude/alias.md"
+printf '%s\n' claude/alias.md >> "$TMP/b3b-inside/RELEASE-FILES"
+runSyncFrom "$TMP/b3b-inside" "$TMP/live-b3b-inside" > "$TMP/b3b-inside.out" 2>&1 || { cat "$TMP/b3b-inside.out"; fail "B-3b: a symlink inside the extract was refused"; }
+[ "$(readlink "$TMP/live-b3b-inside/claude/alias.md")" = "CLAUDE.md" ] || fail "B-3b: an inside symlink was not installed as a link"
+
 # --- B-4: in a real checkout a stray RELEASE-FILES never widens the sync.
 makeExtract "$TMP/b4"
 git -C "$TMP/b4" init -q
