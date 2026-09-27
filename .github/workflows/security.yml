@@ -11,18 +11,26 @@
 #     security:
 #       uses: nullvoidundefined/agent-governance/.github/workflows/security.yml@<40-char sha>
 #
-# and grants the caller `contents: read`, `security-events: write`, and
-# `actions: read`. The checks it produces are `security / semgrep`,
-# `security / codeql (<language>)`, and GitHub's own `CodeQL` code-scanning
-# check, which is what blocks a PR on a new CodeQL alert.
+# under the job id `security`, and grants the caller `contents: read`,
+# `security-events: write`, and `actions: read`. The checks it produces are
+# `security / semgrep`, `security / codeql (<language>)`, and GitHub's own
+# `CodeQL` code-scanning check, which is what blocks a PR on a new CodeQL
+# alert.
 #
-# It takes no inputs, so a caller cannot soften it: the scan targets come from
-# the base commit's `.enforce.json`, and the CodeQL languages are derived from
-# the tracked files. The harness (the rule pack and the scripts) is fetched
-# from `job.workflow_repository` at `job.workflow_sha`, the exact commit the
-# caller pinned, into $RUNNER_TEMP, outside the workspace the scanners read.
-# Event values reach scripts only through `env:`, never as `${{ }}` inside a
-# `run:` line, so a branch name or a PR title cannot inject shell.
+# It takes no inputs, so a caller cannot soften it: the scan targets are every
+# file the PR adds or changes (every tracked file on other events), with no
+# exclude list, and the CodeQL languages are derived from the tracked files.
+# It runs only on pull_request, push, schedule, and workflow_dispatch. The
+# harness (the rule pack and the scripts) is fetched from
+# `job.workflow_repository` at `job.workflow_sha`, the exact commit the caller
+# pinned, into $RUNNER_TEMP, outside the workspace the scanners read, and is
+# refused unless that commit is on agent-governance main. That check runs
+# inside this workflow, so it catches a stale or branch pin, not a malicious
+# one: GitHub resolves a `uses:` SHA from any fork, and a forked workflow
+# skips it. The adopting repository's CODEOWNERS on .github/workflows/ and
+# the Part 5b merge gate are the controls against that. Event values reach
+# scripts only through `env:`, never as `${{ }}` inside a `run:` line, so a
+# branch name or a PR title cannot inject shell.
 name: security
 
 on:
@@ -38,11 +46,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Refuse pull_request_target
-        if: github.event_name == 'pull_request_target'
+      # An allowlist, not a denylist: pull_request_target, pull_request_review,
+      # issue_comment, and workflow_run would all run PR-controlled code with
+      # more than a read-only token.
+      - name: Allow only the supported events
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "::error::security.yml refuses pull_request_target, which runs fork code with a write token; call it on pull_request."
-          exit 2
+          case "$EVENT_NAME" in
+            pull_request|push|schedule|workflow_dispatch) ;;
+            *) echo "::error::security.yml runs only on pull_request, push, schedule, and workflow_dispatch, not '$EVENT_NAME'"; exit 2 ;;
+          esac
 
       # PR mode scans the PR head, not the merge ref, so the scanned bytes are
       # the ones the merge gate's range head names; full history lets the
@@ -66,9 +80,18 @@ jobs:
           if ! printf '%s' "$HARNESS_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "::error::the harness commit '$HARNESS_SHA' is not a 40-character SHA"; exit 2
           fi
+          harness_url="https://github.com/$HARNESS_REPOSITORY.git"
           harness_dir="$RUNNER_TEMP/harness"
           git init --quiet "$harness_dir"
-          git -C "$harness_dir" fetch --quiet --depth 1 "https://github.com/$HARNESS_REPOSITORY.git" "$HARNESS_SHA"
+          # Another repository must pin a commit on main; a self-call runs
+          # this repository's own PR commit, which is not on main yet.
+          if [ "$GITHUB_REPOSITORY" != "$HARNESS_REPOSITORY" ]; then
+            git -C "$harness_dir" fetch --quiet --filter=blob:none "$harness_url" main
+            if ! git -C "$harness_dir" merge-base --is-ancestor "$HARNESS_SHA" FETCH_HEAD; then
+              echo "::error::the pinned harness commit is not on agent-governance main; pin a commit from main"; exit 2
+            fi
+          fi
+          git -C "$harness_dir" fetch --quiet --depth 1 "$harness_url" "$HARNESS_SHA"
           git -C "$harness_dir" checkout --quiet --detach FETCH_HEAD
           test "$(git -C "$harness_dir" rev-parse HEAD)" = "$HARNESS_SHA"
 
@@ -97,11 +120,14 @@ jobs:
     outputs:
       list: ${{ steps.derive.outputs.list }}
     steps:
-      - name: Refuse pull_request_target
-        if: github.event_name == 'pull_request_target'
+      - name: Allow only the supported events
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "::error::security.yml refuses pull_request_target; call it on pull_request."
-          exit 2
+          case "$EVENT_NAME" in
+            pull_request|push|schedule|workflow_dispatch) ;;
+            *) echo "::error::security.yml runs only on pull_request, push, schedule, and workflow_dispatch, not '$EVENT_NAME'"; exit 2 ;;
+          esac
 
       - name: Check out the caller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,17 +147,33 @@ jobs:
           if ! printf '%s' "$HARNESS_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "::error::the harness commit '$HARNESS_SHA' is not a 40-character SHA"; exit 2
           fi
+          harness_url="https://github.com/$HARNESS_REPOSITORY.git"
           harness_dir="$RUNNER_TEMP/harness"
           git init --quiet "$harness_dir"
-          git -C "$harness_dir" fetch --quiet --depth 1 "https://github.com/$HARNESS_REPOSITORY.git" "$HARNESS_SHA"
+          # Another repository must pin a commit on main; a self-call runs
+          # this repository's own PR commit, which is not on main yet.
+          if [ "$GITHUB_REPOSITORY" != "$HARNESS_REPOSITORY" ]; then
+            git -C "$harness_dir" fetch --quiet --filter=blob:none "$harness_url" main
+            if ! git -C "$harness_dir" merge-base --is-ancestor "$HARNESS_SHA" FETCH_HEAD; then
+              echo "::error::the pinned harness commit is not on agent-governance main; pin a commit from main"; exit 2
+            fi
+          fi
+          git -C "$harness_dir" fetch --quiet --depth 1 "$harness_url" "$HARNESS_SHA"
           git -C "$harness_dir" checkout --quiet --detach FETCH_HEAD
           test "$(git -C "$harness_dir" rev-parse HEAD)" = "$HARNESS_SHA"
 
       - name: Derive the CodeQL languages
         id: derive
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          language_list=$(bash "$RUNNER_TEMP/harness/claude/enforce/security-ci-codeql-languages.sh")
+          languages_script="$RUNNER_TEMP/harness/claude/enforce/security-ci-codeql-languages.sh"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            language_list=$(bash "$languages_script" --mode pr)
+          else
+            language_list=$(bash "$languages_script" --mode full)
+          fi
           echo "CodeQL languages: $language_list"
           echo "list=$language_list" >> "$GITHUB_OUTPUT"
 
