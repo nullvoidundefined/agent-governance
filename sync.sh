@@ -85,11 +85,18 @@ refuseReleaseFileList() {
 # outside that folder, is false: a link from claude/ into codex/ stays inside
 # the extract but points outside ~/.claude once installed.
 isSymlinkInsideExtract() {
-  local entry="$1" target root resolved
+  local entry="$1" target root resolved targetDirectory
   target=$(readlink "$REPO_ROOT/$entry")
   case "$target" in /*) return 1 ;; esac
   root=$(cd "$REPO_ROOT/${entry%%/*}" 2>/dev/null && pwd -P) || return 1
-  resolved=$(cd "$REPO_ROOT/$(dirname "$entry")" 2>/dev/null && cd "$(dirname "$target")" 2>/dev/null && pwd -P) || return 1
+  # A target whose last component is "." or ".." names a directory itself,
+  # and dirname would drop exactly the part that climbs (dirname ".." is ".").
+  while [ "${target%/}" != "$target" ]; do target="${target%/}"; done
+  case "${target##*/}" in
+    .|..) targetDirectory="$target" ;;
+    *) targetDirectory=$(dirname "$target") ;;
+  esac
+  resolved=$(cd "$REPO_ROOT/$(dirname "$entry")" 2>/dev/null && cd "$targetDirectory" 2>/dev/null && pwd -P) || return 1
   case "$resolved/" in "$root"/*) return 0 ;; *) return 1 ;; esac
 }
 
