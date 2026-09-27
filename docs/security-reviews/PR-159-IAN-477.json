@@ -3,7 +3,7 @@
   "ticket": "IAN-477, IAN-478",
   "reviewer": "security-reviewer subagent",
   "model": "claude-fable-5-1",
-  "reviewedCode": "a2aadfb1",
-  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Rounds 1 to 6 on the range from f938ba6 found 15 findings: round 1 six (finding 1, GitHub Pages serving without frame-ancestors or nosniff, waived by the owner on 2026-09-27 and documented in the spec and docs/stack.md; the other five fixed), round 2 three, round 3 one, round 4 one, round 5 two, round 6 one, all fixed test-first in this PR with dispositions in the PR body. Round 7, the confirming review of the head that adds this file, found none.",
+  "reviewedCode": "f29b67da4aebdb6d16fd200684acdedbaa2568b9",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Seven rounds on the range from f938ba6 found 15 findings: round 1 six, round 2 three, round 3 one, round 4 one, round 5 two, round 6 one, and round 7 one. Round 1 finding 1 (GitHub Pages serving without frame-ancestors or nosniff) was waived by the owner on 2026-09-27 and is documented in the spec and docs/stack.md. The other thirteen code findings of rounds 1 to 6 were fixed test-first in this PR. Round 7 found every code control clean and one LOW against this file's earlier note (a miscount, dispositions said to be in the PR body that were not, and a claim about round 7 written before it ran); this text replaces that note, and the PR body lists every round's findings and dispositions. The review of the head that adds this text is the PR body's Security review section.",
   "findings": []
 }
