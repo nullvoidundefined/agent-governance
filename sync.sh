@@ -84,10 +84,25 @@ isSymlinkInsideExtract() {
   case "$resolved/" in "$root"/*) return 0 ;; *) return 1 ;; esac
 }
 
+# hasSymlinkAncestor(entry): true when any directory above entry, below
+# REPO_ROOT, is a symlink, so the entry would be read through a link that the
+# list never names and isSymlinkInsideExtract never checks.
+hasSymlinkAncestor() {
+  local remaining="$1" walked="$REPO_ROOT" component
+  while [ "${remaining#*/}" != "$remaining" ]; do
+    component="${remaining%%/*}"
+    remaining="${remaining#*/}"
+    walked="$walked/$component"
+    [ -L "$walked" ] && return 0
+  done
+  return 1
+}
+
 # validateReleaseFileList(): every entry is non-empty, relative, free of ".."
-# components, present in the extract, and, when it is a symlink, pointing
-# inside the extract. Runs once, before the first target, so a bad list never
-# leaves one target synced and the others not.
+# components, present in the extract, reached through no directory symlink,
+# and, when it is a symlink itself, pointing inside the extract. Runs once,
+# before the first target, so a bad list never leaves one target synced and
+# the others not.
 validateReleaseFileList() {
   local entry
   while IFS= read -r entry || [ -n "$entry" ]; do
@@ -97,6 +112,7 @@ validateReleaseFileList() {
     esac
     case "/$entry/" in */../*) refuseReleaseFileList "the path $entry, which climbs out with .." ;; esac
     [ -e "$REPO_ROOT/$entry" ] || [ -L "$REPO_ROOT/$entry" ] || refuseReleaseFileList "the path $entry, which is not in this extract"
+    hasSymlinkAncestor "$entry" && refuseReleaseFileList "the path $entry, which is reached through a directory symlink"
     if [ -L "$REPO_ROOT/$entry" ] && ! isSymlinkInsideExtract "$entry"; then
       refuseReleaseFileList "the symlink $entry, which points outside this extract"
     fi
