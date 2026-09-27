@@ -1,8 +1,9 @@
 # release.yml: on a pushed vMAJOR.MINOR.PATCH tag, builds the release archive
 # and its checksum with release/build-release-archive.sh and publishes both as
 # a GitHub Release. site/ never ships (it is export-ignore). The only write
-# permission is contents: write, held by the one job that needs it; actions
-# are pinned by commit SHA.
+# permission is contents: write, held by the one job that needs it, which
+# waits in the protected `release` environment for the owner's approval;
+# actions are pinned by commit SHA.
 name: release
 
 on:
@@ -15,6 +16,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The protected `release` environment requires the owner's approval, so a
+    # stray or leaked tag push cannot publish a release by itself.
+    environment: release
     permissions:
       contents: write
     steps:
