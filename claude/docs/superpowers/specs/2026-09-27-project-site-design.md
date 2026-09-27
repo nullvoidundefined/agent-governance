@@ -43,7 +43,7 @@ Publish a public landing page that presents agent-governance as a governance too
 - B-1: `sync.sh` run from a `git archive` extract that holds a valid `RELEASE-FILES` installs exactly the listed `claude/`, `cursor/`, and `codex/` files into the three targets and exits 0.
 - B-2: `sync.sh` run from a directory that is neither a git work tree nor holds `RELEASE-FILES` prints `REFUSED:` and exits nonzero, and all three targets are unchanged.
 - B-3: `sync.sh` refuses, with all three targets unchanged, when any `RELEASE-FILES` line is absolute, contains a `..` component, is empty, or names a path missing from the extract. Each of the four cases is its own assertion.
-- B-4: `sync.sh` run from a git checkout that also holds a stray `RELEASE-FILES` still lists files with `git ls-files`, so an untracked file named in that list is not installed.
+- B-4: `sync.sh` run from a directory that holds both `.git` and `RELEASE-FILES` prints `REFUSED:`, exits nonzero, and leaves all three targets unchanged, because the source is ambiguous and git mode would skip every list check (PR 159 security review, round 2, finding 3; owner decision 2026-09-27). A checkout without `RELEASE-FILES` still lists files with `git ls-files`.
 
 Release packaging, in `release-tests/build-release-archive.test.sh`:
 
