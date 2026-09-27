@@ -1,0 +1,9 @@
+{
+  "pr": "nullvoidundefined/agent-governance#159",
+  "ticket": "IAN-477, IAN-478",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "a2aadfb1",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Rounds 1 to 6 on the range from f938ba6 found 15 findings: round 1 six (finding 1, GitHub Pages serving without frame-ancestors or nosniff, waived by the owner on 2026-09-27 and documented in the spec and docs/stack.md; the other five fixed), round 2 three, round 3 one, round 4 one, round 5 two, round 6 one, all fixed test-first in this PR with dispositions in the PR body. Round 7, the confirming review of the head that adds this file, found none.",
+  "findings": []
+}
