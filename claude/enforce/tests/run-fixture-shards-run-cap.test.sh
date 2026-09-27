@@ -310,7 +310,9 @@ kill "$slot_holder_pid" "$forger_pid" 2>/dev/null; wait "$slot_holder_pid" "$for
 # Case 10: a wait cap that is not a whole number is a usage error, and runs
 # no fixture; an empty one falls back to the default and runs (IAN-441
 # security review: the control had no insecure-value test).
-for bad_wait in abc -1 1.5; do
+# A wait past five digits is refused too: a 20-digit value made the give-up
+# comparison error out, so a queued run polled forever (PR #154 review round 3).
+for bad_wait in abc -1 1.5 100000 99999999999999999999; do
   : > "$EVENTS"
   run_with_deadline 30 "$SANDBOX/bad-wait.out" "$W2/tests" bad-wait FIXTURE_SHARDS_LOCK_WAIT_SECONDS="$bad_wait"; bad_wait_status=$?
   check "wait '$bad_wait' exits 2" test "$bad_wait_status" -eq 2
@@ -338,22 +340,31 @@ fi
 
 # Case 12: a lock directory that is a symlink, as another user could plant in
 # a shared /tmp, is refused before anything is written through it, and the
-# file it points at is untouched (IAN-441 review), even with nesting markers
-# naming a file behind it, which the runner must not open before it has
-# checked the directory (PR #154 review round 2).
+# file it points at is untouched (IAN-441 review). Behind the symlink sits a
+# planted worktree lock file, held and recording a dead PID, which is exactly
+# what a killed runner's orphans leave and what the markers would honour: a
+# runner that read the markers before checking the directory would skip both
+# locks and run the fixture (PR #154 review rounds 2 and 3).
 EVIL_TMPDIR="$SANDBOX/evil-tmp"
 VICTIM_DIR="$SANDBOX/victim"
 mkdir -p "$EVIL_TMPDIR" "$VICTIM_DIR"
 echo "victim contents" > "$VICTIM_DIR/claude-fixture-shards.slot.1.flock"
+planted_dead_pid=$(sh -c 'echo $$')
+echo "$planted_dead_pid" > "$VICTIM_DIR/claude-fixture-shards.worktree.1.flock"
+perl -MFcntl=:flock -e 'open(my $f, "<", $ARGV[0]) or die; flock($f, LOCK_EX) or die; sleep 60' "$VICTIM_DIR/claude-fixture-shards.worktree.1.flock" &
+planted_holder_pid=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $planted_holder_pid"
+sleep 1
 ln -s "$VICTIM_DIR" "$EVIL_TMPDIR/claude-fixture-shards.$(id -u)"
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/symlink-dir.out" "$W2/tests" symlink-dir FIXTURE_SHARDS_MAX_RUNS=1 TMPDIR="$EVIL_TMPDIR" \
-  FIXTURE_SHARDS_LOCK_HELD=12345 FIXTURE_SHARDS_LOCK_HELD_FILE="$EVIL_TMPDIR/claude-fixture-shards.$(id -u)/claude-fixture-shards.worktree.1.flock"; symlink_dir_status=$?
+  FIXTURE_SHARDS_LOCK_HELD="$planted_dead_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$EVIL_TMPDIR/claude-fixture-shards.$(id -u)/claude-fixture-shards.worktree.1.flock"; symlink_dir_status=$?
+kill "$planted_holder_pid" 2>/dev/null; wait "$planted_holder_pid" 2>/dev/null
 check "symlinked lock directory: the run exits 1" test "$symlink_dir_status" -eq 1
 check "symlinked lock directory: the message says it is not private" grep -q "not a private directory" "$SANDBOX/symlink-dir.out"
 check "symlinked lock directory: the file behind it is untouched" test "$(cat "$VICTIM_DIR/claude-fixture-shards.slot.1.flock")" = "victim contents"
-check "symlinked lock directory: nothing new appears behind it" test "$(ls "$VICTIM_DIR" | wc -l | tr -d ' ')" = 1
-check "symlinked lock directory: no fixture ran" test ! -s "$EVENTS"
+check "symlinked lock directory: nothing new appears behind it" test "$(ls "$VICTIM_DIR" | wc -l | tr -d ' ')" = 2
+check "symlinked lock directory: a planted held lock file does not make the run nested" test ! -s "$EVENTS"
 
 # Case 13: a lock directory that others can write is refused the same way.
 OPEN_TMPDIR="$SANDBOX/open-tmp"
@@ -382,6 +393,26 @@ run_with_deadline 30 "$SANDBOX/traverse-dir.out" "$W2/tests" traverse-dir TMPDIR
 check "traversable lock directory (711): the run exits 1" test "$traverse_dir_status" -eq 1
 check "traversable lock directory (711): the message says it is not private" grep -q "not a private directory" "$SANDBOX/traverse-dir.out"
 check "traversable lock directory (711): no fixture ran" test ! -s "$EVENTS"
+
+# Case 13b: a TMPDIR that others can write without the sticky bit is refused,
+# because another user could rename the runner's checked lock directory and
+# plant a symlink in its place before the locks are opened; a sticky shared
+# parent, as /tmp is, is accepted (PR #154 review round 3).
+NONSTICKY_TMPDIR="$SANDBOX/nonsticky-tmp"
+mkdir -p "$NONSTICKY_TMPDIR"
+chmod 777 "$NONSTICKY_TMPDIR"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/nonsticky.out" "$W2/tests" nonsticky TMPDIR="$NONSTICKY_TMPDIR"; nonsticky_status=$?
+check "non-sticky shared TMPDIR: the run exits 1" test "$nonsticky_status" -eq 1
+check "non-sticky shared TMPDIR: the message names the missing sticky bit" grep -q "sticky" "$SANDBOX/nonsticky.out"
+check "non-sticky shared TMPDIR: no fixture ran" test ! -s "$EVENTS"
+STICKY_TMPDIR="$SANDBOX/sticky-tmp"
+mkdir -p "$STICKY_TMPDIR"
+chmod 1777 "$STICKY_TMPDIR"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/sticky.out" "$W2/tests" sticky TMPDIR="$STICKY_TMPDIR"; sticky_status=$?
+check "sticky shared TMPDIR: the run passes" test "$sticky_status" -eq 0
+check "sticky shared TMPDIR: the fixture ran" grep -q "start sticky" "$EVENTS"
 
 # Case 14: a nested run whose TMPDIR spells the lock directory another way
 # (a symlink, as /var and /private/var are on macOS) still recognises its
