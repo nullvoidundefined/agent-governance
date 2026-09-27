@@ -72,9 +72,22 @@ refuseReleaseFileList() {
   exit 1
 }
 
+# isSymlinkInsideExtract(entry): true when the symlink at entry points at a
+# relative target whose directory exists inside the extract. An absolute
+# target, or one whose directory is missing or resolves outside, is false.
+isSymlinkInsideExtract() {
+  local entry="$1" target root resolved
+  target=$(readlink "$REPO_ROOT/$entry")
+  case "$target" in /*) return 1 ;; esac
+  root=$(cd "$REPO_ROOT" && pwd -P)
+  resolved=$(cd "$REPO_ROOT/$(dirname "$entry")" 2>/dev/null && cd "$(dirname "$target")" 2>/dev/null && pwd -P) || return 1
+  case "$resolved/" in "$root"/*) return 0 ;; *) return 1 ;; esac
+}
+
 # validateReleaseFileList(): every entry is non-empty, relative, free of ".."
-# components, and present in the extract. Runs once, before the first target,
-# so a bad list never leaves one target synced and the others not.
+# components, present in the extract, and, when it is a symlink, pointing
+# inside the extract. Runs once, before the first target, so a bad list never
+# leaves one target synced and the others not.
 validateReleaseFileList() {
   local entry
   while IFS= read -r entry || [ -n "$entry" ]; do
@@ -84,6 +97,9 @@ validateReleaseFileList() {
     esac
     case "/$entry/" in */../*) refuseReleaseFileList "the path $entry, which climbs out with .." ;; esac
     [ -e "$REPO_ROOT/$entry" ] || [ -L "$REPO_ROOT/$entry" ] || refuseReleaseFileList "the path $entry, which is not in this extract"
+    if [ -L "$REPO_ROOT/$entry" ] && ! isSymlinkInsideExtract "$entry"; then
+      refuseReleaseFileList "the symlink $entry, which points outside this extract"
+    fi
   done < "$REPO_ROOT/RELEASE-FILES"
 }
 
