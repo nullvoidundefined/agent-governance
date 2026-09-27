@@ -117,6 +117,7 @@ None. The only state is the set of published releases, owned by GitHub.
 - The trust boundary for a download is the checksum, which the visitor checks against the release page. The page tells them to read `sync.sh` before running it.
 - `build-site.sh` accepts only shape-checked values, so a tampered release name cannot inject markup (B-10).
 - The site sets a strict CSP, `frame-ancestors 'none'` in the nginx header, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`.
+- GitHub Pages cannot set response headers, so the deployed site carries only the meta-tag CSP and `<meta name="referrer" content="no-referrer">`. `frame-ancestors 'none'` and `X-Content-Type-Options: nosniff` are sent by the nginx container alone, so the Pages deployment can be framed. The page is static, with no forms, sign-in, or scripts, so framing it can at most overlay its download link. The owner waived this gap on 2026-09-27 (PR 159 security review, finding 1).
 - Workflow permissions are least-privilege per job: the release job holds `contents: write`; the site deploy job holds `pages: write` and `id-token: write`; the test job holds `contents: read`.
 
 ### Deploy steps that need the owner's yes

@@ -60,7 +60,7 @@ Last updated: 2026-09-27 (IAN-477).
 - **Version:** the hosted service, deployed with the GitHub Actions source.
 - **What it is:** GitHub's static hosting, serving the site at <https://nullvoidundefined.github.io/agent-governance/>.
 - **Docs:** <https://docs.github.com/en/pages>
-- **Role here:** the public host. Pages cannot set response headers, which is why the page carries its CSP as a meta tag as well.
+- **Role here:** the public host. Pages cannot set response headers, so the page carries its CSP and referrer policy as meta tags, and the deployed site has no `frame-ancestors` or `nosniff` header; only the nginx container sends those. The owner accepted that gap on 2026-09-27 (PR 159 security review, finding 1).
 - **Why chosen:** free, no new account, and it lives beside the repository the page describes.
 - **Configured in:** `.github/workflows/site.yml`, and the repository's Pages settings (source: GitHub Actions).
 
