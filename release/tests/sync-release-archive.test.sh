@@ -74,7 +74,9 @@ done
 # --- B-3b (security review #6): a listed symlink whose target leaves the
 # extract refuses the run; a symlink that stays inside it installs as a link.
 caseNumber=0
-for escapingTarget in "/etc/passwd" "../../../../outside" "../missing-dir/x"; do
+# "../codex/AGENTS.md" and "../sync.sh" stay inside the extract but leave the
+# claude/ payload, so once installed into ~/.claude they point outside it.
+for escapingTarget in "/etc/passwd" "../../../../outside" "../missing-dir/x" "../codex/AGENTS.md" "../sync.sh"; do
   caseNumber=$((caseNumber + 1))
   label="B-3b symlink to '$escapingTarget'"
   dir="$TMP/b3b-$caseNumber"; makeExtract "$dir"
