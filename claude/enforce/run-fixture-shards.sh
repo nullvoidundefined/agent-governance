@@ -328,9 +328,30 @@ affected_selection() {
 }
 
 # worktree_root <tests dir>: the top of the checkout holding the tests
-# directory, or the resolved directory itself outside any repository.
+# directory, or the resolved directory itself outside any repository. When
+# git refuses (its dubious-ownership check on a checkout another user owns,
+# or git missing), the nearest .git above the directory still names the
+# checkout, so its enforce and hook trees keep one key; git's own
+# safe.directory protection is left in force (PR #154 security review round
+# 10).
 worktree_root() {
-  git -C "$1" rev-parse --show-toplevel 2>/dev/null || (cd "$1" && pwd -P)
+  git -C "$1" rev-parse --show-toplevel 2>/dev/null || nearest_git_root "$1"
+}
+
+# nearest_git_root <dir>: the nearest directory at or above the resolved
+# directory holding a .git entry (a directory, or a linked worktree's file),
+# or the resolved directory itself when there is none. Reads the filesystem
+# only, never a repository's configuration.
+nearest_git_root() {
+  local resolved_dir candidate_dir
+  resolved_dir=$(cd "$1" && pwd -P)
+  candidate_dir="$resolved_dir"
+  while :; do
+    [ -e "$candidate_dir/.git" ] && { echo "$candidate_dir"; return 0; }
+    [ "$candidate_dir" = / ] && break
+    candidate_dir=$(dirname "$candidate_dir")
+  done
+  echo "$resolved_dir"
 }
 
 # worktree_lock_key <tests dir>: the number naming the run lock of the

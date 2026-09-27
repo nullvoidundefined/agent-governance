@@ -235,7 +235,11 @@ runner writes (PR #154 review):
   `enforce/tests` and one on `hooks/tests`, never overlap; a linked worktree
   has its own lock. The runner clears `GIT_CEILING_DIRECTORIES` along with
   the other inherited git variables, so an exported value cannot stop git
-  short of the checkout and split its key. Outside any repository (a tree
+  short of the checkout and split its key, and when git refuses a checkout
+  (its dubious-ownership check on one another user owns, or git missing) the
+  key comes from the nearest directory above holding a `.git`, found on the
+  filesystem without reading any repository configuration. Outside any
+  repository (a tree
   without git, such as a
   synced `~/.claude`) the key is the resolved tests directory, so there the
   two trees are keyed apart and may run at once.
