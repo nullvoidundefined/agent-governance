@@ -1,0 +1,45 @@
+{
+  "pr": "nullvoidundefined/agent-governance#163",
+  "ticket": "IAN-401",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "a60c02c9e7729e5884c990a9137224b8728ef62f",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds hooks/build-lane-quiet.sh and an early exit in the six reminder-only hooks; the detector flagged it through the hooks path. Five findings, all fixed in cf4fa64 with a failing test first; a confirming review of the head that adds this file follows.",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "control": "is_reminder_quiet one-object shape",
+      "finding": "no test fed concatenated or array ledgers",
+      "status": "fixed cf4fa649017e213c4be03a6daf4549e220b85ce8"
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "control": "is_reminder_quiet branch clause",
+      "finding": "no test exercised a detached HEAD",
+      "status": "fixed cf4fa649017e213c4be03a6daf4549e220b85ce8"
+    },
+    {
+      "id": 3,
+      "severity": "LOW",
+      "control": "path-to-repository resolution",
+      "finding": "a dash-leading relative path made dirname fail and fall back to the working directory's repository",
+      "status": "fixed cf4fa649017e213c4be03a6daf4549e220b85ce8"
+    },
+    {
+      "id": 4,
+      "severity": "LOW",
+      "control": "ledger provenance",
+      "finding": "a committed or symlinked ledger silenced the reminders",
+      "status": "fixed cf4fa649017e213c4be03a6daf4549e220b85ce8"
+    },
+    {
+      "id": 5,
+      "severity": "LOW",
+      "control": "no blocking hook sources the helper",
+      "finding": "no static check that only the six reminder hooks reference the helper",
+      "status": "fixed cf4fa649017e213c4be03a6daf4549e220b85ce8"
+    }
+  ]
+}
