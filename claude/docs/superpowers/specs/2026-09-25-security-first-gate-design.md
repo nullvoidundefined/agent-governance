@@ -191,6 +191,11 @@ Round 2 of both reviews (2026-09-27) verified every round-1 fix and added:
 - B-35: CodeQL skips only on a private repository, decided by the `languages` job reading the repository's visibility through the API with the job token, not from the event payload, which a `schedule` event lacks. The same API call supplies the default branch B-34 compares against, for the same reason; an unexpected visibility or a default-branch name that is empty, starts with `-`, or holds a character outside `[A-Za-z0-9._/-]` fails the job.
 - B-36: Semgrep and its dependencies install from a hash-pinned requirements file in the harness (`pip install --require-hashes`), so the verdict never depends on what PyPI serves that day.
 
+Round 4 of the R-517 review (2026-09-27) found the Semgrep step failing closed on this PR's own head: #159 added `.gitattributes` with `site/ export-ignore`, `git archive` honored it, and a target never reached the export. The export must read exact committed bytes whatever a PR puts in `.gitattributes`:
+
+- B-37: The Semgrep step exports each target with `git cat-file blob`, so no attribute (`export-ignore`, `export-subst`, eol conversion) changes or drops what is scanned; a target that is a symlink or a submodule fails the step closed and is named.
+- B-38: When Semgrep exits 2 or above, the step prints each entry of the report's `.errors[]` (level, path, message), escaped for the workflow-command parser, so a crash names its cause.
+
 Finding 6 of the security review has a residual this PR cannot close: GitHub resolves a `uses:` SHA from any fork of agent-governance, so a malicious pin brings its own copy of this workflow and skips the ancestry check. The real control is at the adopting repository: each template's caller PR adds a CODEOWNERS entry on `.github/workflows/`, and **Part 5b's merge gate must verify that the caller file's pin is an ancestor of agent-governance `main`** (owner decision 2026-09-27).
 
 ### Rollout checklist (not an acceptance criterion)

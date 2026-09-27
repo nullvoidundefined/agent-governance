@@ -20,8 +20,8 @@
 # visibility step (B-35) is extracted and run against a stub `gh`, so the
 # fixture sees that only the exact answers true and false reach GITHUB_OUTPUT.
 # The first step of the semgrep and languages jobs is an event allowlist
-# (B-29): its own `run` text
-# is extracted and run under each event name. The harness-fetch step (B-30) is
+# (B-29): its own `run` text is extracted and run under each event name. The
+# harness-fetch step (B-30) is
 # extracted and run against a stub `git` that logs every call, so the fixture
 # sees whether a refused repository or SHA ever reached a fetch, and that the
 # ancestry check against agent-governance `main` runs before the pinned commit
