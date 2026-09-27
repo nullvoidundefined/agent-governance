@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Shard: slow
-# Verifies the machine-wide run lock in enforce/run-fixture-shards.sh
-# (IAN-348, redesigned in IAN-359). Two fixture-suite runs on one machine
+# Verifies the run lock in enforce/run-fixture-shards.sh (IAN-348,
+# redesigned in IAN-359, scoped to one worktree in IAN-441, whose machine-wide
+# run cap tests/run-fixture-shards-run-cap.test.sh covers). Two fixture-suite runs on one machine
 # starved each other of CPU until single fixtures passed the 600-second tool
 # timeout (2026-09-24), so a second run queues behind the first. The lock is a
 # kernel flock held on a file descriptor the runner's workers inherit, so it
@@ -11,13 +12,19 @@
 # replaced let both happen, IAN-359). The cases prove that concurrent runs
 # execute one after the other; that a killed runner's fixtures keep the lock
 # until they finish; that a lock file naming a dead PID is no obstacle; that a
-# background process a fixture leaks does not hold the lock; that a nested run
-# skips the lock only for a live holder's PID; and that the wait cap exits 75.
+# background process a fixture leaks does not hold the lock; that a marker
+# skips the lock only for the holder the lock file records, and only when that
+# holder is the run's own ancestor or a killed runner whose orphans still hold
+# the lock; and that the wait cap exits 75.
 #
 # Every run points TMPDIR at the sandbox, so the lock under test is never the
 # real one, and clears the marker this fixture inherits from the runner that
 # is running it, or the runs under test would skip the lock altogether.
 set -uo pipefail
+# Every directory the fixture makes is private unless a case sets its mode, so
+# a caller's umask 002 cannot make the sandbox TMPDIR group-writable and trip
+# the runner's shared-parent check (PR #154 review round 4).
+umask 077
 . "$(dirname "${BASH_SOURCE[0]}")/../harness-root.sh"
 RUNNER="$CLAUDE_HARNESS_ROOT/enforce/run-fixture-shards.sh"
 
@@ -29,6 +36,7 @@ check() {
 not() { ! "$@"; }
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/run-fixture-shards-lock.XXXXXX")
+SANDBOX=$(cd "$SANDBOX" && pwd -P)
 BACKGROUND_PIDS=""
 cleanup_sandbox() {
   local background_pid
@@ -39,12 +47,41 @@ cleanup_sandbox() {
 }
 trap cleanup_sandbox EXIT
 LOCK_TMPDIR="$SANDBOX/tmp"
-LOCK_FILE="$LOCK_TMPDIR/claude-fixture-shards.flock"
 TESTS="$SANDBOX/tests"
 LEAK_TESTS="$SANDBOX/leak-tests"
 EVENTS="$SANDBOX/events"
 LOAD_FILE="$SANDBOX/load"
 mkdir -p "$LOCK_TMPDIR" "$TESTS" "$LEAK_TESTS"
+# The runner keeps its locks in a private per-user directory under TMPDIR
+# (IAN-441 review), so no other user can plant a file or symlink among them.
+LOCK_DIR="$LOCK_TMPDIR/claude-fixture-shards.$(id -u)"
+
+# worktree_lock_file <tests dir>: the run lock of the checkout holding the
+# tests directory, or of the directory itself outside any repository, derived
+# as the runner derives it.
+worktree_lock_file() {
+  local root
+  root=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || root=$(nearest_git_root_of "$1")
+  echo "$LOCK_DIR/claude-fixture-shards.worktree.$(printf '%s' "$root" | cksum | awk '{print $1}').flock"
+}
+
+# nearest_git_root_of <dir>: the runner's fallback when git refuses, mirrored
+# so the fixture keys every lock the way the runner does (PR #154 review
+# round 11): the nearest directory at or above holding a .git, else the
+# resolved directory itself.
+nearest_git_root_of() {
+  local resolved_dir candidate_dir
+  resolved_dir=$(cd "$1" && pwd -P)
+  candidate_dir="$resolved_dir"
+  while [ -n "$candidate_dir" ]; do
+    [ -e "$candidate_dir/.git" ] && { echo "$candidate_dir"; return; }
+    [ "$candidate_dir" = / ] && break
+    candidate_dir=$(dirname "$candidate_dir")
+  done
+  echo "$resolved_dir"
+}
+LOCK_FILE=$(worktree_lock_file "$TESTS")
+LEAK_LOCK_FILE=$(worktree_lock_file "$LEAK_TESTS")
 : > "$EVENTS"
 echo 0 > "$LOAD_FILE"
 export EVENTS SANDBOX
@@ -75,7 +112,7 @@ build_runner_argv() {
   local environment_assignments=()
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do environment_assignments+=("$1"); shift; done
   [ "$#" -gt 0 ] && shift
-  RUNNER_ARGV=(env -u FIXTURE_SHARDS_LOCK_HELD TMPDIR="$LOCK_TMPDIR"
+  RUNNER_ARGV=(env -u FIXTURE_SHARDS_LOCK_HELD -u FIXTURE_SHARDS_LOCK_HELD_FILE -u FIXTURE_SHARDS_MAX_RUNS TMPDIR="$LOCK_TMPDIR"
     ${environment_assignments[@]+"${environment_assignments[@]}"}
     bash "$RUNNER" "${RUNNER_TESTS:-$TESTS}" --all --jobs 1 --settle-seconds 0 --load-from "$LOAD_FILE" "$@")
 }
@@ -125,9 +162,10 @@ wait_for_line() {
   done
 }
 
-# is_lock_free: true when a fresh process can take the run lock at once.
+# is_lock_free [lock file]: true when a fresh process can take the lock (the
+# sandbox tests' run lock by default) at once.
 is_lock_free() {
-  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 2; flock($f, LOCK_EX|LOCK_NB) ? exit 0 : exit 1' "$LOCK_FILE"
+  perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or exit 2; flock($f, LOCK_EX|LOCK_NB) ? exit 0 : exit 1' "${1:-$LOCK_FILE}"
 }
 
 # start_lock_holder: starts a process that takes the run lock and keeps it,
@@ -190,22 +228,38 @@ check "the run after a stale lock file ran its fixture" test "$(tr '\n' ' ' < "$
 # the run that started it has finished.
 RUNNER_TESTS="$LEAK_TESTS" run_with_deadline 30 "$SANDBOX/leak.out" run_locked_runner; leak_status=$?
 check "the leaking fixture's run passes" test "$leak_status" -eq 0
-check "a fixture's leaked background process does not hold the lock" is_lock_free
+check "a fixture's leaked background process does not hold the lock" is_lock_free "$LEAK_LOCK_FILE"
+check "a fixture's leaked background process does not hold a run slot" \
+  is_lock_free "$LOCK_DIR/claude-fixture-shards.slot.1.flock"
 
-# Case 5: a nested run whose marker names the live holder skips the lock and
-# leaves it held; a marker naming a dead PID is stale and does not.
+# Case 5: a marker naming the live holder, when that holder is not an
+# ancestor of the run (here a stand-in process, as another session's runner
+# would be), is foreign and does not skip the lock (IAN-441 security review);
+# a marker naming a dead PID that the file does not record is stale and does
+# not either. A real nested run, whose marker names its live ancestor, is
+# run-fixture-shards-run-cap.test.sh Case 5.
 start_lock_holder
 holder_pid="$LOCK_HOLDER_PID"
 : > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; nested_status=$?
-check "a nested run naming the live holder passes" test "$nested_status" -eq 0
-check "a nested run naming the live holder ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
-check "a nested run naming the live holder does not wait" not grep -q "waiting for PID" "$SANDBOX/nested.out"
-check "a nested run leaves its parent's lock held" not is_lock_free
+run_with_deadline 30 "$SANDBOX/nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$holder_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; nested_status=$?
+check "a marker naming a live holder that is not an ancestor does not skip the lock: 75" test "$nested_status" -eq 75
+check "a marker naming a live non-ancestor holder runs no fixture" test ! -s "$EVENTS"
+check "a run refused a foreign marker leaves the holder's lock held" not is_lock_free
 : > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/stale-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$(dead_pid_of_finished_process)" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; stale_marker_status=$?
+run_with_deadline 30 "$SANDBOX/stale-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$(dead_pid_of_finished_process)" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; stale_marker_status=$?
 check "a stale marker does not skip the lock: the run queues and gives up with 75" test "$stale_marker_status" -eq 75
 check "a run with a stale marker runs no fixture while the lock is held" test ! -s "$EVENTS"
+# The marker shapes most likely in the field (PR #154 security review round
+# 5): a PID left exported by a pre-IAN-441 runner with no file marker beside
+# it, and a non-numeric PID beside the real file. Both are refused and queue.
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/pid-only-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; pid_only_status=$?
+check "a PID marker with no file marker does not skip the lock: 75" test "$pid_only_status" -eq 75
+check "a PID marker with no file marker runs no fixture" test ! -s "$EVENTS"
+: > "$EVENTS"
+run_with_deadline 30 "$SANDBOX/star-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD='*' FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; star_status=$?
+check "a non-numeric PID marker does not skip the lock: 75" test "$star_status" -eq 75
+check "a non-numeric PID marker runs no fixture" test ! -s "$EVENTS"
 
 # Case 6: the wait cap. A live holder never lets go, so the run gives up after
 # the cap with exit 75, the code the gate does not retry (IAN-351), a message
@@ -246,7 +300,7 @@ orphan_holder_pid=$!
 BACKGROUND_PIDS="$BACKGROUND_PIDS $orphan_holder_pid"
 wait_for_line 5 "^$orphan_runner_pid\$" "$LOCK_FILE"
 : > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/orphan-nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$orphan_runner_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; orphan_nested_status=$?
+run_with_deadline 30 "$SANDBOX/orphan-nested.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$orphan_runner_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; orphan_nested_status=$?
 check "a nested run under a killed run's orphans passes without queueing" test "$orphan_nested_status" -eq 0
 check "a nested run under a killed run's orphans ran its fixture" test "$(tr '\n' ' ' < "$EVENTS")" = "start end "
 kill "$orphan_holder_pid" 2>/dev/null; wait "$orphan_holder_pid" 2>/dev/null
@@ -256,18 +310,24 @@ kill "$orphan_holder_pid" 2>/dev/null; wait "$orphan_holder_pid" 2>/dev/null
 # itself and records its own PID instead of running unqueued.
 finished_holder_pid=$(head -1 "$LOCK_FILE")
 : > "$EVENTS"
-run_with_deadline 30 "$SANDBOX/finished-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$finished_holder_pid" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; finished_marker_status=$?
+run_with_deadline 30 "$SANDBOX/finished-marker.out" run_locked_runner FIXTURE_SHARDS_LOCK_HELD="$finished_holder_pid" FIXTURE_SHARDS_LOCK_HELD_FILE="$LOCK_FILE" FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; finished_marker_status=$?
 check "a marker naming a finished holder still lets the run pass" test "$finished_marker_status" -eq 0
 check "a marker naming a finished holder does not skip the lock: the run records its own PID" \
   not test "$(head -1 "$LOCK_FILE")" = "$finished_holder_pid"
 
-# Case 8: a lock directory left at the old IAN-348 path is not this lock.
+# Case 8: a lock directory left at the old IAN-348 path, and a held lock on
+# the old machine-wide IAN-359 file, are not this lock.
 mkdir -p "$LOCK_TMPDIR/claude-fixture-shards.lock"
 echo "$$" > "$LOCK_TMPDIR/claude-fixture-shards.lock/pid"
+perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; flock($f, LOCK_EX) or die; sleep 60' "$LOCK_TMPDIR/claude-fixture-shards.flock" &
+old_file_holder_pid=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $old_file_holder_pid"
+sleep 1
 : > "$EVENTS"
 run_with_deadline 30 "$SANDBOX/old-dir.out" run_locked_runner FIXTURE_SHARDS_LOCK_WAIT_SECONDS=2; old_dir_status=$?
 check "an old-style lock directory does not block a run" test "$old_dir_status" -eq 0
 check "an old-style lock directory causes no wait" not grep -q "waiting for PID" "$SANDBOX/old-dir.out"
+kill "$old_file_holder_pid" 2>/dev/null; wait "$old_file_holder_pid" 2>/dev/null
 
 # Case 9: a lock parent the runner cannot write is reported as that at once,
 # not waited on until the cap as if another run held the lock. Skipped as

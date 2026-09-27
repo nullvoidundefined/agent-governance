@@ -120,8 +120,9 @@ if [ -n "$TREE_KEY" ] && [ -f "$MEMO_FILE" ] && [ "$(cat "$MEMO_FILE" 2>/dev/nul
 fi
 
 TIMEOUT_SECONDS="${CLAUDE_VERIFY_TIMEOUT:-600}"
-# The fixture runner queues behind a machine-wide lock and gives up after
-# FIXTURE_SHARDS_LOCK_WAIT_SECONDS, 1200 by default (IAN-348). The harness
+# The fixture runner queues behind its worktree's lock and a machine-wide run
+# slot (IAN-441) and gives up after FIXTURE_SHARDS_LOCK_WAIT_SECONDS, 1200 by
+# default (IAN-348). The harness
 # kills this hook at 660 seconds, so every check here waits at most 480 and
 # the runner's own message still reaches the turn. Set unconditionally: a
 # value the session's shell exported must not stretch the wait past the hook's
@@ -326,7 +327,7 @@ while IFS= read -r check; do
   if [ "$STATUS" -eq 124 ]; then
     TAIL="Command exceeded CLAUDE_VERIFY_TIMEOUT (${TIMEOUT_SECONDS}s) and was killed."$'\n\n'"$TAIL"
   elif is_fixture_lock_give_up "$check" "$STATUS"; then
-    TAIL="No fixture ran: another fixture run held the machine-wide lock for all ${FIXTURE_SHARDS_LOCK_WAIT_SECONDS}s this gate waits, so the check was not retried. End the turn again once that run finishes."$'\n\n'"$TAIL"
+    TAIL="No fixture ran: another fixture run held this worktree's fixture lock, or every machine-wide run slot, for all ${FIXTURE_SHARDS_LOCK_WAIT_SECONDS}s this gate waits, so the check was not retried. End the turn again once that run finishes."$'\n\n'"$TAIL"
   fi
   RETRY_NOTE=""
   RELATED_NOTE=""

@@ -1,0 +1,9 @@
+{
+  "pr": "nullvoidundefined/agent-governance#154",
+  "ticket": "IAN-441",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "46c3b829feebf37ab8a7900d8050d7e740145843",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Rounds 1 to 11 found findings that were all fixed test-first in this PR (dispositions in the PR body); round 12 on the reviewed code above and the confirming review of the head that adds this file found none.",
+  "findings": []
+}
