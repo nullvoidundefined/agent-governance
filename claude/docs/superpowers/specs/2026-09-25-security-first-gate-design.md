@@ -128,6 +128,44 @@ A security finding moves from `open` to `fixed <sha>` when a commit in the range
 - Reuse: `resolve_pr_base` in `hooks/pr-range-checks.sh`; the `## Codex review` parser and range-head check in `hooks/git-workflow-guard.sh`, around line 430; `push-ruff-gate.sh` as the pre-push template; the R-203 `approved` check; `protected-path-guard.sh` for the exclude list.
 - New third-party tools, justified under R-331: Semgrep OSS, because no existing linter here does language-aware dataflow across files and it runs fast enough for pre-push; CodeQL in CI, for deeper taint tracking on public repos, where it is free.
 
+## Part 7 addendum: the reusable CI workflow (2026-09-27)
+
+Part 7 moves the rule pack from a local pre-push hook, which `--no-verify` skips, to a CI check that the author does not control. The owner settled four choices on 2026-09-27: callers pin the workflow by full commit SHA, Semgrep runs the custom rule pack plus the free `p/default` registry ruleset, a pull request fails only on findings in the files it changes, and all three template repositories adopt it in this rollout.
+
+### Vocabulary
+
+- Security CI workflow - `.github/workflows/security.yml`, a `workflow_call` workflow that other repositories call - chosen over: "security action" because it is a reusable workflow with jobs, not a composite action.
+- Caller workflow - the short workflow in an adopting repository that calls the security CI workflow with a pinned SHA - chosen over: "wrapper" because GitHub's own documentation calls it the caller.
+- Scan targets - the files a run scans: in PR mode, the files the PR adds or modifies that no base-commit `securitySurfaceExclude` glob covers; in full mode, every tracked file no such glob covers - chosen over: "changed files" because full mode is not about changes.
+- PR mode and full mode - PR mode runs on `pull_request` against the PR's base; full mode runs on every other event (push to `main`, the weekly schedule, manual dispatch) - chosen over: "diff scan" and "baseline scan" to keep one word per mode.
+
+### Components
+
+1. `claude/enforce/security-ci-targets.sh` lists the scan targets. It reuses `list_included_changed_files` and `read_security_surface_excludes` from `hooks/security-surface.sh`, so the CI and the merge gate agree on what a PR changed and what is excluded.
+2. `claude/enforce/security-ci-semgrep.sh` exports the targets' HEAD content into a scratch directory with an empty `.semgrepignore`, runs Semgrep with the rule pack and `p/default`, `--error`, `--disable-nosem`, `--metrics=off`, and `--max-target-bytes=0`, and prints each finding as a GitHub `::error` annotation.
+3. `claude/enforce/security-ci-codeql-gate.sh` reads the SARIF that CodeQL wrote and fails on any result in a scan target, because `codeql-action/analyze` itself passes whatever it finds.
+4. `.github/workflows/security.yml` checks out the caller, checks out `job.workflow_repository` at `job.workflow_sha` (the exact commit the caller pinned, so the rules and the scripts can never drift from the workflow), and runs the two jobs `semgrep` and `codeql (<language>)`. Every third-party action is pinned by commit SHA with its tag in a comment, and every checkout sets `persist-credentials: false`.
+5. `.github/workflows/security-self.yml` calls the workflow from agent-governance itself with `uses: ./.github/workflows/security.yml`, so every PR here exercises it.
+6. One caller workflow in each of template-express, template-express-next, and template-fastapi-nuxt, one PR per repository.
+
+The check names Part 5b will require are `security / semgrep` and `security / codeql (<language>)`, as GitHub composes them from the caller job id `security`.
+
+### Acceptance criteria
+
+- B-18: In PR mode the target list holds every added or modified file, omits deleted files, omits files a base-commit `securitySurfaceExclude` glob covers, and ignores an exclude glob that the PR itself adds.
+- B-19: In full mode the target list holds every tracked file that no HEAD `securitySurfaceExclude` glob covers.
+- B-20: The Semgrep step exits 1 and annotates each finding when the scan reports one, exits 0 on a clean scan or an empty target list, and exits 2, failing closed, when Semgrep cannot be resolved, crashes, prints unreadable JSON, reports an error-level error, or leaves a code target unscanned. A `# nosemgrep` comment cannot silence a finding.
+- B-21: A #27-shaped file (the `cors-unvalidated-setting` bad sample) in the targets makes the Semgrep step exit 1 with a real Semgrep run, not a stub.
+- B-22: The CodeQL gate exits 1 on a SARIF result inside the targets, exits 0 when every result is outside them in PR mode, exits 1 on any result in full mode, and exits 2 when no SARIF file exists or one does not parse.
+- B-23: `security.yml` is a `workflow_call` workflow whose every external `uses:` is pinned to a 40-character SHA, whose every checkout sets `persist-credentials: false`, whose harness checkout reads `job.workflow_repository` at `job.workflow_sha`, whose jobs grant no permission beyond `contents: read` except CodeQL's `security-events: write` and `actions: read`, and which skips CodeQL with a visible notice on a private repository or an empty language list.
+- B-24: A live PR in template-fastapi-nuxt carrying the #27 shape turns `security / semgrep` red, and the same PR without it turns it green; the throwaway PR is closed afterwards.
+
+### Failure modes
+
+- Registry unreachable (`p/default` cannot download): Semgrep exits with an error, the step exits 2, and the check is red. A scan that ran without its rulesets is not a clean scan.
+- `job.workflow_sha` empty (a GitHub change or a local `act` run): the harness checkout fails and the job is red.
+- A fork PR: the harness checkout reads a public repository, so it still works; CodeQL's upload needs `security-events: write`, which GitHub withholds from fork PRs, so CodeQL may fail there. None of the adopting repositories accepts fork PRs today.
+
 ## Observability
 
 Every deny from the new hooks logs its rule ID through `log-rule-fire.sh`, so misses and fires feed the existing rule-fire log.
