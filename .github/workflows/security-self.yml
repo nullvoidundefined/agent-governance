@@ -3,9 +3,12 @@
 # scripts is exercised before any adopting repository pins it (IAN-381 Part
 # 7, spec component 6).
 #
-# Pull requests only: a full-mode scan of this repository would always be
-# red, because enforce/tests/testdata/semgrep/ holds bad samples that are
-# findings by design.
+# The rule pack's deliberately vulnerable samples in
+# claude/enforce/tests/testdata/semgrep/ carry a `.sample` suffix, which
+# neither Semgrep nor CodeQL reads as code, so a PR that adds a rule and its
+# bad sample is not turned red by its own fixture (owner decision
+# 2026-09-27). Pull requests only: full-mode scans of this repository have
+# not been measured against p/default yet.
 name: security-self
 
 on:

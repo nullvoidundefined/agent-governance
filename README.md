@@ -495,7 +495,8 @@ is written; the required check is the one that runs where it cannot be skipped.
 The security rule pack has the same weakness locally, since its pre-push gate is skipped by the same
 `--no-verify`. `.github/workflows/security.yml` is a reusable workflow that runs it in CI instead: an
 adopting repository calls it from a short caller workflow pinned to a full commit SHA of this
-repository, granting `contents: read`, `security-events: write`, and `actions: read`:
+repository, under the job id `security` (the check names below are built from it), granting
+`contents: read`, `security-events: write`, and `actions: read`:
 
 ```yaml
 jobs:
