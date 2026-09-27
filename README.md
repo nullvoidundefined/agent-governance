@@ -477,8 +477,10 @@ The checksum proves the file you downloaded matches the release; it does not pro
 release, because releases are not signed. A release install writes only to `~/.claude`,
 `~/.cursor`, and `~/.codex`, and runs `npm ci` for the enforcement tools' lockfile-pinned
 dependencies. The archive is not a git checkout, so `sync.sh` installs the files its
-`RELEASE-FILES` list names, and refuses to run if that list names an absolute path, a path that
-climbs out with `..`, or a file the archive does not hold. A release install does not update
+`RELEASE-FILES` list names. It refuses to run, before writing anything, if that list names an
+absolute path, a path that climbs out with `..`, a file the archive does not hold, a symlink that
+points outside the archive, or a path reached through a directory symlink, and it refuses a
+directory that holds both `.git` and `RELEASE-FILES`, because its source would be ambiguous. A release install does not update
 itself: the `harness-sync` hook resyncs only from a git checkout, so you update by installing the
 next release.
 
