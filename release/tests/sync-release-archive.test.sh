@@ -90,6 +90,23 @@ printf '%s\n' claude/alias.md >> "$TMP/b3b-inside/RELEASE-FILES"
 runSyncFrom "$TMP/b3b-inside" "$TMP/live-b3b-inside" > "$TMP/b3b-inside.out" 2>&1 || { cat "$TMP/b3b-inside.out"; fail "B-3b: a symlink inside the extract was refused"; }
 [ "$(readlink "$TMP/live-b3b-inside/claude/alias.md")" = "CLAUDE.md" ] || fail "B-3b: an inside symlink was not installed as a link"
 
+# --- B-3c (security review round 2, finding 1): a listed file reached
+# through an unlisted directory symlink refuses the run, wherever that
+# directory symlink points: absolute, or relative and climbing out.
+mkdir -p "$TMP/outside-dir"; echo "outside" > "$TMP/outside-dir/secret.txt"
+caseNumber=0
+for directoryTarget in "$TMP/outside-dir" "../../outside-dir"; do
+  caseNumber=$((caseNumber + 1))
+  label="B-3c entry under a directory symlink to '$directoryTarget'"
+  dir="$TMP/b3c-$caseNumber"; makeExtract "$dir"
+  ln -s "$directoryTarget" "$dir/claude/linked"
+  [ -f "$dir/claude/linked/secret.txt" ] || fail "$label: the fixture's directory symlink does not resolve"
+  printf '%s\n' "claude/linked/secret.txt" >> "$dir/RELEASE-FILES"
+  if runSyncFrom "$dir" "$dir-live" > "$dir.out" 2>&1; then fail "$label: sync accepted a path through a directory symlink"; fi
+  grep -q "REFUSED: RELEASE-FILES" "$dir.out" || { cat "$dir.out"; fail "$label: no RELEASE-FILES refusal"; }
+  assertTargetsAbsent "$dir-live" "$label"
+done
+
 # --- B-4: in a real checkout a stray RELEASE-FILES never widens the sync.
 makeExtract "$TMP/b4"
 git -C "$TMP/b4" init -q
