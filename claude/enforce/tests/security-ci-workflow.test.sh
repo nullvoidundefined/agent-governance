@@ -19,7 +19,12 @@
 # check would let an unsafe workflow through.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
-REPO_ROOT=$(cd "$CLAUDE_HARNESS_ROOT/.." && pwd -P)
+# The workflows live at the repository root, outside the harness tree. CI runs
+# this fixture through the $HOME/.claude symlink, whose parent is the runner's
+# home rather than the checkout, so the root comes from git, which resolves
+# the fixture's own directory to the checkout it sits in (as
+# translate-codex.test.sh does).
+REPO_ROOT=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 MAIN_WORKFLOW="$REPO_ROOT/.github/workflows/security.yml"
 SELF_WORKFLOW="$REPO_ROOT/.github/workflows/security-self.yml"
 
