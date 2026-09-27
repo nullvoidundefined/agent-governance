@@ -28,7 +28,9 @@
 # scanned list leaves out a code target. A scan that did not cover what it was
 # given is not a clean scan. A PR author controls file names and file
 # contents, so every report value this prints, diagnostics included, is
-# escaped for GitHub's workflow-command parser. bash 3.2 compatible.
+# escaped for GitHub's workflow-command parser, and Semgrep's own stderr is
+# captured and, on a failed scan, printed escaped under a fixed prefix rather
+# than passed through raw (B-32). bash 3.2 compatible.
 set -uo pipefail
 
 SECURITY_CI_SEMGREP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,7 +74,18 @@ run_semgrep() {
   done
   # shellcheck disable=SC2086  # the command may be the two-word `uvx semgrep`
   (cd "$scan_dir" && $semgrep_command "${config_arguments[@]}" --json --error --disable-nosem \
-    --no-git-ignore --metrics=off --disable-version-check --max-target-bytes=0 --quiet -- "$@") > "$report_file"
+    --no-git-ignore --metrics=off --disable-version-check --max-target-bytes=0 --quiet -- "$@") \
+    > "$report_file" 2> "$report_file.stderr"
+}
+
+# print_semgrep_stderr <report file>: prints what Semgrep wrote to stderr, one
+# line at a time under a fixed prefix and escaped for the workflow-command
+# parser, so an echoed file name or snippet cannot start a command of its own
+# (B-32). Prints nothing when Semgrep wrote nothing.
+print_semgrep_stderr() {
+  local stderr_file="$1.stderr"
+  [ -s "$stderr_file" ] || return 0
+  jq -R -r '"security-ci-semgrep: semgrep stderr: " + (gsub("%"; "%25") | gsub("\r"; "%0D"))' "$stderr_file" >&2
 }
 
 # list_untrusted_scan_entries <report file> <target list>: prints one escaped
@@ -115,27 +128,47 @@ scan_targets() {
   rm -rf "$scan_dir"
 }
 
+# fail_scan_verdict <report file> <message>: prints Semgrep's escaped stderr,
+# then reports a scan that cannot be trusted and exits 2.
+fail_scan_verdict() {
+  print_semgrep_stderr "$1"
+  exit_with_failure "$2"
+}
+
 # report_scan_verdict <report file> <semgrep status> <target list>
 # <target count>: checks the report can be trusted, prints the verdict, and
 # exits 0, 1, or 2.
 report_scan_verdict() {
   local report_file="$1" semgrep_status="$2" target_list="$3" target_count="$4" untrusted_entries finding_count
   jq -e '(.results | type == "array") and ((.paths.scanned // []) | type == "array")' "$report_file" >/dev/null 2>&1 \
-    || exit_with_failure "Semgrep printed no readable JSON report (exit $semgrep_status)"
-  [ "$semgrep_status" -le 1 ] || exit_with_failure "Semgrep crashed (exit $semgrep_status)"
+    || fail_scan_verdict "$report_file" "Semgrep printed no readable JSON report (exit $semgrep_status)"
+  [ "$semgrep_status" -le 1 ] || fail_scan_verdict "$report_file" "Semgrep crashed (exit $semgrep_status)"
   untrusted_entries=$(list_untrusted_scan_entries "$report_file" "$target_list") \
-    || exit_with_failure "could not read Semgrep's error and scanned lists"
-  [ -z "$untrusted_entries" ] || exit_with_failure "Semgrep did not fully scan the targets:
+    || fail_scan_verdict "$report_file" "could not read Semgrep's error and scanned lists"
+  [ -z "$untrusted_entries" ] || fail_scan_verdict "$report_file" "Semgrep did not fully scan the targets:
 $untrusted_entries"
-  finding_count=$(jq '.results | length' "$report_file") || exit_with_failure "could not count Semgrep's findings"
+  finding_count=$(jq '.results | length' "$report_file") || fail_scan_verdict "$report_file" "could not count Semgrep's findings"
   if [ "$finding_count" -eq 0 ]; then
-    [ "$semgrep_status" -eq 0 ] || exit_with_failure "Semgrep exited 1 but its report holds no finding"
+    [ "$semgrep_status" -eq 0 ] || fail_scan_verdict "$report_file" "Semgrep exited 1 but its report holds no finding"
     echo "security-ci-semgrep: $target_count target(s) scanned, no findings."
     exit 0
   fi
   print_finding_annotations "$report_file" || exit_with_failure "could not read Semgrep's findings"
   echo "security-ci-semgrep: $finding_count finding(s); fix each one."
   exit 1
+}
+
+# list_semgrep_targets <target list>: prints the targets Semgrep is handed,
+# one per line. A PR's own .semgrepignore is deleted from the export, so it
+# is left out; it holds no code to scan.
+list_semgrep_targets() {
+  local target_path
+  while IFS= read -r target_path; do
+    case "$target_path" in
+      ''|.semgrepignore|*/.semgrepignore) ;;
+      *) printf '%s\n' "$target_path" ;;
+    esac
+  done <<< "$1"
 }
 
 # main: lists the targets, scans them, and reports the verdict.
@@ -150,21 +183,16 @@ main() {
     echo "security-ci-semgrep: no scan targets; nothing to scan."
     exit 0
   fi
-  # A PR's own .semgrepignore is deleted from the export, so it is not handed
-  # to Semgrep as a target; it holds no code to scan.
   while IFS= read -r target_path; do
-    case "$target_path" in
-      ''|.semgrepignore|*/.semgrepignore) ;;
-      *) targets+=("$target_path") ;;
-    esac
-  done <<< "$target_list"
+    targets+=("$target_path")
+  done < <(list_semgrep_targets "$target_list")
   if [ "${#targets[@]}" -eq 0 ]; then
     echo "security-ci-semgrep: no scan targets; nothing to scan."
     exit 0
   fi
   report_file=$(mktemp) || exit_with_failure "could not create a report file"
   # shellcheck disable=SC2064  # the trap outlives main's locals
-  trap "rm -f '$report_file'" EXIT
+  trap "rm -f '$report_file' '$report_file.stderr'" EXIT
   # scan_targets runs in a subshell, so its fail-closed exit (message already
   # on stderr) has to be carried out of it.
   semgrep_status=$(scan_targets "$report_file" "${targets[@]}") || exit 2
