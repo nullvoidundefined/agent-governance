@@ -25,7 +25,7 @@ cd agent-governance
 - [What you get](#what-you-get)
 - [Features](#features)
 - [How a feature actually gets built](#how-a-feature-actually-gets-built)
-- [The two build skills, and how to tell them apart](#the-two-build-skills-and-how-to-tell-them-apart)
+- [The build skills, and how to tell them apart](#the-build-skills-and-how-to-tell-them-apart)
 - [The four layers](#the-four-layers)
 - [Repository layout](#repository-layout)
 - [One source, three tools](#one-source-three-tools)
@@ -258,7 +258,7 @@ section is missing or empty.
 list and user stories, closes the ticket with measured actuals, and writes the session handoff so
 the next session starts from state rather than from scratch.
 
-## The two build skills, and how to tell them apart
+## The build skills, and how to tell them apart
 
 Two skills in this repository both look like "the one that builds things," and their triggers
 overlap enough that their own frontmatter cross-references the ambiguity. They are not alternatives.
