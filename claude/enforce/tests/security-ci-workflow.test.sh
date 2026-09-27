@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Covers: ci:security-workflow
 # Verifies the structure of the security CI workflow and its self-caller
-# (IAN-381, spec Part 7 addendum, components 4 and 6, criterion B-23):
+# (IAN-381, spec Part 7 addendum, components 4 and 6, criteria B-23, B-28,
+# B-29, and B-30):
 #
 #   .github/workflows/security.yml       the reusable workflow_call workflow
 #   .github/workflows/security-self.yml  agent-governance calling it on PRs
@@ -12,6 +13,14 @@
 # bash against an exact expected value or a required minimum count, so a
 # workflow that drops a guard, widens a permission, unpins an action, or
 # interpolates an expression into a shell line fails with its own message.
+#
+# Two guards are executed rather than only inspected. The first step of the
+# semgrep and languages jobs is an event allowlist (B-29): its own `run` text
+# is extracted and run under each event name. The harness-fetch step (B-30) is
+# extracted and run against a stub `git` that logs every call, so the fixture
+# sees whether a refused repository or SHA ever reached a fetch, and that the
+# ancestry check against agent-governance `main` runs before the pinned commit
+# is fetched, except when agent-governance calls itself.
 #
 # Ruby's YAML 1.1 loader reads the bare key `on` as boolean true, so the
 # trigger map is read as `w[true] || w["on"]`. Ruby is required: when it is
@@ -31,7 +40,8 @@ SELF_WORKFLOW="$REPO_ROOT/.github/workflows/security-self.yml"
 failures=0
 report_failure() { echo "FAIL: $1"; failures=$((failures + 1)); }
 
-finish() {
+# finish_test: prints the verdict and exits 1 on any failure, 0 otherwise.
+finish_test() {
   if [ "$failures" -gt 0 ]; then
     echo "security-ci-workflow.test.sh FAIL ($failures)"
     exit 1
@@ -47,7 +57,7 @@ trap 'rm -rf "$WORK"' EXIT
 [ -f "$MAIN_WORKFLOW" ] || report_failure "precondition: $MAIN_WORKFLOW does not exist"
 [ -f "$SELF_WORKFLOW" ] || report_failure "precondition: $SELF_WORKFLOW does not exist"
 command -v ruby >/dev/null 2>&1 || report_failure "precondition: ruby is not installed; the YAML structure check cannot run"
-[ "$failures" -eq 0 ] || finish
+[ "$failures" -eq 0 ] || finish_test
 
 # --- Fact extraction (Ruby) ----------------------------------------------------
 # Prints one `key=value` line per fact. Every lookup tolerates a missing or
@@ -57,23 +67,23 @@ cat > "$WORK/facts.rb" <<'RUBY'
 require 'yaml'
 require 'json'
 
-def emit(key, value) puts "#{key}=#{value}" end
-def text(value) value.is_a?(String) ? value : '' end
-def hash_or_empty(value) value.is_a?(Hash) ? value : {} end
+def emit_fact(key, value) puts "#{key}=#{value}" end
+def read_text(value) value.is_a?(String) ? value : '' end
+def coerce_hash(value) value.is_a?(Hash) ? value : {} end
 
 def load_workflow(path, label)
   loaded = YAML.load(File.read(path))
-  emit "#{label}_loaded", (loaded.is_a?(Hash) ? 'yes' : 'no')
-  hash_or_empty(loaded)
+  emit_fact "#{label}_loaded", (loaded.is_a?(Hash) ? 'yes' : 'no')
+  coerce_hash(loaded)
 rescue StandardError => err
   warn "#{label}: #{err.class}: #{err.message}"
-  emit "#{label}_loaded", 'no'
+  emit_fact "#{label}_loaded", 'no'
   {}
 end
 
-def trigger_map(workflow) workflow.key?(true) ? workflow[true] : workflow['on'] end
+def read_trigger_map(workflow) workflow.key?(true) ? workflow[true] : workflow['on'] end
 
-def trigger_keys(triggers)
+def list_trigger_keys(triggers)
   case triggers
   when Hash then triggers.keys.map(&:to_s).sort.join(',')
   when Array then triggers.map(&:to_s).sort.join(',')
@@ -82,128 +92,165 @@ def trigger_keys(triggers)
   end
 end
 
-def permission_pairs(permissions)
+def list_permission_pairs(permissions)
   return ["INVALID:#{permissions.inspect}"] unless permissions.is_a?(Hash)
   permissions.map { |scope, level| "#{scope}:#{level}" }
 end
 
-def job_steps(job)
-  steps = hash_or_empty(job)['steps']
+def list_job_steps(job)
+  steps = coerce_hash(job)['steps']
   steps.is_a?(Array) ? steps.select { |step| step.is_a?(Hash) } : []
 end
 
-def yes_no(flag) flag ? 'yes' : 'no' end
+def format_yes_no(flag) flag ? 'yes' : 'no' end
 
 main_path, self_path = ARGV
 workflow = load_workflow(main_path, 'main')
-triggers = trigger_map(workflow)
-emit 'trigger_keys', trigger_keys(triggers)
+triggers = read_trigger_map(workflow)
+emit_fact 'trigger_keys', list_trigger_keys(triggers)
 workflow_call = triggers.is_a?(Hash) ? triggers['workflow_call'] : nil
 has_inputs = workflow_call.is_a?(Hash) && !workflow_call['inputs'].nil?
-emit 'workflow_call_inputs', (has_inputs ? 'present' : 'absent')
-emit 'top_permissions', (workflow.key?('permissions') ? JSON.generate(workflow['permissions']) : 'absent')
+emit_fact 'workflow_call_inputs', (has_inputs ? 'present' : 'absent')
+emit_fact 'top_permissions', (workflow.key?('permissions') ? JSON.generate(workflow['permissions']) : 'absent')
 
-jobs = hash_or_empty(workflow['jobs'])
-job = ->(name) { hash_or_empty(jobs[name]) }
-all_steps = jobs.values.flat_map { |each_job| job_steps(each_job) }
+jobs = coerce_hash(workflow['jobs'])
+find_job = ->(name) { coerce_hash(jobs[name]) }
+all_steps = jobs.values.flat_map { |each_job| list_job_steps(each_job) }
 
 uses_values = all_steps.map { |step| step['uses'] }.compact.map(&:to_s)
-emit 'uses_total', uses_values.size
-emit 'uses_pinned', uses_values.count { |value| value.start_with?('./') || value =~ /\A[^@]+@[0-9a-f]{40}\z/ }
+emit_fact 'uses_total', uses_values.size
+emit_fact 'uses_pinned', uses_values.count { |value| value.start_with?('./') || value =~ /\A[^@]+@[0-9a-f]{40}\z/ }
 
 head_ref = '${{ github.event.pull_request.head.sha || github.sha }}'
-checkouts = all_steps.select { |step| text(step['uses']).start_with?('actions/checkout@') }
-emit 'checkout_total', checkouts.size
-emit 'checkout_persist_false', checkouts.count { |step| hash_or_empty(step['with'])['persist-credentials'] == false }
-checkout_refs = checkouts.map { |step| hash_or_empty(step['with']) }.select { |with| with.key?('ref') }.map { |with| with['ref'] }
-emit 'checkout_ref_present', checkout_refs.size
-emit 'checkout_ref_exact', checkout_refs.count { |ref| ref == head_ref }
+checkouts = all_steps.select { |step| read_text(step['uses']).start_with?('actions/checkout@') }
+emit_fact 'checkout_total', checkouts.size
+emit_fact 'checkout_persist_false', checkouts.count { |step| coerce_hash(step['with'])['persist-credentials'] == false }
+checkout_refs = checkouts.map { |step| coerce_hash(step['with']) }.select { |with| with.key?('ref') }.map { |with| with['ref'] }
+emit_fact 'checkout_ref_present', checkout_refs.size
+emit_fact 'checkout_ref_exact', checkout_refs.count { |ref| ref == head_ref }
 
 run_values = all_steps.map { |step| step['run'] }.compact.map(&:to_s)
-emit 'run_total', run_values.size
-emit 'run_with_expression', run_values.count { |run| run.include?('${{') }
+emit_fact 'run_total', run_values.size
+emit_fact 'run_with_expression', run_values.count { |run| run.include?('${{') }
 
-emit 'jobs_total', jobs.size
-emit 'jobs_with_permissions', jobs.count { |_name, each_job| each_job.is_a?(Hash) && each_job.key?('permissions') }
+emit_fact 'jobs_total', jobs.size
+emit_fact 'jobs_with_permissions', jobs.count { |_name, each_job| each_job.is_a?(Hash) && each_job.key?('permissions') }
 other_scopes = jobs.reject { |name, _job| name == 'codeql' }.flat_map do |_name, each_job|
-  hash_or_empty(each_job).key?('permissions') ? permission_pairs(each_job['permissions']) : []
+  coerce_hash(each_job).key?('permissions') ? list_permission_pairs(each_job['permissions']) : []
 end
-emit 'noncodeql_scopes', other_scopes.uniq.sort.join(',')
-emit 'codeql_permissions', permission_pairs(job.call('codeql')['permissions']).sort.join(',')
+emit_fact 'noncodeql_scopes', other_scopes.uniq.sort.join(',')
+emit_fact 'codeql_permissions', list_permission_pairs(find_job.call('codeql')['permissions']).sort.join(',')
 
-emit 'required_jobs', %w[semgrep languages codeql codeql-skipped].select { |name| jobs[name].is_a?(Hash) }.join(',')
-emit 'semgrep_name', text(job.call('semgrep')['name'])
-emit 'codeql_name', text(job.call('codeql')['name'])
-emit 'codeql_needs_languages', yes_no(Array(job.call('codeql')['needs']).map(&:to_s).include?('languages'))
-matrix = hash_or_empty(hash_or_empty(job.call('codeql')['strategy'])['matrix'])
-emit 'codeql_matrix_language', text(matrix['language'])
+emit_fact 'required_jobs', %w[semgrep languages codeql codeql-skipped].select { |name| jobs[name].is_a?(Hash) }.join(',')
+emit_fact 'semgrep_name', read_text(find_job.call('semgrep')['name'])
+emit_fact 'codeql_name', read_text(find_job.call('codeql')['name'])
+emit_fact 'codeql_needs_languages', format_yes_no(Array(find_job.call('codeql')['needs']).map(&:to_s).include?('languages'))
+matrix = coerce_hash(coerce_hash(find_job.call('codeql')['strategy'])['matrix'])
+emit_fact 'codeql_matrix_language', read_text(matrix['language'])
 
-emit 'codeql_if', text(job.call('codeql')['if'])
-emit 'codeql_skipped_if', text(job.call('codeql-skipped')['if'])
-emit 'codeql_skipped_notice', yes_no(job_steps(job.call('codeql-skipped')).any? { |step| text(step['run']).include?('::notice::') })
+emit_fact 'codeql_if', read_text(find_job.call('codeql')['if'])
+emit_fact 'codeql_skipped_if', read_text(find_job.call('codeql-skipped')['if'])
+emit_fact 'codeql_skipped_notice', format_yes_no(list_job_steps(find_job.call('codeql-skipped')).any? { |step| read_text(step['run']).include?('::notice::') })
 
 harness_markers = ['nullvoidundefined/agent-governance', '[0-9a-f]{40}', '$RUNNER_TEMP/harness']
+allowlist_markers = %w[pull_request push schedule workflow_dispatch] + ['exit 2']
 %w[semgrep languages].each do |name|
-  first_step = job_steps(job.call(name)).first || {}
-  refuses = text(first_step['if']) == "github.event_name == 'pull_request_target'" && text(first_step['run']).include?('exit 2')
-  emit "#{name}_first_step_refuses", yes_no(refuses)
-  harness = job_steps(job.call(name)).any? do |step|
-    env = hash_or_empty(step['env'])
+  first_step = list_job_steps(find_job.call(name)).first || {}
+  emit_fact "#{name}_first_step_has_if", format_yes_no(first_step.key?('if'))
+  emit_fact "#{name}_first_step_name", read_text(first_step['name'])
+  emit_fact "#{name}_first_step_event_env", read_text(coerce_hash(first_step['env'])['EVENT_NAME'])
+  emit_fact "#{name}_first_step_markers", format_yes_no(allowlist_markers.all? { |marker| read_text(first_step['run']).include?(marker) })
+  harness = list_job_steps(find_job.call(name)).any? do |step|
+    env = coerce_hash(step['env'])
     env['HARNESS_REPOSITORY'] == '${{ job.workflow_repository }}' &&
       env['HARNESS_SHA'] == '${{ job.workflow_sha }}' &&
-      harness_markers.all? { |marker| text(step['run']).include?(marker) }
+      harness_markers.all? { |marker| read_text(step['run']).include?(marker) }
   end
-  emit "#{name}_harness_step", yes_no(harness)
+  emit_fact "#{name}_harness_step", format_yes_no(harness)
 end
 
-semgrep_steps = job_steps(job.call('semgrep'))
-emit 'semgrep_install', yes_no(semgrep_steps.any? { |step| text(step['run']).include?('semgrep==1.178.0') })
+semgrep_steps = list_job_steps(find_job.call('semgrep'))
+emit_fact 'semgrep_install', format_yes_no(semgrep_steps.any? { |step| read_text(step['run']).include?('semgrep==1.178.0') })
 scan_markers = ['security-ci-semgrep.sh', '--mode pr --base "$BASE_SHA"', '--mode full']
 scan_step = semgrep_steps.any? do |step|
-  env = hash_or_empty(step['env'])
-  scan_markers.all? { |marker| text(step['run']).include?(marker) } &&
+  env = coerce_hash(step['env'])
+  scan_markers.all? { |marker| read_text(step['run']).include?(marker) } &&
     env['BASE_SHA'] == '${{ github.event.pull_request.base.sha }}' &&
     env['EVENT_NAME'] == '${{ github.event_name }}'
 end
-emit 'semgrep_scan_step', yes_no(scan_step)
+emit_fact 'semgrep_scan_step', format_yes_no(scan_step)
 
-languages_outputs = hash_or_empty(job.call('languages')['outputs'])
-emit 'languages_outputs_list', (text(languages_outputs['list']).empty? ? 'absent' : 'present')
-emit 'languages_list_step', yes_no(job_steps(job.call('languages')).any? do |step|
-  text(step['run']).include?('security-ci-codeql-languages.sh') && text(step['run']).include?('GITHUB_OUTPUT')
+languages_outputs = coerce_hash(find_job.call('languages')['outputs'])
+emit_fact 'languages_outputs_list', (read_text(languages_outputs['list']).empty? ? 'absent' : 'present')
+emit_fact 'languages_list_step', format_yes_no(list_job_steps(find_job.call('languages')).any? do |step|
+  read_text(step['run']).include?('security-ci-codeql-languages.sh') && read_text(step['run']).include?('GITHUB_OUTPUT')
 end)
+derive_step = list_job_steps(find_job.call('languages')).find do |step|
+  read_text(step['run']).include?('security-ci-codeql-languages.sh')
+end || {}
+emit_fact 'languages_derive_event_env', read_text(coerce_hash(derive_step['env'])['EVENT_NAME'])
+emit_fact 'languages_derive_modes', format_yes_no(['--mode pr', '--mode full'].all? { |marker| read_text(derive_step['run']).include?(marker) })
 
-action_refs = ->(prefix) { uses_values.map { |value| value[/\A#{Regexp.escape(prefix)}@(.*)\z/, 1] }.compact.uniq.sort.join(',') }
-emit 'codeql_init_refs', action_refs.call('github/codeql-action/init')
-emit 'codeql_analyze_refs', action_refs.call('github/codeql-action/analyze')
+list_action_refs = ->(prefix) { uses_values.map { |value| value[/\A#{Regexp.escape(prefix)}@(.*)\z/, 1] }.compact.uniq.sort.join(',') }
+emit_fact 'codeql_init_refs', list_action_refs.call('github/codeql-action/init')
+emit_fact 'codeql_analyze_refs', list_action_refs.call('github/codeql-action/analyze')
+init_step = list_job_steps(find_job.call('codeql')).find do |step|
+  read_text(step['uses']).start_with?('github/codeql-action/init@')
+end || {}
+emit_fact 'codeql_init_build_mode', read_text(coerce_hash(init_step['with'])['build-mode'])
 
 self_workflow = load_workflow(self_path, 'self')
-emit 'self_trigger_keys', trigger_keys(trigger_map(self_workflow))
-self_jobs = hash_or_empty(self_workflow['jobs'])
-emit 'self_job_count', self_jobs.size
-self_job = hash_or_empty(self_jobs.values.first)
-emit 'self_job_uses', text(self_job['uses'])
+emit_fact 'self_trigger_keys', list_trigger_keys(read_trigger_map(self_workflow))
+self_jobs = coerce_hash(self_workflow['jobs'])
+emit_fact 'self_job_count', self_jobs.size
+self_job = coerce_hash(self_jobs.values.first)
+emit_fact 'self_job_uses', read_text(self_job['uses'])
 self_permissions =
-  if self_job.key?('permissions') then permission_pairs(self_job['permissions']).sort.join(',')
-  elsif self_workflow.key?('permissions') then permission_pairs(self_workflow['permissions']).sort.join(',')
+  if self_job.key?('permissions') then list_permission_pairs(self_job['permissions']).sort.join(',')
+  elsif self_workflow.key?('permissions') then list_permission_pairs(self_workflow['permissions']).sort.join(',')
   else 'absent'
   end
-emit 'self_permissions', self_permissions
+emit_fact 'self_permissions', self_permissions
+RUBY
+
+# --- Step extraction (Ruby) ----------------------------------------------------
+# extract_run.rb <workflow> <job> <first|harness> <out file>: writes the `run`
+# text of the job's first step, or of its step whose env names both
+# HARNESS_REPOSITORY and HARNESS_SHA, to the out file; exits 3 when that step
+# or its run text is missing.
+cat > "$WORK/extract_run.rb" <<'RUBY'
+require 'yaml'
+
+workflow_path, job_name, selector, out_path = ARGV
+workflow = YAML.load(File.read(workflow_path))
+jobs = workflow.is_a?(Hash) && workflow['jobs'].is_a?(Hash) ? workflow['jobs'] : {}
+job = jobs[job_name].is_a?(Hash) ? jobs[job_name] : {}
+steps = job['steps'].is_a?(Array) ? job['steps'].select { |step| step.is_a?(Hash) } : []
+chosen_step =
+  if selector == 'first' then steps.first
+  else
+    steps.find do |step|
+      step['env'].is_a?(Hash) && step['env'].key?('HARNESS_REPOSITORY') && step['env'].key?('HARNESS_SHA')
+    end
+  end
+run_text = chosen_step.is_a?(Hash) ? chosen_step['run'] : nil
+exit 3 unless run_text.is_a?(String) && !run_text.empty?
+File.write(out_path, run_text)
 RUBY
 
 FACTS=$(ruby "$WORK/facts.rb" "$MAIN_WORKFLOW" "$SELF_WORKFLOW")
 ruby_status=$?
 [ "$ruby_status" -eq 0 ] || report_failure "ruby fact extraction exited $ruby_status"
 
-# fact <key>: prints the value Ruby emitted for the key, or nothing.
-fact() {
+# read_fact <key>: prints the value Ruby emitted for the key, or nothing.
+read_fact() {
   printf '%s\n' "$FACTS" | awk -v key="$1" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }'
 }
 
 # expect_fact <label> <key> <expected>: the fact must equal the expected value.
 expect_fact() {
   local label="$1" key="$2" expected="$3" actual
-  actual=$(fact "$key")
+  actual=$(read_fact "$key")
   [ "$actual" = "$expected" ] || report_failure "$label: $key must be [$expected]; got [$actual]"
 }
 
@@ -211,7 +258,7 @@ expect_fact() {
 # no smaller than the minimum.
 expect_count_at_least() {
   local label="$1" key="$2" minimum="$3" actual
-  actual=$(fact "$key")
+  actual=$(read_fact "$key")
   case "$actual" in
     ''|*[!0-9]*) report_failure "$label: $key must be a count of at least $minimum; got [$actual]"; return ;;
   esac
@@ -222,9 +269,30 @@ expect_count_at_least() {
 # so the passing count must equal the total count.
 expect_same_count() {
   local label="$1" key="$2" total_key="$3" actual total
-  actual=$(fact "$key"); total=$(fact "$total_key")
+  actual=$(read_fact "$key"); total=$(read_fact "$total_key")
   [ -n "$total" ] && [ "$actual" = "$total" ] \
     || report_failure "$label: $key must equal $total_key ($total); got [$actual]"
+}
+
+# extract_step_run <job> <first|harness> <out file>: writes the chosen step's
+# run text to the out file; reports a failure and returns 1 when it is missing.
+extract_step_run() {
+  local job_name="$1" selector="$2" out_file="$3"
+  ruby "$WORK/extract_run.rb" "$MAIN_WORKFLOW" "$job_name" "$selector" "$out_file" && return 0
+  report_failure "$job_name: no $selector step with a run text to execute"
+  return 1
+}
+
+# run_step_script <script> <env assignments...>: runs an extracted run text the
+# way GitHub Actions runs a bash step (bash --noprofile --norc -eo pipefail),
+# with an empty environment except PATH, HOME, and the given assignments, and
+# prints the exit status. Output goes to $WORK/step.out.
+run_step_script() {
+  local script="$1"
+  shift
+  env -i PATH="$PATH" HOME="$WORK" "$@" \
+    bash --noprofile --norc -eo pipefail "$script" > "$WORK/step.out" 2>&1
+  printf '%s' "$?"
 }
 
 expect_fact "security.yml parses" main_loaded yes
@@ -254,7 +322,7 @@ expect_fact "5 no \${{ in run" run_with_expression 0
 # --- 6. job permissions --------------------------------------------------------
 expect_count_at_least "6 job count" jobs_total 4
 expect_same_count "6 every job declares permissions" jobs_with_permissions jobs_total
-noncodeql_scopes=$(fact noncodeql_scopes)
+noncodeql_scopes=$(read_fact noncodeql_scopes)
 case "$noncodeql_scopes" in
   ''|'contents:read') ;;
   *) report_failure "6 non-codeql jobs must grant at most contents:read; got [$noncodeql_scopes]" ;;
@@ -273,13 +341,176 @@ expect_fact "8 codeql if" codeql_if '${{ !github.event.repository.private }}'
 expect_fact "8 codeql-skipped if" codeql_skipped_if '${{ github.event.repository.private }}'
 expect_fact "8 codeql-skipped notice" codeql_skipped_notice yes
 
-# --- 9. pull_request_target refused first --------------------------------------
-expect_fact "9 semgrep refuses pull_request_target first" semgrep_first_step_refuses yes
-expect_fact "9 languages refuses pull_request_target first" languages_first_step_refuses yes
+# --- 9. an event allowlist runs first in semgrep and languages (B-29) ----------
+# The step has no `if`, so it runs on every event; it reads the event name from
+# env and exits 2 on anything outside the four supported events.
+for job_name in semgrep languages; do
+  expect_fact "9 $job_name first step has no if" "${job_name}_first_step_has_if" no
+  expect_fact "9 $job_name first step name" "${job_name}_first_step_name" 'Allow only the supported events'
+  expect_fact "9 $job_name first step EVENT_NAME env" "${job_name}_first_step_event_env" '${{ github.event_name }}'
+  expect_fact "9 $job_name first step names the events and exit 2" "${job_name}_first_step_markers" yes
+done
+
+# --- 9a. the allowlist step, executed (B-29) -----------------------------------
+for job_name in semgrep languages; do
+  allowlist_script="$WORK/allowlist-$job_name.sh"
+  extract_step_run "$job_name" first "$allowlist_script" || continue
+  for allowed_event in pull_request push schedule workflow_dispatch; do
+    allowlist_status=$(run_step_script "$allowlist_script" EVENT_NAME="$allowed_event")
+    [ "$allowlist_status" = 0 ] \
+      || report_failure "9a $job_name allowlist must exit 0 on $allowed_event; got $allowlist_status ($(cat "$WORK/step.out"))"
+  done
+  for refused_event in pull_request_target issue_comment ''; do
+    allowlist_status=$(run_step_script "$allowlist_script" EVENT_NAME="$refused_event")
+    [ "$allowlist_status" = 2 ] \
+      || report_failure "9a $job_name allowlist must exit 2 on event [$refused_event]; got $allowlist_status"
+  done
+done
 
 # --- 10. harness checkout from job.workflow_repository at job.workflow_sha -----
 expect_fact "10 semgrep harness checkout" semgrep_harness_step yes
 expect_fact "10 languages harness checkout" languages_harness_step yes
+
+# --- 10a. the harness step, executed against a stub git (B-30) -----------------
+# The stub logs its argv, one line per call, to $STUB_GIT_LOG; answers
+# `rev-parse HEAD` with $HARNESS_SHA; exits $STUB_IS_ANCESTOR for any call
+# naming merge-base; creates the directory `git init` names; and exits 0
+# otherwise. No network or real repository is touched.
+STUB_BIN="$WORK/stub-bin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/git" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_GIT_LOG"
+argument_count=$#
+if [ "$argument_count" -ge 2 ]; then
+  next_to_last="${@:$((argument_count - 1)):1}"
+  last_argument="${@:$argument_count:1}"
+  if [ "$next_to_last" = rev-parse ] && [ "$last_argument" = HEAD ]; then
+    printf '%s\n' "$HARNESS_SHA"
+    exit 0
+  fi
+fi
+for argument in "$@"; do
+  case "$argument" in
+    *merge-base*) exit "${STUB_IS_ANCESTOR:-0}" ;;
+  esac
+done
+for argument in "$@"; do
+  if [ "$argument" = init ]; then
+    mkdir -p "${@:$argument_count:1}"
+    break
+  fi
+done
+exit 0
+STUB
+chmod +x "$STUB_BIN/git"
+
+VALID_SHA=$(printf 'a%.0s' $(seq 1 40))
+SHORT_SHA=$(printf 'a%.0s' $(seq 1 39))
+HARNESS_OWNER_REPOSITORY="nullvoidundefined/agent-governance"
+
+# run_harness_step <script> <harness repository> <harness sha> <caller
+# repository> <is-ancestor status>: runs the extracted harness step with the
+# stub git first on PATH and a fresh RUNNER_TEMP. Sets HARNESS_STATUS and
+# HARNESS_GIT_LOG (the path of the stub's call log).
+run_harness_step() {
+  local script="$1" harness_repository="$2" harness_sha="$3" caller_repository="$4" is_ancestor="$5"
+  local runner_temp
+  runner_temp=$(mktemp -d "$WORK/runner.XXXXXX")
+  HARNESS_GIT_LOG="$runner_temp.gitlog"
+  : > "$HARNESS_GIT_LOG"
+  env -i PATH="$STUB_BIN:$PATH" HOME="$WORK" RUNNER_TEMP="$runner_temp" \
+    HARNESS_REPOSITORY="$harness_repository" HARNESS_SHA="$harness_sha" \
+    GITHUB_REPOSITORY="$caller_repository" STUB_IS_ANCESTOR="$is_ancestor" \
+    STUB_GIT_LOG="$HARNESS_GIT_LOG" \
+    bash --noprofile --norc -eo pipefail "$script" > "$runner_temp.out" 2>&1
+  HARNESS_STATUS=$?
+}
+
+# count_log_lines <fixed string> [second fixed string]: prints how many stub
+# git calls contain the string, or both strings when two are given.
+count_log_lines() {
+  if [ "$#" -eq 2 ]; then
+    grep -F -- "$1" "$HARNESS_GIT_LOG" | grep -cF -- "$2"
+  else
+    grep -cF -- "$1" "$HARNESS_GIT_LOG"
+  fi
+}
+
+# find_first_log_line <fixed string> [second fixed string]: prints the line
+# number of the first stub git call containing the string (and the second
+# string when given), or nothing.
+find_first_log_line() {
+  if [ "$#" -eq 2 ]; then
+    grep -nF -- "$1" "$HARNESS_GIT_LOG" | grep -F -- "$2" | head -n 1 | cut -d: -f1
+  else
+    grep -nF -- "$1" "$HARNESS_GIT_LOG" | head -n 1 | cut -d: -f1
+  fi
+}
+
+# expect_refused_before_fetch <label>: the last harness run must exit 2 with no
+# fetch at all.
+expect_refused_before_fetch() {
+  local label="$1"
+  [ "$HARNESS_STATUS" = 2 ] || report_failure "$label: harness step must exit 2; got $HARNESS_STATUS"
+  [ "$(count_log_lines fetch)" = 0 ] \
+    || report_failure "$label: no git fetch may run; log: [$(cat "$HARNESS_GIT_LOG")]"
+}
+
+for job_name in semgrep languages; do
+  harness_script="$WORK/harness-$job_name.sh"
+  extract_step_run "$job_name" harness "$harness_script" || continue
+
+  # 1. A repository other than agent-governance is refused before any fetch.
+  run_harness_step "$harness_script" evil/agent-governance "$VALID_SHA" acme/app 0
+  expect_refused_before_fetch "10a.1 $job_name foreign harness repository"
+
+  # 2. A 39-character SHA is refused before any fetch.
+  run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" "$SHORT_SHA" acme/app 0
+  expect_refused_before_fetch "10a.2 $job_name 39-character SHA"
+
+  # 3. An empty SHA is refused before any fetch.
+  run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" '' acme/app 0
+  expect_refused_before_fetch "10a.3 $job_name empty SHA"
+
+  # 4. A SHA that is not an ancestor of agent-governance main is refused: the
+  #    ancestry check runs, and the pinned commit is never fetched or checked out.
+  run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" "$VALID_SHA" acme/app 1
+  label="10a.4 $job_name SHA not on main"
+  [ "$HARNESS_STATUS" = 2 ] || report_failure "$label: harness step must exit 2; got $HARNESS_STATUS"
+  [ "$(count_log_lines 'merge-base --is-ancestor')" -ge 1 ] \
+    || report_failure "$label: a merge-base --is-ancestor call must run; log: [$(cat "$HARNESS_GIT_LOG")]"
+  [ "$(count_log_lines fetch "$VALID_SHA")" = 0 ] \
+    || report_failure "$label: the pinned SHA must never be fetched; log: [$(cat "$HARNESS_GIT_LOG")]"
+  [ "$(count_log_lines checkout)" = 0 ] \
+    || report_failure "$label: nothing may be checked out; log: [$(cat "$HARNESS_GIT_LOG")]"
+
+  # 5. A SHA on main passes: ancestry check, then the fetch of the SHA, then
+  #    the checkout, in that order.
+  run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" "$VALID_SHA" acme/app 0
+  label="10a.5 $job_name SHA on main"
+  [ "$HARNESS_STATUS" = 0 ] \
+    || report_failure "$label: harness step must exit 0; got $HARNESS_STATUS; log: [$(cat "$HARNESS_GIT_LOG")]"
+  merge_base_line=$(find_first_log_line merge-base)
+  fetch_sha_line=$(find_first_log_line fetch "$VALID_SHA")
+  checkout_line=$(find_first_log_line checkout)
+  if [ -z "$merge_base_line" ] || [ -z "$fetch_sha_line" ] || [ -z "$checkout_line" ]; then
+    report_failure "$label: merge-base, fetch of the SHA, and checkout must each run; got lines [$merge_base_line] [$fetch_sha_line] [$checkout_line]; log: [$(cat "$HARNESS_GIT_LOG")]"
+  elif ! { [ "$merge_base_line" -lt "$fetch_sha_line" ] && [ "$fetch_sha_line" -lt "$checkout_line" ]; }; then
+    report_failure "$label: order must be merge-base ($merge_base_line) < fetch of the SHA ($fetch_sha_line) < checkout ($checkout_line)"
+  fi
+
+  # 6. agent-governance calling itself skips the ancestry check (its PR head is
+  #    not on main yet) and fetches the SHA.
+  run_harness_step "$harness_script" "$HARNESS_OWNER_REPOSITORY" "$VALID_SHA" "$HARNESS_OWNER_REPOSITORY" 1
+  label="10a.6 $job_name self-call"
+  [ "$HARNESS_STATUS" = 0 ] \
+    || report_failure "$label: harness step must exit 0; got $HARNESS_STATUS; log: [$(cat "$HARNESS_GIT_LOG")]"
+  [ "$(count_log_lines fetch "$VALID_SHA")" -ge 1 ] \
+    || report_failure "$label: the SHA must be fetched; log: [$(cat "$HARNESS_GIT_LOG")]"
+  [ "$(count_log_lines merge-base)" = 0 ] \
+    || report_failure "$label: no merge-base call may run; log: [$(cat "$HARNESS_GIT_LOG")]"
+done
 
 # --- 11. Semgrep install and scan ----------------------------------------------
 expect_fact "11 semgrep 1.178.0 install" semgrep_install yes
@@ -288,14 +519,20 @@ expect_fact "11 semgrep scan step" semgrep_scan_step yes
 # --- 12. languages output ------------------------------------------------------
 expect_fact "12 languages outputs.list" languages_outputs_list present
 expect_fact "12 languages list step" languages_list_step yes
+# B-28: the deriver runs in PR mode on pull requests and full mode otherwise,
+# reading the event name from env.
+expect_fact "12 languages derive step EVENT_NAME env" languages_derive_event_env '${{ github.event_name }}'
+expect_fact "12 languages derive step passes both modes" languages_derive_modes yes
 
 # --- 13. CodeQL init and analyze on the same SHA -------------------------------
-init_refs=$(fact codeql_init_refs)
-analyze_refs=$(fact codeql_analyze_refs)
+init_refs=$(read_fact codeql_init_refs)
+analyze_refs=$(read_fact codeql_analyze_refs)
 printf '%s' "$init_refs" | grep -Eq '^[0-9a-f]{40}$' \
   || report_failure "13 codeql-action/init must be used at exactly one 40-character SHA; got [$init_refs]"
 [ -n "$init_refs" ] && [ "$analyze_refs" = "$init_refs" ] \
   || report_failure "13 codeql-action/analyze must use the init SHA [$init_refs]; got [$analyze_refs]"
+# B-28: only Go autobuilds, and Go reaches the matrix only in full mode.
+expect_fact "13 codeql init build-mode" codeql_init_build_mode "\${{ matrix.language == 'go' && 'autobuild' || 'none' }}"
 
 # --- 14. security-self.yml triggers on pull_request only -----------------------
 expect_fact "14 self trigger" self_trigger_keys pull_request
@@ -305,4 +542,4 @@ expect_fact "15 self job count" self_job_count 1
 expect_fact "15 self job uses" self_job_uses './.github/workflows/security.yml'
 expect_fact "15 self permissions" self_permissions 'actions:read,contents:read,security-events:write'
 
-finish
+finish_test
