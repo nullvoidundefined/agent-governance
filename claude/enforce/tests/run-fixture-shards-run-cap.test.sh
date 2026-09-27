@@ -270,6 +270,31 @@ check "git refusing the checkout: both runs pass" test "$refused_first_status" -
 check "git refusing the checkout: the second run still starts after the first ends" \
   test "$(tr '\n' ' ' < "$EVENTS")" = "start refused-a end refused-a start refused-b end refused-b "
 
+# Case 2c: the fallback ends when the tests directory cannot be entered after
+# it was resolved, rather than walking "." forever (PR #154 review round 11).
+# A git shim revokes the directory's permissions as it refuses, so the
+# fallback's cd fails; the run must then end promptly, reporting no fixtures,
+# instead of spinning until the deadline kills it. Skipped as root, which can
+# enter a mode-000 directory.
+if [ "$(id -u)" -ne 0 ]; then
+  VANISHING_TESTS="$SANDBOX/vanishing-tests"
+  write_sleeper "$VANISHING_TESTS"
+  REVOKING_GIT_BIN="$SANDBOX/revoking-git-bin"
+  mkdir -p "$REVOKING_GIT_BIN"
+  printf '#!/bin/sh\n[ "$1" = -C ] && chmod 000 "$2"\nexit 128\n' > "$REVOKING_GIT_BIN/git"
+  chmod +x "$REVOKING_GIT_BIN/git"
+  : > "$EVENTS"
+  vanishing_started=$SECONDS
+  # From the sandbox, which has no .git above it, so a walk that fell back to
+  # "." would find nothing and never end.
+  ( cd "$SANDBOX" && run_with_deadline 20 "$SANDBOX/vanishing.out" "$VANISHING_TESTS" vanishing PATH="$REVOKING_GIT_BIN:$PATH" ); vanishing_status=$?
+  vanishing_seconds=$(( SECONDS - vanishing_started ))
+  chmod 755 "$VANISHING_TESTS"
+  check "unenterable tests directory: the run ends with exit 1, not killed by the deadline" test "$vanishing_status" -eq 1
+  check "unenterable tests directory: the run ends within 10 seconds" test "$vanishing_seconds" -lt 10
+  check "unenterable tests directory: no fixture ran" test ! -s "$EVENTS"
+fi
+
 # Case 3: the default cap is half the online CPUs, at least 1, and the run
 # names its slot and the cap.
 cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)

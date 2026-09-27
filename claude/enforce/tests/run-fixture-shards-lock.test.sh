@@ -61,8 +61,24 @@ LOCK_DIR="$LOCK_TMPDIR/claude-fixture-shards.$(id -u)"
 # as the runner derives it.
 worktree_lock_file() {
   local root
-  root=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || root=$(cd "$1" && pwd -P)
+  root=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || root=$(nearest_git_root_of "$1")
   echo "$LOCK_DIR/claude-fixture-shards.worktree.$(printf '%s' "$root" | cksum | awk '{print $1}').flock"
+}
+
+# nearest_git_root_of <dir>: the runner's fallback when git refuses, mirrored
+# so the fixture keys every lock the way the runner does (PR #154 review
+# round 11): the nearest directory at or above holding a .git, else the
+# resolved directory itself.
+nearest_git_root_of() {
+  local resolved_dir candidate_dir
+  resolved_dir=$(cd "$1" && pwd -P)
+  candidate_dir="$resolved_dir"
+  while [ -n "$candidate_dir" ]; do
+    [ -e "$candidate_dir/.git" ] && { echo "$candidate_dir"; return; }
+    [ "$candidate_dir" = / ] && break
+    candidate_dir=$(dirname "$candidate_dir")
+  done
+  echo "$resolved_dir"
 }
 LOCK_FILE=$(worktree_lock_file "$TESTS")
 LEAK_LOCK_FILE=$(worktree_lock_file "$LEAK_TESTS")
