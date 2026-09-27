@@ -170,6 +170,20 @@ Local and CI runs differ on purpose, and an author should expect it: the pre-pus
 - B-22: The language script prints the exact JSON array of CodeQL languages present in the tracked files, and exits 2 when there are none.
 - B-23: `security.yml` is a `workflow_call` workflow with no inputs, whose every external `uses:` is pinned to a 40-character SHA, whose every checkout sets `persist-credentials: false`, whose caller checkout in PR mode reads `github.event.pull_request.head.sha`, whose harness checkout reads `job.workflow_repository` at `job.workflow_sha` into `$RUNNER_TEMP`, whose `run:` lines contain no `${{ }}` expression, which refuses `pull_request_target`, whose jobs grant no permission beyond `contents: read` except the `codeql` job's `security-events: write` and `actions: read`, which installs Semgrep 1.178.0, and which skips CodeQL only on a private repository, with a notice.
 
+### Criteria added by the reviews of PR #160 (2026-09-27)
+
+The R-517 review (opus) and the R-109 security review (fable) of the first implementation found that a PR author's file names and the calling event could still weaken the scan. These criteria close each finding:
+
+- B-24: Scan targets reach Semgrep after `--`, so a file named `--severity=INFO` or `--exclude-rule=<id>` cannot switch the rule pack off; the #27 sample beside such a file still exits 1.
+- B-25: In PR mode the target list includes type changes (a symlink replaced by a regular file), because every status except deletion is listed; and the lister exits 2 when any target's name holds a control character, so git's quoting can never substitute one path for another.
+- B-26: Semgrep runs with `--no-git-ignore`, every `.semgrepignore` the PR supplies is removed from the scratch export before the scan, and any entry in `paths.skipped` fails the step closed, so no file the PR adds can take itself out of the scan.
+- B-27: Every value from Semgrep's report that reaches stdout or stderr is escaped for GitHub's workflow-command parser, diagnostics included.
+- B-28: The language script takes `--mode pr` or `--mode full`; in PR mode it never lists `go` and prints a notice saying so, because CodeQL can analyze Go only by running the repository's build, and PR code must never run beside the code-scanning write token (owner decision 2026-09-27). Every other language runs with `build-mode: none`; `go` runs with `autobuild` only in full mode, on already-merged code.
+- B-29: The workflow runs only on `pull_request`, `push`, `schedule`, and `workflow_dispatch`, and exits 2 on any other event.
+- B-30: The harness step refuses a repository other than `nullvoidundefined/agent-governance`, a SHA that is not 40 hexadecimal characters, and, except when the caller is agent-governance itself, a SHA that is not an ancestor of agent-governance `main`; the fixture executes the step's own shell with each of those values and asserts exit 2 before any fetch of the pinned commit.
+
+Finding 6 of the security review has a residual this PR cannot close: GitHub resolves a `uses:` SHA from any fork of agent-governance, so a malicious pin brings its own copy of this workflow and skips the ancestry check. The real control is at the adopting repository: each template's caller PR adds a CODEOWNERS entry on `.github/workflows/`, and **Part 5b's merge gate must verify that the caller file's pin is an ancestor of agent-governance `main`** (owner decision 2026-09-27).
+
 ### Rollout checklist (not an acceptance criterion)
 
 - A throwaway draft PR in template-fastapi-nuxt carrying the #27 shape turns `security / semgrep` red, and the same branch without it turns it green; the PR is closed afterwards. B-21 is the automated proof; this confirms the wiring end to end.
