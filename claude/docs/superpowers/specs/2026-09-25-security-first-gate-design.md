@@ -137,12 +137,12 @@ Part 7 moves the rule pack from a local pre-push hook, which `--no-verify` skips
 - Security CI workflow - `.github/workflows/security.yml`, a `workflow_call` workflow that other repositories call - chosen over: "security action" because it is a reusable workflow with jobs, not a composite action.
 - Caller workflow - the short workflow in an adopting repository that calls the security CI workflow with a pinned SHA - chosen over: "wrapper" because GitHub's own documentation calls it the caller.
 - Harness checkout - the copy of agent-governance at the pinned commit that the workflow checks out beside the caller, holding the rule pack and the scripts - chosen over: "rules checkout" because it also carries the scripts.
-- Scan targets - the files a run scans: in PR mode, the files the PR adds, copies, modifies, or renames into (relative to the merge base of the PR's base and head) that no base-commit `securitySurfaceExclude` glob covers; in full mode, every tracked file no HEAD glob covers - chosen over: "changed files" because full mode is not about changes.
+- Scan targets - the files a run scans: in PR mode, every file the PR adds, copies, modifies, or renames into, relative to the merge base of the PR's base and head; in full mode, every file tracked at HEAD. No exclude list narrows either, because R-109 gives the rule pack none - chosen over: "changed files" because full mode is not about changes.
 - PR mode and full mode - PR mode runs on `pull_request`; full mode runs on every other event (push to `main`, the weekly schedule, manual dispatch) - chosen over: "diff scan" and "baseline scan" to keep one word per mode.
 
 ### Components
 
-1. `claude/enforce/security-ci-targets.sh` lists the scan targets. It reuses `list_included_changed_files` and `read_security_surface_excludes` from `hooks/security-surface.sh`, so the CI and the merge gate agree on what is excluded, and then keeps only paths that exist at HEAD, because the helper lists deletions too. It diffs from `git merge-base <base> HEAD`, so a base branch that moved on adds nothing to the list, and it exits 2 whenever git or the helper fails, so a failed listing can never read as an empty one.
+1. `claude/enforce/security-ci-targets.sh` lists the scan targets. It does not read `securitySurfaceExclude`: R-109 scopes that list to the security-surface detector and gives the rule pack no exclude list, so a path can leave the security review's view but never the rule pack's (owner decision 2026-09-27). It diffs from `git merge-base <base> HEAD`, so a base branch that moved on adds nothing to the list, and it exits 2 whenever git or the helper fails, so a failed listing can never read as an empty one.
 2. `claude/enforce/security-ci-semgrep.sh` runs the lister and exits 2 if the lister does. It exports the targets' HEAD content into a scratch directory with an empty `.semgrepignore`, runs Semgrep with the rule pack and `p/default`, `--error`, `--disable-nosem`, `--metrics=off`, and `--max-target-bytes=0`, and prints each finding as a GitHub `::error` annotation. The workflow installs Semgrep at the version `enforce.yml` pins (1.178.0). `p/default` itself stays a moving registry target: the Semgrep Rules License does not permit redistributing it in this public repository, so it cannot be vendored, and a registry change is visible as a new red, never as a silent pass.
 3. `claude/enforce/security-ci-codeql-languages.sh` derives the CodeQL language list from the caller's tracked files (`python`, `javascript-typescript`, `go`, `ruby`, and `actions` for `.github/workflows/`), as a JSON array, and exits 2 on an empty list. The caller passes no language input, so a caller cannot soften the gate by listing fewer languages.
 4. `.github/workflows/security.yml`:
@@ -159,12 +159,12 @@ Part 7 moves the rule pack from a local pre-push hook, which `--no-verify` skips
 
 The checks Part 5b will require are `security / semgrep`, `security / codeql (<language>)` for each derived language, and `CodeQL`. The merge gate reads each check's conclusion, and it must treat a skipped or absent `security / semgrep` as a deny, and a skipped `codeql` job as acceptable only on a private repository, because branch protection counts a skipped job as passing.
 
-Local and CI runs differ on purpose, and an author should expect it: the pre-push gate scans code files with the custom pack only and reads no excludes, while CI also runs `p/default` over every target type and honors the base commit's excludes. `security-ci-semgrep.sh` runs locally with the same arguments CI uses, which reproduces a CI red.
+Local and CI runs differ on purpose, and an author should expect it: the pre-push gate scans code files with the custom pack only while CI also runs `p/default` over every target type; neither reads an exclude list. `security-ci-semgrep.sh` runs locally with the same arguments CI uses, which reproduces a CI red.
 
 ### Acceptance criteria
 
-- B-18: In PR mode the target list holds every added, copied, modified, or renamed-into file relative to the merge base, omits deleted files, omits files a base-commit `securitySurfaceExclude` glob covers, ignores an exclude glob that the PR itself adds, and exits 2 with nothing on stdout when the base is not a reachable commit.
-- B-19: In full mode the target list holds every tracked file that no HEAD `securitySurfaceExclude` glob covers.
+- B-18: In PR mode the target list holds every added, copied, modified, or renamed-into file relative to the merge base, omits deleted files, includes files a `securitySurfaceExclude` glob covers, and exits 2 with nothing on stdout when the base is not a reachable commit.
+- B-19: In full mode the target list holds every file tracked at HEAD, `securitySurfaceExclude` globs notwithstanding.
 - B-20: The Semgrep step exits 1 and annotates each finding when the scan reports one, exits 0 on a clean scan or an empty target list, and exits 2, failing closed, when the target lister exits non-zero, Semgrep cannot be resolved, crashes, prints unreadable JSON, reports an error-level error, or leaves a code target unscanned. A `# nosemgrep` comment cannot silence a finding.
 - B-21: A #27-shaped file (the `cors-unvalidated-setting` bad sample) in the targets makes the Semgrep step exit 1 with a real Semgrep run, not a stub.
 - B-22: The language script prints the exact JSON array of CodeQL languages present in the tracked files, and exits 2 when there are none.
@@ -190,7 +190,7 @@ Reviewer: `pr-reviewer` subagent (fable), 2026-09-27, adversarial review of the 
 4. HIGH, fixed: a failed listing now exits 2 at both the lister and the Semgrep step (B-18, B-20).
 5. MEDIUM, fixed: the lister keeps only paths present at HEAD after calling the helper.
 6. MEDIUM, fixed: PR mode checks out the head SHA; event values reach scripts through `env:` only (B-23).
-7. MEDIUM, answered: a PR widening `securitySurfaceExclude` changes `.enforce.json`, which `security-surface.json` lists as a security-surface path, so it already needs a strongest-model security review before it merges.
+7. MEDIUM, answered: a PR widening `securitySurfaceExclude` changes `.enforce.json`, which `security-surface.json` lists as a security-surface path, so it already needs a strongest-model security review before it merges. The question is also moot for CI: after this review the implementation was found to contradict R-109, which gives the rule pack no exclude list, and the owner chose on 2026-09-27 that CI reads no exclude list at all.
 8. MEDIUM, fixed: the workflow refuses `pull_request_target`.
 9. MEDIUM, partly fixed: Semgrep is pinned at 1.178.0; `p/default` cannot be vendored under its license, as component 2 records.
 10. LOW, fixed: the local and CI difference is documented, and the script reproduces CI locally.
