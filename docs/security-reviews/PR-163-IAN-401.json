@@ -3,8 +3,8 @@
   "ticket": "IAN-401",
   "reviewer": "security-reviewer subagent",
   "model": "claude-fable-5-1",
-  "reviewedCode": "8a0bdf58c31b574685bcc1c6b340d0f90060cc6f",
-  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds hooks/build-lane-quiet.sh and an early exit in the six reminder-only hooks; the detector flagged it through the hooks path. The first review (a60c02c) raised findings 1 to 5, fixed in cf4fa64; the confirming review (8a0bdf5) verified them and raised 6, fixed in 86f4791 with a failing test first; a confirming review of the head that adds this revision follows.",
+  "reviewedCode": "6033781bf5d1cb892071733127ebd121a643bec8",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds hooks/build-lane-quiet.sh and an early exit in the six reminder-only hooks; the detector flagged it through the hooks path. Round 1 (a60c02c) raised 1 to 5, fixed in cf4fa64; round 2 (8a0bdf5) raised 6, fixed in 86f4791; round 3 (6033781) verified 1 to 6 and raised 7, fixed in 2412582, each with a failing test first; a confirming review of the head that adds this revision follows.",
   "findings": [
     {
       "id": 1,
@@ -47,6 +47,13 @@
       "control": "ledger provenance (symlinked .claude directory)",
       "finding": "a committed or untracked symlink for the .claude directory let a regular ledger file behind it silence the reminders",
       "status": "fixed 86f47916264e6a07913636cd5a630f526bf78e38"
+    },
+    {
+      "id": 7,
+      "severity": "LOW",
+      "control": "ledger provenance (tracked-file check on a case-insensitive filesystem)",
+      "finding": "a ledger committed under a case variant such as .Claude/task-tier.json escaped the case-sensitive tracked-file check and silenced the reminders on macOS",
+      "status": "fixed 24125828aa849d0b0bfa1e7421488c5a83358bff"
     }
   ]
 }
