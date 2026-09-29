@@ -41,11 +41,17 @@
 # subdirectory of the repository and hands Semgrep the same
 # repository-relative targets as from the root (B-33).
 #
-# Cases 1 to 9, 12, 13 to 16, 21, and 22 drive the step through Semgrep
-# stand-ins wired in with CLAUDE_SEMGREP_CMD. Cases 10, 11, 17 to 20, and 23
-# run the real Semgrep (`semgrep` on PATH, else `uvx semgrep`) against the
-# #27-shaped CORS sample, and the fixture fails rather than skips when
-# neither resolves. Case 23 puts the sample under tests/, vendor/, and
+# Each target is exported as its exact committed blob, so no `.gitattributes`
+# entry (export-ignore, export-subst, eol conversion) changes or drops what is
+# scanned, and a target that is a symlink fails the step closed, named on
+# stderr (B-37). When Semgrep exits 2 or above, the step prints each entry of
+# the report's `.errors[]`, escaped, so a crash names its cause (B-38).
+#
+# Cases 1 to 9, 12, 13 to 16, 21, 22, and 24 to 27 drive the step through
+# Semgrep stand-ins wired in with CLAUDE_SEMGREP_CMD. Cases 10, 11, 17 to 20,
+# 23, and 28 run the real Semgrep (`semgrep` on PATH, else `uvx semgrep`)
+# against the #27-shaped CORS sample, and the fixture fails rather than skips
+# when neither resolves. Case 23 puts the sample under tests/, vendor/, and
 # node_modules/, which Semgrep ignores by default (B-31).
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -63,6 +69,7 @@ report_failure() { echo "FAIL: $1"; failures=$((failures + 1)); }
 WORK=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$WORK"' EXIT
 STUB_ARGV_FILE="$WORK/stub-argv.txt"
+STUB_CAPTURE_DIR="$WORK/stub-capture"
 
 # run_git_isolated <args...>: runs git with every GIT_* location variable
 # stripped, so a fixture run from inside a hook or a worktree never touches the
@@ -131,13 +138,36 @@ create_feature_repo() {
 #   stderrinject  before looking at any target, writes three lines to stderr
 #                 (`::add-mask::x`, `::error::fake stub diagnostic`, `100%`),
 #                 prints text that is not JSON on stdout, and exits 7
+#   capture       as clean, and first copies the bytes of every target after
+#                 `--` (read from its working directory, the scratch export)
+#                 to the same relative path under STUB_CAPTURE_DIR
+#   crashreport   before looking at any target, prints a valid JSON report
+#                 with no results, one error-level SemgrepError whose message
+#                 is "Invalid scanning root: x", a newline, and
+#                 "::add-mask::y", and an empty scanned list, then exits 2
 make_stub() {
   local mode="$1" stub_path="$WORK/semgrep-stub-$1"
   {
-    printf '#!/usr/bin/env bash\nSTUB_MODE=%s\nSTUB_ARGV_FILE=%s\n' "$mode" "$STUB_ARGV_FILE"
+    printf '#!/usr/bin/env bash\nSTUB_MODE=%s\nSTUB_ARGV_FILE=%s\nSTUB_CAPTURE_DIR=%s\n' \
+      "$mode" "$STUB_ARGV_FILE" "$STUB_CAPTURE_DIR"
     cat <<'STUB'
 if [ "$STUB_MODE" = record ]; then
   printf '%s\n' "$@" > "$STUB_ARGV_FILE"
+fi
+if [ "$STUB_MODE" = crashreport ]; then
+  jq -n --arg message $'Invalid scanning root: x\n::add-mask::y' \
+    '{results: [], errors: [{level: "error", type: "SemgrepError", message: $message}], paths: {scanned: []}}'
+  exit 2
+fi
+if [ "$STUB_MODE" = capture ]; then
+  capture_after_dashes=0
+  for arg in "$@"; do
+    if [ "$capture_after_dashes" = 1 ]; then
+      mkdir -p "$STUB_CAPTURE_DIR/$(dirname "$arg")"
+      cat "$arg" > "$STUB_CAPTURE_DIR/$arg"
+    fi
+    [ "$arg" = -- ] && capture_after_dashes=1
+  done
 fi
 if [ "$STUB_MODE" = stderrinject ]; then
   printf '%s\n' '::add-mask::x' '::error::fake stub diagnostic' '100%' >&2
@@ -184,7 +214,7 @@ finding_path=$(printf '%s\n' "$scanned_list" | grep '\.py$' | head -n 1)
 finding_message="stub finding"
 [ "$STUB_MODE" = inject ] && finding_message=$'stub finding\n::add-mask::x'
 case "$STUB_MODE" in
-  clean|record|exit7|omitpy)
+  clean|record|exit7|omitpy|capture)
     jq -n --argjson scanned "$scanned_json" '{results: [], errors: [], paths: {scanned: $scanned}}' ;;
   warnonly)
     jq -n --argjson scanned "$scanned_json" \
@@ -433,6 +463,85 @@ for nested_cwd in "$NESTED_REPO" "$NESTED_REPO/app"; do
   fi
 done
 
+# expect_captured_blob <label> <repo> <path>: the bytes the capture stand-in
+# received for <path> must be identical to the committed blob HEAD:<path>.
+expect_captured_blob() {
+  local label="$1" repo="$2" blob_path="$3" expected_file="$WORK/expected-blob"
+  run_git_isolated -C "$repo" cat-file blob "HEAD:$blob_path" > "$expected_file"
+  if [ ! -f "$STUB_CAPTURE_DIR/$blob_path" ]; then
+    report_failure "$label: the Semgrep stand-in must have received '$blob_path' as a target file"
+  elif ! cmp -s "$expected_file" "$STUB_CAPTURE_DIR/$blob_path"; then
+    report_failure "$label: the scanned bytes of '$blob_path' must equal 'git cat-file blob HEAD:$blob_path'; expected [$(od -c < "$expected_file" | tr '\n' '|')], got [$(od -c < "$STUB_CAPTURE_DIR/$blob_path" | tr '\n' '|')]"
+  fi
+}
+
+# --- 24. `export-subst` in the PR's .gitattributes cannot rewrite a target (B-37)
+# The PR adds `* export-subst` and a sub.py holding a `$Format:%H$`
+# placeholder. The scanned bytes must be the committed blob, placeholder
+# intact, not the commit hash an attribute-honoring export substitutes.
+SUBST_REPO=$(create_feature_repo export-subst)
+write_file "$SUBST_REPO" .gitattributes $'* export-subst\n'
+write_file "$SUBST_REPO" sub.py $'x = "$Format:%H$"\n'
+commit_all_changes "$SUBST_REPO" "export-subst attribute and a placeholder"
+[ "$(run_git_isolated -C "$SUBST_REPO" cat-file blob HEAD:sub.py)" = 'x = "$Format:%H$"' ] \
+  || report_failure "precondition: the committed sub.py must hold the \$Format:%H\$ placeholder"
+rm -rf "$STUB_CAPTURE_DIR"
+run_step "$SUBST_REPO" "$(make_stub capture)" --mode pr --base main
+expect_status "export-subst attribute" 0
+expect_captured_blob "export-subst attribute" "$SUBST_REPO" sub.py
+
+# --- 25. An eol=crlf attribute cannot rewrite a target's line endings (B-37)
+# The PR adds `*.py text eol=crlf` and an LF-only lines.py. The scanned bytes
+# must be the committed LF-only blob, with no carriage return added.
+CRLF_REPO=$(create_feature_repo eol-crlf)
+write_file "$CRLF_REPO" .gitattributes $'*.py text eol=crlf\n'
+write_file "$CRLF_REPO" lines.py $'FIRST = 1\nSECOND = 2\nTHIRD = 3\n'
+commit_all_changes "$CRLF_REPO" "eol=crlf attribute and an LF-only file"
+if run_git_isolated -C "$CRLF_REPO" cat-file blob HEAD:lines.py | LC_ALL=C grep -q $'\r'; then
+  report_failure "precondition: the committed lines.py must hold no carriage return"
+fi
+rm -rf "$STUB_CAPTURE_DIR"
+run_step "$CRLF_REPO" "$(make_stub capture)" --mode pr --base main
+expect_status "eol=crlf attribute" 0
+expect_captured_blob "eol=crlf attribute" "$CRLF_REPO" lines.py
+if [ -f "$STUB_CAPTURE_DIR/lines.py" ] && LC_ALL=C grep -q $'\r' "$STUB_CAPTURE_DIR/lines.py"; then
+  report_failure "eol=crlf attribute: the scanned lines.py must hold no carriage return"
+fi
+
+# --- 26. A symlink target fails the step closed and is named (B-37) ---------
+# The PR adds real.py and a symlink link.py pointing at it. The stand-in is
+# clean, so the only possible failure is the export refusing the symlink.
+SYMLINK_REPO=$(create_feature_repo symlink-target)
+write_file "$SYMLINK_REPO" real.py "$APP_SOURCE"
+ln -s real.py "$SYMLINK_REPO/link.py"
+commit_all_changes "$SYMLINK_REPO" "a real file and a symlink to it"
+[ "$(run_git_isolated -C "$SYMLINK_REPO" ls-tree HEAD link.py | awk '{ print $1 }')" = 120000 ] \
+  || report_failure "precondition: link.py must be committed as a symlink (mode 120000)"
+run_step "$SYMLINK_REPO" "$(make_stub clean)" --mode pr --base main
+expect_closed_failure "symlink target"
+grep -qF -- 'link.py' <<< "$STEP_STDERR" \
+  || report_failure "symlink target: stderr must name 'link.py'; got: ${STEP_STDERR:-<none>}"
+grep -qi -- 'symlink' <<< "$STEP_STDERR" \
+  || report_failure "symlink target: stderr must say 'symlink'; got: ${STEP_STDERR:-<none>}"
+
+# --- 27. A Semgrep crash names its cause from the report's errors (B-38) ----
+# The stand-in exits 2 with a valid report whose one error-level error says
+# "Invalid scanning root: x" and smuggles a workflow command after a newline.
+# The step fails closed, prints the error's message on stderr escaped for the
+# workflow-command parser, and no line it prints starts `::add-mask`.
+run_step "$REPO" "$(make_stub crashreport)" --mode pr --base main
+CRASH_FLAT_STDOUT=$(printf '%s' "$STEP_STDOUT" | tr '\n' '|')
+CRASH_FLAT_STDERR=$(printf '%s' "$STEP_STDERR" | tr '\n' '|')
+[ "$STEP_STATUS" -eq 2 ] \
+  || report_failure "Semgrep crash report: step must exit 2; got $STEP_STATUS (stdout: [$CRASH_FLAT_STDOUT]; stderr: [$CRASH_FLAT_STDERR])"
+grep -qF -- 'Invalid scanning root: x' <<< "$STEP_STDERR" \
+  || report_failure "Semgrep crash report: stderr must carry the error message 'Invalid scanning root: x'; got: [$CRASH_FLAT_STDERR]"
+grep -qF -- '%0A::add-mask::y' <<< "$STEP_STDERR" \
+  || report_failure "Semgrep crash report: stderr must carry the message newline escaped as '%0A::add-mask::y'; got: [$CRASH_FLAT_STDERR]"
+if printf '%s\n%s\n' "$STEP_STDOUT" "$STEP_STDERR" | grep -q '^::add-mask'; then
+  report_failure "Semgrep crash report: no stdout or stderr line may start '::add-mask'; got stdout: [$CRASH_FLAT_STDOUT]; stderr: [$CRASH_FLAT_STDERR]"
+fi
+
 # --- 10, 11, 17 to 20, 23. The real Semgrep against the #27 shape ---------------
 REAL_SEMGREP=""
 if command -v semgrep >/dev/null 2>&1; then
@@ -550,6 +659,23 @@ else
   for ignored_path in tests/cors.py vendor/cors.py node_modules/pkg/cors.py; do
     expect_annotation "real Semgrep, $ignored_path" "::error file=$ignored_path,line=16"
   done
+
+  # 28. An `export-ignore` attribute on the base cannot drop a target (B-37).
+  # The base commit's .gitattributes says `app/ export-ignore`; the PR adds
+  # the #27 sample under app/. An attribute-honoring export leaves app/ out
+  # and Semgrep crashes on a missing scanning root; the step must scan the
+  # committed bytes and report the finding.
+  EXPORT_IGNORE_REPO=$(create_repo export-ignore-base)
+  write_file "$EXPORT_IGNORE_REPO" .gitattributes $'app/ export-ignore\n'
+  write_file "$EXPORT_IGNORE_REPO" README.md $'# Base\n'
+  commit_all_changes "$EXPORT_IGNORE_REPO" "base with app/ export-ignore"
+  run_git_isolated -C "$EXPORT_IGNORE_REPO" checkout -q -b feature
+  mkdir -p "$EXPORT_IGNORE_REPO/app"
+  cp "$BAD_SAMPLE" "$EXPORT_IGNORE_REPO/app/settings_cors.py"
+  commit_all_changes "$EXPORT_IGNORE_REPO" "bad cors setting under an export-ignored directory"
+  run_step "$EXPORT_IGNORE_REPO" "" --mode pr --base main
+  expect_status "real Semgrep, app/ export-ignore on the base" 1
+  expect_annotation "real Semgrep, app/ export-ignore on the base" "::error file=app/settings_cors.py,line=16"
 fi
 
 if [ "$failures" -gt 0 ]; then
