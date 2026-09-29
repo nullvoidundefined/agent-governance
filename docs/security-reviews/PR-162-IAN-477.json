@@ -1,0 +1,9 @@
+{
+  "pr": "nullvoidundefined/agent-governance#162",
+  "ticket": "IAN-477 (trivial tier, session handoff)",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "956899027a670196fe522b6f6f4699780d239f0f",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds this session's handoff to docs/session-handoff/session-handoff.md and this file; the detector flags the handoff by path. The review of the head that adds this file is the PR body's Security review section.",
+  "findings": []
+}

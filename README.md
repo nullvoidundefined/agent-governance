@@ -11,6 +11,9 @@ long session, under pressure to finish, on the change that touches production. P
 carry a guarantee. So this repository takes every rule that can be made mechanical and makes it
 mechanical, and it is honest about which ones are still prose.
 
+The project site, <https://nullvoidundefined.github.io/agent-governance/>, carries the current
+release, its SHA-256 checksum, and the verify-then-install steps. Contributors clone instead:
+
 ```bash
 git clone https://github.com/nullvoidundefined/agent-governance.git
 cd agent-governance
@@ -25,7 +28,7 @@ cd agent-governance
 - [What you get](#what-you-get)
 - [Features](#features)
 - [How a feature actually gets built](#how-a-feature-actually-gets-built)
-- [The two build skills, and how to tell them apart](#the-two-build-skills-and-how-to-tell-them-apart)
+- [The build skills, and how to tell them apart](#the-build-skills-and-how-to-tell-them-apart)
 - [The four layers](#the-four-layers)
 - [Repository layout](#repository-layout)
 - [One source, three tools](#one-source-three-tools)
@@ -198,13 +201,13 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 ### Skills
 
-Skills are named workflows the agent invokes when the work matches. There are 18 of them.
+Skills are named workflows the agent invokes when the work matches. There are 19 of them.
 
 | Stage | Skills |
 |---|---|
 | Starting work | `task-start` (classify the task into a tier that fixes its process), `ticket-lifecycle` (open, advance, and close the tracker ticket with estimates and actuals), `feature-create` (the worktree and product-doc rows for an approved plan), `repo-setup` (bring a new repository to the hygiene baseline) |
 | Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
-| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
+| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
 | Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `known-issues` (prior deployment incidents), `resolve-user-feedback` (triage an application's feedback table) |
 | Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
 
@@ -258,7 +261,7 @@ section is missing or empty.
 list and user stories, closes the ticket with measured actuals, and writes the session handoff so
 the next session starts from state rather than from scratch.
 
-## The two build skills, and how to tell them apart
+## The build skills, and how to tell them apart
 
 Two skills in this repository both look like "the one that builds things," and their triggers
 overlap enough that their own frontmatter cross-references the ambiguity. They are not alternatives.
@@ -341,6 +344,20 @@ refuses rather than guessing, and the cycle still applies by hand.
 **Reach for it when** the question is "how do I build this one behavior so that the test genuinely
 came first and nobody can quietly make a red thing green."
 
+### `build-fast` trades ceremony for wall time, on opt-in
+
+`build-fast` runs only when the owner says "build fast" or invokes `/build-fast`, and it exists for
+interviews, critical bug fixes, and any change where time to a working, merged change matters most
+(IAN-401). It asks every question once, up front, then builds on Haiku, the fastest model, in one
+test-first cycle for the whole change, and has the strongest model review the finished diff while CI
+runs, so the review adds almost no wall time. Before the first edit,
+`skills/build-fast/scripts/build-lane.sh predict` sorts the change into a `fast` or `guarded` lane from
+the declared file scope, and `classify` checks the committed range again before the review: anything
+touching a security surface, a migration, concurrency, or payments is `guarded`, which means the full
+Complex process when predicted, or an added security review and an owner merge when it only shows up
+after the code exists. It skips bug hunting and side quests, but it never skips a gate: hooks, the
+test lock, Semgrep, the secret scan, and CI all stay on.
+
 ### Side by side
 
 | | `build-by-slice-require-review` | `tdd-gated-dispatch` |
@@ -402,7 +419,7 @@ agent-governance/
 │   ├── rules/             Session types and the path-scoped convention symlinks
 │   ├── hooks/             73 guards and helpers, 23 fixtures under tests/
 │   ├── enforce/           tdd.sh, doctor.sh, the manifest, ESLint rules, 157 fixtures
-│   ├── skills/            18 workflow skills
+│   ├── skills/            19 workflow skills
 │   ├── agents/            9 audit, 4 build, and 2 reviewer roles
 │   ├── prompts/           Review prompts and document templates
 │   └── global-memory/     Cross-project lessons, loaded at session start
@@ -410,6 +427,8 @@ agent-governance/
 ├── codex/               Generated from claude/ by translate/codex.mjs
 ├── translate/           The exporters and their port maps
 ├── docs/                Audits, pull request documents, slice plans, handoffs
+├── release/             Builds the checksummed release archive, with its fixtures
+├── site/                The project landing page; never shipped in a release
 ├── sync.sh              Installs each payload into its tool's live directory
 ├── RECIPES.md           Task-shaped entry points into the workflows above
 └── AGENTS.md            This repository's own project config for Codex
@@ -454,6 +473,32 @@ and the ESLint push gate), and `python3` (the manifest closure test and the late
 Per-stack linters (`ruff`, `rubocop`, `golangci-lint`) are optional at runtime and fail open when
 absent, with one exception: `ruff` must be on `PATH` to run the fixture suite, because one fixture
 drives the real binary.
+
+### Install from a release
+
+Each release on GitHub carries `agent-governance-<version>.tar.gz` and its `.sha256` checksum, and
+the [project site](https://nullvoidundefined.github.io/agent-governance/) links the current one.
+Verify the checksum, unpack the archive, read `sync.sh` before you run it, and then run it:
+
+```bash
+shasum -a 256 -c agent-governance-v0.1.0.tar.gz.sha256
+tar -xzf agent-governance-v0.1.0.tar.gz
+less agent-governance-v0.1.0/sync.sh
+./agent-governance-v0.1.0/sync.sh
+```
+
+The checksum proves the file you downloaded matches the release; it does not prove who made the
+release, because releases are not signed. A release install writes only to `~/.claude`,
+`~/.cursor`, and `~/.codex`, and runs `npm ci` for the enforcement tools' lockfile-pinned
+dependencies. The archive is not a git checkout, so `sync.sh` installs the files its
+`RELEASE-FILES` list names. It refuses to run, before writing anything, if that list names an
+absolute path, a path that climbs out with `..`, a file the archive does not hold, a symlink that
+points outside the archive, or a path reached through a directory symlink, and it refuses a
+directory that holds both `.git` and `RELEASE-FILES`, because its source would be ambiguous. A release install does not update
+itself: the `harness-sync` hook resyncs only from a git checkout, so you update by installing the
+next release.
+
+### Install from a checkout (contributors)
 
 ```bash
 git clone https://github.com/nullvoidundefined/agent-governance.git

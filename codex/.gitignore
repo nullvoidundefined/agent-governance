@@ -64,6 +64,11 @@
 !/skills/bug-hunt/scripts/dangling-refs.sh
 !/skills/build-by-slice-require-review/
 !/skills/build-by-slice-require-review/SKILL.md
+!/skills/build-fast/
+!/skills/build-fast/SKILL.md
+!/skills/build-fast/lane-rules.json
+!/skills/build-fast/scripts/
+!/skills/build-fast/scripts/build-lane.sh
 !/skills/cleanup-specs-plans/
 !/skills/cleanup-specs-plans/SKILL.md
 !/skills/cleanup-specs-plans/scripts/

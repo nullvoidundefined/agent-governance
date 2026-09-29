@@ -1,0 +1,9 @@
+{
+  "guardedPaths": [
+    "(^|/)(migrations?|alembic|db/migrate)/",
+    "\\.sql$",
+    "(^|/)(workers?|queues?|jobs?|locks?)/",
+    "(mutex|semaphore|concurren|transaction)",
+    "(billing|payment|invoice|checkout|stripe|money)"
+  ]
+}

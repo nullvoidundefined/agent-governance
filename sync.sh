@@ -6,12 +6,15 @@
 # copy is a locked `npm ci` of the live enforce/ dependencies when the synced
 # lockfile no longer matches what is installed (see the end of this file).
 #
-# Only files tracked by git in each source folder are ever synced. Untracked
-# or gitignored working-directory state (build artifacts, installed
-# dependencies, caches) must never reach the destination and must never be
-# considered by the JSON pre-flight check: a source folder is a git checkout,
-# not a scratch directory, and its local side effects (e.g. `npm ci` dropping
-# node_modules/ under claude/enforce/) are not part of what ships.
+# Only files the source ships are ever synced. In a git checkout that is what
+# git tracks in each source folder; in an extracted release archive (a
+# directory that is not the top level of its own git work tree) it is what
+# RELEASE-FILES lists, and every entry is validated before any target is
+# written (IAN-478). Untracked or gitignored working-directory state (build
+# artifacts, installed dependencies, caches) must never reach the destination
+# and must never be considered by the JSON pre-flight check: its local side
+# effects (e.g. `npm ci` dropping node_modules/ under claude/enforce/) are not
+# part of what ships.
 #
 # Never deletes anything it did not install (no rsync --delete). An earlier
 # version did, gated by a hand-maintained per-tool exclude list meant to
@@ -46,6 +49,133 @@ sha256Tool() {
   if command -v sha256sum >/dev/null 2>&1; then echo "sha256sum"; else echo "shasum -a 256"; fi
 }
 SHA256=$(sha256Tool)
+
+# resolveSourceMode(): "ambiguous" when REPO_ROOT holds both .git and
+# RELEASE-FILES (git mode would skip every list check, so neither is
+# trusted), "git" when it is the top level of its own git work tree,
+# "release" when it holds RELEASE-FILES, "none" otherwise. An extract untarred
+# inside some other repository is "release": that repository's ls-files would
+# name none of these files.
+resolveSourceMode() {
+  local top
+  if [ -e "$REPO_ROOT/.git" ] && [ -e "$REPO_ROOT/RELEASE-FILES" ]; then
+    echo ambiguous
+    return
+  fi
+  top=$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -n "$top" ] && [ "$(cd "$top" && pwd -P)" = "$(cd "$REPO_ROOT" && pwd -P)" ]; then
+    echo git
+  elif [ -f "$REPO_ROOT/RELEASE-FILES" ]; then
+    echo release
+  else
+    echo none
+  fi
+}
+
+# refuseReleaseFileList(reason): stops the run before any target is written.
+refuseReleaseFileList() {
+  echo "REFUSED: RELEASE-FILES lists $1; $TARGET_CLAUDE, $TARGET_CURSOR and $TARGET_CODEX left untouched" >&2
+  exit 1
+}
+
+# isTargetWithinPayloadLexically(entry, target): true when walking target's
+# components from the entry's own folder never climbs above its payload
+# folder (claude/, cursor/, or codex/). "." and empty components stay put,
+# ".." climbs one level, anything else descends one. This is judged on the
+# text, not the extract's directories, because the link is resolved again
+# from the live target once installed: claude/x -> ../claude/y resolves
+# inside the extract but to ~/claude/y from ~/.claude.
+isTargetWithinPayloadLexically() {
+  local entry="$1" remaining="$2/" depth=0 component folder
+  folder=$(dirname "$entry")
+  while [ "${folder#*/}" != "$folder" ]; do folder="${folder#*/}"; depth=$((depth + 1)); done
+  while [ -n "$remaining" ]; do
+    component="${remaining%%/*}"
+    remaining="${remaining#*/}"
+    case "$component" in
+      ""|.) ;;
+      ..) depth=$((depth - 1)); [ "$depth" -ge 0 ] || return 1 ;;
+      *) depth=$((depth + 1)) ;;
+    esac
+  done
+  return 0
+}
+
+# isSymlinkInsideExtract(entry): true when the symlink at entry points at a
+# relative target that stays inside the entry's own payload folder, the folder
+# that becomes one live target, both on the text of the target
+# (isTargetWithinPayloadLexically) and on the extract's real directories (pwd
+# -P, which follows any directory symlink the target passes through). An
+# absolute target, or one whose directory is missing, is false.
+isSymlinkInsideExtract() {
+  local entry="$1" target root resolved targetDirectory
+  target=$(readlink "$REPO_ROOT/$entry")
+  case "$target" in /*|"") return 1 ;; esac
+  isTargetWithinPayloadLexically "$entry" "$target" || return 1
+  root=$(cd "$REPO_ROOT/${entry%%/*}" 2>/dev/null && pwd -P) || return 1
+  # A target whose last component is "." or ".." names a directory itself,
+  # and dirname would drop exactly the part that climbs (dirname ".." is ".").
+  while [ "${target%/}" != "$target" ]; do target="${target%/}"; done
+  case "${target##*/}" in
+    .|..) targetDirectory="$target" ;;
+    *) targetDirectory=$(dirname "$target") ;;
+  esac
+  resolved=$(cd "$REPO_ROOT/$(dirname "$entry")" 2>/dev/null && cd "$targetDirectory" 2>/dev/null && pwd -P) || return 1
+  case "$resolved/" in "$root"/*) return 0 ;; *) return 1 ;; esac
+}
+
+# hasSymlinkAncestor(entry): true when any directory above entry, below
+# REPO_ROOT, is a symlink, so the entry would be read through a link that the
+# list never names and isSymlinkInsideExtract never checks.
+hasSymlinkAncestor() {
+  local remaining="$1" walked="$REPO_ROOT" component
+  while [ "${remaining#*/}" != "$remaining" ]; do
+    component="${remaining%%/*}"
+    remaining="${remaining#*/}"
+    walked="$walked/$component"
+    [ -L "$walked" ] && return 0
+  done
+  return 1
+}
+
+# validateReleaseFileList(): every entry is non-empty, relative, free of ".",
+# "..", and empty components and of a trailing slash, a regular file or a
+# symlink but never a directory (rsync would copy a listed directory whole) or
+# a special file such as a fifo (rsync would install it, and jq would block
+# reading one named *.json),
+# reached through no directory symlink, and, when it is a symlink, pointing
+# inside its payload folder. Runs once, before the first target, so a bad
+# list never leaves one target synced and the others not.
+validateReleaseFileList() {
+  local entry
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    case "$entry" in
+      "") refuseReleaseFileList "an empty line" ;;
+      /*) refuseReleaseFileList "the absolute path $entry" ;;
+    esac
+    case "/$entry/" in */../*) refuseReleaseFileList "the path $entry, which climbs out with .." ;; esac
+    case "/$entry/" in */./*|*//*) refuseReleaseFileList "the path $entry, which has a . or empty component or a trailing slash" ;; esac
+    [ -e "$REPO_ROOT/$entry" ] || [ -L "$REPO_ROOT/$entry" ] || refuseReleaseFileList "the path $entry, which is not in this extract"
+    if [ ! -L "$REPO_ROOT/$entry" ] && [ -d "$REPO_ROOT/$entry" ]; then
+      refuseReleaseFileList "the directory $entry; list its files one by one"
+    elif [ ! -L "$REPO_ROOT/$entry" ] && [ ! -f "$REPO_ROOT/$entry" ]; then
+      refuseReleaseFileList "the special file $entry, which is neither a regular file nor a symlink"
+    fi
+    hasSymlinkAncestor "$entry" && refuseReleaseFileList "the path $entry, which is reached through a directory symlink"
+    if [ -L "$REPO_ROOT/$entry" ] && ! isSymlinkInsideExtract "$entry"; then
+      refuseReleaseFileList "the symlink $entry, which points outside this extract"
+    fi
+  done < "$REPO_ROOT/RELEASE-FILES"
+}
+
+# listSourceFiles(folder): the shipped files under folder, one per line.
+listSourceFiles() {
+  if [ "$SOURCE_MODE" = git ]; then
+    git -C "$REPO_ROOT" ls-files -- "$1"
+  else
+    grep "^$1/" "$REPO_ROOT/RELEASE-FILES" || true
+  fi
+}
 
 # hashLiveEntry(path): the manifest hash of one path, the content hash for a
 # regular file and the hash of "symlink:<target>" for a symlink, so a tracked
@@ -131,12 +261,13 @@ sync_one() {
   # copy decides by content too, never by size and mtime alone.
   local rsync_args=(-a --checksum)
 
-  # Stage a copy of only the git-tracked files for this folder. Building a
-  # clean staging tree keeps the "only ship what's tracked" semantics simple
-  # and correct: the final rsync below copies exactly that tree, nothing more.
+  # Stage a copy of only the shipped files for this folder (listSourceFiles).
+  # Building a clean staging tree keeps the "only ship what's tracked"
+  # semantics simple and correct: the final rsync below copies exactly that
+  # tree, nothing more.
   local filelist staging
   filelist=$(mktemp)
-  git -C "$REPO_ROOT" ls-files -- "$folder" > "$filelist"
+  listSourceFiles "$folder" > "$filelist"
 
   staging=$(mktemp -d)
   mkdir -p "$staging/$folder"
@@ -164,6 +295,14 @@ sync_one() {
   mv "$new_manifest" "$dest/.sync-manifest"
   echo "synced $REPO_ROOT/$folder -> $dest"
 }
+
+SOURCE_MODE=$(resolveSourceMode)
+case "$SOURCE_MODE" in
+  git) echo "source: git checkout" ;;
+  release) validateReleaseFileList; echo "source: release archive RELEASE-FILES" ;;
+  ambiguous) echo "REFUSED: $REPO_ROOT holds both .git and RELEASE-FILES, so its source is ambiguous; delete RELEASE-FILES from a checkout, or install from a clean release archive; nothing synced" >&2; exit 1 ;;
+  *) echo "REFUSED: $REPO_ROOT is neither a git checkout nor a release archive (no RELEASE-FILES); nothing synced" >&2; exit 1 ;;
+esac
 
 sync_one claude "$TARGET_CLAUDE"
 sync_one cursor "$TARGET_CURSOR"

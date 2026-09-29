@@ -1,0 +1,15 @@
+# docker-compose.yml: runs the site container on SITE_PORT (default 3000),
+# read-only, with a health check the test wrapper waits on. The check uses
+# 127.0.0.1 because nginx listens on IPv4 and localhost resolves to ::1.
+services:
+  site:
+    build: .
+    ports:
+      - "${SITE_PORT:-3000}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 2s
+      retries: 15
