@@ -7,8 +7,9 @@
 #   security-ci-semgrep.sh --mode full
 #
 # The arguments go unchanged to the sibling security-ci-targets.sh, which
-# lists the scan targets. Their HEAD content is exported into a scratch
-# directory, every `.semgrepignore` the export carries is deleted and an
+# lists the scan targets. Their committed blobs at HEAD are exported into a
+# scratch directory one by one with `git cat-file blob`, so no .gitattributes
+# rule a PR adds can drop or change a target (B-37), every `.semgrepignore` the export carries is deleted and an
 # empty one written at its root, and Semgrep runs there with --no-git-ignore,
 # so no ignore file a PR supplies, and no default ignore list (tests/, for
 # one), can drop a target. The rules are the security rule pack in
@@ -50,14 +51,43 @@ exit_with_failure() {
   exit 2
 }
 
-# export_targets <scan dir> <target>...: writes each target's HEAD content
-# under <scan dir> in one git process, deletes every `.semgrepignore` the
-# export carries, and writes an empty one at the root. Returns non-zero when
-# git cannot export them.
+# export_blob <scan dir> <mode> <object id> <path>: writes one target's
+# committed blob under <scan dir>, byte for byte. Returns non-zero, naming the
+# path on stderr, when the target is a symlink, a submodule, or anything but a
+# regular file, or git cannot read the blob.
+export_blob() {
+  local scan_dir="$1" entry_mode="$2" object_id="$3" target_path="$4"
+  case "$entry_mode" in
+    100644|100755) ;;
+    120000) printf 'security-ci-semgrep: target %s is a symlink, which the scan cannot vouch for\n' "$target_path" >&2; return 1 ;;
+    160000) printf 'security-ci-semgrep: target %s is a submodule, which the scan cannot read\n' "$target_path" >&2; return 1 ;;
+    *) printf 'security-ci-semgrep: target %s has unexpected mode %s\n' "$target_path" "$entry_mode" >&2; return 1 ;;
+  esac
+  mkdir -p "$(dirname "$scan_dir/$target_path")" || return 1
+  git cat-file blob "$object_id" > "$scan_dir/$target_path"
+}
+
+# export_targets <scan dir> <target>...: writes each target's committed blob
+# at HEAD under <scan dir> with `git cat-file blob`, never `git archive`, so
+# no .gitattributes rule a PR can add (export-ignore, export-subst, eol
+# conversion) can drop or change what is scanned (B-37). Then deletes every
+# `.semgrepignore` the export carries and writes an empty one at the root.
+# Returns non-zero when a target is missing at HEAD, is not a regular file, or
+# git cannot read it.
 export_targets() {
-  local scan_dir="$1"
+  local scan_dir="$1" tree_entries entry_meta entry_path exported_count=0 target_count
   shift
-  git --literal-pathspecs archive --format=tar HEAD -- "$@" | tar -x -C "$scan_dir" || return 1
+  target_count=$#
+  tree_entries=$(git --literal-pathspecs ls-tree -r -z HEAD -- "$@" | tr '\0' '\n') || return 1
+  while IFS=$'\t' read -r entry_meta entry_path; do
+    [ -n "$entry_path" ] || continue
+    # shellcheck disable=SC2086  # entry_meta is "<mode> <type> <object id>"
+    set -- $entry_meta
+    export_blob "$scan_dir" "$1" "$3" "$entry_path" || return 1
+    exported_count=$((exported_count + 1))
+  done <<< "$tree_entries"
+  # A target git did not list at HEAD would otherwise vanish from the scan.
+  [ "$exported_count" -eq "$target_count" ] || return 1
   find "$scan_dir" -name .semgrepignore -exec rm -f {} + || return 1
   : > "$scan_dir/.semgrepignore"
 }
@@ -128,10 +158,22 @@ scan_targets() {
   rm -rf "$scan_dir"
 }
 
-# fail_scan_verdict <report file> <message>: prints Semgrep's escaped stderr,
-# then reports a scan that cannot be trusted and exits 2.
+# print_report_errors <report file>: prints each entry of the report's
+# `.errors[]` (level, path, message) under a fixed prefix, escaped for the
+# workflow-command parser, so a crash names its cause even under --quiet
+# (B-38). Prints nothing when the report has no errors or is not JSON.
+print_report_errors() {
+  jq -r "$SECURITY_CI_JQ_ESCAPES"'
+    (.errors // [])[]
+    | "security-ci-semgrep: semgrep error: \(.level // "" | escape_data) \(.path // .spans[0].file // "" | escape_data): \(.message // "" | tostring | .[0:500] | escape_data)"' \
+    "$1" >&2 2>/dev/null || true
+}
+
+# fail_scan_verdict <report file> <message>: prints Semgrep's escaped stderr
+# and report errors, then reports a scan that cannot be trusted and exits 2.
 fail_scan_verdict() {
   print_semgrep_stderr "$1"
+  print_report_errors "$1"
   exit_with_failure "$2"
 }
 
