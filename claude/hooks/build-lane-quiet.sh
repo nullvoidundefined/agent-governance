@@ -26,7 +26,9 @@ is_reminder_quiet() {
   [ -s "$top/.claude/task-tier.json" ] || return 1
   [ -L "$top/.claude" ] && return 1
   [ -L "$top/.claude/task-tier.json" ] && return 1
-  git -C "$top" ls-files --error-unmatch -- .claude/task-tier.json >/dev/null 2>&1 && return 1
+  # :(icase) because a case-insensitive filesystem opens .Claude/task-tier.json
+  # through this path while a case-sensitive pathspec would miss it in the index.
+  git -C "$top" ls-files --error-unmatch -- ':(icase).claude/task-tier.json' >/dev/null 2>&1 && return 1
   jq -es --arg b "$branch" 'length == 1 and (.[0] | type) == "object" and .[0].branch == $b and .[0].lane == "fast"' \
     "$top/.claude/task-tier.json" >/dev/null 2>&1
 }
