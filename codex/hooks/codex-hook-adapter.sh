@@ -584,7 +584,9 @@ try:
 except (OSError, subprocess.SubprocessError):
     sys.exit(1)
 ' "$APPROVAL_HELPER" 2>/dev/null) || return 1
-  printf '%s' "$result" | jq -e 'type == "object" and (.permitted | type == "boolean")' >/dev/null 2>&1 || return 1
+  # Slurp first to reject a stream of responses; jq otherwise bases its exit
+  # status on the last document, which could conceal an earlier denial.
+  printf '%s' "$result" | jq -se 'length == 1 and (.[0] | type == "object" and (.permitted | type == "boolean"))' >/dev/null 2>&1 || return 1
   if printf '%s' "$result" | jq -e '.permitted == true' >/dev/null 2>&1; then
     return 0
   fi
