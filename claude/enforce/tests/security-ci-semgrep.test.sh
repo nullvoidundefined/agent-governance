@@ -43,11 +43,12 @@
 #
 # Each target is exported as its exact committed blob, so no `.gitattributes`
 # entry (export-ignore, export-subst, eol conversion) changes or drops what is
-# scanned, and a target that is a symlink fails the step closed, named on
-# stderr (B-37). When Semgrep exits 2 or above, the step prints each entry of
-# the report's `.errors[]`, escaped, so a crash names its cause (B-38).
+# scanned, and a target that is a symlink or a submodule fails the step
+# closed, named on stderr, before Semgrep runs (B-37). When Semgrep exits 2 or
+# above, the step prints each entry of the report's `.errors[]`, escaped, so a
+# crash names its cause (B-38).
 #
-# Cases 1 to 9, 12, 13 to 16, 21, 22, and 24 to 27 drive the step through
+# Cases 1 to 9, 12, 13 to 16, 21, 22, 24 to 27, and 29 drive the step through
 # Semgrep stand-ins wired in with CLAUDE_SEMGREP_CMD. Cases 10, 11, 17 to 20,
 # 23, and 28 run the real Semgrep (`semgrep` on PATH, else `uvx semgrep`)
 # against the #27-shaped CORS sample, and the fixture fails rather than skips
@@ -523,6 +524,31 @@ grep -qF -- 'link.py' <<< "$STEP_STDERR" \
   || report_failure "symlink target: stderr must name 'link.py'; got: ${STEP_STDERR:-<none>}"
 grep -qi -- 'symlink' <<< "$STEP_STDERR" \
   || report_failure "symlink target: stderr must say 'symlink'; got: ${STEP_STDERR:-<none>}"
+
+# --- 29. A submodule target fails the step closed and is named (B-37) -------
+# The PR adds plain.py and a gitlink `vendored` (mode 160000) pointing at the
+# base commit. The gitlink is staged with update-index and committed without
+# `add -A`, which would drop it for want of a checkout. The stand-in records
+# its argv and is otherwise clean, so the only possible failure is the export
+# refusing the submodule; that refusal must come before Semgrep runs.
+SUBMODULE_REPO=$(create_feature_repo submodule-target)
+write_file "$SUBMODULE_REPO" plain.py "$APP_SOURCE"
+run_git_isolated -C "$SUBMODULE_REPO" add plain.py
+SUBMODULE_POINTER=$(run_git_isolated -C "$SUBMODULE_REPO" rev-parse HEAD)
+run_git_isolated -C "$SUBMODULE_REPO" update-index --add --cacheinfo "160000,$SUBMODULE_POINTER,vendored"
+run_git_isolated -C "$SUBMODULE_REPO" commit -q -m "a plain file and a submodule gitlink"
+[ "$(run_git_isolated -C "$SUBMODULE_REPO" ls-tree HEAD vendored | awk '{ print $1 }')" = 160000 ] \
+  || report_failure "precondition: vendored must be committed as a gitlink (mode 160000)"
+rm -f "$STUB_ARGV_FILE"
+run_step "$SUBMODULE_REPO" "$(make_stub record)" --mode pr --base main
+expect_closed_failure "submodule target"
+grep -qF -- 'vendored' <<< "$STEP_STDERR" \
+  || report_failure "submodule target: stderr must name 'vendored'; got: ${STEP_STDERR:-<none>}"
+grep -qi -- 'submodule' <<< "$STEP_STDERR" \
+  || report_failure "submodule target: stderr must say 'submodule'; got: ${STEP_STDERR:-<none>}"
+if [ -s "$STUB_ARGV_FILE" ]; then
+  report_failure "submodule target: Semgrep must not run once the export refuses a submodule; it ran with: $(tr '\n' ' ' < "$STUB_ARGV_FILE")"
+fi
 
 # --- 27. A Semgrep crash names its cause from the report's errors (B-38) ----
 # The stand-in exits 2 with a valid report whose one error-level error says
