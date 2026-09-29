@@ -2,11 +2,10 @@
 
 ## Last commit
 
-- IAN-499 follows on docs/coding-governance-scope; the commit containing this handoff
-  scopes development procedures to coding work in every app.
-- IAN-495 is committed on docs/precise-verb-lexicon.
-- IAN-498 follows on docs/thorough-code-comments and is included in the commit
-  containing this handoff. No merge or publication occurred.
+- IAN-501 tracks publication and deployment on release/governance-conventions.
+- This branch includes IAN-495, IAN-498, IAN-499, and IAN-500, rebased onto the
+  newer build-fast change on main. Generated manifests were regenerated during
+  integration; the newer build-fast source and exports are preserved.
 
 ## Production state verified
 
@@ -36,7 +35,8 @@
   the coding portion. Pending task state and action protections remain in force.
 - Cursor exports are regenerated from the same canonical source, including the
   previously committed verb meanings and thorough-commenting requirements.
-- Nothing published. The committed changes add verbMeanings to enforce/lexicon.json.
+- The committed changes add verbMeanings to enforce/lexicon.json. IAN-501 tracks
+  the branch publication and remaining review and release steps.
 - R-316 defines retrieval, remote retrieval, string formatting, creation, updates,
   deletion, and the requirement to name returned representations explicitly.
 - Codex AGENTS.md and its generated fingerprint were regenerated from source.
@@ -59,11 +59,13 @@
   impact remains unverified; do not add a new workflow to ordinary questions.
 - The owner selected Command Line Tools and the system Git launcher now works.
   Naming fixtures and generated-payload consistency checks pass again.
-- IAN-495 and IAN-498 await the normal review and merge workflow.
-  Keep the tickets open until delivery is completed.
+- IAN-495, IAN-498, IAN-499, IAN-500, and IAN-501 await the normal review and merge
+  workflow. Keep the tickets open until delivery is completed.
+- Local deployment uses sync.sh. Public versioned releases use the protected
+  release environment after a version tag is pushed; owner approval is required.
 
 ## Recommended next session
 
-- Confirm the diff is confined to R-316, the lexicon registry, generated Codex
-  output, and this handoff. Run the targeted checks if any content changes.
-- Do not merge or publish without owner authorization.
+- Inspect IAN-501 for the current PR, verification, and deployment status.
+- The owner authorized pushing and deployment. Obtain express merge authorization
+  under R-514 before merging, and complete the current-head review and green CI.
