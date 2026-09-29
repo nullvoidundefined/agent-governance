@@ -1,7 +1,50 @@
 # Scoped Codex approval consumption
 
 Ticket: IAN-506. Tier: Complex. Merge mode: owner review before merge.
-Status: design review found blockers; complete B-0 before authorizing implementation.
+Status: owner approved scoped implementation and Codex test authorship. Live deployment
+remains gated on the runtime proof and security review below.
+
+## Implementation contract after review
+
+Implement the first version for literal MCP calls only. Bash and apply_patch retain
+their existing policy; indirect shell inputs require a separate contract. Preserve
+the existing global-policy behavior for compatibility without enabling it.
+
+Keep grants under the runtime user's home, outside writable workspace roots. The
+supported deployment requires a sandbox that prevents tool processes from writing
+that directory. Do not expose a command that mints grants. Register the real
+UserPromptSubmit hook. Unit fixtures may use a throwaway HOME; production grants
+are never taken from tool arguments or a repository-local file. A runtime lacking
+that filesystem separation is unsupported for scoped chat approvals.
+
+Use one private state file per session, protected by a stable exclusive file lock
+for every read-modify-write transition. Reject symlinks, incorrect ownership,
+group/other permissions, malformed JSON, and write failures. Keep request and grant
+lifetimes at ten minutes. Hash canonical JSON preserving all argument contents and
+array order. Store no raw prompts or tool arguments. Record processed prompt turn
+identifiers so duplicate approval events cannot authorize a later request.
+
+Group asks from the same original tool_use_id and action fingerprint into one
+pending request. Preserve a deterministic map of hook-group identity and structured
+asking-hook decisions. A user approval covers that snapshot. The first matching
+retry reserves the grant to its new tool_use_id; every approved group may consume
+its own slot once for that retry only. Different concurrent retry IDs cannot share
+the grant. Do not authorize groups absent from the approved snapshot. Keep consumed
+request tombstones until expiry so event replay cannot rearm them.
+
+Accept only an entire normalized bare approval phrase ("approve", "approved",
+"I approve", "yes") when exactly one pending request is present, or an exact
+"approve <request-id>". Reject embedded or quoted approval and negate/cancel on a
+non-approval prompt. Require nonempty session_id, turn_id, cwd, tool_use_id, and tool
+name where applicable. A hard deny always wins and revokes grants for that action.
+
+Treat the helper's absence, invalid response, error exit, or state error as denial
+when resolving a scoped ask. Never infer successful authorization from silence.
+The new prompt registration is additive and must preserve all existing hook groups.
+The adapter will keep legacy invocations without event identity denied, with an
+accurate explanation of what is missing instead of an ineffective repeat-approval
+instruction. Complete runtime feasibility before syncing or claiming an end-to-end
+fix in this desktop session.
 
 ## Problem
 
