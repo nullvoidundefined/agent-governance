@@ -319,7 +319,13 @@ expect_hits "exclude list added only at the head" $'.enforce.json:0 path\ndocs/a
 # than depending on a reviewer to notice (IAN-480). The installed copy under
 # ~/.claude has no repository root, so the check runs only in a checkout,
 # which sync.sh at the root identifies, and a checkout missing the list fails.
-REPOSITORY_ROOT="$(cd "$CLAUDE_HARNESS_ROOT/.." && pwd)"
+# The root is resolved physically because CI installs the checkout as a
+# ~/.claude symlink, whose logical parent is the home directory rather than
+# the checkout; a skip is printed so a log never shows it as a silent pass.
+REPOSITORY_ROOT="$(cd -P "$CLAUDE_HARNESS_ROOT/.." && pwd -P)"
+if [ ! -f "$REPOSITORY_ROOT/sync.sh" ]; then
+  echo "security-surface.test.sh: shipped exclude list not checked: $REPOSITORY_ROOT is not an agent-governance checkout" >&2
+fi
 if [ -f "$REPOSITORY_ROOT/sync.sh" ]; then
   if [ -f "$REPOSITORY_ROOT/.enforce.json" ]; then
     REPO=$(new_repo exclude-shipped-list)
