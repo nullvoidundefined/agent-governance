@@ -569,11 +569,32 @@ replay_shell_writes() {
 # state helper. Permission requires a successful process and explicit true;
 # missing helpers, malformed output, and state failures never become consent.
 resolve_scoped_approval() {
-  local result payload group
+  local result payload group request_id
+  APPROVAL_MESSAGE="Scoped approval state or runtime identity is unavailable; this call remains denied."
   group=$(printf '%s\n' "${HOOK_NAMES[@]+"${HOOK_NAMES[@]}"}" | jq -Rsc 'split("\n")[:-1]')
   payload=$(jq -nc --argjson event "$INPUT" --argjson group "$group" --argjson decisions "$ASK_DECISIONS" --arg decision "$WORST" '{event:$event,group:$group,decisions:$decisions,decision:$decision}') || return 1
-  result=$(printf '%s' "$payload" | python3 "$APPROVAL_HELPER" 2>/dev/null) || return 1
-  printf '%s' "$result" | jq -e '.permitted == true' >/dev/null 2>&1
+  # The deadline lives outside the helper so a broken or replaced helper cannot
+  # hang approval resolution. subprocess.run kills and reaps a timed-out child.
+  result=$(printf '%s' "$payload" | python3 -c '
+import subprocess
+import sys
+try:
+    result = subprocess.run([sys.executable, sys.argv[1]], input=sys.stdin.read(), text=True, capture_output=True, timeout=3, check=True)
+    print(result.stdout, end="")
+except (OSError, subprocess.SubprocessError):
+    sys.exit(1)
+' "$APPROVAL_HELPER" 2>/dev/null) || return 1
+  printf '%s' "$result" | jq -e 'type == "object" and (.permitted | type == "boolean")' >/dev/null 2>&1 || return 1
+  if printf '%s' "$result" | jq -e '.permitted == true' >/dev/null 2>&1; then
+    return 0
+  fi
+  request_id=$(printf '%s' "$result" | jq -r '.request_id // empty')
+  if [[ "$request_id" =~ ^[a-f0-9]{64}$ ]]; then
+    APPROVAL_MESSAGE="This exact MCP action awaits runtime user consent. Reply approve $request_id to select this request; a bare approval works only when one request is pending."
+  else
+    APPROVAL_MESSAGE="No unused scoped consent matches this action and hook group. This call remains denied."
+  fi
+  return 1
 }
 
 emit_pre_tool_use() {
@@ -590,7 +611,7 @@ emit_pre_tool_use() {
         WORST="allow"
       else
         WORST="deny"
-        REASONS="Scoped MCP approval is absent, consumed, or unavailable. Runtime session, turn, directory, and tool-use identities are required. $REASONS"
+        REASONS="$APPROVAL_MESSAGE $REASONS"
       fi
     else
       WORST="deny"
