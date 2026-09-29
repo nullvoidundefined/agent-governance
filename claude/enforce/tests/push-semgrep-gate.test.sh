@@ -77,14 +77,14 @@ chmod +x "$CRASH_STUB"
 
 # 1. The #27 shape in app/core/settings.py -> deny naming path:line and rule.
 mkdir -p app/core
-cp "$SAMPLES_DIR/cors-unvalidated-setting_bad.py" app/core/settings.py
+cp "$SAMPLES_DIR/cors-unvalidated-setting_bad.py.sample" app/core/settings.py
 git add app/core/settings.py
 git commit -q -m "bad cors setting"
 OUT_BAD=$(run_hook "$PUSH_PAYLOAD")
 expect_deny "#27 shape" "$OUT_BAD" "app/core/settings.py:16" "cors-unvalidated-setting"
 
 # 2. The file replaced by the #45 shape -> allow.
-cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py" app/core/settings.py
+cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py.sample" app/core/settings.py
 git add app/core/settings.py
 git commit -q -m "validated cors setting"
 OUT_GOOD=$(run_hook "$PUSH_PAYLOAD")
@@ -93,7 +93,7 @@ expect_silent "#45 shape" "$OUT_GOOD"
 # 1b. Whole-file scan: the #27 shape already sits on the base, and the range
 # only appends a comment to the file. The finding's line is not an added line,
 # and the push must still be denied.
-cp "$SAMPLES_DIR/cors-unvalidated-setting_bad.py" app/core/settings.py
+cp "$SAMPLES_DIR/cors-unvalidated-setting_bad.py.sample" app/core/settings.py
 git add app/core/settings.py
 git commit -q -m "bad cors setting again"
 git update-ref refs/remotes/origin/main HEAD

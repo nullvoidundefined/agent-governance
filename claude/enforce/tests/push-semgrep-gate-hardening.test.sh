@@ -117,7 +117,7 @@ expect_silent() {
 # a syntax error) instead of a clean result set, and the gate must deny naming
 # the path rather than read the empty results as clean.
 PARTIAL_SOURCE="$WORK/partial.py"
-cat "$SAMPLES_DIR/cors-literal-wildcard_bad.py" > "$PARTIAL_SOURCE"
+cat "$SAMPLES_DIR/cors-literal-wildcard_bad.py.sample" > "$PARTIAL_SOURCE"
 printf '\n\n\n\n\n\n\n\n\n\n\ndef broken(:\n    pass\n' >> "$PARTIAL_SOURCE"
 REPO_PARTIAL="$WORK/repo-partial"
 make_repo "$REPO_PARTIAL" main
@@ -129,7 +129,7 @@ expect_deny "1 partial scan (Semgrep error or skipped path)" "$OUT_PARTIAL" "app
 # finding: the gate passes --disable-nosem.
 NOSEM_SOURCE="$WORK/nosem.py"
 sed 's/^app\.add_middleware($/app.add_middleware(  # nosemgrep/' \
-  "$SAMPLES_DIR/cors-literal-wildcard_bad.py" > "$NOSEM_SOURCE"
+  "$SAMPLES_DIR/cors-literal-wildcard_bad.py.sample" > "$NOSEM_SOURCE"
 if ! grep -qF 'app.add_middleware(  # nosemgrep' "$NOSEM_SOURCE"; then
   report_failure "precondition: the nosemgrep sample did not receive its comment"
 fi
@@ -143,8 +143,8 @@ expect_deny "2 nosemgrep suppression ignored" "$OUT_NOSEM" "app/main.py" "cors-l
 # fix. The push ships HEAD, so it must be denied.
 REPO_DIRTY="$WORK/repo-dirty"
 make_repo "$REPO_DIRTY" main
-commit_file "$REPO_DIRTY" app/core/settings.py "$SAMPLES_DIR/cors-unvalidated-setting_bad.py"
-cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py" "$REPO_DIRTY/app/core/settings.py"
+commit_file "$REPO_DIRTY" app/core/settings.py "$SAMPLES_DIR/cors-unvalidated-setting_bad.py.sample"
+cp "$SAMPLES_DIR/cors-unvalidated-setting_good.py.sample" "$REPO_DIRTY/app/core/settings.py"
 OUT_DIRTY=$(run_hook "$REPO_DIRTY" main)
 expect_deny "3a HEAD scanned, not the uncommitted fix" "$OUT_DIRTY" \
   "app/core/settings.py:16" "cors-unvalidated-setting"
@@ -154,7 +154,7 @@ expect_deny "3a HEAD scanned, not the uncommitted fix" "$OUT_DIRTY" \
 # so the reason names that finding, not a Semgrep crash.
 REPO_DELETED="$WORK/repo-deleted"
 make_repo "$REPO_DELETED" main
-commit_file "$REPO_DELETED" app/removed.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py"
+commit_file "$REPO_DELETED" app/removed.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py.sample"
 rm "$REPO_DELETED/app/removed.py"
 OUT_DELETED=$(run_hook "$REPO_DELETED" main)
 expect_deny "3b file deleted from the working tree, present in HEAD" "$OUT_DELETED" \
@@ -172,7 +172,7 @@ git -C "$REPO_NOBASE" init -q
 git -C "$REPO_NOBASE" symbolic-ref HEAD refs/heads/feature
 git -C "$REPO_NOBASE" config user.email t@t
 git -C "$REPO_NOBASE" config user.name t
-commit_file "$REPO_NOBASE" app/main.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py"
+commit_file "$REPO_NOBASE" app/main.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py.sample"
 if [ -n "$(git -C "$REPO_NOBASE" for-each-ref refs/remotes refs/heads/main refs/heads/master)" ]; then
   report_failure "precondition: the no-base repository still carries a remote, main, or master ref"
 fi
@@ -197,7 +197,7 @@ EXEMPT_ORIGIN="https://example.invalid/acme/exempt-probe.git"
 REPO_EXEMPT="$WORK/repo-exempt"
 make_repo "$REPO_EXEMPT" main
 git -C "$REPO_EXEMPT" remote add origin "$EXEMPT_ORIGIN"
-commit_file "$REPO_EXEMPT" app/main.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py"
+commit_file "$REPO_EXEMPT" app/main.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py.sample"
 EXEMPT_HOME="$WORK/home-exempt"
 mkdir -p "$EXEMPT_HOME/.claude/enforce"
 printf '%s\n' "$EXEMPT_ORIGIN" > "$EXEMPT_HOME/.claude/enforce/exempt-repos.txt"
@@ -214,7 +214,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "%s"\nexec %s "$@"\n' "$ARGV_FILE" "$
 chmod +x "$RECORDING_STUB"
 REPO_ARGV="$WORK/repo-argv"
 make_repo "$REPO_ARGV" main
-commit_file "$REPO_ARGV" app/main.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py"
+commit_file "$REPO_ARGV" app/main.py "$SAMPLES_DIR/cors-literal-wildcard_bad.py.sample"
 : > "$ARGV_FILE"
 run_hook "$REPO_ARGV" main CLAUDE_SEMGREP_CMD="$RECORDING_STUB" >/dev/null
 if [ ! -s "$ARGV_FILE" ]; then
