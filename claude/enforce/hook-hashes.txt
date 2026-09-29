@@ -51,6 +51,7 @@ a53de1641175cef00514b135c60511a6085ec2ee817082edbca3d258a1a3ccf9  enforce/tests/
 eb74056eae3e00d3376fdb9eeacc77b35f51333e3a5dcc85531179db19c0bd54  enforce/tests/claude-md-lint.test.sh
 82a3e27d132a2f546493ee056f19b96f781ae1ab3f6c37cb5b07aab4180a1df8  enforce/tests/clean-code-reminder.test.sh
 39d81a19e4b9d3b6da9914468139c80ecb8d24bd8040d5a3ca21414d57bcbbb2  enforce/tests/codex-adapter-contract.test.sh
+a46358ebe984dd8da5f77d39cd9a0c323b1d7ccb1f21e1b0dae89be9439a19f9  enforce/tests/codex-approval-security.test.sh
 40f812d8799d5cfec68ac8a04e441cae6eeaf31a2dd984e4ea2511737e102e75  enforce/tests/codex-approval-state.test.sh
 66864ddc08bb5c14d3dd69e3ffd45c4f21296cb7b27aad97a7beaffc2697bc6d  enforce/tests/codex-billing-guard.test.sh
 6c868671a9ee3eac113ed59b878a238bf86400c65267f85be3170fcf79b633be  enforce/tests/codex-test-author-guard-tier.test.sh
