@@ -12,7 +12,11 @@ that should govern this session live in `claude/`, are projected into `codex/` b
 
 ## Do this first
 
-Run `./sync.sh` from the root of this checkout before relying on any rule or gate.
+Apply the canonical coding-work applicability rule first. An ordinary non-coding
+question does not trigger this repository's bootstrap or development workflow merely
+because the checkout is open. Keep all action guards active.
+
+For coding work, run `./sync.sh` from the root of this checkout before relying on any rule or gate.
 Claude Code sessions do this automatically through a `SessionStart` hook registered in
 `.claude/settings.json`; Codex has no equivalent automatic entry point, so the step is
 yours. It is idempotent and never deletes a live file it did not install, a deliberate

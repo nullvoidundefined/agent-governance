@@ -2,6 +2,8 @@
 
 ## Last commit
 
+- IAN-499 follows on docs/coding-governance-scope; the commit containing this handoff
+  scopes development procedures to coding work in every app.
 - IAN-495 is committed on docs/precise-verb-lexicon.
 - IAN-498 follows on docs/thorough-code-comments and is included in the commit
   containing this handoff. No merge or publication occurred.
@@ -16,6 +18,9 @@
 
 ## Session metrics
 
+- IAN-499 is an instruction-only Standard task, estimated at 10 minutes. Rule
+  consistency, all eight affected skill frontmatters, and both generated tool
+  exports pass. No hook implementation, enforcement code, or hook registration changed.
 - IAN-495 is a Standard documentation and registry-data task, estimated at 15 minutes.
 - IAN-498 is a Standard convention update, estimated at 10 minutes. Rule consistency
   and generated Codex payload checks pass.
@@ -25,6 +30,12 @@
 
 ## What shipped
 
+- IAN-499 adds an applicability check before session and task procedures. All coding
+  work, including simple programming questions, remains governed in every app.
+  Ordinary non-coding questions skip development ceremony, and mixed requests govern
+  the coding portion. Pending task state and action protections remain in force.
+- Cursor exports are regenerated from the same canonical source, including the
+  previously committed verb meanings and thorough-commenting requirements.
 - Nothing published. The committed changes add verbMeanings to enforce/lexicon.json.
 - R-316 defines retrieval, remote retrieval, string formatting, creation, updates,
   deletion, and the requirement to name returned representations explicitly.
@@ -41,6 +52,11 @@
 
 ## Pending work
 
+- Monitor IAN-499 during normal coding reviews and handoffs for any drop in coding
+  quality. Watch for misclassified coding requests, skipped tests or required reviews,
+  and task state lost during non-coding detours. File evidence-backed regressions and
+  fix the scope decision without weakening coding requirements. Real-world quality
+  impact remains unverified; do not add a new workflow to ordinary questions.
 - The owner selected Command Line Tools and the system Git launcher now works.
   Naming fixtures and generated-payload consistency checks pass again.
 - IAN-495 and IAN-498 await the normal review and merge workflow.

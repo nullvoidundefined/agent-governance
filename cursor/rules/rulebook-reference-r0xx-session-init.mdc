@@ -9,17 +9,22 @@ Source: `~/.claude/rulebook/reference.md`, section "Session init (R-0xx)". Enfor
 
 ## Session init (R-0xx)
 
-R-001: Run the session-start procedure before any other work.
+R-001: Apply the canonical applicability check first; run session-start before the first coding work in an interactive session.
   Spec:
+  - Classify the current request using the applicability section in `CLAUDE.md` before any procedural reads or announcements. All coding work is in scope regardless of app, including simple programming questions, code explanations, read-only repository work, and governance changes. Ordinary non-coding questions do not trigger this procedure or the development lifecycle.
   1. Confirm the SessionStart hook (`hooks/session-start.sh`) injected `~/.claude/global-memory/INDEX.md` and the SHA-verified project handoff; Read either only when its block is absent from the injected context (`lesson_no_reread_auto_injected_context.md`). Auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`, first 200 lines) loads on its own and is re-injected after compaction.
-  2. Read `~/.claude/rules/session-types.md`; classify the session type from the user's first message.
+  2. Read `~/.claude/rules/session-types.md`; classify the session type from the coding request and its relevant conversation context.
   3. Read Tier 2 files for that session type per the session-types load map.
   4. Run `git -C "$(cat ~/.claude/.sync-source)" status -s`; triage non-empty (`~/.claude` is a sync target of the agent-governance repo, not a git repo itself).
   5. Read `docs/session-handoff/session-handoff.md` if present; verify the last-commit SHA against `git log`.
   6. Confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`); Read it only when its content is absent from the injected context. A repo with none lists `no project file` under Skipped, and the procedure continues.
   - First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`.
-  - On reclassification: re-read files and update the declaration.
-  Scope: Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent.
+  - On coding-session reclassification: read the newly required files and update the declaration. Reuse already loaded, still-valid context; a general-question detour does not reset initialized state or waive an existing coding task's obligations.
+  - If coding begins after general conversation, initialize before the coding work. For a mixed request, govern the coding portion. Do not create a general-question ticket, task tier, branch, test run, or handoff merely to record that the request is outside scope.
+  - In an app without local filesystem or tool access, state unavailable coding context briefly and apply the relevant rules that can be satisfied. Never claim a read, test, or gate passed when it could not be performed.
+  - Leave action protections, hook registration, automatic startup context, approvals, and test locks intact. Scope the model's procedural work; do not introduce an exemption flag that changes enforcement.
+  - Monitor this scope change during existing coding reviews and session handoffs for any reduction in coding quality. Watch for programming requests misclassified as general conversation, skipped verification or required review, and pending task state lost during a conversational detour. Record observed regressions with concrete evidence and correct the applicability decision; do not weaken coding requirements or add routine ceremony to general questions. Treat the quality impact as unverified until actual usage provides evidence.
+  Scope: All interactive coding work in any app, including cloud and resumed sessions and dispatched coding subagents. General non-coding questions skip this procedure. Preserve the existing non-interactive exception when no user turn follows an invocation (`codex exec` and `claude -p` with a supplied prompt); this exception skips initialization, not the rules applicable to the coding task.
   Enforcement: manual
 
 R-002: Load the shared context files mandated by R-001 at every session start R-001 applies to; run steps in parallel where possible.

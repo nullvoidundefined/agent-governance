@@ -8,9 +8,19 @@ The canonical rule file, loaded into every session. One norm line per rule; the 
 
 Project-level `CLAUDE.md` adds guidance but does not override these unless it explicitly says so.
 
+## Applicability: coding work, in every app
+
+Classify the current request before invoking governance procedures. Apply governance to all coding work in any app, including ChatGPT, Claude, Claude Code, Codex, and Cursor: writing or explaining code, programming questions, debugging, repository investigation, software design, tests, reviews, deployment, development tooling, and changes to governance itself. A short or easy coding request is still governed; apply each rule only when its own conditions are met.
+
+Answer ordinary non-coding questions directly. Do not invoke session/task skills, read governance or project files, inspect Git, create tickets or branches, announce tiers or progress, run tests, or produce commits or handoffs solely because governance is loaded. Do not apply the coding rulebook's presentation conventions to those answers. Use this exception only for general conversation, not to relabel coding work or suppress requirements on a pending coding task.
+
+For mixed requests, apply governance to the coding portion. When coding begins later, complete R-001 before that work; reuse still-valid context if already initialized. A general-question detour does not reset task state, test locks, verification, or approvals. Resolve ambiguity from the request and conversation; clarify only when necessary before acting. The app name and an open repository alone do not make a question coding work.
+
+Keep secrets, trust, authorization, destructive-action protections, and higher-priority instructions in force for every actual action. This scope rule does not disable, bypass, or weaken any hook, gate, or safety requirement. Automatic startup context may still load; its presence does not require additional workflow for a general question.
+
 ## Session init (R-0xx)
 
-R-001: Run the session-start procedure before any other work: (1) confirm the SessionStart hook injected `~/.claude/global-memory/INDEX.md` and the SHA-verified `docs/session-handoff/session-handoff.md`; Read either only if its block is absent; (2) classify the session type per `rules/session-types.md`; (3) read that type's Tier 2 files; (4) `git -C "$(cat ~/.claude/.sync-source)" status -s`, triage non-empty; (5) confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`), reading it only when absent from context; a repo with none lists `no project file` under Skipped; auto memory (`MEMORY.md`) loads on its own. First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. Re-read and re-declare on reclassification. Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent. [manual]
+R-001: Apply the applicability check first; run session-start before the first coding work in an interactive session: (1) confirm the SessionStart hook injected `~/.claude/global-memory/INDEX.md` and the SHA-verified `docs/session-handoff/session-handoff.md`; Read either only if its block is absent; (2) classify the coding session type per `rules/session-types.md`; (3) read that type's Tier 2 files; (4) `git -C "$(cat ~/.claude/.sync-source)" status -s`, triage non-empty; (5) confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`), reading it only when absent from context; a repo with none lists `no project file` under Skipped; auto memory (`MEMORY.md`) loads on its own. First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. Re-read and re-declare on coding-session reclassification. Skip for general non-coding questions and when no user turn follows the invocation (`codex exec` and `claude -p` with a supplied prompt). Apply to interactive coding work in cloud and resumed sessions and to dispatched coding subagents; if local context is unavailable, state that briefly and apply the rules that can be satisfied without fabricating reads. [manual]
 R-002: Load the R-001 files at every session start R-001 applies to; run the reads in parallel where possible. [manual]
 R-003: Run every session under the synced harness: at SessionStart the live `~/.claude` is synced from the agent-governance checkout when it is absent or differs (cloud containers included; `rsync` is installed there when missing), and a session that cannot reach a checkout says so once and treats every rule as manual. [hook:harness-sync]
 
@@ -149,14 +159,16 @@ Read on demand:
 
 # Session Types
 
-Classify the session from the user's first message. Ambiguous or mixed: load the superset.
+Apply the applicability section in `CLAUDE.md` before selecting a session type. All coding work in any app activates governance, including programming questions and code explanations. For an ordinary non-coding question, answer directly without selecting a development type or loading Tier 2 files.
+
+Classify the coding work from the current request and relevant conversation context. For mixed requests, govern only the coding portion. For multiple coding types, load the required superset. If coding begins later in the conversation, run R-001 before starting it; reuse already initialized, still-valid context.
 
 | Session type | Trigger signals | Load |
 |---|---|---|
 | `feature` | Building UI, adding endpoint, writing component, adding flow | core only |
 | `bugfix` | Fixing bug, failing test, regression | core only |
 | `refactor` | Restructuring code without changing behavior | core only |
-| `exploration` | Reading code, answering questions, research, no writes | core only |
+| `exploration` | Reading code, answering programming questions, software research, no writes | core only |
 | `planning` | Designing feature, writing spec or plan | core + cost |
 | `multi-agent` | Dispatching subagents, parallel worktrees, multi-repo | core + agents + cost |
 | `audit` | Running engineering, security, criticism, or other audit | core + audits |

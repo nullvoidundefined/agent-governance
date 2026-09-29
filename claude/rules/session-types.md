@@ -1,13 +1,15 @@
 # Session Types
 
-Classify the session from the user's first message. Ambiguous or mixed: load the superset.
+Apply the applicability section in `CLAUDE.md` before selecting a session type. All coding work in any app activates governance, including programming questions and code explanations. For an ordinary non-coding question, answer directly without selecting a development type or loading Tier 2 files.
+
+Classify the coding work from the current request and relevant conversation context. For mixed requests, govern only the coding portion. For multiple coding types, load the required superset. If coding begins later in the conversation, run R-001 before starting it; reuse already initialized, still-valid context.
 
 | Session type | Trigger signals | Load |
 |---|---|---|
 | `feature` | Building UI, adding endpoint, writing component, adding flow | core only |
 | `bugfix` | Fixing bug, failing test, regression | core only |
 | `refactor` | Restructuring code without changing behavior | core only |
-| `exploration` | Reading code, answering questions, research, no writes | core only |
+| `exploration` | Reading code, answering programming questions, software research, no writes | core only |
 | `planning` | Designing feature, writing spec or plan | core + cost |
 | `multi-agent` | Dispatching subagents, parallel worktrees, multi-repo | core + agents + cost |
 | `audit` | Running engineering, security, criticism, or other audit | core + audits |
