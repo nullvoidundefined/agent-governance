@@ -187,6 +187,38 @@ ln -s "$OUTSIDE_LEDGER" "$LEDGER"
 check_all_remind "symlinked fast ledger pointing outside the repository"
 rm -f "$LEDGER"
 
+# A .claude entry that is itself a symlink is not the owner's session opt-in,
+# even when the ledger reached through it is a regular fast-lane file.
+# Form (a): a relative .claude -> ledgers symlink committed with its target.
+rm -rf "$REPO/.claude"
+mkdir -p "$REPO/ledgers"
+printf '{"branch":"feat/q","lane":"fast"}\n' > "$REPO/ledgers/task-tier.json"
+ln -s ledgers "$REPO/.claude"
+git -C "$REPO" add -f .claude ledgers/task-tier.json
+git -C "$REPO" commit -qm "track symlinked claude dir"
+check "committed .claude symlink resolves to a regular fast ledger" \
+  test -f "$LEDGER" -a ! -L "$LEDGER" -a -L "$REPO/.claude"
+SFF_BASE=HEAD~2 check_all_remind "committed .claude symlink to an in-repository fast ledger"
+git -C "$REPO" reset -q --hard HEAD~1
+rm -rf "$REPO/.claude" "$REPO/ledgers"
+mkdir -p "$REPO/.claude"
+check "committed .claude symlink case restored the sandbox history" \
+  test "$(git -C "$REPO" log -1 --format=%s)" = "add voices"
+
+# Form (b): an untracked .claude symlink to a directory outside the repository.
+OUTSIDE_CLAUDE_DIR="$SB/outside-claude-dir"
+mkdir -p "$OUTSIDE_CLAUDE_DIR"
+printf '{"branch":"feat/q","lane":"fast"}\n' > "$OUTSIDE_CLAUDE_DIR/task-tier.json"
+rm -rf "$REPO/.claude"
+ln -s "$OUTSIDE_CLAUDE_DIR" "$REPO/.claude"
+check "untracked .claude symlink resolves to a regular fast ledger" \
+  test -f "$LEDGER" -a ! -L "$LEDGER" -a -L "$REPO/.claude"
+check_all_remind "untracked .claude symlink to an outside directory holding the fast ledger"
+rm -f "$REPO/.claude"
+mkdir -p "$REPO/.claude"
+check "untracked .claude symlink case restored a real .claude directory" \
+  test -d "$REPO/.claude" -a ! -L "$REPO/.claude"
+
 # A relative path starting with a dash resolves as a path: the nested
 # repository at -nested/ has no ledger, so the outer fast lane must not apply.
 set_ledger fast
