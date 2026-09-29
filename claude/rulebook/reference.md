@@ -310,10 +310,15 @@ R-315: Name files for their specific responsibility, not the shortest available 
   Spec: prefer `generatePublicNote.ts` to `generate.ts`, `voiceFingerprintSchema.ts` to `schema.ts`, `parseIdParam.ts` to `parse.ts`.
   Enforcement: judge
 
-R-316: Name functions verb + noun, or verb + adjective + noun; the noun is mandatory and names the domain entity the function acts on or returns.
+R-316: Name functions with a canonical verb, domain noun, and result noun when the returned representation matters; use adjectives to qualify those nouns.
   Scope: extends R-315.
   Spec:
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
+  - Select verbs from the finite `verbs` set in `enforce/lexicon.json` and apply their `verbMeanings`. Do not invent a synonym because it sounds natural. Request an explicit registry change when no approved operation fits; preserve framework-required external names at their integration boundary.
+  - Use `get` for local retrieval, including read-only derived views; use `fetch` for remote retrieval. Preserve the layer-specific `load` rules below. Do not name resource creation or caller-owned state mutation as retrieval merely because the function returns a value.
+  - Use `format` to change the representation of an input string; JavaScript strings remain immutable, so return the changed string. Use `getFormattedCardString` when retrieving a card's textual representation from a Card object. Use `parse` to interpret a string's syntax or meaning, rather than to change its display format.
+  - Use `create` when introducing a domain entity or resource that does not yet exist, `update` when changing an existing entity or replacing its state, and `delete` when removing an existing entity or resource. Use `save` for persistence when create-versus-update is intentionally unspecified. Name DOM allocation `createSpanElement` and a DOM change `updateElementText`.
+  - Name the returned representation when the domain noun alone is ambiguous: `getFormattedCardString`, `getFormattedGameString`, `getGameResultDescription`, and `getBestHandResult`. Keep already complete domain names such as `getGameView`; do not append generic `Object`, `Data`, or `Result` to every function. Match a single-function module's filename to its exported function.
   - One verb lexicon across the codebase, with the synonyms bound to a layer rather than left to taste (tightened 2026-09-04: four interchangeable read verbs is a four-way drift surface, and the R-304/R-305 directory is what makes "remote" versus "in memory" decidable from the path instead of from intent).
     <!-- lexicon:begin -->
     <!-- Generated from enforce/lexicon.json by render-lexicon-spec.mjs. Do not hand-edit: change the registry and run --write. -->
@@ -325,7 +330,7 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
   - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/render-lexicon-spec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
-  Enforcement: eslint:naming-lexicon (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
+  Enforcement: eslint:naming-lexicon (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for verb meaning, creation versus retrieval or mutation, result-noun completeness, and whether the lexicon carves the domain well. The linter does not prove a function's semantic intent merely by accepting its prefix.
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.
   Spec:
