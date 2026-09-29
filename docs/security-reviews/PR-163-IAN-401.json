@@ -3,8 +3,8 @@
   "ticket": "IAN-401",
   "reviewer": "security-reviewer subagent",
   "model": "claude-fable-5-1",
-  "reviewedCode": "a60c02c9e7729e5884c990a9137224b8728ef62f",
-  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds hooks/build-lane-quiet.sh and an early exit in the six reminder-only hooks; the detector flagged it through the hooks path. Five findings, all fixed in cf4fa64 with a failing test first; a confirming review of the head that adds this file follows.",
+  "reviewedCode": "8a0bdf58c31b574685bcc1c6b340d0f90060cc6f",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range adds hooks/build-lane-quiet.sh and an early exit in the six reminder-only hooks; the detector flagged it through the hooks path. The first review (a60c02c) raised findings 1 to 5, fixed in cf4fa64; the confirming review (8a0bdf5) verified them and raised 6, fixed in 86f4791 with a failing test first; a confirming review of the head that adds this revision follows.",
   "findings": [
     {
       "id": 1,
@@ -40,6 +40,13 @@
       "control": "no blocking hook sources the helper",
       "finding": "no static check that only the six reminder hooks reference the helper",
       "status": "fixed cf4fa649017e213c4be03a6daf4549e220b85ce8"
+    },
+    {
+      "id": 6,
+      "severity": "LOW",
+      "control": "ledger provenance (symlinked .claude directory)",
+      "finding": "a committed or untracked symlink for the .claude directory let a regular ledger file behind it silence the reminders",
+      "status": "fixed 86f47916264e6a07913636cd5a630f526bf78e38"
     }
   ]
 }
