@@ -10,8 +10,9 @@
 # (a file, a directory, or a path not yet written) has an untracked, regular
 # .claude/task-tier.json that parses as one JSON object, names the checked-out
 # branch, and records lane "fast"; returns 1 otherwise, so any doubt keeps the
-# reminder. A committed or symlinked ledger is not the owner's opt-in for this
-# checkout, so it never silences anything.
+# reminder. A committed ledger, a symlinked ledger, or a ledger reached through
+# a symlinked .claude directory is not the owner's opt-in for this checkout, so
+# it never silences anything.
 is_reminder_quiet() {
   local probe="$1" top branch
   [ -n "$probe" ] || return 1
@@ -23,6 +24,7 @@ is_reminder_quiet() {
   top=$(git -C "$probe" rev-parse --show-toplevel 2>/dev/null) || return 1
   branch=$(git -C "$top" symbolic-ref --quiet --short HEAD 2>/dev/null) || return 1
   [ -s "$top/.claude/task-tier.json" ] || return 1
+  [ -L "$top/.claude" ] && return 1
   [ -L "$top/.claude/task-tier.json" ] && return 1
   git -C "$top" ls-files --error-unmatch -- .claude/task-tier.json >/dev/null 2>&1 && return 1
   jq -es --arg b "$branch" 'length == 1 and (.[0] | type) == "object" and .[0].branch == $b and .[0].lane == "fast"' \
