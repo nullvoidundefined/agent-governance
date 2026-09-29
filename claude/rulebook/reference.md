@@ -10,17 +10,22 @@ Blocks: R-0xx session init | R-1xx secrets & trust | R-2xx conduct & output | R-
 
 ## Session init (R-0xx)
 
-R-001: Run the session-start procedure before any other work.
+R-001: Apply the canonical applicability check first; run session-start before the first coding work in an interactive session.
   Spec:
+  - Classify the current request using the applicability section in `CLAUDE.md` before any procedural reads or announcements. All coding work is in scope regardless of app, including simple programming questions, code explanations, read-only repository work, and governance changes. Ordinary non-coding questions do not trigger this procedure or the development lifecycle.
   1. Confirm the SessionStart hook (`hooks/session-start.sh`) injected `~/.claude/global-memory/INDEX.md` and the SHA-verified project handoff; Read either only when its block is absent from the injected context (`lesson_no_reread_auto_injected_context.md`). Auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`, first 200 lines) loads on its own and is re-injected after compaction.
-  2. Read `~/.claude/rules/session-types.md`; classify the session type from the user's first message.
+  2. Read `~/.claude/rules/session-types.md`; classify the session type from the coding request and its relevant conversation context.
   3. Read Tier 2 files for that session type per the session-types load map.
   4. Run `git -C "$(cat ~/.claude/.sync-source)" status -s`; triage non-empty (`~/.claude` is a sync target of the agent-governance repo, not a git repo itself).
   5. Read `docs/session-handoff/session-handoff.md` if present; verify the last-commit SHA against `git log`.
   6. Confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`); Read it only when its content is absent from the injected context. A repo with none lists `no project file` under Skipped, and the procedure continues.
   - First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`.
-  - On reclassification: re-read files and update the declaration.
-  Scope: Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent.
+  - On coding-session reclassification: read the newly required files and update the declaration. Reuse already loaded, still-valid context; a general-question detour does not reset initialized state or waive an existing coding task's obligations.
+  - If coding begins after general conversation, initialize before the coding work. For a mixed request, govern the coding portion. Do not create a general-question ticket, task tier, branch, test run, or handoff merely to record that the request is outside scope.
+  - In an app without local filesystem or tool access, state unavailable coding context briefly and apply the relevant rules that can be satisfied. Never claim a read, test, or gate passed when it could not be performed.
+  - Leave action protections, hook registration, automatic startup context, approvals, and test locks intact. Scope the model's procedural work; do not introduce an exemption flag that changes enforcement.
+  - Monitor this scope change during existing coding reviews and session handoffs for any reduction in coding quality. Watch for programming requests misclassified as general conversation, skipped verification or required review, and pending task state lost during a conversational detour. Record observed regressions with concrete evidence and correct the applicability decision; do not weaken coding requirements or add routine ceremony to general questions. Treat the quality impact as unverified until actual usage provides evidence.
+  Scope: Apply only to coding work in any app. Within that scope: Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent. General non-coding questions skip this procedure. Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. This exception skips initialization, not the rules applicable to the coding task.
   Enforcement: manual
 
 R-002: Load the shared context files mandated by R-001 at every session start R-001 applies to; run steps in parallel where possible.
@@ -310,10 +315,15 @@ R-315: Name files for their specific responsibility, not the shortest available 
   Spec: prefer `generatePublicNote.ts` to `generate.ts`, `voiceFingerprintSchema.ts` to `schema.ts`, `parseIdParam.ts` to `parse.ts`.
   Enforcement: judge
 
-R-316: Name functions verb + noun, or verb + adjective + noun; the noun is mandatory and names the domain entity the function acts on or returns.
+R-316: Name functions with a canonical verb, domain noun, and result noun when the returned representation matters; use adjectives to qualify those nouns.
   Scope: extends R-315.
   Spec:
   - No bare verb-adjective: write `dropProcessedJobs`, `selectScorableJobs`, not `dropHandled`, `selectScorable`.
+  - Select verbs from the finite `verbs` set in `enforce/lexicon.json` and apply their `verbMeanings`. Do not invent a synonym because it sounds natural. Request an explicit registry change when no approved operation fits; preserve framework-required external names at their integration boundary.
+  - Use `get` for local retrieval, including read-only derived views; use `fetch` for remote retrieval. Preserve the layer-specific `load` rules below. Do not name resource creation or caller-owned state mutation as retrieval merely because the function returns a value.
+  - Use `format` to change the representation of an input string; JavaScript strings remain immutable, so return the changed string. Use `getFormattedCardString` when retrieving a card's textual representation from a Card object. Use `parse` to interpret a string's syntax or meaning, rather than to change its display format.
+  - Use `create` when introducing a domain entity or resource that does not yet exist, `update` when changing an existing entity or replacing its state, and `delete` when removing an existing entity or resource. Use `save` for persistence when create-versus-update is intentionally unspecified. Name DOM allocation `createSpanElement` and a DOM change `updateElementText`.
+  - Name the returned representation when the domain noun alone is ambiguous: `getFormattedCardString`, `getFormattedGameString`, `getGameResultDescription`, and `getBestHandResult`. Keep already complete domain names such as `getGameView`; do not append generic `Object`, `Data`, or `Result` to every function. Match a single-function module's filename to its exported function.
   - One verb lexicon across the codebase, with the synonyms bound to a layer rather than left to taste (tightened 2026-09-04: four interchangeable read verbs is a four-way drift surface, and the R-304/R-305 directory is what makes "remote" versus "in memory" decidable from the path instead of from intent).
     <!-- lexicon:begin -->
     <!-- Generated from enforce/lexicon.json by render-lexicon-spec.mjs. Do not hand-edit: change the registry and run --write. -->
@@ -325,7 +335,7 @@ R-316: Name functions verb + noun, or verb + adjective + noun; the noun is manda
   - Booleans take `is`/`has`/`can`/`should`; mapper functions may use the `toX` form.
   - Exception (Ruby): predicate methods end in `?` (`expired?`, `admin?`), the community idiom; never `is_expired`. Go keeps the prefixes (`IsExpired`, `HasAccess`).
   - The lexicon above is encoded as data in `enforce/lexicon.json` (approved verbs, banned synonyms with their canonical replacement, boolean prefixes) so it is decided by set membership rather than recall. A repo opts in with a `naming` key in `.enforce.json`, replaces any list outright, or adds to one through `naming.extend`. A `naming.glossary` additionally constrains the head noun to declared domain terms (R-330), which is what stops a synonym drifting in. The enumerated sets above are generated from that registry by `enforce/render-lexicon-spec.mjs` and checked by `lexicon-spec-sync.test.sh`, so the two cannot drift apart; change `lexicon.json` and run `--write`.
-  Enforcement: eslint:naming-lexicon (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for the residue, above all whether the lexicon carves the domain well
+  Enforcement: eslint:naming-lexicon (registry-backed, opt-in per repo; decides verb membership, the mandatory noun, banned synonyms, boolean prefixes, and the glossary head noun); judge for verb meaning, creation versus retrieval or mutation, result-noun completeness, and whether the lexicon carves the domain well. The linter does not prove a function's semantic intent merely by accepting its prefix.
 
 R-317: Name variables descriptively; never abbreviate where the full word reads clearly, and optimize for readability over brevity.
   Spec:
@@ -355,8 +365,17 @@ R-319: Export exactly one public function per module across the `services/`, `ap
   - Constants and types are not behavior and never share a function's file; extract them per R-307.
   Enforcement: eslint:one-export-per-file
 
-R-320: Write a file-level header comment on every new source file stating what the module provides and why it exists.
-  Scope: TypeScript/JavaScript `/** */` block; Python module docstring. Skip for test files, `.d.ts` declarations, barrel files, single-constant files, and pure type re-exports. File-level headers are required even where comments are otherwise minimal.
+R-320: Comment all frontend and backend code clearly and thoroughly so a reader can understand its purpose, behavior, and reasoning without reconstructing them from the implementation.
+  Scope: All languages and application layers, including UI components, browser interactions, styles with non-obvious layout constraints, server handlers, services, persistence, background work, and build or operational scripts. Apply the requirement to new code and code being changed; bring existing code into compliance when it is explicitly reviewed for commenting.
+  Spec:
+  - Start each source module with a comment explaining what it provides and why it exists. Use a TypeScript/JavaScript `/** */` block or the language's equivalent, such as a Python module docstring. Tests, `.d.ts` declarations, barrels, single-constant files, and pure re-exports are exempt only from the mandatory file header, not from explaining non-obvious behavior.
+  - Document each meaningful function, method, component, or class at its declaration. Explain its responsibility and contract: the inputs and returned values, units or representation when relevant, state ownership, mutation or other side effects, and expected errors or preconditions. Avoid repeating information already stated clearly by types; explain what the types cannot express.
+  - For a function longer than roughly ten lines of implementation, generally provide a comprehensive plain-English explanation of what it does and the steps it takes, in execution order. Introduce the inputs and intended outcome, then describe the meaningful stages and why they occur in that order; use a numbered list when it makes the sequence easier to follow. Apply the same depth to shorter functions whose reasoning is complex. Treat ten lines as a review prompt, not a loophole or a mechanical proof of complexity; splitting a function into small helpers does not remove the need to explain the overall operation.
+  - Add comments beside non-obvious algorithms, branching decisions, state transitions, invariants, boundary cases, ordering requirements, and performance or security constraints. Explain why the approach is necessary and what would break if a reader changed it without preserving the constraint.
+  - For frontend code, explain interaction behavior, state updates, asynchronous effects and cleanup, accessibility decisions, and significant layout constraints where they occur. For backend code, explain validation, authorization, data consistency, transaction boundaries, retries, and failure handling where applicable. Apply the same standard of clarity and depth to both.
+  - Write complete, specific explanations that introduce the relevant domain concepts. Provide enough detail for a developer unfamiliar with the module to follow the behavior without consulting the original author or conversation. A short file header alone does not satisfy this requirement for a module with substantial logic.
+  - Scale detail to the behavior. Do not narrate obvious syntax, duplicate every line, or add boilerplate sections with no useful information. Keep comments adjacent to the code they explain and update or remove them in the same change when behavior changes (R-332).
+  - Review explanation quality and completeness manually. Existing header checks establish only that a leading comment exists; they do not establish that the code is thoroughly explained. Do not substitute comment counts or coverage percentages for this review.
   Enforcement: eslint:file-header-comment, opt-in per repo via `fileHeaders: true` in `.enforce.json` (decides that a leading comment exists; accepts a line or block comment, matching hooks/new-file-header-reminder.sh so the two enforcers of this rule agree on scope). Opt-in rather than default because turning it on is a repo-wide adoption with a large baseline, and the exemption list varies by codebase; pair it with ratchet.mjs to grandfather existing files. hook:new-file-header-reminder stays as the always-on advisory nudge at write time; judge for whether the header says anything useful; hook:new-file-header-reminder (advisory)
 
 R-321 [ts]: Order TypeScript/JavaScript files top to bottom: imports, types, constants, primary export, helpers.
