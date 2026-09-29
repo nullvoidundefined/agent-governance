@@ -312,6 +312,40 @@ expect_marked "exclude list added only at the head" "$REPO" "$BASE" CLAUDE_SEMGR
 expect_hits "exclude list added only at the head" $'.enforce.json:0 path\ndocs/auth-session.md:0 path' \
   "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 
+# The agent-governance checkout's own list excludes prose Markdown and nothing
+# a session or a gate reads: every path below carries a content trigger, so a
+# path the list covers prints no hit and a path it leaves alone prints one. A
+# later edit widening the list (back to docs/**, say) turns this red rather
+# than depending on a reviewer to notice (IAN-480). The installed copy under
+# ~/.claude has no repository root, so the check runs only in a checkout,
+# which sync.sh at the root identifies, and a checkout missing the list fails.
+REPOSITORY_ROOT="$(cd "$CLAUDE_HARNESS_ROOT/.." && pwd)"
+if [ -f "$REPOSITORY_ROOT/sync.sh" ]; then
+  if [ -f "$REPOSITORY_ROOT/.enforce.json" ]; then
+    REPO=$(new_repo exclude-shipped-list)
+    write_file "$REPO" .enforce.json "$(cat "$REPOSITORY_ROOT/.enforce.json")"
+    commit_all "$REPO" "copy the shipped exclude list"
+    BASE=$(head_of "$REPO")
+    covered_paths="README.md RECIPES.md docs/audits/2026-01-01-engineering.md docs/prs/PR-1.md docs/tickets/IAN-1.md docs/model-targets.md"
+    surface_paths="docs/session-handoff/session-handoff.md docs/security-reviews/PR-1.json docs/slices/slice-01-plan.md docs/audits/run.sh docs/prs/check.py claude/README.md claude/CLAUDE.md claude/agents/reviewer.md claude/prompts/review.md"
+    for shipped_path in $covered_paths $surface_paths; do
+      write_file "$REPO" "$shipped_path" $'Cookies are set with SameSite=Strict.\n'
+    done
+    commit_all "$REPO" "mention a cookie control in every shipped path"
+    shipped_hits=$(run_detector list_security_surface_hits "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB")
+    for shipped_path in $covered_paths; do
+      printf '%s\n' "$shipped_hits" | grep -q "^$shipped_path:" \
+        && report_failure "shipped exclude list: $shipped_path is prose and must be excluded, but it was marked"
+    done
+    for shipped_path in $surface_paths; do
+      printf '%s\n' "$shipped_hits" | grep -q "^$shipped_path:" \
+        || report_failure "shipped exclude list: $shipped_path must stay on the security surface, but it was excluded"
+    done
+  else
+    report_failure "shipped exclude list: $REPOSITORY_ROOT/.enforce.json is missing from the checkout"
+  fi
+fi
+
 # --- 6. The exclude list is protected (B-8, R-410) ---------------------------
 GUARD_REPO=$(new_repo guard)
 GUARD_HOME=$(mktemp -d "$WORK/home.XXXXXX")
