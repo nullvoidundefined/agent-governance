@@ -219,6 +219,46 @@ mkdir -p "$REPO/.claude"
 check "untracked .claude symlink case restored a real .claude directory" \
   test -d "$REPO/.claude" -a ! -L "$REPO/.claude"
 
+# On a case-insensitive filesystem (macOS APFS, where git sets
+# core.ignorecase=true), a fast ledger committed under a case variant of the
+# ledger path is the file the helper opens as .claude/task-tier.json, yet it is
+# repository content rather than the owner's session opt-in, so every reminder
+# still prints. On a case-sensitive filesystem the variant is a different file
+# the helper never opens, so these assertions are skipped.
+: > "$SB/CaseProbe"
+if [ -e "$SB/caseprobe" ]; then IS_CASE_INSENSITIVE_FS=1; else IS_CASE_INSENSITIVE_FS=0; fi
+rm -f "$SB/CaseProbe"
+check_case_variant_ledger() { # check_case_variant_ledger <directory-name> <file-name>
+  local variant_dir="$1" variant_file="$2"
+  rm -rf "$REPO/.claude"
+  mkdir -p "$REPO/$variant_dir"
+  printf '{"branch":"feat/q","lane":"fast"}\n' > "$REPO/$variant_dir/$variant_file"
+  git -C "$REPO" add -f -- "$variant_dir/$variant_file"
+  git -C "$REPO" commit -qm "track case-variant ledger"
+  check "committed $variant_dir/$variant_file is tracked under that exact case" \
+    test "$(git -C "$REPO" ls-files -- "$variant_dir/$variant_file")" = "$variant_dir/$variant_file"
+  check "committed $variant_dir/$variant_file leaves a clean working tree" \
+    test -z "$(git -C "$REPO" status --porcelain)"
+  check "committed $variant_dir/$variant_file is reachable as the ledger path" \
+    test -f "$LEDGER" -a ! -L "$LEDGER"
+  SFF_BASE=HEAD~2 check_all_remind "committed case-variant fast ledger $variant_dir/$variant_file"
+  git -C "$REPO" reset -q --hard HEAD~1
+  rm -rf "$REPO/$variant_dir" "$REPO/.claude"
+  mkdir -p "$REPO/.claude"
+  check "case-variant $variant_dir/$variant_file case restored the sandbox history" \
+    test "$(git -C "$REPO" log -1 --format=%s)" = "add voices"
+  check "case-variant $variant_dir/$variant_file case restored a lowercase .claude directory" \
+    bash -c 'ls -a "$1" | grep -qx "\.claude" && [ -d "$1/.claude" ] && [ ! -L "$1/.claude" ]' _ "$REPO"
+}
+if [ "$IS_CASE_INSENSITIVE_FS" -eq 1 ]; then
+  check "git records core.ignorecase=true in the sandbox repository" \
+    test "$(git -C "$REPO" config --bool core.ignorecase)" = "true"
+  check_case_variant_ledger ".Claude" "task-tier.json"
+  check_case_variant_ledger ".claude" "Task-Tier.json"
+else
+  echo "PASS: SKIP: case-insensitive filesystem only (committed .Claude/task-tier.json and .claude/Task-Tier.json ledgers)"
+fi
+
 # A relative path starting with a dash resolves as a path: the nested
 # repository at -nested/ has no ledger, so the outer fast lane must not apply.
 set_ledger fast
