@@ -34,6 +34,7 @@
 !/agents/test-author.toml
 !/hooks.json
 !/hooks/
+!/hooks/approval-state.py
 !/hooks/codex-hook-adapter.sh
 !/skills/
 !/skills/add-stack-track/

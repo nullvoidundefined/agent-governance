@@ -50,7 +50,8 @@ function buildHookEntry(group, settingsHooks, portMap) {
 // renderHooksConfig(settingsHooks, portMap) -> { path: "hooks.json", content
 // }: one adapter entry per event+matcher group that has at least one ported
 // hook. Events whose port-map translation is null are skipped outright; an
-// event that ends up with no surviving groups never appears in the output.
+// event that ends up with no surviving groups never appears in the output,
+// except UserPromptSubmit, which also drives the adapter's approval state.
 export function renderHooksConfig(settingsHooks, portMap) {
   const hooks = {};
   for (const [event, groups] of Object.entries(settingsHooks)) {
@@ -61,6 +62,12 @@ export function renderHooksConfig(settingsHooks, portMap) {
       if (entry) (hooks[translatedEvent] ??= []).push(entry);
     }
   }
+  // The adapter owns consent handling, so it needs prompt events even when
+  // canonical settings register no prompt hooks. Append a separate listener
+  // to preserve every existing group's command, timeout, and status message.
+  (hooks.UserPromptSubmit ??= []).push({
+    hooks: [{ type: "command", command: ADAPTER_COMMAND }],
+  });
   const content = `${JSON.stringify({ description: HOOKS_JSON_DESCRIPTION, hooks }, null, 2)}\n`;
   return { path: "hooks.json", content };
 }

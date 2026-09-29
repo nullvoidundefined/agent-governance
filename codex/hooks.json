@@ -122,6 +122,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh"
+          }
+        ]
+      }
     ]
   }
 }

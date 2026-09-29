@@ -3,7 +3,7 @@
 #
 # Runs the Claude Code hooks under OpenAI Codex. Codex's hooks.json uses the
 # same schema, events, stdin fields, and stdout fields as Claude Code, so
-# nearly every hook could be wired directly. Four things differ, and this
+# nearly every hook could be wired directly. Five things differ, and this
 # adapter is where they are handled so the hook scripts stay untouched:
 #
 #   1. File edits arrive as one apply_patch call whose tool_input.command is
@@ -19,10 +19,14 @@
 #      with protected-path-guard never seeing it.
 #   2. Codex rejects permissionDecision "ask" (and "allow"). A hook that asks
 #      for confirmation is translated per CLAUDE_CODEX_ASK_POLICY:
-#        deny  (default) the call is denied with the hook's reason and a note
-#                        that the user runs it themselves after confirming
-#        allow           the call proceeds and the reason is injected as
-#                        additionalContext telling the model to confirm first
+#        deny  (default) literal MCP calls may consume exact, single-use
+#                        consent recorded by a runtime UserPromptSubmit event;
+#                        Bash and apply_patch asks remain denied
+#        allow           the legacy call proceeds and the reason is injected
+#                        as additionalContext telling the model to confirm first
+#      Scoped consent requires runtime identity and a private state directory
+#      outside sandbox write roots. Synthetic fixtures do not prove that a
+#      particular runtime supplies authenticated prompt events.
 #   3. The Bash(...) deny and ask rules of ~/.claude/settings.json are
 #      evaluated on PreToolUse Bash, since Codex does not read that file. The
 #      matching lives in ~/.claude/enforce/settings-permission-rules.sh, which
@@ -65,16 +69,18 @@
 # the Codex hook payload; stdout is the merged decision in Claude Code's
 # hookSpecificOutput / decision shape, which Codex parses as is.
 #
-# Fail open: any adapter fault answers nothing (the call proceeds). The one
-# deliberate exception is the permission layer above, which fails closed: an
-# adapter that cannot evaluate the deny rules has not decided that the command
-# is safe, it has only lost the ability to say otherwise.
+# Ordinary adapter faults retain the historical fail-open behavior. Permission
+# mirroring and scoped consent fail closed: unavailable policy or approval
+# state cannot establish authorization. A hard deny is never overridden.
 # Debug: CLAUDE_CODEX_HOOK_DEBUG=1 logs every payload and hook output to
 # ~/.claude/.codex-hook-state/debug.log.
 
 set -uo pipefail
 
 HOOK_NAMES=("$@")
+# Resolve the sibling before dispatch changes to the tool working directory.
+APPROVAL_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/approval-state.py"
+ASK_DECISIONS='[]'
 # The runtime marker of header item 5, exported so every hook child inherits
 # it through both dispatch paths. Set here rather than per dispatch so a hook
 # added to any matcher is marked without a second place to remember. Assigned,
@@ -216,6 +222,9 @@ run_hooks() {
   shift
   for name in "$@"; do
     run_hook "$name" "$payload"
+    if [ "$(json_field "$HOOK_OUT" '.hookSpecificOutput.permissionDecision')" = "ask" ]; then
+      ASK_DECISIONS=$(printf '%s' "$ASK_DECISIONS" | jq --arg hook "$name" --argjson output "$HOOK_OUT" '. + [{hook:$hook, decision:"ask", reason:($output.hookSpecificOutput.permissionDecisionReason // "")}]')
+    fi
     absorb_decision
   done
 }
@@ -556,12 +565,56 @@ replay_shell_writes() {
 
 # --- output in Codex's (Claude Code's) shape ---------------------------------------
 
+# Submit the actual event and structured asking-hook records to the private
+# state helper. Permission requires a successful process and explicit true;
+# missing helpers, malformed output, and state failures never become consent.
+resolve_scoped_approval() {
+  local result payload group request_id
+  APPROVAL_MESSAGE="Scoped approval state or runtime identity is unavailable; this call remains denied."
+  group=$(printf '%s\n' "${HOOK_NAMES[@]+"${HOOK_NAMES[@]}"}" | jq -Rsc 'split("\n")[:-1]')
+  payload=$(jq -nc --argjson event "$INPUT" --argjson group "$group" --argjson decisions "$ASK_DECISIONS" --arg decision "$WORST" '{event:$event,group:$group,decisions:$decisions,decision:$decision}') || return 1
+  # The deadline lives outside the helper so a broken or replaced helper cannot
+  # hang approval resolution. subprocess.run kills and reaps a timed-out child.
+  result=$(printf '%s' "$payload" | python3 -c '
+import subprocess
+import sys
+try:
+    result = subprocess.run([sys.executable, sys.argv[1]], input=sys.stdin.read(), text=True, capture_output=True, timeout=3, check=True)
+    print(result.stdout, end="")
+except (OSError, subprocess.SubprocessError):
+    sys.exit(1)
+' "$APPROVAL_HELPER" 2>/dev/null) || return 1
+  # Slurp first to reject a stream of responses; jq otherwise bases its exit
+  # status on the last document, which could conceal an earlier denial.
+  printf '%s' "$result" | jq -se 'length == 1 and (.[0] | type == "object" and (.permitted | type == "boolean"))' >/dev/null 2>&1 || return 1
+  if printf '%s' "$result" | jq -e '.permitted == true' >/dev/null 2>&1; then
+    return 0
+  fi
+  request_id=$(printf '%s' "$result" | jq -r '.request_id // empty')
+  if [[ "$request_id" =~ ^[a-f0-9]{64}$ ]]; then
+    APPROVAL_MESSAGE="This exact MCP action awaits runtime user consent. Reply approve $request_id to select this request; a bare approval works only when one request is pending."
+  else
+    APPROVAL_MESSAGE="No unused scoped consent matches this action and hook group. This call remains denied."
+  fi
+  return 1
+}
+
 emit_pre_tool_use() {
   local message
+  if [ "$WORST" = "deny" ] && [[ "$TOOL" == mcp__* ]]; then
+    resolve_scoped_approval || true
+  fi
   if [ "$WORST" = "ask" ]; then
     if [ "$ASK_POLICY" = "allow" ]; then
       CONTEXT=$(append_text "CONFIRM WITH THE USER BEFORE PROCEEDING (Claude Code would pause here for approval; Codex hooks cannot, so this call is running): $REASONS" "$CONTEXT")
       WORST="allow"
+    elif [[ "$TOOL" == mcp__* ]]; then
+      if resolve_scoped_approval; then
+        WORST="allow"
+      else
+        WORST="deny"
+        REASONS="$APPROVAL_MESSAGE $REASONS"
+      fi
     else
       WORST="deny"
       REASONS="Claude Code would ask for confirmation here; Codex hooks cannot pause for it, so the call is denied. $REASONS Ask the user; once they confirm, they run it themselves, or set CLAUDE_CODEX_ASK_POLICY=allow in Codex's environment to turn asks into context notes."
@@ -631,7 +684,12 @@ case "$EVENT" in
     run_all "$INPUT"
     emit_stop
     ;;
-  SessionStart | SessionEnd | PostCompact | UserPromptSubmit)
+  UserPromptSubmit)
+    resolve_scoped_approval || true
+    run_all "$INPUT"
+    emit_context_only "$EVENT"
+    ;;
+  SessionStart | SessionEnd | PostCompact)
     run_all "$INPUT"
     emit_context_only "$EVENT"
     ;;
