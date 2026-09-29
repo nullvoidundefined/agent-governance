@@ -9,10 +9,10 @@
 # The arguments go unchanged to the sibling security-ci-targets.sh, which
 # lists the scan targets. Their committed blobs at HEAD are exported into a
 # scratch directory one by one with `git cat-file blob`, so no .gitattributes
-# rule a PR adds can drop or change a target (B-37), every `.semgrepignore` the export carries is deleted and an
-# empty one written at its root, and Semgrep runs there with --no-git-ignore,
-# so no ignore file a PR supplies, and no default ignore list (tests/, for
-# one), can drop a target. The rules are the security rule pack in
+# rule a PR adds can drop or change a target (B-37). Every `.semgrepignore`
+# the export carries is deleted and an empty one written at its root, and
+# Semgrep runs there with --no-git-ignore, so no ignore file a PR supplies,
+# and no default ignore list (tests/, for one), can drop a target. The rules are the security rule pack in
 # enforce/semgrep/ plus each registry config in SECURITY_CI_REGISTRY_CONFIGS
 # (space-separated, default `p/default`), with --disable-nosem so a
 # `# nosemgrep` comment cannot silence a finding. The targets follow a `--`,

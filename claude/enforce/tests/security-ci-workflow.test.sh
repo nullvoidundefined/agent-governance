@@ -21,11 +21,11 @@
 # fixture sees that only the exact answers true and false reach GITHUB_OUTPUT.
 # The first step of the semgrep and languages jobs is an event allowlist
 # (B-29): its own `run` text is extracted and run under each event name. The
-# harness-fetch step (B-30) is
-# extracted and run against a stub `git` that logs every call, so the fixture
-# sees whether a refused repository or SHA ever reached a fetch, and that the
-# ancestry check against agent-governance `main` runs before the pinned commit
-# is fetched, except when agent-governance calls itself.
+# harness-fetch step (B-30) is extracted and run against a stub `git` that
+# logs every call, so the fixture sees whether a refused repository or SHA
+# ever reached a fetch, and that the ancestry check against agent-governance
+# `main` runs before the pinned commit is fetched, except when
+# agent-governance calls itself.
 #
 # Ruby's YAML 1.1 loader reads the bare key `on` as boolean true, so the
 # trigger map is read as `w[true] || w["on"]`. Ruby is required: when it is
