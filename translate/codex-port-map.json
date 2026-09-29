@@ -2,6 +2,7 @@
     "events": {
         "PreToolUse": "PreToolUse",
         "PostToolUse": "PostToolUse",
+        "UserPromptSubmit": "UserPromptSubmit",
         "SessionStart": "SessionStart",
         "SessionEnd": "SessionEnd",
         "Stop": "Stop",
@@ -23,6 +24,7 @@
     ],
     "hand_authored": [
         "hooks/codex-hook-adapter.sh",
+        "hooks/approval-state.py",
         "README.md",
         "skills/session-start/SKILL.md",
         "skills/session-handoff/SKILL.md"

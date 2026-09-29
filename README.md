@@ -455,6 +455,13 @@ through an adapter. The Codex CLI reaches it through `codex/hooks/codex-hook-ada
 replays each `apply_patch` as the file edits the gates read and translates the decisions back into
 Codex's shape.
 
+For literal MCP calls, the Codex adapter can consume a direct user approval for one
+identical retry. The generated prompt hook records scoped consent in private runtime
+state, and all original guards run again before the retry proceeds. This requires a
+runtime whose sandbox protects that state from ordinary tools; Bash and file-edit
+asks keep their existing policy. The [Codex port guide](codex/README.md#scoped-approval-for-mcp-calls)
+explains the boundary and the verified CLI surface.
+
 Where a gate has no event to hang on in a given tool, the generated rule file says so in the rule's
 own tag: `hook:X in Claude Code; manual in Codex`. `codex/PORT-STATUS.md` and `cursor/PORT-STATUS.md`
 carry the per-surface accounting. A rule that reads as enforced in one tool and manual in another is
