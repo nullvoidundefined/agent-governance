@@ -322,9 +322,16 @@ expect_hits "exclude list added only at the head" $'.enforce.json:0 path\ndocs/a
 # The root is resolved physically because CI installs the checkout as a
 # ~/.claude symlink, whose logical parent is the home directory rather than
 # the checkout; a skip is printed so a log never shows it as a silent pass.
+# Under GitHub Actions the suite always runs from this repository's checkout,
+# so a skip there means the install layout changed and the pin left the
+# required check; that fails rather than printing.
 REPOSITORY_ROOT="$(cd -P "$CLAUDE_HARNESS_ROOT/.." && pwd -P)"
 if [ ! -f "$REPOSITORY_ROOT/sync.sh" ]; then
-  echo "security-surface.test.sh: shipped exclude list not checked: $REPOSITORY_ROOT is not an agent-governance checkout" >&2
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    report_failure "shipped exclude list: CI ran the fixture outside the checkout ($REPOSITORY_ROOT has no sync.sh)"
+  else
+    echo "security-surface.test.sh: shipped exclude list not checked: $REPOSITORY_ROOT is not an agent-governance checkout" >&2
+  fi
 fi
 if [ -f "$REPOSITORY_ROOT/sync.sh" ]; then
   if [ -f "$REPOSITORY_ROOT/.enforce.json" ]; then
