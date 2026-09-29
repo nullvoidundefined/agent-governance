@@ -3,7 +3,7 @@
   "ticket": "IAN-381",
   "reviewer": "security-reviewer subagent",
   "model": "claude-fable-5-1",
-  "reviewedCode": "6cfd7c98165136c258cc2b2bd1fbc1717f2bb86f",
-  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Three rounds of the strongest-model security review ran on this PR: round 1 (range f938ba6..aeb8a6d) reported 9 findings, round 2 (f938ba6..45eb39f) verified all 9 fixed and reported 4 more, and round 3 (d2f38bd..3bd15de) verified those 4 fixed and reported none. Each finding and its fixing commit is listed in the PR body's 'R-109 findings and dispositions' section. The commit after round 3 changed only comments, a requirements-file header, spec text, and the landing page's rule counts. The review of the head that adds this file is the PR body's Security review section.",
+  "reviewedCode": "c0b4813a2dab73cf669f88ce2e857c24f7ea67dc",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Five rounds of the strongest-model security review ran on this PR: round 1 (f938ba6..aeb8a6d) reported 9 findings, round 2 (f938ba6..45eb39f) verified all 9 fixed and reported 4 more, round 3 (d2f38bd..3bd15de) verified those 4 fixed and reported none, and round 4 (d2f38bd..8525f60) reported none. The R-517 review then found the Semgrep step failing closed on the PR head because site/ export-ignore kept a target out of git archive; B-37 and B-38 fixed that in the commit reviewedCode names. Each finding and its fixing commit is listed in the PR body section R-109 findings and dispositions. The review of the head that adds this text is the PR body Security review section.",
   "findings": []
 }
