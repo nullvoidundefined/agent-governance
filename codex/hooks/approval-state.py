@@ -195,8 +195,10 @@ def update_state(envelope):
 
 
 if __name__ == "__main__":
+    # Stdout carries one machine-readable response, not diagnostic logging.
+    # Preserve the trailing newline on both protocol outcomes.
     try:
-        print(json.dumps(update_state(json.load(sys.stdin))))
+        sys.stdout.write(json.dumps(update_state(json.load(sys.stdin))) + "\n")
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        print(json.dumps({"permitted": False, "error": "Scoped approval state or runtime identity is unavailable; this call remains denied."}))
+        sys.stdout.write(json.dumps({"permitted": False, "error": "Scoped approval state or runtime identity is unavailable; this call remains denied."}) + "\n")
         sys.exit(1)

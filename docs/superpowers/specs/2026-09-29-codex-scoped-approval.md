@@ -1,8 +1,10 @@
 # Scoped Codex approval consumption
 
 Ticket: IAN-506. Tier: Complex. Merge mode: owner review before merge.
-Status: owner approved scoped implementation and Codex test authorship. Live deployment
-remains gated on the runtime proof and security review below.
+Status: owner approved scoped implementation and Codex test authorship. Implementation,
+negative fixtures, generated wiring, and isolated release sync are complete locally.
+Codex CLI 0.158.0 runtime delivery and sandbox separation have been verified. Remote CI,
+the required current-head reviews, merge, and live installation remain delivery gates.
 
 ## Implementation contract after review
 
@@ -124,10 +126,12 @@ prompt event; do not claim chat approval works in a surface that omits that even
 Official hook documentation describes UserPromptSubmit.prompt and states that native
 PreToolUse ask is unsupported: https://learn.chatgpt.com/docs/hooks.
 
-## Spec review
+## Initial spec review and disposition
 
-Fresh Codex review found six blockers. No implementation or live installation has
-occurred. Resolve these in the design and tests before approving implementation:
+The initial fresh Codex review identified the following requirements before
+implementation. The implementation contract above incorporates them. Subsequent
+slices cover request grouping, replay, state failures, helper deadlines, exact JSON
+responses, payload binding, and generated delivery. No live installation has occurred.
 
 - Prove the state store is writable by runtime hooks but not sandboxed agent tools.
   Same-user unrestricted commands are outside that boundary; a file permission alone
@@ -148,3 +152,14 @@ occurred. Resolve these in the design and tests before approving implementation:
   verify parsing and state transitions but do not establish event authenticity.
 - Hash structured hook identity, decision, and reason records, not the current merged
   reason string, which deduplicates by substring and loses hook provenance.
+
+## Runtime verification
+
+An isolated Codex CLI 0.158.0 session loaded metadata-only project hooks through the
+normal folder and hook trust flow. A submitted prompt produced UserPromptSubmit before
+PreToolUse, with the same nonempty session and turn identifiers. A separate ordinary
+workspace-write sandbox invocation received PermissionError when trying to write the
+runtime-owned probe directory under the user's home; the trusted hook could write it.
+The probe stored event metadata only and did not install the approval adapter or mint
+approval grants. This evidence applies to the tested CLI surface, not every desktop or
+hosted runtime.
