@@ -2,6 +2,9 @@
 
 ## Last commit
 
+- Last verified source commit: bb45a97f0620e35e69a2444f2ee5ac5f9a6a0aa1,
+  retained by the published keep/governance-verified-scope tag. Its R-001 scope
+  fixture and rule consistency checks pass. Subsequent changes update this handoff.
 - IAN-501 tracks publication and deployment on release/governance-conventions.
 - This branch includes IAN-495, IAN-498, IAN-499, and IAN-500, rebased onto the
   newer build-fast change on main. Generated manifests were regenerated during
@@ -52,6 +55,12 @@
 
 ## Pending work
 
+- Preserve the unresolved work and operational constraints in the
+  [previous handoff](https://github.com/nullvoidundefined/agent-governance/blob/keep/governance-pre-release-handoff/docs/session-handoff/session-handoff.md).
+  That retained record is the continuation reference for all earlier pending items,
+  including IAN-381 security work and IAN-456 guard evasions. This delivery did not
+  investigate, close, supersede, or waive those items. Reconcile each with its live
+  tracker ticket before acting; retain its recorded constraints until resolved.
 - Monitor IAN-499 during normal coding reviews and handoffs for any drop in coding
   quality. Watch for misclassified coding requests, skipped tests or required reviews,
   and task state lost during non-coding detours. File evidence-backed regressions and
@@ -67,5 +76,6 @@
 ## Recommended next session
 
 - Inspect IAN-501 for the current PR, verification, and deployment status.
-- The owner authorized pushing and deployment. Obtain express merge authorization
-  under R-514 before merging, and complete the current-head review and green CI.
+- The owner authorized pushing, merging, and public release, and approved a Codex
+  reviewer after Claude reached its weekly limit. Complete the current-head review
+  and green CI before merging. IAN-503 records the corrected R-001 wording fixture.
