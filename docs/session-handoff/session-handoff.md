@@ -24,7 +24,50 @@ This session's own handoff, above the older notes; it supersedes them only where
 
 **6. Next session.** Use `/build-fast` on a real small task and record the lane, actual minutes, and review findings on the ticket as IAN-474's evidence.
 
-## Previous: IAN-381 security-first governance, 2026-09-25 to 09-26
+## Previous: IAN-477 project site and v0.1.0 release, 2026-09-27
+
+This session's own handoff sits here, above the older notes. It follows R-602's six sections and supersedes the older notes only where they conflict.
+
+**1. Last commit.** `8b6a33d` feat(site): landing page, checksummed release, and tarball install (IAN-477, IAN-478) (#159). It was squash-merged at the R-109-reviewed head `87834b7` and verified on `main` by reading the files.
+
+**2. Production state.**
+- The site is live at <https://nullvoidundefined.github.io/agent-governance/>. It is served by GitHub Pages with the Actions source, and was deployed by hand-dispatched `site.yml` run 36321665405.
+- Release `v0.1.0` is tagged at `8b6a33d` and published with `agent-governance-v0.1.0.tar.gz` and its `.sha256` (`ee2ef464...`). The page shows that same checksum.
+- The downloaded archive verifies, holds no `site/`, and installs through `sync.sh` into temporary targets.
+- The protected `release` environment exists with the owner as required reviewer, so every future release job waits for approval.
+- **The live `~/.claude` has not been re-synced** from a `main` checkout since #159 changed `sync.sh`. `./sync.sh` from a `main` checkout, or the next session's `harness-sync`, picks it up.
+
+**3. Session metrics.**
+- About 4 h 15 min of working time. IAN-477 took 145 min against 150 (ratio 0.97). IAN-478 took 110 min against 45 (ratio 2.44).
+- R-109 security review: eight `claude-fable-5-1` rounds and 15 findings, 14 fixed test-first and 1 waived by the owner. R-517: three findings, all fixed.
+- **Velocity flag:** rounds 1 to 6 each found one more hole in `sync.sh`'s RELEASE-FILES path validation. The loop stopped only when the fix became class-level. The spec had no threat model, which the R-109 memory already warned about. That memory now records it as a miss.
+
+**4. What shipped (#159).**
+- **`site/`:** a static landing page built from the approved Claude Design canvas. It leads with "It restricts. It never grants." It has self-hosted fonts, a strict CSP meta tag, and axe-clean output at 1440 and 390. It is served by digest-pinned unprivileged nginx under a read-only root (R-351), with 21 Playwright checks in `site/tests/`.
+- **`release/build-release-archive.sh`:** a `git archive` of the tag with `site/` export-ignored, plus `RELEASE-FILES`. It is byte-identical per tag. `release.yml` publishes it from the protected environment.
+- **`sync.sh` release-archive mode (IAN-478):** reads `RELEASE-FILES` when its directory is not its own git top level. It refuses before any write on:
+  - absolute paths, `..`, `.`, or empty components
+  - directories and special files
+  - directory-symlink ancestors
+  - symlinks that leave their payload folder, judged both lexically and physically
+  - a directory holding both `.git` and `RELEASE-FILES`
+
+  Fixtures are in `release/tests/`, and CI runs them on ubuntu and on macOS bash 3.2.
+- **`release/tests/workflow-hardening.test.sh`:** SHA-pinned actions, per-job write permissions, no `${{ }}` inside `run`, `--ignore-scripts` on deploy, the image digest, and the release environment.
+- **Docs:** `docs/stack.md` (R-608), the README "Install from a release" section, the spec `claude/docs/superpowers/specs/2026-09-27-project-site-design.md`, and the artefact `docs/security-reviews/PR-159-IAN-477.json`.
+
+**5. Pending, by urgency.**
+- **HIGH: IAN-482** (40 min). A release created with `GITHUB_TOKEN` triggers no workflow, so `site.yml` never deploys on `release: published`. Until it is fixed, run `gh workflow run site.yml --ref main` after every release, or the page keeps the old checksum. The fix is to dispatch `site.yml` from the end of `release.yml` under `actions: write`, extend the hardening fixture, and drop the dead trigger. It is security-touching, so it needs the R-109 review.
+- **Owner-waived:** GitHub Pages cannot send `frame-ancestors` or `nosniff`. This is documented in the spec and `docs/stack.md`.
+- **Carried over from the older notes below:** IAN-381 Parts 5b, 7, and 8, IAN-456, and IAN-425.
+
+**6. Next session.**
+- Start with IAN-482. Test first: extend `release/tests/workflow-hardening.test.sh` so it requires the dispatch step and allows `actions: write` on the release job only.
+- For any validation of attacker-shaped paths, write the whole input space into the spec before the first slice: entry shape, file type, every symlink form, and lexical plus physical containment.
+- Locally, `docker-credential-desktop` hangs in a non-interactive shell, and BuildKit calls it even for cached images. Run the site tests with `DOCKER_CONFIG` pointed at a scratch config holding only `cliPluginsExtraDirs`. Otherwise `docker compose` is missing.
+- Never start another PR-body heading with `## Security review`, because the merge gate counts every heading with that prefix. A worktree also needs its own `npm ci --prefix claude/enforce` before the R-509 turn-end gate can run.
+
+## IAN-381 security-first governance, 2026-09-25 to 09-26
 
 This session's own handoff sits here, above the older multi-session notes below. It follows R-602's six sections and supersedes the older notes only where they conflict.
 
