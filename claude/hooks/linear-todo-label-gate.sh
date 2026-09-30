@@ -40,13 +40,15 @@ CONFIG="${CLAUDE_TICKET_TRACKER_FILE:-$HOME/.claude/TICKET-TRACKER.json}"
 # readTrackerRule(): prints the specced status name, the planned status name,
 # and the two label names as four lines, lowercased, when the tool is the
 # active tracker's create or update tool; prints nothing otherwise. Both status
-# names are read because a tracker may map the two canonical states apart.
+# names are read because a tracker may map the two canonical states apart. A
+# name the config does not carry prints as an empty line, never as an error
+# that would empty the whole rule and switch the gate off.
 readTrackerRule() {
   jq -r --arg tool "$TOOL" '
     .trackers[.active] as $t
     | select($t.tools.create == $tool or $t.tools.update == $tool)
     | [$t.states.specced, $t.states.planned, $t.state_labels.specced, $t.state_labels.planned]
-    | map(ascii_downcase) | .[]
+    | map(. // "" | ascii_downcase) | .[]
   ' "$CONFIG" 2>/dev/null
 }
 
@@ -58,6 +60,9 @@ SPECCED_LABEL=$(printf '%s\n' "$RULE" | sed -n 3p)
 PLANNED_LABEL=$(printf '%s\n' "$RULE" | sed -n 4p)
 
 STATE=$(printf '%s' "$INPUT" | jq -r '.tool_input.state // "" | ascii_downcase' 2>/dev/null)
+# A save that sets no state moves nothing, and an empty STATE must never match a
+# status name the config left empty.
+[ -n "$STATE" ] || exit 0
 case "$STATE" in
   "$SPECCED_STATE" | "$PLANNED_STATE" | unstarted) ;;
   *) exit 0 ;;
