@@ -483,6 +483,30 @@ is_head_commit_prefix() {
   [ "$endpoint" = "$(printf '%.*s' "${#endpoint}" "$head_oid")" ]
 }
 
+# is_docs_only_tail <checkout top> <review head> <PR head oid>: true when the
+# review's head endpoint names a commit this checkout holds, that commit is an
+# ancestor of the PR head, and every file the commits after it change is a
+# regular file under the repository's top-level docs/ tree (IAN-516, owner
+# decision 2026-09-30). A PR note, the R-109 artefact, or a handoff committed
+# after a review cannot change what the review read, and re-reviewing for
+# them cost 3 of 4 rounds on IAN-352 and a 58-minute R-109 round on PR #169.
+# Anything else is false, so the exact-head rule applies: an ambiguous or
+# unknown review head, a head the checkout lacks, a review off the PR's
+# history, a change outside docs/ (claude/docs/ included), a symlink,
+# executable, or submodule in the tail, or a git failure.
+is_docs_only_tail() {
+  local top="$1" review_head="$2" head_oid="$3" review_oid tail_changes
+  [ -n "$top" ] && [ "${#review_head}" -ge 7 ] && is_hexadecimal_name "$review_head" || return 1
+  review_oid=$(git -C "$top" rev-parse --verify --quiet "$review_head^{commit}" 2>/dev/null) || return 1
+  git -C "$top" rev-parse --verify --quiet "$head_oid^{commit}" >/dev/null 2>&1 || return 1
+  git -C "$top" merge-base --is-ancestor "$review_oid" "$head_oid" 2>/dev/null || return 1
+  tail_changes=$(git -c core.quotePath=false -C "$top" diff --raw --no-renames --no-ext-diff "$review_oid" "$head_oid" 2>/dev/null) || return 1
+  printf '%s\n' "$tail_changes" | awk -F '\t' '
+    NF == 0 { next }
+    { split($1, modes, " "); if ((modes[2] != "100644" && modes[2] != "000000") || $2 !~ /^docs\//) outside = 1 }
+    END { exit outside }'
+}
+
 # read_codex_artefact_verdict <section>: prints "ok" when the Codex review
 # section is a review artefact, otherwise the sentence naming what it is
 # missing. The artefact is the reviewer that ran, the model it ran on, and the
@@ -511,7 +535,8 @@ read_codex_artefact_verdict() {
   [ -n "$range_head" ] ||
     { echo "its \`## Codex review\` section gives the range as \`$range\`, which holds no \`<base>..<head>\` range expression, so nothing in the PR says which diff was read"; return 0; }
   is_head_commit_prefix "$range_head" "$head_oid" ||
-    { echo "its \`## Codex review\` section gives the range as \`$range\`, whose head endpoint \`$range_head\` does not identify $(printf '%.7s' "$head_oid"), the commit this PR would merge, so the review read a tree other than the one that would merge"; return 0; }
+    is_docs_only_tail "$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null)" "$range_head" "$head_oid" ||
+    { echo "its \`## Codex review\` section gives the range as \`$range\`, whose head endpoint \`$range_head\` does not identify $(printf '%.7s' "$head_oid"), the commit this PR would merge, and the commits after it change more than the top-level docs/ tree, so the review read a tree other than the one that would merge"; return 0; }
   echo ok
 }
 
@@ -733,7 +758,8 @@ read_security_artefact_verdict() {
   [ -n "$range_head" ] ||
     { echo "its \`## Security review\` section carries no \`range\` line holding a \`<base>..<head>\` expression"; return 0; }
   is_head_commit_prefix "$range_head" "$SECURITY_HEAD" ||
-    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, so the review is stale"; return 0; }
+    is_docs_only_tail "$SECURITY_TOP" "$range_head" "$SECURITY_HEAD" ||
+    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, and the commits after it change more than the top-level docs/ tree, so the review is stale"; return 0; }
   [ -n "$(read_review_field "$section" artefact)" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line naming the reviewer's saved output, so nothing proves what the review found; commit the artefact, record it with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head, and name it on an \`artefact\` line"; return 0; }
   echo ok
