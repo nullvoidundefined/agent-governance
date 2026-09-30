@@ -559,6 +559,18 @@ settings change that drops a hook the manifest requires.
 <dir>` and the same for `codex.mjs` render the lean ports. The committed ports are always rendered
 without a profile, so `--check` with no profile stays the CI gate.
 
+**Some items can never be hidden.** `translate/apply-profile.mjs` keeps a protected set of its own,
+separate from the profile file. A profile that lists any of these is refused:
+
+- every enforcing hook, as a registration or as its file, and `harness-sync`
+- the six TDD and review agents
+- the ENFORCE and STRUCTURAL rule ids
+- anything under `enforce/`, and every skill script and data file
+- `rulebook/reference.md`
+
+`sync.sh` also refuses to run when `~/.claude/.harness-profile` is a symlink or any other non-regular
+file, and it replaces the record atomically.
+
 **A stale list fails loudly.** An unknown profile, or a listed id that no longer exists under
 `claude/`, is an error. Run `node translate/apply-profile.mjs --validate` to check every profile
 against the tree.
