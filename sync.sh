@@ -74,6 +74,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# The record is read and replaced only as a regular file: a symlink (even a
+# dangling one), a directory, or anything else at that path refuses the run
+# before any target is written, so the record can never be used to read or
+# overwrite a file outside the target (PR #175 review).
+if [ -L "$PROFILE_RECORD" ] || { [ -e "$PROFILE_RECORD" ] && [ ! -f "$PROFILE_RECORD" ]; }; then
+  refuseProfile "$PROFILE_RECORD exists and is not a regular file; remove it by hand"
+fi
+
 # resolveHarnessProfile(): the --profile flag, else HARNESS_PROFILE, else the
 # profile recorded by the last profiled run, else full.
 resolveHarnessProfile() {
@@ -392,11 +400,15 @@ sync_one claude "$TARGET_CLAUDE"
 sync_one cursor "$TARGET_CURSOR"
 sync_one codex "$TARGET_CODEX"
 
-# Record the profile so a plain run keeps it; full clears the record.
+# Record the profile so a plain run keeps it; full clears the record. The
+# record is written to a temporary file in the same directory and renamed
+# over the old one, and rename replaces a path without following it.
 if [ "$HARNESS_PROFILE_NAME" = full ]; then
   rm -f "$PROFILE_RECORD"
 else
-  printf '%s\n' "$HARNESS_PROFILE_NAME" > "$PROFILE_RECORD"
+  record_tmp=$(mktemp "$TARGET_CLAUDE/.harness-profile.XXXXXX")
+  printf '%s\n' "$HARNESS_PROFILE_NAME" > "$record_tmp"
+  mv -f "$record_tmp" "$PROFILE_RECORD"
 fi
 
 # Stamp the source so hook-integrity-check.sh can compare the live copy
