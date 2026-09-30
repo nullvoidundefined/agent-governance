@@ -16,9 +16,10 @@
 # Problem, Approach, Contents, Tests, Review focus, Size), and the plan must
 # hold at least one such block. Since 2026-09-24 (IAN-352) it must also carry
 # a line of its own beginning "**Merge mode:**", above the first "### " block,
-# the record of which merge mode the owner chose for the slice at Gate 1,
-# because merging on green CI is now the opt-in and the owner's own merge is the
-# default (R-514). The check reads only the preamble, the lines before the first
+# the record of which merge mode the owner chose for the slice at Gate 1:
+# merging on green CI plus the R-517 review is the default, and the owner's own
+# merge applies when the plan chooses it or the range is security-touching or
+# build-lane guarded (R-514; owner decision 2026-09-30, IAN-517). The check reads only the preamble, the lines before the first
 # "### " heading, and anchors to the start of a line rather than searching the
 # whole document: the same bolded phrase quoted in a PR block's prose, or set as
 # its own line inside a PR block, would otherwise silence the reminder while no
@@ -58,7 +59,7 @@ jq -rc '
          | ($lines | map(startswith("### ")) | index(true)) as $firstBlockLine
          | (if $firstBlockLine == null then $lines else $lines[:$firstBlockLine] end)) as $preamble
       | (if ($preamble | any(startswith("**Merge mode:**"))) then []
-         else ["the plan has no \"**Merge mode:**\" line, so nothing records whether the owner reads and merges each PR (the default) or the session merges on green CI plus the R-517 review (the opt-in, R-514)"] end) as $mode
+         else ["the plan has no \"**Merge mode:**\" line, so nothing records whether the session merges each PR on green CI plus the R-517 review (the default, R-514) or the owner reads and merges each PR (owner-merge, which also applies to any security-touching or build-lane guarded range)"] end) as $mode
       | (($mode + $problems)) as $all
       | if ($blocks | length) == 0 then
           {hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Slice plan "+$p+" has no \"### PR <n>: <title>\" block; build-by-slice-require-review lists every PR of the slice under one, each with the seven bold labels Context, Problem, Approach, Contents, Tests, Review focus, Size"+(if ($mode | length) == 0 then "." else ", and the plan itself carries a \"**Merge mode:**\" line recording the merge mode chosen at Gate 1 (R-514)." end))}}
