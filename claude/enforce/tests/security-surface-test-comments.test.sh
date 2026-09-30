@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Verifies that the security-surface detector, hooks/security-surface.sh, does
 # not fire its path trigger on a test file whose change in the range is only
-# blank or comment lines (IAN-515). PR #169 was marked security-touching, and
+# fixture-runner metadata (# Shard:, # Watches:, # Covers:) or blank lines in
+# its leading comment header (IAN-515). PR #169 was marked security-touching, and
 # paid a strongest-model review twice, because eight fixtures named
 # security-merge-gate*.test.sh each gained a `# Shard: slow` header line; the
 # path patterns (`security`, `token`, `policy`, ...) match test file names.
 #
-#   comment-only test change     tests/security-gate.test.sh gains a comment
-#                                line: not marked.
+#   metadata-only test change    tests/security-gate.test.sh gains a
+#                                # Shard: line and a blank: not marked.
 #   code change in a test file   the same file gains a code line: marked by
 #                                path, so a change to a security test's logic
 #                                still gets the review.
@@ -18,7 +19,7 @@
 #   comment-only non-test file   hooks/security-thing.sh gains only a comment:
 #                                still marked, since the exemption is for test
 #                                files only.
-#   mixed range                  a comment-only test change beside a code
+#   mixed range                  a metadata-only test change beside a code
 #                                change in another test file: the second is
 #                                still reported.
 #   prose comment                a JavaScript spec file gaining a // comment:
@@ -37,8 +38,11 @@
 #                                is not the same as only comments).
 #   quoted path                  a test file whose name git must quote: marked.
 #
-# PR #171 review (Codex and the R-109 reviewer) narrowed the exemption to what
-# #169 needed: plain comments in a file's leading comment header.
+# The PR #171 reviews (Codex and the R-109 reviewer) narrowed the exemption,
+# over two rounds, to exactly what #169 needed: runner metadata in a file's
+# leading comment header, with its mode unchanged. That also covers comments
+# that execute or steer a runner (// @vitest-environment, # bats file_tags=)
+# and titles of Markdown or text fixtures, none of which is metadata.
 #
 # Every case runs with a Semgrep stand-in that reports a complete clean scan,
 # so only a path hit, a content hit, or a detector failure can mark a range.
@@ -203,7 +207,7 @@ write_file "$REPO" tests/security-a.test.sh $'#!/usr/bin/env bash\necho "a PASS"
 write_file "$REPO" tests/security-b.test.sh $'#!/usr/bin/env bash\necho "b PASS"\n'
 commit_all "$REPO" seed
 BASE=$(head_of "$REPO")
-write_file "$REPO" tests/security-a.test.sh $'#!/usr/bin/env bash\n# note\necho "a PASS"\n'
+write_file "$REPO" tests/security-a.test.sh $'#!/usr/bin/env bash\n# Shard: slow\necho "a PASS"\n'
 write_file "$REPO" tests/security-b.test.sh $'#!/usr/bin/env bash\necho "b PASS"\ntrue\n'
 commit_all "$REPO" mixed
 expect_clean_hits "mixed range reports only the code change" "tests/security-b.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
@@ -287,6 +291,17 @@ write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: s
 chmod -x "$REPO/tests/security-gate.test.sh"
 commit_all "$REPO" "mode and metadata"
 expect_clean_hits "mode change beside a metadata line" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 15. runner-steering comments -------------------------------------------
+REPO=$(new_repo steering)
+write_file "$REPO" src/session.spec.ts $'// header\ntest("x", () => {});\n'
+write_file "$REPO" tests/security-flow.bats $'#!/usr/bin/env bats\n# header\n@test "x" { true; }\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" src/session.spec.ts $'// @vitest-environment jsdom\n// header\ntest("x", () => {});\n'
+write_file "$REPO" tests/security-flow.bats $'#!/usr/bin/env bats\n# bats file_tags=skip\n# header\n@test "x" { true; }\n'
+commit_all "$REPO" steering
+expect_clean_hits "runner-steering comments" "$(printf '%s\n' src/session.spec.ts:0\ path tests/security-flow.bats:0\ path)" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 if [ "$failures" -eq 0 ]; then
   echo "security-surface-test-comments.test.sh PASS"
