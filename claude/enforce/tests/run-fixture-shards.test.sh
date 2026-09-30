@@ -328,6 +328,27 @@ SEL=$(real_selection 'claude/CLAUDE-GO.md')
 check "a convention-file edit runs the track invariants" selection_has "$SEL" convention-track-invariants.test.sh
 SEL=$(real_selection 'claude/hooks/tests/session-end.test.sh')
 check "a fixture edit runs the implementation-root sweep" selection_has "$SEL" fixture-implementation-root.test.sh
+# The security-gate fixtures sit in the slow tier (IAN-510), so they run
+# locally only when a change names their subject. Each subject must still
+# select every slow fixture that covers it; a fixture that stops naming its
+# subject fails here instead of silently leaving the local gate.
+SEL=$(real_selection 'claude/hooks/git-workflow-guard.sh')
+for covered in git-workflow-guard.test.sh security-merge-gate.test.sh security-merge-gate-empty.test.sh \
+  security-merge-gate-findings.test.sh security-merge-gate-hardening.test.sh security-merge-gate-ledger.test.sh \
+  security-merge-gate-review-fixes.test.sh security-merge-gate-shared-ledger.test.sh; do
+  check "a git-workflow-guard edit runs $covered" selection_has "$SEL" "$covered"
+done
+SEL=$(real_selection 'claude/enforce/security-ci-semgrep.sh')
+check "a security CI Semgrep edit runs its fixture" selection_has "$SEL" security-ci-semgrep.test.sh
+SEL=$(real_selection 'claude/hooks/push-semgrep-gate.sh')
+for covered in push-semgrep-gate-hardening.test.sh push-semgrep-gate-interpreter.test.sh \
+  push-semgrep-gate-report-parsing.test.sh push-semgrep-gate-trust.test.sh; do
+  check "a push-semgrep-gate edit runs $covered" selection_has "$SEL" "$covered"
+done
+SEL=$(real_selection 'claude/enforce/semgrep/cors-literal-wildcard.yml')
+check "a Semgrep rule edit runs the rule pack" selection_has "$SEL" semgrep-rule-pack.test.sh
+SEL=$(real_selection 'claude/hooks/secret-scan.sh')
+check "a secret-scan edit runs the credential-shape scan" selection_has "$SEL" credential-shape-scan.test.sh
 
 # --- inherited environment cannot steer a real run ---
 # The test-only inputs are arguments, so a variable exported in the caller's
