@@ -9,7 +9,7 @@
 # every file and clears the record. Removals still go only through the
 # .sync-manifest allowlist: a live-only file survives, and a file edited live
 # is kept and reported. Every target is a temp dir through the SYNC_*_HOME
-# overrides and npm is replaced by `true`, so this never touches a real home.
+# overrides and npm is replaced by a stub, so this never touches a real home.
 set -uo pipefail
 REPO_TOP=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 TMP=$(mktemp -d); TMP=$(cd "$TMP" && pwd -P)
@@ -31,10 +31,19 @@ git -C "$REPO" config user.name "sync-profile-test"
 git -C "$REPO" add -A
 git -C "$REPO" commit -q -m "fixture: tracked harness"
 
+# A stand-in npm: sync.sh ends with a locked `npm ci` of the live enforce/
+# dependencies, and the installer stamps node_modules afterwards, so the fake
+# creates that directory rather than installing anything.
+cat >"$TMP/fake-npm" <<'EOF'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do [ "$1" = "--prefix" ] && mkdir -p "$2/node_modules"; shift; done
+EOF
+chmod +x "$TMP/fake-npm"
+
 # run_sync [args...]: sync.sh into the sandbox targets; HARNESS_PROFILE passes
 # through from the caller's environment only when the caller sets it.
 run_sync() {
-  SYNC_CLAUDE_HOME="$LIVE/claude" SYNC_CURSOR_HOME="$LIVE/cursor" SYNC_CODEX_HOME="$LIVE/codex" SYNC_NPM=true \
+  SYNC_CLAUDE_HOME="$LIVE/claude" SYNC_CURSOR_HOME="$LIVE/cursor" SYNC_CODEX_HOME="$LIVE/codex" SYNC_NPM="$TMP/fake-npm" \
     "$REPO/sync.sh" "$@"
 }
 
