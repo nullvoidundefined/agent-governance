@@ -31,6 +31,10 @@
 #   --changed-from <file>  read the changed paths (repo relative, one per
 #                          line) from a file instead of from git.
 #   --list                 print the chosen fixtures' names and run nothing.
+# --also <path>, repeatable, adds a repo-relative path to the changed set in
+# affected mode and never removes one: tdd.sh names its locked tests and the
+# fixtures its RED run passed, so they run even when git no longer lists them
+# as changed (IAN-510).
 # One option exists for callers that need each fixture's own result:
 #   --results-dir <dir>    keep <name>.out, <name>.verdict, and <name>.status
 #                          (the exit code) for every fixture in an existing
@@ -235,6 +239,11 @@ fallback_reason() {
     [ -n "$path" ] || continue
     relative="${path#claude/}"
     case " $SHARED_FILES " in *" $relative "*) echo "shared: $path"; return ;; esac
+    # The repository's own docs/ tree (specs, handoffs, PR notes, security
+    # reviews) is read by no fixture; fixtures build sandbox docs. Placing it
+    # keeps a spec or handoff on the branch from forcing every fixture on each
+    # Stop and tdd.sh run (IAN-510). docs/ under claude/ is not this tree.
+    case "$path" in docs/*) continue ;; esac
     placed=no
     while IFS= read -r fixture; do
       [ -n "$fixture" ] && names_file "$fixture" "$path" && { placed=yes; break; }
@@ -313,15 +322,15 @@ report_results() {
 # affected_selection <tests dir> <fixtures> <changed-from file or "">: sets
 # SELECTED and REASON for --affected. REASON non-empty means everything runs.
 affected_selection() {
-  local tests_dir="$1" fixtures="$2" changed_from="$3" changed root corpus
+  local tests_dir="$1" fixtures="$2" changed_from="$3" also="$4" changed root corpus
   SELECTED="$fixtures"; REASON=""
   if [ -n "$changed_from" ]; then
     changed=$(cat "$changed_from")
   else
     root=$(git -C "$tests_dir" rev-parse --show-toplevel 2>/dev/null) || { REASON="no git repository to read changes from"; return; }
     changed=$(changed_files_from_git "$root") || { REASON="git could not list the changes"; return; }
-    changed=$(sort -u <<< "$changed")
   fi
+  changed=$(printf '%s\n%s\n' "$changed" "$also" | grep -v '^$' | sort -u)
   corpus=$(ls "$tests_dir"/../../*/tests/*.test.sh "$tests_dir"/*.test.sh 2>/dev/null | sort -u)
   REASON=$(fallback_reason "$changed" "$corpus")
   [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
@@ -675,12 +684,12 @@ acquire_run_lock() {
 # usage_error <message>: exits 2 with the message and the usage line.
 usage_error() {
   echo "run-fixture-shards.sh: $1" >&2
-  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>] [--results-dir <dir>] [--jobs <n>] [--settle-seconds <n>] [--settle-max-seconds <n>] [--load-from <file>]" >&2
+  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>] [--also <path>]... [--results-dir <dir>] [--jobs <n>] [--settle-seconds <n>] [--settle-max-seconds <n>] [--load-from <file>]" >&2
   exit 2
 }
 
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" also="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap
   [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
   case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
   shift 2
@@ -688,6 +697,7 @@ main() {
     case "$1" in
       --list) list_only=1; shift ;;
       --changed-from) [ -r "${2:-}" ] || usage_error "--changed-from needs a readable file"; changed_from="$2"; shift 2 ;;
+      --also) [ -n "${2:-}" ] || usage_error "--also needs a path"; also+="$2"$'\n'; shift 2 ;;
       --jobs) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || usage_error "--jobs needs a positive integer"; jobs="$2"; shift 2 ;;
       --settle-seconds) [[ "${2:-}" =~ ^[0-9]+$ ]] || usage_error "--settle-seconds needs a whole number"; settle_seconds="$2"; shift 2 ;;
       --settle-max-seconds) [[ "${2:-}" =~ ^[0-9]+$ ]] || usage_error "--settle-max-seconds needs a whole number"; settle_max_seconds="$2"; shift 2 ;;
@@ -710,7 +720,7 @@ main() {
   [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
   total=$(grep -c . <<< "$fixtures")
   SELECTED="$fixtures"; REASON=""
-  [ "$mode" = --affected ] && affected_selection "$tests_dir" "$fixtures" "$changed_from"
+  [ "$mode" = --affected ] && affected_selection "$tests_dir" "$fixtures" "$changed_from" "$also"
   if [ -n "$list_only" ]; then
     while IFS= read -r fixture; do [ -n "$fixture" ] && basename "$fixture"; done <<< "$SELECTED"
     exit 0
