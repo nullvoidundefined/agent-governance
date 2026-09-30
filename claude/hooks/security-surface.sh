@@ -19,7 +19,7 @@
 # <head-oid> defaults to HEAD and names the commit whose file list, diffs, and
 # blobs are read. A range is marked by any of three triggers: a changed path
 # matching a `paths` regex in enforce/security-surface.json (except a test
-# file whose changed lines are all blank or comments, IAN-515), an added or
+# file whose change is only plain comments in its leading header, IAN-515), an added or
 # removed line matching a `content` regex there (both case-insensitive
 # extended regexes; a removed line reports its pre-image line number), or a
 # finding from the rule pack in enforce/semgrep/ on a changed code file. Every
@@ -53,8 +53,12 @@ SECURITY_SURFACE_CODE_FILE_PATTERN='\.(py|ts|tsx|mts|cts|js|jsx|mjs|cjs|go|rb)$'
 # A test file: under a tests, test, __tests__, spec, specs, or testdata
 # directory, or named *.test.*, *_test.*, *.spec.*, *_spec.*, or test_*.py.
 SECURITY_SURFACE_TEST_FILE_PATTERN='(^|/)(tests?|__tests__|specs?|testdata)/|[._](test|spec)\.[^/]+$|(^|/)test_[^/]*\.py$'
-# A line that changes no behaviour of a test: blank, or a # or // comment.
-SECURITY_SURFACE_COMMENT_LINE_PATTERN='^[[:space:]]*(#|//|$)'
+# A plain comment or blank line: a # or // marker followed by whitespace or
+# nothing, so #!, //go:build, and #noqa-style directives never match.
+SECURITY_SURFACE_PLAIN_COMMENT_PATTERN='^[[:space:]]*((#|//)([[:space:]].*)?)?[[:space:]]*$'
+# Comment directives that change how a test or tool runs, matched lowercased.
+# No backslash escapes: awk -v strips them, so literals sit in brackets.
+SECURITY_SURFACE_DIRECTIVE_PATTERN='^[[:space:]]*(#|//)[[:space:]]*(nosemgrep|noqa|type:|shellcheck|pragma|-[*]-|pylint|fmt:|eslint|@ts-|prettier-|rubocop:|nolint|[+]build|go:|istanbul|c8 |mypy|isort:|ruff:|pyright:|flake8|coverage:|vim:)'
 # A missing scope-match.sh leaves is_in_scope undefined, which
 # list_included_changed_files reports as a detector failure.
 # shellcheck source=scope-match.sh
@@ -129,25 +133,78 @@ list_path_hits() {
 }
 
 # drop_comment_only_test_hits <repo-top> <base-oid> <head-oid> <path hits>
-# <work dir>: prints the path hits minus each test file whose every added and
-# removed line is blank or a comment (IAN-515). A header comment on a fixture
-# named for what it tests (security-merge-gate*.test.sh) cannot change a
-# control, and made PR #169 pay a strongest-model review twice. Any code line,
-# added or removed, keeps the hit, so a change to a security test's logic,
-# including a deleted assertion, is still reviewed; non-test files are never
-# dropped. Returns non-zero when the diff cannot be read.
+# <work dir>: prints the path hits minus each test file whose change is inert
+# header prose (IAN-515): at least one line changed, and every added or removed
+# line a plain `# ` or `// ` comment (or blank) that is no directive and lies
+# inside the file's leading comment header in its own revision. A header
+# comment on a fixture named for what it tests (security-merge-gate*.test.sh)
+# cannot change a control, and made PR #169 pay a strongest-model review
+# twice. A code line, a `#` line in a heredoc or string below the header, a
+# directive (#!, //go:build, # shellcheck, # noqa, ...), a mode-only change,
+# or a name git quotes all keep the hit (PR #171 review), and non-test files
+# are never dropped. Returns non-zero when git or awk fails.
 drop_comment_only_test_hits() {
-  local repo_top="$1" base_oid="$2" head_oid="$3" path_hits="$4" work_dir="$5" hit hit_path
-  local locations_file="$work_dir/test-locations" texts_file="$work_dir/test-texts"
+  local repo_top="$1" base_oid="$2" head_oid="$3" path_hits="$4" work_dir="$5" hit hit_path verdict
   while IFS= read -r hit; do
     [ -n "$hit" ] || continue
     hit_path="${hit%:0 path}"
     if printf '%s\n' "$hit_path" | grep -Eq "$SECURITY_SURFACE_TEST_FILE_PATTERN"; then
-      write_changed_lines "$repo_top" "$base_oid" "$head_oid" "$hit_path" "$locations_file" "$texts_file" || return 1
-      LC_ALL=C grep -a -Evq "$SECURITY_SURFACE_COMMENT_LINE_PATTERN" "$texts_file" || continue
+      verdict=$(classify_test_file_change "$repo_top" "$base_oid" "$head_oid" "$hit_path" "$work_dir") || return 1
+      [ "$verdict" = inert ] && continue
     fi
     printf '%s\n' "$hit"
   done <<< "$path_hits"
+}
+
+# classify_test_file_change <repo-top> <base-oid> <head-oid> <path> <work
+# dir>: prints `inert` when the path's change is header prose as
+# drop_comment_only_test_hits defines it, `live` otherwise. A name git had to
+# quote is `live` without a lookup. Returns non-zero when git or awk fails.
+classify_test_file_change() {
+  local repo_top="$1" base_oid="$2" head_oid="$3" file_path="$4" work_dir="$5"
+  local changes_file="$work_dir/test-file-changes" base_header head_header
+  case "$file_path" in \"*) echo live; return 0 ;; esac
+  base_header=$(count_header_lines "$repo_top" "$base_oid" "$file_path") || return 1
+  head_header=$(count_header_lines "$repo_top" "$head_oid" "$file_path") || return 1
+  git -c core.quotePath=false --literal-pathspecs -C "$repo_top" diff -U0 --text --no-renames --no-color \
+    --no-ext-diff --no-textconv "$base_oid" "$head_oid" -- "$file_path" > "$changes_file" 2>/dev/null || return 1
+  LC_ALL=C awk -v base_header="$base_header" -v head_header="$head_header" \
+    -v plain="$SECURITY_SURFACE_PLAIN_COMMENT_PATTERN" -v directive="$SECURITY_SURFACE_DIRECTIVE_PATTERN" '
+      /^Binary files / { binary = 1; next }
+      /^@@ / {
+        in_hunk = 1
+        match($0, / -[0-9]+/); old_line = substr($0, RSTART + 2, RLENGTH - 2) + 0
+        match($0, / \+[0-9]+/); new_line = substr($0, RSTART + 2, RLENGTH - 2) + 0
+        next
+      }
+      !in_hunk { next }
+      /^[+-]/ {
+        changed++
+        text = substr($0, 2)
+        if (substr($0, 1, 1) == "+") { line = new_line++; limit = head_header } else { line = old_line++; limit = base_header }
+        if (line > limit || text !~ plain || tolower(text) ~ directive) live = 1
+      }
+      END { if (binary) exit 3; print ((changed > 0 && !live) ? "inert" : "live") }
+    ' "$changes_file"
+}
+
+# count_header_lines <repo-top> <oid> <path>: prints how many leading lines of
+# the path's blob at <oid> form its comment header: an optional #! first line,
+# then plain comments and blank lines, stopping at the first other line or
+# directive; 0 when the blob does not exist there. Returns non-zero when git or
+# awk fails on a blob that exists.
+count_header_lines() {
+  local repo_top="$1" oid="$2" file_path="$3"
+  git -C "$repo_top" cat-file -e "$oid:$file_path" 2>/dev/null || { echo 0; return 0; }
+  git -C "$repo_top" show "$oid:$file_path" 2>/dev/null |
+    LC_ALL=C awk -v plain="$SECURITY_SURFACE_PLAIN_COMMENT_PATTERN" -v directive="$SECURITY_SURFACE_DIRECTIVE_PATTERN" '
+      NR == 1 && /^#!/ { count = 1; next }
+      $0 ~ plain && tolower($0) !~ directive { count = NR; next }
+      { exit }
+      END { print count + 0 }
+    '
+  local pipe_statuses="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
+  [ "$pipe_statuses" = "0 0" ]
 }
 
 # write_changed_lines <repo-top> <base-oid> <head-oid> <file list>
