@@ -22,7 +22,7 @@ This session's own handoff, above the older notes; it supersedes them only where
 - The site's hardcoded rule counts, which broke the site `test` check, were corrected to 132/94/9/29 in #168.
 
 **5. Pending, by urgency.**
-- **Owner, now:** move IAN-187, IAN-283, IAN-282, IAN-285 and IAN-278 from Todo to Backlog by hand, because the auto-mode classifier denied those writes. Until then the sweep reports them every weekday. Click **Run now** on "Linear Todo sweep" once, so the scheduled run does not stop on a permission prompt.
+- **Owner, now:** click **Run now** on "Linear Todo sweep" once, so the scheduled run does not stop on a permission prompt. Todo is clean: IAN-187, IAN-283, IAN-282, IAN-285 and IAN-278 moved to Backlog at the owner's request on 2026-09-30, and only the specced IAN-173 remains.
 - **MEDIUM:** IAN-476. `tdd.sh amend` cannot re-prove RED once the implementation exists, and `tdd.sh green` reports a shell fixture with no `PASS` line as `failed to run:` with an empty reason. This cost about 30 minutes and needed an owner-run workaround.
 - **MEDIUM:** IAN-512. The site's rule counts and tally widths are hardcoded, so every PR that changes a manifest row fails the site `test` check until someone hand-edits two files. Generate them in `site/scripts/build-site.sh`.
 - **LOW:** IAN-221. Adding a new enforcer still needs the close, stub, and reopen route, which was hit again here.
