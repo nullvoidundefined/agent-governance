@@ -30,6 +30,22 @@ cat >"$SPLIT_HOME/.claude/TICKET-TRACKER.json" <<SPLIT
   }
 }
 SPLIT
+# A tracker whose config names no planned status at all.
+SPECCED_ONLY_HOME=$(mktemp -d)
+trap 'rm -rf "$TRACKER_HOME" "$SPLIT_HOME" "$EMPTY_HOME" "$SPECCED_ONLY_HOME"' EXIT
+mkdir -p "$SPECCED_ONLY_HOME/.claude"
+cat >"$SPECCED_ONLY_HOME/.claude/TICKET-TRACKER.json" <<SPECCED_ONLY
+{
+  "active": "linear",
+  "trackers": {
+    "linear": {
+      "states": {"backlog": "Backlog", "specced": "Todo"},
+      "state_labels": {"specced": "specced", "planned": "planned"},
+      "tools": {"create": "$SAVE", "update": "$SAVE"}
+    }
+  }
+}
+SPECCED_ONLY
 mkdir -p "$TRACKER_HOME/.claude"
 cat >"$TRACKER_HOME/.claude/TICKET-TRACKER.json" <<TRACKER
 {
@@ -92,6 +108,8 @@ expectSilent "the unstarted state type adding specced" "$TRACKER_HOME" "$SAVE" '
 expectDeny "the specced status when the two map apart" "$SAVE" '{"id":"IAN-1","state":"Specced"}' "$SPLIT_HOME"
 expectDeny "the planned status when the two map apart" "$SAVE" '{"id":"IAN-1","state":"Planned"}' "$SPLIT_HOME"
 expectSilent "the planned status adding planned when the two map apart" "$SPLIT_HOME" "$SAVE" '{"id":"IAN-1","state":"Planned","addLabels":["planned"]}'
+expectDeny "Todo when the config names no planned status" "$SAVE" '{"id":"IAN-1","state":"Todo"}' "$SPECCED_ONLY_HOME"
+expectSilent "a save with no state when the config names no planned status" "$SPECCED_ONLY_HOME" "$SAVE" '{"id":"IAN-1","priority":2}'
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "linear-todo-label-gate: $FAILURES failure(s)"; exit 1
