@@ -34,14 +34,17 @@ import {
   listFilesWithExtension,
   listSkillDirs,
   makeSkillSourceLoader,
+  makeProfiledSkillLoader,
+  loadTextUnlessOmitted,
   renderSkillSupportFileFor,
   makeMarkdownSourceLoader,
   runExporterCli,
 } from "./exporter-core.mjs";
+import { stageProfiledClaudeDir } from "./apply-profile.mjs";
 
 const TARGET_SUBDIR = "cursor";
 const BUILDER_NAME = "translate/cursor.mjs";
-const USAGE = "usage: node translate/cursor.mjs --write|--check [--root <repo-dir>]";
+const USAGE = "usage: node translate/cursor.mjs --write|--check [--root <repo-dir>] [--profile <name>]";
 
 // listStackFiles(dir): every CLAUDE-*.md stack convention file under dir,
 // sorted. CLAUDE.md itself is loaded separately (it is the always-on rule
@@ -78,23 +81,29 @@ const loadSkillSource = makeSkillSourceLoader(loadTextFile, splitFrontmatter);
 // eight top-level sections (Class C) is a render concern, handled by the
 // renderers this function's caller passes the result to, not a loading
 // concern. Every failure surfaces as a SourceError naming the offending
-// file.
-function loadSources(rootDir) {
-  const settingsHooks = loadSettingsHooks(path.join(rootDir, "claude/settings.json"));
+// file. With a harness profile (IAN-518) the claude/ sources are read from
+// the set apply-profile.mjs filtered, and only a path that profile removed
+// may be missing (it loads as null, and its render is skipped); with none
+// they are read from <rootDir>/claude unchanged.
+function loadSources(rootDir, profileName) {
+  const { claudeDir, omitted } = stageProfiledClaudeDir(rootDir, profileName);
+  const loadUnlessOmitted = (rel) => loadTextUnlessOmitted(loadTextFile, claudeDir, rel, omitted);
+  const settingsHooks = loadSettingsHooks(path.join(claudeDir, "settings.json"));
   const portMap = loadCursorPortMap(path.join(rootDir, "translate/cursor-port-map.json"));
-  const claudeMdText = loadTextFile(path.join(rootDir, "claude/CLAUDE.md"));
-  const sessionTypesText = loadTextFile(path.join(rootDir, "claude/rules/session-types.md"));
-  const globalMemoryIndexText = loadTextFile(path.join(rootDir, "claude/global-memory/INDEX.md"));
-  const stackFiles = listStackFiles(path.join(rootDir, "claude"))
+  const claudeMdText = loadTextFile(path.join(claudeDir, "CLAUDE.md"));
+  const sessionTypesText = loadUnlessOmitted("rules/session-types.md");
+  const globalMemoryIndexText = loadTextFile(path.join(claudeDir, "global-memory/INDEX.md"));
+  const stackFiles = listStackFiles(claudeDir)
     .map((file) => ({ file, text: loadTextFile(file) }));
-  const cloudDeploymentText = loadTextFile(path.join(rootDir, "claude/CLOUD-DEPLOYMENT.md"));
-  const rulebookAgentsText = loadTextFile(path.join(rootDir, "claude/rulebook/agents.md"));
-  const rulebookAuditsText = loadTextFile(path.join(rootDir, "claude/rulebook/audits.md"));
-  const rulebookCostText = loadTextFile(path.join(rootDir, "claude/rulebook/cost.md"));
-  const rulebookReferenceText = loadTextFile(path.join(rootDir, "claude/rulebook/reference.md"));
-  const agents = listFilesWithExtension(path.join(rootDir, "claude/agents"), ".md").map(loadMarkdownSource);
-  const skills = listSkillDirs(path.join(rootDir, "claude/skills")).map(loadSkillSource);
+  const cloudDeploymentText = loadTextFile(path.join(claudeDir, "CLOUD-DEPLOYMENT.md"));
+  const rulebookAgentsText = loadUnlessOmitted("rulebook/agents.md");
+  const rulebookAuditsText = loadUnlessOmitted("rulebook/audits.md");
+  const rulebookCostText = loadUnlessOmitted("rulebook/cost.md");
+  const rulebookReferenceText = loadTextFile(path.join(claudeDir, "rulebook/reference.md"));
+  const agents = listFilesWithExtension(path.join(claudeDir, "agents"), ".md").map(loadMarkdownSource);
+  const skills = listSkillDirs(path.join(claudeDir, "skills")).map(makeProfiledSkillLoader(loadSkillSource, omitted));
   return {
+    omitted,
     settingsHooks,
     portMap,
     claudeMdText,
@@ -162,19 +171,22 @@ function buildManifestClassifications(planned, handAuthored) {
 function renderPlannedTree(sources) {
   const planned = sources.stackFiles.map((stackFile) => renderStackRule(stackFile, sources.portMap));
   planned.push(renderStackRule({ file: "CLOUD-DEPLOYMENT.md", text: sources.cloudDeploymentText }, sources.portMap));
-  const structureConventionsSkill = sources.skills.find((skill) => skill.frontmatter.name === "structure-conventions");
-  if (!structureConventionsSkill) {
+  // A harness profile (IAN-518) may hide the skill's SKILL.md on purpose;
+  // only then is the rule left out rather than a SourceError.
+  const isStructureConventionsHidden = sources.omitted.has("skills/structure-conventions/SKILL.md");
+  const structureConventionsSkill = sources.skills.find((skill) => skill.frontmatter.name === "structure-conventions" && !skill.hidden);
+  if (!structureConventionsSkill && !isStructureConventionsHidden) {
     throw new SourceError("claude/skills/structure-conventions/SKILL.md", "missing or renamed (structure-conventions rule has no source)");
   }
-  planned.push(renderSkillRule(structureConventionsSkill));
+  if (structureConventionsSkill) planned.push(renderSkillRule(structureConventionsSkill));
   planned.push(renderGlobalRules(sources.claudeMdText, sources.settingsHooks, sources.portMap));
-  planned.push(renderSessionTypes(sources.sessionTypesText, sources.portMap));
+  if (sources.sessionTypesText !== null) planned.push(renderSessionTypes(sources.sessionTypesText, sources.portMap));
   planned.push(renderMemoryIndex(sources.globalMemoryIndexText, sources.portMap));
   const rulebookTexts = [
     { file: "rulebook/agents.md", text: sources.rulebookAgentsText },
     { file: "rulebook/audits.md", text: sources.rulebookAuditsText },
     { file: "rulebook/cost.md", text: sources.rulebookCostText },
-  ];
+  ].filter(({ text }) => text !== null);
   planned.push(...renderRulebookFiles(rulebookTexts, sources.rulebookReferenceText, sources.portMap));
   planned.push(renderCursorHooksConfig(sources.settingsHooks, sources.portMap));
   planned.push(renderCursorPortStatus(sources.settingsHooks, sources.portMap));
@@ -195,7 +207,7 @@ function renderPlannedTree(sources) {
     planned.push(claimPlannedPath(seenPaths, agent.file, renderCursorCommand(agent)));
   }
   for (const skill of sources.skills) {
-    planned.push(claimPlannedPath(seenPaths, skill.file, renderCursorSkillCopy(skill)));
+    if (!skill.hidden) planned.push(claimPlannedPath(seenPaths, skill.file, renderCursorSkillCopy(skill)));
     for (const supportFile of skill.supportFiles) {
       planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillSupportFileFor(skill, supportFile)));
     }
