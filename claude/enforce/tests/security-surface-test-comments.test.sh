@@ -8,7 +8,8 @@
 # path patterns (`security`, `token`, `policy`, ...) match test file names.
 #
 #   metadata-only test change    tests/security-gate.test.sh gains a
-#                                # Shard: line and a blank: not marked.
+#                                # Shard: line right after its shebang: not
+#                                marked.
 #   code change in a test file   the same file gains a code line: marked by
 #                                path, so a change to a security test's logic
 #                                still gets the review.
@@ -47,7 +48,18 @@
 # (Codex) showed diff parsing could still be misled (inter-hunk context lines,
 # a line inserted before the shebang), so the rule became a comparison of
 # whole blobs, and only for *.test.sh fixtures, the one file type whose
-# metadata anything reads:
+# metadata anything reads. Round 4 (Codex) broke that too (a string opened on
+# line 1, a dropped final newline), so the owner chose the narrowest rule: the
+# head must be the base's #! line, then inserted metadata lines, then the rest
+# of the base byte for byte:
+#
+#   string opened on line 1      a fixture whose line 1 opens a quoted string
+#                                holding a # Covers: line: marked.
+#   final newline dropped        a # Shard: insertion beside a dropped final
+#                                newline: marked.
+#   blank line inserted          a # Shard: line plus a blank: marked.
+#   metadata removed             a # Covers: line deleted: marked.
+#
 #
 #   metadata before the shebang  a # Shard: line inserted above #!: marked.
 #   inter-hunk context           a header metadata change plus a metadata-
@@ -176,7 +188,7 @@ REPO=$(new_repo comment-only)
 write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
 commit_all "$REPO" seed
 BASE=$(head_of "$REPO")
-write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: slow\n\necho "gate PASS"\n'
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: slow\necho "gate PASS"\n'
 commit_all "$REPO" "comment only"
 expect_unmarked "comment-only test change" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 expect_clean_hits "comment-only test change hits" "" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
@@ -342,6 +354,42 @@ BASE=$(head_of "$REPO")
 write_file "$REPO" tests/test_session.py $'# Shard: slow\n# header\nimport os\n'
 commit_all "$REPO" "metadata in python"
 expect_clean_hits "metadata in a non-fixture test" "tests/test_session.py:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 19. a string opened on line 1 ------------------------------------------
+REPO=$(new_repo line-one-string)
+write_file "$REPO" tests/security-str.test.sh $'value=\'\n# Covers: denied\n\'\necho "$value"\necho "str PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-str.test.sh $'value=\'\n# Covers: allowed\n\'\necho "$value"\necho "str PASS"\n'
+commit_all "$REPO" "string data"
+expect_clean_hits "string opened on line 1" "tests/security-str.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 20. a dropped final newline beside a metadata insertion ----------------
+REPO=$(new_repo final-newline)
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: slow\necho "gate PASS"'
+commit_all "$REPO" "metadata and no final newline"
+expect_clean_hits "final newline dropped" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 21. a blank line inserted beside the metadata --------------------------
+REPO=$(new_repo blank-insert)
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: slow\n\necho "gate PASS"\n'
+commit_all "$REPO" "metadata and blank"
+expect_clean_hits "blank line inserted" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 22. a metadata line removed --------------------------------------------
+REPO=$(new_repo metadata-removed)
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Covers: hook:git-workflow-guard\necho "gate PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
+commit_all "$REPO" "metadata removed"
+expect_clean_hits "metadata removed" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 if [ "$failures" -eq 0 ]; then
   echo "security-surface-test-comments.test.sh PASS"
