@@ -39,6 +39,8 @@ Never type a provider status name that is not in the config's `states` map. An u
 
 Trivial and standard tiers go `backlog` to `in-progress` directly. `blocked` returns to the state it interrupted. `done` and `dropped` are terminal: reopening means a new ticket linking the old key. By default `advance` runs only at `in-progress`, `in-review`, `blocked`, `done`, and `dropped`; `specced` and `planned` are written only when the owner asks.
 
+On a tracker whose config maps `specced` and `planned` onto one shared status (Linear's Todo), that status holds only tickets carrying the `specced` or `planned` label; every other not-started ticket stays in `backlog`, and the Priority field orders it. Any write that moves a ticket into that status carries the label in the same call (`addLabels: ["specced"]` or `["planned"]`), because `linear-todo-label-gate.sh` denies the move otherwise (IAN-473). Moves made in the tracker's own UI are outside every hook; the weekday `linear-todo-sweep` scheduled task reports them.
+
 ## Canonical fields
 
 | Field | Source |
