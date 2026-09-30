@@ -483,27 +483,51 @@ is_head_commit_prefix() {
   [ "$endpoint" = "$(printf '%.*s' "${#endpoint}" "$head_oid")" ]
 }
 
-# is_docs_only_tail <checkout top> <review head> <PR head oid>: true when the
-# review's head endpoint names a commit this checkout holds, that commit is an
-# ancestor of the PR head, and every file the commits after it change is a
-# regular file under the repository's top-level docs/ tree (IAN-516, owner
-# decision 2026-09-30). A PR note, the R-109 artefact, or a handoff committed
-# after a review cannot change what the review read, and re-reviewing for
-# them cost 3 of 4 rounds on IAN-352 and a 58-minute R-109 round on PR #169.
-# Anything else is false, so the exact-head rule applies: an ambiguous or
-# unknown review head, a head the checkout lacks, a review off the PR's
-# history, a change outside docs/ (claude/docs/ included), a symlink,
-# executable, or submodule in the tail, or a git failure.
+# resolve_commit_by_prefix <checkout top> <name>: prints the one commit whose
+# object name starts with <name> (7 or more hex digits), resolved against
+# object names only, so a branch or tag spelled in hex never stands in for a
+# review head (PR #172 review). Returns non-zero when no object, more than one
+# object, or a non-commit object carries the prefix.
+resolve_commit_by_prefix() {
+  local top="$1" name candidates
+  name=$(printf '%s' "$2" | tr 'A-F' 'a-f')
+  [ -n "$top" ] && [ "${#name}" -ge 7 ] && is_hexadecimal_name "$name" || return 1
+  candidates=$(git -C "$top" rev-parse --disambiguate="$name" 2>/dev/null) || return 1
+  [ -n "$candidates" ] && [ "$(printf '%s\n' "$candidates" | grep -c .)" -eq 1 ] || return 1
+  [ "$(git -C "$top" cat-file -t "$candidates" 2>/dev/null)" = commit ] || return 1
+  printf '%s' "$candidates"
+}
+
+# is_docs_only_tail <checkout top> <review head> <PR head oid> <base>
+# [<artefact path>]: true
+# when the review's head endpoint names exactly one commit this checkout holds
+# (by object name, never a ref), that commit is an ancestor of the PR head but
+# not of <base> (so the review read part of the PR), and every commit after it,
+# each side of a merge included, changes only regular files under the
+# repository's top-level docs/ tree, adding and never changing anything under
+# docs/security-reviews/ or at <artefact path> (IAN-516, owner decision 2026-09-30; hardened by the
+# PR #172 review). A PR note, the R-109 artefact, or a handoff committed after
+# a review cannot change what the review read, and re-reviewing for them cost
+# 3 of 4 rounds on IAN-352 and a 58-minute R-109 round on PR #169. Anything
+# else is false and the exact-head rule applies, including a git failure.
 is_docs_only_tail() {
-  local top="$1" review_head="$2" head_oid="$3" review_oid tail_changes
-  [ -n "$top" ] && [ "${#review_head}" -ge 7 ] && is_hexadecimal_name "$review_head" || return 1
-  review_oid=$(git -C "$top" rev-parse --verify --quiet "$review_head^{commit}" 2>/dev/null) || return 1
+  local top="$1" review_head="$2" head_oid="$3" base="$4" artefact_path="${5:-}" review_oid tail_changes ancestry_status
+  review_oid=$(resolve_commit_by_prefix "$top" "$review_head") || return 1
   git -C "$top" rev-parse --verify --quiet "$head_oid^{commit}" >/dev/null 2>&1 || return 1
   git -C "$top" merge-base --is-ancestor "$review_oid" "$head_oid" 2>/dev/null || return 1
-  tail_changes=$(git -c core.quotePath=false -C "$top" diff --raw --no-renames --no-ext-diff "$review_oid" "$head_oid" 2>/dev/null) || return 1
-  printf '%s\n' "$tail_changes" | awk -F '\t' '
+  [ -n "$base" ] || return 1
+  git -C "$top" merge-base --is-ancestor "$review_oid" "$base" 2>/dev/null
+  ancestry_status=$?
+  [ "$ancestry_status" -eq 1 ] || return 1
+  tail_changes=$(git -c core.quotePath=false -C "$top" log --format= --raw -m --no-renames --no-abbrev \
+    --ignore-submodules=none "$review_oid..$head_oid" 2>/dev/null) || return 1
+  printf '%s\n' "$tail_changes" | awk -F '\t' -v artefact="$artefact_path" '
     NF == 0 { next }
-    { split($1, modes, " "); if ((modes[2] != "100644" && modes[2] != "000000") || $2 !~ /^docs\//) outside = 1 }
+    {
+      split($1, fields, " "); new_mode = fields[2]; status = fields[5]
+      if ((new_mode != "100644" && new_mode != "000000") || $2 !~ /^docs\//) outside = 1
+      if (($2 ~ /^docs\/security-reviews\// || $2 == artefact) && status != "A") outside = 1
+    }
     END { exit outside }'
 }
 
@@ -535,7 +559,8 @@ read_codex_artefact_verdict() {
   [ -n "$range_head" ] ||
     { echo "its \`## Codex review\` section gives the range as \`$range\`, which holds no \`<base>..<head>\` range expression, so nothing in the PR says which diff was read"; return 0; }
   is_head_commit_prefix "$range_head" "$head_oid" ||
-    is_docs_only_tail "$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null)" "$range_head" "$head_oid" ||
+    is_docs_only_tail "$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null)" "$range_head" "$head_oid" \
+      "refs/remotes/origin/$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null)" ||
     { echo "its \`## Codex review\` section gives the range as \`$range\`, whose head endpoint \`$range_head\` does not identify $(printf '%.7s' "$head_oid"), the commit this PR would merge, and the commits after it change more than the top-level docs/ tree, so the review read a tree other than the one that would merge"; return 0; }
   echo ok
 }
@@ -758,7 +783,7 @@ read_security_artefact_verdict() {
   [ -n "$range_head" ] ||
     { echo "its \`## Security review\` section carries no \`range\` line holding a \`<base>..<head>\` expression"; return 0; }
   is_head_commit_prefix "$range_head" "$SECURITY_HEAD" ||
-    is_docs_only_tail "$SECURITY_TOP" "$range_head" "$SECURITY_HEAD" ||
+    is_docs_only_tail "$SECURITY_TOP" "$range_head" "$SECURITY_HEAD" "$SECURITY_BASE" "$(read_review_field "$section" artefact)" ||
     { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, and the commits after it change more than the top-level docs/ tree, so the review is stale"; return 0; }
   [ -n "$(read_review_field "$section" artefact)" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line naming the reviewer's saved output, so nothing proves what the review found; commit the artefact, record it with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head, and name it on an \`artefact\` line"; return 0; }
@@ -880,12 +905,12 @@ read_severity_verdict() {
 }
 
 # is_range_commit <sha>: true when the abbreviated or full object name
-# resolves to one commit in SECURITY_BASE..SECURITY_HEAD; an ambiguous name,
-# a missing object, or a failed ancestry lookup is false.
+# resolves, by object name and never through a ref (PR #172 review), to one
+# commit in SECURITY_BASE..SECURITY_HEAD; an ambiguous name, a missing object,
+# or a failed ancestry lookup is false.
 is_range_commit() {
   local commit_oid ancestry_status
-  is_hexadecimal_name "$1" && [ "${#1}" -ge 7 ] || return 1
-  commit_oid=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "$1^{commit}" 2>/dev/null) || return 1
+  commit_oid=$(resolve_commit_by_prefix "$SECURITY_TOP" "$1") || return 1
   git -C "$SECURITY_TOP" merge-base --is-ancestor "$commit_oid" "$SECURITY_HEAD" 2>/dev/null || return 1
   git -C "$SECURITY_TOP" merge-base --is-ancestor "$commit_oid" "$SECURITY_BASE" 2>/dev/null
   ancestry_status=$?
