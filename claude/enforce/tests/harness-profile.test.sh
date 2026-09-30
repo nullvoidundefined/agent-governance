@@ -56,6 +56,25 @@ for (const [kind, bogus] of [["rules", "R-999"], ["hooks", "no-such-hook"], ["sk
   check(`a ${kind} id missing from claude/ is a ProfileError naming it`, staleThrew);
 }
 
+// Permission, not only existence (PR #175 review): an item that enforces,
+// delivers the guards, or holds the TDD and review split can never be
+// removed by any profile, whatever category lists it.
+const protectedCases = [
+  ["hooks", "destructive-db-guard"], ["hooks", "harness-sync"], ["hooks", "verification-gate"],
+  ["agents", "security-reviewer"], ["agents", "test-author"],
+  ["files", "rulebook/reference.md"], ["files", "skills/task-start/scripts/task-tier.sh"],
+  ["files", "hooks/harness-sync.sh"], ["files", "hooks/secret-scan.sh"], ["files", "enforce/role-policy.json"],
+  ["files", "enforce/tdd.sh"], ["files", "agents/pr-reviewer.md"], ["files", "settings.json"],
+  ["rules", "R-109"], ["rules", "R-003"], ["rules", "R-412"], ["rules", "R-517"],
+];
+for (const [kind, id] of protectedCases) {
+  const widened = structuredClone(profiles);
+  widened.profiles.lean[kind] = [...widened.profiles.lean[kind], id];
+  let refused = false;
+  try { applyProfile("lean", source, widened); } catch (err) { refused = err instanceof ProfileError && err.message.includes(id) && /protected/.test(err.message); }
+  check(`a profile listing protected ${kind} ${id} is refused as protected`, refused);
+}
+
 // Closure: the committed lean profile applies cleanly to the real tree.
 let result;
 try { result = applyProfile("lean", source, profiles); check("lean applies to the real claude/ tree", true); }
@@ -90,6 +109,40 @@ const keptHooks = hookNames(sourceSettings).filter((name) => !droppedHooks.has(n
 check("lean keeps every other hook registration", JSON.stringify(leanHooks) === JSON.stringify(keptHooks));
 for (const guard of ["secret-scan", "protected-path-guard", "git-workflow-guard", "verification-gate", "settings-change-guard", "ticket-at-start-gate", "no-em-dash"])
   check(`lean keeps enforcing hook ${guard}`, leanHooks.includes(guard));
+// Exact retention (PR #175 review): lean's hooks object equals the full one
+// with exactly the listed commands removed, every other field of every
+// registration (event, matcher, command, timeout, type, anything else)
+// unchanged, empty groups and events dropped.
+const expectedHooks = {};
+for (const [event, groups] of Object.entries(sourceSettings.hooks)) {
+  const kept = groups
+    .map((group) => ({ ...group, hooks: group.hooks.filter((hook) => !droppedHooks.has(path.basename(hook.command).replace(/\.sh$/, ""))) }))
+    .filter((group) => group.hooks.length > 0);
+  if (kept.length > 0) expectedHooks[event] = kept;
+}
+check("lean hooks equal full hooks minus exactly the listed commands, field for field", JSON.stringify(leanSettings.hooks) === JSON.stringify(expectedHooks));
+
+// An independent, hard-coded guard list: each keeps every (event, matcher)
+// pair it has in the full settings.json.
+const guardNames = [
+  "secret-scan", "no-em-dash", "fix-commit-requires-test", "conflict-markers", "commit-message-guard",
+  "destructive-db-guard", "destructive-command-guard", "codex-billing-guard", "protected-path-guard",
+  "global-repo-push-guard", "git-workflow-guard", "ticket-at-start-gate", "push-eslint-gate", "push-ruff-gate",
+  "push-semgrep-gate", "push-rubocop-gate", "push-golangci-gate", "push-feature-docs-gate", "pr-ticket-ref-gate",
+  "constant-change-guard", "migration-defaults-guard", "structure-gate", "content-gate", "dependency-add-guard",
+  "codex-test-author-guard", "lexicon-gate", "scope-widening-gate", "task-provenance-gate", "mcp-action-guard",
+  "linear-todo-label-gate", "verification-gate", "settings-change-guard", "harness-sync",
+];
+const registrationsOf = (settings, name) => {
+  const pairs = [];
+  for (const [event, groups] of Object.entries(settings.hooks)) for (const group of groups)
+    for (const hook of group.hooks) if (path.basename(hook.command) === `${name}.sh`) pairs.push(`${event}|${group.matcher ?? ""}|${hook.command}`);
+  return pairs.sort();
+};
+for (const name of guardNames) {
+  const fullPairs = registrationsOf(sourceSettings, name);
+  check(`guard ${name} keeps every registration and matcher`, fullPairs.length > 0 && JSON.stringify(registrationsOf(leanSettings, name)) === JSON.stringify(fullPairs));
+}
 check("lean leaves no empty hook group", Object.values(leanSettings.hooks).every((groups) => groups.length > 0 && groups.every((g) => g.hooks.length > 0)));
 const { hooks: _sourceHooks, ...sourceRest } = sourceSettings;
 const { hooks: _leanHooks, ...leanRest } = leanSettings;
