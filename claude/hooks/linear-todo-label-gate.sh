@@ -37,27 +37,29 @@ case "$TOOL" in mcp__*) ;; *) exit 0 ;; esac
 CONFIG="${CLAUDE_TICKET_TRACKER_FILE:-$HOME/.claude/TICKET-TRACKER.json}"
 [ -f "$CONFIG" ] || exit 0
 
-# readTrackerRule(): prints the gated status name and the two label names as
-# three lines, lowercased, when the tool is the active tracker's create or
-# update tool; prints nothing otherwise.
+# readTrackerRule(): prints the specced status name, the planned status name,
+# and the two label names as four lines, lowercased, when the tool is the
+# active tracker's create or update tool; prints nothing otherwise. Both status
+# names are read because a tracker may map the two canonical states apart.
 readTrackerRule() {
   jq -r --arg tool "$TOOL" '
     .trackers[.active] as $t
     | select($t.tools.create == $tool or $t.tools.update == $tool)
-    | [$t.states.specced, $t.state_labels.specced, $t.state_labels.planned]
+    | [$t.states.specced, $t.states.planned, $t.state_labels.specced, $t.state_labels.planned]
     | map(ascii_downcase) | .[]
   ' "$CONFIG" 2>/dev/null
 }
 
 RULE=$(readTrackerRule)
 [ -n "$RULE" ] || exit 0
-GATED_STATE=$(printf '%s\n' "$RULE" | sed -n 1p)
-SPECCED_LABEL=$(printf '%s\n' "$RULE" | sed -n 2p)
-PLANNED_LABEL=$(printf '%s\n' "$RULE" | sed -n 3p)
+SPECCED_STATE=$(printf '%s\n' "$RULE" | sed -n 1p)
+PLANNED_STATE=$(printf '%s\n' "$RULE" | sed -n 2p)
+SPECCED_LABEL=$(printf '%s\n' "$RULE" | sed -n 3p)
+PLANNED_LABEL=$(printf '%s\n' "$RULE" | sed -n 4p)
 
 STATE=$(printf '%s' "$INPUT" | jq -r '.tool_input.state // "" | ascii_downcase' 2>/dev/null)
 case "$STATE" in
-  "$GATED_STATE" | unstarted) ;;
+  "$SPECCED_STATE" | "$PLANNED_STATE" | unstarted) ;;
   *) exit 0 ;;
 esac
 
