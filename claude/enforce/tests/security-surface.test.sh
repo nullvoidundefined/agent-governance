@@ -275,6 +275,90 @@ commit_all "$REPO" "add session notes"
 expect_unmarked "auth doc under an excluded glob" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 expect_hits "auth doc under an excluded glob" "" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 
+# A plain entry names one repository-relative path, never a file of the same
+# name elsewhere: excluding the root README.md must leave a nested README.md
+# that describes a security control on the surface (IAN-480).
+REPO=$(new_repo exclude-root-readme-only)
+write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["README.md"] }\n'
+commit_all "$REPO" "exclude the root README from the security surface"
+BASE=$(head_of "$REPO")
+write_file "$REPO" claude/README.md $'Cookies are set with SameSite=Strict.\n'
+commit_all "$REPO" "document the cookie policy in a nested README"
+expect_marked "nested README under a root-only entry" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "nested README under a root-only entry" "claude/README.md:1 content" \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
+# Matching is case-sensitive: an entry for docs/ must not exclude a file under
+# Docs/, so a differently cased directory cannot slip past the list (IAN-480).
+REPO=$(new_repo exclude-case-variant)
+write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["docs/*.md"] }\n'
+commit_all "$REPO" "exclude docs Markdown from the security surface"
+BASE=$(head_of "$REPO")
+write_file "$REPO" Docs/auth-session.md $'# Sessions\n\nNotes on how sign-in works.\n'
+commit_all "$REPO" "add session notes under a differently cased directory"
+expect_marked "case variant of an excluded directory" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "case variant of an excluded directory" "Docs/auth-session.md:0 path" \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
+# The list is read from the base commit: a range whose head adds an exclude
+# list covering everything, alongside a security file, stays marked, because
+# the head's list never applies to the range that introduces it (IAN-480).
+REPO=$(new_repo exclude-head-only)
+BASE=$(head_of "$REPO")
+write_file "$REPO" .enforce.json $'{ "securitySurfaceExclude": ["**"] }\n'
+write_file "$REPO" docs/auth-session.md $'# Sessions\n\nNotes on how sign-in works.\n'
+commit_all "$REPO" "exclude everything and add session notes in one range"
+expect_marked "exclude list added only at the head" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "exclude list added only at the head" $'.enforce.json:0 path\ndocs/auth-session.md:0 path' \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
+# The agent-governance checkout's own list excludes prose Markdown and nothing
+# a session or a gate reads: every path below carries a content trigger, so a
+# path the list covers prints no hit and a path it leaves alone prints one. A
+# later edit widening the list (back to docs/**, say) turns this red rather
+# than depending on a reviewer to notice (IAN-480). The installed copy under
+# ~/.claude has no repository root, so the check runs only in a checkout,
+# which sync.sh at the root identifies, and a checkout missing the list fails.
+# The root is resolved physically because CI installs the checkout as a
+# ~/.claude symlink, whose logical parent is the home directory rather than
+# the checkout; a skip is printed so a log never shows it as a silent pass.
+# Under GitHub Actions the suite always runs from this repository's checkout,
+# so a skip there means the install layout changed and the pin left the
+# required check; that fails rather than printing.
+REPOSITORY_ROOT="$(cd -P "$CLAUDE_HARNESS_ROOT/.." && pwd -P)"
+if [ ! -f "$REPOSITORY_ROOT/sync.sh" ]; then
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    report_failure "shipped exclude list: CI ran the fixture outside the checkout ($REPOSITORY_ROOT has no sync.sh)"
+  else
+    echo "security-surface.test.sh: shipped exclude list not checked: $REPOSITORY_ROOT is not an agent-governance checkout" >&2
+  fi
+fi
+if [ -f "$REPOSITORY_ROOT/sync.sh" ]; then
+  if [ -f "$REPOSITORY_ROOT/.enforce.json" ]; then
+    REPO=$(new_repo exclude-shipped-list)
+    write_file "$REPO" .enforce.json "$(cat "$REPOSITORY_ROOT/.enforce.json")"
+    commit_all "$REPO" "copy the shipped exclude list"
+    BASE=$(head_of "$REPO")
+    covered_paths="README.md RECIPES.md docs/audits/2026-01-01-engineering.md docs/prs/PR-1.md docs/tickets/IAN-1.md docs/model-targets.md"
+    surface_paths="docs/session-handoff/session-handoff.md docs/security-reviews/PR-1.json docs/slices/slice-01-plan.md docs/audits/run.sh docs/prs/check.py claude/README.md claude/CLAUDE.md claude/agents/reviewer.md claude/prompts/review.md"
+    for shipped_path in $covered_paths $surface_paths; do
+      write_file "$REPO" "$shipped_path" $'Cookies are set with SameSite=Strict.\n'
+    done
+    commit_all "$REPO" "mention a cookie control in every shipped path"
+    shipped_hits=$(run_detector list_security_surface_hits "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB")
+    for shipped_path in $covered_paths; do
+      printf '%s\n' "$shipped_hits" | grep -q "^$shipped_path:" \
+        && report_failure "shipped exclude list: $shipped_path is prose and must be excluded, but it was marked"
+    done
+    for shipped_path in $surface_paths; do
+      printf '%s\n' "$shipped_hits" | grep -q "^$shipped_path:" \
+        || report_failure "shipped exclude list: $shipped_path must stay on the security surface, but it was excluded"
+    done
+  else
+    report_failure "shipped exclude list: $REPOSITORY_ROOT/.enforce.json is missing from the checkout"
+  fi
+fi
+
 # --- 6. The exclude list is protected (B-8, R-410) ---------------------------
 GUARD_REPO=$(new_repo guard)
 GUARD_HOME=$(mktemp -d "$WORK/home.XXXXXX")
