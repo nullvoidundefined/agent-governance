@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:harness-sync
 # harness-sync.test.sh: verifies hooks/harness-sync.sh (R-003) against a
 # sandbox checkout and a fake HOME: the first run syncs the checkout's tracked

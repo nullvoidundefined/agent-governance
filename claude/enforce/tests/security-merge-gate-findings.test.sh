@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:git-workflow-guard
 # Verifies that the security merge gate in git-workflow-guard.sh (IAN-381,
 # B-10, B-11, B-12, and B-16, rule R-109) reads the findings of a current

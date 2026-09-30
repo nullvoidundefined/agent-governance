@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Verifies ratchet.mjs, the long-term half of deterministic enforcement.
 # Seven invariants:
 #   1. No baseline is an error telling you to --update, never a silent pass.

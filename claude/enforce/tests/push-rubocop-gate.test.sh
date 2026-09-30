@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: rubocop:Lint/SuppressedException, rubocop:Style/NestedTernaryOperator
 # Verifies push-rubocop-gate.sh denies a push whose outgoing diff adds a Ruby
 # AST-tier violation, scopes to added lines, and fails open on unparseable

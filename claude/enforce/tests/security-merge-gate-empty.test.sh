@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:git-workflow-guard
 # Verifies that the security merge gate in git-workflow-guard.sh (IAN-381,
 # B-16b, rule R-109) refuses an empty Security review. On a PR whose range

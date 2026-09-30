@@ -1,53 +1,19 @@
 #!/usr/bin/env bash
-# Shard: slow
-# Watches: enforce/tests/*.test.sh hooks/tests/*.test.sh hooks/*.sh enforce/harness-root.sh
-# fixture-implementation-root.test.sh: proves that the fixture suites verify
-# the implementation carried by THIS checkout and not the copy that happens to
-# be installed under ~/.claude (2026-09-18 audit, verification-integrity
-# defect 3).
+# fixture-implementation-root.test.sh: the static half of the proof that the
+# fixture suites verify the implementation carried by THIS checkout and not
+# the copy installed under ~/.claude (2026-09-18 audit, verification-integrity
+# defect 3). Every fixture in both trees must resolve its subject through
+# enforce/harness-root.sh, and the handful of files still allowed to name
+# $HOME/.claude are listed here one by one with the reason each is
+# legitimate. harness-root.sh must also leave the write-side runtime state
+# (CLAUDE_FIRE_LOG, CLAUDE_SESSION_LOCK_DIR) unbound, or the suites would
+# write into the working tree.
 #
-# The defect this closes was not theoretical. Most fixtures opened their
-# subject as "$HOME/.claude/hooks/<name>.sh", and neither runner bound that
-# location to the checkout, so a pre-push run on one branch could verify the
-# hooks that a different branch had last synced into the live tree. The suite
-# went green or red according to which branch ran ./sync.sh most recently
-# rather than according to the code being pushed. Continuous integration
-# symlinks the checkout at ~/.claude, so the drift never showed up there.
-#
-# The proof is a deliberate divergence rather than an inspection. A sandbox
-# home receives a complete copy of the checkout's hooks with exactly one of
-# them sabotaged into a no-op, the real fixtures for that hook are then run
-# against that sandbox home, and they must still pass, which they can only do
-# by reading the checkout's correct copy. A positive control runs the same
-# fixture with CLAUDE_HARNESS_ROOT pointed at the sabotaged tree and requires
-# it to fail, so a fixture that silently stopped exercising the hook at all
-# cannot make the first assertion pass for the wrong reason.
-#
-# A third assertion keeps the sweep swept: every fixture in both trees must
-# resolve its subject through enforce/harness-root.sh, and the handful of
-# files still allowed to name $HOME/.claude are listed here one by one with
-# the reason each is legitimate.
-#
-# The DATA half, added 2026-09-18 after the first sweep left it standing.
-# Binding the code alone proved only half of what the suite needs to be worth
-# running. Eleven hooks read a data file as "${OVERRIDE:-$HOME/.claude/<path>}"
-# and only a handful of fixtures ever set one of those variables, so a fixture
-# could exercise the checkout's enforcement-guard-check.sh against whichever
-# manifest.json the last ./sync.sh had written, and the verdict depended on
-# unrelated history in exactly the way the code binding had. The proof here is
-# the same shape as the code proof: the sandbox home receives a manifest.json,
-# a role-policy.json and a settings.json whose CONTENT differs from the
-# checkout's, real fixtures that read those files are run against it, and they
-# must still pass, which they can only do by reading the checkout's copies. A
-# positive control aims the data overrides themselves at the sabotaged files
-# and requires the same fixtures to fail, so a fixture that reads no data at
-# all cannot satisfy the first assertion by accident.
-#
-# A last assertion holds the line the other way. Not every one of those
-# variables may be bound: CLAUDE_FIRE_LOG and CLAUDE_SESSION_LOCK_DIR name a
-# telemetry log and a lock directory that their readers WRITE, so pinning them
-# at the checkout would have the fixture suites writing into the working tree.
-# This file fails if harness-root.sh ever starts exporting one of them.
+# Both checks are cheap, so this file stays in the fast tier and runs on every
+# Stop and every tdd.sh red and green, which keeps a new fixture that reads
+# its subject through $HOME from slipping past a local run. The dynamic half,
+# which runs real fixtures against a sabotaged install and takes minutes, is
+# fixture-implementation-root-sabotage.test.sh (split out under IAN-510).
 set -uo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -100,37 +66,6 @@ harness_binding_reset_flags() {
   done
 }
 
-# Runs one fixture file against the sabotaged sandbox home and succeeds when
-# that fixture still passes. Every harness binding is stripped from the
-# child's environment so the child resolves its own code root and its own data
-# paths from its own location, which is the behaviour under test; HOME points
-# at the sabotaged install.
-fixture_passes_against_sabotaged_home() {
-  local fixture="$1" out
-  local reset_flags=()
-  while IFS= read -r flag; do reset_flags+=("$flag"); done < <(harness_binding_reset_flags)
-  out=$(env "${reset_flags[@]}" HOME="$SANDBOX" CLAUDE_FIRE_LOG=/dev/null \
-    bash "$fixture" 2>&1)
-  grep -q 'PASS' <<< "$out" && ! grep -q 'FAIL' <<< "$out"
-}
-
-# Runs one fixture file with the DATA overrides aimed at the sabotaged sandbox
-# copies and succeeds when that fixture fails. This is the data-side positive
-# control: it shows the fixture really does read those files, so the assertion
-# that it passes against the sabotaged home is a statement about which copy
-# won and not about a fixture that consults no data at all. The code root is
-# left to resolve normally, which isolates the variable under test to the data.
-fixture_fails_against_sabotaged_data() {
-  local fixture="$1" out
-  out=$(env -u CLAUDE_HARNESS_ROOT \
-    CLAUDE_MANIFEST_FILE="$SANDBOX/.claude/enforce/manifest.json" \
-    CLAUDE_ROLE_POLICY_FILE="$SANDBOX/.claude/enforce/role-policy.json" \
-    CLAUDE_TDD_HOME="$SANDBOX/.claude" \
-    CLAUDE_FIRE_LOG=/dev/null \
-    bash "$fixture" 2>&1)
-  grep -q 'FAIL' <<< "$out"
-}
-
 # Succeeds when sourcing harness-root.sh in a clean shell leaves every runtime
 # state variable unset. Runs in a child shell with the whole binding set and
 # the runtime names cleared first, so the answer describes what the helper
@@ -151,18 +86,6 @@ runtime_state_stays_unbound() {
     echo "  harness-root.sh bound runtime state it must leave alone: $line"
   done
   return 1
-}
-
-# Runs one fixture file with CLAUDE_HARNESS_ROOT aimed at the sabotaged tree
-# and succeeds when that fixture fails. This is the positive control: it shows
-# the fixture really does read its subject out of the root it is given, so the
-# assertion above is a statement about resolution and not about a fixture that
-# quietly asserts nothing.
-fixture_fails_against_sabotaged_root() {
-  local fixture="$1" out
-  out=$(CLAUDE_HARNESS_ROOT="$SANDBOX/.claude" CLAUDE_FIRE_LOG=/dev/null \
-    bash "$fixture" 2>&1)
-  grep -q 'FAIL' <<< "$out" || [ -z "$out" ]
 }
 
 # Succeeds when no fixture outside the recorded allowlist names $HOME/.claude
@@ -202,8 +125,9 @@ no_unlisted_home_reference() {
 #                                 enforce/node_modules, which is gitignored
 #                                 machine state; tdd.sh itself comes from the
 #                                 harness root
-#   fixture-implementation-root.test.sh  this file, which builds the sabotaged
-#                                 install the proof depends on
+#   fixture-implementation-root.test.sh  this file, which names the pattern
+#   fixture-implementation-root-sabotage.test.sh  builds the sabotaged install
+#                                 the proof depends on
 #   settings-permission-rules.test.sh  exercises tilde expansion in permission
 #                                 rules, so $HOME is the DATA under test (the
 #                                 fixture overrides HOME to a sandbox first);
@@ -219,45 +143,12 @@ HOME_REFERENCE_ALLOWLIST=(
   "install-git-hooks.test.sh"
   "tdd-red-green.test.sh"
   "fixture-implementation-root.test.sh"
+  "fixture-implementation-root-sabotage.test.sh"
   "settings-permission-rules.test.sh"
 )
 
-mkdir -p "$SANDBOX/.claude"
-cp -R "$CLAUDE_HARNESS_ROOT/hooks" "$SANDBOX/.claude/hooks"
-# The sabotage: an installed no-em-dash.sh that approves everything. A fixture
-# reading the installed copy sees a hook that never denies and fails; a fixture
-# reading the checkout sees the real hook and passes.
-printf '#!/usr/bin/env bash\n# sabotaged installed copy: never denies\nexit 0\n' \
-  > "$SANDBOX/.claude/hooks/no-em-dash.sh"
-chmod +x "$SANDBOX/.claude/hooks/no-em-dash.sh"
-
-# The data sabotage. Each file is well-formed JSON that parses cleanly and
-# says something different from the checkout's copy: a manifest that registers
-# no rule at all, a role policy that knows no role, and settings that register
-# no hook. A fixture reading any of these reports the absence as a gap and
-# fails; a fixture reading the checkout's copies passes.
-mkdir -p "$SANDBOX/.claude/enforce"
-printf '{"rules":[]}\n' > "$SANDBOX/.claude/enforce/manifest.json"
-printf '{"roles":{},"patterns":{}}\n' > "$SANDBOX/.claude/enforce/role-policy.json"
-printf '{"hooks":{}}\n' > "$SANDBOX/.claude/settings.json"
-
-check "the enforce-tree no-em-dash fixture tests the checkout, not the sabotaged install" \
-  fixture_passes_against_sabotaged_home "$CLAUDE_HARNESS_ROOT/enforce/tests/no-em-dash.test.sh"
-check "the hooks-tree log-rule-fire fixture tests the checkout, not the sabotaged install" \
-  fixture_passes_against_sabotaged_home "$CLAUDE_HARNESS_ROOT/hooks/tests/log-rule-fire.test.sh"
-check "the no-em-dash fixture does fail when its root really is the sabotaged tree" \
-  fixture_fails_against_sabotaged_root "$CLAUDE_HARNESS_ROOT/enforce/tests/no-em-dash.test.sh"
 check "no fixture outside the recorded allowlist selects its subject through \$HOME" \
   no_unlisted_home_reference
-
-check "the enforcement-guard-check fixture reads the checkout's manifest, not the sabotaged install" \
-  fixture_passes_against_sabotaged_home "$CLAUDE_HARNESS_ROOT/enforce/tests/enforcement-guard-check.test.sh"
-check "the tdd fixture reads the checkout's role policy, not the sabotaged install" \
-  fixture_passes_against_sabotaged_home "$CLAUDE_HARNESS_ROOT/enforce/tests/tdd-red-green.test.sh"
-check "the enforcement-guard-check fixture does fail when the sabotaged manifest really is its data" \
-  fixture_fails_against_sabotaged_data "$CLAUDE_HARNESS_ROOT/enforce/tests/enforcement-guard-check.test.sh"
-check "the tdd fixture does fail when the sabotaged role policy really is its data" \
-  fixture_fails_against_sabotaged_data "$CLAUDE_HARNESS_ROOT/enforce/tests/tdd-red-green.test.sh"
 check "harness-root.sh leaves the write-side runtime state unbound" \
   runtime_state_stays_unbound
 

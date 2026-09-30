@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:git-workflow-guard, hook:protected-path-guard
 # Verifies that the security merge gate (IAN-381, B-10b, rule R-109) checks the
 # Security review artefact against the hash recorded at review time, and that

@@ -332,7 +332,9 @@ that is. Before the 2026-09-18 audit the fixtures opened their subject as
 whichever branch had most recently run `./sync.sh` while git pushed something
 else entirely. `CLAUDE_HARNESS_ROOT` overrides the resolution when a run should
 deliberately target another tree, which is how
-`tests/fixture-implementation-root.test.sh` proves the property holds. The one
+`tests/fixture-implementation-root-sabotage.test.sh` proves the property holds,
+while `tests/fixture-implementation-root.test.sh`, a cheap fast-tier scan,
+refuses any new fixture that names `$HOME/.claude` outside its allowlist. The one
 fixture still pinned to the live install is `tests/hook-latency.test.sh`, which
 times the hooks a session actually spawns and says so in its header.
 

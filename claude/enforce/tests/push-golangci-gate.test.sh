@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: golangci:errcheck, golangci:errorlint, golangci:mnd, golangci:nolintlint
 # Verifies push-golangci-gate.sh denies a push whose outgoing diff adds a Go
 # AST-tier violation, scopes to added lines, and fails open on unparseable

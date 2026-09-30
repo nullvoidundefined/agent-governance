@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # repo-setup.test.sh: verifies skills/repo-setup/scripts/setup.sh against a
 # stubbed gh (REPO_SETUP_GH_CMD) that records every call and keeps the
 # repository's remote state in a scratch directory. --check on a bare

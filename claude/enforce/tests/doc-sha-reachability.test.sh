@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: ci:doc-sha-reachability
 #
 # Verifies enforce/doc-sha-reachability.sh (R-215, IAN-308 phase 1): a commit

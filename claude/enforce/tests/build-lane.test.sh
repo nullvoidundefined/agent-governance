@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # build-lane.test.sh: verifies skills/build-fast/scripts/build-lane.sh, the
 # build-fast lane classifier (spec 2026-09-27-build-fast-design.md, IAN-401).
 #

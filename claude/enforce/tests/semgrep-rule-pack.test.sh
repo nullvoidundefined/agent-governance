@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Shard: slow
+# Watches: enforce/semgrep/* enforce/tests/testdata/semgrep/*
 # Verifies the security rule pack in enforce/semgrep/ (IAN-381, B-3 to B-5):
 # every rule reports a finding carrying its own id on each of its bad samples
 # in enforce/tests/testdata/semgrep/, reports nothing on each of its good

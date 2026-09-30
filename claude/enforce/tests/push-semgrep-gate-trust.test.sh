@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Verifies the B-6f behavior of push-semgrep-gate.sh (IAN-381, R-517 review
 # findings N6 and N7 on PR #141).
 #

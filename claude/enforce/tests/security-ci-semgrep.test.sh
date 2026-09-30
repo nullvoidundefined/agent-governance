@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: ci:security-workflow
 # Verifies the security CI Semgrep step, enforce/security-ci-semgrep.sh
 # (IAN-381, spec Part 7 addendum, component 2, criteria B-20, B-21, B-24,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:destructive-command-guard
 # Verifies destructive-command-guard.sh denies every spelling of a git
 # invocation that skips git hooks, and stays silent on the lookalike commands
