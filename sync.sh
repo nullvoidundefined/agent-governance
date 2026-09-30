@@ -37,11 +37,56 @@
 # case is never removed. A run with no previous manifest (an install synced before
 # manifests existed) removes nothing, so files orphaned before then still
 # need cleaning up by hand.
+#
+# Harness profiles (IAN-518). `./sync.sh --profile <name>` (or
+# HARNESS_PROFILE=<name>) installs the tree that profile describes in
+# claude/enforce/harness-profiles.json: the tracked files are staged, the
+# Cursor and Codex ports are re-rendered with translate/*.mjs --profile, and
+# translate/apply-profile.mjs filters the staged claude/ copy. The checkout is
+# never modified. The profile is recorded in <claude target>/.harness-profile,
+# and a later run with no flag and no HARNESS_PROFILE keeps the recorded one,
+# because the harness-sync SessionStart hook runs a plain ./sync.sh whenever
+# the live tree differs from the checkout and would otherwise undo the profile
+# at the next session start. `--profile full` installs everything again and
+# clears the record. Files a profile hides leave the live tree only through
+# the same manifest allowlist as any other removal, so a live edit is kept.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CLAUDE="${SYNC_CLAUDE_HOME:-$HOME/.claude}"
 TARGET_CURSOR="${SYNC_CURSOR_HOME:-$HOME/.cursor}"
 TARGET_CODEX="${SYNC_CODEX_HOME:-$HOME/.codex}"
+PROFILE_RECORD="$TARGET_CLAUDE/.harness-profile"
+PROFILE_FLAG=""
+PROFILE_ROOT=""
+
+# refuseProfile(reason): stops the run before any target is written.
+refuseProfile() {
+  echo "REFUSED: $1; $TARGET_CLAUDE, $TARGET_CURSOR and $TARGET_CODEX left untouched" >&2
+  exit 1
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --profile)
+      if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#--}" != "$2" ]; then refuseProfile "--profile needs a profile name (full, or one in claude/enforce/harness-profiles.json)"; fi
+      PROFILE_FLAG="$2"; shift 2 ;;
+    *) refuseProfile "unrecognized argument $1 (usage: ./sync.sh [--profile <name>])" ;;
+  esac
+done
+
+# resolveHarnessProfile(): the --profile flag, else HARNESS_PROFILE, else the
+# profile recorded by the last profiled run, else full.
+resolveHarnessProfile() {
+  if [ -n "$PROFILE_FLAG" ]; then echo "$PROFILE_FLAG"
+  elif [ -n "${HARNESS_PROFILE:-}" ]; then echo "$HARNESS_PROFILE"
+  elif [ -f "$PROFILE_RECORD" ]; then head -n 1 "$PROFILE_RECORD"
+  else echo full
+  fi
+}
+HARNESS_PROFILE_NAME=$(resolveHarnessProfile)
+case "$HARNESS_PROFILE_NAME" in
+  ""|*[!a-z0-9-]*) refuseProfile "the harness profile name '$HARNESS_PROFILE_NAME' is not lowercase letters, digits, and hyphens" ;;
+esac
 
 # sha256Tool: prints the SHA-256 command available here, sha256sum on Linux
 # and shasum -a 256 on macOS; both print "<hex>  <path>" lines.
@@ -265,14 +310,22 @@ sync_one() {
   # Building a clean staging tree keeps the "only ship what's tracked"
   # semantics simple and correct: the final rsync below copies exactly that
   # tree, nothing more.
-  local filelist staging
+  # Under a harness profile the source is the profiled staging root, which
+  # holds only shipped files already (stageProfiledSources), so every file and
+  # symlink in it ships.
+  local filelist staging source_root="$REPO_ROOT"
   filelist=$(mktemp)
-  listSourceFiles "$folder" > "$filelist"
+  if [ -n "$PROFILE_ROOT" ]; then
+    source_root="$PROFILE_ROOT"
+    (cd "$PROFILE_ROOT" && find "$folder" \( -type f -o -type l \) -print) > "$filelist"
+  else
+    listSourceFiles "$folder" > "$filelist"
+  fi
 
   staging=$(mktemp -d)
   mkdir -p "$staging/$folder"
   if [ -s "$filelist" ]; then
-    rsync -a --files-from="$filelist" "$REPO_ROOT/" "$staging/"
+    rsync -a --files-from="$filelist" "$source_root/" "$staging/"
   fi
   rm -f "$filelist"
 
@@ -296,6 +349,30 @@ sync_one() {
   echo "synced $REPO_ROOT/$folder -> $dest"
 }
 
+# stageProfiledSources(profile): copies the shipped claude/, translate/,
+# cursor/, and codex/ files into PROFILE_ROOT, re-renders both ports there
+# with --profile, then filters the staged claude/ in place. Every step runs
+# before the first target is written, so an unknown profile or a profile
+# that no longer fits the tree refuses the whole run.
+stageProfiledSources() {
+  local profile="$1" folder list err
+  command -v node >/dev/null 2>&1 || refuseProfile "the harness profile $profile needs node, which is not installed"
+  PROFILE_ROOT=$(mktemp -d)
+  trap 'rm -rf "$PROFILE_ROOT"' EXIT
+  for folder in claude translate cursor codex; do
+    list=$(mktemp)
+    listSourceFiles "$folder" > "$list"
+    [ -s "$list" ] && rsync -a --files-from="$list" "$REPO_ROOT/" "$PROFILE_ROOT/"
+    rm -f "$list"
+  done
+  err=$(node "$PROFILE_ROOT/translate/cursor.mjs" --profile "$profile" --write --root "$PROFILE_ROOT" 2>&1 >/dev/null) \
+    || refuseProfile "the harness profile $profile could not render the Cursor port: $err"
+  err=$(node "$PROFILE_ROOT/translate/codex.mjs" --profile "$profile" --write --root "$PROFILE_ROOT" 2>&1 >/dev/null) \
+    || refuseProfile "the harness profile $profile could not render the Codex port: $err"
+  err=$(node "$PROFILE_ROOT/translate/apply-profile.mjs" --profile "$profile" --in-place "$PROFILE_ROOT/claude" 2>&1 >/dev/null) \
+    || refuseProfile "the harness profile $profile could not filter claude/: $err"
+}
+
 SOURCE_MODE=$(resolveSourceMode)
 case "$SOURCE_MODE" in
   git) echo "source: git checkout" ;;
@@ -304,9 +381,23 @@ case "$SOURCE_MODE" in
   *) echo "REFUSED: $REPO_ROOT is neither a git checkout nor a release archive (no RELEASE-FILES); nothing synced" >&2; exit 1 ;;
 esac
 
+if [ "$HARNESS_PROFILE_NAME" = full ]; then
+  echo "profile: full"
+else
+  stageProfiledSources "$HARNESS_PROFILE_NAME"
+  echo "profile: $HARNESS_PROFILE_NAME (recorded in $PROFILE_RECORD; ./sync.sh --profile full restores everything)"
+fi
+
 sync_one claude "$TARGET_CLAUDE"
 sync_one cursor "$TARGET_CURSOR"
 sync_one codex "$TARGET_CODEX"
+
+# Record the profile so a plain run keeps it; full clears the record.
+if [ "$HARNESS_PROFILE_NAME" = full ]; then
+  rm -f "$PROFILE_RECORD"
+else
+  printf '%s\n' "$HARNESS_PROFILE_NAME" > "$PROFILE_RECORD"
+fi
 
 # Stamp the source so hook-integrity-check.sh can compare the live copy
 # against this checkout (2026-09-16 audit P2-11: after the migration nothing
