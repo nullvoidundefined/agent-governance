@@ -511,7 +511,10 @@ resolve_commit_by_prefix() {
 # 3 of 4 rounds on IAN-352 and a 58-minute R-109 round on PR #169. Anything
 # else is false and the exact-head rule applies, including a git failure.
 # Every git call ignores refs/replace, so a local replacement object cannot
-# show the checks a different commit than the one GitHub merges.
+# show the checks a different commit than the one GitHub merges. When the
+# named artefact is new in the tail, the reviewed range must not already have
+# added a file beside it, or a clean artefact could be named in place of one
+# the review saw with an open row.
 is_docs_only_tail() {
   local top="$1" review_head="$2" head_oid="$3" base="$4" artefact_path="${5:-}" review_oid tail_changes ancestry_status
   review_oid=$(resolve_commit_by_prefix "$top" "$review_head") || return 1
@@ -521,6 +524,13 @@ is_docs_only_tail() {
   git --no-replace-objects -C "$top" merge-base --is-ancestor "$review_oid" "$base" 2>/dev/null
   ancestry_status=$?
   [ "$ancestry_status" -eq 1 ] || return 1
+  if [ -n "$artefact_path" ] &&
+    ! git --no-replace-objects -C "$top" cat-file -e "$review_oid:$artefact_path" 2>/dev/null; then
+    local reviewed_artefacts
+    reviewed_artefacts=$(git --no-replace-objects -c core.quotePath=false -C "$top" diff --name-only --no-renames \
+      "$base" "$review_oid" -- "$(dirname "$artefact_path")/" 2>/dev/null) || return 1
+    [ -z "$reviewed_artefacts" ] || return 1
+  fi
   tail_changes=$(git --no-replace-objects -c core.quotePath=false -C "$top" log --format= --raw -m --no-renames --no-abbrev \
     --ignore-submodules=none "$review_oid..$head_oid" 2>/dev/null) || return 1
   printf '%s\n' "$tail_changes" | awk -F '\t' -v artefact="$artefact_path" '
