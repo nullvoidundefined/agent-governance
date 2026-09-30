@@ -512,9 +512,10 @@ resolve_commit_by_prefix() {
 # else is false and the exact-head rule applies, including a git failure.
 # Every git call ignores refs/replace, so a local replacement object cannot
 # show the checks a different commit than the one GitHub merges. When the
-# named artefact is new in the tail, the reviewed range must not have added
-# any JSON file under docs/ (the gate reads artefacts as JSON), or a clean
-# artefact could be named in place of one the review saw with an open row.
+# named artefact is new in the tail, the reviewed range must not have changed
+# anything under docs/ at all, whatever its name or extension, or a clean
+# artefact could be named in place of one the review saw with an open row
+# (PR #172 reviews: no suffix or name can be trusted to identify an artefact).
 # Merge diffs are forced with --diff-merges=separate, since log.diffMerges=off
 # would otherwise hide code that arrives only in a merge result.
 is_docs_only_tail() {
@@ -531,7 +532,7 @@ is_docs_only_tail() {
     local reviewed_artefacts
     reviewed_artefacts=$(git --no-replace-objects -c core.quotePath=false -C "$top" diff --name-only --no-renames \
       "$base" "$review_oid" -- 'docs/' 2>/dev/null) || return 1
-    ! printf '%s\n' "$reviewed_artefacts" | grep -q '\.json$' || return 1
+    [ -z "$reviewed_artefacts" ] || return 1
   fi
   tail_changes=$(git --no-replace-objects -c core.quotePath=false -C "$top" log --format= --raw --diff-merges=separate --no-renames --no-abbrev \
     --ignore-submodules=none "$review_oid..$head_oid" 2>/dev/null) || return 1
