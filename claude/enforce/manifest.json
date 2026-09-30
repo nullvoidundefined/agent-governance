@@ -570,21 +570,24 @@
             "tier": "advisory",
             "enforcer": "hook:single-file-folder-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-310",
             "tier": "advisory",
             "enforcer": "hook:flat-directory-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-320",
             "tier": "advisory",
             "enforcer": "hook:new-file-header-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-320",
@@ -623,7 +626,8 @@
             "tier": "advisory",
             "enforcer": "hook:clean-code-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-341",
@@ -631,7 +635,7 @@
             "enforcer": "hook:observability-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "entry file registers middleware with no request-ID middleware"
+            "note": "entry file registers middleware with no request-ID middleware; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-345",
@@ -639,7 +643,7 @@
             "enforcer": "hook:observability-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "entry file registers routes with no /health or /health/ready"
+            "note": "entry file registers routes with no /health or /health/ready; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-346",
@@ -647,7 +651,7 @@
             "enforcer": "hook:observability-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "clients/ module makes an outbound call with no timeout"
+            "note": "clients/ module makes an outbound call with no timeout; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-351",
@@ -655,7 +659,7 @@
             "enforcer": "hook:dockerfile-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM"
+            "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-361",

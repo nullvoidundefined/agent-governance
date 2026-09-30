@@ -15,6 +15,13 @@
 file_path=$(jq -rc '.tool_input.file_path // ""' 2>/dev/null)
 [ -z "$file_path" ] && exit 0
 [ -f "$file_path" ] || exit 0
+# The build-fast fast lane silences this advisory reminder (IAN-401, B-6); a
+# missing helper leaves the reminder on.
+QUIET_HELPER="$(dirname "$0")/build-lane-quiet.sh"
+if [ -f "$QUIET_HELPER" ]; then
+  . "$QUIET_HELPER"
+  is_reminder_quiet "$file_path" && exit 0
+fi
 
 case "$file_path" in
   *.test.* | *.spec.* | *__tests__* | *__fixtures__* | */tests/* | */test_* | *_test.py | *_test.go | */spec/* | *_spec.rb | */scripts/* | */bin/* | */vendor/* | */node_modules/*) exit 0 ;;
