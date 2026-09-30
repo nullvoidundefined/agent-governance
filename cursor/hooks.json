@@ -21,7 +21,7 @@
     ],
     "beforeMCPExecution": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeMCPExecution mcp-action-guard destructive-db-guard",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeMCPExecution mcp-action-guard linear-todo-label-gate destructive-db-guard",
         "timeout": 30
       }
     ],

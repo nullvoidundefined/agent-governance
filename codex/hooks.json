@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh mcp-action-guard destructive-db-guard",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh mcp-action-guard linear-todo-label-gate destructive-db-guard",
             "timeout": 60
           }
         ]

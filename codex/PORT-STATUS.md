@@ -2,7 +2,7 @@
 
 # Codex port status
 
-57 of 62 hook registrations port, across 6 Codex events.
+58 of 63 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -42,6 +42,7 @@
 | `scope-widening-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `task-provenance-gate` | PreToolUse (TaskCreate) | not ported: fires on Claude Code's TaskCreate tool, which Codex lacks; a registration on that matcher would never receive an event, so R-213's provenance tag depends on recall under Codex. |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
+| `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
