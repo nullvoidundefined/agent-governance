@@ -4,7 +4,36 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 **Over R-602's 8 KB by about 18.6 KiB, deliberately, and the overage grows every session it survives.** That limit assumes one session per handoff. Everything historical here is already one line apiece and pushed onto its ticket; what remains is the pending list, the production warnings and the next-session rules, and cutting those to satisfy a size check trades the document's purpose for its metric. The earlier attempt to obey the cap is the direct cause of this session's worst finding: compressing four sessions into 8179 bytes silently dropped a retraction, and only an adversarial review caught it. Filed as IAN-266; **IAN-260 is the actual fix**, giving each session its own uncapped file behind a capped index, at which point this note goes away.
 
-## Newest: IAN-401 build-fast, 2026-09-27
+## Newest: IAN-473 Linear Todo label gate, 2026-09-27 to 09-30
+
+This session's own handoff, above the older notes; it supersedes them only where they conflict.
+
+**1. Last commit.** `e4f0ac6` feat(hooks): deny moving a Linear ticket to Todo without the specced or planned label (IAN-473) (#168), squash-merged on 2026-09-30 at its reviewed head `67b7202` and verified on `origin/main` by reading the merged hook and manifest. <!-- unreachable-sha: 67b7202 the PR head before the squash merge; the branch was deleted and e4f0ac6 carries the same tree -->
+
+**2. Production state.** `claude/hooks/linear-todo-label-gate.sh` runs on the `mcp__.*` PreToolUse chain after `mcp-action-guard.sh`. It denies a save on the tracker config's `create` or `update` tool that moves a ticket to the specced or planned status, or to the `unstarted` type, unless the same call adds the `specced` or `planned` label. It allows on a malformed config by design. The rule text is in `claude/skills/ticket-lifecycle/SKILL.md`. Outside the repo, a Claude-app scheduled task, `linear-todo-sweep`, reports unlabelled Todo tickets on weekdays at 08:41 and changes nothing. Under Cursor and Codex the hook is wired in, but it does not fire, because those adapters rename the MCP tool.
+
+**3. Session metrics.** Two sittings, about 175 working minutes against a 130-minute estimate (ratio 1.35). Every full-suite `tdd.sh` run cost 10 to 15 minutes at a load average near 11, with a parallel build-fast session sharing the run slots. The R-517 review ran three rounds on sonnet.
+
+**4. What shipped.**
+- The owner asked for every outstanding ticket except IAN-401. Linear, not the handoff, turned out to be the source of truth, with about 190 open tickets.
+- Todo was being used as a second priority list: 31 of its 32 tickets carried neither label. The owner chose to keep Todo strict, and 26 of the 31 moved to Backlog.
+- The gate and its 20-case fixture, the manifest row, the settings entry, and the regenerated ports shipped in #168.
+- The review fixes gate the planned status too, isolate the fixture from an exported tracker path, and keep the gate on when the config names no planned status.
+- The site's hardcoded rule counts, which broke the site `test` check, were corrected to 132/94/9/29 in #168.
+
+**5. Pending, by urgency.**
+- **Owner, now:** click **Run now** on "Linear Todo sweep" once, so the scheduled run does not stop on a permission prompt. Todo is clean: IAN-187, IAN-283, IAN-282, IAN-285 and IAN-278 moved to Backlog at the owner's request on 2026-09-30, and only the specced IAN-173 remains.
+- **MEDIUM:** IAN-476. `tdd.sh amend` cannot re-prove RED once the implementation exists, and `tdd.sh green` reports a shell fixture with no `PASS` line as `failed to run:` with an empty reason. This cost about 30 minutes and needed an owner-run workaround.
+- **MEDIUM:** IAN-512. The site's rule counts and tally widths are hardcoded, so every PR that changes a manifest row fails the site `test` check until someone hand-edits two files. Generate them in `site/scripts/build-site.sh`.
+- **LOW:** IAN-221. Adding a new enforcer still needs the close, stub, and reopen route, which was hit again here.
+- **LOW:** port the Cursor-only suffix match from `mcp-action-guard.sh` into the new gate if Cursor or Codex sessions start writing tickets. No ticket yet.
+
+**6. Next session.**
+- Before planning, read Linear, not this file's pending lists: `list_issues` for team `Ian.greenough.developer`, with states Todo, In Progress and Backlog.
+- New enforcers: fixtures must print a literal `<name>.test.sh PASS` line, and hashes are refreshed with `hook-integrity-check.sh --update` before every `tdd.sh red`. Both cost a full-suite run each this session.
+- When a merge of `main` conflicts on `hook-hashes.txt`, `codex/.claude-port.json` or `cursor/.claude-port.json`, run `translate/cursor.mjs --write`, `translate/codex.mjs --write`, and then the hash update. Never hand-merge them.
+
+## Previous: IAN-401 build-fast, 2026-09-27
 
 This session's own handoff, above the older notes; it supersedes them only where they conflict.
 
@@ -24,7 +53,7 @@ This session's own handoff, above the older notes; it supersedes them only where
 
 **6. Next session.** Use `/build-fast` on a real small task and record the lane, actual minutes, and review findings on the ticket as IAN-474's evidence.
 
-## Previous: IAN-477 project site and v0.1.0 release, 2026-09-27
+## Earlier: IAN-477 project site and v0.1.0 release, 2026-09-27
 
 This session's own handoff sits here, above the older notes. It follows R-602's six sections and supersedes the older notes only where they conflict.
 
