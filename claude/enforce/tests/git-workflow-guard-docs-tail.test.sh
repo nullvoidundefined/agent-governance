@@ -40,6 +40,10 @@
 #                            with an open row; the tail adds a clean one
 #                            beside it and the section names that: denied,
 #                            R-109 (round 2 of the R-109 review).
+#   artefact elsewhere       as above, but the clean artefact sits in a
+#                            different docs/ directory: denied, R-109.
+#   merge diffs switched off code arriving only in a merge result under
+#                            log.diffMerges=off: denied (Codex round 3).
 #   replacement object       refs/replace makes the PR head look docs-only
 #                            while the real head changes code: denied.
 #   docs edit and delete     a tail that modifies one docs/ file and deletes
@@ -491,6 +495,50 @@ Y_BODY=$(pr_body "$(codex_section "$Y_BASE" "$Y_HEAD")" "$(security_section secu
 STUB=$(write_pr_stub second "$Y_BODY" "$Y_HEAD" "$Y_BASE" second)
 expect_r109_deny "second artefact beside a reviewed one" \
   "$(run_guard "$STUB" "$Y_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $Y_HEAD")"
+
+# --- 19. a clean artefact in a different directory --------------------------
+build_pr_repo elsewhere app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
+  'ALLOWED_ORIGINS = ["https://app.example.com", "https://pay.example.com"]'
+Z_DIR="$REPO_DIR" Z_BASE="$REPO_BASE"
+git_in "$Z_DIR" checkout -q feature
+mkdir -p "$Z_DIR/docs/other"
+printf '%s\n' '{"findings":[{"id":1,"severity":"HIGH","status":"open"}]}' > "$Z_DIR/docs/other/first.json"
+git_in "$Z_DIR" add docs
+git_in "$Z_DIR" commit -q -m "docs: artefact with an open row"
+Z_REVIEWED=$(git -C "$Z_DIR" rev-parse HEAD)
+mkdir -p "$Z_DIR/docs/reviews"
+printf '%s\n' '{"findings":[]}' > "$Z_DIR/$ARTEFACT_PATH"
+git_in "$Z_DIR" add docs
+git_in "$Z_DIR" commit -q -m "docs: a clean artefact elsewhere"
+Z_HEAD=$(git -C "$Z_DIR" rev-parse HEAD)
+git_in "$Z_DIR" push -q origin feature
+(cd "$Z_DIR" && bash "$RECORD_SCRIPT" "$ARTEFACT_PATH" >/dev/null 2>&1) ||
+  report_failure "setup: security-review-record.sh could not record $ARTEFACT_PATH at the PR head"
+git_in "$Z_DIR" checkout -q main
+Z_BODY=$(pr_body "$(codex_section "$Z_BASE" "$Z_HEAD")" "$(security_section security-reviewer "$EXPECTED_MODEL" "$Z_BASE" "$Z_REVIEWED")")
+STUB=$(write_pr_stub elsewhere "$Z_BODY" "$Z_HEAD" "$Z_BASE" elsewhere)
+expect_r109_deny "clean artefact in another directory" \
+  "$(run_guard "$STUB" "$Z_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $Z_HEAD")"
+
+# --- 20. code that arrives only in a merge result, merge diffs off ---------
+build_pr_repo evilmerge app/greeting.py 'GREETING = "hello"' 'GREETING = "ahoj"'
+K_DIR="$REPO_DIR" K_BASE="$REPO_BASE" K_REVIEWED="$REPO_HEAD"
+git_in "$K_DIR" config log.diffMerges off
+git_in "$K_DIR" checkout -q -b side "$K_REVIEWED"
+mkdir -p "$K_DIR/docs"
+printf 'side\n' > "$K_DIR/docs/side.md"
+git_in "$K_DIR" add -A
+git_in "$K_DIR" commit -q -m "docs: side"
+git_in "$K_DIR" checkout -q feature
+git_in "$K_DIR" merge -q --no-ff --no-commit side
+printf 'EVIL = 1\n' > "$K_DIR/app/evil.py"
+git_in "$K_DIR" add -A
+git_in "$K_DIR" commit -q -m "merge side"
+K_HEAD=$(git -C "$K_DIR" rev-parse HEAD)
+git_in "$K_DIR" push -q origin feature
+git_in "$K_DIR" checkout -q main
+STUB=$(write_pr_stub evilmerge "$(pr_body "$(codex_section "$K_BASE" "$K_REVIEWED")")" "$K_HEAD" "$K_BASE" evilmerge)
+expect_r517_deny "code only in a merge result, merge diffs off" "$(run_guard "$STUB" "$K_DIR" "$CLEAN_STUB")"
 
 if [ "$failures" -gt 0 ]; then
   echo "git-workflow-guard-docs-tail.test.sh: $failures failure(s)"
