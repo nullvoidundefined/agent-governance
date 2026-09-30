@@ -1,0 +1,16 @@
+{
+  "pr": "nullvoidundefined/agent-governance#171",
+  "ticket": "IAN-515",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "33a7e61802b24eef83d6f7ed84043816d9d9d14d",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range narrows the security-surface path trigger for test files. Round 1 (33a7e61) raised 1 to 6; all were addressed in f25118104031cdd20313af2966bbd1b174e1c495, with failing cases first in c7a6e83: the exemption now covers only plain comments inside a file's leading comment header in both revisions, excludes directives and #!, keeps the hit when no line changed (mode-only) or git quoted the name, and fails closed on any git or awk error. The review of the head that adds this text is the PR body's Security review section.",
+  "findings": [
+    {"id": 1, "severity": "HIGH", "control": "drop_comment_only_test_hits", "finding": "a quoted test file name produced an empty changed-line set, which dropped the path hit", "status": "fixed f25118104031cdd20313af2966bbd1b174e1c495"},
+    {"id": 2, "severity": "MEDIUM", "control": "drop_comment_only_test_hits", "finding": "a mode-only change produced an empty changed-line set, which dropped the path hit", "status": "fixed f25118104031cdd20313af2966bbd1b174e1c495"},
+    {"id": 3, "severity": "MEDIUM", "control": "comment line pattern", "finding": "directives such as //go:build, #!, # shellcheck, # noqa counted as comments", "status": "fixed f25118104031cdd20313af2966bbd1b174e1c495"},
+    {"id": 4, "severity": "LOW", "control": "comment line pattern", "finding": "# lines inside heredocs or strings counted as comments", "status": "fixed f25118104031cdd20313af2966bbd1b174e1c495"},
+    {"id": 5, "severity": "LOW", "control": "drop_comment_only_test_hits", "finding": "a grep error was treated as all comments", "status": "fixed f25118104031cdd20313af2966bbd1b174e1c495"},
+    {"id": 6, "severity": "MEDIUM", "control": "test coverage", "finding": "no test fed the control a mode-only change, a quoted path, a directive, or heredoc data", "status": "fixed f25118104031cdd20313af2966bbd1b174e1c495"}
+  ]
+}
