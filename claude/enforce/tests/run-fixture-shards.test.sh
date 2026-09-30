@@ -105,10 +105,37 @@ run_runner --affected 'claude/enforce/tests/slow-c.test.sh'
 check "editing a slow fixture runs that fixture" ran slow-c
 
 # --- affected mode, fallbacks ---
-run_runner --affected 'docs/prs/unrelated-note.md'
+run_runner --affected 'site/unrelated-page.html'
 check "a change no fixture names runs everything" ran slow-c
 check "the unmapped fallback includes the serial fixture" ran serial-d
 check "the unmapped fallback says why" out_has "unmapped"
+
+# --- affected mode, the repository's docs/ tree (IAN-510) ---
+# No fixture reads the repository's own docs/ (fixtures build sandbox docs),
+# so a spec, handoff, or review there is placed with no fixture to run,
+# instead of forcing the full suite on every Stop and tdd.sh call.
+run_runner --affected 'docs/prs/unrelated-note.md'
+check "a top-level docs/ change skips the slow fixture" not ran slow-c
+check "a top-level docs/ change skips the serial fixture" not ran serial-d
+check "a top-level docs/ change still runs the fast tier" ran fast-a
+check "a top-level docs/ change is not reported as unmapped" not out_has "unmapped"
+run_runner --affected 'claude/docs/unrelated-note.md'
+check "a docs/ tree under claude/ is still unmapped" out_has "unmapped"
+
+# --- affected mode, --also (IAN-510) ---
+# --also adds a path to the changed set, so tdd.sh can make sure its locked
+# test runs even when git no longer lists it as changed. It only adds.
+reset
+OUT=$(bash "$RUNNER" "$TESTS" --affected "${RUN_OPTS[@]}" --changed-from "$(changes_file 'claude/hooks/alpha.sh')" \
+  --also claude/enforce/tests/slow-c.test.sh </dev/null 2>&1); STATUS=$?
+check "--also runs a slow fixture no changed file names" ran slow-c
+check "--also keeps the fast tier" ran fast-a
+check "--also leaves an unnamed serial fixture out" not ran serial-d
+reset
+OUT=$(cd "$REPO" && bash "$RUNNER" "$TESTS" --affected "${RUN_OPTS[@]}" --also claude/enforce/tests/slow-c.test.sh </dev/null 2>&1); STATUS=$?
+check "--also adds to the changes read from git" ran slow-c
+OUT=$(bash "$RUNNER" "$TESTS" --affected --also </dev/null 2>&1); STATUS=$?
+check "--also without a path is a usage error" [ "$STATUS" -eq 2 ]
 
 run_runner --affected $'claude/hooks/alpha.sh\nclaude/enforce/harness-root.sh'
 check "a shared file runs everything even beside a mapped change" ran slow-c
