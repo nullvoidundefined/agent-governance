@@ -22,9 +22,14 @@ shell_red_test() {
 }
 shell_impl() { printf '#!/usr/bin/env bash\necho %s\n' "$1" > scripts/score.sh; }
 
+# The project sits alone under a private parent: the runner maps changed
+# paths against the fixtures two levels above the tests directory, so a shared
+# TMPDIR would let unrelated sibling directories decide what counts as mapped
+# (CI and a developer machine then disagreed, IAN-510).
 MARKS=$(cd "$(mktemp -d)" && pwd -P)
-P=$(cd "$(mktemp -d)" && pwd -P)
-trap 'cd / && rm -rf "$P" "$MARKS"' EXIT
+PARENT=$(cd "$(mktemp -d)" && pwd -P)
+P="$PARENT/project"; mkdir "$P"
+trap 'cd / && rm -rf "$PARENT" "$MARKS"' EXIT
 cd "$P"
 git init -q && git config user.email t@t && git config user.name t
 mkdir -p tests scripts

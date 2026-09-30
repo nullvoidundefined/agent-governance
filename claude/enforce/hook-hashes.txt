@@ -199,7 +199,7 @@ ff95ff6b28e37c384b6cd31088c9f713a116616219fc8880172dfe5399b5e8e6  enforce/tests/
 666a45a6fbf6e53f41614cba18f7a681a3570943844c7d6737a6b84bb0c77f7e  enforce/tests/task-tier.test.sh
 32b62ba9062acecf136a658a5c3b7ca93720b1ec9a4e83d3654e343fa89437ef  enforce/tests/tdd-abandon-gnu-stat.test.sh
 43caf599ab299c9622007870ccfcaa462487a63ca4708c76217f8db4e84ec975  enforce/tests/tdd-abandon.test.sh
-3070404830b9fe392839e86e8fcf1ca4ac325d6ac7f6a8206162d48b4b01a64b  enforce/tests/tdd-affected-suite.test.sh
+2798007e7df312f2146538a88635367db25a2f93eb69737d894cea374a99ac6b  enforce/tests/tdd-affected-suite.test.sh
 f8b1f4fffe5ca135608c77f53ebe7766c5a4c4c8305b97de7c0231b761f821a2  enforce/tests/tdd-amend-audit.test.sh
 647bdcef82553e80baf9b54c6eceabbb1f8d6d1abdf0aebb627ac2609e2e92ee  enforce/tests/tdd-amend-old-lock-commit.test.sh
 93f9c73b816be065764c2129954e4ca871dcd3ac546800e6dc88d5c33073fe81  enforce/tests/tdd-amend.test.sh
