@@ -40,7 +40,7 @@ CTX=$(cat <<'RULES'
 5. R-501: check for a parallel session before the first edit; an active one means move to a worktree.
 6. R-504, R-505: commit after every discrete task with a conventional subject; never accumulate across tasks.
 7. R-509: a turn never ends on a red suite.
-8. R-514: by default a PR merges on green CI plus a passed R-517 review, still through the guard's per-merge confirmation; the owner reads and merges it when its range is security-touching (R-109) or `build-lane.sh` classes it guarded, or when the plan's `**Merge mode:**` line or build-fast's `mergeMode` on the task-tier ledger chooses owner-merge; a direct push to `main` still needs an express request (IAN-517).
+8. R-514: by default a PR merges on green CI plus a passed R-517 review, still through the guard's per-merge confirmation; the owner reads and merges it when its range is security-touching (R-109) or `build-lane.sh` classes it guarded, or when the plan's `**Merge mode:**` line or the build-fast `mergeMode` on the task-tier ledger chooses owner-merge; a direct push to `main` still needs an express request (IAN-517).
 9. R-903: route work to the cheapest capable model; when the work drifts to a cheaper tier, say so and ask the user to `/model`.
 10. R-601, R-602: offer a handoff at session end, under 8KB, at `docs/session-handoff/session-handoff.md`.
 RULES
