@@ -30,8 +30,9 @@
 #   executable comments          Ruby # frozen_string_literal: and # coding:
 #                                changes: marked.
 #   mode plus metadata           chmod and a # Shard: line together: marked.
-#   heredoc or string data       a # line changed inside a heredoc below the
-#                                header: marked, since it is test data.
+#   heredoc or string data       a metadata-shaped # Covers: line changed inside
+#                                a heredoc below the header: marked, since it
+#                                is test data (round 3).
 #   directives                   #!, //go:build, # shellcheck, # noqa and the
 #                                like change how a test runs: marked.
 #   mode-only change             chmod on a test file: marked (no changed line
@@ -42,7 +43,18 @@
 # over two rounds, to exactly what #169 needed: runner metadata in a file's
 # leading comment header, with its mode unchanged. That also covers comments
 # that execute or steer a runner (// @vitest-environment, # bats file_tags=)
-# and titles of Markdown or text fixtures, none of which is metadata.
+# and titles of Markdown or text fixtures, none of which is metadata. Round 3
+# (Codex) showed diff parsing could still be misled (inter-hunk context lines,
+# a line inserted before the shebang), so the rule became a comparison of
+# whole blobs, and only for *.test.sh fixtures, the one file type whose
+# metadata anything reads:
+#
+#   metadata before the shebang  a # Shard: line inserted above #!: marked.
+#   inter-hunk context           a header metadata change plus a metadata-
+#                                shaped heredoc change under
+#                                diff.interHunkContext=200: marked.
+#   metadata in a non-fixture    a # Shard: line added to a Python test:
+#                                marked.
 #
 # Every case runs with a Semgrep stand-in that reports a complete clean scan,
 # so only a path hit, a content hit, or a detector failure can mark a range.
@@ -223,10 +235,10 @@ expect_clean_hits "prose comment in a spec file" "src/session.spec.js:0 path" "$
 
 # --- 8. a # line inside a heredoc below the header --------------------------
 REPO=$(new_repo heredoc)
-write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# denied\nEOF\necho "stub PASS"\n'
+write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# Covers: denied\nEOF\necho "stub PASS"\n'
 commit_all "$REPO" seed
 BASE=$(head_of "$REPO")
-write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# allowed\nEOF\necho "stub PASS"\n'
+write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# Covers: allowed\nEOF\necho "stub PASS"\n'
 commit_all "$REPO" "heredoc data"
 expect_clean_hits "heredoc line below the header" "tests/security-stub.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
@@ -302,6 +314,34 @@ write_file "$REPO" src/session.spec.ts $'// @vitest-environment jsdom\n// header
 write_file "$REPO" tests/security-flow.bats $'#!/usr/bin/env bats\n# bats file_tags=skip\n# header\n@test "x" { true; }\n'
 commit_all "$REPO" steering
 expect_clean_hits "runner-steering comments" "$(printf '%s\n' src/session.spec.ts:0\ path tests/security-flow.bats:0\ path)" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 16. metadata inserted before the shebang -------------------------------
+REPO=$(new_repo before-shebang)
+write_file "$REPO" tests/security-gate.test.sh $'#!/usr/bin/env bash\necho "gate PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-gate.test.sh $'# Shard: slow\n#!/usr/bin/env bash\necho "gate PASS"\n'
+commit_all "$REPO" "metadata above shebang"
+expect_clean_hits "metadata before the shebang" "tests/security-gate.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 17. inter-hunk context lines -------------------------------------------
+REPO=$(new_repo inter-hunk)
+git -C "$REPO" config diff.interHunkContext 200
+write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# header\ncat > stub <<\'EOF\'\n# Covers: denied\nEOF\necho "stub PASS"\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/security-stub.test.sh $'#!/usr/bin/env bash\n# Shard: slow\n# header\ncat > stub <<\'EOF\'\n# Covers: allowed\nEOF\necho "stub PASS"\n'
+commit_all "$REPO" "header metadata and heredoc data"
+expect_clean_hits "inter-hunk context" "tests/security-stub.test.sh:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
+
+# --- 18. metadata in a test that is not a *.test.sh fixture -----------------
+REPO=$(new_repo python-meta)
+write_file "$REPO" tests/test_session.py $'# header\nimport os\n'
+commit_all "$REPO" seed
+BASE=$(head_of "$REPO")
+write_file "$REPO" tests/test_session.py $'# Shard: slow\n# header\nimport os\n'
+commit_all "$REPO" "metadata in python"
+expect_clean_hits "metadata in a non-fixture test" "tests/test_session.py:0 path" "$REPO" "$BASE" "CLAUDE_SEMGREP_CMD=$CLEAN_STUB"
 
 if [ "$failures" -eq 0 ]; then
   echo "security-surface-test-comments.test.sh PASS"
