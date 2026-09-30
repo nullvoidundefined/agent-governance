@@ -73,4 +73,4 @@ expectSilent "no tracker config" "$EMPTY_HOME" "$SAVE" '{"id":"IAN-1","state":"T
 if [ "$FAILURES" -gt 0 ]; then
   echo "linear-todo-label-gate: $FAILURES failure(s)"; exit 1
 fi
-echo "linear-todo-label-gate: all passed"
+echo "linear-todo-label-gate.test.sh PASS"
