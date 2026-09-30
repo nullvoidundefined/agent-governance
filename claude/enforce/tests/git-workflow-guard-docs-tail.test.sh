@@ -40,8 +40,10 @@
 #                            with an open row; the tail adds a clean one
 #                            beside it and the section names that: denied,
 #                            R-109 (round 2 of the R-109 review).
-#   artefact elsewhere       as above, but the clean artefact sits in a
-#                            different docs/ directory: denied, R-109.
+#   artefact elsewhere       as above, but the reviewed artefact is saved
+#                            as .txt in another docs/ directory and the
+#                            clean one elsewhere: denied, R-109 (Codex
+#                            round 4: no extension or name can be trusted).
 #   merge diffs switched off code arriving only in a merge result under
 #                            log.diffMerges=off: denied (Codex round 3).
 #   replacement object       refs/replace makes the PR head look docs-only
@@ -502,7 +504,7 @@ build_pr_repo elsewhere app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https
 Z_DIR="$REPO_DIR" Z_BASE="$REPO_BASE"
 git_in "$Z_DIR" checkout -q feature
 mkdir -p "$Z_DIR/docs/other"
-printf '%s\n' '{"findings":[{"id":1,"severity":"HIGH","status":"open"}]}' > "$Z_DIR/docs/other/first.json"
+printf '%s\n' '{"findings":[{"id":1,"severity":"HIGH","status":"open"}]}' > "$Z_DIR/docs/other/first.txt"
 git_in "$Z_DIR" add docs
 git_in "$Z_DIR" commit -q -m "docs: artefact with an open row"
 Z_REVIEWED=$(git -C "$Z_DIR" rev-parse HEAD)
