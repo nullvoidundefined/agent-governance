@@ -17,7 +17,59 @@ export const FULL_PROFILE = "full";
 export const PROFILES_RELATIVE_PATH = "enforce/harness-profiles.json";
 const PROFILE_KINDS = ["rules", "hooks", "skills", "agents", "files"];
 const RULE_LINE = /^(R-\d{3})( \[[a-z]+\])?:/;
-const NEVER_DISABLED_HOOKS = new Set(["harness-sync"]);
+
+// PROTECTED: what no profile may ever remove, kept apart from the profile
+// file so that widening a profile cannot also widen what it is allowed to
+// touch (PR #175 review). Hooks are every ENFORCE and STRUCTURAL hook row of
+// docs/harness-audit.md (each can deny, ask, or block) plus harness-sync,
+// which delivers them all (R-003); each is protected both as a registration
+// and as its hooks/<name>.sh file. Rules are the ENFORCE and STRUCTURAL rule
+// ids of the same audit. Agents are the six STRUCTURAL roles. Paths cover
+// the files gates read: enforce/ (role-policy.json, tdd.sh, the manifest),
+// every skill script and data file beside a SKILL.md, and the judge's
+// rulebook/reference.md.
+const PROTECTED_HOOKS = new Set([
+  "harness-sync",
+  "codex-billing-guard", "codex-test-author-guard", "commit-message-guard", "conflict-markers",
+  "constant-change-guard", "content-gate", "dependency-add-guard", "destructive-command-guard",
+  "destructive-db-guard", "fix-commit-requires-test", "git-workflow-guard", "global-repo-push-guard",
+  "lexicon-gate", "linear-todo-label-gate", "mcp-action-guard", "migration-defaults-guard", "no-em-dash",
+  "pr-ticket-ref-gate", "protected-path-guard", "push-eslint-gate", "push-feature-docs-gate",
+  "push-golangci-gate", "push-rubocop-gate", "push-ruff-gate", "push-semgrep-gate", "scope-widening-gate",
+  "secret-scan", "settings-change-guard", "structure-gate", "task-provenance-gate", "ticket-at-start-gate",
+  "verification-gate",
+]);
+const PROTECTED_RULES = new Set([
+  "R-003", "R-101", "R-102", "R-103", "R-105", "R-106", "R-107", "R-108", "R-109",
+  "R-203", "R-207", "R-212", "R-213", "R-214", "R-215",
+  "R-302", "R-303", "R-306", "R-315", "R-316", "R-317", "R-320", "R-325", "R-330", "R-331", "R-334",
+  "R-342", "R-343", "R-344", "R-361", "R-362", "R-363", "R-364", "R-365",
+  "R-401", "R-403", "R-405", "R-410", "R-411", "R-412",
+  "R-505", "R-506", "R-507", "R-509", "R-512", "R-513", "R-514", "R-517",
+  "R-605", "R-607", "R-608",
+]);
+const PROTECTED_AGENTS = new Set(["test-author", "implementer", "slice-critic", "spec-conformance-review", "pr-reviewer", "security-reviewer"]);
+const PROTECTED_EXACT_PATHS = new Set(["CLAUDE.md", "settings.json", "rulebook/reference.md"]);
+
+// isProtectedPath(rel): true for a path no profile may omit.
+function isProtectedPath(rel) {
+  if (PROTECTED_EXACT_PATHS.has(rel) || rel.startsWith("enforce/")) return true;
+  if (/^skills\/[^/]+\/.+/.test(rel) && !/^skills\/[^/]+\/SKILL\.md$/.test(rel)) return true;
+  const hookFile = /^hooks\/([^/]+)\.sh$/.exec(rel);
+  if (hookFile && PROTECTED_HOOKS.has(hookFile[1])) return true;
+  const agentFile = /^agents\/([^/]+)\.md$/.exec(rel);
+  return Boolean(agentFile && PROTECTED_AGENTS.has(agentFile[1]));
+}
+
+// requireNothingProtected(profileName, profile): throws naming the first
+// listed item, in any category, that the protected set covers.
+function requireNothingProtected(profileName, profile) {
+  const refuse = (kind, id) => { throw new ProfileError(`profile ${profileName} lists ${kind} ${id}, which is protected and can never be removed by a profile`); };
+  for (const id of profile.rules) if (PROTECTED_RULES.has(id)) refuse("rule", id);
+  for (const name of profile.hooks) if (PROTECTED_HOOKS.has(name)) refuse("hook", name);
+  for (const name of profile.agents) if (PROTECTED_AGENTS.has(name)) refuse("agent", name);
+  for (const rel of profile.files) if (isProtectedPath(rel)) refuse("file", rel);
+}
 
 // ProfileError: an unknown profile, a malformed profile file, or a listed id
 // the source tree no longer holds.
@@ -97,7 +149,8 @@ function filterClaudeMd(text, ruleIds) {
 // filterSettings(text, hookNames) -> settings.json text with every listed
 // hook's registration removed from every event; a group left with no hook,
 // and an event left with no group, are dropped. Throws when a listed hook is
-// not registered, or is one that must never be disabled.
+// not registered (a protected hook never reaches here; see
+// requireNothingProtected).
 function filterSettings(text, hookNames) {
   const settings = JSON.parse(text);
   const registered = new Set();
@@ -105,7 +158,6 @@ function filterSettings(text, hookNames) {
     for (const group of groups) for (const hook of group.hooks ?? []) registered.add(hookNameOf(hook.command));
   }
   for (const name of hookNames) {
-    if (NEVER_DISABLED_HOOKS.has(name)) throw new ProfileError(`hook ${name}: delivers every guard (R-003) and can never be disabled`);
     if (!registered.has(name)) throw new ProfileError(`hook ${name}: not registered in settings.json`);
   }
   const dropped = new Set(hookNames);
@@ -139,6 +191,7 @@ function omittedPathsOf(profile, sourceSet) {
 export function applyProfile(profileName, sourceSet, profiles) {
   const profile = resolveProfile(profileName, profiles);
   if (!profile) return { files: sourceSet, omitted: new Set() };
+  requireNothingProtected(profileName, profile);
   const claudeMd = filterClaudeMd(textOf(sourceSet, "CLAUDE.md"), profile.rules);
   const settings = filterSettings(textOf(sourceSet, "settings.json"), profile.hooks);
   const omitted = omittedPathsOf(profile, sourceSet);
