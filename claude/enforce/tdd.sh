@@ -334,6 +334,18 @@ is_named_fixture() {
   return 1
 }
 
+# missing_baseline_fixtures: refuses green when a fixture the RED run passed
+# (baseline.fixtures, shell runner only) is absent from this run's passes. The
+# count alone is not enough under affected selection: a deleted fixture's path
+# maps to no fixture, the runner falls back to every fixture, and the passes of
+# fixtures RED never ran would cover the missing one (IAN-510).
+missing_baseline_fixtures() {
+  local missing
+  missing=$(jq -r --slurpfile report "$REPORT" --arg root "$ROOT_PHYSICAL/" \
+    '(.baseline.fixtures // []) - [$report[0].testResults[] | select(.status == "passed") | .name | ltrimstr($root)] | .[]' "$LOCK")
+  [ -z "$missing" ] || die "a fixture in the RED baseline did not pass now: $(printf '%s' "$missing" | tr '\n' ' '); it was deleted, skipped, or broken (R-401)"
+}
+
 # passing_fixtures_json <named json>: the root-relative fixtures the shell
 # report passed outside the named tests, as a JSON array, for the lock's
 # baseline.fixtures; an empty array under every other runner.
@@ -890,6 +902,7 @@ cmd_green() {
   baseline=$(jq -r '.baseline.passed // 0' "$LOCK")
   passed=$(outside_pass_count "$names") || exit 1
   [ "$passed" -ge "$baseline" ] || die "the suite outside the RED files dropped below the baseline ($passed < $baseline): a test was deleted or skipped (R-401)"
+  missing_baseline_fixtures
   jq --arg at "$(now)" '.phase = "green" | .greenAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
   say "GREEN: $(printf '%s' "$rels" | tr '\n' ' ')pass; $passed passing outside (baseline $baseline). Refactor under the lock, re-run green, commit, then 'tdd.sh close'."

@@ -330,7 +330,7 @@ affected_selection() {
     root=$(git -C "$tests_dir" rev-parse --show-toplevel 2>/dev/null) || { REASON="no git repository to read changes from"; return; }
     changed=$(changed_files_from_git "$root") || { REASON="git could not list the changes"; return; }
   fi
-  changed=$(printf '%s\n%s\n' "$changed" "$also" | grep -v '^$' | sort -u)
+  changed=$(printf '%s\n%s\n' "$changed" "$also" | sed '/^$/d' | sort -u)
   corpus=$(ls "$tests_dir"/../../*/tests/*.test.sh "$tests_dir"/*.test.sh 2>/dev/null | sort -u)
   REASON=$(fallback_reason "$changed" "$corpus")
   [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
