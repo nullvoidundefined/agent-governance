@@ -18,7 +18,8 @@
 #
 # <head-oid> defaults to HEAD and names the commit whose file list, diffs, and
 # blobs are read. A range is marked by any of three triggers: a changed path
-# matching a `paths` regex in enforce/security-surface.json, an added or
+# matching a `paths` regex in enforce/security-surface.json (except a test
+# file whose changed lines are all blank or comments, IAN-515), an added or
 # removed line matching a `content` regex there (both case-insensitive
 # extended regexes; a removed line reports its pre-image line number), or a
 # finding from the rule pack in enforce/semgrep/ on a changed code file. Every
@@ -49,6 +50,11 @@ SECURITY_SURFACE_HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SURFACE_PATTERNS_FILE="$SECURITY_SURFACE_HOOK_DIR/../enforce/security-surface.json"
 SECURITY_SURFACE_RULES_DIR="$SECURITY_SURFACE_HOOK_DIR/../enforce/semgrep"
 SECURITY_SURFACE_CODE_FILE_PATTERN='\.(py|ts|tsx|mts|cts|js|jsx|mjs|cjs|go|rb)$'
+# A test file: under a tests, test, __tests__, spec, specs, or testdata
+# directory, or named *.test.*, *_test.*, *.spec.*, *_spec.*, or test_*.py.
+SECURITY_SURFACE_TEST_FILE_PATTERN='(^|/)(tests?|__tests__|specs?|testdata)/|[._](test|spec)\.[^/]+$|(^|/)test_[^/]*\.py$'
+# A line that changes no behaviour of a test: blank, or a # or // comment.
+SECURITY_SURFACE_COMMENT_LINE_PATTERN='^[[:space:]]*(#|//|$)'
 # A missing scope-match.sh leaves is_in_scope undefined, which
 # list_included_changed_files reports as a detector failure.
 # shellcheck source=scope-match.sh
@@ -120,6 +126,28 @@ list_path_hits() {
   [ "$grep_status" -le 1 ] || return 1
   [ -n "$matched_paths" ] && printf '%s\n' "$matched_paths" | sed 's/$/:0 path/'
   return 0
+}
+
+# drop_comment_only_test_hits <repo-top> <base-oid> <head-oid> <path hits>
+# <work dir>: prints the path hits minus each test file whose every added and
+# removed line is blank or a comment (IAN-515). A header comment on a fixture
+# named for what it tests (security-merge-gate*.test.sh) cannot change a
+# control, and made PR #169 pay a strongest-model review twice. Any code line,
+# added or removed, keeps the hit, so a change to a security test's logic,
+# including a deleted assertion, is still reviewed; non-test files are never
+# dropped. Returns non-zero when the diff cannot be read.
+drop_comment_only_test_hits() {
+  local repo_top="$1" base_oid="$2" head_oid="$3" path_hits="$4" work_dir="$5" hit hit_path
+  local locations_file="$work_dir/test-locations" texts_file="$work_dir/test-texts"
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    hit_path="${hit%:0 path}"
+    if printf '%s\n' "$hit_path" | grep -Eq "$SECURITY_SURFACE_TEST_FILE_PATTERN"; then
+      write_changed_lines "$repo_top" "$base_oid" "$head_oid" "$hit_path" "$locations_file" "$texts_file" || return 1
+      LC_ALL=C grep -a -Evq "$SECURITY_SURFACE_COMMENT_LINE_PATTERN" "$texts_file" || continue
+    fi
+    printf '%s\n' "$hit"
+  done <<< "$path_hits"
 }
 
 # write_changed_lines <repo-top> <base-oid> <head-oid> <file list>
@@ -339,7 +367,9 @@ collect_security_surface_hits() {
   write_security_surface_patterns content "$content_patterns_file" || return 1
   included_files=$(list_included_changed_files "$repo_top" "$base_oid" "$head_oid") || return 1
   [ -n "$included_files" ] || return 0
-  list_path_hits "$included_files" "$path_patterns_file" || return 1
+  local path_hits
+  path_hits=$(list_path_hits "$included_files" "$path_patterns_file") || return 1
+  drop_comment_only_test_hits "$repo_top" "$base_oid" "$head_oid" "$path_hits" "$work_dir" || return 1
   list_content_hits "$repo_top" "$base_oid" "$head_oid" "$included_files" "$content_patterns_file" "$work_dir" || return 1
   list_semgrep_hits "$repo_top" "$head_oid" "$included_files" "$work_dir" || return 1
 }
