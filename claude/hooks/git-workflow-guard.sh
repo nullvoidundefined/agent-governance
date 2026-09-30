@@ -512,9 +512,11 @@ resolve_commit_by_prefix() {
 # else is false and the exact-head rule applies, including a git failure.
 # Every git call ignores refs/replace, so a local replacement object cannot
 # show the checks a different commit than the one GitHub merges. When the
-# named artefact is new in the tail, the reviewed range must not already have
-# added a file beside it, or a clean artefact could be named in place of one
-# the review saw with an open row.
+# named artefact is new in the tail, the reviewed range must not have added
+# any JSON file under docs/ (the gate reads artefacts as JSON), or a clean
+# artefact could be named in place of one the review saw with an open row.
+# Merge diffs are forced with --diff-merges=separate, since log.diffMerges=off
+# would otherwise hide code that arrives only in a merge result.
 is_docs_only_tail() {
   local top="$1" review_head="$2" head_oid="$3" base="$4" artefact_path="${5:-}" review_oid tail_changes ancestry_status
   review_oid=$(resolve_commit_by_prefix "$top" "$review_head") || return 1
@@ -528,10 +530,10 @@ is_docs_only_tail() {
     ! git --no-replace-objects -C "$top" cat-file -e "$review_oid:$artefact_path" 2>/dev/null; then
     local reviewed_artefacts
     reviewed_artefacts=$(git --no-replace-objects -c core.quotePath=false -C "$top" diff --name-only --no-renames \
-      "$base" "$review_oid" -- "$(dirname "$artefact_path")/" 2>/dev/null) || return 1
-    [ -z "$reviewed_artefacts" ] || return 1
+      "$base" "$review_oid" -- 'docs/' 2>/dev/null) || return 1
+    ! printf '%s\n' "$reviewed_artefacts" | grep -q '\.json$' || return 1
   fi
-  tail_changes=$(git --no-replace-objects -c core.quotePath=false -C "$top" log --format= --raw -m --no-renames --no-abbrev \
+  tail_changes=$(git --no-replace-objects -c core.quotePath=false -C "$top" log --format= --raw --diff-merges=separate --no-renames --no-abbrev \
     --ignore-submodules=none "$review_oid..$head_oid" 2>/dev/null) || return 1
   printf '%s\n' "$tail_changes" | awk -F '\t' -v artefact="$artefact_path" '
     NF == 0 { next }
