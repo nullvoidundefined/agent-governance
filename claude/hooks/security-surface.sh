@@ -18,8 +18,8 @@
 #
 # <head-oid> defaults to HEAD and names the commit whose file list, diffs, and
 # blobs are read. A range is marked by any of three triggers: a changed path
-# matching a `paths` regex in enforce/security-surface.json (except a test
-# file whose change is only fixture-runner metadata in its header, IAN-515), an added or
+# matching a `paths` regex in enforce/security-surface.json (except a *.test.sh
+# fixture whose change is only runner metadata in its header, IAN-515), an added or
 # removed line matching a `content` regex there (both case-insensitive
 # extended regexes; a removed line reports its pre-image line number), or a
 # finding from the rule pack in enforce/semgrep/ on a changed code file. Every
@@ -53,14 +53,11 @@ SECURITY_SURFACE_CODE_FILE_PATTERN='\.(py|ts|tsx|mts|cts|js|jsx|mjs|cjs|go|rb)$'
 # A test file: under a tests, test, __tests__, spec, specs, or testdata
 # directory, or named *.test.*, *_test.*, *.spec.*, *_spec.*, or test_*.py.
 SECURITY_SURFACE_TEST_FILE_PATTERN='(^|/)(tests?|__tests__|specs?|testdata)/|[._](test|spec)\.[^/]+$|(^|/)test_[^/]*\.py$'
-# A header comment or blank line, for measuring where a file's leading
-# comment header ends: a # or // marker followed by whitespace or nothing.
-SECURITY_SURFACE_HEADER_LINE_PATTERN='^[[:space:]]*((#|//)([[:space:]].*)?)?[[:space:]]*$'
-# The only changed lines a test file may carry and stay exempt: fixture-runner
-# metadata (enforce/run-fixture-shards.sh reads # Shard: and # Watches:, the
-# enforcement manifest check reads # Covers:) or a blank line. An allowlist,
-# because comment denylists kept missing executable comments (#!, //go:build,
-# # frozen_string_literal:, # coding:) round after round on PR #171.
+# The header lines a *.test.sh fixture may add or drop and stay exempt:
+# fixture-runner metadata (enforce/run-fixture-shards.sh reads # Shard: and
+# # Watches:, the enforcement manifest check reads # Covers:) or a blank line.
+# An allowlist, because comment denylists kept missing executable comments
+# (#!, //go:build, # frozen_string_literal:, # coding:) on PR #171.
 SECURITY_SURFACE_EXEMPT_LINE_PATTERN='^(# (Shard: (slow|serial)|Watches: [^[:cntrl:]]*|Covers: [^[:cntrl:]]*))?[[:space:]]*$'
 # A missing scope-match.sh leaves is_in_scope undefined, which
 # list_included_changed_files reports as a detector failure.
@@ -136,15 +133,17 @@ list_path_hits() {
 }
 
 # drop_comment_only_test_hits <repo-top> <base-oid> <head-oid> <path hits>
-# <work dir>: prints the path hits minus each test file whose change is only
-# fixture-runner metadata (IAN-515): the file mode and type unchanged, at least
-# one line changed, and every added or removed line a `# Shard:`, `# Watches:`,
-# or `# Covers:` line (or blank) inside the file's leading comment header in
-# its own revision. Such a header line on a fixture named for what it tests
+# <work dir>: prints the path hits minus each *.test.sh fixture whose change
+# is only fixture-runner metadata (IAN-515): the file exists in both
+# revisions with the same mode, the blobs differ, and they become
+# byte-identical once `# Shard:`, `# Watches:`, `# Covers:`, and blank lines
+# are removed from each one's leading comment header (line 1 is never
+# removed). Such a header line on a fixture named for what it tests
 # (security-merge-gate*.test.sh) cannot change a control, and made PR #169 pay
-# a strongest-model review twice. Any other line, a line below the header, a
-# mode or type change, or a name git quotes keeps the hit (PR #171 review), and
-# non-test files are never dropped. Returns non-zero when git or awk fails.
+# a strongest-model review twice. Comparing whole blobs, not diff lines, is the
+# PR #171 review's class-level fix: no diff option, line shift, heredoc, or
+# comment that executes can pass for metadata. Every other path hit is kept.
+# Returns non-zero when git or awk fails.
 drop_comment_only_test_hits() {
   local repo_top="$1" base_oid="$2" head_oid="$3" path_hits="$4" work_dir="$5" hit hit_path verdict
   while IFS= read -r hit; do
@@ -159,57 +158,35 @@ drop_comment_only_test_hits() {
 }
 
 # classify_test_file_change <repo-top> <base-oid> <head-oid> <path> <work
-# dir>: prints `inert` when the path's change is header metadata as
-# drop_comment_only_test_hits defines it, `live` otherwise. A name git had to
-# quote is `live` without a lookup. Returns non-zero when git or awk fails.
+# dir>: prints `inert` when the path's change is fixture metadata as
+# drop_comment_only_test_hits defines it, `live` otherwise; a path that is not
+# a *.test.sh fixture, or that git had to quote, is `live` without a lookup.
+# Returns non-zero when git or awk fails.
 classify_test_file_change() {
-  local repo_top="$1" base_oid="$2" head_oid="$3" file_path="$4" work_dir="$5"
-  local changes_file="$work_dir/test-file-changes" base_header head_header
-  local modes
-  case "$file_path" in \"*) echo live; return 0 ;; esac
+  local repo_top="$1" base_oid="$2" head_oid="$3" file_path="$4" work_dir="$5" modes
+  case "$file_path" in \"*) echo live; return 0 ;; *.test.sh) ;; *) echo live; return 0 ;; esac
   modes=$(git -c core.quotePath=false --literal-pathspecs -C "$repo_top" diff --raw --no-renames --no-ext-diff \
     "$base_oid" "$head_oid" -- "$file_path" 2>/dev/null) || return 1
   case "$modes" in :100644\ 100644\ * | :100755\ 100755\ *) ;; *) echo live; return 0 ;; esac
-  base_header=$(count_header_lines "$repo_top" "$base_oid" "$file_path") || return 1
-  head_header=$(count_header_lines "$repo_top" "$head_oid" "$file_path") || return 1
-  git -c core.quotePath=false --literal-pathspecs -C "$repo_top" diff -U0 --text --no-renames --no-color \
-    --no-ext-diff --no-textconv "$base_oid" "$head_oid" -- "$file_path" > "$changes_file" 2>/dev/null || return 1
-  LC_ALL=C awk -v base_header="$base_header" -v head_header="$head_header" \
-    -v exempt="$SECURITY_SURFACE_EXEMPT_LINE_PATTERN" '
-      /^Binary files / { binary = 1; next }
-      /^@@ / {
-        in_hunk = 1
-        match($0, / -[0-9]+/); old_line = substr($0, RSTART + 2, RLENGTH - 2) + 0
-        match($0, / \+[0-9]+/); new_line = substr($0, RSTART + 2, RLENGTH - 2) + 0
-        next
-      }
-      !in_hunk { next }
-      /^[+-]/ {
-        changed++
-        text = substr($0, 2)
-        if (substr($0, 1, 1) == "+") { line = new_line++; limit = head_header } else { line = old_line++; limit = base_header }
-        if (line > limit || text !~ exempt) live = 1
-      }
-      END { if (binary) exit 3; print ((changed > 0 && !live) ? "inert" : "live") }
-    ' "$changes_file"
+  write_fixture_without_header_metadata "$repo_top" "$base_oid" "$file_path" "$work_dir/fixture-base" || return 1
+  write_fixture_without_header_metadata "$repo_top" "$head_oid" "$file_path" "$work_dir/fixture-head" || return 1
+  if cmp -s "$work_dir/fixture-base" "$work_dir/fixture-head"; then echo inert; else echo live; fi
 }
 
-# count_header_lines <repo-top> <oid> <path>: prints how many leading lines of
-# the path's blob at <oid> form its comment header: an optional #! first line,
-# then # or // comments and blank lines, up to the first other line; 0 when
-# the blob does not exist there. awk reads the whole blob so git never meets a
-# closed pipe. Returns non-zero when git or awk fails on a blob that exists.
-count_header_lines() {
-  local repo_top="$1" oid="$2" file_path="$3"
-  git -C "$repo_top" cat-file -e "$oid:$file_path" 2>/dev/null || { echo 0; return 0; }
+# write_fixture_without_header_metadata <repo-top> <oid> <path> <out file>:
+# writes the path's blob at <oid> with the `# Shard:`, `# Watches:`,
+# `# Covers:`, and blank lines of its leading comment header removed. Line 1 is
+# always kept, and the header ends at the first line that is neither a `#`
+# comment nor blank. Returns non-zero when git or awk fails.
+write_fixture_without_header_metadata() {
+  local repo_top="$1" oid="$2" file_path="$3" out_file="$4"
   git -C "$repo_top" show "$oid:$file_path" 2>/dev/null |
-    LC_ALL=C awk -v header="$SECURITY_SURFACE_HEADER_LINE_PATTERN" '
-      ended { next }
-      NR == 1 && /^#!/ { count = 1; next }
-      $0 ~ header { count = NR; next }
-      { ended = 1 }
-      END { print count + 0 }
-    '
+    LC_ALL=C awk -v exempt="$SECURITY_SURFACE_EXEMPT_LINE_PATTERN" '
+      NR == 1 { print; next }
+      ended { print; next }
+      /^[[:space:]]*(#.*)?$/ { if ($0 !~ exempt) print; next }
+      { ended = 1; print }
+    ' > "$out_file"
   local pipe_statuses="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
   [ "$pipe_statuses" = "0 0" ]
 }
