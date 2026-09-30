@@ -9,9 +9,27 @@ set -euo pipefail
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/linear-todo-label-gate.sh"
 SAVE="mcp__0ccea419-4dc2-4479-9c56-baefac2065ba__save_issue"
 
+# The hook reads this variable before $HOME; an exported copy in the caller's
+# shell would point every case below at the caller's real config.
+unset CLAUDE_TICKET_TRACKER_FILE
 TRACKER_HOME=$(mktemp -d)
+SPLIT_HOME=$(mktemp -d)
 EMPTY_HOME=$(mktemp -d)
-trap 'rm -rf "$TRACKER_HOME" "$EMPTY_HOME"' EXIT
+trap 'rm -rf "$TRACKER_HOME" "$SPLIT_HOME" "$EMPTY_HOME"' EXIT
+# A tracker that maps specced and planned onto two different statuses.
+mkdir -p "$SPLIT_HOME/.claude"
+cat >"$SPLIT_HOME/.claude/TICKET-TRACKER.json" <<SPLIT
+{
+  "active": "linear",
+  "trackers": {
+    "linear": {
+      "states": {"backlog": "Backlog", "specced": "Specced", "planned": "Planned"},
+      "state_labels": {"specced": "specced", "planned": "planned"},
+      "tools": {"create": "$SAVE", "update": "$SAVE"}
+    }
+  }
+}
+SPLIT
 mkdir -p "$TRACKER_HOME/.claude"
 cat >"$TRACKER_HOME/.claude/TICKET-TRACKER.json" <<TRACKER
 {
@@ -32,10 +50,11 @@ runHook() {
   local home="$1" tool="$2" input="$3"
   printf '{"tool_name":"%s","tool_input":%s}' "$tool" "$input" | HOME="$home" "$HOOK"
 }
-# expectDeny(): asserts the hook answers with a deny that names the missing label.
+# expectDeny(): asserts the hook answers with a deny that names the missing label;
+# an optional fourth argument names the HOME to run under.
 expectDeny() {
   local label="$1" output
-  output=$(runHook "$TRACKER_HOME" "$2" "$3")
+  output=$(runHook "${4:-$TRACKER_HOME}" "$2" "$3")
   if printf '%s' "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"
       and (.hookSpecificOutput.permissionDecisionReason | test("specced") and test("planned"))' >/dev/null 2>&1; then
     echo "ok: $label"
@@ -69,6 +88,10 @@ expectSilent "a save with no state change" "$TRACKER_HOME" "$SAVE" '{"id":"IAN-1
 expectSilent "a tool the tracker config does not name" "$TRACKER_HOME" "mcp__github__save_issue" '{"state":"Todo"}'
 expectSilent "a non-MCP tool" "$TRACKER_HOME" "Bash" '{"command":"echo Todo"}'
 expectSilent "no tracker config" "$EMPTY_HOME" "$SAVE" '{"id":"IAN-1","state":"Todo"}'
+expectSilent "the unstarted state type adding specced" "$TRACKER_HOME" "$SAVE" '{"id":"IAN-1","state":"unstarted","addLabels":["specced"]}'
+expectDeny "the specced status when the two map apart" "$SAVE" '{"id":"IAN-1","state":"Specced"}' "$SPLIT_HOME"
+expectDeny "the planned status when the two map apart" "$SAVE" '{"id":"IAN-1","state":"Planned"}' "$SPLIT_HOME"
+expectSilent "the planned status adding planned when the two map apart" "$SPLIT_HOME" "$SAVE" '{"id":"IAN-1","state":"Planned","addLabels":["planned"]}'
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "linear-todo-label-gate: $FAILURES failure(s)"; exit 1
