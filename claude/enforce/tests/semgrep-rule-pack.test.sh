@@ -7,6 +7,13 @@
 # cannot pass as a clean scan. Every rule file shipped in enforce/semgrep/
 # must also have at least one bad and one good sample.
 #
+# Every sample ships with an extra `.sample` suffix (e.g.
+# `cors-unvalidated-setting_bad.py.sample`) so neither Semgrep nor CodeQL
+# reads it as live code in this repository's own CI. This fixture copies each
+# sample into a scratch directory under its real extension (the name minus
+# `.sample`) before scanning, and reports failures under the sample's real
+# on-disk name (with `.sample`).
+#
 # Semgrep resolves as `semgrep` on PATH, else `uvx semgrep`; with neither the
 # fixture fails naming the install command, and it never skips.
 #
@@ -32,7 +39,21 @@ else
 fi
 
 scan_dir=$(mktemp -d)
+staged_sample_dir="$scan_dir/src"
+mkdir -p "$staged_sample_dir"
 trap 'rm -rf "$scan_dir"' EXIT
+
+# stage_sample <sample path>: copies a sample (named `<...>.sample`) into
+# $staged_sample_dir under its real extension, so Semgrep infers the language
+# from the name it actually scans, and prints the copy's path.
+stage_sample() {
+  local sample="$1"
+  local real_name
+  real_name=$(basename "$sample" .sample)
+  local staged_sample_path="$staged_sample_dir/$real_name"
+  cp "$sample" "$staged_sample_path"
+  echo "$staged_sample_path"
+}
 
 # Runs one rule file over the given samples and leaves the JSON report in
 # $scan_dir/<rule>.json. Returns nonzero when Semgrep crashed or printed no
@@ -72,33 +93,49 @@ check_scanned() {
 
 for rule in $RULE_IDS; do
   rule_file="$RULES_DIR/$rule.yml"
-  bad_samples=$(ls "$SAMPLES_DIR/${rule}_bad"*.* 2>/dev/null)
-  good_samples=$(ls "$SAMPLES_DIR/${rule}_good"*.* 2>/dev/null)
+  bad_samples=$(ls "$SAMPLES_DIR/${rule}_bad"*.sample 2>/dev/null)
+  good_samples=$(ls "$SAMPLES_DIR/${rule}_good"*.sample 2>/dev/null)
   [ -n "$bad_samples" ] || report_failure "$rule: no bad sample in $SAMPLES_DIR"
   [ -n "$good_samples" ] || report_failure "$rule: no good sample in $SAMPLES_DIR"
   if [ ! -f "$rule_file" ]; then
     report_failure "$rule: rule file $rule_file does not exist"
     continue
   fi
-  # shellcheck disable=SC2086  # the sample lists are newline-separated paths with no spaces
-  if ! run_rule "$rule" $bad_samples $good_samples; then
+  # Each sample is staged once; the parallel lists pair the on-disk sample
+  # (index i) with its staged copy (the same index).
+  bad_sample_paths=()
+  staged_bad_paths=()
+  for sample in $bad_samples; do
+    bad_sample_paths+=("$sample")
+    staged_bad_paths+=("$(stage_sample "$sample")")
+  done
+  good_sample_paths=()
+  staged_good_paths=()
+  for sample in $good_samples; do
+    good_sample_paths+=("$sample")
+    staged_good_paths+=("$(stage_sample "$sample")")
+  done
+  if ! run_rule "$rule" ${staged_bad_paths[@]+"${staged_bad_paths[@]}"} \
+    ${staged_good_paths[@]+"${staged_good_paths[@]}"}; then
     report_failure "$rule: Semgrep crashed or printed no JSON report: $(head -c 400 "$scan_dir/$rule.err")"
     continue
   fi
   report="$scan_dir/$rule.json"
-  for sample in $bad_samples; do
-    name=$(basename "$sample")
-    check_scanned "$report" "$sample" "$rule" "$name"
-    if [ "$(count_results "$report" "$sample" "$rule")" -lt 1 ]; then
+  for ((sample_index = 0; sample_index < ${#bad_sample_paths[@]}; sample_index++)); do
+    name=$(basename "${bad_sample_paths[$sample_index]}")
+    staged_sample_path="${staged_bad_paths[$sample_index]}"
+    check_scanned "$report" "$staged_sample_path" "$rule" "$name"
+    if [ "$(count_results "$report" "$staged_sample_path" "$rule")" -lt 1 ]; then
       report_failure "$rule: bad sample $name produced no finding with check_id $rule"
     fi
   done
-  for sample in $good_samples; do
-    name=$(basename "$sample")
-    check_scanned "$report" "$sample" "$rule" "$name"
-    found=$(count_results "$report" "$sample")
-    if [ "$found" -ne 0 ]; then
-      report_failure "$rule: good sample $name produced $found finding(s), expected none"
+  for ((sample_index = 0; sample_index < ${#good_sample_paths[@]}; sample_index++)); do
+    name=$(basename "${good_sample_paths[$sample_index]}")
+    staged_sample_path="${staged_good_paths[$sample_index]}"
+    check_scanned "$report" "$staged_sample_path" "$rule" "$name"
+    good_finding_count=$(count_results "$report" "$staged_sample_path")
+    if [ "$good_finding_count" -ne 0 ]; then
+      report_failure "$rule: good sample $name produced $good_finding_count finding(s), expected none"
     fi
   done
 done
@@ -107,9 +144,24 @@ done
 for rule_file in "$RULES_DIR"/*.yml; do
   [ -f "$rule_file" ] || continue
   rule=$(basename "$rule_file" .yml)
-  ls "$SAMPLES_DIR/${rule}_bad"*.* >/dev/null 2>&1 || report_failure "$rule: rule file has no bad sample in $SAMPLES_DIR"
-  ls "$SAMPLES_DIR/${rule}_good"*.* >/dev/null 2>&1 || report_failure "$rule: rule file has no good sample in $SAMPLES_DIR"
+  ls "$SAMPLES_DIR/${rule}_bad"*.sample >/dev/null 2>&1 || report_failure "$rule: rule file has no bad sample in $SAMPLES_DIR"
+  ls "$SAMPLES_DIR/${rule}_good"*.sample >/dev/null 2>&1 || report_failure "$rule: rule file has no good sample in $SAMPLES_DIR"
 done
+
+# Every sample ships as `<name>.sample`, never under a live code extension
+# CI's scanners would read directly, and there are enough of them to cover
+# every rule's shapes (a floor, not an exact count, so new samples don't
+# break this fixture).
+sample_count=0
+for sample_path in "$SAMPLES_DIR"/*; do
+  [ -f "$sample_path" ] || continue
+  sample_count=$((sample_count + 1))
+  case "$sample_path" in
+    *.sample) ;;
+    *) report_failure "testdata: $(basename "$sample_path") does not end in .sample" ;;
+  esac
+done
+[ "$sample_count" -ge 40 ] || report_failure "testdata: expected at least 40 sample files in $SAMPLES_DIR, found $sample_count"
 
 if [ "$failures" -ne 0 ]; then
   echo "semgrep-rule-pack.test.sh FAIL ($failures failure(s))"
