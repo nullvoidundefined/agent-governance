@@ -23,15 +23,15 @@ Three read-only classifiers ran in parallel, one each over rules, hooks, and ski
 | Surface | ENFORCE | STRUCTURAL | COACHING | ORCHESTRATION | SUPPORT |
 |---|---|---|---|---|---|
 | `CLAUDE.md` rules (92) | 47 | 4 | 35 | 6 | |
-| Convention files, rulebook, rule files (19) | 0 | 0 | 17 | 2 | |
-| Hooks in `claude/hooks/` (74) | 28 | 1 (also ENFORCE) | 19 | 6 | 20 |
+| Convention files, rulebook, rule files (20 rows) | 0 | 0 | 18 | 2 | |
+| Files in `claude/hooks/` (75) | 33 | 1 (also ENFORCE) | 19 | 6 | 17 |
 | Skills (19) | 0 | 0 | 9 | 10 | |
 | Agent roles (15) | 0 | 6 | 9 | 0 | |
-| Audit definitions (9) | 0 | 0 | 9 | 0 | |
+| Audit definitions (9: 3 in `audits/`, 6 in `audits/on-request/`) | 0 | 0 | 9 | 0 | |
 | Prompt templates (10) | 1 | 2 | 2 | 5 | |
-| **Total (238)** | **76** | **13** | **100** | **29** | **20** |
+| **Total (240)** | **81** | **13** | **101** | **29** | **17** |
 
-The hook row counts protected-path-guard under ENFORCE and again under STRUCTURAL, so the row sums to 75. Four of the ten ORCHESTRATION skills (task-start, build-fast, tdd-gated-dispatch, repo-setup) carry scripts that a gate reads or that a fixture pins; the prose is removable, the scripts are not (see "Unsure").
+The hook row counts protected-path-guard under ENFORCE and again under STRUCTURAL, so the row sums to 76 for 75 files; its 33 ENFORCE entries are the 31 other registered guards, protected-path-guard, and `pre-push.sample`, the git hook that `install-git-hooks.sh` installs and that aborts a push (R-215). The first version of this table, before the PR #174 review, undercounted ENFORCE hooks as 28 and misfiled `pre-push.sample` as a helper. Four of the ten ORCHESTRATION skills (task-start, build-fast, tdd-gated-dispatch, repo-setup) carry scripts that a gate reads or that a fixture pins; the prose is removable, the scripts are not (see "Unsure").
 
 ## Rules in `claude/CLAUDE.md`
 
@@ -103,7 +103,7 @@ Only COACHING and ORCHESTRATION rows list dependents. "Base" means the generated
 | R-408 | COACHING | lint scope habit | base, ruby/python/go .mdc | 23 |
 | R-409 | COACHING | diagnose repeated cleanups | base | 27 |
 | R-410 | STRUCTURAL | gate inputs and locked tests writable only by their author role | | 94 |
-| R-411 | STRUCTURAL | test-author and implementer in separate contexts, so code cannot be fitted to tests | | 54 |
+| R-411 | STRUCTURAL | independent test authorship: the test-author writes tests in its own context and the implementer cannot change them (it still reads them and writes code to pass them) | | 54 |
 | R-412 | STRUCTURAL | the tdd.sh lock makes RED-before-GREEN provable | | 91 |
 | R-501 | COACHING | parallel-session-check only warns | manifest advisory; base, build-fast ports; fixtures parallel-session-check, translate-codex, translate-cursor | 38 |
 | R-502 | ORCHESTRATION | task-list hygiene | base, cursor README; fixtures translate-codex, translate-cursor | 24 |
@@ -223,7 +223,9 @@ Registration counts per event: 23 on every Bash call, 11 on every Write or Edit,
 | ticket-at-start-gate | PreToolUse Bash, Write/Edit | ENFORCE | denies | | |
 | verification-gate | Stop, SubagentStop | ENFORCE | blocks Stop on a red suite | | |
 
-SUPPORT (sourced, not registered): build-lane-quiet, clean-code-scan.mjs, dependency-add-scan.py, git-invocation, log-rule-fire, pr-monitor-instruction, pr-range-checks, repo-identity, scope-match, security-review-ledger-path, security-surface, session-metrics, shell-command-scan, shell-command-segments.py, shell-command-tokens, tool-response-output, resolve-outgoing-base (in `enforce/`), pre-push.sample, install-git-hooks (a manual installer). No dead hook was found.
+ENFORCE outside `settings.json`: `pre-push.sample`, installed as the git pre-push hook by `install-git-hooks.sh`, aborts a push when port verification or SHA reachability fails (R-215); it enforces only where that installer has run.
+
+SUPPORT (sourced, not registered): build-lane-quiet, clean-code-scan.mjs, dependency-add-scan.py, git-invocation, log-rule-fire, pr-monitor-instruction, pr-range-checks, repo-identity, scope-match, security-review-ledger-path, security-surface, session-metrics, shell-command-scan, shell-command-segments.py, shell-command-tokens, tool-response-output, install-git-hooks (a manual installer). No dead hook was found.
 
 ## Skills, agent roles, audit definitions, and prompts
 
@@ -278,13 +280,13 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 ## ENFORCE items that look redundant
 
 1. **Secret rules R-102, R-103, R-108** all resolve to secret-scan; R-103 is a subset of R-102.
-2. **R-107 is a strict subset of R-203** (both are destructive-command-guard); hookspath-drift-check duplicates the deny as a warning.
-3. **Ticket presence is checked by three hooks**: ticket-at-start-gate (first edit and every commit), pr-ticket-ref-gate (PR create), and commit-message-guard's R-214 trailer. Once the start gate forces a ticket per branch, the PR-time check is largely subsumed.
+2. **R-107 and R-203 share destructive-command-guard** for attempted hooksPath changes, but hookspath-drift-check is not a duplicate: it detects a hooksPath configured before the session began, which no command in the session would trigger. The two are complementary prevention and detection, not redundant.
+3. **Ticket presence is checked by three hooks**, each with a different guarantee: ticket-at-start-gate checks the local ledger before the first edit and every commit, pr-ticket-ref-gate checks that the published commits or PR body carry a `Refs:` line, and commit-message-guard's R-214 trailer covers out-of-scope staging. A valid local ledger does not publish the reference, so the PR-time check is not subsumed; the overlap is in timing, not in what is proved.
 4. **Scope is checked twice** from one ledger: scope-widening-gate asks at write time, commit-message-guard denies at commit.
 5. **Test-file edits**: codex-test-author-guard asks, then protected-path-guard denies the same write once a slice is RED, so the user is asked about an edit that will be refused.
-6. **Hook-registration checks**: settings-change-guard (blocks) and enforcement-guard-check (warns) compute the same set; redaction-guard-check is a hard-coded two-hook special case of it.
+6. **Hook-registration checks**: settings-change-guard (blocks) and enforcement-guard-check (warns) compute the same required-minus-registered set from command basenames. redaction-guard-check is narrower but not redundant: it also checks that the two secret hooks are registered on the right events and exist on disk, which the basename comparison does not.
 7. **Push-time cost**: about ten hooks spawn per push, four of them per-language linter gates with identical structure, each resolving the outgoing base again.
-8. **R-316, R-317, R-325, R-362** carry both a deterministic ESLint rule and the probabilistic judge; the judge half adds nothing where the rule is on.
+8. **R-316, R-317, R-325** carry both a deterministic ESLint rule and the probabilistic judge; where the rule is on, the judge adds little. **R-362 is not in this group**: transaction-client-required checks statements inside an existing transaction callback, while the judge also catches related writes that never open a transaction, so both halves stay.
 9. **SessionStart on compaction**: session-start (empty matcher, so it also runs on compact) and post-compact-rules both inject, about 2,600 to 5,200 tokens together, and post-compact-rules is a hand-copied subset of CLAUDE.md that can drift.
 
 ## Recommendations
@@ -294,8 +296,7 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 1. **R-002**: restates R-001. Remove the line and the one fixture assertion that pins it.
 2. **The nine `claude/audits/*.md` pointer stubs**: pure indirection to the agent files; repoint `rulebook/audits.md` and the README at the agents.
 3. **single-file-folder-reminder**: it writes to stderr on push and exits 0, so the model most likely never sees it. Either make it an additionalContext reminder or delete it; as written it costs a process per Bash call for no effect.
-4. **redaction-guard-check**: a two-hook special case of enforcement-guard-check, which already checks every manifest-required hook.
-5. **known-issues and protocol skills**: 170-token pointers to files the rules table already names; the reads work without a skill.
+4. **known-issues and protocol skills**: 170-token pointers to files the rules table already names; the reads work without a skill.
 
 ### Decide by the ablation run
 
@@ -342,8 +343,10 @@ Each task replays completed work from the pre-fix commit, once under the full pr
 | 3 | Extension worker crashes: the shared barrel pulls `document` into the service worker (IAN-411) | Doppelscript extension | bundling bug | the service-worker bundle contains no DOM global reference (grep of the built file); the extension test suite is green |
 | 4 | Cover the migration engine's production TLS branch with a test (IAN-306) | template-fastapi-nuxt | security test (R-406) | the new test passes, and removing TLS from the engine makes it fail (a one-line mutation check) |
 | 5 | Replace the six bare `Any` annotations in apps/server/tests (IAN-384) | template-fastapi-nuxt | refactor | `mypy --strict apps/server/tests` exits 0 with no `Any`; tests unchanged and green |
-| 6 | User-stories coverage test flakes under pipefail (IAN-403) | Voyager 2.0 | CI flake | the test passes 50 consecutive runs locally and in CI |
+| 6 | User-stories coverage test flakes under pipefail (IAN-403) | Voyager 2.0 | CI flake | a deterministic reproducer fails on the pre-fix revision and passes after the fix; 50 consecutive CI runs as supplementary evidence |
 | 7 | Add microphone dictation to chat inputs (IAN-412) | Doppelscript web | UI feature | the e2e spec for dictation passes; Lighthouse accessibility is 100 on the chat page |
 | 8 | tdd.sh cannot prove RED in a pnpm monorepo that keeps vitest per package (IAN-405) | agent-governance | harness bug | the tdd-monorepo-package fixture passes; the full fixture suite is green in CI |
+
+Task 6 is scored on a deterministic reproducer, not on repeated runs alone: before scoring, the pre-fix revision must fail a test that forces the `printf | grep -q` under `pipefail` condition (for example a long enough restated criterion), and the fixed revision must pass it; 50 consecutive green runs are supplementary evidence only.
 
 The suite mixes four repositories, three stacks, bugs, a feature, a refactor, a flake, and a security test, and task 8 exercises the harness on itself. A COACHING item earns its keep only if `lean` fails a task that `full` passes, or lets a defect through that `full` catches.
