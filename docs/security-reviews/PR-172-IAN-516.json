@@ -1,0 +1,45 @@
+{
+  "pr": "nullvoidundefined/agent-governance#172",
+  "ticket": "IAN-516",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "0301107114d2da656ca50d1db425d1bd006ddf24",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range lets the R-517 and R-109 merge checks accept an older review head when every later commit changes only regular files under the top-level docs/ tree. Round 1 (d7cc0ef) raised 1 to 4, fixed in 0301107 with failing cases first in 7b1a238. Round 2 (0301107) verified 1 to 4 and raised 5, fixed in da32996 (case 18); the Codex R-517 round on 0301107 also added refs/replace handling (5b65c62, case 16). The review of the head that adds this text is the PR body's Security review section.",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "control": "review-head resolution",
+      "finding": "a hex-named branch or tag resolved before the object name, so any commit could pass as the review head",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "control": "in-range rule",
+      "finding": "the base itself was accepted as the review head of a docs-only PR",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "control": "artefact immutability",
+      "finding": "the recorded artefact could be rewritten after the review in a docs-only tail",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "control": "test coverage",
+      "finding": "no case fed the refused values (executable, submodule, merge, revert, hex refs, base head, rewritten artefact)",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 5,
+      "severity": "MEDIUM",
+      "control": "artefact binding",
+      "finding": "a clean second artefact could be added and named beside one the review saw with an open row",
+      "status": "fixed da32996d405ff40f33f4f9e683b7a1c7476074b1"
+    }
+  ]
+}
