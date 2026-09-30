@@ -63,7 +63,9 @@
 #       the implementer's GREEN re-run rather than trusted.
 #
 # Runner: chosen from the test paths. A `*.test.sh` path is a bash fixture:
-# the suite is every `*.test.sh` in the named files' directories, run through
+# the suite is the `*.test.sh` fixtures of the named files' directories that
+# the runner's affected mode selects, plus the named tests and every fixture
+# the RED run passed (IAN-510), run through
 # run-fixture-shards.sh beside this script with that runner's verdict (exit 0,
 # a PASS line, no FAIL line), and converted to the JSON report shape below.
 # A `*.py` path (test_*.py or *_test.py in practice) is a pytest test: the
@@ -291,23 +293,54 @@ run_suite() {
   jq -e '.testResults' "$REPORT" >/dev/null 2>&1 || die "the $RUNNER_KIND run produced no JSON report; run '$RUNNER' by hand to see why"
 }
 
-# run_shell_suite <test rel>...: runs every *.test.sh in the named files'
-# directories through the shard runner and prints the Vitest-shaped report.
-# The runner starts in a scratch directory, not the repository root, so a
+# run_shell_suite <test rel>...: runs the *.test.sh fixtures of the named
+# files' directories that the shard runner's affected mode selects, and prints
+# the Vitest-shaped report (IAN-510). Running every fixture on each red and
+# green made one fix round pay several full suites; CI still runs them all.
+# --also adds the named tests, which git may no longer list as changed once
+# pushed, and every fixture the lock's RED run passed (baseline.fixtures), so
+# green compares its count against the same fixtures. Only fixtures that ran
+# get a record; a named test that did not run is a failed record. The runner
+# starts in a scratch directory, not the repository root, so a
 # fixture that writes a relative path cannot leave files in the slice's tree
 # (PR #49 review); fixture paths are absolute, so nothing else changes.
 run_shell_suite() {
-  local dirs rel dir results scratch fixture records=""
+  local dirs rel dir results scratch fixture records="" also=()
+  for rel in "$@"; do also+=(--also "$rel"); done
+  if [ -f "$LOCK" ]; then
+    while IFS= read -r rel; do
+      [ -n "$rel" ] && also+=(--also "$rel")
+    done < <(jq -r '.baseline.fixtures // [] | .[]' "$LOCK")
+  fi
   dirs=$(for rel in "$@"; do dirname "$rel"; done | sort -u)
   while IFS= read -r dir; do
     results=$(mktemp -d); scratch=$(mktemp -d)
-    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --all --results-dir "$results" >/dev/null 2>&1)
+    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --affected "${also[@]}" --results-dir "$results" >/dev/null 2>&1)
     for fixture in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
-      [ -f "$fixture" ] && records+=$(shell_record "$fixture" "$results")$'\n'
+      [ -f "$fixture" ] || continue
+      [ -f "$results/$(basename "$fixture").status" ] || is_named_fixture "$fixture" "$@" || continue
+      records+=$(shell_record "$fixture" "$results")$'\n'
     done
     rm -rf "$results" "$scratch"
   done <<< "$dirs"
   printf '%s' "$records" | jq -s '{testResults: .}'
+}
+
+# is_named_fixture <fixture> <test rel>...: true when the absolute fixture
+# path is one of the named root-relative tests.
+is_named_fixture() {
+  local fixture="$1" rel; shift
+  for rel in "$@"; do [ "$fixture" = "$ROOT_PHYSICAL/$rel" ] && return 0; done
+  return 1
+}
+
+# passing_fixtures_json <named json>: the root-relative fixtures the shell
+# report passed outside the named tests, as a JSON array, for the lock's
+# baseline.fixtures; an empty array under every other runner.
+passing_fixtures_json() {
+  [ "$RUNNER_KIND" = shell ] || { echo '[]'; return; }
+  jq -c --argjson named "$1" --arg root "$ROOT_PHYSICAL/" \
+    '[.testResults[] | select(.status == "passed") | .name | select(. as $n | ($named | map(.name) | index($n)) | not) | ltrimstr($root)]' "$REPORT"
 }
 
 # run_pytest_suite <test rel>...: runs the whole pytest suite of PYTEST_DIR
@@ -748,10 +781,11 @@ open_refactor() {
     entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" \
       --argjson n "$(file_record "$rel" | jq '.assertionResults | length')" '. + [{path:$p, sha256:$h, failureClass:"refactor", tests:$n}]')
   done
-  local baseline
+  local baseline fixtures
   baseline=$(outside_pass_count "$(names_json "${rels[@]}")") || exit 1
-  jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --argjson t "$entries" --argjson b "$baseline" --arg k "$RUNNER_KIND" --arg at "$(now)" \
-    '{slice:$s, phase:"refactor", spec:(if $spec=="" then null else $spec end), locked:$l, tests:$t, baseline:{passed:$b, runner:$k}, openedAt:$at}' > "$LOCK"
+  fixtures=$(passing_fixtures_json "$(names_json "${rels[@]}")")
+  jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --argjson t "$entries" --argjson b "$baseline" --argjson f "$fixtures" --arg k "$RUNNER_KIND" --arg at "$(now)" \
+    '{slice:$s, phase:"refactor", spec:(if $spec=="" then null else $spec end), locked:$l, tests:$t, baseline:({passed:$b, runner:$k} + (if $k == "shell" then {fixtures:$f} else {} end)), openedAt:$at}' > "$LOCK"
   rm -f "$REPORT"
   say "REFACTOR: ${#rels[@]} test file(s) locked, $baseline passing outside. Restructure, then 'tdd.sh green'; the same tests must pass unchanged."
 }
@@ -782,10 +816,11 @@ cmd_red() {
     entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" --arg c "$class" --argjson ids "$ids" \
       --argjson n "$(named_count "$rel" "$ids")" '. + [{path:$p, sha256:$h, failureClass:$c, tests:$n} + (if $ids == null then {} else {ids:$ids} end)]')
   done
-  local baseline
+  local baseline fixtures
   baseline=$(outside_pass_count "$(spec_named "$spec")" tolerate) || exit 1
-  jq --argjson t "$entries" --argjson b "$baseline" --arg k "$RUNNER_KIND" --arg at "$(now)" \
-    '.phase = "red" | .tests = $t | .baseline = {passed: $b, runner: $k} | .redAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
+  fixtures=$(passing_fixtures_json "$(spec_named "$spec")")
+  jq --argjson t "$entries" --argjson b "$baseline" --argjson f "$fixtures" --arg k "$RUNNER_KIND" --arg at "$(now)" \
+    '.phase = "red" | .tests = $t | .baseline = ({passed: $b, runner: $k} + (if $k == "shell" then {fixtures: $f} else {} end)) | .redAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
   local summary
   summary=$(printf '%s' "$entries" | jq -r '[.[] | .path + (if .ids then "::{" + (.ids | join(", ")) + "}" else "" end) + " [" + .failureClass + ", " + (.tests | tostring) + " test(s)]"] | join(", ")')

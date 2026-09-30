@@ -187,12 +187,22 @@ Both delegate to `enforce/run-fixture-shards.sh`, which runs the fixtures in
 parallel, one job per idle CPU from 1 to 8, and each `# Shard: serial`
 fixture alone after a settle pause: at least 5 seconds, then until the
 one-minute load falls below the CPU count, for at most 60 seconds. On a quiet
-machine a full run of both trees takes about 85 seconds. Add `--affected` to run only
-what the working tree's changes need, which is what the R-509 Stop gate does:
+machine a full run of both trees took about 85 seconds on 2026-09-18 with 101
+fixtures; on 2026-09-30, with 186 fixtures, it took 255 seconds at 8 jobs and
+about 12 minutes when other sessions' load cut the job count to 3 (IAN-510).
+Add `--affected` to run only
+what the working tree's changes need, which is what the R-509 Stop gate and
+`tdd.sh` red and green do:
 the fast tier always, a `# Shard: slow` or `# Shard: serial` fixture only when
 it names or watches a changed file or is itself the file that changed, and everything when a change is named by no fixture or touches the
-runner's shared files. Mark a fixture `# Shard: slow` when it takes more than
-about five seconds, and `# Shard: serial` when it measures timing. A slow or
+runner's shared files. A change under the repository's top-level `docs/` tree
+needs no fixture, since no fixture reads it. `--also <path>` adds a path to
+the changed set; `tdd.sh` passes its locked tests and every fixture its RED run
+passed, so a pushed test still runs and green compares like with like. CI runs
+every fixture. Mark a fixture `# Shard: slow` when it takes more than
+about five seconds, and `# Shard: serial` when it measures timing; the fast
+tier runs on every Stop and every red and green, so one slow fixture left in
+it is paid on every one of those runs. A slow or
 serial fixture that scans a whole tree, rather than naming the files it reads,
 declares them on a `# Watches:` line of globs relative to `claude/` (for
 example `# Watches: hooks/*.sh settings.json`), and a change matching any of
