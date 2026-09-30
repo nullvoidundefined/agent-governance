@@ -36,6 +36,10 @@
 #   executable docs file     a docs/ file with mode 100755: denied.
 #   ignored submodule        a docs/ gitlink under diff.ignoreSubmodules=all:
 #                            denied.
+#   second artefact          the reviewed range already added an artefact
+#                            with an open row; the tail adds a clean one
+#                            beside it and the section names that: denied,
+#                            R-109 (round 2 of the R-109 review).
 #   replacement object       refs/replace makes the PR head look docs-only
 #                            while the real head changes code: denied.
 #   docs edit and delete     a tail that modifies one docs/ file and deletes
@@ -464,6 +468,29 @@ git_in "$Q_DIR" push -q origin feature
 git_in "$Q_DIR" checkout -q main
 STUB=$(write_pr_stub docsedit "$(pr_body "$(codex_section "$Q_BASE" "$Q_REVIEWED")")" "$Q_HEAD" "$Q_BASE" docsedit)
 expect_r514_ask "docs edit and delete in the tail" "$(run_guard "$STUB" "$Q_DIR" "$CLEAN_STUB")"
+
+# --- 18. a second artefact added beside one the review saw -----------------
+build_pr_repo second app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
+  'ALLOWED_ORIGINS = ["https://app.example.com", "https://hr.example.com"]'
+Y_DIR="$REPO_DIR" Y_BASE="$REPO_BASE"
+git_in "$Y_DIR" checkout -q feature
+mkdir -p "$Y_DIR/docs/reviews"
+printf '%s\n' '{"findings":[{"id":1,"severity":"HIGH","status":"open"}]}' > "$Y_DIR/docs/reviews/first.json"
+git_in "$Y_DIR" add docs
+git_in "$Y_DIR" commit -q -m "docs: artefact with an open row"
+Y_REVIEWED=$(git -C "$Y_DIR" rev-parse HEAD)
+printf '%s\n' '{"findings":[]}' > "$Y_DIR/$ARTEFACT_PATH"
+git_in "$Y_DIR" add docs
+git_in "$Y_DIR" commit -q -m "docs: a clean second artefact"
+Y_HEAD=$(git -C "$Y_DIR" rev-parse HEAD)
+git_in "$Y_DIR" push -q origin feature
+(cd "$Y_DIR" && bash "$RECORD_SCRIPT" "$ARTEFACT_PATH" >/dev/null 2>&1) ||
+  report_failure "setup: security-review-record.sh could not record $ARTEFACT_PATH at the PR head"
+git_in "$Y_DIR" checkout -q main
+Y_BODY=$(pr_body "$(codex_section "$Y_BASE" "$Y_HEAD")" "$(security_section security-reviewer "$EXPECTED_MODEL" "$Y_BASE" "$Y_REVIEWED")")
+STUB=$(write_pr_stub second "$Y_BODY" "$Y_HEAD" "$Y_BASE" second)
+expect_r109_deny "second artefact beside a reviewed one" \
+  "$(run_guard "$STUB" "$Y_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $Y_HEAD")"
 
 if [ "$failures" -gt 0 ]; then
   echo "git-workflow-guard-docs-tail.test.sh: $failures failure(s)"
