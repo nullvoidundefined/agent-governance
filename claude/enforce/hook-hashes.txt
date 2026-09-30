@@ -102,7 +102,7 @@ a959a6df2f3b9e92ebe9e11655a1468f80263545fc69592671c865497c917ad9  enforce/tests/
 c6effda3fbd1ce22c7778ba548e4b892d1f7e93e602ffb94703126dd7c2a56c8  enforce/tests/foreign-rule-stubs.test.sh
 1be050c7164ea77dcc51630375ac6c8c07f6cd0df6ea1e36129f0fbaa280d36a  enforce/tests/git-env-isolation.test.sh
 406024e2c7a1a27869b545c2efdaa1dfd5a7839c1759a32e5bb65aac5a3b12df  enforce/tests/git-invocation.test.sh
-b67262184c1ad56a874adc40a6564c78c591817d6e391fafa56b2fe4d37955b1  enforce/tests/git-workflow-guard-docs-tail.test.sh
+fbb63fa808907abeb62816029cf3b38f7b069b684cc33b1e82481eacc496e3cb  enforce/tests/git-workflow-guard-docs-tail.test.sh
 e51bf69ef374858e3ac09117e2a723297c6399ff7b21e30e42c070b5ac0ada40  enforce/tests/git-workflow-guard.test.sh
 37c47ee3ee8a1b2cf89db438a6a7c7e4c266410cde0f95223f3d5cdc9330e12a  enforce/tests/guard-fail-closed.test.sh
 80f28dc98d0413959ec7ac76c0d44b6f28a32193c952214b125599b532ba36e6  enforce/tests/handoff-check.test.sh

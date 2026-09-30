@@ -36,6 +36,10 @@
 #   executable docs file     a docs/ file with mode 100755: denied.
 #   ignored submodule        a docs/ gitlink under diff.ignoreSubmodules=all:
 #                            denied.
+#   replacement object       refs/replace makes the PR head look docs-only
+#                            while the real head changes code: denied.
+#   docs edit and delete     a tail that modifies one docs/ file and deletes
+#                            another: reaches the R-514 ask.
 #   artefact rewritten       a tail that edits an existing
 #                            docs/security-reviews/ file: denied, R-109; the
 #                            artefact may be added after the review, never
@@ -48,6 +52,9 @@ set -uo pipefail
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/git-workflow-guard.sh"
 MODEL_FILE="$CLAUDE_HARNESS_ROOT/enforce/security-review-model.json"
 unset CLAUDE_ENFORCE_BASE CLAUDE_GH_CMD CLAUDE_SEMGREP_CMD GH_REPO GH_HOST
+# An inherited repository selection (a hook run from a linked worktree exports
+# these) would point every `git -C` below at the calling repository.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 failures=0
 report_failure() { echo "FAIL git-workflow-guard-docs-tail.test.sh: $1"; failures=$((failures + 1)); }
@@ -427,6 +434,36 @@ W_BODY=$(pr_body "$(codex_section "$W_BASE" "$W_HEAD")" "$(security_section secu
 STUB=$(write_pr_stub rewrite "$W_BODY" "$W_HEAD" "$W_BASE" rewrite)
 expect_r109_deny "artefact rewritten after the review" \
   "$(run_guard "$STUB" "$W_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $W_HEAD")"
+
+# --- 16. a replacement object disguising the PR head ------------------------
+build_pr_repo replace app/greeting.py 'GREETING = "hello"' 'GREETING = "moi"'
+P_DIR="$REPO_DIR" P_BASE="$REPO_BASE" P_REVIEWED="$REPO_HEAD"
+P_HEAD=$(add_commit "$P_DIR" app/evil.py 'EVIL = 1' "feat: unreviewed code")
+git_in "$P_DIR" checkout -q -b decoy "$P_REVIEWED"
+mkdir -p "$P_DIR/docs"
+printf 'decoy\n' > "$P_DIR/docs/decoy.md"
+git_in "$P_DIR" add -A
+git_in "$P_DIR" commit -q -m "docs: decoy"
+DECOY=$(git -C "$P_DIR" rev-parse HEAD)
+git_in "$P_DIR" checkout -q main
+git_in "$P_DIR" replace "$P_HEAD" "$DECOY"
+STUB=$(write_pr_stub replace "$(pr_body "$(codex_section "$P_BASE" "$P_REVIEWED")")" "$P_HEAD" "$P_BASE" replace)
+expect_r517_deny "replacement object disguising the head" "$(run_guard "$STUB" "$P_DIR" "$CLEAN_STUB")"
+
+# --- 17. a tail that modifies and deletes docs files ------------------------
+build_pr_repo docsedit app/greeting.py 'GREETING = "hello"' 'GREETING = "aloha"'
+Q_DIR="$REPO_DIR" Q_BASE="$REPO_BASE"
+add_commit "$Q_DIR" docs/a.md 'A.' "docs: a" >/dev/null
+Q_REVIEWED=$(add_commit "$Q_DIR" docs/b.md 'B.' "docs: b")
+add_commit "$Q_DIR" docs/a.md 'A, revised.' "docs: revise a" >/dev/null
+git_in "$Q_DIR" checkout -q feature
+git_in "$Q_DIR" rm -q docs/b.md
+git_in "$Q_DIR" commit -q -m "docs: drop b"
+Q_HEAD=$(git -C "$Q_DIR" rev-parse HEAD)
+git_in "$Q_DIR" push -q origin feature
+git_in "$Q_DIR" checkout -q main
+STUB=$(write_pr_stub docsedit "$(pr_body "$(codex_section "$Q_BASE" "$Q_REVIEWED")")" "$Q_HEAD" "$Q_BASE" docsedit)
+expect_r514_ask "docs edit and delete in the tail" "$(run_guard "$STUB" "$Q_DIR" "$CLEAN_STUB")"
 
 if [ "$failures" -gt 0 ]; then
   echo "git-workflow-guard-docs-tail.test.sh: $failures failure(s)"
