@@ -19,7 +19,7 @@
 # <head-oid> defaults to HEAD and names the commit whose file list, diffs, and
 # blobs are read. A range is marked by any of three triggers: a changed path
 # matching a `paths` regex in enforce/security-surface.json (except a *.test.sh
-# fixture whose change is only runner metadata in its header, IAN-515), an added or
+# fixture that only inserts runner metadata after its shebang, IAN-515), an added or
 # removed line matching a `content` regex there (both case-insensitive
 # extended regexes; a removed line reports its pre-image line number), or a
 # finding from the rule pack in enforce/semgrep/ on a changed code file. Every
@@ -50,15 +50,11 @@ SECURITY_SURFACE_HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SURFACE_PATTERNS_FILE="$SECURITY_SURFACE_HOOK_DIR/../enforce/security-surface.json"
 SECURITY_SURFACE_RULES_DIR="$SECURITY_SURFACE_HOOK_DIR/../enforce/semgrep"
 SECURITY_SURFACE_CODE_FILE_PATTERN='\.(py|ts|tsx|mts|cts|js|jsx|mjs|cjs|go|rb)$'
-# A test file: under a tests, test, __tests__, spec, specs, or testdata
-# directory, or named *.test.*, *_test.*, *.spec.*, *_spec.*, or test_*.py.
-SECURITY_SURFACE_TEST_FILE_PATTERN='(^|/)(tests?|__tests__|specs?|testdata)/|[._](test|spec)\.[^/]+$|(^|/)test_[^/]*\.py$'
-# The header lines a *.test.sh fixture may add or drop and stay exempt:
-# fixture-runner metadata (enforce/run-fixture-shards.sh reads # Shard: and
-# # Watches:, the enforcement manifest check reads # Covers:) or a blank line.
-# An allowlist, because comment denylists kept missing executable comments
-# (#!, //go:build, # frozen_string_literal:, # coding:) on PR #171.
-SECURITY_SURFACE_EXEMPT_LINE_PATTERN='^(# (Shard: (slow|serial)|Watches: [^[:cntrl:]]*|Covers: [^[:cntrl:]]*))?[[:space:]]*$'
+# A fixture-runner metadata line (enforce/run-fixture-shards.sh reads # Shard:
+# and # Watches:, the enforcement manifest check reads # Covers:), the only
+# kind of line a *.test.sh fixture may insert after its shebang and stay
+# exempt from the path trigger.
+SECURITY_SURFACE_METADATA_LINE_PATTERN='^# (Shard: (slow|serial)|Watches: [^[:cntrl:]]+|Covers: [^[:cntrl:]]+)$'
 # A missing scope-match.sh leaves is_in_scope undefined, which
 # list_included_changed_files reports as a detector failure.
 # shellcheck source=scope-match.sh
@@ -134,61 +130,77 @@ list_path_hits() {
 
 # drop_comment_only_test_hits <repo-top> <base-oid> <head-oid> <path hits>
 # <work dir>: prints the path hits minus each *.test.sh fixture whose change
-# is only fixture-runner metadata (IAN-515): the file exists in both
-# revisions with the same mode, the blobs differ, and they become
-# byte-identical once `# Shard:`, `# Watches:`, `# Covers:`, and blank lines
-# are removed from each one's leading comment header (line 1 is never
-# removed). Such a header line on a fixture named for what it tests
-# (security-merge-gate*.test.sh) cannot change a control, and made PR #169 pay
-# a strongest-model review twice. Comparing whole blobs, not diff lines, is the
-# PR #171 review's class-level fix: no diff option, line shift, heredoc, or
-# comment that executes can pass for metadata. Every other path hit is kept.
-# Returns non-zero when git or awk fails.
+# only inserts fixture-runner metadata right after its shebang (IAN-515): the
+# base starts with a #! line, and the head is that same line, then one or more
+# `# Shard: slow|serial`, `# Watches: ...`, or `# Covers: ...` lines, then the
+# rest of the base byte for byte, with the file mode unchanged. That is the
+# exact change that made PR #169 pay a strongest-model review twice. Four
+# review rounds on PR #171 broke every looser rule (comment lines, header
+# regions, normalized blobs), so nothing else qualifies. Returns non-zero when
+# git or a file tool fails.
 drop_comment_only_test_hits() {
   local repo_top="$1" base_oid="$2" head_oid="$3" path_hits="$4" work_dir="$5" hit hit_path verdict
   while IFS= read -r hit; do
     [ -n "$hit" ] || continue
     hit_path="${hit%:0 path}"
-    if printf '%s\n' "$hit_path" | grep -Eq "$SECURITY_SURFACE_TEST_FILE_PATTERN"; then
-      verdict=$(classify_test_file_change "$repo_top" "$base_oid" "$head_oid" "$hit_path" "$work_dir") || return 1
-      [ "$verdict" = inert ] && continue
-    fi
+    verdict=$(classify_test_file_change "$repo_top" "$base_oid" "$head_oid" "$hit_path" "$work_dir") || return 1
+    [ "$verdict" = inert ] && continue
     printf '%s\n' "$hit"
   done <<< "$path_hits"
 }
 
 # classify_test_file_change <repo-top> <base-oid> <head-oid> <path> <work
-# dir>: prints `inert` when the path's change is fixture metadata as
-# drop_comment_only_test_hits defines it, `live` otherwise; a path that is not
-# a *.test.sh fixture, or that git had to quote, is `live` without a lookup.
-# Returns non-zero when git or awk fails.
+# dir>: prints `inert` when the path's change is the metadata insertion
+# drop_comment_only_test_hits defines, `live` otherwise; a path that is not a
+# *.test.sh fixture, or that git had to quote, is `live` without a lookup.
+# Returns non-zero when git or a file tool fails.
 classify_test_file_change() {
   local repo_top="$1" base_oid="$2" head_oid="$3" file_path="$4" work_dir="$5" modes
   case "$file_path" in \"*) echo live; return 0 ;; *.test.sh) ;; *) echo live; return 0 ;; esac
   modes=$(git -c core.quotePath=false --literal-pathspecs -C "$repo_top" diff --raw --no-renames --no-ext-diff \
     "$base_oid" "$head_oid" -- "$file_path" 2>/dev/null) || return 1
   case "$modes" in :100644\ 100644\ * | :100755\ 100755\ *) ;; *) echo live; return 0 ;; esac
-  write_fixture_without_header_metadata "$repo_top" "$base_oid" "$file_path" "$work_dir/fixture-base" || return 1
-  write_fixture_without_header_metadata "$repo_top" "$head_oid" "$file_path" "$work_dir/fixture-head" || return 1
-  if cmp -s "$work_dir/fixture-base" "$work_dir/fixture-head"; then echo inert; else echo live; fi
+  git -C "$repo_top" show "$base_oid:$file_path" > "$work_dir/fixture-base" 2>/dev/null || return 1
+  git -C "$repo_top" show "$head_oid:$file_path" > "$work_dir/fixture-head" 2>/dev/null || return 1
+  if is_shebang_metadata_insertion "$work_dir/fixture-base" "$work_dir/fixture-head" "$work_dir"; then
+    echo inert
+  else
+    echo live
+  fi
 }
 
-# write_fixture_without_header_metadata <repo-top> <oid> <path> <out file>:
-# writes the path's blob at <oid> with the `# Shard:`, `# Watches:`,
-# `# Covers:`, and blank lines of its leading comment header removed. Line 1 is
-# always kept, and the header ends at the first line that is neither a `#`
-# comment nor blank. Returns non-zero when git or awk fails.
-write_fixture_without_header_metadata() {
-  local repo_top="$1" oid="$2" file_path="$3" out_file="$4"
-  git -C "$repo_top" show "$oid:$file_path" 2>/dev/null |
-    LC_ALL=C awk -v exempt="$SECURITY_SURFACE_EXEMPT_LINE_PATTERN" '
-      NR == 1 { print; next }
-      ended { print; next }
-      /^[[:space:]]*(#.*)?$/ { if ($0 !~ exempt) print; next }
-      { ended = 1; print }
-    ' > "$out_file"
-  local pipe_statuses="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
-  [ "$pipe_statuses" = "0 0" ]
+# is_shebang_metadata_insertion <base file> <head file> <work dir>: true when
+# the base's first line is a newline-terminated #! line, the head's first line
+# is byte-identical to it, and for some count of at least one, the head's next
+# lines are that many newline-terminated metadata lines and the head after them
+# equals the base after its first line byte for byte (every count up to the
+# head's metadata run is tried, since the base may already carry metadata). head, tail, and cmp copy bytes as they
+# are, so no line ending or trailing newline can be lost in a comparison.
+is_shebang_metadata_insertion() {
+  local base_file="$1" head_file="$2" work_dir="$3" metadata_count
+  [ "$(head -c 2 "$base_file")" = '#!' ] || return 1
+  head -n 1 "$base_file" > "$work_dir/fixture-base-first" || return 1
+  head -n 1 "$head_file" > "$work_dir/fixture-head-first" || return 1
+  [ "$(wc -l < "$work_dir/fixture-base-first")" -eq 1 ] || return 1
+  cmp -s "$work_dir/fixture-base-first" "$work_dir/fixture-head-first" || return 1
+  metadata_count=$(tail -n +2 "$head_file" | LC_ALL=C awk -v metadata="$SECURITY_SURFACE_METADATA_LINE_PATTERN" '
+    ended { next }
+    $0 ~ metadata { count++; next }
+    { ended = 1 }
+    END { print count + 0 }')
+  [ "$metadata_count" -ge 1 ] || return 1
+  tail -n +2 "$base_file" > "$work_dir/fixture-base-rest" || return 1
+  local inserted_count=1
+  while [ "$inserted_count" -le "$metadata_count" ]; do
+    head -n "$((inserted_count + 1))" "$head_file" | tail -n +2 > "$work_dir/fixture-head-metadata" || return 1
+    tail -n +"$((inserted_count + 2))" "$head_file" > "$work_dir/fixture-head-rest" || return 1
+    if [ "$(wc -l < "$work_dir/fixture-head-metadata")" -eq "$inserted_count" ] &&
+      cmp -s "$work_dir/fixture-base-rest" "$work_dir/fixture-head-rest"; then
+      return 0
+    fi
+    inserted_count=$((inserted_count + 1))
+  done
+  return 1
 }
 
 # write_changed_lines <repo-top> <base-oid> <head-oid> <file list>
