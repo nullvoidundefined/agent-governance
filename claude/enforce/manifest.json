@@ -312,6 +312,14 @@
             "note": "fail-closed pre-push run of the Semgrep security rule pack (enforce/semgrep/) over every whole changed code file; denies on any finding, Semgrep error, skipped or unscanned path, unparseable file, or unresolvable base; fixtures: enforce/tests/push-semgrep-gate.test.sh, enforce/tests/semgrep-rule-pack.test.sh, enforce/tests/r109-rule-text.test.sh, enforce/tests/r109-rule-text-2.test.sh"
         },
         {
+            "id": "R-109",
+            "tier": "ast",
+            "enforcer": "ci:security-workflow",
+            "severity": "error",
+            "autofix": false,
+            "note": "the reusable .github/workflows/security.yml, pinned by SHA from each adopting repository: runs the security rule pack plus Semgrep p/default over every file a PR adds or modifies (every tracked file on other events), reading no exclude list, and fails closed on a failed listing, a crashed or partial scan, or unreadable JSON; runs CodeQL over languages derived from the tracked files, blocking through GitHub's CodeQL code-scanning check; fixtures: enforce/tests/security-ci-targets.test.sh, enforce/tests/security-ci-semgrep.test.sh, enforce/tests/security-ci-codeql-languages.test.sh, enforce/tests/security-ci-workflow.test.sh (IAN-381 Part 7)"
+        },
+        {
             "id": "R-106",
             "tier": "regex",
             "enforcer": "hook:global-repo-push-guard",
@@ -455,7 +463,7 @@
             "enforcer": "hook:git-workflow-guard",
             "severity": "error",
             "autofix": false,
-            "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url, one call; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block, or whose section under that heading lacks a reviewer, a model, or a range line with a value, or whose range line holds no <base>..<head> expression whose head endpoint prefixes the headRefOid the same call returned (a stale range, a head in the base position, a bare object name, or a gh that reports no head commit all deny), or whose body holds more than one Codex review heading, unless the PR is trivial tier: an untracked .claude/task-tier.json at the checkout's top records tier trivial for the PR's headRefName, the PR's url names the checkout's origin repository, and isCrossRepository is false (a trivial marker in the PR body is never read); fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on any merge the hook cannot parse. Merges are found by the quote-aware shell scan in hooks/shell-command-tokens.sh (braces, subshells, backticks, control flow, eval and sh -c strings, heredocs fed to a shell, wrappers, quoting, and escapes are all seen; a shell reading its script from stdin and a gh, pr, or merge word built by expansion count as unreadable merges; a mention inside a quoted argument or a heredoc fed to anything but a shell is not a merge), and only a bare gh pr merge on its own simple command is parseable; its flags are read from the scanned words. Fenced code, indented code, and HTML comments do not count as the section. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh"
+            "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url, one call; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block, or whose section under that heading lacks a reviewer, a model, or a range line with a value, or whose range line holds no <base>..<head> expression whose head endpoint prefixes the headRefOid the same call returned (a stale range, a head in the base position, a bare object name, or a gh that reports no head commit all deny), or whose body holds more than one Codex review heading, unless the PR is trivial tier: an untracked .claude/task-tier.json at the checkout's top records tier trivial for the PR's headRefName, the PR's url names the checkout's origin repository, and isCrossRepository is false (a trivial marker in the PR body is never read); fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on any merge the hook cannot parse. Merges are found by the quote-aware shell scan in hooks/shell-command-tokens.sh (braces, subshells, backticks, control flow, eval and sh -c strings, heredocs fed to a shell, wrappers, quoting, and escapes are all seen; a shell reading its script from stdin and a gh, pr, or merge word built by expansion count as unreadable merges; a mention inside a quoted argument or a heredoc fed to anything but a shell is not a merge), and only a bare gh pr merge on its own simple command is parseable; its flags are read from the scanned words. Fenced code, indented code, and HTML comments do not count as the section. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh; build-fast (IAN-401): enforce/tests/build-fast-composition.test.sh pins that a lane or merge mode on the ledger changes no merge-guard decision, enforce/tests/build-fast-rule-text.test.sh pins the R-211, R-514, and R-517 build-fast clauses, and enforce/tests/build-lane.test.sh covers the skills/build-fast lane classifier"
         },
         {
             "id": "R-511",
@@ -570,21 +578,24 @@
             "tier": "advisory",
             "enforcer": "hook:single-file-folder-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-310",
             "tier": "advisory",
             "enforcer": "hook:flat-directory-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-320",
             "tier": "advisory",
             "enforcer": "hook:new-file-header-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-320",
@@ -623,7 +634,8 @@
             "tier": "advisory",
             "enforcer": "hook:clean-code-reminder",
             "severity": "warn",
-            "autofix": false
+            "autofix": false,
+            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-341",
@@ -631,7 +643,7 @@
             "enforcer": "hook:observability-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "entry file registers middleware with no request-ID middleware"
+            "note": "entry file registers middleware with no request-ID middleware; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-345",
@@ -639,7 +651,7 @@
             "enforcer": "hook:observability-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "entry file registers routes with no /health or /health/ready"
+            "note": "entry file registers routes with no /health or /health/ready; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-346",
@@ -647,7 +659,7 @@
             "enforcer": "hook:observability-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "clients/ module makes an outbound call with no timeout"
+            "note": "clients/ module makes an outbound call with no timeout; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-351",
@@ -655,7 +667,7 @@
             "enforcer": "hook:dockerfile-reminder",
             "severity": "warn",
             "autofix": false,
-            "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM"
+            "note": "artifact marker written with no Dockerfile up to the repo root; Dockerfile with no .dockerignore, no USER, or an unpinned FROM; silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-361",
@@ -850,7 +862,7 @@
             "enforcer": "hook:ticket-at-start-gate",
             "severity": "error",
             "autofix": false,
-            "note": "PreToolUse Write|Edit and Bash git commit (every commit in the command, read by the quote-aware scan in shell-command-scan.sh after cd/pushd, env assignments, wrappers, shell keywords, and git -C / --work-tree / --git-dir; a commit inside sh -c, bash -c, or eval denies as unreadable; cherry-pick, revert, am, and merge are not gated): denies when the checkout's .claude/task-tier.json is missing, tracked by git, unreadable, names another branch, or records a tier above trivial with no ticket key; task-tier.sh set refuses a tier above trivial without --ticket <KEY> while a tracker is configured, and a same-branch reclassification keeps the key. Not gated: no ~/.claude/TICKET-TRACKER.json, outside a git work tree, detached HEAD, paths under <top>/.claude/ or gitignored. Opening the ticket itself and the key's match to the work stay manual. Fixtures: enforce/tests/ticket-at-start-gate.test.sh, enforce/tests/task-tier.test.sh"
+            "note": "PreToolUse Write|Edit and Bash git commit (every commit in the command, read by the quote-aware scan in shell-command-scan.sh after cd/pushd, env assignments, wrappers, shell keywords, and git -C / --work-tree / --git-dir; a commit inside sh -c, bash -c, or eval denies as unreadable; cherry-pick, revert, am, and merge are not gated): denies when the checkout's .claude/task-tier.json is missing, tracked by git, unreadable, names another branch, or records a tier above trivial with no ticket key; task-tier.sh set refuses a tier above trivial without --ticket <KEY> while a tracker is configured, and a same-branch reclassification keeps the key. Not gated: no ~/.claude/TICKET-TRACKER.json, outside a git work tree, detached HEAD, paths under <top>/.claude/ or gitignored. Opening the ticket itself and the key's match to the work stay manual. Fixtures: enforce/tests/ticket-at-start-gate.test.sh, enforce/tests/task-tier.test.sh; enforce/tests/task-tier-lane.test.sh covers the build-fast ledger fields (--lane, --lane-override, --merge-mode, IAN-401)"
         },
         {
             "id": "R-607",

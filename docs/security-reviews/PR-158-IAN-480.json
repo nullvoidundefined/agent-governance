@@ -1,0 +1,31 @@
+{
+  "pr": "nullvoidundefined/agent-governance#158",
+  "ticket": "IAN-480",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "b091c8bf074a93b83daedd90d69a459c43bf031e",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. Round 1 (range 20eddee..618cd3e, list [README.md, RECIPES.md, docs/**]) found three MEDIUM findings: docs/** covered non-Markdown files; docs/** covered docs/session-handoff/ and docs/security-reviews/; no negative-case tests for a nested same-name file, a case variant, or a head-only list. The owner narrowed the list (b773c7f) and fixtures were added (8226189). Round 2 (range ending b358f34) confirmed all three fixed and found finding 1, fixed in 0b6cf71. Round 3 (range ending 8fb9686) confirmed finding 1 and found finding 2, fixed in a1ab47a. Round 4 on the reviewed code above confirmed findings 1 and 2 fixed, accepted leaving a sync.sh-less install inside a dotfiles repository as a printed skip, and found finding 3, fixed in 3d4eecb (a copied install under GITHUB_ACTIONS now fails FAIL (1); the symlinked CI layout and the checkout still pass). The confirming review of the head that adds this revision covers that fix.",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "control": "the repository's own securitySurfaceExclude list (claude/hooks/security-surface.sh read_security_surface_excludes and list_included_changed_files, claude/hooks/scope-match.sh is_in_scope)",
+      "summary": "No test fed the shipped list its insecure value, so a later edit widening it back to docs/** would pass every fixture.",
+      "status": "fixed 0b6cf7158c2caa3e828b37484e3bc085f2da3a10"
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "control": "the run condition of the fixture pinning the shipped exclude list (claude/enforce/tests/security-surface.test.sh)",
+      "summary": "The repository root was resolved logically, so under CI's $HOME/.claude symlink the pin looked for $HOME/sync.sh, skipped silently, and passed with a widened list.",
+      "status": "fixed a1ab47a7559368b13cbb53863864b4a898015a3b"
+    },
+    {
+      "id": 3,
+      "severity": "LOW",
+      "control": "the run condition of the fixture pinning the shipped exclude list (claude/enforce/tests/security-surface.test.sh) as CI exercises it",
+      "summary": "A future change of the CI install from a symlink to a copy would skip the pin with only an unasserted stderr line, leaving a widened list green in the required check.",
+      "status": "fixed 3d4eecb22bb292a300f11dc192918bb0ea337e2f"
+    }
+  ]
+}

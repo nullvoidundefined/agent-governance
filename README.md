@@ -11,6 +11,9 @@ long session, under pressure to finish, on the change that touches production. P
 carry a guarantee. So this repository takes every rule that can be made mechanical and makes it
 mechanical, and it is honest about which ones are still prose.
 
+The project site, <https://nullvoidundefined.github.io/agent-governance/>, carries the current
+release, its SHA-256 checksum, and the verify-then-install steps. Contributors clone instead:
+
 ```bash
 git clone https://github.com/nullvoidundefined/agent-governance.git
 cd agent-governance
@@ -23,8 +26,9 @@ cd agent-governance
 
 - [Why this exists](#why-this-exists)
 - [What you get](#what-you-get)
+- [Features](#features)
 - [How a feature actually gets built](#how-a-feature-actually-gets-built)
-- [The two build skills, and how to tell them apart](#the-two-build-skills-and-how-to-tell-them-apart)
+- [The build skills, and how to tell them apart](#the-build-skills-and-how-to-tell-them-apart)
 - [The four layers](#the-four-layers)
 - [Repository layout](#repository-layout)
 - [One source, three tools](#one-source-three-tools)
@@ -68,13 +72,155 @@ Every count below was taken from this checkout, not from a summary.
 
 | Surface | Size | What it is |
 |---|---|---|
-| Rules | 84 norm lines in `claude/CLAUDE.md` | One line per rule, grouped by concern: session init, secrets and trust, conduct and output, architecture and naming, testing, git and process, lifecycle and memory. Each line names its enforcer in trailing brackets. The full specification for every rule lives in `claude/rulebook/reference.md` and is read on demand. |
-| Enforcement | 114 registered entries in `claude/enforce/manifest.json` | Every mechanizable rule is registered with a tier: 43 `regex`, 37 `ast`, 29 `advisory`, and 5 `llm-judge`. A rule with no manifest entry depends on the session recalling it, and the manifest is what makes that distinction auditable rather than a matter of opinion. |
-| Hooks | 68 scripts in `claude/hooks/` (65 bash, one Node scanner, two Python helpers), plus the tracked `pre-push.sample` | These run at Claude Code's tool-call events. A `PreToolUse` hook can refuse a `Bash` command or a `Write` before it happens; a `Stop` hook can refuse to let the turn end on a red test suite. This is the layer that catches what prose cannot. |
+| Rules | 92 norm lines in `claude/CLAUDE.md` | One line per rule, grouped by concern: session init, secrets and trust, conduct and output, architecture and naming, testing, git and process, lifecycle and memory. Each line names its enforcer in trailing brackets. The full specification for every rule lives in `claude/rulebook/reference.md` and is read on demand. |
+| Enforcement | 130 registered entries in `claude/enforce/manifest.json` | Every mechanizable rule is registered with a tier: 46 `regex`, 46 `ast`, 29 `advisory`, and 9 `llm-judge`. A rule with no manifest entry depends on the session recalling it, and the manifest is what makes that distinction auditable rather than a matter of opinion. |
+| Hooks | 73 files in `claude/hooks/` (69 bash, one Node scanner, two Python helpers, and the tracked `pre-push.sample`), of which the executable guards are registered in `claude/settings.json` and the rest are sourced helpers | These run at Claude Code's tool-call events. A `PreToolUse` hook can refuse a `Bash` command or a `Write` before it happens; a `Stop` hook can refuse to let the turn end on a red test suite. This is the layer that catches what prose cannot. |
 | Skills | 18 in `claude/skills/` | Procedural workflows the agent invokes by name: classifying a task, opening a ticket, running a test-first slice, reviewing a spec, cleaning up at the end. |
 | Agent roles | 15 in `claude/agents/` | Nine audit roles (engineering, security, criticism, customer, design, UX, financial, legal, marketing), the four build roles (`test-author`, `implementer`, `slice-critic`, and `spec-conformance-review`), and the two pre-merge reviewers: `pr-reviewer` (R-517) and `security-reviewer` (R-109, on the strongest model). |
-| Convention tracks | 12 `claude/CLAUDE-*.md` files | Stack-specific conventions for TypeScript and Node, Python, Ruby, Go, and the React, Next, Vite, Vue, and Nuxt frontend frameworks. They auto-load by file path when the work touches a matching file, so the context stays lean. |
-| Fixtures | 101 in `claude/enforce/tests/`, 22 in `claude/hooks/tests/` | Shell fixtures that drive the real guards. A guard without a fixture is a guard nobody has proven fires, so a new mechanized rule ships with its fixture or it does not ship. |
+| Convention tracks | 13 `claude/CLAUDE-*.md` files | Stack-specific conventions for TypeScript and Node, Python, Ruby, Go, and the React, Next, Vite, Vue, and Nuxt frontend frameworks, plus cross-cutting tracks for databases, styling, and observability. They auto-load by file path when the work touches a matching file, so the context stays lean. |
+| Fixtures | 157 in `claude/enforce/tests/`, 23 in `claude/hooks/tests/` | Shell fixtures that drive the real guards. A guard without a fixture is a guard nobody has proven fires, so a new mechanized rule ships with its fixture or it does not ship. |
+
+## Features
+
+This section is the catalog: what the harness does, grouped by the risk each feature addresses. Each
+row says when the feature fires and what it does when it fires, in one of these effects:
+
+- **Deny**: the tool call is refused, and the reason is shown to the session.
+- **Ask**: the call pauses for the user to confirm or refuse it.
+- **Block**: the turn, or a settings change, is not allowed to finish until the problem is fixed.
+- **Advise**: a non-blocking note is added to the session's context, and nothing is refused.
+- **Action**, **Record**, or **Context**: the hook does work on the session's behalf (a sync, a
+  draft pull request, a log line, injected context) rather than judging a call.
+
+Every hook named below is registered in `claude/settings.json`, and the header comment at the top of
+each script is the authoritative description of what it matches. The rule each feature backs is
+named in brackets, so its full specification can be read in `claude/rulebook/reference.md`.
+
+### Secrets and credentials
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `secret-scan.sh` scans every command about to run and every file payload about to be written for secret-shaped strings, and refuses writes to protected credential files (R-102, R-103, R-108). | `Bash`, `Write`, `Edit` | Deny |
+| `redact-output.sh` scans command output for secret patterns and injects a redacted copy plus an exposure warning. It cannot remove the raw output from the transcript, and its header says so plainly. | After `Bash` | Advise |
+| `redaction-guard-check.sh` confirms that both secret hooks above are registered, so a session never runs without them unnoticed (R-102). | Session start | Advise |
+| `global-repo-push-guard.sh` refuses a push of this public repository when the outgoing diff adds a secret-shaped string or a local filesystem path (R-106). | `git push` | Deny |
+
+### Destructive and outward-facing actions
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `destructive-db-guard.sh` refuses destructive data-loss statements (`DROP`, `TRUNCATE`, `DELETE FROM`, `pg_restore`, `migrate:down`) aimed at production, and asks before the same against staging or before any write to a remote database (R-101). | `Bash`, MCP calls | Deny for production, Ask for remote |
+| `destructive-command-guard.sh` catches the destructive shapes that permission prefixes miss: a mutating `gh api` call in any flag spelling, `curl` or `wget` piped into an interpreter, tampering with `~/.claude/hooks`, and rewrites of `core.hooksPath` (R-101, R-107, R-203). | `Bash` | Deny |
+| `mcp-action-guard.sh` asks before any MCP call whose action is a mutating or transmitting verb (send, post, create, delete, and the like), since no other guard covers MCP tools (R-105). | MCP calls | Ask |
+| `hookspath-drift-check.sh` warns when git's `core.hooksPath` points outside the repository, which is a supply-chain signal (R-107). | Session start | Advise |
+| `codex-billing-guard.sh` asks before a `codex` CLI call that would bill the metered OpenAI API instead of the subscription (R-908). | `Bash` | Ask |
+| `model-switch-guard.sh` warns on any switch up the model price ladder (R-903). | Model switch | Advise |
+
+### Harness integrity
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `harness-sync.sh` compares the live `~/.claude` with this checkout and runs `sync.sh` when they differ, so a fresh cloud container and a stale laptop both start under the committed harness (R-003). | Session start | Action |
+| `hook-integrity-check.sh` compares every guard on disk with the committed hash manifest (`claude/enforce/hook-hashes.txt`), so a silent `exit 0` written into a guard is reported rather than disabling it forever. | Session start | Advise |
+| `enforcement-guard-check.sh` checks both directions of the enforcement mapping: every hook the manifest requires is registered, and every enforcer a rule cites has a manifest entry (R-516). | Session start | Advise |
+| `settings-change-guard.sh` refuses a mid-session edit to `settings.json` that no longer parses or that drops a required hook (R-203, R-516). | Settings change | Block |
+| `protected-path-guard.sh` refuses writes to the gate inputs (`.claude/verify.sh`, `.enforce.json`, the baseline, the slice lock, and the security review ledger), so the session cannot edit the thing that judges it (R-410). | `Write`, `Edit`, `Bash` | Deny |
+
+### Scope and task discipline
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `ticket-at-start-gate.sh` refuses the first edit and every `git commit` until the branch's task ledger names a tracker ticket, for any task above the trivial tier (R-605). | `Write`, `Edit`, `Bash` | Deny |
+| `scope-widening-gate.sh` asks before a write that lands outside the file scope declared at task start, so a widening reaches the user as a question rather than as a larger diff (R-212). | `Write`, `Edit` | Ask |
+| `task-provenance-gate.sh` refuses a task whose subject does not start with `[requested]`, `[required]`, or `[self]`, so the user can tell what they asked for from what the agent added (R-213). | `TaskCreate` | Deny |
+| `task-commit-reminder.sh` reminds the session to commit when a task is marked complete while the tree still holds uncommitted changes (R-504). | `TaskUpdate` | Advise |
+| `task-state-tracker.sh` appends every task event to a crash-safe log that the handoff and the provenance summary read. | `TaskCreate`, `TaskUpdate` | Record |
+| `parallel-session-check.sh` warns when another live session is working in the same working tree (R-501). | Session start | Advise |
+
+### Test-first development
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| The slice lock (`claude/enforce/tdd.sh` read by `protected-path-guard.sh`) refuses production writes until a failing test is proven RED, then refuses test, fixture, and spec edits until the slice closes (R-410, R-412). The build-skills section below describes it in full. | `Write`, `Edit`, `Bash` | Deny |
+| `claude/enforce/role-policy.json` restricts each build agent to its own files: the test author writes only tests and fixtures, the implementer never writes them, and the slice critic writes nothing (R-411). | `Write`, `Edit` | Deny |
+| `fix-commit-requires-test.sh` refuses a `fix:` commit that stages no test file (R-403). | `git commit` | Deny |
+| `content-gate.sh` refuses content that skips or focuses a test (`.skip`, `.only`, `xit`, `pytest.mark.skip`, `t.Skip`) or that weakens a protection such as CORS, CSP, rate limits, or bcrypt rounds (R-401, R-405). | `Write`, `Edit` | Deny |
+| `codex-test-author-guard.sh` asks before the session edits a test file in the tiers where a separate author owns the tests (R-907). | `Write`, `Edit` | Ask |
+| `verification-gate.sh` runs the project's own checks (the tests the changed files affect, and the translator port checks) and refuses to let the turn or a writing subagent end on a red result (R-509). | Turn end, subagent end | Block |
+
+### Git and pull request workflow
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `commit-message-guard.sh` refuses a non-conventional subject or more than two triage IDs, asks on a long body, and refuses a commit that stages files outside the declared scope unless it names that work's own ticket (R-214, R-505, R-506). | `git commit` | Deny, Ask |
+| `conflict-markers.sh` refuses a commit whose staged files contain conflict markers (R-507). | `git commit` | Deny |
+| `git-workflow-guard.sh` asks before a push to `main` and before any `gh pr merge`, refuses a non-squash merge, and refuses a merge while the PR body lacks its pre-merge review section or, on a security-touching range, a current security review (R-109, R-512, R-514, R-517). | `git push`, `gh pr merge` | Deny, Ask |
+| `pr-ticket-ref-gate.sh` refuses a pull request whose commits and body carry no `Refs: <KEY>` ticket reference (R-605). | `gh pr create` | Deny |
+| `draft-pr-on-first-push.sh` opens a draft pull request the first time a new branch is pushed, and `pr-monitor-reminder.sh` then tells the session to switch on the desktop app's PR monitor (R-518). | After `git push` and `gh pr create` | Action, Advise |
+| `constant-change-guard.sh` asks before a push that changes a constant whose old value still appears in the tests (R-513). | `git push` | Ask |
+| `audit-signal-check.sh` notes when a surface has taken enough commits since the last engineering audit to warrant a new one (R-801). | `git push` | Advise |
+
+### Code structure and quality
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `structure-gate.sh` refuses banned catch-all directories (`utils`, `helpers`, `common`, and the rest), wrong directory case, co-located tests, and loose modules at a server's `src/` root (R-304, R-306, R-312 to R-314). | `Write`, `Edit` | Deny |
+| `lexicon-gate.sh` refuses the first source file in a repository that has not yet written down its domain vocabulary (R-330). | `Write`, `Edit` | Deny |
+| `migration-defaults-guard.sh` refuses the two known-bad migration default forms: a double-wrapped string literal and a bare SQL function string (R-328). | `Write`, `Edit` | Deny |
+| `dependency-add-guard.sh` asks before a manifest gains a third-party dependency it did not have (R-331). | `Write`, `Edit` | Ask |
+| `no-em-dash.sh` refuses any command or file content containing an em dash (R-207). | `Bash`, `Write`, `Edit` | Deny |
+| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351); `single-file-folder-reminder.sh` runs at push (R-309). | After `Write` or `Edit`, and `git push` | Advise |
+
+### Push-time linters and security scanning
+
+Heavy checks run once per push over the outgoing diff rather than on every edit.
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `push-eslint-gate.sh` runs the bundled ESLint config and its 12 custom rules in `claude/enforce/rules/` (naming lexicon, one export per file, file header, destructured reads, structured log calls, no swallowed catch, analytics event names, no query in a loop, transaction client required, behavior assertions, no self-mocking, and data-access calls) over the changed TypeScript files. | `git push` | Deny |
+| `push-ruff-gate.sh`, `push-rubocop-gate.sh`, and `push-golangci-gate.sh` run the equivalent rule analogs for Python, Ruby, and Go, plus the standard-library data-access checkers in `claude/enforce/data-access/` for N+1 queries and transaction use (R-361, R-362). | `git push` | Deny |
+| `push-semgrep-gate.sh` runs the security rule pack in `claude/enforce/semgrep/` (weak bcrypt cost, `SameSite=None` without `Secure`, wildcard or unvalidated CORS, disabled TLS verification) over every changed code file (R-109). | `git push` | Deny |
+| `security-surface.sh` decides whether a range touches a security control, by path, by added content, or by a Semgrep finding, and fails closed when it cannot tell. The merge guard uses it to demand a security review only where one is needed (R-109). | Merge, as a helper | Feeds a Deny |
+| `push-feature-docs-gate.sh` refuses a push that adds a page or API route without the matching feature-list row, user story, and e2e spec, or that changes dependencies or log events without updating `docs/stack.md` or `docs/observability.md` (R-607, R-608). | `git push` | Deny |
+
+### Session lifecycle and memory
+
+| Feature | Fires on | Effect |
+|---|---|---|
+| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001, R-002). | Session start | Context |
+| `post-compact-rules.sh` re-injects the output and process rules that a context summary drops first, plus the current task ledger. | After compaction | Context |
+| `handoff-check.sh` checks a written handoff against its size cap, its section order, and the commit it cites (R-602). | After `Write` | Advise |
+| `session-end.sh` routes `fired:` and `miss:` feedback lines into the global rule telemetry and writes a resume snapshot, and `log-rule-fire.sh` records every guard fire, so rule effectiveness is measured rather than guessed (R-603). | Session end, and every fire | Record |
+
+### Continuous integration
+
+| Workflow | What it does |
+|---|---|
+| `.github/workflows/enforce.yml` | Runs both fixture suites (the `fixtures` job) and the translator port-freshness checks. Make the `fixtures` job a required status check, because the local pre-push hook can be skipped with `--no-verify`. |
+| `.github/workflows/rule-judge.yml` | Runs `claude/enforce/judge-diff.sh`, a Claude model that judges each pull request's diff against the 9 `llm-judge` rules: the naming rules (R-315, R-316, R-317, R-325, R-334) and the data-access rules (R-362 to R-365) that no parser can decide. A violation fails the check. A missing API key or a failed request passes with a notice, so the deterministic gates remain the hard guarantee. |
+
+### Skills
+
+Skills are named workflows the agent invokes when the work matches. There are 19 of them.
+
+| Stage | Skills |
+|---|---|
+| Starting work | `task-start` (classify the task into a tier that fixes its process), `ticket-lifecycle` (open, advance, and close the tracker ticket with estimates and actuals), `feature-create` (the worktree and product-doc rows for an approved plan), `repo-setup` (bring a new repository to the hygiene baseline) |
+| Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
+| Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
+| Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `known-issues` (prior deployment incidents), `resolve-user-feedback` (triage an application's feedback table) |
+| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
+
+### Agent roles
+
+There are 15 role definitions in `claude/agents/`.
+
+- **Nine audit roles** (engineering, security, criticism, customer, design, UX, financial, legal,
+  and marketing), each producing a dated report under `docs/audits/`.
+- **Four build roles** that split authorship inside a slice: `test-author`, `implementer`,
+  `slice-critic`, and `spec-conformance-review`.
+- **Two pre-merge reviewers**: `pr-reviewer` (the R-517 review of every non-trivial pull request)
+  and `security-reviewer` (the R-109 review of security-touching ranges, on the strongest model).
 
 ## How a feature actually gets built
 
@@ -115,7 +261,7 @@ section is missing or empty.
 list and user stories, closes the ticket with measured actuals, and writes the session handoff so
 the next session starts from state rather than from scratch.
 
-## The two build skills, and how to tell them apart
+## The build skills, and how to tell them apart
 
 Two skills in this repository both look like "the one that builds things," and their triggers
 overlap enough that their own frontmatter cross-references the ambiguity. They are not alternatives.
@@ -198,6 +344,20 @@ refuses rather than guessing, and the cycle still applies by hand.
 **Reach for it when** the question is "how do I build this one behavior so that the test genuinely
 came first and nobody can quietly make a red thing green."
 
+### `build-fast` trades ceremony for wall time, on opt-in
+
+`build-fast` runs only when the owner says "build fast" or invokes `/build-fast`, and it exists for
+interviews, critical bug fixes, and any change where time to a working, merged change matters most
+(IAN-401). It asks every question once, up front, then builds on Haiku, the fastest model, in one
+test-first cycle for the whole change, and has the strongest model review the finished diff while CI
+runs, so the review adds almost no wall time. Before the first edit,
+`skills/build-fast/scripts/build-lane.sh predict` sorts the change into a `fast` or `guarded` lane from
+the declared file scope, and `classify` checks the committed range again before the review: anything
+touching a security surface, a migration, concurrency, or payments is `guarded`, which means the full
+Complex process when predicted, or an added security review and an owner merge when it only shows up
+after the code exists. It skips bug hunting and side quests, but it never skips a gate: hooks, the
+test lock, Semgrep, the secret scan, and CI all stay on.
+
 ### Side by side
 
 | | `build-by-slice-require-review` | `tdd-gated-dispatch` |
@@ -251,22 +411,24 @@ keep authorship separated inside a slice, which the previous section describes.
 ```text
 agent-governance/
 ├── claude/              The source of truth. Everything below is authored here.
-│   ├── CLAUDE.md          84 rule norm lines, one per rule, grouped by concern
+│   ├── CLAUDE.md          92 rule norm lines, one per rule, grouped by concern
 │   ├── PROTOCOL.md        The eleven layers and the failure each one catches
 │   ├── SETUP.md           Install, prerequisites, what does not ship, stacks
-│   ├── CLAUDE-*.md        12 stack convention tracks, auto-loaded by file path
+│   ├── CLAUDE-*.md        13 stack convention tracks, auto-loaded by file path
 │   ├── rulebook/          Full rule specs, plus per-session-type tier 2 reading
 │   ├── rules/             Session types and the path-scoped convention symlinks
-│   ├── hooks/             68 tool-call guards, with 22 fixtures under tests/
-│   ├── enforce/           tdd.sh, doctor.sh, the manifest, ESLint rules, 101 fixtures
-│   ├── skills/            18 workflow skills
-│   ├── agents/            9 audit roles and 4 build roles
+│   ├── hooks/             73 guards and helpers, 23 fixtures under tests/
+│   ├── enforce/           tdd.sh, doctor.sh, the manifest, ESLint rules, 157 fixtures
+│   ├── skills/            19 workflow skills
+│   ├── agents/            9 audit, 4 build, and 2 reviewer roles
 │   ├── prompts/           Review prompts and document templates
 │   └── global-memory/     Cross-project lessons, loaded at session start
 ├── cursor/              Generated from claude/ by translate/cursor.mjs
 ├── codex/               Generated from claude/ by translate/codex.mjs
 ├── translate/           The exporters and their port maps
 ├── docs/                Audits, pull request documents, slice plans, handoffs
+├── release/             Builds the checksummed release archive, with its fixtures
+├── site/                The project landing page; never shipped in a release
 ├── sync.sh              Installs each payload into its tool's live directory
 ├── RECIPES.md           Task-shaped entry points into the workflows above
 └── AGENTS.md            This repository's own project config for Codex
@@ -312,6 +474,32 @@ Per-stack linters (`ruff`, `rubocop`, `golangci-lint`) are optional at runtime a
 absent, with one exception: `ruff` must be on `PATH` to run the fixture suite, because one fixture
 drives the real binary.
 
+### Install from a release
+
+Each release on GitHub carries `agent-governance-<version>.tar.gz` and its `.sha256` checksum, and
+the [project site](https://nullvoidundefined.github.io/agent-governance/) links the current one.
+Verify the checksum, unpack the archive, read `sync.sh` before you run it, and then run it:
+
+```bash
+shasum -a 256 -c agent-governance-v0.1.0.tar.gz.sha256
+tar -xzf agent-governance-v0.1.0.tar.gz
+less agent-governance-v0.1.0/sync.sh
+./agent-governance-v0.1.0/sync.sh
+```
+
+The checksum proves the file you downloaded matches the release; it does not prove who made the
+release, because releases are not signed. A release install writes only to `~/.claude`,
+`~/.cursor`, and `~/.codex`, and runs `npm ci` for the enforcement tools' lockfile-pinned
+dependencies. The archive is not a git checkout, so `sync.sh` installs the files its
+`RELEASE-FILES` list names. It refuses to run, before writing anything, if that list names an
+absolute path, a path that climbs out with `..`, a file the archive does not hold, a symlink that
+points outside the archive, or a path reached through a directory symlink, and it refuses a
+directory that holds both `.git` and `RELEASE-FILES`, because its source would be ambiguous. A release install does not update
+itself: the `harness-sync` hook resyncs only from a git checkout, so you update by installing the
+next release.
+
+### Install from a checkout (contributors)
+
 ```bash
 git clone https://github.com/nullvoidundefined/agent-governance.git
 cd agent-governance
@@ -349,6 +537,25 @@ Name that CI job as a required status check under your repository's branch setti
 pre-push hook can be skipped with `--no-verify` by anyone who wants to, so it is advisory however it
 is written; the required check is the one that runs where it cannot be skipped.
 
+The security rule pack has the same weakness locally, since its pre-push gate is skipped by the same
+`--no-verify`. `.github/workflows/security.yml` is a reusable workflow that runs it in CI instead: an
+adopting repository calls it from a short caller workflow pinned to a full commit SHA of this
+repository, under the job id `security` (the check names below are built from it), granting
+`contents: read`, `security-events: write`, and `actions: read`:
+
+```yaml
+jobs:
+  security:
+    uses: nullvoidundefined/agent-governance/.github/workflows/security.yml@<40-character sha>
+```
+
+It takes no inputs, so a caller cannot narrow it. On a pull request, Semgrep runs the rule pack plus
+`p/default` over every file the PR adds or modifies, and CodeQL runs over the languages the
+repository's tracked files contain. Require `security / semgrep`, each `security / codeql
+(<language>)`, and GitHub's `CodeQL` check as status checks. The design and its acceptance criteria
+are in the Part 7 addendum of
+`claude/docs/superpowers/specs/2026-09-25-security-first-gate-design.md`.
+
 One install step is easy to miss. The ESLint-backed fixtures need `claude/enforce/node_modules`,
 which is gitignored and therefore absent from a fresh clone. `./sync.sh` installs it with a locked
 `npm ci`. To do it by hand, run `npm ci --prefix ~/.claude/enforce`, never `npm install`, which can
@@ -382,7 +589,7 @@ rules; the rest is a personal profile that should be opt-in on a team rather tha
 adopt this, adopt the floor first and take the rest only where you agree with it.
 
 **Some of it is still prose.** Five of the eleven protocol layers depend on the session honoring
-them. The manifest is what makes this checkable: 114 entries with an enforcer each, and every rule
+them. The manifest is what makes this checkable: 130 entries with an enforcer each, and every rule
 that is not in it is recall-dependent by definition.
 
 **The opinions are real opinions.** The architecture rules take positions (no catch-all `utils`

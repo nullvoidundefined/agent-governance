@@ -18,8 +18,15 @@
 #                             separated; hooks/scope-widening-gate.sh reads it and
 #                             asks before a write lands outside it (R-212), and a
 #                             reclassification on the same branch keeps it
+#                             --lane <fast|guarded>, --lane-override <fast|guarded>, and
+#                             --merge-mode <owner|green> record build-fast's lane, the
+#                             owner's lane override, and the merge mode chosen in the
+#                             opening batch (IAN-401); a later set keeps each one it does
+#                             not restate only for the same branch and the same ticket
 #   task-tier.sh get          prints the ledger as JSON (exit 1 when none)
-#   task-tier.sh summary      one line: tier, reason, elapsed, branch
+#   task-tier.sh summary      one line: tier, reason, elapsed, branch; a second
+#                             line names the build-fast lane, override, and merge
+#                             mode when the ledger carries any
 #   task-tier.sh clear        removes the ledger (task-cleanup's last step)
 # The ledger is session state like .claude/tdd-lock.json: keep it out of
 # commits (the script warns once when the project does not ignore it).
@@ -61,8 +68,27 @@ read_previous_scope() {
   jq -c --arg b "$1" 'select(.branch == $b) | .scope // empty | arrays' "$LEDGER" 2>/dev/null
 }
 
+# read_previous_lane_field <branch> <ticket> <key>: prints a build-fast field
+# (lane, laneOverride, mergeMode) from an existing ledger only when it names the
+# same branch and the same ticket, so a new task never inherits one (IAN-401).
+read_previous_lane_field() {
+  [ -f "$LEDGER" ] || return 0
+  jq -r --arg b "$1" --arg t "$2" --arg k "$3" \
+    'select(.branch == $b and (.ticket // "") == $t) | .[$k] // "" | strings' "$LEDGER" 2>/dev/null
+}
+
+# require_lane_value <flag> <value> <allowed...>: dies unless the value is one
+# of the allowed words, compared exactly.
+require_lane_value() {
+  local flag="$1" value="$2" allowed
+  shift 2
+  for allowed in "$@"; do [ "$value" = "$allowed" ] && return 0; done
+  die "$flag takes one of: $* (got '${value}')"
+}
+
 cmd_set() {
   local tier="${1:-}" reason="${2:-}" share="" ticket="" has_ticket_flag=0 branch
+  local lane="" lane_override="" merge_mode=""
   local -a scope_entries=()
   local has_scope_flag=0 scope_json=""
   shift 2 2>/dev/null || true
@@ -71,7 +97,10 @@ cmd_set() {
       --share) share="${2:-}"; shift 2 2>/dev/null || shift ;;
       --ticket) ticket="${2:-}"; has_ticket_flag=1; shift 2 2>/dev/null || shift ;;
       --scope) read_scope_entries "${2:-}"; has_scope_flag=1; shift 2 2>/dev/null || shift ;;
-      *) die "unknown option '$1' (expected --ticket <KEY>, --share <percent>, or --scope <glob>[,<glob>...])" ;;
+      --lane) lane="${2:-}"; require_lane_value --lane "$lane" fast guarded; shift 2 2>/dev/null || shift ;;
+      --lane-override) lane_override="${2:-}"; require_lane_value --lane-override "$lane_override" fast guarded; shift 2 2>/dev/null || shift ;;
+      --merge-mode) merge_mode="${2:-}"; require_lane_value --merge-mode "$merge_mode" owner green; shift 2 2>/dev/null || shift ;;
+      *) die "unknown option '$1' (expected --ticket <KEY>, --share <percent>, --scope <glob>[,<glob>...], --lane, --lane-override, or --merge-mode)" ;;
     esac
   done
   case "$tier" in trivial|standard|complex|saga|investigation) ;; *) die "tier must be trivial, standard, complex, saga, or investigation (got '${tier}')" ;; esac
@@ -81,6 +110,9 @@ cmd_set() {
   fi
   branch=$(git -C "$ROOT" branch --show-current 2>/dev/null)
   [ "$has_ticket_flag" -eq 1 ] || ticket=$(read_previous_ticket "$branch")
+  [ -n "$lane" ] || lane=$(read_previous_lane_field "$branch" "$ticket" lane)
+  [ -n "$lane_override" ] || lane_override=$(read_previous_lane_field "$branch" "$ticket" laneOverride)
+  [ -n "$merge_mode" ] || merge_mode=$(read_previous_lane_field "$branch" "$ticket" mergeMode)
   if [ "$tier" != "trivial" ] && [ -z "$ticket" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
     die "a $tier task needs its ticket before the work starts (R-605): open it with /ticket-lifecycle, then re-run with --ticket <KEY>"
   fi
@@ -94,6 +126,7 @@ cmd_set() {
   [ -f "$LEDGER" ] && previous=$(jq -r '.tier // ""' "$LEDGER" 2>/dev/null)
   mkdir -p "$ROOT/.claude"
   jq -n --arg tier "$tier" --arg reason "$reason" --arg share "$share" --arg ticket "$ticket" \
+        --arg lane "$lane" --arg laneOverride "$lane_override" --arg mergeMode "$merge_mode" \
         --arg branch "$branch" --argjson scope "${scope_json:-null}" \
         --arg previous "$previous" --argjson started "$(date +%s)" \
         --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
@@ -101,6 +134,9 @@ cmd_set() {
     + (if $ticket != "" then {ticket: $ticket} else {} end)
     + (if $scope == null then {} else {scope: $scope} end)
     + (if $share != "" then {sharePercent: ($share | tonumber)} else {} end)
+    + (if $lane != "" then {lane: $lane} else {} end)
+    + (if $laneOverride != "" then {laneOverride: $laneOverride} else {} end)
+    + (if $mergeMode != "" then {mergeMode: $mergeMode} else {} end)
     + (if $previous != "" and $previous != $tier then {reclassifiedFrom: $previous} else {} end)
   ' > "$LEDGER" || die "could not write $LEDGER_RELATIVE"
   if ! git -C "$ROOT" check-ignore -q "$LEDGER_RELATIVE" 2>/dev/null; then
@@ -127,6 +163,7 @@ cmd_summary() {
     "$(jq -r .tier "$LEDGER")" "$(jq -r .reason "$LEDGER")" "$(jq -r .startedAtIso "$LEDGER")" \
     $((elapsed / 3600)) $(((elapsed % 3600) / 60)) "$(jq -r '.branch // "?"' "$LEDGER")" \
     "$(jq -r '.ticket // "none"' "$LEDGER")"
+  jq -r '[(if .lane then "lane \(.lane)" else empty end), (if .laneOverride then "override \(.laneOverride)" else empty end), (if .mergeMode then "merge \(.mergeMode)" else empty end)] | select(length > 0) | "task-tier: build-fast " + join(" | ")' "$LEDGER"
 }
 
 cmd_clear() {

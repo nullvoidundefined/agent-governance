@@ -1,0 +1,171 @@
+<!doctype html>
+<!-- index.html: the agent-governance landing page. scripts/build-site.sh fills in the release version and checksum placeholders; the page loads nothing but same-origin files, so its CSP allows only 'self'. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>agent-governance: rules your coding agent can't talk its way around</title>
+<meta name="description" content="A governance harness for Claude Code, Cursor, and Codex. Mechanical gates refuse the operations your rules forbid. It only takes permissions away from the agent; it never grants one.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <a class="wordmark" href="#main">agent-governance<span class="wordmark-cursor" aria-hidden="true">_</span></a>
+  <nav class="site-nav" aria-label="Primary">
+    <a href="#security">Security</a>
+    <a href="#how">How it works</a>
+    <a href="#workflow">Workflow</a>
+    <a href="#download">Download</a>
+    <a class="site-nav-github" href="https://github.com/nullvoidundefined/agent-governance">GitHub</a>
+  </nav>
+</header>
+
+<main id="main" tabindex="-1">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="eyebrow">Governance for AI coding agents</p>
+      <h1 id="hero-title">Rules your coding agent can’t talk its way around.</h1>
+      <p class="lede">agent-governance puts mechanical gates between Claude Code, Cursor, or Codex and the operations your rules forbid. It only ever takes permissions away from the agent. It never grants one.</p>
+      <div class="actions">
+        <a class="button button-primary" href="#download">Download {{RELEASE_VERSION}}</a>
+        <a class="button button-secondary" href="https://github.com/nullvoidundefined/agent-governance">View source on GitHub</a>
+      </div>
+      <p class="fineprint">MIT licensed · SHA-256 verified · no telemetry</p>
+    </div>
+    <figure class="terminal" aria-label="Two tool calls the harness refused">
+      <figcaption class="terminal-bar">claude · tool call</figcaption>
+<pre class="terminal-body"><span class="dim">agent ▸</span> Bash("psql $PROD_URL -c 'DROP TABLE users'")
+
+<span class="signal">✕ refused</span> destructive-db-guard (R-101)
+  DROP against production. A human runs
+  this by hand, never the agent.
+
+<span class="dim">agent ▸</span> Edit("src/auth.ts") while slice is RED
+<span class="signal">✕ refused</span> protected-path-guard (R-412)
+  Write the failing test first.</pre>
+    </figure>
+  </section>
+
+  <section id="security" class="band band-paper" aria-labelledby="security-title">
+    <div class="section-intro">
+      <p class="eyebrow eyebrow-on-paper">The security promise</p>
+      <h2 id="security-title">It restricts. It never grants.</h2>
+      <p>Installing agent-governance does not give your agent, or this project, any new permission on your machine. Every hook can say no. None of them can say yes to something your tool would otherwise refuse.</p>
+    </div>
+    <div class="promise-grid">
+      <article class="promise">
+        <h3>Only takes permissions away</h3>
+        <p>Hooks sit at the tool-call boundary and can only deny or ask. Your agent’s own permission prompts stay exactly as they were.</p>
+      </article>
+      <article class="promise">
+        <h3>Writes to three folders</h3>
+        <p><code>~/.claude</code>, <code>~/.cursor</code>, and <code>~/.codex</code>. Nothing else on your system is touched.</p>
+      </article>
+      <article class="promise">
+        <h3>Never deletes your files</h3>
+        <p>Sync removes a file only if it installed it, no longer ships it, and you haven’t edited it since. Everything else is left alone.</p>
+      </article>
+      <article class="promise">
+        <h3>Hooks never phone home</h3>
+        <p>No telemetry and no network calls from any hook. Install fetches lockfile-pinned npm packages for the enforcement tools, and that is the only download.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="how" class="band" aria-labelledby="how-title">
+    <div class="section-intro">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-title">Prose is a suggestion. A gate is a guarantee.</h2>
+      <p>An agent told a rule follows it most of the time. The times it doesn’t are late in a long session, under pressure, on the change that touches production. So every rule that can be mechanical is.</p>
+    </div>
+    <ol class="layer-grid">
+      <li class="layer">
+        <span class="layer-number">01 · Rules</span>
+        <h3>One rulebook, three tools</h3>
+        <p>A single source of truth, synced into Claude Code, Cursor, and the Codex CLI.</p>
+      </li>
+      <li class="layer">
+        <span class="layer-number">02 · Hooks</span>
+        <h3>Gates at the tool call</h3>
+        <p>Secrets, destructive commands, production databases, protected paths: refused before they run.</p>
+      </li>
+      <li class="layer">
+        <span class="layer-number">03 · TDD lock</span>
+        <h3>Tests before code</h3>
+        <p>Production writes are denied until a failing test is on record. Then the tests are locked.</p>
+      </li>
+      <li class="layer">
+        <span class="layer-number">04 · Review gates</span>
+        <h3>Nothing merges unreviewed</h3>
+        <p>A fresh-context reviewer on every PR, plus a strongest-model security review on anything touching a control.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="band band-split" aria-labelledby="accounting-title">
+    <div class="section-intro">
+      <p class="eyebrow">Honest accounting</p>
+      <h2 id="accounting-title">We tell you which rules are still prose.</h2>
+      <p>Of <span data-rule-count="total">131</span> registered rules, <span data-rule-count="code">93</span> are enforced by code, <span data-rule-count="judge">9</span> by an LLM judge in CI, and <span data-rule-count="advisory">29</span> are advisory. The manifest names every one and its enforcer.</p>
+    </div>
+    <figure class="tally">
+      <div class="tally-bar" aria-hidden="true">
+        <span class="tally-code"></span><span class="tally-judge"></span><span class="tally-advisory"></span>
+      </div>
+      <figcaption class="tally-legend">
+        <span><strong class="tally-legend-code" data-rule-count="code">93</strong> enforced by code</span>
+        <span><strong class="tally-legend-judge" data-rule-count="judge">9</strong> LLM judge</span>
+        <span><strong data-rule-count="advisory">29</strong> advisory</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="workflow" class="band band-rule" aria-labelledby="workflow-title">
+    <div class="section-intro">
+      <p class="eyebrow">The workflow</p>
+      <h2 id="workflow-title">How a feature gets built.</h2>
+    </div>
+    <ol class="steps">
+      <li><span class="step-number">1</span>Brainstorm</li>
+      <li><span class="step-number">2</span>Spec</li>
+      <li><span class="step-number">3</span>Failing test</li>
+      <li><span class="step-number">4</span>Implement</li>
+      <li><span class="step-number">5</span>Review</li>
+      <li><span class="step-number">6</span>Merge</li>
+    </ol>
+  </section>
+
+  <section id="download" class="band band-deep band-split" aria-labelledby="download-title">
+    <div class="section-intro">
+      <p class="eyebrow">Download</p>
+      <h2 id="download-title">Verify it. Read it. Then run it.</h2>
+      <p>A pinned release with a published checksum. Check the hash, read <code>sync.sh</code>, and only then install.</p>
+      <a id="download-archive" class="button button-primary" href="https://github.com/nullvoidundefined/agent-governance/releases/download/{{RELEASE_VERSION}}/agent-governance-{{RELEASE_VERSION}}.tar.gz">Download agent-governance-{{RELEASE_VERSION}}.tar.gz</a>
+      <p class="checksum">SHA-256 <code id="release-sha256">{{RELEASE_SHA256}}</code></p>
+      <p class="fineprint">The checksum proves the file matches the release. It does not prove who made it.</p>
+    </div>
+    <figure class="terminal" aria-label="Verify and install commands">
+<pre id="verify-command" class="terminal-body"><span class="dim"># 1. verify</span>
+shasum -a 256 -c agent-governance-{{RELEASE_VERSION}}.tar.gz.sha256
+
+<span class="dim"># 2. unpack and read before running</span>
+tar -xzf agent-governance-{{RELEASE_VERSION}}.tar.gz
+less agent-governance-{{RELEASE_VERSION}}/sync.sh
+
+<span class="dim"># 3. install into ~/.claude, ~/.cursor, ~/.codex</span>
+./agent-governance-{{RELEASE_VERSION}}/sync.sh</pre>
+    </figure>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <span>MIT License · agent-governance</span>
+  <span>What this does not do: it cannot stop a person, only an agent.</span>
+</footer>
+</body>
+</html>

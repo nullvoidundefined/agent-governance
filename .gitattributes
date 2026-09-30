@@ -1,0 +1,2 @@
+# site/ is the project landing page; it never ships in a release archive.
+site/ export-ignore
