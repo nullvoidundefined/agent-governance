@@ -289,6 +289,10 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 
 ## Recommendations
 
+### The switch that runs the ablation
+
+The `lean` profile in `claude/enforce/harness-profiles.json` is the switch the ablation below needs. It lists, by id, every COACHING and ORCHESTRATION rule line, hook registration, SKILL.md, audit agent, and reference file this audit found, and it deletes none of them. `translate/apply-profile.mjs` is the one filter every consumer uses, and it fails when a listed id no longer exists, so the list cannot drift from the tree. It keeps every ENFORCE hook, `harness-sync`, `rulebook/reference.md`, and the scripts the gates run under task-start and build-fast. `./sync.sh --profile lean` installs the lean harness into all three tool homes and records the profile so that `harness-sync` keeps it. `./sync.sh --profile full` restores everything through the `.sync-manifest` allowlist. Lean settings take effect from the next session, because settings-change-guard blocks a mid-session settings change that drops a hook the manifest requires. `node translate/cursor.mjs --profile lean --write --root <dir>`, and the same command for `codex.mjs`, render the lean Cursor and Codex ports.
+
 ### Delete outright (no mechanism, no dependent that needs them)
 
 1. **R-002**: restates R-001. Remove the line and the one fixture assertion that pins it.
