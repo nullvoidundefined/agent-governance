@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:destructive-command-guard
 #
 # The DYNAMIC half of the fail-closed convention (2026-09-17 audit P2-8 class,

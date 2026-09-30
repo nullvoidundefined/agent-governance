@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:git-workflow-guard
 # Verifies git-workflow-guard.sh: asks before a push to main and before any PR
 # merge (R-514), denies a non-squash merge (R-512) except a rebase of a PR

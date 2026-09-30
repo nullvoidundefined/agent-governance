@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Verifies the B-6e fail-closed parsing of push-semgrep-gate.sh (IAN-381). The
 # gate reads Semgrep's JSON report with jq in two places: the incomplete-scan
 # listing (errors and skipped paths) and the findings report. A jq failure in

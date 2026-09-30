@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:git-workflow-guard, hook:protected-path-guard
 # Verifies that the Security review ledger (IAN-381, B-10e, rule R-109) lives
 # outside the checkout, is shared by every worktree and clone of a repository,

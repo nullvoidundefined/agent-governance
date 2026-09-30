@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:ticket-at-start-gate
 # Verifies hooks/ticket-at-start-gate.sh (R-605, IAN-149): with the tracker
 # configured, a Write or Edit of a non-ignored file inside a git work tree, and

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Covers: hook:git-workflow-guard, hook:protected-path-guard
 # Verifies the fixes the R-517 delta review of PR #145 asked for in the
 # security merge gate (IAN-381, B-10c, rule R-109).

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shard: slow
 # Verifies the B-6b hardening of push-semgrep-gate.sh (IAN-381, R-517 review of
 # PR #141). The gate must fail closed on a partial scan (any Semgrep error,
 # PartialParsing included, or any skipped path), must ignore `# nosemgrep`
