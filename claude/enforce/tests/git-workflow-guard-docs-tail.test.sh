@@ -23,6 +23,24 @@
 #   security, code tail      the Security review is older than a later code
 #                            change: denied, R-109.
 #
+# The PR #172 reviews (Codex and the R-109 reviewer) added:
+#
+#   hex-named branch or tag  a ref named like an object prefix, pointing at
+#                            the PR head, is not a review head: denied.
+#   base as review head      a docs-only PR whose review range ends at the
+#                            base reviewed nothing of the PR: denied.
+#   code then revert         a tail that adds code and reverts it before a
+#                            docs commit: denied, since every tail commit is
+#                            checked, not the net tree.
+#   merge of main            a tail merging main's code: denied.
+#   executable docs file     a docs/ file with mode 100755: denied.
+#   ignored submodule        a docs/ gitlink under diff.ignoreSubmodules=all:
+#                            denied.
+#   artefact rewritten       a tail that edits an existing
+#                            docs/security-reviews/ file: denied, R-109; the
+#                            artefact may be added after the review, never
+#                            changed.
+#
 # The harness (stubbed gh, a repository per case, clean Semgrep) is copied
 # from security-merge-gate.test.sh.
 set -uo pipefail
@@ -312,6 +330,103 @@ C_BODY=$(pr_body "$(codex_section "$C_BASE" "$C_HEAD")" "$(security_section secu
 STUB=$(write_pr_stub seccode "$C_BODY" "$C_HEAD" "$C_BASE" seccode)
 expect_r109_deny "security review older than a code change" \
   "$(run_guard "$STUB" "$C_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $C_HEAD")"
+
+# --- 9. a hex-named branch and tag pointing at the PR head ------------------
+build_pr_repo hexref app/greeting.py 'GREETING = "hello"' 'GREETING = "hola"'
+X_DIR="$REPO_DIR" X_BASE="$REPO_BASE" X_REVIEWED="$REPO_FIRST"
+X_HEAD=$(add_commit "$X_DIR" app/other.py 'OTHER = 2' "feat: unreviewed code")
+git_in "$X_DIR" branch deadbee1 "$X_HEAD"
+STUB=$(write_pr_stub hexbranch "$(pr_body "$(printf '## Codex review\n- reviewer: pr-reviewer\n- model: sonnet\n- range: %.7s..deadbee1\n' "$X_BASE")")" "$X_HEAD" "$X_BASE" hexref)
+expect_r517_deny "hex-named branch as review head" "$(run_guard "$STUB" "$X_DIR" "$CLEAN_STUB")"
+TAG_NAME=$(printf '%.7s' "$X_REVIEWED")
+git_in "$X_DIR" tag "$TAG_NAME" "$X_HEAD"
+STUB=$(write_pr_stub hextag "$(pr_body "$(codex_section "$X_BASE" "$X_REVIEWED")")" "$X_HEAD" "$X_BASE" hexref)
+expect_r517_deny "tag named like the reviewed commit" "$(run_guard "$STUB" "$X_DIR" "$CLEAN_STUB")"
+
+# --- 10. the base as the review head on a docs-only PR ----------------------
+build_pr_repo docsonly docs/guide.md 'Read the guide.' 'Read the guide twice.'
+D_DIR="$REPO_DIR" D_BASE="$REPO_BASE" D_HEAD="$REPO_HEAD"
+STUB=$(write_pr_stub basehead "$(pr_body "$(codex_section "$D_BASE" "$D_BASE")")" "$D_HEAD" "$D_BASE" docsonly)
+expect_r517_deny "base as review head" "$(run_guard "$STUB" "$D_DIR" "$CLEAN_STUB")"
+
+# --- 11. code added then reverted in the tail -------------------------------
+build_pr_repo revert app/greeting.py 'GREETING = "hello"' 'GREETING = "salut"'
+V_DIR="$REPO_DIR" V_BASE="$REPO_BASE" V_REVIEWED="$REPO_HEAD"
+add_commit "$V_DIR" app/evil.py 'EVIL = 1' "feat: code" >/dev/null
+git_in "$V_DIR" checkout -q feature
+git_in "$V_DIR" rm -q app/evil.py
+git_in "$V_DIR" commit -q -m "revert: code"
+git_in "$V_DIR" push -q origin feature
+git_in "$V_DIR" checkout -q main
+V_HEAD=$(add_commit "$V_DIR" docs/prs/note.md 'Note.' "docs: note")
+STUB=$(write_pr_stub revert "$(pr_body "$(codex_section "$V_BASE" "$V_REVIEWED")")" "$V_HEAD" "$V_BASE" revert)
+expect_r517_deny "code then revert in the tail" "$(run_guard "$STUB" "$V_DIR" "$CLEAN_STUB")"
+
+# --- 12. a merge of main in the tail ----------------------------------------
+build_pr_repo mergemain app/greeting.py 'GREETING = "hello"' 'GREETING = "ciao"'
+M_DIR="$REPO_DIR" M_BASE="$REPO_BASE" M_REVIEWED="$REPO_HEAD"
+git_in "$M_DIR" checkout -q -b other "$M_BASE"
+printf 'X = 1\n' > "$M_DIR/app_main.py"
+git_in "$M_DIR" add -A
+git_in "$M_DIR" commit -q -m "feat: other work"
+git_in "$M_DIR" checkout -q feature
+git_in "$M_DIR" merge -q --no-edit other
+M_HEAD=$(git -C "$M_DIR" rev-parse HEAD)
+git_in "$M_DIR" push -q origin feature
+git_in "$M_DIR" checkout -q main
+STUB=$(write_pr_stub mergemain "$(pr_body "$(codex_section "$M_BASE" "$M_REVIEWED")")" "$M_HEAD" "$M_BASE" mergemain)
+expect_r517_deny "merge carrying code in the tail" "$(run_guard "$STUB" "$M_DIR" "$CLEAN_STUB")"
+
+# --- 13. an executable docs file in the tail --------------------------------
+build_pr_repo execdoc app/greeting.py 'GREETING = "hello"' 'GREETING = "hej"'
+E_DIR="$REPO_DIR" E_BASE="$REPO_BASE" E_REVIEWED="$REPO_HEAD"
+git_in "$E_DIR" checkout -q feature
+mkdir -p "$E_DIR/docs"
+printf '#!/bin/sh\necho hi\n' > "$E_DIR/docs/run.sh"
+chmod +x "$E_DIR/docs/run.sh"
+git_in "$E_DIR" add -A
+git_in "$E_DIR" commit -q -m "docs: script"
+E_HEAD=$(git -C "$E_DIR" rev-parse HEAD)
+git_in "$E_DIR" push -q origin feature
+git_in "$E_DIR" checkout -q main
+STUB=$(write_pr_stub execdoc "$(pr_body "$(codex_section "$E_BASE" "$E_REVIEWED")")" "$E_HEAD" "$E_BASE" execdoc)
+expect_r517_deny "executable docs file in the tail" "$(run_guard "$STUB" "$E_DIR" "$CLEAN_STUB")"
+
+# --- 14. a docs/ gitlink hidden by diff.ignoreSubmodules --------------------
+build_pr_repo submod app/greeting.py 'GREETING = "hello"' 'GREETING = "hallo"'
+G_DIR="$REPO_DIR" G_BASE="$REPO_BASE" G_REVIEWED="$REPO_HEAD"
+git_in "$G_DIR" config diff.ignoreSubmodules all
+git_in "$G_DIR" checkout -q feature
+git_in "$G_DIR" update-index --add --cacheinfo "160000,$G_BASE,docs/vendor"
+git_in "$G_DIR" commit -q -m "docs: vendor link"
+G_HEAD=$(git -C "$G_DIR" rev-parse HEAD)
+git_in "$G_DIR" push -q origin feature
+git_in "$G_DIR" checkout -q -f main
+STUB=$(write_pr_stub submod "$(pr_body "$(codex_section "$G_BASE" "$G_REVIEWED")")" "$G_HEAD" "$G_BASE" submod)
+expect_r517_deny "docs gitlink under ignoreSubmodules" "$(run_guard "$STUB" "$G_DIR" "$CLEAN_STUB")"
+
+# --- 15. the security artefact rewritten after the review -------------------
+build_pr_repo rewrite app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
+  'ALLOWED_ORIGINS = ["https://app.example.com", "https://ops.example.com"]'
+W_DIR="$REPO_DIR" W_BASE="$REPO_BASE"
+git_in "$W_DIR" checkout -q feature
+mkdir -p "$W_DIR/docs/reviews"
+printf '%s\n' '{"findings":[{"id":1,"severity":"HIGH","status":"open"}]}' > "$W_DIR/$ARTEFACT_PATH"
+git_in "$W_DIR" add docs
+git_in "$W_DIR" commit -q -m "docs: artefact"
+W_REVIEWED=$(git -C "$W_DIR" rev-parse HEAD)
+printf '%s\n' '{"findings":[]}' > "$W_DIR/$ARTEFACT_PATH"
+git_in "$W_DIR" add docs
+git_in "$W_DIR" commit -q -m "docs: artefact rewritten"
+W_HEAD=$(git -C "$W_DIR" rev-parse HEAD)
+git_in "$W_DIR" push -q origin feature
+(cd "$W_DIR" && bash "$RECORD_SCRIPT" "$ARTEFACT_PATH" >/dev/null 2>&1) ||
+  report_failure "setup: security-review-record.sh could not record $ARTEFACT_PATH at the PR head"
+git_in "$W_DIR" checkout -q main
+W_BODY=$(pr_body "$(codex_section "$W_BASE" "$W_HEAD")" "$(security_section security-reviewer "$EXPECTED_MODEL" "$W_BASE" "$W_REVIEWED")")
+STUB=$(write_pr_stub rewrite "$W_BODY" "$W_HEAD" "$W_BASE" rewrite)
+expect_r109_deny "artefact rewritten after the review" \
+  "$(run_guard "$STUB" "$W_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $W_HEAD")"
 
 if [ "$failures" -gt 0 ]; then
   echo "git-workflow-guard-docs-tail.test.sh: $failures failure(s)"
