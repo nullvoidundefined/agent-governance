@@ -120,6 +120,35 @@ check "full claude manifest equals the baseline" same_file "$TMP/full-claude-man
 check "full cursor manifest equals the baseline" same_file "$TMP/full-cursor-manifest" "$LIVE/cursor/.sync-manifest"
 check "full codex manifest equals the baseline" same_file "$TMP/full-codex-manifest" "$LIVE/codex/.sync-manifest"
 
+# --- The record is never followed through a link (PR #175 review): a
+# .harness-profile that exists and is not a regular file refuses the run
+# before any target is written, and an external file it points at is never
+# read or written.
+echo "sentinel content" >"$TMP/sentinel"
+cp "$TMP/sentinel" "$TMP/sentinel.expected"
+ln -s "$TMP/sentinel" "$LIVE/claude/.harness-profile"
+cp "$LIVE/claude/CLAUDE.md" "$TMP/claude-before-link.md"
+for args in "--profile lean" "--profile full" ""; do
+  # shellcheck disable=SC2086  # args is split on purpose
+  run_sync $args >/dev/null 2>"$TMP/link.err"
+  check "a symlinked record refuses sync ${args:-with no flag}" test $? -ne 0
+  check "a symlinked record says REFUSED for ${args:-no flag}" grep -q 'REFUSED' "$TMP/link.err"
+  check "the external sentinel is unchanged after ${args:-no flag}" same_file "$TMP/sentinel.expected" "$TMP/sentinel"
+  check "the record stays the planted link after ${args:-no flag}" test -L "$LIVE/claude/.harness-profile"
+  check "CLAUDE.md is untouched after ${args:-no flag}" same_file "$TMP/claude-before-link.md" "$LIVE/claude/CLAUDE.md"
+done
+rm "$LIVE/claude/.harness-profile"
+mkdir "$LIVE/claude/.harness-profile"
+run_sync --profile lean >/dev/null 2>&1
+check "a directory at the record path refuses sync" test $? -ne 0
+check "a directory at the record path leaves CLAUDE.md untouched" same_file "$TMP/claude-before-link.md" "$LIVE/claude/CLAUDE.md"
+rmdir "$LIVE/claude/.harness-profile"
+run_sync --profile lean >/dev/null 2>&1
+check "the record is written as a regular file" test -f "$LIVE/claude/.harness-profile"
+check "the record is not a symlink" test ! -L "$LIVE/claude/.harness-profile"
+check "no temporary record file is left behind" test -z "$(find "$LIVE/claude" -maxdepth 1 -name '.harness-profile.*' -print)"
+run_sync --profile full >/dev/null 2>&1
+
 # --- HARNESS_PROFILE selects a profile the same way, and full undoes it.
 HARNESS_PROFILE=lean run_sync >/dev/null 2>&1
 check "HARNESS_PROFILE=lean installs lean" test ! -e "$LIVE/claude/skills/gof/SKILL.md"
