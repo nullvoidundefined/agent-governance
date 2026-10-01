@@ -55,6 +55,23 @@ The log lines, request-ID propagation (R-341), analytics events from the registr
 
 Who may call it, what is validated at the boundary, what is never logged (R-104).
 
+## Harness rules
+
+How the harness will run this work, decided while the spec is written rather than discovered mid-build. Read `~/.claude/CLAUDE.md` and the rule's entry in `~/.claude/rulebook/reference.md` for each row; answer every row, writing "not applicable" with a reason where one does not apply.
+
+| Rule | What the spec states |
+|---|---|
+| R-110 risk | Each slice's risk, `high` or `standard`, with the reason. High is money, concurrency (locks, leases, races, retries, idempotency), security controls, or data that cannot be rebuilt. The plan copies it to a `**Risk:**` line per slice. |
+| R-907 test author | Who writes each slice's failing test: the session (standard risk), the `test-author` agent (high risk), or Codex (only when the owner opts in). Note that `codex-test-author-guard` reads the task tier, not the risk, so a session-written test in a Complex or Saga task asks the owner on every test file; when that friction is not wanted, say who writes the tests instead of leaving it to the guard. |
+| R-412 lock | Whether `tdd.sh red` can run each slice's test. It runs the project's default test config only, so a test that needs another config (integration suites, a separate Playwright project) cannot record RED under the lock; name those slices and how their RED is evidenced instead. |
+| R-212 scope | Every path the work will write, as the globs `task-tier.sh set --scope` will record, including docs, tests, and new directories. A path missing here prompts the owner on every edit. |
+| R-109 security review | Whether the range touches a security control (auth, session, CSRF, CORS, rate limit, input validation, SQL construction, secrets, redirects), so the plan budgets the review on `securityReviewModel` and its JSON artefact. |
+| R-361 to R-365 data access | Query budget tests for every collection read, transactions for multi-statement writes, atomic read-modify-write, bounded reads with a unique final sort column, and identifiers never built from input. |
+| R-341 to R-346 observability | The request ID path, the logger, analytics events, swallowed-error checks, health endpoints, and outbound instrumentation the work adds or, when the repository lacks them, the ticket that will. |
+| R-406 negative input | One negative-input test per new input handler, and an insecure-value test for every security control touched. |
+| R-607, R-608 docs | The product-doc rows and stories, and the `docs/stack.md` and `docs/observability.md` entries, the work changes, or the `.enforce.json` opt-out that applies. |
+| R-517, R-514 review and merge | The pre-merge reviewer and model, and the merge mode (the owner merges, or merge on green when the owner opted in). |
+
 ## Assumption ledger (optional)
 
 For specs grounded on external research or another session's claims: one row per load-bearing assumption, so verification is work someone owns rather than a hope. Delete the section when the spec rests only on code in this repo.

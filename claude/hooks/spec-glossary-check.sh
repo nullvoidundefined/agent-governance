@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse(Write) backstop for R-330: a superpowers spec design doc must
 # carry the sections the slice loop and the conformance reviewer read from.
-# Three sections, one reminder naming the missing ones:
+# Four sections, one reminder naming the missing ones:
 #   ## Domain vocabulary   with at least one "chosen over:" entry (the original
 #                          R-330 gate, 2026-07-07)
 #   ## Acceptance criteria one numbered behavior per line, each a RED slice
@@ -9,6 +9,11 @@
 #                          assessment, decision 6)
 #   ## Non-goals           what the critic must not report and the implementer
 #                          must not build
+#   ## Harness rules       how the harness runs the work, with at least an R-110
+#                          risk row (added 2026-10-01, IAN-542: a spec that
+#                          never classified risk sent concurrency slices
+#                          through in-session tests, and the plan's scope,
+#                          lock, and test-author choices surfaced mid-build)
 # Since 2026-09-17 (skills audit, S-10) the same hook also reads a slice plan
 # under docs/slices/slice-*.md, the Gate 1 artifact of the
 # build-by-slice-require-review skill: every "### PR" block must carry the
@@ -41,7 +46,9 @@ jq -rc '
         (if ($c | test("## Acceptance criteria")) then empty
          else "a \"## Acceptance criteria\" section with one numbered behavior per line (B-1, B-2, ...), each a slice the harness runs as RED then GREEN (R-412)" end),
         (if ($c | test("## Non-goals")) then empty
-         else "a \"## Non-goals\" section naming what the spec deliberately leaves out" end)
+         else "a \"## Non-goals\" section naming what the spec deliberately leaves out" end),
+        (if (($c | test("## Harness rules")) and ($c | test("R-110"))) then empty
+         else "a \"## Harness rules\" section answering how the harness will run the work, at least the R-110 risk and the R-907 test author of every slice" end)
       ]) as $missing
       | if ($missing | length) == 0 then empty
         else {hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Spec "+$p+" is incomplete (R-330): it is missing "+($missing | join("; "))+". The headings and their intent are in ~/.claude/prompts/spec-template.md. No em dashes.")}}

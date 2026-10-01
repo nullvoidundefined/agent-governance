@@ -51,6 +51,12 @@ COMPLETE="# Thing
 
 Ranking across users.
 
+## Harness rules
+
+| Rule | What the spec states |
+|---|---|
+| R-110 risk | Slice 1 standard: pure scoring, no concurrency. |
+
 ## Domain vocabulary
 
 - world - the simulated system state - chosen over: system because it is an ECS standard.
@@ -85,6 +91,25 @@ NO_GLOSSARY="# Thing
 
 None.
 "
+NO_HARNESS="# Thing
+
+## Acceptance criteria
+
+- B-1: something.
+
+## Non-goals
+
+None.
+
+## Domain vocabulary
+
+- world - the simulated system state - chosen over: system because it is an ECS standard.
+"
+HARNESS_HEADING_ONLY="${NO_HARNESS}
+## Harness rules
+
+To be decided.
+"
 NOTHING="# Thing
 
 Just a design with no sections at all.
@@ -100,6 +125,10 @@ check "glossary-only spec names non-goals"            names 'Non-goals' "$SPEC" 
 check "glossary-only spec does not name the glossary" omits 'Domain vocabulary' "$SPEC" "$GLOSSARY_ONLY"
 all_three() { run_hook "$@" | jq -r '.hookSpecificOutput.additionalContext' | grep -q 'Domain vocabulary.*Acceptance criteria.*Non-goals'; }
 check "empty spec names all three"                    all_three "$SPEC" "$NOTHING"
+check "spec without harness rules nudges"            nudges "$SPEC" "$NO_HARNESS"
+check "missing harness rules are named"               names 'Harness rules' "$SPEC" "$NO_HARNESS"
+check "harness heading without a risk row nudges"     names 'R-110' "$SPEC" "$HARNESS_HEADING_ONLY"
+check "complete spec does not name harness rules"     omits 'Harness rules' "$SPEC" "$COMPLETE"
 check "non-design md under specs silent"              silent "docs/superpowers/specs/notes.md" "$NOTHING"
 check "design md outside specs silent"                silent "docs/other/x-design.md" "$NOTHING"
 check "source file silent"                            silent "apps/server/src/services/foo.ts" "export const x = 1;"
