@@ -108,17 +108,23 @@ Plan:           No (inline mental model is sufficient)
 Ticket:         Yes. Opened at classification, closed with actuals (R-605).
 Spec review:    No. There is no spec to review; the R-517 review (one sonnet subagent by default) still runs on the PR.
 TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh red, implement, tdd.sh green, close (R-412).
-                The session writes each failing test itself, before implementing (R-907); codex-test-author-guard
-                stays silent on this tier's ledger. Codex writes the test only when the owner opts in.
+                A standard-risk slice (R-110): the session writes each failing test itself, before implementing
+                (R-907); codex-test-author-guard stays silent on this tier's ledger. A high-risk slice: the
+                `test-author`, `implementer`, and `slice-critic` agents run as for any high-risk slice (R-707).
+                Dispatch the `test-author` agent for it explicitly: the guard is silent on a Standard ledger,
+                so nothing mechanical stops the session from writing that test itself. With no spec, the
+                slice title is the behavior line every role brief carries in place of a B-n entry.
+                Codex writes the test only when the owner opts in.
                 Open the slice WITHOUT --spec: that flag is optional in tdd.sh, and this tier has no spec by
                 design. The behavior named in the slice title and the ticket is the requirement the test
                 argues from. tdd-gated-dispatch's spec-driven flow (its step 1 shows --spec, and its role
                 briefs cite a B-n entry) applies to Complex and Saga; in Standard the same loop runs with the
-                slice title standing in for the B-n line, and nothing is locked as a spec path.
+                slice title standing in for the B-n line, and nothing is locked as a spec path; a high-risk
+                slice's dispatched role briefs carry that slice title as their behavior line too.
 Model:          Sonnet
 Branch:         Yes (feature branch off main)
 Worktree:       No (unless parallel work is active)
-Subagents:      No
+Subagents:      No, except the slice roles of a high-risk slice (R-110)
 Execution:      Inline with TDD discipline
 Skills invoked: tdd-gated-dispatch (single-session loop), superpowers:test-driven-development for the RED/GREEN discipline inside a slice
 ```
@@ -159,8 +165,10 @@ Spec review:    Yes. Adversarial Codex review of the spec, including the stack a
                 owner approves it and before writing-plans (below). Every finding fixed or answered first.
 Plan:           Yes. One plan. Written via writing-plans skill.
 Ticket:         Yes. Advanced through specced and planned as each lands (R-605).
-TDD:            Yes, slices; tdd-gated-dispatch, with the `test-author` agent writing every failing test (R-907),
-                Codex only when the owner opts in, and the implementer and slice-critic agents.
+TDD:            Yes, slices; tdd-gated-dispatch. Risk, not tier, picks the mechanics (R-110): a high-risk slice
+                runs the `test-author` agent (Codex only when the owner opts in), the implementer, and the
+                slice-critic; a standard-risk slice runs Standard mechanics, the session writing its own failing
+                test under the lock, with no per-slice critic. Gate 1 records each slice's `**Risk:**` line.
 Model:          Opus for planning, the critic, and the test author. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
@@ -179,8 +187,9 @@ Spec review:    Yes. Adversarial Codex review of the spec, including the stack a
                 owner approves it and before writing-plans (below). Every finding fixed or answered first.
 Plan:           Yes. ONE plan with staged sections (not multiple plan files).
 Ticket:         Yes. One ticket for the saga; one per stage when a stage ships alone.
-TDD:            Yes, slices; tdd-gated-dispatch for every slice, with the `test-author` agent writing every
-                failing test (R-907), Codex only when the owner opts in, and the implementer and slice-critic agents.
+TDD:            Yes, slices; tdd-gated-dispatch for every slice. Risk, not tier, picks the mechanics (R-110):
+                a high-risk slice runs the `test-author` agent (Codex only when the owner opts in), the
+                implementer, and the slice-critic; a standard-risk slice runs Standard mechanics under the lock.
 Model:          Opus for planning, the critic, and the test author. Sonnet for the implementer.
 Branch:         Yes (feature branch off main)
 Worktree:       Yes (isolated workspace)
@@ -295,8 +304,8 @@ This is the most important rule in this skill. Splitting one feature across seve
 | Plan writing, plan review | Opus for complex/saga, Sonnet for standard |
 | Implementation (inline) | Sonnet |
 | Implementation (subagent) | Sonnet (implementer), Opus (slice critic and the test-author agent; Codex only on owner opt-in) |
-| Failing tests (R-907) | Standard: the implementing session, under the lock, no separate call. Complex/Saga: the `test-author` agent on Opus; Codex only on owner opt-in, account default model, no `-m` |
-| Spec review (Complex, Saga) and pre-merge PR review (R-517) | Spec review: Codex `-s read-only`, fallback `fable` (else `opus`). PR review: a `sonnet` subagent by default; Codex or `opus`/`fable` only on owner opt-in or when the diff touches auth, money, or concurrency |
+| Failing tests (R-907) | Standard-risk slice, any tier: the implementing session, under the lock, no separate call. High-risk slice (R-110), any tier: the `test-author` agent on Opus; Codex only on owner opt-in, account default model, no `-m` |
+| Spec review (Complex, Saga) and pre-merge PR review (R-517) | Spec review: Codex `-s read-only`, fallback `fable` (else `opus`). PR review: a `sonnet` subagent for every PR, security-touching ones included, at most two rounds; Codex or `opus`/`fable` only on owner opt-in. The R-109 security review alone runs on `securityReviewModel` |
 | Tracker writes (open, advance, close) | Main session, direct MCP calls |
 | Bookkeeping (PR body, product docs, handoff) | Main session; Haiku or Sonnet background subagent on Complex and Saga only |
 | Audit/review | Per the role file: Opus for the standing roles (engineering, security, criticism) and the customer walkthrough, Sonnet for the rubric roles (design, UX, financial, legal, marketing); `all-hands` overrides every role to Sonnet for its weekly scan |

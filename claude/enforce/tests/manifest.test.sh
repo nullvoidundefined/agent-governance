@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Validates the enforcement manifest: non-empty, required keys present, valid tiers,
+# Validates the enforcement manifest: non-empty, required keys present, valid tiers
+# (the `manual` tier, added for R-110 by IAN-521, registers a rule whose only
+# fixture pins its text because no hook enforces it yet),
 # and closure against the rule files: every hook:/eslint:/ruff: named in a
 # rulebook/*.md Enforcement line has a manifest entry for that rule id (the
 # CLAUDE.md bracket tags name only each rule's primary enforcer and are not
@@ -12,7 +14,7 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 HOME_CLAUDE="$(cd "$DIR/.." && pwd)"
 jq -e '.rules | length > 0' "$DIR/manifest.json" >/dev/null
 jq -e '[.rules[] | select((.id and .tier and .enforcer and .severity) | not)] | length == 0' "$DIR/manifest.json" >/dev/null
-jq -e '[.rules[] | select(.tier as $t | ["regex","ast","llm-judge","advisory"] | index($t) | not)] | length == 0' "$DIR/manifest.json" >/dev/null
+jq -e '[.rules[] | select(.tier as $t | ["regex","ast","llm-judge","advisory","manual"] | index($t) | not)] | length == 0' "$DIR/manifest.json" >/dev/null
 python3 - "$HOME_CLAUDE" <<'EOF'
 import json, os, re, sys
 home = sys.argv[1]

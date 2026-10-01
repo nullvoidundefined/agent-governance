@@ -34,6 +34,9 @@
         "model": "<custom field GID>",
         "repo": "<custom field GID>",
         "rework_count": "<custom field GID>",
+        "risk": "<custom field GID>",
+        "findings_by_round": "<custom field GID>",
+        "escaped_bugs": "<custom field GID>",
         "tier": "<custom field GID>"
       },
       "states": {
@@ -70,6 +73,9 @@
         "model": "customfield_<id>",
         "repo": "customfield_<id>",
         "rework_count": "customfield_<id>",
+        "risk": "customfield_<id>",
+        "findings_by_round": "customfield_<id>",
+        "escaped_bugs": "customfield_<id>",
         "tier": "customfield_<id>"
       },
       "states": {
@@ -123,7 +129,10 @@
           "actual_minutes",
           "rework_count",
           "estimate_ratio",
-          "human_speedup"
+          "human_speedup",
+          "risk",
+          "findings_by_round",
+          "escaped_bugs"
         ]
       },
       "states": {
@@ -165,6 +174,9 @@
         "model": "Model",
         "repo": "Repo",
         "rework_count": "Rework count",
+        "risk": "Risk",
+        "findings_by_round": "Findings by round",
+        "escaped_bugs": "Escaped bugs",
         "tier": "Tier"
       },
       "states": {

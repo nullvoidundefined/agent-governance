@@ -27,12 +27,22 @@ Split a slice into more than one PR only when the diff would pass ~2000 lines or
 
 1. Read the spec, flows, and acceptance criteria.
 2. Plan the next slice: write its slice plan document (below) listing its PR block(s), each described in the PR description format.
-3. **Gate 1:** present the slice plan document, ask which merge mode the slice runs under (below), and get explicit user approval before building. Write the answer onto the plan's `**Merge mode:**` line before the first commit, so the mode the slice actually ran under is on the record rather than in one session's memory.
+3. **Gate 1:** present the slice plan document with its `**Risk:**` line (below), ask one owner tile per fuzzy control the slice carries (below), ask which merge mode the slice runs under (below), and get explicit user approval before building. Write the answers onto the plan's `**Risk:**` and `**Merge mode:**` lines and under its fuzzy-control heading before the first commit, so what the slice actually ran under is on the record rather than in one session's memory.
 4. Build the PR as a sequence of TDD tasks (below), doing the bookkeeping as each point comes up (R-605): ticket open and advance as direct tracker calls from the main session, and the handoff and the feature-list and user-story rows by the main session, or on a Complex or Saga slice by a background `haiku`/`sonnet` subagent.
 5. Commit the slice's edits, the bookkeeping edits included (R-605), then run the pre-merge review (below). Once CI is green and the R-517 review has passed, follow the plan's merge mode (R-514): under the default, merge it yourself unless its range is security-touching or build-lane guarded; under owner-merge, or for such a range, hand the PR to the owner with its findings and their dispositions and let them merge it. The harness's own `gh pr merge` permission prompt still applies to either mode.
 6. After a merge on green, go straight to the next PR or slice with no stop between them. When the PR went to the owner, the owner's merge is the stop, and the next PR starts once they have merged. Report progress as one line inside the work either way. A fork the plan leaves open, a destructive action, or a confirmation gate also stops the run (R-211).
 
-For a hard or risky PR, write a one-paragraph explain-back of what it does and why before merge. A stronger reviewer (Codex, or a fresh Claude subagent on `opus`/`fable`) replaces the default reviewer for that PR rather than adding a second review (R-514).
+For a high-risk PR (R-110), write a one-paragraph explain-back of what it does and why before merge. The reviewer stays the default `sonnet` subagent; the strongest model reads the security hunks once, in the R-109 security review, and a stronger R-517 reviewer (Codex, or a fresh Claude subagent on `opus`/`fable`) runs only when the owner opts in, replacing the default rather than adding a second review (R-514).
+
+## Risk (recorded once per slice, at Gate 1)
+
+Record one `**Risk:** high` or `**Risk:** standard` line per slice in the slice plan, with a clause naming what made it high (R-110). A slice is high-risk when its diff touches auth, sessions, cookies, CORS/CSP/security headers, rate limits, input validation on a trust boundary, SQL construction, secret handling, redaction or PII handling, payments or money, or concurrency (transactions, locks, queues, retries); any range the R-109 security-surface detector flags is high-risk whatever the line says. When unsure, record high.
+
+The risk, not the task tier, decides the slice mechanics: a high-risk slice runs the `test-author`, `implementer`, and `slice-critic` roles and the per-slice critic at any tier; a standard-risk slice runs Standard mechanics, the session writing its own failing test under the TDD lock, with no per-slice critic, even inside a Complex task (R-412, R-707, R-907). The task tier still decides the spec, plan, and ticket requirements.
+
+## Fuzzy controls (asked before any code, at Gate 1)
+
+Before any code, enumerate each control in the slice whose correctness has no natural endpoint: redaction and PII scrubbing, rate limits, input classification, and allow and deny lists. For each one, ask the owner one option-tile question (R-211, one question per turn) for its threat model (who supplies the input, what they control, what a miss costs) and its acceptance boundary (what must be caught, what may pass, and the test set that proves it). Record both answers in the slice plan under a `**Fuzzy controls:**` heading for that slice. A critic or review round never stands in for the answer: a control with no stated boundary hands every round a new finding.
 
 ## Merge mode (asked once per slice, at Gate 1)
 
@@ -47,14 +57,15 @@ The answer covers the slice it was asked for and nothing else: the next slice as
 
 Before any PR merges, one reviewer checks the PR's diff against the spec and the acceptance criteria of the PR's block in the slice plan document (R-517). It runs after the last commit on the branch, the bookkeeping doc edits included, so nothing but the PR body, title, or labels changes afterward, keeping one review sufficient for the merge guard.
 
-- **Default:** a fresh subagent of the read-only `pr-reviewer` type (Agent tool `subagent_type: "pr-reviewer"`) on `sonnet`, given the filled `~/.claude/prompts/codex-pr-review-prompt.md` with the diff and the requirement text pasted in, so it uses tools only when the pasted text cannot answer (R-517).
-- **Opt-in or required:** Codex (`codex exec -s read-only -C <repo root> --skip-git-repo-check -o <final-message file> "<prompt>" </dev/null > <log file> 2>&1`, run in the background and polled via the log file, stdin closed, no `-m`) or a stronger Claude subagent (`opus`/`fable`), when the owner opts in or the diff touches auth, money, or concurrency.
+- **Default, every PR:** a fresh subagent of the read-only `pr-reviewer` type (Agent tool `subagent_type: "pr-reviewer"`) on `sonnet`, security-touching and high-risk PRs included, given the filled `~/.claude/prompts/codex-pr-review-prompt.md` with the diff and the requirement text pasted in, so it uses tools only when the pasted text cannot answer (R-517). Only the R-109 security review runs on `securityReviewModel`.
+- **Opt-in:** Codex (`codex exec -s read-only -C <repo root> --skip-git-repo-check -o <final-message file> "<prompt>" </dev/null > <log file> 2>&1`, run in the background and polled via the log file, stdin closed, no `-m`) or a stronger Claude subagent (`opus`/`fable`), only when the owner opts in.
 - **Dispositions:** fix each finding, or answer it with a reason in the PR.
+- **Round cap:** at most two review rounds per PR, numbered `r1`, `r2` on the findings table. After round two, file each LOW finding as a ticket (`finding.sh add "<what>" --kind <kind> --value low`) and answer it in the PR with the ticket key instead of fixing it in a third round. HIGH and MEDIUM findings still block the merge. A security finding of any severity, LOW included, is never ticketed: it is fixed, with a further round allowed for it past the cap, or waived by the owner (R-109).
 - **PR body:** a `## Codex review` section carries a `reviewer` line naming the reviewer that ran and why, a `model` line naming the model it ran on, a `range` line naming the diff it read, and one line per finding with its severity and disposition. The range is a `<base>..<head>` expression whose head endpoint must be the PR's head commit, so a review that ran before the last push is re-run on the new range rather than re-typed. `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, duplicated, missing one of the three lines, or naming a range whose head endpoint is not the head commit.
 
 ## Slice plan document
 
-Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file carries one `### PR 1: <title>` block by default, in the PR description format below, and above those blocks a plan-level `**Merge mode:**` line holding the Gate 1 answer in the chosen mode's own words (`owner merges` or `merge on green`) plus a clause saying why; it is the artifact the user approves at Gate 1. Split into more than one PR block only under the size or risk exception above. The PR body is written from this block (R-605); the plan document itself carries no per-PR execution record (no PR number, merge date, review outcome, or test-author fallback to track by hand). `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels, when the plan has no PR block at all, or when it carries no `**Merge mode:**` line, so Gate 1 never sees a half-described PR or an unrecorded merge mode.
+Write `docs/slices/slice-<nn>-<slug>.md` before Gate 1. The file carries one `### PR 1: <title>` block by default, in the PR description format below, and above those blocks a plan-level `**Merge mode:**` line holding the Gate 1 answer in the chosen mode's own words (`owner merges` or `merge on green`) plus a clause saying why, a `**Risk:** high|standard` line with its reason, and a `**Fuzzy controls:**` heading holding each control's threat model and acceptance boundary (or `none`); it is the artifact the user approves at Gate 1. Split into more than one PR block only under the size or risk exception above. The PR body is written from this block (R-605); the plan document itself carries no per-PR execution record (no PR number, merge date, review outcome, or test-author fallback to track by hand). `hooks/spec-glossary-check.sh` reminds on the Write when a PR block lacks any of the seven labels, when the plan has no PR block at all, or when it carries no `**Merge mode:**` line, so Gate 1 never sees a half-described PR or an unrecorded merge mode.
 
 ## PR description format
 
@@ -64,7 +75,7 @@ Describe every PR with these fields, in the slice plan document and in the PR bo
 - **Problem:** what this PR solves and why it lands now.
 - **Approach:** how, and why this way. Short paragraphs, 2 to 4 sentences each, one idea per paragraph, blank lines between; never one block of text.
 - **Contents:** what is in the diff.
-- **Tests:** the tests that prove it, and who wrote them: the implementing session (Standard) or the `test-author` subagent (Complex/Saga), or Codex when the owner opted in.
+- **Tests:** the tests that prove it, and who wrote them: the implementing session (standard-risk slice) or the `test-author` subagent (high-risk slice, R-110), or Codex when the owner opted in.
 - **Review focus:** where the reviewer's attention pays most.
 - **Size:** approximate files and lines.
 
@@ -76,7 +87,7 @@ This skill is portable prose: it governs the slice, PR, and review cadence in an
 
 ## TDD rules (every task)
 
-1. **Red:** Standard tier: the implementing session writes the failing test itself, under the tdd lock. Complex and Saga: the `test-author` subagent writes it; Codex only when the owner opts in, with `test-author` as Codex's fallback. Run it and confirm it fails.
+1. **Red:** standard-risk slice, at any tier: the implementing session writes the failing test itself, under the tdd lock. High-risk slice (R-110), at any tier: the `test-author` subagent writes it; Codex only when the owner opts in, with `test-author` as Codex's fallback. Run it and confirm it fails.
 2. **Green:** write the minimal implementation to pass.
 3. **Refactor:** clean up with tests green.
 
@@ -87,6 +98,8 @@ Tests cite the spec's acceptance criteria. End-to-end tests come from the spec's
 - Don't write implementation before its failing test.
 - Stop at a PR for the owner to read and merge it when the plan's `**Merge mode:**` line records owner-merge, or when the PR's range is security-touching or build-lane guarded; the R-517 review does not replace that stop. Otherwise run PR after PR on green CI and a passed review.
 - Don't merge before the R-517 review ran and every finding is fixed or answered in the PR (R-517).
+- Don't run a third review round to fix LOW findings; ticket them and answer with the key (R-517).
+- Don't write code for a fuzzy control before the owner has answered its threat-model tile (R-110).
 - Don't widen scope beyond the approved slice; defer new ideas to a Later list.
 - Don't bundle unrelated concerns into one PR.
 - No per-task stops: inside an approved PR, run task after task without asking.
