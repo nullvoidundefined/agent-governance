@@ -1034,7 +1034,7 @@
             "enforcer": "hook:codex-test-author-guard",
             "severity": "error",
             "autofix": false,
-            "note": "asks when Claude Write/Edit targets a test file; silent for the test-author agent and for CLAUDE_HOOK_RUNTIME=codex, the marker the codex hook adapter exports; CODEX_TEST_GUARD=off silences. Since IAN-521 (2026-10-01) the separate test author is required by the slice's R-110 risk, not the task tier, but the guard still reads the tier: on a standard-risk slice inside a Complex or Saga task it asks on the session's own test write, and teaching it the plan's Risk line is deferred"
+            "note": "asks when Claude Write/Edit targets a test file; silent for the test-author agent and for CLAUDE_HOOK_RUNTIME=codex, the marker the codex hook adapter exports; CODEX_TEST_GUARD=off silences. Since IAN-521 (2026-10-01) the separate test author is required by the slice's R-110 risk, not the task tier, but the guard still reads the tier: on a standard-risk slice inside a Complex or Saga task it asks on the session's own test write, and on a Standard or Trivial ledger it stays silent, so a high-risk slice inside a Standard task is not mechanically held to a separate test author (task-start tells the session to dispatch test-author explicitly); teaching it the plan's Risk line is deferred"
         }
     ]
 }

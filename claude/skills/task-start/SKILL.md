@@ -110,12 +110,16 @@ TDD:            Yes, as slices under the lock: tdd.sh open, failing test, tdd.sh
                 A standard-risk slice (R-110): the session writes each failing test itself, before implementing
                 (R-907); codex-test-author-guard stays silent on this tier's ledger. A high-risk slice: the
                 `test-author`, `implementer`, and `slice-critic` agents run as for any high-risk slice (R-707).
+                Dispatch the `test-author` agent for it explicitly: the guard is silent on a Standard ledger,
+                so nothing mechanical stops the session from writing that test itself. With no spec, the
+                slice title is the behavior line every role brief carries in place of a B-n entry.
                 Codex writes the test only when the owner opts in.
                 Open the slice WITHOUT --spec: that flag is optional in tdd.sh, and this tier has no spec by
                 design. The behavior named in the slice title and the ticket is the requirement the test
                 argues from. tdd-gated-dispatch's spec-driven flow (its step 1 shows --spec, and its role
                 briefs cite a B-n entry) applies to Complex and Saga; in Standard the same loop runs with the
-                slice title standing in for the B-n line, and nothing is locked as a spec path.
+                slice title standing in for the B-n line, and nothing is locked as a spec path; a high-risk
+                slice's dispatched role briefs carry that slice title as their behavior line too.
 Model:          Sonnet
 Branch:         Yes (feature branch off main)
 Worktree:       No (unless parallel work is active)

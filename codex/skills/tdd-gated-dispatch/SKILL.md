@@ -61,7 +61,8 @@ component (the only R-705 exception). Everything else is a slice.
 ```
 1. open       bash ~/.claude/enforce/tdd.sh open "B-n <behavior>" --spec docs/superpowers/specs/<date>-<slug>-design.md
               (Complex and Saga. In Standard there is no spec by design: open with the slice title alone,
-              `tdd.sh open "<behavior>"`, and read "the B-n entry" below as "the behavior in the slice title".
+              `tdd.sh open "<behavior>"`, and read "the B-n entry" below as "the behavior in the slice title";
+              a high-risk slice in a Standard task passes that slice title as the behavior line in every role brief.
               --spec is optional in tdd.sh; passing a path that does not exist locks a file nobody wrote.)
 2. RED        Standard-risk slice: session writes the test. High-risk slice: test-author agent (Codex on opt-in);
               tdd.sh red <file | file::test id> prints RED:; tdd.sh validate test-author passes

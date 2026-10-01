@@ -55,7 +55,7 @@ requireText "$ROOT/skills/tdd-gated-dispatch/SKILL.md" '## High-risk slice: thre
 # R-517: sonnet for every PR, two-round cap, LOW ticketed, security never ticketed.
 requireNormText 'R-517' 'on `sonnet` for every PR, security-touching ones included'
 requireNormText 'R-517' 'run at most two review rounds per PR'
-requireNormText 'R-517' 'a security finding is never ticketed (R-109)'
+requireNormText 'R-517' 'a security finding of any severity is fixed, a further round allowed for it, or waived by the owner, never ticketed (R-109)'
 forbidText "$ROOT/CLAUDE.md" 'only when the owner opts in or the diff touches auth, money, or concurrency' "CLAUDE.md R-517 still escalates the reviewer model by diff content"
 requireText "$ROOT/rulebook/reference.md" 'the merge gate does not yet parse review rounds' "reference.md R-517 does not say the round cap is not yet gated"
 requireText "$ROOT/prompts/codex-pr-review-prompt.md" '| # | Round | Severity |' "the PR review prompt's output table has no Round column"
@@ -68,5 +68,23 @@ requireText "$ROOT/skills/ticket-lifecycle/SKILL.md" '## Operation: report risk'
 for field in '`risk`' '`findings_by_round`' '`escaped_bugs`'; do
   requireText "$ROOT/skills/ticket-lifecycle/SKILL.md" "| $field |" "ticket-lifecycle lacks the canonical field $field"
 done
+
+for closeFile in "$ROOT/skills/task-cleanup/SKILL.md" "$ROOT/skills/build-fast/SKILL.md"; do
+  for field in '`risk`' '`findings_by_round`' '`escaped_bugs`'; do
+    requireText "$closeFile" "$field" "$closeFile close list lacks $field"
+  done
+done
+
+# Stale tier-based wording that the risk rewrite replaced must not come back.
+forbidText "$ROOT/skills/tdd-gated-dispatch/SKILL.md" 'Dispatch the critic only when the slice touches auth' "tdd-gated-dispatch still dispatches the critic by touched area in Standard"
+forbidText "$ROOT/skills/tdd-gated-dispatch/SKILL.md" 'Complex/Saga: test-author agent' "tdd-gated-dispatch still picks the test author by tier"
+forbidText "$ROOT/skills/build-by-slice-require-review/SKILL.md" 'or the diff touches auth, money, or concurrency' "build-by-slice still escalates the reviewer by diff content"
+forbidText "$ROOT/skills/task-cleanup/SKILL.md" 'or the diff touches auth, money, or concurrency' "task-cleanup still escalates the reviewer by diff content"
+forbidText "$ROOT/prompts/codex-pr-review-prompt.md" 'or the diff touches auth, money, or concurrency' "the PR review prompt still escalates the reviewer by diff content"
+forbidText "$ROOT/rulebook/agents.md" 'or an external call' "agents.md still gives an external-call slice a critic"
+
+# The manifest registers R-110 under the manual tier.
+jq -e '[.rules[] | select(.id == "R-110" and .tier == "manual")] | length == 1' "$ROOT/enforce/manifest.json" >/dev/null \
+  || { echo "FAIL: enforce/manifest.json has no single R-110 entry with tier manual"; exit 1; }
 
 echo "r110-rule-text.test.sh PASS"

@@ -23,7 +23,7 @@ Get the requested change working, reviewed, and merged in the least wall time.
 | Lane | Process |
 |---|---|
 | fast | no spec; one `tdd.sh` slice on Haiku; R-517 review on `securityReviewModel` in parallel with CI; merge per the opening batch |
-| guarded, predicted before the first edit | hand the task to task-start's Complex process; this skill stops governing it |
+| guarded, predicted before the first edit | hand the task to task-start's Complex process, whose triad follows each slice's R-110 risk rather than the tier; this skill stops governing it |
 | guarded, classified after the code exists | keep the code and tests; add the R-109 review when the detector hit; owner merges |
 
 ## Flow
@@ -39,4 +39,4 @@ Get the requested change working, reviewed, and merged in the least wall time.
 9. **One fix round.** Fix each finding test-first, or answer it with a reason in the PR. Then classify again, rerun step 7 if it now applies, push, and rerun the R-517 review on the new head in parallel with CI.
 10. **Stop conditions.** Stop, leave the PR unmerged, and hand it to the owner when: the rerun review raises a new finding; a security finding is unfixed; CI is red after the fix round; a gate blocks; a change would widen the declared scope (R-212); a workaround would mask a symptom (R-204); an action is destructive. Make every other choice inside the declared scope that the tests pin without stopping, and list it in the PR body. A run resumed in a later turn invokes this skill again.
 11. **Merge.** `owner`: hand the PR over with findings and dispositions. `green`: run `gh pr merge` once CI is green and the review passed; the guard still asks the owner to confirm (R-514). Verify the merge landed on `main`.
-12. **Close.** Close the ticket through `/ticket-lifecycle` with `completed_at`, `actual_minutes`, `rework_count`, and `estimate_ratio` in one update, and the lane, merge mode, and build model in the transition comment (R-606). Then run task-cleanup.
+12. **Close.** Close the ticket through `/ticket-lifecycle` with `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `risk`, `findings_by_round`, and `escaped_bugs` in one update, and the lane, merge mode, and build model in the transition comment (R-606). Then run task-cleanup.

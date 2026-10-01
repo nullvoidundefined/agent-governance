@@ -313,7 +313,10 @@ R-110, classifies each slice and PR as high-risk or standard-risk: high when its
 auth, sessions, cookies, security headers, rate limits, trust-boundary input validation, SQL
 construction, secret handling, redaction or PII handling, money, or concurrency, or when the
 R-109 security-surface detector flags its range. Gate 1 records the risk in the slice plan and
-defaults to high when unsure. (The R-110 in Appendix B is a pre-2026-07-03 legacy ID, now R-101;
+defaults to high when unsure. An external call is deliberately not on the list: it makes a slice
+high-risk only when it also touches secrets, money, or trust-boundary input. That narrows the
+earlier rule, which gave a per-slice critic to any Standard slice touching an external call.
+(The R-110 in Appendix B is a pre-2026-07-03 legacy ID, now R-101;
 the new R-110 is unrelated to it.)
 
 Five decisions followed from that classification. First, the test-author, implementer, and

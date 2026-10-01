@@ -94,7 +94,7 @@ Run inside `task-cleanup` Step 2, after the verification gate and the merge deci
 1. Refuse while tests, build, or lint are not green (R-509). A `done` ticket asserts the work shipped.
 2. Compute `actual_minutes` from the R-503 start timestamp and the working time in any prior session recorded on the ticket. Exclude wall-clock gaps where nothing was running.
 3. Compute `estimate_ratio` as `actual_minutes / estimate_minutes`, and `human_speedup` as `human_estimate_minutes / actual_minutes`.
-4. Read `risk` from the slice plans' `**Risk:**` lines (any `high`, or a range the security-surface detector flagged, makes the ticket `high`), and `findings_by_round` from the `## Codex review` section's round-numbered findings lines. Write `escaped_bugs` as `0`.
+4. Read `risk` from the slice plans' `**Risk:**` lines (any `high`, or a range the security-surface detector flagged, makes the ticket `high`), and `findings_by_round` from the `## Codex review` section's round-numbered findings lines. Write `escaped_bugs` as `0`. A tracker whose config maps none of these three fields records them as `risk: <value>`, `findings_by_round: <value>`, and `escaped_bugs: <value>` lines in the `done` transition comment instead, so `report risk` can still read them back.
 5. Write `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `human_speedup`, `risk`, `findings_by_round`, `escaped_bugs`, `pr_link`, and the `done` status in one update. Never leave a `done` ticket with actuals missing.
 6. Report the ratio in the `task-cleanup` table, and state the recalibration R-906 asks for: which direction the tier's estimate moves next time.
 
