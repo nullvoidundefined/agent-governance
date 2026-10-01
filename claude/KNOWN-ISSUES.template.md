@@ -1,6 +1,6 @@
 # Production Issues Log (last updated YYYY-MM-DD)
 
-Append production incidents here as they occur. The `/known-issues` skill loads this file before a production deploy and when debugging a failure that resembles a past incident (per the Convention files table in `CLAUDE.md`).
+Append production incidents here as they occur. The agent reads this file before a production deploy and when debugging a failure that resembles a past incident, because the Convention files table in `CLAUDE.md` names it for both cases.
 
 The real log is gitignored (`KNOWN-ISSUES.md`) so infrastructure-specific details stay local. Copy this template to `KNOWN-ISSUES.md` on a fresh install and populate it from your own incidents.
 

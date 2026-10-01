@@ -12,7 +12,7 @@
 #      non-empty description; description plus when_to_use stays under the
 #      1,536-character listing truncation.
 #   2. every `~/.claude/<path>` a skill cites exists, or is gitignored by design
-#      (the skill is expected to say so; known-issues does).
+#      (the skill is expected to say so).
 #   3. every R-NNN a skill cites has a Spec block in one of the four rulebook
 #      files (the 2026-07-31 P3 "no ID-closure guard for R-7xx/8xx/9xx").
 #   4. no U+2014 (R-207); the hook catches a Write, not a merge or a port.
