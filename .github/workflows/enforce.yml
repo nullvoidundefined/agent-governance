@@ -56,8 +56,9 @@ jobs:
   # every other event (a push to main, a manual dispatch) and whenever the
   # changed-file list cannot be read, so a failure runs the suites rather than
   # skipping them. The decision lives in claude/enforce/ci-fixture-scope.sh,
-  # and the suites' `if:` also runs them when this job itself fails, so a
-  # broken scope job never reads as a skip. A job skipped by its `if` reports
+  # and the suites' `if:` runs them unless this job succeeded and answered
+  # exactly false, so a failed scope job or an empty or garbled answer never
+  # reads as a skip. A job skipped by its `if` reports
   # as skipped, which the required `fixtures` status check accepts, so branch
   # protection still sees a result. The security workflows are separate and
   # unaffected.
@@ -84,7 +85,7 @@ jobs:
   fixtures:
     name: fixtures
     needs: fixture-scope
-    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run == 'true') }}
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run != 'false') }}
     runs-on: ubuntu-latest
     steps:
       # v7: the v4 majors of both actions declare a node20 runtime, which GitHub
@@ -267,7 +268,7 @@ jobs:
   fixtures-macos:
     name: fixtures (macOS, bash 3.2)
     needs: fixture-scope
-    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run == 'true') }}
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run != 'false') }}
     runs-on: macos-latest
     # A hung fixture on a 10x-billed runner costs ~3600 ubuntu-equivalent
     # minutes against an observed 13-minute run (R-517 review of PR #115).
