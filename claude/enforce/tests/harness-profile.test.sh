@@ -66,6 +66,12 @@ const protectedCases = [
   ["files", "hooks/harness-sync.sh"], ["files", "hooks/secret-scan.sh"], ["files", "enforce/role-policy.json"],
   ["files", "enforce/tdd.sh"], ["files", "agents/pr-reviewer.md"], ["files", "settings.json"],
   ["rules", "R-109"], ["rules", "R-003"], ["rules", "R-412"], ["rules", "R-517"],
+  // Round 2: the STRUCTURAL prompt contracts and the template a check reads,
+  // and every hooks/ file that is not a removable hook script.
+  ["files", "prompts/security-review-prompt.md"], ["files", "prompts/codex-pr-review-prompt.md"],
+  ["files", "prompts/spec-template.md"],
+  ["files", "hooks/pre-push.sample"], ["files", "hooks/shell-command-segments.py"],
+  ["files", "hooks/clean-code-scan.mjs"], ["files", "hooks/shell-command-tokens.sh"],
 ];
 for (const [kind, id] of protectedCases) {
   const widened = structuredClone(profiles);
@@ -73,6 +79,15 @@ for (const [kind, id] of protectedCases) {
   let refused = false;
   try { applyProfile("lean", source, widened); } catch (err) { refused = err instanceof ProfileError && err.message.includes(id) && /protected/.test(err.message); }
   check(`a profile listing protected ${kind} ${id} is refused as protected`, refused);
+}
+
+// The inverted hooks/ rule still lets a profile omit a removable hook script.
+{
+  const widened = structuredClone(profiles);
+  widened.profiles.lean.files = [...widened.profiles.lean.files, "hooks/session-start.sh"];
+  let omitsScript = false;
+  try { omitsScript = applyProfile("lean", source, widened).omitted.has("hooks/session-start.sh"); } catch { omitsScript = false; }
+  check("a profile may omit a removable hook script such as hooks/session-start.sh", omitsScript);
 }
 
 // Closure: the committed lean profile applies cleanly to the real tree.
