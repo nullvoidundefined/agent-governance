@@ -26,11 +26,14 @@ import {
   listSkillDirs,
   makeMarkdownSourceLoader,
   makeSkillSourceLoader,
+  makeProfiledSkillLoader,
+  loadTextUnlessOmitted,
   runExporterCli,
 } from "./exporter-core.mjs";
+import { stageProfiledClaudeDir } from "./apply-profile.mjs";
 
 const TARGET_SUBDIR = "codex";
-const USAGE = "usage: node translate/codex.mjs --write|--check [--root <repo-dir>]";
+const USAGE = "usage: node translate/codex.mjs --write|--check [--root <repo-dir>] [--profile <name>]";
 
 // loadMarkdownSource(file): codex's claude/agents/*.md loader, built from
 // the shared factory (exporter-core.mjs) closing over this file's own
@@ -43,14 +46,18 @@ const loadSkillSource = makeSkillSourceLoader(loadTextFile, splitFrontmatter);
 
 // Loads and validates every translator input under the given root: settings
 // hooks, the port map, the rule corpus, every agent, and every skill. Every
-// failure surfaces as a SourceError naming the offending file.
-function loadSources(rootDir) {
-  const settingsHooks = loadSettingsHooks(path.join(rootDir, "claude/settings.json"));
+// failure surfaces as a SourceError naming the offending file. With a
+// harness profile (IAN-518) the claude/ sources are read from the set
+// apply-profile.mjs filtered, and only a path that profile removed may be
+// missing; with none they are read from <rootDir>/claude unchanged.
+function loadSources(rootDir, profileName) {
+  const { claudeDir, omitted } = stageProfiledClaudeDir(rootDir, profileName);
+  const settingsHooks = loadSettingsHooks(path.join(claudeDir, "settings.json"));
   const portMap = loadPortMap(path.join(rootDir, "translate/codex-port-map.json"));
-  const claudeMdText = loadTextFile(path.join(rootDir, "claude/CLAUDE.md"));
-  const sessionTypesText = loadTextFile(path.join(rootDir, "claude/rules/session-types.md"));
-  const agents = listFilesWithExtension(path.join(rootDir, "claude/agents"), ".md").map(loadMarkdownSource);
-  const skills = listSkillDirs(path.join(rootDir, "claude/skills")).map(loadSkillSource);
+  const claudeMdText = loadTextFile(path.join(claudeDir, "CLAUDE.md"));
+  const sessionTypesText = loadTextUnlessOmitted(loadTextFile, claudeDir, "rules/session-types.md", omitted);
+  const agents = listFilesWithExtension(path.join(claudeDir, "agents"), ".md").map(loadMarkdownSource);
+  const skills = listSkillDirs(path.join(claudeDir, "skills")).map(makeProfiledSkillLoader(loadSkillSource, omitted));
   return { settingsHooks, portMap, claudeMdText, sessionTypesText, agents, skills };
 }
 
@@ -83,7 +90,7 @@ function renderPlannedTree(sources) {
     }
   }
   for (const skill of sources.skills) {
-    planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillCopy(skill)));
+    if (!skill.hidden) planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillCopy(skill)));
     for (const supportFile of skill.supportFiles) {
       planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillSupportFile(skill, supportFile)));
     }

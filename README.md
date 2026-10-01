@@ -278,12 +278,12 @@ There are two hard gates. **Gate 1** is the slice plan document, written to
 `docs/slices/slice-<nn>-<slug>.md` before any code, listing every pull request in the slice with its
 context, problem, approach, contents, tests, review focus, and size, and recording on a
 `**Merge mode:**` line which merge mode the owner chose for the slice. The user approves that
-document before building starts. **Gate 2** is the pull request itself: by default the user reads
-and merges it on GitHub and the session stops there. A slice may opt out of Gate 2 at Gate 1, which
-lets the session merge that slice's pull requests itself once CI is green and the pre-merge review
-has passed. The owner's merge is the default because a review by a subagent is not a substitute for
-the owner reading the diff, and a skill named require-review should not remove them from the loop
-without being asked to (IAN-352).
+document before building starts. **Gate 2** is the owner reading and merging a pull request on GitHub.
+By default the session merges each pull request itself once CI is green and the pre-merge review has
+passed, still through the guard's per-merge confirmation, so Gate 2 applies only where it matters:
+when the pull request's range is security-touching (R-109), when `build-lane.sh` classes it guarded
+(migrations, concurrency, billing), or when the owner chooses owner-merge for the slice at Gate 1
+(owner decision 2026-09-30, IAN-517, which reversed the owner-merge default IAN-352 had set).
 
 This skill is portable prose. It describes a discipline that works in any tool, including ones with
 no hook surface at all, because nothing in it requires a script to be present. Where the hook
@@ -518,6 +518,65 @@ live `~/.claude` against the checkout and syncs when the live directory is absen
 fresh cloud container and a stale laptop both start a session under the committed harness. Cursor
 and the Codex CLI have no project-local hook surface, so in those tools `./sync.sh` is a step you
 take rather than one the harness takes for you.
+
+### Harness profiles
+
+A harness profile installs a reduced harness without deleting anything from the repository.
+`claude/enforce/harness-profiles.json` defines one profile today, `lean`. It hides every item
+that `docs/harness-audit.md` classifies as coaching or orchestration:
+
+- 41 rule lines in `CLAUDE.md`.
+- 24 hook registrations in `settings.json`. The hook files themselves stay.
+- Every skill's `SKILL.md`. The scripts that gates run, such as `task-start`'s `task-tier.sh` and
+  `build-fast`'s `build-lane.sh`, still install.
+- The nine audit agents.
+- The stack convention files and their `rules/` links, `rules/session-types.md`, three rulebook
+  files, the audit stubs, `PROTOCOL.md`, and two prompt templates.
+
+Every enforcing hook and `harness-sync` stay registered.
+
+```bash
+./sync.sh --profile lean    # install the lean harness into ~/.claude, ~/.cursor and ~/.codex
+./sync.sh --profile full    # restore everything
+```
+
+`HARNESS_PROFILE=lean` has the same effect as the flag.
+
+**The profile is sticky.** `sync.sh` records it in `~/.claude/.harness-profile`, and a plain
+`./sync.sh` keeps the recorded profile. This matters because the `harness-sync` hook runs a plain
+`./sync.sh` whenever the live tree differs from the checkout. Without the record, lean would be
+undone at the next session start. Only `--profile full` (or `HARNESS_PROFILE=full`) restores the
+full harness and clears the record.
+
+Files that a profile hides leave the live tree through the same `.sync-manifest` allowlist as any
+other removal, so a file you edited live is kept and reported.
+
+**Lean settings apply from the next session.** A lean `settings.json` takes effect when the next
+session starts, not in the running one. The `settings-change-guard` hook blocks a mid-session
+settings change that drops a hook the manifest requires.
+
+**The translators take the same flag.** `node translate/cursor.mjs --profile lean --write --root
+<dir>` and the same for `codex.mjs` render the lean ports. The committed ports are always rendered
+without a profile, so `--check` with no profile stays the CI gate.
+
+**Some items can never be hidden.** `translate/apply-profile.mjs` keeps a protected set of its own,
+separate from the profile file. A profile that lists any of these is refused:
+
+- every enforcing hook, as a registration or as its file, and `harness-sync`
+- every file under `hooks/` except the scripts of the coaching and orchestration hooks, so a helper
+  that an enforcing hook sources can never be hidden
+- the two review prompt contracts and `prompts/spec-template.md`
+- the six TDD and review agents
+- the ENFORCE and STRUCTURAL rule ids
+- anything under `enforce/`, and every skill script and data file
+- `rulebook/reference.md`
+
+`sync.sh` also refuses to run when `~/.claude/.harness-profile` is a symlink or any other non-regular
+file, and it replaces the record atomically.
+
+**A stale list fails loudly.** An unknown profile, or a listed id that no longer exists under
+`claude/`, is an error. Run `node translate/apply-profile.mjs --validate` to check every profile
+against the tree.
 
 ## Verification
 
