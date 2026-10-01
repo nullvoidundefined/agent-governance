@@ -177,7 +177,7 @@ for (const agent of ["test-author", "implementer", "slice-critic", "spec-conform
 
 // Files: convention files, their rule symlinks, audits, rulebook extras gone.
 check("lean omits every listed file", lean.files.every((rel) => !files.has(rel) && omitted.has(rel)));
-for (const gone of ["CLAUDE-PYTHON.md", "rules/python.md", "rules/session-types.md", "rulebook/cost.md", "PROTOCOL.md", "audits/security.md", "audits/on-request/ux.md", "prompts/subagent-branch-setup.md"])
+for (const gone of ["CLAUDE-PYTHON.md", "rules/python.md", "rules/session-types.md", "rulebook/cost.md", "PROTOCOL.md", "rulebook/audits.md", "agents/audit-security.md", "prompts/subagent-branch-setup.md"])
   check(`lean omits ${gone}`, !files.has(gone));
 for (const keep of ["rulebook/reference.md", "CLOUD-DEPLOYMENT.md", "prompts/codex-pr-review-prompt.md", "prompts/security-review-prompt.md", "enforce/tdd.sh", "hooks/harness-sync.sh", "hooks/session-start.sh"])
   check(`lean keeps ${keep}`, files.has(keep));

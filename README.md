@@ -525,13 +525,13 @@ A harness profile installs a reduced harness without deleting anything from the 
 `claude/enforce/harness-profiles.json` defines one profile today, `lean`. It hides every item
 that `docs/harness-audit.md` classifies as coaching or orchestration:
 
-- 41 rule lines in `CLAUDE.md`.
-- 24 hook registrations in `settings.json`. The hook files themselves stay.
+- 40 rule lines in `CLAUDE.md`.
+- 23 hook registrations in `settings.json`. The hook files themselves stay.
 - Every skill's `SKILL.md`. The scripts that gates run, such as `task-start`'s `task-tier.sh` and
   `build-fast`'s `build-lane.sh`, still install.
 - The nine audit agents.
 - The stack convention files and their `rules/` links, `rules/session-types.md`, three rulebook
-  files, the audit stubs, `PROTOCOL.md`, and two prompt templates.
+  files, `PROTOCOL.md`, and two prompt templates.
 
 Every enforcing hook and `harness-sync` stay registered.
 
