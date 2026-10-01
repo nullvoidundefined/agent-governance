@@ -1,0 +1,73 @@
+{
+  "pr": "nullvoidundefined/agent-governance#172",
+  "ticket": "IAN-516",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "0301107114d2da656ca50d1db425d1bd006ddf24",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range lets the R-517 merge check accept an older Codex review head when every later commit changes only regular files under the top-level docs/ tree; the R-109 check keeps the exact-head rule. Round 1 (d7cc0ef) raised 1 to 4, fixed in 0301107 with failing cases first in 7b1a238. Round 2 (0301107) verified 1 to 4 and raised 5, fixed in da32996 (case 18); the Codex R-517 round on 0301107 also added refs/replace handling (5b65c62, case 16). Codex R-517 round 3 (58a4a0e) found that log.diffMerges=off hid merge-result code and that a clean artefact in another directory still bypassed row 5; e1354c5be49ecf2b4f90e02e22f28a0e539403fc forces --diff-merges=separate and refuses a new artefact whenever the reviewed range added any JSON under docs/ (cases 19 and 20). Codex round 4 and the R-109 round on bd06eb6 both found that the *.json filter could be dodged by an artefact saved under another name or extension; 59a8117 refuses a new artefact whenever the reviewed range changed anything under docs/ at all (case 19 now uses a .txt reviewed artefact). Round 5 (both reviewers, bf0edbc) found the artefact half still open (a ./-prefixed artefact path, an artefact outside docs/, untested docs/security-reviews/ edits) and a pre-existing refs/replace gap in is_range_commit. Owner decision 2026-09-30: the docs-only tail exception now covers the R-517 Codex review only, so the Security review keeps the exact-head rule and every artefact row is moot; 00b7961e70374f27f9d1c730d3cd1cbaa55b3842 also makes is_range_commit and resolve_security_range ignore refs/replace (case 4d of security-merge-gate-findings). Rows 5 to 7 were closed by removing the R-109 exception (moot), not by a code fix to the artefact binding. The final round on d45d899 (both reviewers) found that other R-109 git reads still followed refs/replace (row 8); 004ac4fb332761a87894f0f888bb30d79c350709 exports GIT_NO_REPLACE_OBJECTS=1 for the whole hook and the sourced detector (case 21). Row 9 (an R^..R review range) predates this PR and is filed as its own ticket. The review of the head that adds this text is the PR body's Security review section.",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "control": "review-head resolution",
+      "finding": "a hex-named branch or tag resolved before the object name, so any commit could pass as the review head",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "control": "in-range rule",
+      "finding": "the base itself was accepted as the review head of a docs-only PR",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "control": "artefact immutability",
+      "finding": "the recorded artefact could be rewritten after the review in a docs-only tail",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "control": "test coverage",
+      "finding": "no case fed the refused values (executable, submodule, merge, revert, hex refs, base head, rewritten artefact)",
+      "status": "fixed 0301107114d2da656ca50d1db425d1bd006ddf24"
+    },
+    {
+      "id": 5,
+      "severity": "MEDIUM",
+      "control": "artefact binding",
+      "finding": "a clean second artefact could be added and named beside one the review saw with an open row",
+      "status": "fixed 00b7961e70374f27f9d1c730d3cd1cbaa55b3842"
+    },
+    {
+      "id": 6,
+      "severity": "MEDIUM",
+      "control": "artefact immutability by path spelling",
+      "finding": "a ./-prefixed artefact line let the reviewed artefact be rewritten in a docs-only tail",
+      "status": "fixed 00b7961e70374f27f9d1c730d3cd1cbaa55b3842"
+    },
+    {
+      "id": 7,
+      "severity": "MEDIUM",
+      "control": "test coverage",
+      "finding": "no case for the ./ spelling, a docs file replaced by a symlink, quoted docs names, root merges, or an artefact line naming a directory",
+      "status": "fixed 00b7961e70374f27f9d1c730d3cd1cbaa55b3842"
+    },
+    {
+      "id": 8,
+      "severity": "HIGH",
+      "control": "R-109 reads under refs/replace",
+      "finding": "the security-surface diff and the artefact reads followed refs/replace, so a local replacement could hide a security change or swap in a clean artefact",
+      "status": "fixed 004ac4fb332761a87894f0f888bb30d79c350709"
+    },
+    {
+      "id": 9,
+      "severity": "LOW",
+      "control": "R-517 range base endpoint",
+      "finding": "only the range head endpoint is compared, so an R^..R review passes; pre-existing",
+      "status": "ticketed (finding.sh, pre-existing)"
+    }
+  ]
+}

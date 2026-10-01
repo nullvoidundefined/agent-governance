@@ -278,12 +278,12 @@ There are two hard gates. **Gate 1** is the slice plan document, written to
 `docs/slices/slice-<nn>-<slug>.md` before any code, listing every pull request in the slice with its
 context, problem, approach, contents, tests, review focus, and size, and recording on a
 `**Merge mode:**` line which merge mode the owner chose for the slice. The user approves that
-document before building starts. **Gate 2** is the pull request itself: by default the user reads
-and merges it on GitHub and the session stops there. A slice may opt out of Gate 2 at Gate 1, which
-lets the session merge that slice's pull requests itself once CI is green and the pre-merge review
-has passed. The owner's merge is the default because a review by a subagent is not a substitute for
-the owner reading the diff, and a skill named require-review should not remove them from the loop
-without being asked to (IAN-352).
+document before building starts. **Gate 2** is the owner reading and merging a pull request on GitHub.
+By default the session merges each pull request itself once CI is green and the pre-merge review has
+passed, still through the guard's per-merge confirmation, so Gate 2 applies only where it matters:
+when the pull request's range is security-touching (R-109), when `build-lane.sh` classes it guarded
+(migrations, concurrency, billing), or when the owner chooses owner-merge for the slice at Gate 1
+(owner decision 2026-09-30, IAN-517, which reversed the owner-merge default IAN-352 had set).
 
 This skill is portable prose. It describes a discipline that works in any tool, including ones with
 no hook surface at all, because nothing in it requires a script to be present. Where the hook
