@@ -25,10 +25,15 @@ name: enforce
 # push on every branch PLUS pull_request double-billed every PR branch: runs 5
 # and 6 both ran the full suite on 49c06b1. Pushes to the default branch, PRs,
 # and manual dispatch cover everything without the overlap.
+#
+# ready_for_review is listed because the fixture jobs skip draft pull requests
+# (see the fixture-scope job): marking a draft ready is what runs them on its
+# head. The default types are kept alongside it.
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # A second push supersedes the first; without this the older run bills to
@@ -43,8 +48,50 @@ permissions:
   contents: read
 
 jobs:
+  # fixture-scope decides once whether the fixture suites run, so CI costs one
+  # run per pull request instead of one per fix-round push (IAN-552). It
+  # answers false for a draft pull request, whose rounds the local
+  # affected-fixture runs already cover, and for a pull request whose every
+  # changed file is under docs/, which no fixture reads. It answers true for
+  # every other event (a push to main, a manual dispatch) and whenever the
+  # changed-file list cannot be read, so a failure runs the suites rather than
+  # skipping them. A job skipped by its `if` reports as skipped, which the
+  # required `fixtures` status check accepts, so branch protection still sees
+  # a result. The security workflows are separate and unaffected.
+  fixture-scope:
+    name: fixture scope
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          should_run=true
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$IS_DRAFT" = "true" ]; then
+              should_run=false
+            elif changed_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA") && [ -n "$changed_files" ]; then
+              if ! printf '%s\n' "$changed_files" | grep -qv '^docs/'; then
+                should_run=false
+              fi
+            fi
+          fi
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "fixture suites run: $should_run"
+
   fixtures:
     name: fixtures
+    needs: fixture-scope
+    if: needs.fixture-scope.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       # v7: the v4 majors of both actions declare a node20 runtime, which GitHub
@@ -226,6 +273,8 @@ jobs:
   # whose result depends on the shell and on the userland the shell calls.
   fixtures-macos:
     name: fixtures (macOS, bash 3.2)
+    needs: fixture-scope
+    if: needs.fixture-scope.outputs.should_run == 'true'
     runs-on: macos-latest
     # A hung fixture on a 10x-billed runner costs ~3600 ubuntu-equivalent
     # minutes against an observed 13-minute run (R-517 review of PR #115).
