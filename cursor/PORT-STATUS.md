@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-56 of 63 hook registrations port, across 9 Cursor events.
+55 of 62 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -27,7 +27,6 @@
 | `pr-ticket-ref-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `constant-change-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `audit-signal-check` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `single-file-folder-reminder` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `build-cheatsheets` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `no-em-dash` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |

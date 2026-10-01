@@ -169,7 +169,7 @@ named in brackets, so its full specification can be read in `claude/rulebook/ref
 | `migration-defaults-guard.sh` refuses the two known-bad migration default forms: a double-wrapped string literal and a bare SQL function string (R-328). | `Write`, `Edit` | Deny |
 | `dependency-add-guard.sh` asks before a manifest gains a third-party dependency it did not have (R-331). | `Write`, `Edit` | Ask |
 | `no-em-dash.sh` refuses any command or file content containing an em dash (R-207). | `Bash`, `Write`, `Edit` | Deny |
-| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351); `single-file-folder-reminder.sh` runs at push (R-309). | After `Write` or `Edit`, and `git push` | Advise |
+| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351). | After `Write` or `Edit` | Advise |
 
 ### Push-time linters and security scanning
 
