@@ -1,6 +1,6 @@
 ---
 name: tdd-gated-dispatch
-description: Use for any Standard, Complex, or Saga task once a spec exists, to run each behavior as one RED/GREEN/REFACTOR/REVIEW slice with the harness proving each step. In Standard the session writes each slice's failing test itself, under the lock, then implements it; in Complex and Saga the `test-author` subagent writes it and the implementer and slice-critic agents run as separate fresh contexts. Codex writes the test only when the owner opts in for that slice (R-907, owner decision 2026-09-23, IAN-333). Sits between writing-plans and subagent-driven-development; the Superpowers skills stay the skeleton, this skill is the enforcement.
+description: Use for any Standard, Complex, or Saga task once a spec exists, to run each behavior as one RED/GREEN/REFACTOR/REVIEW slice with the harness proving each step. Risk, not tier, picks the mechanics (R-110): for a standard-risk slice, at any tier, the session writes the failing test itself, under the lock, then implements it; for a high-risk slice, at any tier, the `test-author` subagent writes it and the implementer and slice-critic agents run as separate fresh contexts. Codex writes the test only when the owner opts in for that slice (R-907; owner decisions 2026-09-23, IAN-333, and 2026-10-01, IAN-521). Sits between writing-plans and subagent-driven-development; the Superpowers skills stay the skeleton, this skill is the enforcement.
 ---
 
 # TDD-Gated Dispatch
@@ -38,7 +38,7 @@ message when an id would lock it.
 | A writing subagent cannot return on a red suite | `verification-gate.sh` on `SubagentStop` | R-509 |
 
 What stays with you: choosing the slices, opening each one, writing the test
-yourself (Standard) or dispatching the test author (Complex, Saga), committing
+yourself (standard-risk slice) or dispatching the test author (high-risk slice, R-110), committing
 between RED and GREEN, recording a fallback, and arbitrating a `DISPUTE:`.
 
 ## Slicing
@@ -62,13 +62,13 @@ component (the only R-705 exception). Everything else is a slice.
               (Complex and Saga. In Standard there is no spec by design: open with the slice title alone,
               `tdd.sh open "<behavior>"`, and read "the B-n entry" below as "the behavior in the slice title".
               --spec is optional in tdd.sh; passing a path that does not exist locks a file nobody wrote.)
-2. RED        Standard: session writes the test. Complex/Saga: test-author agent (Codex on opt-in);
+2. RED        Standard-risk slice: session writes the test. High-risk slice: test-author agent (Codex on opt-in);
               tdd.sh red <file | file::test id> prints RED:; tdd.sh validate test-author passes
 3. commit     git add <test file> .claude/tdd-lock.json && git commit -m "test(<scope>): B-n <behavior>"
 4. GREEN      implementer writes the minimum; tdd.sh green prints GREEN:
 5. REFACTOR   implementer, same lock; tdd.sh green again
 6. commit     git commit -m "feat(<scope>): B-n <behavior>"   (or fix:, refactor:)
-7. REVIEW     slice critic returns findings and candidate tests
+7. REVIEW     high-risk slice only: slice critic returns findings and candidate tests
 8. close      tdd.sh close; accepted candidates become B-n+1
 ```
 
@@ -77,12 +77,12 @@ object: skip it and the check runs against the lock only, and says so.
 
 ## Who writes the test (R-907)
 
-| Tier | Default author | Codex |
+| Slice risk (R-110), at any tier | Default author | Codex |
 |---|---|---|
-| Standard | the session itself, under the lock, before implementing | only when the owner opts a slice in |
-| Complex, Saga | the `test-author` agent, fresh context | only when the owner opts a slice in; the agent is Codex's fallback |
+| Standard-risk | the session itself, under the lock, before implementing | only when the owner opts a slice in |
+| High-risk | the `test-author` agent, fresh context | only when the owner opts a slice in; the agent is Codex's fallback |
 
-Owner decision 2026-09-23 (IAN-333, "Drop the PR ceremony") replaced the 2026-09-19 rule that Codex wrote every test everywhere: each call cost 70,000-82,000 tokens, about 25,000 of it fixed startup, for independence the R-412 lock already proves in Standard.
+Owner decision 2026-09-23 (IAN-333, "Drop the PR ceremony") replaced the 2026-09-19 rule that Codex wrote every test everywhere: each call cost 70,000-82,000 tokens, about 25,000 of it fixed startup, for independence the R-412 lock already proves. Owner decision 2026-10-01 (IAN-521) moved the line from tier to risk: the slice plan's `**Risk:**` line, recorded at Gate 1, decides the author, and a standard-risk slice inside a Complex or Saga task runs the one-session loop below.
 
 ### When the owner opts in to Codex
 
@@ -183,19 +183,27 @@ rate-limited (a usage-limit error in the log counts), dispatch the
 the PR body's test section as `Test author: test-author subagent (fallback:
 <reason>)`. The codex-test-author-guard stays silent for that agent, silent
 on a Standard or Trivial ledger, and asks whenever a Complex or Saga session
-targets a test file itself outside an opted-in slice.
+targets a test file itself outside an opted-in slice. The guard reads the
+tier, not the risk, so on a standard-risk slice inside a Complex or Saga task
+it still asks; confirm the plan's `**Risk:** standard` line and allow it
+(teaching the guard the risk is deferred, IAN-521).
 
-## Standard tier: one session
+## Standard-risk slice: one session
 
-You are the orchestrator and the implementer under the same lock. Write the
-test yourself between `open` and `red` (R-907), then implement; no dispatch,
-unless the owner opted this slice into Codex, dispatched as above. The guard
-enforces the order: after `open`, a production write is denied until `red`
-has run; after `red`, a test write is denied until `close`. Run the loop
-exactly as above. Dispatch the critic only when the slice touches auth,
-money, concurrency, or an external call.
+At any task tier, a slice whose plan records `**Risk:** standard` (R-110)
+runs here. You are the orchestrator and the implementer under the same lock.
+Write the test yourself between `open` and `red` (R-907), then implement; no
+dispatch, unless the owner opted this slice into Codex, dispatched as above.
+The guard enforces the order: after `open`, a production write is denied
+until `red` has run; after `red`, a test write is denied until `close`. Run
+the loop exactly as above, skipping step 7: no per-slice critic runs. A slice
+that turns out to touch a high-risk area is re-recorded as high and finishes
+under the three roles below.
 
-## Complex and Saga: three roles, fresh context each
+## High-risk slice: three roles, fresh context each
+
+At any task tier, a slice whose plan records `**Risk:** high` (R-110), or
+whose range the R-109 security-surface detector flags, runs here.
 
 The test author is the `test-author` agent (Opus, per its role file); Codex
 only on owner opt-in, dispatched as above, with the agent as its fallback.
@@ -207,7 +215,7 @@ Sonnet; 2026-09-06 decision 5). Every prompt carries paths, not content
 (R-702) for `cd` only; neither Codex nor the agents commit, you do.
 
 **Test author prompt** (sent to the `test-author` agent; the same text goes to
-Codex when the owner opts the slice in; in Standard, the session follows it
+Codex when the owner opts the slice in; on a standard-risk slice, the session follows it
 directly instead of dispatching):
 
 ```markdown
@@ -272,8 +280,8 @@ bash ~/.claude/enforce/tdd.sh validate slice-critic   # nothing written at all
 
 It reads the boundary from `enforce/role-policy.json` (R-411) and judges `git status --porcelain` against it, so the orchestrator never applies the patterns by eye; `tdd.sh status` still prints the lock when the refusal needs context. Run the implementer's validate before the GREEN commit, the critic's after it.
 
-**The author's own mistake.** When whoever wrote this slice's RED test (you in
-Standard, the test author in Complex and Saga) finds a bug in it while the
+**The author's own mistake.** When whoever wrote this slice's RED test (you on a
+standard-risk slice, the test author on a high-risk one) finds a bug in it while the
 phase is still `red`, before any GREEN and before the RED is pushed, fix it
 with `tdd.sh amend` instead of a `DISPUTE:`:
 
@@ -288,7 +296,7 @@ The second run re-hashes the file and records the amendment in the lock
 `git diff <fromBlob> <toBlob>` shows the change); commit the amended test
 before the implementation. It is refused for a test from an earlier slice,
 after green, and once the RED is pushed. A dispatched `implementer` agent can
-never amend, since role policy denies it every test write; in Standard, where
+never amend, since role policy denies it every test write; on a standard-risk slice, where
 one session writes both, the only brake is the still-failing requirement and
 the recorded diff, so amend to fix the test's own mistake, never to make the
 implementation easier. Weakening a test is a `DISPUTE:`.
@@ -314,7 +322,8 @@ resume the slice, and anything else goes to the user.
 |---|---|
 | Writing production code "while the test is fresh in mind" | denied by the guard until `tdd.sh red` has run |
 | Handing the test author the plan with its code | the test mirrors the plan's misunderstanding; strip the code, pass the behavior line |
-| Writing the test in-session because dispatch feels slow | correct in Standard; in Complex/Saga the codex-test-author-guard asks, dispatch the `test-author` agent instead |
+| Writing the test in-session because dispatch feels slow | correct for a standard-risk slice; for a high-risk slice (R-110) dispatch the `test-author` agent instead |
+| Running the three roles on every slice of a Complex task | only high-risk slices carry them (R-110); a standard-risk slice runs the one-session loop at any tier |
 | Committing an opted-in Codex RED without `tdd.sh validate test-author` | Codex runs outside the hooks, so a production file it wrote would ride into the RED commit unseen |
 | Running `codex exec` with stdin open or piped through `tail` | it blocks on stdin, or looks hung until exit; close stdin and poll the log file |
 | Letting the implementer "fix" a flaky assertion | denied; the only path is `DISPUTE:` |

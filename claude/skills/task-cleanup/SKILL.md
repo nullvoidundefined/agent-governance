@@ -114,12 +114,14 @@ Run the project's test, build, and lint commands (whatever `package.json`, `Make
 
 **Pre-merge review (R-517)** (blocking, every PR above the trivial tier; a trivial PR is exempt only when `.claude/task-tier.json` records the trivial tier for its head branch):
 
-The default reviewer is a fresh subagent of the read-only `pr-reviewer` type on `sonnet` (it carries only Read, Grep, Glob, and Bash, so it should start from about half the context of `general-purpose`, as IAN-349 measured on `slice-critic`, which has the same tool set), given the filled `~/.claude/prompts/codex-pr-review-prompt.md`, reviewing the PR's diff against the spec and the acceptance criteria the PR claims, before merge (a different context from the one that wrote the code). Use Codex, or a stronger subagent (`opus`/`fable`), only when the owner opts in or the diff touches auth, money, or concurrency.
+The default reviewer is a fresh subagent of the read-only `pr-reviewer` type on `sonnet` (it carries only Read, Grep, Glob, and Bash, so it should start from about half the context of `general-purpose`, as IAN-349 measured on `slice-critic`, which has the same tool set), given the filled `~/.claude/prompts/codex-pr-review-prompt.md`, reviewing the PR's diff against the spec and the acceptance criteria the PR claims, before merge (a different context from the one that wrote the code). The reviewer runs on `sonnet` for every PR, security-touching and high-risk (R-110) ones included; only the R-109 security review runs on `securityReviewModel`. Use Codex, or a stronger subagent (`opus`/`fable`), only when the owner opts in.
+
+**Round cap.** Run at most two review rounds per PR, a round being one reviewer run over one range, and number them `r1`, `r2` on the findings lines. After round two, do not run a third round for a LOW finding: file it with `finding.sh add "<what>" --kind <kind> --value low`, open the ticket (R-214), and answer the finding in the PR with the ticket key. A HIGH or MEDIUM finding still blocks the merge and is fixed, re-reviewed on the new range. A security finding is never ticketed, and only the owner waives one (R-109). The merge gate does not yet count rounds, so the cap is yours to keep.
 
 1. Copy `~/.claude/prompts/codex-pr-review-prompt.md` below its line into a scratch file and fill every placeholder: the base and head refs, the spec path (or "none" in Standard), the requirement text itself (the slice plan's PR block, the `B-n` lines, the rule entry, or the ticket's scope), only the convention files the diff touches, and the diff itself, with generated trees and lock files excluded and named (the template's step 2 says how, and records what that saves).
 2. Dispatch a fresh Claude subagent (Agent tool, `subagent_type: "pr-reviewer"`, `model: "sonnet"`) with the filled prompt, and use its final message as the review.
 
-**Codex (opt-in).** Run Codex instead when the owner asks or the diff touches auth, money, or concurrency. Keep it focused: the owner's Codex account is a $20 ChatGPT plan with tight usage limits.
+**Codex (opt-in).** Run Codex instead only when the owner asks. Keep it focused: the owner's Codex account is a $20 ChatGPT plan with tight usage limits.
 ```bash
 codex exec -s read-only -C <repo root> --skip-git-repo-check \
   -o <scratch>/codex-pr-<n>-final.md "$(cat <scratch>/codex-pr-<n>-prompt.md)" \
@@ -127,14 +129,15 @@ codex exec -s read-only -C <repo root> --skip-git-repo-check \
 ```
 Run it in the background (the Bash tool's `run_in_background`) and poll the log file until the process exits. Close stdin with `</dev/null`, or codex blocks on "Reading additional input from stdin". Never pipe it through `tail`, which buffers until exit and looks like a hang. Omit `-m`: `gpt-5.1-codex-mini` is rejected on the owner's ChatGPT account, so the account default applies. R-908's billing guard applies to the call.
 **Fallback.** When Codex is missing, unauthenticated, or out of quota, do not wait for the quota to reset: dispatch a Claude subagent on a model at least as strong as this session's and ideally stronger (the Agent tool's `model: "fable"` when available, else `opus`), with the same filled prompt, and use its final message as the review.
-3. Fix each finding (test-first when behavior changes) or answer it with a reason in the PR. A HIGH finding is never merged over with a bare "won't fix".
+3. Fix each finding (test-first when behavior changes) or answer it with a reason in the PR. A HIGH finding is never merged over with a bare "won't fix". After round two, a LOW finding is answered with its ticket key instead (the round cap above).
 4. Add a `## Codex review` section to the PR body (`gh pr edit <n> --body-file <file>`) carrying three labelled lines and then the findings:
    ```
    ## Codex review
    - reviewer: Claude subagent (sonnet)
    - model: claude-sonnet-5
    - range: <base sha>..<head sha>
-   - MEDIUM: <finding> - fixed in <sha>
+   - r1 MEDIUM: <finding> - fixed in <sha>
+   - r2 LOW: <finding> - ticketed as <KEY>
    ```
    The `reviewer` line names the reviewer that ran and why, for example `Claude subagent (sonnet)` or `Codex, owner opt-in`; the `model` line names the model it ran on; the `range` line names the diff it read as a `<base>..<head>` expression, and its head endpoint must be the PR's head commit as GitHub reports it, which means a review run before the last push is re-run rather than re-typed. The head must be on the right of the `..`: a range whose base is the head reviewed everything except the head, and the gate denies it. Then one line per finding with its severity and disposition, or "No findings" with the areas checked. Each label may be bulleted and emphasised (`- **Reviewer:** Codex`) but never left without a value. The heading keeps the name "Codex review" whichever reviewer ran; `git-workflow-guard` denies `gh pr merge` while the section is missing, empty, duplicated, missing one of the three lines, carrying a `range` line with no `<base>..<head>` expression, or naming a range whose head endpoint is not the head commit.
 

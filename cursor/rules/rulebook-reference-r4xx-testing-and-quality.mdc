@@ -80,7 +80,7 @@ R-411: Subagent roles write only inside their boundary.
   Enforcement: hook:protected-path-guard (reads `agent_type`; `disallowedTools` in the agent frontmatter is the belt to this hook's braces for the critic)
 
 R-412: Work in slices, each one behavior: open, failing test, red, implementation, green, close.
-  Scope: every tier above Trivial (2026-09-06 decision 3); Standard runs it in one session, Complex and Saga dispatch the test author and implementer as separate agents.
+  Scope: every tier above Trivial (2026-09-06 decision 3). Risk, not tier, decides the dispatch (owner decision 2026-10-01, IAN-521, R-110): a high-risk slice dispatches the `test-author`, `implementer`, and `slice-critic` roles as separate fresh contexts and runs the per-slice critic, at any task tier; every other slice, inside a Complex or Saga task included, runs in one session, the session writing its own failing test under the lock with no per-slice critic. The task tier still decides the spec, plan, and ticket requirements, and the lock below is the same at every tier and every risk.
   Spec, in order:
   1. `bash ~/.claude/enforce/tdd.sh open "<slice>" [--spec <path>]` writes the lock in phase `open`: production paths are read-only, test and spec paths are writable.
   2. Write the failing test for this one behavior.

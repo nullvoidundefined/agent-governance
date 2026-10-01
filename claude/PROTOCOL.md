@@ -306,6 +306,39 @@ least. Dispatched subagents are not exempt, because step 3 is the only channel t
 "no user turn follows" rather than "one-shot", because an interactive session's first turn is also
 one prompt and also, until a second arrives, one shot.
 
+## What changed on 2026-10-01
+
+The owner moved per-slice process from the task tier to the slice's risk (IAN-521). A new rule,
+R-110, classifies each slice and PR as high-risk or standard-risk: high when its diff touches
+auth, sessions, cookies, security headers, rate limits, trust-boundary input validation, SQL
+construction, secret handling, redaction or PII handling, money, or concurrency, or when the
+R-109 security-surface detector flags its range. Gate 1 records the risk in the slice plan and
+defaults to high when unsure. (The R-110 in Appendix B is a pre-2026-07-03 legacy ID, now R-101;
+the new R-110 is unrelated to it.)
+
+Five decisions followed from that classification. First, the test-author, implementer, and
+slice-critic triad and the per-slice critic now run only for high-risk slices, at any task tier,
+and every other slice runs Standard mechanics under the unchanged TDD lock, inside a Complex task
+too (R-412, R-707, R-907); the tier still decides the spec, plan, and ticket. Second, the R-517
+reviewer runs on Sonnet for every PR, security-touching ones included, because the R-109 security
+review already puts the strongest model on the security hunks. Third, a PR gets at most two
+review rounds, after which a LOW finding becomes a ticket answered in the PR with its key, while
+HIGH and MEDIUM still block and a security finding is never ticketed. Fourth, Gate 1 asks the
+owner for the threat model and acceptance boundary of every control whose correctness has no
+natural endpoint (redaction, rate limits, input classification, allow and deny lists) before any
+code. Fifth, ticket close records the risk, the findings per review round, and the bugs that
+escaped after merge, and a `report risk` rollup compares the two risk classes once ten PRs exist.
+
+The evidence is one Complex PR, which took about 22 hours for about 900 production lines. Every
+HIGH finding in it came from security-control code or from the first review round; rounds three
+and four produced only LOW findings; and a regular-expression PII scrubber went through four
+critic rounds before anyone asked for its threat model. That is a sample of one, so the rule is treated as a
+hypothesis: the close-time fields exist to measure whether standard-risk slices escape bugs that
+the dropped critic would have caught, and whether rounds after the second ever find anything above
+LOW. The mechanical parts (the detector reading the plan's risk line, a merge-time check that a
+high-risk slice ran the triad, the merge gate counting rounds, and the test-author guard reading
+risk instead of tier) are deferred, so the rule is manual until they land.
+
 ## The principle
 
 The operating protocol is not a rulebook. It is a failure-mode catalog. The goal is not to follow the rules to avoid mistakes; the goal is to build the next layer the next time a failure teaches you where one is missing. Discipline is the habit of noticing the failure, naming the class, identifying the missing layer, and adding it immediately rather than hoping the next instance will be different.

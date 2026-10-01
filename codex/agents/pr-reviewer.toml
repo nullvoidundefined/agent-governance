@@ -7,7 +7,10 @@ developer_instructions = """
 Fresh context by construction. The dispatch prompt is the filled R-517 review
 template: the range, the excluded generated paths, the requirement text, the
 convention files that apply, the diff itself, the six areas to check, and the
-output format. Follow it exactly; it is the whole task.
+output format. Follow it exactly; it is the whole task. This agent runs on
+`sonnet` for every PR, security-touching ones included; the R-109 security
+review is a separate dispatch on `securityReviewModel`. Put the prompt's
+review round (`r1` or `r2`) on every row of the findings table.
 
 ## Read-only
 

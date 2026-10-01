@@ -60,6 +60,9 @@ On a tracker whose config maps `specced` and `planned` onto one shared status (L
 | `rework_count` | Times a green slice went back to red, or a review sent the work back. |
 | `estimate_ratio` | `actual_minutes / estimate_minutes`, computed at close. |
 | `human_speedup` | `human_estimate_minutes / actual_minutes`, computed at close; `n/a` when the human estimate is `n/a`. |
+| `risk` | `high` or `standard`, the R-110 classification: `high` when any slice the ticket shipped recorded `**Risk:** high` or the R-109 security-surface detector flagged its range, `standard` otherwise. Written at close. |
+| `findings_by_round` | The R-517 findings per review round, by severity, written at close from the PR's findings table as `r<n>:H<count>,M<count>,L<count>` with rounds separated by `; ` and zero counts omitted, for example `r1:H1,M2,L3; r2:L1`; `r1:none` for a clean first round, and `n/a` for a trivial-tier PR with no review. |
+| `escaped_bugs` | Bugs found after merge that a dropped per-slice critic would plausibly have caught: a bug in a standard-risk slice's code of the kind the `slice-critic`'s seven questions target. Written as `0` at close and incremented, with a comment naming the bug ticket, when such a bug is found later. |
 
 ## Operation: open
 
@@ -92,8 +95,11 @@ Run inside `task-cleanup` Step 2, after the verification gate and the merge deci
 1. Refuse while tests, build, or lint are not green (R-509). A `done` ticket asserts the work shipped.
 2. Compute `actual_minutes` from the R-503 start timestamp and the working time in any prior session recorded on the ticket. Exclude wall-clock gaps where nothing was running.
 3. Compute `estimate_ratio` as `actual_minutes / estimate_minutes`, and `human_speedup` as `human_estimate_minutes / actual_minutes`.
-4. Write `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `human_speedup`, `pr_link`, and the `done` status in one update. Never leave a `done` ticket with actuals missing.
-5. Report the ratio in the `task-cleanup` table, and state the recalibration R-906 asks for: which direction the tier's estimate moves next time.
+4. Read `risk` from the slice plans' `**Risk:**` lines (any `high`, or a range the security-surface detector flagged, makes the ticket `high`), and `findings_by_round` from the `## Codex review` section's round-numbered findings lines. Write `escaped_bugs` as `0`.
+5. Write `completed_at`, `actual_minutes`, `rework_count`, `estimate_ratio`, `human_speedup`, `risk`, `findings_by_round`, `escaped_bugs`, `pr_link`, and the `done` status in one update. Never leave a `done` ticket with actuals missing.
+6. Report the ratio in the `task-cleanup` table, and state the recalibration R-906 asks for: which direction the tier's estimate moves next time.
+
+A bug found after merge in a standard-risk slice's code, of a kind the `slice-critic` would plausibly have caught, increments the shipping ticket's `escaped_bugs` with a comment naming the bug's own ticket; the bug ticket itself is opened per R-214 as usual.
 
 ## Operation: report
 
@@ -104,6 +110,15 @@ Invoked as `report <day|week|month> <range>`; "what did I ship this week" means 
 3. Per bucket: ticket count, summed `actual_minutes`, count by tier, median `estimate_ratio`, and median `human_speedup` over the tickets that have one.
 4. Count tickets with no `completed_at` separately as open. Never fold them into a bucket.
 5. Output one table, newest bucket last, and one line naming the largest single contributor to the total.
+
+## Operation: report risk
+
+Invoked as `report risk`. It measures the R-110 decision (owner decision 2026-10-01, IAN-521) rather than taking it on faith.
+
+1. Query closed tickets that carry a `risk` value and a `pr_link`.
+2. Fewer than ten such tickets: return no comparison. Say the sample is too small (`n=<count>`, with the split by risk), and stop.
+3. Ten or more: output one table with a row each for `high` and `standard`: ticket count, median `actual_minutes`, median `estimate_ratio`, summed `escaped_bugs`, and the HIGH, MEDIUM, and LOW totals per round summed from `findings_by_round`.
+4. State the sample's date range, and one line naming what the table says about R-110: whether standard-risk tickets are escaping bugs the dropped critic would have caught, and whether rounds after `r2` still produce anything above LOW.
 
 ## Operation: estimate
 
@@ -141,6 +156,7 @@ A tracker failure (server down, auth expired, denial) never blocks the engineeri
 - Writing `done` with the actuals missing. One update carries both.
 - Recording calendar elapsed time as `actual_minutes`. A ticket opened Monday and closed Friday is not four days of work, and one such row distorts every estimate drawn from that tier.
 - Estimating from a sample of two and reporting a number as if it came from history.
+- Running `report risk` on fewer than ten PRs and reading a verdict on R-110 into it.
 - Mixing `assist` values in one sample. LLM-driven and hand-written work are not comparable.
 - Guessing a provider status name when the config has no mapping for the canonical state.
 - Putting a local filesystem path, a client name, or a secret in a ticket body.
@@ -148,6 +164,6 @@ A tracker failure (server down, auth expired, denial) never blocks the engineeri
 
 ## Integration
 
-- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` at the canonical events above), task-cleanup (`close`), the user directly (`report`, `estimate`); every call is a direct tracker call from the main session (R-605)
+- **Called by:** task-start (`open`, `estimate`), feature-create (`advance` at the canonical events above), task-cleanup (`close`), the user directly (`report`, `report risk`, `estimate`); every call is a direct tracker call from the main session (R-605)
 - **Composes with:** tdd-gated-dispatch (a slice opening is the `in-progress` event), superpowers:finishing-a-development-branch (the merge is the `done` event)
-- **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write, except the Linear server's write class), R-106 (nothing client-identifying in this repo)
+- **Rules:** R-605 (a ticket per task above trivial), R-606 (actuals at close), R-110 (risk, measured by `report risk`), R-517 (review rounds), R-901 (tier), R-903 (model), R-906 (estimate recalibration), R-105 (confirmation per write, except the Linear server's write class), R-106 (nothing client-identifying in this repo)
