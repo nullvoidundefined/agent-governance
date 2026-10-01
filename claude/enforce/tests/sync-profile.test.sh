@@ -158,4 +158,20 @@ check "HARNESS_PROFILE=full clears the record" test ! -e "$LIVE/claude/.harness-
 run_sync >/dev/null 2>&1
 check "a plain sync with no record stays full" test -f "$LIVE/claude/skills/gof/SKILL.md"
 
+# --- A link that appears at the record path during the run (PR #175 review
+# round 2). The checkout itself tracks claude/.harness-profile as a link to a
+# directory outside the target, so the start-of-run check passes and the
+# claude copy installs the link just before the record is written. mv onto a
+# link to a directory would move the record into that directory; the run must
+# re-check right before the rename, refuse, and leave no temporary file.
+mkdir -p "$TMP/outside-dir"
+ln -s "$TMP/outside-dir" "$REPO/claude/.harness-profile"
+git -C "$REPO" add -A
+git -C "$REPO" commit -q -m "fixture: a tracked link at the record path"
+run_sync --profile lean >/dev/null 2>"$TMP/late-link.err"
+check "a link installed at the record path mid-run refuses the record write" test $? -ne 0
+check "the mid-run refusal says REFUSED" grep -q 'REFUSED' "$TMP/late-link.err"
+check "nothing is written through the link into the outside directory" test -z "$(ls -A "$TMP/outside-dir")"
+check "no temporary record file is left after the refusal" test -z "$(find "$LIVE/claude" -maxdepth 1 -name '.harness-profile.*' -print)"
+
 exit "$fail"
