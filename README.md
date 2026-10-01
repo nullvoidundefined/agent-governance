@@ -563,6 +563,9 @@ without a profile, so `--check` with no profile stays the CI gate.
 separate from the profile file. A profile that lists any of these is refused:
 
 - every enforcing hook, as a registration or as its file, and `harness-sync`
+- every file under `hooks/` except the scripts of the coaching and orchestration hooks, so a helper
+  that an enforcing hook sources can never be hidden
+- the two review prompt contracts and `prompts/spec-template.md`
 - the six TDD and review agents
 - the ENFORCE and STRUCTURAL rule ids
 - anything under `enforce/`, and every skill script and data file
