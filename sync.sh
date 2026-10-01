@@ -58,6 +58,16 @@ TARGET_CODEX="${SYNC_CODEX_HOME:-$HOME/.codex}"
 PROFILE_RECORD="$TARGET_CLAUDE/.harness-profile"
 PROFILE_FLAG=""
 PROFILE_ROOT=""
+RECORD_TMP=""
+
+# removeTemporaries(): the EXIT trap; deletes the profiled staging root and
+# an unrenamed record temp file, whichever exist, on success or refusal.
+removeTemporaries() {
+  if [ -n "$PROFILE_ROOT" ]; then rm -rf "$PROFILE_ROOT"; fi
+  if [ -n "$RECORD_TMP" ]; then rm -f "$RECORD_TMP"; fi
+  return 0
+}
+trap removeTemporaries EXIT
 
 # refuseProfile(reason): stops the run before any target is written.
 refuseProfile() {
@@ -366,7 +376,6 @@ stageProfiledSources() {
   local profile="$1" folder list err
   command -v node >/dev/null 2>&1 || refuseProfile "the harness profile $profile needs node, which is not installed"
   PROFILE_ROOT=$(mktemp -d)
-  trap 'rm -rf "$PROFILE_ROOT"' EXIT
   for folder in claude translate cursor codex; do
     list=$(mktemp)
     listSourceFiles "$folder" > "$list"
@@ -401,14 +410,25 @@ sync_one cursor "$TARGET_CURSOR"
 sync_one codex "$TARGET_CODEX"
 
 # Record the profile so a plain run keeps it; full clears the record. The
-# record is written to a temporary file in the same directory and renamed
-# over the old one, and rename replaces a path without following it.
+# record is written to a temporary file in the same directory (removed by the
+# EXIT trap if the run stops first) and then moved into place. mv does follow
+# a destination that is a symlink to a directory, moving the file into that
+# directory, so the record path is checked again immediately before the move:
+# the claude copy above can have installed something there since the check at
+# the start of the run (PR #175 review round 2). A link appearing in the
+# instant between that check and the move remains possible; the window is the
+# length of one test and one rename.
 if [ "$HARNESS_PROFILE_NAME" = full ]; then
   rm -f "$PROFILE_RECORD"
 else
-  record_tmp=$(mktemp "$TARGET_CLAUDE/.harness-profile.XXXXXX")
-  printf '%s\n' "$HARNESS_PROFILE_NAME" > "$record_tmp"
-  mv -f "$record_tmp" "$PROFILE_RECORD"
+  RECORD_TMP=$(mktemp "$TARGET_CLAUDE/.harness-profile.XXXXXX")
+  printf '%s\n' "$HARNESS_PROFILE_NAME" > "$RECORD_TMP"
+  if [ -L "$PROFILE_RECORD" ] || { [ -e "$PROFILE_RECORD" ] && [ ! -f "$PROFILE_RECORD" ]; }; then
+    echo "REFUSED: $PROFILE_RECORD appeared during the run and is not a regular file, so the profile record was not written; the targets are synced, remove that path by hand and run ./sync.sh --profile $HARNESS_PROFILE_NAME again" >&2
+    exit 1
+  fi
+  mv -f "$RECORD_TMP" "$PROFILE_RECORD"
+  RECORD_TMP=""
 fi
 
 # Stamp the source so hook-integrity-check.sh can compare the live copy
