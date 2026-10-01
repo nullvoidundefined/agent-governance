@@ -201,7 +201,7 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 ### Skills
 
-Skills are named workflows the agent invokes when the work matches. There are 18 of them.
+Skills are named workflows the agent invokes when the work matches. There are 17 of them.
 
 | Stage | Skills |
 |---|---|
@@ -209,7 +209,7 @@ Skills are named workflows the agent invokes when the work matches. There are 18
 | Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
 | Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
 | Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `resolve-user-feedback` (triage an application's feedback table) |
-| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
+| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans) |
 
 ### Agent roles
 

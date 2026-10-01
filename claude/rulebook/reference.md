@@ -874,5 +874,5 @@ Read on demand, not globally.
 | `~/.claude/CLAUDE-STYLING.md` | SCSS modules, CSS custom properties |
 | `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Cloudflare, environment variables |
 | `~/.claude/KNOWN-ISSUES.md` | Before production deploy or debugging prior-incident-like failure; gitignored, so a fresh clone lacks it, and its absence never means "no known issues" |
-| `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |
+| `~/.claude/PROTOCOL.md` | Debugging process failure, reviewing rule origin, onboarding; read only the layer or rule section the question needs |
 | `/ticket-lifecycle` (skill) | Opening, advancing, or closing a task's tracker ticket, and reading the history back for rollups or estimates (R-605, R-606) |
