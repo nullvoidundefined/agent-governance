@@ -18,8 +18,13 @@
 #                            denied.
 #   unknown review head      a review head the checkout does not hold: denied.
 #   security, docs tail      Codex and Security reviews of the code commit,
-#                            the artefact committed after both: R-109 is
-#                            satisfied and R-514 asks.
+#                            the artefact committed after both: denied,
+#                            R-109, because the exception covers R-517 only
+#                            (owner decision 2026-09-30 after five review
+#                            rounds found the artefact half unbounded).
+#   security, R-517 tail     the same PR with the Security review at the
+#                            exact head and the Codex review older: R-514
+#                            asks.
 #   security, code tail      the Security review is older than a later code
 #                            change: denied, R-109.
 #
@@ -326,7 +331,11 @@ git_in "$S_DIR" push -q origin feature
 git_in "$S_DIR" checkout -q main
 S_BODY=$(pr_body "$(codex_section "$S_BASE" "$S_REVIEWED")" "$(security_section security-reviewer "$EXPECTED_MODEL" "$S_BASE" "$S_REVIEWED")")
 STUB=$(write_pr_stub sectail "$S_BODY" "$S_HEAD" "$S_BASE" sectail)
-expect_r514_ask "security review before a docs-only artefact commit" \
+expect_r109_deny "security review before a docs-only artefact commit" \
+  "$(run_guard "$STUB" "$S_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $S_HEAD")"
+S_BODY=$(pr_body "$(codex_section "$S_BASE" "$S_REVIEWED")" "$(security_section security-reviewer "$EXPECTED_MODEL" "$S_BASE" "$S_HEAD")")
+STUB=$(write_pr_stub sectail2 "$S_BODY" "$S_HEAD" "$S_BASE" sectail)
+expect_r514_ask "security review at the head, Codex review before a docs tail" \
   "$(run_guard "$STUB" "$S_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $S_HEAD")"
 
 # --- 8. security review older than a later code change ----------------------
