@@ -66,7 +66,7 @@ const REMOVABLE_HOOK_SCRIPTS = new Set([
   "draft-pr-on-first-push", "enforcement-guard-check", "flat-directory-reminder", "handoff-check",
   "hook-integrity-check", "hookspath-drift-check", "model-switch-guard", "new-file-header-reminder",
   "observability-reminder", "parallel-session-check", "post-compact-rules", "pr-monitor-reminder",
-  "redact-output", "redaction-guard-check", "session-end", "session-start", "single-file-folder-reminder",
+  "redact-output", "redaction-guard-check", "session-end", "session-start",
   "spec-glossary-check", "task-commit-reminder", "task-state-tracker",
 ]);
 

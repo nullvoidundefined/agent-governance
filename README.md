@@ -169,7 +169,7 @@ named in brackets, so its full specification can be read in `claude/rulebook/ref
 | `migration-defaults-guard.sh` refuses the two known-bad migration default forms: a double-wrapped string literal and a bare SQL function string (R-328). | `Write`, `Edit` | Deny |
 | `dependency-add-guard.sh` asks before a manifest gains a third-party dependency it did not have (R-331). | `Write`, `Edit` | Ask |
 | `no-em-dash.sh` refuses any command or file content containing an em dash (R-207). | `Bash`, `Write`, `Edit` | Deny |
-| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351); `single-file-folder-reminder.sh` runs at push (R-309). | After `Write` or `Edit`, and `git push` | Advise |
+| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351). | After `Write` or `Edit` | Advise |
 
 ### Push-time linters and security scanning
 
@@ -187,7 +187,7 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 | Feature | Fires on | Effect |
 |---|---|---|
-| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001, R-002). | Session start | Context |
+| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001). | Session start | Context |
 | `post-compact-rules.sh` re-injects the output and process rules that a context summary drops first, plus the current task ledger. | After compaction | Context |
 | `handoff-check.sh` checks a written handoff against its size cap, its section order, and the commit it cites (R-602). | After `Write` | Advise |
 | `session-end.sh` routes `fired:` and `miss:` feedback lines into the global rule telemetry and writes a resume snapshot, and `log-rule-fire.sh` records every guard fire, so rule effectiveness is measured rather than guessed (R-603). | Session end, and every fire | Record |
@@ -201,15 +201,15 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 ### Skills
 
-Skills are named workflows the agent invokes when the work matches. There are 19 of them.
+Skills are named workflows the agent invokes when the work matches. There are 17 of them.
 
 | Stage | Skills |
 |---|---|
 | Starting work | `task-start` (classify the task into a tier that fixes its process), `ticket-lifecycle` (open, advance, and close the tracker ticket with estimates and actuals), `feature-create` (the worktree and product-doc rows for an approved plan), `repo-setup` (bring a new repository to the hygiene baseline) |
 | Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
 | Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
-| Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `known-issues` (prior deployment incidents), `resolve-user-feedback` (triage an application's feedback table) |
-| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
+| Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `resolve-user-feedback` (triage an application's feedback table) |
+| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans) |
 
 ### Agent roles
 
@@ -525,13 +525,13 @@ A harness profile installs a reduced harness without deleting anything from the 
 `claude/enforce/harness-profiles.json` defines one profile today, `lean`. It hides every item
 that `docs/harness-audit.md` classifies as coaching or orchestration:
 
-- 41 rule lines in `CLAUDE.md`.
-- 24 hook registrations in `settings.json`. The hook files themselves stay.
+- 40 rule lines in `CLAUDE.md`.
+- 23 hook registrations in `settings.json`. The hook files themselves stay.
 - Every skill's `SKILL.md`. The scripts that gates run, such as `task-start`'s `task-tier.sh` and
   `build-fast`'s `build-lane.sh`, still install.
 - The nine audit agents.
 - The stack convention files and their `rules/` links, `rules/session-types.md`, three rulebook
-  files, the audit stubs, `PROTOCOL.md`, and two prompt templates.
+  files, `PROTOCOL.md`, and two prompt templates.
 
 Every enforcing hook and `harness-sync` stay registered.
 

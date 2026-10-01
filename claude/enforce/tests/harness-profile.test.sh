@@ -101,7 +101,7 @@ const ruleLine = /^(R-\d{3})( \[[a-z]+\])?:/;
 const sourceRules = text(source, "CLAUDE.md").split("\n").filter((line) => ruleLine.test(line));
 const leanRules = text(files, "CLAUDE.md").split("\n").filter((line) => ruleLine.test(line));
 const listed = new Set(lean.rules);
-check("lean lists 41 rules", lean.rules.length === 41);
+check("lean lists 40 rules (41 before R-002 was deleted, IAN-518)", lean.rules.length === 40);
 check("lean CLAUDE.md lacks every listed rule", leanRules.every((line) => !listed.has(ruleLine.exec(line)[1])));
 const expectedKept = sourceRules.filter((line) => !listed.has(ruleLine.exec(line)[1]));
 check("lean CLAUDE.md keeps every other rule line verbatim", JSON.stringify(leanRules) === JSON.stringify(expectedKept));
@@ -165,7 +165,7 @@ check("lean settings.json keeps every non-hook key", JSON.stringify(sourceRest) 
 
 // Skills: every SKILL.md hidden, every script and data file kept.
 const skillDirs = fs.readdirSync(path.join(claudeDir, "skills"));
-check("lean lists all 19 skills", lean.skills.length === 19 && skillDirs.every((d) => lean.skills.includes(d)));
+check("lean lists every skill", lean.skills.length === skillDirs.length && skillDirs.every((d) => lean.skills.includes(d)));
 check("lean omits every SKILL.md", skillDirs.every((d) => !files.has(`skills/${d}/SKILL.md`) && omitted.has(`skills/${d}/SKILL.md`)));
 for (const keep of ["skills/task-start/scripts/task-tier.sh", "skills/task-start/scripts/finding.sh", "skills/task-start/scripts/task-provenance.sh", "skills/build-fast/scripts/build-lane.sh", "skills/build-fast/lane-rules.json"])
   check(`lean keeps ${keep}`, files.has(keep) && files.get(keep) === source.get(keep));
@@ -177,7 +177,7 @@ for (const agent of ["test-author", "implementer", "slice-critic", "spec-conform
 
 // Files: convention files, their rule symlinks, audits, rulebook extras gone.
 check("lean omits every listed file", lean.files.every((rel) => !files.has(rel) && omitted.has(rel)));
-for (const gone of ["CLAUDE-PYTHON.md", "rules/python.md", "rules/session-types.md", "rulebook/cost.md", "PROTOCOL.md", "audits/security.md", "audits/on-request/ux.md", "prompts/subagent-branch-setup.md"])
+for (const gone of ["CLAUDE-PYTHON.md", "rules/python.md", "rules/session-types.md", "rulebook/cost.md", "PROTOCOL.md", "rulebook/audits.md", "agents/audit-security.md", "prompts/subagent-branch-setup.md"])
   check(`lean omits ${gone}`, !files.has(gone));
 for (const keep of ["rulebook/reference.md", "CLOUD-DEPLOYMENT.md", "prompts/codex-pr-review-prompt.md", "prompts/security-review-prompt.md", "enforce/tdd.sh", "hooks/harness-sync.sh", "hooks/session-start.sh"])
   check(`lean keeps ${keep}`, files.has(keep));

@@ -79,7 +79,7 @@ R-309: Collapse any domain folder holding exactly one source module into a flat 
   Spec:
   - A folder is justified only by two or more sibling source files.
   - Re-nest into a folder the moment a second file is added.
-  Enforcement: hook:single-file-folder-reminder (advisory)
+  Enforcement: manual
 
 R-310: Regroup any source directory holding more than 20 sibling source modules into domain subfolders.
   Scope: every source tree on every stack; the threshold is a smell that forces the regroup decision, not a hard cap (R-318). A genuinely flat peer set with no domain seams (a `migrations/` directory, a route-segment folder) may stay flat when documented in the directory's nearest `CLAUDE.md`.

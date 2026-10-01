@@ -4,9 +4,9 @@
 # SessionStart hook for Claude Code. Emits the global memory INDEX and
 # any recent project handoff doc as additionalContext, so every session
 # begins with the cross-session and cross-project context already in
-# view. Enforces R-002 and R-001 in ~/.claude/CLAUDE.md.
+# view. Enforces R-001 in ~/.claude/CLAUDE.md.
 #
-# Why this exists: R-002 and R-001 say every session starts by reading
+# Why this exists: R-001 says every session starts by reading
 # global memory and the most recent handoff doc. Without a hook, the
 # rule is honor-system; sessions skip the read under pressure and
 # re-derive context from git log instead. This hook forces the read
@@ -551,7 +551,7 @@ if [ -n "$INTERRUPTED_OUTPUT" ]; then
 fi
 
 if [ -f "$GLOBAL_MEMORY_INDEX" ]; then
-  CTX+=$'## Global memory index (auto-loaded per R-002 / R-001)\n\n'
+  CTX+=$'## Global memory index (auto-loaded per R-001)\n\n'
   CTX+="$(cat "$GLOBAL_MEMORY_INDEX")"
   CTX+=$'\n\n'
 fi

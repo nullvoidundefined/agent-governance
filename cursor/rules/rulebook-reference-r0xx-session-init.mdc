@@ -22,9 +22,6 @@ R-001: Run the session-start procedure before any other work.
   Scope: Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent.
   Enforcement: manual
 
-R-002: Load the shared context files mandated by R-001 at every session start R-001 applies to; run steps in parallel where possible.
-  Enforcement: manual
-
 R-003: Run every session under the synced harness; no session runs bare.
   Scope: every Claude Code session, local or remote (Claude Code on the web), in every project; the Cursor and Codex ports through their adapters.
   Spec:

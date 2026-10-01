@@ -3,7 +3,7 @@
     "lean": {
       "description": "Hides every COACHING and ORCHESTRATION item classified in docs/harness-audit.md (IAN-518) without deleting it: the listed CLAUDE.md rule lines, hook registrations, SKILL.md files, audit agents, and reference files are left out of the installed or ported tree. Every ENFORCE hook, harness-sync, and every skill script a gate reads stay.",
       "rules": [
-        "R-001", "R-002", "R-104", "R-201", "R-202", "R-204", "R-205", "R-206", "R-208", "R-209", "R-210", "R-211",
+        "R-001", "R-104", "R-201", "R-202", "R-204", "R-205", "R-206", "R-208", "R-209", "R-210", "R-211",
         "R-301", "R-307", "R-308", "R-318", "R-322", "R-332", "R-341", "R-345", "R-346", "R-351",
         "R-404", "R-406", "R-408", "R-409",
         "R-501", "R-502", "R-503", "R-504", "R-508", "R-510", "R-511", "R-515", "R-516", "R-518",
@@ -14,12 +14,12 @@
         "flat-directory-reminder", "handoff-check", "hook-integrity-check", "hookspath-drift-check",
         "model-switch-guard", "new-file-header-reminder", "observability-reminder", "parallel-session-check",
         "post-compact-rules", "pr-monitor-reminder", "redact-output", "redaction-guard-check",
-        "single-file-folder-reminder", "spec-glossary-check", "task-commit-reminder", "build-cheatsheets",
+        "spec-glossary-check", "task-commit-reminder", "build-cheatsheets",
         "draft-pr-on-first-push", "session-end", "session-start", "task-state-tracker"
       ],
       "skills": [
         "add-stack-track", "all-hands", "bug-hunt", "build-by-slice-require-review", "build-fast",
-        "cleanup-specs-plans", "documentation-create", "feature-create", "gof", "known-issues", "protocol",
+        "cleanup-specs-plans", "documentation-create", "feature-create", "gof",
         "repo-setup", "resolve-user-feedback", "spec-grounding", "structure-conventions", "task-cleanup",
         "task-start", "tdd-gated-dispatch", "ticket-lifecycle"
       ],
@@ -28,18 +28,14 @@
         "audit-legal", "audit-marketing", "audit-security", "audit-ux"
       ],
       "files": [
-        "audits/criticism.md", "audits/engineering.md", "audits/security.md",
-        "audits/on-request/customer.md", "audits/on-request/design.md", "audits/on-request/financial.md",
-        "audits/on-request/legal.md", "audits/on-request/marketing.md", "audits/on-request/ux.md",
         "CLAUDE-BACKEND.md", "CLAUDE-DATABASE.md", "CLAUDE-FRONTEND.md", "CLAUDE-FRONTEND-NEXT.md",
-        "CLAUDE-FRONTEND-NUXT.md", "CLAUDE-FRONTEND-REACT.md", "CLAUDE-FRONTEND-VITE.md", "CLAUDE-FRONTEND-VUE.md",
-        "CLAUDE-GO.md", "CLAUDE-OBSERVABILITY.md", "CLAUDE-PYTHON.md", "CLAUDE-RUBY.md", "CLAUDE-STYLING.md",
-        "rules/backend.md", "rules/database.md", "rules/frontend.md", "rules/frontend-next.md",
-        "rules/frontend-nuxt.md", "rules/frontend-react.md", "rules/frontend-vite.md", "rules/frontend-vue.md",
-        "rules/go.md", "rules/observability.md", "rules/python.md", "rules/ruby.md", "rules/styling.md",
-        "rules/session-types.md",
-        "rulebook/agents.md", "rulebook/audits.md", "rulebook/cost.md",
-        "PROTOCOL.md",
+        "CLAUDE-FRONTEND-NUXT.md", "CLAUDE-FRONTEND-REACT.md", "CLAUDE-FRONTEND-VITE.md",
+        "CLAUDE-FRONTEND-VUE.md", "CLAUDE-GO.md", "CLAUDE-OBSERVABILITY.md", "CLAUDE-PYTHON.md",
+        "CLAUDE-RUBY.md", "CLAUDE-STYLING.md", "rules/backend.md", "rules/database.md", "rules/frontend.md",
+        "rules/frontend-next.md", "rules/frontend-nuxt.md", "rules/frontend-react.md",
+        "rules/frontend-vite.md", "rules/frontend-vue.md", "rules/go.md", "rules/observability.md",
+        "rules/python.md", "rules/ruby.md", "rules/styling.md", "rules/session-types.md",
+        "rulebook/agents.md", "rulebook/audits.md", "rulebook/cost.md", "PROTOCOL.md",
         "prompts/codex-spec-review-prompt.md", "prompts/subagent-branch-setup.md"
       ]
     }

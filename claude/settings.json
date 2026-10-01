@@ -246,10 +246,6 @@
                     },
                     {
                         "type": "command",
-                        "command": "~/.claude/hooks/single-file-folder-reminder.sh"
-                    },
-                    {
-                        "type": "command",
                         "command": "~/.claude/hooks/build-cheatsheets.sh",
                         "timeout": 60,
                         "statusMessage": "Rebuilding feature cheat sheets",

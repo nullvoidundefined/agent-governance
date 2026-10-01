@@ -11,7 +11,6 @@ Project-level `CLAUDE.md` adds guidance but does not override these unless it ex
 ## Session init (R-0xx)
 
 R-001: Run the session-start procedure before any other work: (1) confirm the SessionStart hook injected `~/.claude/global-memory/INDEX.md` and the SHA-verified `docs/session-handoff/session-handoff.md`; Read either only if its block is absent; (2) classify the session type per `rules/session-types.md`; (3) read that type's Tier 2 files; (4) `git -C "$(cat ~/.claude/.sync-source)" status -s`, triage non-empty; (5) confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`), reading it only when absent from context; a repo with none lists `no project file` under Skipped; auto memory (`MEMORY.md`) loads on its own. First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`. Re-read and re-declare on reclassification. Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent. [manual]
-R-002: Load the R-001 files at every session start R-001 applies to; run the reads in parallel where possible. [manual]
 R-003: Run every session under the synced harness: at SessionStart the live `~/.claude` is synced from the agent-governance checkout when it is absent or differs (cloud containers included; `rsync` is installed there when missing), and a session that cannot reach a checkout says so once and treats every rule as manual. [hook:harness-sync]
 
 ## Secrets and trust (R-1xx)
@@ -142,8 +141,8 @@ Read on demand:
 | `~/.claude/rulebook/agents.md`, `audits.md`, `cost.md` | Tier 2 per session type (R-001) |
 | `/structure-conventions` (skill) | Before creating, moving, or renaming a directory, module, migration, or test tree (R-304, R-305, R-309..R-314, R-319, R-321, R-323, R-324, R-326..R-329, R-407) |
 | `~/.claude/CLOUD-DEPLOYMENT.md` | Railway, Cloudflare, environment variables |
-| `/known-issues` (skill) | Before production deploy or debugging prior-incident-like failure |
-| `/protocol` (skill) | Debugging process failure, reviewing rule origin, onboarding |
+| `~/.claude/KNOWN-ISSUES.md` | Before production deploy or debugging prior-incident-like failure; gitignored, so a fresh clone lacks it, and its absence never means "no known issues" |
+| `~/.claude/PROTOCOL.md` | Debugging process failure, reviewing rule origin, onboarding; read only the layer or rule section the question needs |
 | `/ticket-lifecycle` (skill) | Opening, advancing, or closing a task's tracker ticket, and reading the history back for rollups or estimates (R-605, R-606) |
 
 
