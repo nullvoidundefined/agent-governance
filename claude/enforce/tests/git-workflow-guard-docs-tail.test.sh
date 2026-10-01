@@ -2,9 +2,12 @@
 # Shard: slow
 # Covers: hook:git-workflow-guard
 # Verifies that the merge gate in git-workflow-guard.sh accepts an R-517
-# `## Codex review` or R-109 `## Security review` whose range head is an older
-# PR commit when every commit after it changes only the repository's top-level
-# docs/ tree (IAN-516, owner decision 2026-09-30). A PR note, the R-109
+# `## Codex review` whose range head is an older PR commit when every commit
+# after it changes only the repository's top-level docs/ tree (IAN-516, owner
+# decision 2026-09-30), and that the R-109 `## Security review` keeps the
+# exact-head rule: the exception was narrowed to R-517 after five review rounds
+# found binding the security artefact unbounded, so cases 7, 15, 18, and 19
+# now prove a docs-only tail never relaxes R-109. A PR note, the R-109
 # artefact JSON, or a handoff committed after a review forced another full
 # review round: 3 of 4 rounds on IAN-352 and a 58-minute confirming R-109 round
 # on PR #169. Everything else still needs a review of the exact head:
@@ -550,6 +553,15 @@ git_in "$K_DIR" push -q origin feature
 git_in "$K_DIR" checkout -q main
 STUB=$(write_pr_stub evilmerge "$(pr_body "$(codex_section "$K_BASE" "$K_REVIEWED")")" "$K_HEAD" "$K_BASE" evilmerge)
 expect_r517_deny "code only in a merge result, merge diffs off" "$(run_guard "$STUB" "$K_DIR" "$CLEAN_STUB")"
+
+# --- 21. a replacement object hiding a security change from the detector ----
+build_pr_repo hidecors app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
+  'ALLOWED_ORIGINS = ["*"]'
+H_DIR="$REPO_DIR" H_BASE="$REPO_BASE" H_HEAD="$REPO_HEAD"
+DECOY_HEAD=$(git -C "$H_DIR" commit-tree "$H_BASE^{tree}" -p "$H_BASE" -m "decoy" 2>/dev/null)
+git_in "$H_DIR" replace "$H_HEAD" "$DECOY_HEAD"
+STUB=$(write_pr_stub hidecors "$(pr_body "$(codex_section "$H_BASE" "$H_HEAD")")" "$H_HEAD" "$H_BASE" hidecors)
+expect_r109_deny "replacement object hiding a CORS change" "$(run_guard "$STUB" "$H_DIR" "$CLEAN_STUB")"
 
 if [ "$failures" -gt 0 ]; then
   echo "git-workflow-guard-docs-tail.test.sh: $failures failure(s)"
