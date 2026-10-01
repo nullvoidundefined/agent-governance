@@ -145,7 +145,7 @@ e1d94108f5fd2527efb05e310978a90d8201848af38d012408ff8d5b4e63c2a0  enforce/tests/
 98aa8957146b779a1267ec7c470202f5e99315686df280f23a32030047e99baa  enforce/tests/push-semgrep-gate-report-parsing.test.sh
 f10c68204c759c12063f90108e5639b72a7197bb09f29d2f67cdeae2f1666c70  enforce/tests/push-semgrep-gate-trust.test.sh
 ee00d810a955b12222c95b74e31fcf53d68709b239bedd6a6946d90833842c77  enforce/tests/push-semgrep-gate.test.sh
-f1c996b51d37a4429951d597d22087a5c592e9a581be2e827acdeadc3987467a  enforce/tests/r001-non-interactive-scope-rule-text.test.sh
+39be2458eabdb5954fde8ad1f46aecc159987af94081ae696026a6aac477cec5  enforce/tests/r001-non-interactive-scope-rule-text.test.sh
 98b76df279d558144f82c4867d8427a228b0a7634ac50624b6dd127effe19f22  enforce/tests/r001-project-file-rule-text.test.sh
 70d345f79510198ca3aca9fd203716fd8b5fed2234d176c15cc16504cdab2629  enforce/tests/r109-rule-text-2.test.sh
 e192dbdc91d61ae60d0bdd23cbc6045fdfae817e33bade5983d20abd2cc7e450  enforce/tests/r109-rule-text.test.sh

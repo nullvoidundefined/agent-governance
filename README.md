@@ -187,7 +187,7 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 | Feature | Fires on | Effect |
 |---|---|---|
-| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001, R-002). | Session start | Context |
+| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001). | Session start | Context |
 | `post-compact-rules.sh` re-injects the output and process rules that a context summary drops first, plus the current task ledger. | After compaction | Context |
 | `handoff-check.sh` checks a written handoff against its size cap, its section order, and the commit it cites (R-602). | After `Write` | Advise |
 | `session-end.sh` routes `fired:` and `miss:` feedback lines into the global rule telemetry and writes a resume snapshot, and `log-rule-fire.sh` records every guard fire, so rule effectiveness is measured rather than guessed (R-603). | Session end, and every fire | Record |
