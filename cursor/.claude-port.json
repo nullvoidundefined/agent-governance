@@ -1,7 +1,7 @@
 {
   "builder": "translate/cursor.mjs",
   "builder_files": {
-    "translate/apply-profile.mjs": "sha256:f2e06a6e10f88c24e7dbcc826537a9c9575bc6d8f75ff79f87be93a56235919c",
+    "translate/apply-profile.mjs": "sha256:1c0e3db4dfcffacdc059f82ccf578aa6a51f28605192749a3d88841eac7b32a1",
     "translate/build-manifest.mjs": "sha256:177d5a56a7c35991eb0291408269a01e10e88b3a9839aaa6d1f163501421a442",
     "translate/codex.mjs": "sha256:768dd6ebeceb4cd07a1fe3472e4b12853066677c566d72f1584c47f79c9811e3",
     "translate/cursor.mjs": "sha256:1beaf0f60c77b4b8e008ce188fc2818fed85697a51aa16fc0a4fc7f391cd1c75",

@@ -28,7 +28,7 @@ const RULE_LINE = /^(R-\d{3})( \[[a-z]+\])?:/;
 // the files gates read: enforce/ (role-policy.json, tdd.sh, the manifest),
 // every skill script and data file beside a SKILL.md, and the judge's
 // rulebook/reference.md.
-const PROTECTED_HOOKS = new Set([
+export const PROTECTED_HOOKS = new Set([
   "harness-sync",
   "codex-billing-guard", "codex-test-author-guard", "commit-message-guard", "conflict-markers",
   "constant-change-guard", "content-gate", "dependency-add-guard", "destructive-command-guard",
@@ -39,7 +39,7 @@ const PROTECTED_HOOKS = new Set([
   "secret-scan", "settings-change-guard", "structure-gate", "task-provenance-gate", "ticket-at-start-gate",
   "verification-gate",
 ]);
-const PROTECTED_RULES = new Set([
+export const PROTECTED_RULES = new Set([
   "R-003", "R-101", "R-102", "R-103", "R-105", "R-106", "R-107", "R-108", "R-109",
   "R-203", "R-207", "R-212", "R-213", "R-214", "R-215",
   "R-302", "R-303", "R-306", "R-315", "R-316", "R-317", "R-320", "R-325", "R-330", "R-331", "R-334",
@@ -49,14 +49,35 @@ const PROTECTED_RULES = new Set([
   "R-605", "R-607", "R-608",
 ]);
 const PROTECTED_AGENTS = new Set(["test-author", "implementer", "slice-critic", "spec-conformance-review", "pr-reviewer", "security-reviewer"]);
-const PROTECTED_EXACT_PATHS = new Set(["CLAUDE.md", "settings.json", "rulebook/reference.md"]);
+// The two STRUCTURAL prompt contracts the review gates check against, and
+// the spec template spec-glossary-check reads (PR #175 review round 2).
+const PROTECTED_EXACT_PATHS = new Set([
+  "CLAUDE.md", "settings.json", "rulebook/reference.md",
+  "prompts/security-review-prompt.md", "prompts/codex-pr-review-prompt.md", "prompts/spec-template.md",
+]);
+// REMOVABLE_HOOK_SCRIPTS: the only hooks/ files a profile may omit, the
+// scripts of the hooks docs/harness-audit.md classes COACHING or
+// ORCHESTRATION (harness-sync excepted). Every other file under hooks/, a
+// sourced helper, a Python or Node scanner, pre-push.sample, a hook test, is
+// protected, so the rule cannot be bypassed by a helper an enforcing hook
+// needs (PR #175 review round 2).
+const REMOVABLE_HOOK_SCRIPTS = new Set([
+  "audit-signal-check", "build-cheatsheets", "clean-code-reminder", "dockerfile-reminder",
+  "draft-pr-on-first-push", "enforcement-guard-check", "flat-directory-reminder", "handoff-check",
+  "hook-integrity-check", "hookspath-drift-check", "model-switch-guard", "new-file-header-reminder",
+  "observability-reminder", "parallel-session-check", "post-compact-rules", "pr-monitor-reminder",
+  "redact-output", "redaction-guard-check", "session-end", "session-start", "single-file-folder-reminder",
+  "spec-glossary-check", "task-commit-reminder", "task-state-tracker",
+]);
 
 // isProtectedPath(rel): true for a path no profile may omit.
 function isProtectedPath(rel) {
   if (PROTECTED_EXACT_PATHS.has(rel) || rel.startsWith("enforce/")) return true;
   if (/^skills\/[^/]+\/.+/.test(rel) && !/^skills\/[^/]+\/SKILL\.md$/.test(rel)) return true;
-  const hookFile = /^hooks\/([^/]+)\.sh$/.exec(rel);
-  if (hookFile && PROTECTED_HOOKS.has(hookFile[1])) return true;
+  if (rel.startsWith("hooks/")) {
+    const hookScript = /^hooks\/([^/]+)\.sh$/.exec(rel);
+    return !(hookScript && REMOVABLE_HOOK_SCRIPTS.has(hookScript[1]));
+  }
   const agentFile = /^agents\/([^/]+)\.md$/.exec(rel);
   return Boolean(agentFile && PROTECTED_AGENTS.has(agentFile[1]));
 }
