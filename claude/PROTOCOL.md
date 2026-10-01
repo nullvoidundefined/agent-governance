@@ -88,7 +88,7 @@ Commit-subject conventions:
 
 ### Layer 4: Audits (antagonistic self-evaluation)
 
-Autonomous advisor roles, each with its own canonical file at `~/.claude/audits/<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-803).
+Autonomous advisor roles, each with its own canonical agent file at `~/.claude/agents/audit-<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-803).
 
 **Standing roles:**
 
@@ -380,7 +380,7 @@ Historical documents, memory tags, and audit reports written before 2026-07-03 c
 | R-004 | R-403 | | R-214 | R-328 | | R-400 | R-801 |
 | R-005 | R-203 | | R-215 | R-326 | | R-401 | R-802 |
 | R-006 | R-404 | | R-216 | retired | | R-402 | R-803 |
-| R-007 | R-002 | | R-217 | R-315 | | R-403 | R-804 |
+| R-007 | R-001 | | R-217 | R-315 | | R-403 | R-804 |
 | R-008 | R-208 | | R-218 | R-321 | | R-500 | R-901 |
 | R-009 | R-209 | | R-219 | R-324 | | R-501 | R-704 |
 | R-010 | R-204 | | R-220 | R-306 | | R-502 | R-904 |
@@ -409,6 +409,6 @@ Historical documents, memory tags, and audit reports written before 2026-07-03 c
 | | | | | | | R-301 | R-601 |
 | | | | | | | R-302 | R-602 |
 
-Retired current-scheme IDs: R-402 (2026-07-04) merged into R-403, which now carries the test-first requirement as step 1; old R-004 therefore maps to R-403.
+Retired current-scheme IDs: R-402 (2026-07-04) merged into R-403, which now carries the test-first requirement as step 1; old R-004 therefore maps to R-403. R-002 (2026-10-01, IAN-518) was deleted because it only restated R-001's session-start reads; old R-007 therefore maps to R-001.
 
 Retired: R-105 (retired 2026-06-07; successor content old R-514 = new R-706), R-216 (retired 2026-06-07; folded into old R-200 item 9 = new R-401 Spec item 9).

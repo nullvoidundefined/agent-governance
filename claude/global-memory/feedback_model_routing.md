@@ -54,7 +54,7 @@ explicit model is a dispatch that is silently defaulting to whatever the
 parent uses, which is almost always wrong-by-default for trivial tasks.
 
 **Audit roles should declare their preferred model in the role file.**
-The role file at `~/.claude/audits/<role>.md` is the right place to
+The role agent at `~/.claude/agents/audit-<role>.md` is the right place to
 record "this audit needs Opus" or "this audit runs fine on Sonnet."
 Without that declaration, every audit invocation re-litigates the
 question.

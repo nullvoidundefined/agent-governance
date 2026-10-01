@@ -1,0 +1,9 @@
+{
+  "pr": "nullvoidundefined/agent-governance#176",
+  "ticket": "IAN-518",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "63ab2183bf7897fc9f2c0429f4a483087c043201",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The detector flagged the range by path name only (claude/audits/security.md deleted, claude/hooks/session-start.sh text edited). The review found no security control changed: the session-start.sh edit is three comment and string lines, settings.json and manifest.json lose only the advisory single-file-folder-reminder entries, and the apply-profile protected sets are unchanged. The review of the head that adds this text is the PR body's Security review section.",
+  "findings": []
+}

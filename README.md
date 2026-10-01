@@ -169,7 +169,7 @@ named in brackets, so its full specification can be read in `claude/rulebook/ref
 | `migration-defaults-guard.sh` refuses the two known-bad migration default forms: a double-wrapped string literal and a bare SQL function string (R-328). | `Write`, `Edit` | Deny |
 | `dependency-add-guard.sh` asks before a manifest gains a third-party dependency it did not have (R-331). | `Write`, `Edit` | Ask |
 | `no-em-dash.sh` refuses any command or file content containing an em dash (R-207). | `Bash`, `Write`, `Edit` | Deny |
-| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351); `single-file-folder-reminder.sh` runs at push (R-309). | After `Write` or `Edit`, and `git push` | Advise |
+| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351). | After `Write` or `Edit` | Advise |
 
 ### Push-time linters and security scanning
 
@@ -187,7 +187,7 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 | Feature | Fires on | Effect |
 |---|---|---|
-| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001, R-002). | Session start | Context |
+| `session-start.sh` injects the global memory index and the latest project handoff, verified against the commit it names, so each session starts from recorded state rather than from scratch (R-001). | Session start | Context |
 | `post-compact-rules.sh` re-injects the output and process rules that a context summary drops first, plus the current task ledger. | After compaction | Context |
 | `handoff-check.sh` checks a written handoff against its size cap, its section order, and the commit it cites (R-602). | After `Write` | Advise |
 | `session-end.sh` routes `fired:` and `miss:` feedback lines into the global rule telemetry and writes a resume snapshot, and `log-rule-fire.sh` records every guard fire, so rule effectiveness is measured rather than guessed (R-603). | Session end, and every fire | Record |
@@ -201,15 +201,15 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 
 ### Skills
 
-Skills are named workflows the agent invokes when the work matches. There are 19 of them.
+Skills are named workflows the agent invokes when the work matches. There are 17 of them.
 
 | Stage | Skills |
 |---|---|
 | Starting work | `task-start` (classify the task into a tier that fixes its process), `ticket-lifecycle` (open, advance, and close the tracker ticket with estimates and actuals), `feature-create` (the worktree and product-doc rows for an approved plan), `repo-setup` (bring a new repository to the hygiene baseline) |
 | Specs and documents | `gof` (a four-perspective spec review), `spec-grounding` (tie a spec written elsewhere to the real codebase), `documentation-create` (explanatory documents in full sentences) |
 | Building | `build-by-slice-require-review` (the outer loop of reviewable pull requests), `tdd-gated-dispatch` (the inner loop of locked RED/GREEN slices), `build-fast` (opt-in speed-first builds: Haiku builds, the strongest model reviews once while CI runs), `structure-conventions` (the stack-specific layout rules), `add-stack-track` (add a new language or framework track) |
-| Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `known-issues` (prior deployment incidents), `resolve-user-feedback` (triage an application's feedback table) |
-| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans), `protocol` (why each rule exists) |
+| Finding problems | `bug-hunt` (audit recent changes for bugs), `all-hands` (a weekly scan by all nine audit roles), `resolve-user-feedback` (triage an application's feedback table) |
+| Finishing | `task-cleanup` (docs, ticket close with actuals, and the handoff), `cleanup-specs-plans` (retire stale specs and plans) |
 
 ### Agent roles
 
@@ -278,12 +278,12 @@ There are two hard gates. **Gate 1** is the slice plan document, written to
 `docs/slices/slice-<nn>-<slug>.md` before any code, listing every pull request in the slice with its
 context, problem, approach, contents, tests, review focus, and size, and recording on a
 `**Merge mode:**` line which merge mode the owner chose for the slice. The user approves that
-document before building starts. **Gate 2** is the pull request itself: by default the user reads
-and merges it on GitHub and the session stops there. A slice may opt out of Gate 2 at Gate 1, which
-lets the session merge that slice's pull requests itself once CI is green and the pre-merge review
-has passed. The owner's merge is the default because a review by a subagent is not a substitute for
-the owner reading the diff, and a skill named require-review should not remove them from the loop
-without being asked to (IAN-352).
+document before building starts. **Gate 2** is the owner reading and merging a pull request on GitHub.
+By default the session merges each pull request itself once CI is green and the pre-merge review has
+passed, still through the guard's per-merge confirmation, so Gate 2 applies only where it matters:
+when the pull request's range is security-touching (R-109), when `build-lane.sh` classes it guarded
+(migrations, concurrency, billing), or when the owner chooses owner-merge for the slice at Gate 1
+(owner decision 2026-09-30, IAN-517, which reversed the owner-merge default IAN-352 had set).
 
 This skill is portable prose. It describes a discipline that works in any tool, including ones with
 no hook surface at all, because nothing in it requires a script to be present. Where the hook
@@ -518,6 +518,65 @@ live `~/.claude` against the checkout and syncs when the live directory is absen
 fresh cloud container and a stale laptop both start a session under the committed harness. Cursor
 and the Codex CLI have no project-local hook surface, so in those tools `./sync.sh` is a step you
 take rather than one the harness takes for you.
+
+### Harness profiles
+
+A harness profile installs a reduced harness without deleting anything from the repository.
+`claude/enforce/harness-profiles.json` defines one profile today, `lean`. It hides every item
+that `docs/harness-audit.md` classifies as coaching or orchestration:
+
+- 40 rule lines in `CLAUDE.md`.
+- 23 hook registrations in `settings.json`. The hook files themselves stay.
+- Every skill's `SKILL.md`. The scripts that gates run, such as `task-start`'s `task-tier.sh` and
+  `build-fast`'s `build-lane.sh`, still install.
+- The nine audit agents.
+- The stack convention files and their `rules/` links, `rules/session-types.md`, three rulebook
+  files, `PROTOCOL.md`, and two prompt templates.
+
+Every enforcing hook and `harness-sync` stay registered.
+
+```bash
+./sync.sh --profile lean    # install the lean harness into ~/.claude, ~/.cursor and ~/.codex
+./sync.sh --profile full    # restore everything
+```
+
+`HARNESS_PROFILE=lean` has the same effect as the flag.
+
+**The profile is sticky.** `sync.sh` records it in `~/.claude/.harness-profile`, and a plain
+`./sync.sh` keeps the recorded profile. This matters because the `harness-sync` hook runs a plain
+`./sync.sh` whenever the live tree differs from the checkout. Without the record, lean would be
+undone at the next session start. Only `--profile full` (or `HARNESS_PROFILE=full`) restores the
+full harness and clears the record.
+
+Files that a profile hides leave the live tree through the same `.sync-manifest` allowlist as any
+other removal, so a file you edited live is kept and reported.
+
+**Lean settings apply from the next session.** A lean `settings.json` takes effect when the next
+session starts, not in the running one. The `settings-change-guard` hook blocks a mid-session
+settings change that drops a hook the manifest requires.
+
+**The translators take the same flag.** `node translate/cursor.mjs --profile lean --write --root
+<dir>` and the same for `codex.mjs` render the lean ports. The committed ports are always rendered
+without a profile, so `--check` with no profile stays the CI gate.
+
+**Some items can never be hidden.** `translate/apply-profile.mjs` keeps a protected set of its own,
+separate from the profile file. A profile that lists any of these is refused:
+
+- every enforcing hook, as a registration or as its file, and `harness-sync`
+- every file under `hooks/` except the scripts of the coaching and orchestration hooks, so a helper
+  that an enforcing hook sources can never be hidden
+- the two review prompt contracts and `prompts/spec-template.md`
+- the six TDD and review agents
+- the ENFORCE and STRUCTURAL rule ids
+- anything under `enforce/`, and every skill script and data file
+- `rulebook/reference.md`
+
+`sync.sh` also refuses to run when `~/.claude/.harness-profile` is a symlink or any other non-regular
+file, and it replaces the record atomically.
+
+**A stale list fails loudly.** An unknown profile, or a listed id that no longer exists under
+`claude/`, is an error. Run `node translate/apply-profile.mjs --validate` to check every profile
+against the tree.
 
 ## Verification
 

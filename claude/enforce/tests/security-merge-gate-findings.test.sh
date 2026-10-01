@@ -394,6 +394,23 @@ SECTION="$(security_header "$EMPTY_ARTEFACT_PATH")
 No security control in range: app/middleware/cors_config.py, docs/reviews/security-review-pr42.json, docs/reviews/security-review-empty.json"
 expect_r514_ask "case 8c (empty artefact, No security control in range)" "$(run_case case8c "$SECTION" "$PINNED_MERGE")"
 
+# Case 4d (IAN-516, PR #172 review): row 7 "fixed" by a commit outside the
+# range that a local replacement object grafts into the head's history. The
+# range check must ignore refs/replace, as GitHub merges the real head.
+git_in "$REPO_DIR" checkout -q -b outside "$REPO_BASE"
+printf 'outside\n' > "$REPO_DIR/outside.txt"
+git_in "$REPO_DIR" add outside.txt
+git_in "$REPO_DIR" commit -q -m "chore: outside the PR"
+OUTSIDE_SHA=$(git -C "$REPO_DIR" rev-parse HEAD)
+git_in "$REPO_DIR" checkout -q main
+FAKE_HEAD=$(git -C "$REPO_DIR" commit-tree "$REPO_HEAD^{tree}" -p "$REPO_HEAD" -p "$OUTSIDE_SHA" -m "replacement" 2>/dev/null)
+git_in "$REPO_DIR" replace "$REPO_HEAD" "$FAKE_HEAD"
+SECTION="$(security_header "$MATCHING_ARTEFACT_PATH")
+
+$(findings_table HIGH "\`fixed $OUTSIDE_SHA\`")"
+expect_r109_deny "case 4d (fixed by an outside commit grafted in by refs/replace)" "$(run_case case4d "$SECTION" "$PINNED_MERGE")" 7
+git_in "$REPO_DIR" replace -d "$REPO_HEAD"
+
 if [ "$failures" -gt 0 ]; then
   echo "security-merge-gate-findings.test.sh: $failures failure(s)"
   exit 1

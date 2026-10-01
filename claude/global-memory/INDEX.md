@@ -47,4 +47,4 @@ Consolidated from 29 feedback memories across 14 per-project memory directories 
 
 ## How to use
 
-`hooks/session-start.sh` injects this index into every session as SessionStart context (R-001, R-002), and again after every compaction. The files it lists are not loaded; Read one when its one-line summary is the reason you need it. Per-project auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`) loads on its own; `hooks/session-end.sh` scans that directory for `fired:` and `miss:` lines and rolls them into `rule_fires.md` and `rule_misses.md` (R-603).
+`hooks/session-start.sh` injects this index into every session as SessionStart context (R-001), and again after every compaction. The files it lists are not loaded; Read one when its one-line summary is the reason you need it. Per-project auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`) loads on its own; `hooks/session-end.sh` scans that directory for `fired:` and `miss:` lines and rolls them into `rule_fires.md` and `rule_misses.md` (R-603).

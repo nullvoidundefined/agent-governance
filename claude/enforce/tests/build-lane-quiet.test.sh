@@ -4,8 +4,7 @@
 # Covers: hook:new-file-header-reminder
 # Covers: hook:dockerfile-reminder
 # Covers: hook:flat-directory-reminder
-# Covers: hook:single-file-folder-reminder
-# build-lane-quiet.test.sh: verifies that the six reminder-only hooks go quiet
+# build-lane-quiet.test.sh: verifies that the five reminder-only hooks go quiet
 # in the build-fast fast lane and only there (IAN-401, spec B-6, acceptance
 # criterion 9). Every hook runs inside one sandbox git repository on branch
 # feat/q, with the working directory inside that repository and a file path
@@ -59,10 +58,6 @@ printf 'import { app } from "./app.js";\napp.listen(3000);\n' > "$REPO/apps/serv
 mkdir -p "$REPO/over"
 for i in $(seq 1 21); do printf 'export function f%s() {}\n' "$i" > "$REPO/over/module$i.ts"; done
 git -C "$REPO" add -A; git -C "$REPO" commit -qm "init"
-# single-file-folder-reminder: the last commit adds a folder with one module.
-mkdir -p "$REPO/src/voices"
-printf 'export function getVoice() {\n  return "x";\n}\n' > "$REPO/src/voices/voices.ts"
-git -C "$REPO" add -A; git -C "$REPO" commit -qm "add voices"
 
 # --- Hook drivers --------------------------------------------------------------
 # Each driver runs its hook from inside the sandbox repository and leaves the
@@ -88,11 +83,6 @@ run_new_file_header() { drive new-file-header-reminder "$(post_write "$REPO/src/
 ')" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
 run_dockerfile() { drive dockerfile-reminder "$(post_write "$REPO/apps/server/src/index.ts")" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
 run_flat_directory() { drive flat-directory-reminder "$(post_write "$REPO/over/module21.ts")" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
-run_single_file_folder() {
-  drive single-file-folder-reminder \
-    "$(jq -nc --arg d "$REPO" '{tool_name:"Bash",cwd:$d,tool_input:{command:"git push origin feat/q"}}')" \
-    CLAUDE_ENFORCE_BASE="${SFF_BASE:-HEAD~1}" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"
-}
 
 # Reminder predicates: the same text each hook's own fixture asserts.
 reminds_clean_code() { context | grep -q 'R-322'; }
@@ -100,7 +90,6 @@ reminds_observability() { context | grep -q 'R-345'; }
 reminds_new_file_header() { context | grep -q 'has no file-level header'; }
 reminds_dockerfile() { context | grep -q 'R-351.*no Dockerfile exists'; }
 reminds_flat_directory() { context | grep -q 'R-310'; }
-reminds_single_file_folder() { grep -q 'src/voices' <<< "$ERR"; }
 
 is_quiet() { [ -z "$OUT" ] && [ -z "$ERR" ] && [ "$ST" -eq 0 ]; }
 
@@ -117,7 +106,7 @@ set_ledger() { # set_ledger <state>
 }
 
 # --- The five ledger states for each reminder-only hook --------------------------
-for hook in clean_code observability new_file_header dockerfile flat_directory single_file_folder; do
+for hook in clean_code observability new_file_header dockerfile flat_directory; do
   set_ledger fast; "run_$hook"
   check "$hook: fast lane on this branch prints nothing and exits 0" is_quiet
   for state in guarded other-branch malformed absent; do
@@ -149,7 +138,7 @@ for gate in protected-path-guard scope-widening-gate; do
 done
 
 # --- Hardening: ledger shapes, HEAD state, ledger provenance, helper loss ------
-REMINDER_HOOKS="clean_code observability new_file_header dockerfile flat_directory single_file_folder"
+REMINDER_HOOKS="clean_code observability new_file_header dockerfile flat_directory"
 check_all_remind() { # check_all_remind <label>: every reminder hook prints its reminder
   local hook
   for hook in $REMINDER_HOOKS; do
@@ -174,11 +163,11 @@ set_ledger absent
 set_ledger fast
 git -C "$REPO" add -f .claude/task-tier.json
 git -C "$REPO" commit -qm "track ledger"
-SFF_BASE=HEAD~2 check_all_remind "tracked (committed) fast ledger"
+check_all_remind "tracked (committed) fast ledger"
 git -C "$REPO" reset -q --hard HEAD~1
 mkdir -p "$REPO/.claude"
 set_ledger absent
-check "tracked-ledger case restored the sandbox history" test "$(git -C "$REPO" log -1 --format=%s)" = "add voices"
+check "tracked-ledger case restored the sandbox history" test "$(git -C "$REPO" log -1 --format=%s)" = "init"
 
 # A ledger that is a symlink to a file outside the repository is not trusted.
 OUTSIDE_LEDGER="$SB/outside-ledger.json"
@@ -198,12 +187,12 @@ git -C "$REPO" add -f .claude ledgers/task-tier.json
 git -C "$REPO" commit -qm "track symlinked claude dir"
 check "committed .claude symlink resolves to a regular fast ledger" \
   test -f "$LEDGER" -a ! -L "$LEDGER" -a -L "$REPO/.claude"
-SFF_BASE=HEAD~2 check_all_remind "committed .claude symlink to an in-repository fast ledger"
+check_all_remind "committed .claude symlink to an in-repository fast ledger"
 git -C "$REPO" reset -q --hard HEAD~1
 rm -rf "$REPO/.claude" "$REPO/ledgers"
 mkdir -p "$REPO/.claude"
 check "committed .claude symlink case restored the sandbox history" \
-  test "$(git -C "$REPO" log -1 --format=%s)" = "add voices"
+  test "$(git -C "$REPO" log -1 --format=%s)" = "init"
 
 # Form (b): an untracked .claude symlink to a directory outside the repository.
 OUTSIDE_CLAUDE_DIR="$SB/outside-claude-dir"
@@ -241,12 +230,12 @@ check_case_variant_ledger() { # check_case_variant_ledger <directory-name> <file
     test -z "$(git -C "$REPO" status --porcelain)"
   check "committed $variant_dir/$variant_file is reachable as the ledger path" \
     test -f "$LEDGER" -a ! -L "$LEDGER"
-  SFF_BASE=HEAD~2 check_all_remind "committed case-variant fast ledger $variant_dir/$variant_file"
+  check_all_remind "committed case-variant fast ledger $variant_dir/$variant_file"
   git -C "$REPO" reset -q --hard HEAD~1
   rm -rf "$REPO/$variant_dir" "$REPO/.claude"
   mkdir -p "$REPO/.claude"
   check "case-variant $variant_dir/$variant_file case restored the sandbox history" \
-    test "$(git -C "$REPO" log -1 --format=%s)" = "add voices"
+    test "$(git -C "$REPO" log -1 --format=%s)" = "init"
   check "case-variant $variant_dir/$variant_file case restored a lowercase .claude directory" \
     bash -c 'ls -a "$1" | grep -qx "\.claude" && [ -d "$1/.claude" ] && [ ! -L "$1/.claude" ]' _ "$REPO"
 }
@@ -286,11 +275,11 @@ for hook in $REMINDER_HOOKS; do
     bash -c '! grep -q build-lane-quiet <<< "$1"' _ "$ERR"
 done
 
-# Exactly the six reminder hooks source the helper.
+# Exactly the five reminder hooks source the helper.
 HELPER_USERS=$(cd "$HOOKS" && grep -l 'build-lane-quiet' -- *.sh | grep -vx 'build-lane-quiet.sh' | sort | tr '\n' ' ')
 EXPECTED_USERS=$(printf '%s\n' clean-code-reminder.sh dockerfile-reminder.sh flat-directory-reminder.sh \
-  new-file-header-reminder.sh observability-reminder.sh single-file-folder-reminder.sh | sort | tr '\n' ' ')
-check "only the six reminder hooks reference build-lane-quiet" test "$HELPER_USERS" = "$EXPECTED_USERS"
+  new-file-header-reminder.sh observability-reminder.sh | sort | tr '\n' ' ')
+check "only the five reminder hooks reference build-lane-quiet" test "$HELPER_USERS" = "$EXPECTED_USERS"
 
 # new-file-header-reminder's own exemption: content opening with a comment.
 set_ledger absent
