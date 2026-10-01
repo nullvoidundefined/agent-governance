@@ -4,7 +4,38 @@ Nine sessions wrote here across 2026-09-20 to 09-23. This merges them; detail is
 
 **Over R-602's 8 KB by about 18.6 KiB, deliberately, and the overage grows every session it survives.** That limit assumes one session per handoff. Everything historical here is already one line apiece and pushed onto its ticket; what remains is the pending list, the production warnings and the next-session rules, and cutting those to satisfy a size check trades the document's purpose for its metric. The earlier attempt to obey the cap is the direct cause of this session's worst finding: compressing four sessions into 8179 bytes silently dropped a retraction, and only an adversarial review caught it. Filed as IAN-266; **IAN-260 is the actual fix**, giving each session its own uncapped file behind a capped index, at which point this note goes away.
 
-## Newest: IAN-473 Linear Todo label gate, 2026-09-27 to 09-30
+## Newest: process speed cuts, harness audit, and risk-tiered process, 2026-09-30 to 10-01
+
+This session's own handoff, above the older notes; it supersedes them only where they conflict.
+
+**1. Last commit.** `0045ad41` feat(rules): process cost scales with risk: R-110, risk-tiered triad and reviewer, two-round review cap (IAN-521) (#177), squash-merged on 2026-10-01 and verified on `origin/main` by reading R-110 in `claude/CLAUDE.md`. The live `~/.claude` was synced from that commit.
+
+**2. Production state.**
+- The fixture shard runner now runs only the fixtures that the changed files affect, and a change under `docs/` runs none (IAN-510).
+- The R-517 merge gate accepts a review whose later commits change only `docs/` (IAN-516, #172). The R-109 security review still has to match the PR head exactly.
+- A PR merges on green CI plus a passed R-517 review by default. The owner merges any PR that touches security or that `build-lane.sh` classes as guarded (IAN-517, #173).
+- `docs/harness-audit.md` sorts all 240 harness items into five classes (IAN-518, #174). `./sync.sh --profile lean` hides the coaching and orchestration items without deleting them (#175).
+- R-002, the audit stubs, the stderr-only reminder hook, and the `known-issues` and `protocol` skills were deleted (#176).
+- R-110 adds risk classification (IAN-521, #177). Only a high-risk slice gets the test-author, implementer, and slice-critic triad. R-517 runs on sonnet and allows at most two review rounds; LOW findings left after round two become tickets.
+
+**3. Session metrics.** IAN-516 took about 300 minutes against a 90-minute estimate, over four Codex review rounds; rounds three and four found only LOW issues. IAN-517 took about 40 minutes against 60. IAN-518 took about 180 against 180. IAN-521 took about 140 against 360, because the gate code is deferred. All four figures are approximate and were reconstructed from commit and merge times.
+
+**4. What shipped.** PRs #172 to #177, all squash-merged. PR #171 was closed without merging, on the owner's rule against further review loops.
+
+**5. Pending, by urgency.**
+- **Owner decision:** the IAN-521 gate code was deferred, so R-110 is a manual-tier rule pinned only by a text fixture. Still unbuilt: the security-surface detector extended to money and concurrency patterns, a round column in the merge gate, and a rollup after ten PRs.
+- **Owner decision:** run the proposed ablation suite in `docs/harness-audit.md` against the lean profile. It has not been run.
+- **Owner decision:** re-plan Voyager, which is currently estimated at about 300 hours, under R-110.
+- **LOW:** IAN-539. The site's manual-rule count is not checked by the site test, and its tally bar widths were computed over 131 rules. It overlaps IAN-512, which would generate those numbers; fold IAN-539 into IAN-512.
+- **Info:** Codex hits its usage limit until 2026-10-05. Until then, R-517 runs on the `pr-reviewer` subagent, and the PR body records that.
+
+**6. Next session.**
+- Classify each slice's risk at Gate 1 and record its `**Risk:**` line (R-110).
+- Stop reviewing after round two, and file the remaining LOW findings as tickets.
+- When a manifest row changes, update the counts in `site/public/index.html` and `site/tests/e2e/page.spec.ts` B-17 until IAN-512 lands.
+- Refresh hashes with `CLAUDE_INTEGRITY_ROOT=$PWD/claude bash claude/hooks/hook-integrity-check.sh --update`. Without that variable, the command writes to `~/.claude` instead.
+
+## Previous: IAN-473 Linear Todo label gate, 2026-09-27 to 09-30
 
 This session's own handoff, above the older notes; it supersedes them only where they conflict.
 
@@ -33,7 +64,7 @@ This session's own handoff, above the older notes; it supersedes them only where
 - New enforcers: fixtures must print a literal `<name>.test.sh PASS` line, and hashes are refreshed with `hook-integrity-check.sh --update` before every `tdd.sh red`. Both cost a full-suite run each this session.
 - When a merge of `main` conflicts on `hook-hashes.txt`, `codex/.claude-port.json` or `cursor/.claude-port.json`, run `translate/cursor.mjs --write`, `translate/codex.mjs --write`, and then the hash update. Never hand-merge them.
 
-## Previous: IAN-401 build-fast, 2026-09-27
+## Earlier: IAN-401 build-fast, 2026-09-27
 
 This session's own handoff, above the older notes; it supersedes them only where they conflict.
 
