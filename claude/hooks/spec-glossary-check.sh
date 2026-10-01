@@ -47,7 +47,7 @@ jq -rc '
          else "a \"## Acceptance criteria\" section with one numbered behavior per line (B-1, B-2, ...), each a slice the harness runs as RED then GREEN (R-412)" end),
         (if ($c | test("## Non-goals")) then empty
          else "a \"## Non-goals\" section naming what the spec deliberately leaves out" end),
-        (if (($c | test("## Harness rules")) and ($c | test("R-110"))) then empty
+        (if (($c | test("## Harness rules")) and ($c | test("(^|\\n)\\| *R-110"))) then empty
          else "a \"## Harness rules\" section answering how the harness will run the work, at least the R-110 risk and the R-907 test author of every slice" end)
       ]) as $missing
       | if ($missing | length) == 0 then empty

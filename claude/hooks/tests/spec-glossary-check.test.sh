@@ -105,6 +105,11 @@ None.
 
 - world - the simulated system state - chosen over: system because it is an ECS standard.
 "
+HARNESS_PROSE_ONLY="${NO_HARNESS}
+## Harness rules
+
+Risk follows R-110, decided later.
+"
 HARNESS_HEADING_ONLY="${NO_HARNESS}
 ## Harness rules
 
@@ -128,6 +133,7 @@ check "empty spec names all three"                    all_three "$SPEC" "$NOTHIN
 check "spec without harness rules nudges"            nudges "$SPEC" "$NO_HARNESS"
 check "missing harness rules are named"               names 'Harness rules' "$SPEC" "$NO_HARNESS"
 check "harness heading without a risk row nudges"     names 'R-110' "$SPEC" "$HARNESS_HEADING_ONLY"
+check "R-110 in prose without a table row nudges"     names 'R-110' "$SPEC" "$HARNESS_PROSE_ONLY"
 check "complete spec does not name harness rules"     omits 'Harness rules' "$SPEC" "$COMPLETE"
 check "non-design md under specs silent"              silent "docs/superpowers/specs/notes.md" "$NOTHING"
 check "design md outside specs silent"                silent "docs/other/x-design.md" "$NOTHING"
