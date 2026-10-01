@@ -55,9 +55,12 @@ jobs:
   # changed file is under docs/, which no fixture reads. It answers true for
   # every other event (a push to main, a manual dispatch) and whenever the
   # changed-file list cannot be read, so a failure runs the suites rather than
-  # skipping them. A job skipped by its `if` reports as skipped, which the
-  # required `fixtures` status check accepts, so branch protection still sees
-  # a result. The security workflows are separate and unaffected.
+  # skipping them. The decision lives in claude/enforce/ci-fixture-scope.sh,
+  # and the suites' `if:` also runs them when this job itself fails, so a
+  # broken scope job never reads as a skip. A job skipped by its `if` reports
+  # as skipped, which the required `fixtures` status check accepts, so branch
+  # protection still sees a result. The security workflows are separate and
+  # unaffected.
   fixture-scope:
     name: fixture scope
     runs-on: ubuntu-latest
@@ -75,23 +78,13 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          should_run=true
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            if [ "$IS_DRAFT" = "true" ]; then
-              should_run=false
-            elif changed_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA") && [ -n "$changed_files" ]; then
-              if ! printf '%s\n' "$changed_files" | grep -qv '^docs/'; then
-                should_run=false
-              fi
-            fi
-          fi
-          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
-          echo "fixture suites run: $should_run"
+          bash claude/enforce/ci-fixture-scope.sh >> "$GITHUB_OUTPUT"
+          grep '^should_run=' "$GITHUB_OUTPUT"
 
   fixtures:
     name: fixtures
     needs: fixture-scope
-    if: needs.fixture-scope.outputs.should_run == 'true'
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run == 'true') }}
     runs-on: ubuntu-latest
     steps:
       # v7: the v4 majors of both actions declare a node20 runtime, which GitHub
@@ -274,7 +267,7 @@ jobs:
   fixtures-macos:
     name: fixtures (macOS, bash 3.2)
     needs: fixture-scope
-    if: needs.fixture-scope.outputs.should_run == 'true'
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run == 'true') }}
     runs-on: macos-latest
     # A hung fixture on a 10x-billed runner costs ~3600 ubuntu-equivalent
     # minutes against an observed 13-minute run (R-517 review of PR #115).
