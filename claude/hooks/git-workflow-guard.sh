@@ -81,6 +81,11 @@ set -uo pipefail
 # A session can start this hook with HOME unset; under set -u every $HOME
 # expansion below would abort before a decision, which is an allow (IAN-436).
 : "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
+# Every git call this hook and the sourced security-surface detector make reads
+# the real history: a local refs/replace object could otherwise show the
+# checks a different head than the one GitHub merges, hiding a security change
+# from the detector or swapping in a clean artefact (PR #172 reviews, IAN-516).
+export GIT_NO_REPLACE_OBJECTS=1
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 [ "$TOOL" = "Bash" ] || exit 0
