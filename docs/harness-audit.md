@@ -291,6 +291,19 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 
 ## Recommendations
 
+### The switch that runs the ablation
+
+The `lean` profile in `claude/enforce/harness-profiles.json` is the switch the ablation below needs. It lists, by id, every COACHING and ORCHESTRATION rule line, hook registration, SKILL.md, audit agent, and reference file this audit found, and it deletes none of them. `translate/apply-profile.mjs` is the one filter every consumer uses, and it fails when a listed id no longer exists, so the list cannot drift from the tree. It keeps every ENFORCE hook, `harness-sync`, `rulebook/reference.md`, and the scripts the gates run under task-start and build-fast. `./sync.sh --profile lean` installs the lean harness into all three tool homes and records the profile so that `harness-sync` keeps it. `./sync.sh --profile full` restores everything through the `.sync-manifest` allowlist. Lean settings take effect from the next session, because settings-change-guard blocks a mid-session settings change that drops a hook the manifest requires. `node translate/cursor.mjs --profile lean --write --root <dir>`, and the same command for `codex.mjs`, render the lean Cursor and Codex ports.
+
+`apply-profile.mjs` also holds a protected set that is kept separate from the profile file. No profile may remove any item in it, in any category: every ENFORCE and STRUCTURAL hook in the Hooks table (both as a registration and as its `hooks/<name>.sh` file), `harness-sync`, the six STRUCTURAL agents, the ENFORCE and STRUCTURAL rule ids, anything under `enforce/`, every skill script and data file, and `rulebook/reference.md`. It also covers the two STRUCTURAL prompt contracts, `prompts/spec-template.md`, and every file under `hooks/` except the scripts of the COACHING and ORCHESTRATION hooks. A profile that names a protected item is refused. The `harness-profile-closure` fixture parses the Hooks and rules tables of this document. It fails when an ENFORCE or STRUCTURAL row is missing from the protected sets, and when a hook registered in `settings.json` is neither protected nor classified here.
+
+The five scaffolding templates classed ORCHESTRATION above (`prompts/feature-list-template.md`, `observability-template.md`, `stack-template.md`, `user-stories-readme-template.md`, and `user-story-area-template.md`) are deliberately left out of lean. The repo-setup `setup.sh` and feature-create `scaffold.sh` scripts, which lean keeps, read them. Hiding the templates would break those scripts while their fixtures still expect them to work.
+
+### Known limits of the lean profile
+
+- The hand-authored Codex session-start and handoff skills and the Cursor session commands are not generated from `claude/`, so they survive a lean port and still point at the session procedure lean hides.
+- Under lean, the harness-sync SessionStart hook sees the live tree differ from the checkout at every session start. It therefore re-runs `./sync.sh`, which re-applies the recorded profile, on every session instead of only when the checkout changes.
+
 ### Delete outright (no mechanism, no dependent that needs them)
 
 1. **R-002**: restates R-001. Remove the line and the one fixture assertion that pins it.

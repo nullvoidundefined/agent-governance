@@ -26,12 +26,14 @@ export function rewriteEnforcerTags(line, settingsHooks, portMap) {
 // renderRulesDoc(claudeMdText, sessionTypesText, settingsHooks, portMap):
 // the generated header, the preamble, the tag-rewritten CLAUDE.md body, and
 // the session-types content appended verbatim (session-types.md carries no
-// enforcer tags, so it never needs rewriting).
+// enforcer tags, so it never needs rewriting). A null sessionTypesText (a
+// harness profile removed the file, IAN-518) leaves the appendix out.
 export function renderRulesDoc(claudeMdText, sessionTypesText, settingsHooks, portMap) {
   const rewritten = claudeMdText
     .split("\n")
     .map((line) => rewriteEnforcerTags(line, settingsHooks, portMap))
     .join("\n");
-  const content = `${renderGeneratedHeader("CLAUDE.md and rules/session-types.md")}\n\n${PREAMBLE}\n\n${rewritten}\n\n${sessionTypesText}`;
+  const appendix = sessionTypesText === null ? "" : `\n\n${sessionTypesText}`;
+  const content = `${renderGeneratedHeader("CLAUDE.md and rules/session-types.md")}\n\n${PREAMBLE}\n\n${rewritten}${appendix}`;
   return { path: "AGENTS.md", content };
 }
