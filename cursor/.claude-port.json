@@ -21,7 +21,7 @@
   "files": {
     ".gitignore": "sha256:074e697e665e92f9824d51c9823ad18ec674341e3d05e20685f873559453bb8f",
     "PORT-STATUS.md": "sha256:f8adff5a0ac68490e0e4372963374355d95185559fb7d9d768b2d96f23f4afdd",
-    "agents/audit-criticism.md": "sha256:d2c130cb9ec0f35995a7aadb6786b0e5e0a176f91731df0dbc64a6dc7c1419cb",
+    "agents/audit-criticism.md": "sha256:c0b658996c8d634a170d1501d11e35c6c11f5e32382ab66ba1420640c09923dd",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",
     "agents/audit-design.md": "sha256:86f8aa6d608e6f7cecada777dca12fd35ba751e57875d8f30e80685c22d1673b",
     "agents/audit-engineering.md": "sha256:5bd5fc530deb5717899760eea275cad554f86cc5ac0b35ba2288e8ff1b5f0557",
@@ -59,7 +59,7 @@
     "rules/python.mdc": "sha256:245d389e5cfa7a19052a405fe50892e2edfbb60bee225f7e04051aed5287967f",
     "rules/ruby.mdc": "sha256:19e88c9621286de511f4696c74c1f39b94ef3321fb8290f4e60264d39b56eb47",
     "rules/rulebook-agents.mdc": "sha256:12f149ec09487d25156c65a4273d733fcd0e269c85498ebe40302cc2eb71be98",
-    "rules/rulebook-audits.mdc": "sha256:e1738fa78722e7e7bf73b3323aff4d77bc68d479147fb8e693fc8df933179235",
+    "rules/rulebook-audits.mdc": "sha256:4e89e6dbbf2f6cf258779863126214512a4b499e95cfba17a6297d025c5c30ce",
     "rules/rulebook-cost.mdc": "sha256:41558d933d7458b74794994f7a9c50ca240c2b3d1a4e6534e81fac4899346d41",
     "rules/rulebook-reference-convention-files.mdc": "sha256:9b6dbd631dd5e92856052fe4cb772875ff2e48e6eb726773c4780eb7d0dbbaba",
     "rules/rulebook-reference-r0xx-session-init.mdc": "sha256:1456982706daca064806bff6d9eaaed6d02278659106b4c4d21c1cd587537663",

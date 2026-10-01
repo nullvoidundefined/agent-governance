@@ -46,7 +46,7 @@ The full framework is documented in [`PROTOCOL.md`](./PROTOCOL.md). At a glance,
 | 1. Memory | mechanical | Context decay across sessions, re-learning the same lessons | `global-memory/INDEX.md` (read by `SessionStart` hook), `projects/<cwd>/memory/` |
 | 2. Skills | mechanical | High-risk or high-leverage tasks done ad hoc instead of using a tested pattern | Anthropic-shipped `superpowers` plugin (brainstorming, plans, TDD, dispatching, debugging, verification) plus this repo's `skills/` |
 | 3. Rules | mixed | Behavioral drift, forgotten conventions, ambiguous defaults | `CLAUDE.md` (this repo), per-project `CLAUDE.md`, `CLAUDE-*.md` convention files. The decidable half is data: the R-316/R-317 verb lexicon lives in `enforce/lexicon.json`, and R-319/R-320/R-325 are custom ESLint rules under `enforce/rules/`. The undecidable half (R-318, R-322) is labelled `[manual]` rather than pretending otherwise |
-| 4. Audits | prose | Confidence theater, gaps invisible to the original author | `agents/audit-*.md` (canonical role definitions); `audits/` + `audits/on-request/` forward to them |
+| 4. Audits | prose | Confidence theater, gaps invisible to the original author | `agents/audit-*.md` (the canonical role definitions, standing and on-request) |
 | 5. Tests | mechanical | Code that works until it does not, green dashboards built on confidence theater | Per-project test suites (unit, integration, E2E, smoke), run at turn end by `hooks/verification-gate.sh` (R-509) |
 | 6. Hooks | mechanical | Behavioral rules that decay under pressure; mechanical at-the-tool-call layer | `hooks/`, wired in `settings.json` (50 registrations across 8 events) |
 | 7. Process | prose | Each unit of work passes through every layer at least once | The rule corpus that sequences brainstorming, planning, execution, verification, commit, push, monitor |
@@ -98,12 +98,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── slice-critic.md              # Slice role: read-only fresh-context review, seven questions.
 │   ├── pr-reviewer.md               # R-517 pre-merge reviewer: read-only, diff pasted into its prompt.
 │   ├── security-reviewer.md         # R-109 security reviewer: read-only, strongest model from enforce/security-review-model.json.
-│   └── audit-*.md                   # On-request audit agents (design, financial, etc.)
-├── audits/                          # Pointer stubs; canonical roles live in agents/audit-*.md.
-│   ├── engineering.md               # Forwards to agents/audit-engineering.md (CTO persona).
-│   ├── security.md                  # Forwards to agents/audit-security.md (CISO persona).
-│   ├── criticism.md                 # Forwards to agents/audit-criticism.md (devil's advocate).
-│   └── on-request/                  # Forwarding stubs for the on-demand roles (ux, design, etc.)
+│   └── audit-*.md                   # The nine audit roles, standing and on-request; each file is its role's canonical definition.
 ├── hooks/                           # Claude Code hooks enforcing rules mechanically.
 │   ├── secret-scan.sh               # PreToolUse Bash. Blocks secrets on argv.
 │   ├── no-em-dash.sh                # PreToolUse Write|Edit|Bash. Blocks U+2014.

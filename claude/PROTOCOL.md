@@ -88,7 +88,7 @@ Commit-subject conventions:
 
 ### Layer 4: Audits (antagonistic self-evaluation)
 
-Autonomous advisor roles, each with its own canonical file at `~/.claude/audits/<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-803).
+Autonomous advisor roles, each with its own canonical agent file at `~/.claude/agents/audit-<role>.md`, each with a protective disposition and advisory autonomy to declare findings as blockers independent of perceived scope. Roles split into three standing roles (run pre-launch and on signal) and on-request roles (run only when their specific signal is present, per R-803).
 
 **Standing roles:**
 
