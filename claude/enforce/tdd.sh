@@ -934,25 +934,53 @@ test_format_command() {
   printf '%s' "$command"
 }
 
-# format_program_path <program>: prints the absolute path testFormatCommand's
-# program runs from, or fails when the program is refused: an assignment, a
-# shell, interpreter, launcher, or package runner, a path other than
-# node_modules/.bin/<tool> or .venv/bin/<tool>, or a bare name that PATH
-# resolves to nothing or to a relative or in-repository file.
-format_program_path() {
-  local program="$1" name resolved
-  [ -n "$program" ] || return 1
-  case "$program" in *=* | -* | *..*) return 1 ;; esac
-  name=$(basename "$program")
-  case "$name" in
+# is_launcher_name <name>: true when <name> is a shell, interpreter, launcher,
+# package runner, or hook manager, which testFormatCommand never runs.
+is_launcher_name() {
+  case "$1" in
     bash | sh | zsh | dash | ksh | mksh | csh | tcsh | fish | env | eval | exec | xargs \
       | nohup | sudo | doas | su | timeout | gtimeout | nice | ionice | time | command | builtin \
-      | source | . | python | python2 | python3 | python3.* | pypy | pypy3 | node | nodejs | deno | bun \
+      | source | . | python | python2 | python3 | python3.* | pypy* | ipython* | jupyter* \
+      | node | nodejs | deno | bun | tsx | ts-node | busybox \
       | perl | ruby | php | lua | tclsh | osascript | awk | gawk | nawk | sed | find | git | make \
       | script | arch | caffeinate | stdbuf | setsid | chroot | watch | parallel | open | flock \
-      | uv | uvx | npx | pnpm | pnpx | yarn | npm | bunx | pipx | poetry | pdm | hatch | tox | nox)
-      return 1 ;;
+      | uv | uvx | npx | pnpm | pnpx | yarn | npm | bunx | pipx | poetry | pdm | hatch | tox | nox \
+      | pre-commit)
+      return 0 ;;
   esac
+  return 1
+}
+
+# resolve_physical_path <path>: prints <path> with every symbolic link
+# followed, the final one by a readlink loop (macOS bash 3.2 has no
+# `readlink -f`) and the directories by `pwd -P`; fails on a loop or a
+# missing directory.
+resolve_physical_path() {
+  local path="$1" link hops=0 dir
+  while [ -L "$path" ]; do
+    hops=$((hops + 1))
+    [ "$hops" -le 40 ] || return 1
+    link=$(readlink -- "$path") || return 1
+    case "$link" in /*) path="$link" ;; *) path="$(dirname -- "$path")/$link" ;; esac
+  done
+  dir=$(cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd -P) || return 1
+  printf '%s/%s' "$dir" "$(basename -- "$path")"
+}
+
+# format_program_path <program>: prints the absolute path testFormatCommand's
+# program runs from, or fails when the program is refused: an assignment, a
+# launcher by name (is_launcher_name), a path other than
+# node_modules/.bin/<tool> or .venv/bin/<tool>, or a bare name that PATH
+# resolves to nothing or to a relative path. The program is then resolved
+# through every link (R-109 r3 #2, IAN-568) and refused when the file it
+# resolves to carries a launcher's name, when a bare name resolves into the
+# repository, or when a node_modules/.bin/ or .venv/bin/ entry resolves into
+# the repository outside node_modules/ and .venv/ (a link into scripts/).
+format_program_path() {
+  local program="$1" name candidate resolved
+  [ -n "$program" ] || return 1
+  case "$program" in *=* | -* | *..*) return 1 ;; esac
+  is_launcher_name "$(basename "$program")" && return 1
   case "$program" in
     */*)
       case "$program" in
@@ -962,13 +990,20 @@ format_program_path() {
       esac
       case "$name" in */*) return 1 ;; esac
       [ -f "$ROOT/$program" ] && [ -x "$ROOT/$program" ] || return 1
-      printf '%s' "$ROOT/$program" ;;
+      candidate="$ROOT/$program" ;;
     *)
-      resolved=$(type -P -- "$program" 2>/dev/null) || return 1
-      case "$resolved" in /*) ;; *) return 1 ;; esac
-      case "$resolved" in "$ROOT"/*) return 1 ;; esac
-      printf '%s' "$resolved" ;;
+      candidate=$(type -P -- "$program" 2>/dev/null) || return 1
+      case "$candidate" in /*) ;; *) return 1 ;; esac
+      case "$candidate" in "$ROOT"/* | "$ROOT_PHYSICAL"/*) return 1 ;; esac ;;
   esac
+  resolved=$(resolve_physical_path "$candidate") || return 1
+  is_launcher_name "$(basename "$resolved")" && return 1
+  case "$resolved" in
+    "$ROOT_PHYSICAL"/node_modules/* | "$ROOT_PHYSICAL"/.venv/*)
+      case "$program" in */*) ;; *) return 1 ;; esac ;;
+    "$ROOT_PHYSICAL"/*) return 1 ;;
+  esac
+  printf '%s' "$candidate"
 }
 
 # format_test_files <rel>...: runs testFormatCommand on the root-relative

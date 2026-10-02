@@ -6,7 +6,9 @@
 # while a real edit to the locked test still is. A value holding a shell
 # operator or metacharacter, or naming a shell, interpreter, launcher,
 # package runner, or a path outside node_modules/.bin/ and .venv/bin/, is
-# refused with nothing executed (R-109 r1 #4, r2 #1), and the formatted copy
+# refused with nothing executed (R-109 r1 #4, r2 #1), as is an entry that
+# resolves through a link into the repository outside node_modules/ and
+# .venv/ or onto a launcher (R-109 r3 #2), and the formatted copy
 # green hashes matches no test glob (R-109 r1 #5), lives in a fresh scratch
 # directory made with mkdir, and never writes through a symlink planted at
 # its old or a predictable path, a FIFO or /dev/null target included (R-109
@@ -138,6 +140,17 @@ printf 'open("injected", "w")\n' > scripts/inject.py
 printf '#!/usr/bin/env bash\ntouch injected\n' > "$B/npx"
 printf '#!/usr/bin/env bash\ntouch injected\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > "$B/marker"
 chmod +x "$B/npx" "$B/marker"
+# R-109 r3 #2: an allowed-directory entry that links into the repository
+# outside node_modules/ and .venv/, a bare name on PATH that links into the
+# repository, and a hook manager or TypeScript launcher are refused too.
+mkdir -p .venv/bin
+printf '#!/usr/bin/env bash\ntouch injected\n' > scripts/x.sh
+chmod +x scripts/x.sh
+ln -s ../../scripts/x.sh node_modules/.bin/x
+ln -s "$P/scripts/x.sh" "$B/linkfmt"
+printf '#!/usr/bin/env bash\ntouch injected\n' > .venv/bin/pre-commit
+printf '#!/usr/bin/env bash\ntouch injected\n' > node_modules/.bin/tsx
+chmod +x .venv/bin/pre-commit node_modules/.bin/tsx
 refusedValues=(
   "bash -c 'touch injected' --"
   "env touch injected"
@@ -146,6 +159,10 @@ refusedValues=(
   "scripts/fmt.sh"
   "npx prettier --write"
   "node_modules/.bin/../../scripts/fmt.sh"
+  "node_modules/.bin/x"
+  "linkfmt"
+  ".venv/bin/pre-commit"
+  "node_modules/.bin/tsx"
 )
 for refusedValue in "${refusedValues[@]}"; do
   rm -f .claude/tdd-lock.json injected tests/pad.test.sh
@@ -158,13 +175,18 @@ for refusedValue in "${refusedValues[@]}"; do
   grep -q '[[:space:]]$' tests/pad.test.sh || { echo "FAIL: the refused testFormatCommand [$refusedValue] must leave the test unformatted"; exit 1; }
   [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: the refused testFormatCommand [$refusedValue] must leave the hash byte-exact"; exit 1; }
 done
-echo "PASS: a shell, interpreter, launcher, package runner, assignment, or repository script as testFormatCommand is refused with nothing executed"
+echo "PASS: a shell, interpreter, launcher, package runner, hook manager, assignment, repository script, or link into the repository as testFormatCommand is refused with nothing executed"
 
-# A stub in node_modules/.bin/ and a bare stub on PATH are accepted and run.
+# A stub in node_modules/.bin/, a node_modules/.bin/ link into a package
+# under node_modules/ (how npm installs a bin), and a bare stub on PATH are
+# accepted and run.
 printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fakefmt
+mkdir -p node_modules/pkgfmt/bin
+cp node_modules/.bin/fakefmt node_modules/pkgfmt/bin/pkgfmt.js
+ln -s ../pkgfmt/bin/pkgfmt.js node_modules/.bin/pkgfmt
 printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > "$B/barefmt"
-chmod +x node_modules/.bin/fakefmt "$B/barefmt"
-for acceptedValue in "node_modules/.bin/fakefmt" "barefmt"; do
+chmod +x node_modules/.bin/fakefmt node_modules/pkgfmt/bin/pkgfmt.js "$B/barefmt"
+for acceptedValue in "node_modules/.bin/fakefmt" "node_modules/.bin/pkgfmt" "barefmt"; do
   rm -f .claude/tdd-lock.json tests/pad.test.sh
   jq -n --arg c "$acceptedValue" '{testFormatCommand: $c}' > .enforce.json
   bash "$TDD" open "F-6 pad.sh prints ok" >/dev/null
@@ -175,7 +197,7 @@ for acceptedValue in "node_modules/.bin/fakefmt" "barefmt"; do
   [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: red must hash the test [$acceptedValue] formatted"; exit 1; }
 done
 rm -f .claude/tdd-lock.json tests/pad.test.sh
-echo "PASS: a formatter in node_modules/.bin/ and a bare formatter on PATH are accepted and run"
+echo "PASS: a formatter in node_modules/.bin/, a bin link into node_modules/, and a bare formatter on PATH are accepted and run"
 
 # --- the formatted copy never follows a planted symlink (R-109 r2 #2, r3 #1) --
 # Bash noclobber opens a link to an existing non-regular file (a FIFO,
