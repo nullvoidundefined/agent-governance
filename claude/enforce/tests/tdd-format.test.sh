@@ -3,7 +3,8 @@
 # Verifies `.enforce.json`'s testFormatCommand in enforce/tdd.sh (I2, IAN-568).
 # red formats the named test before hashing it, so a later reformat by the
 # same formatter (a pre-commit hook) before green is not read as a change,
-# while a real edit to the locked test still is. Drives the bash *.test.sh
+# while a real edit to the locked test still is. A value holding a shell
+# operator is refused (R-109 r1 #4). Drives the bash *.test.sh
 # runner through the real run-fixture-shards.sh in a throwaway repository.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -51,5 +52,19 @@ echo "PASS: a reformat by the same formatter before green does not trip the hash
 printf 'echo changed\n' >> tests/trim.test.sh
 expect_fail "green after a semantic edit" bash "$TDD" green | grep -q 'changed since RED' || { echo "FAIL: green must refuse a locked test changed beyond formatting"; exit 1; }
 echo "PASS: a semantic edit to the locked test still trips the hash check"
+
+# --- a value holding a shell operator is refused (R-109 r1 #4) ---------------
+# The key runs under bash -c, so it may name one formatter and its flags only;
+# a refused value warns, formats nothing, and leaves the hash byte-exact.
+rm -f .claude/tdd-lock.json
+jq -n '{testFormatCommand: "bash scripts/fmt.sh; touch injected"}' > .enforce.json
+bash "$TDD" open "F-2 pad.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/pad.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "pad.test.sh PASS"\n' > tests/pad.test.sh
+out=$(bash "$TDD" red tests/pad.test.sh 2>&1) || { echo "FAIL: red with a refused testFormatCommand must still succeed; output: $out"; exit 1; }
+grep -q 'testFormatCommand is refused' <<< "$out" || { echo "FAIL: red must warn that the testFormatCommand is refused; output: $out"; exit 1; }
+[ ! -e injected ] || { echo "FAIL: a refused testFormatCommand must not run"; exit 1; }
+grep -q '[[:space:]]$' tests/pad.test.sh || { echo "FAIL: a refused testFormatCommand must leave the test unformatted"; exit 1; }
+[ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: a refused testFormatCommand must leave the hash byte-exact"; exit 1; }
+echo "PASS: a testFormatCommand holding a shell operator is refused and hashing stays byte-exact"
 
 echo "tdd-format.test.sh PASS"

@@ -35,7 +35,9 @@
 #       requires the containing files to be byte-identical to the lock and,
 #       when the lock is committed, to the commit that introduced it (the RED
 #       commit), or identical once .enforce.json's testFormatCommand formats
-#       a copy (red and amend run that formatter before hashing); a gitignored
+#       a copy (red and amend run that formatter before hashing; the key names
+#       one pure formatter and its flags, and a value holding a shell operator
+#       is refused with a warning); a gitignored
 #       lock has no RED commit, so one commit per slice is fine; runs the suite and requires every named test to pass, none
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
@@ -899,9 +901,20 @@ cmd_red() {
 # with a pre-commit formatter should set the key to that same formatter.
 
 # test_format_command: prints .enforce.json's testFormatCommand, or nothing.
+# The value runs under `bash -c`, so it must name one pure formatter program
+# and its flags (never a --fix linter): a value holding a shell operator
+# (`|`, `;`, `&`, `$(`, a backtick, `>`, `<`, or a newline) is refused with a
+# warning and the hash check stays byte-exact (R-109 r1 #4, IAN-568).
 test_format_command() {
+  local command
   [ -f "$ROOT/.enforce.json" ] || return 0
-  jq -r '.testFormatCommand // empty' "$ROOT/.enforce.json" 2>/dev/null || true
+  command=$(jq -r '.testFormatCommand // empty' "$ROOT/.enforce.json" 2>/dev/null || true)
+  case "$command" in
+    *'|'* | *';'* | *'&'* | *'$('* | *'`'* | *'>'* | *'<'* | *$'\n'*)
+      say "warning: testFormatCommand is refused because it holds a shell operator; name one formatter program and its flags. Hashing the test(s) byte-exact" >&2
+      return 0 ;;
+  esac
+  printf '%s' "$command"
 }
 
 # format_test_files <rel>...: runs testFormatCommand on the root-relative

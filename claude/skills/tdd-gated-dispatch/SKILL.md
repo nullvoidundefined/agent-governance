@@ -49,7 +49,7 @@ Name new tests in a file that already holds passing ones by id: `tdd.sh red 'tes
 8. close      tdd.sh close; accepted candidates become B-n+1
 ```
 
-A repository whose pre-commit hook reformats tests names that formatter as `testFormatCommand` in `.enforce.json`, so `tdd.sh red` hashes the formatted test and a later reformat is not read as a change (I2).
+A repository whose pre-commit hook reformats tests names that formatter as `testFormatCommand` in `.enforce.json` (one pure formatter program and its flags, never a `--fix` linter; a value holding `|`, `;`, `&`, `$(`, a backtick, `>`, `<`, or a newline is refused), so `tdd.sh red` hashes the formatted test and a later reformat is not read as a change (I2).
 
 ## High-risk slice: three roles, fresh context each
 
