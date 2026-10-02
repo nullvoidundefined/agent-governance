@@ -1,6 +1,6 @@
 # Session Types
 
-Classify the session from the user's first message. Ambiguous or mixed: load the superset.
+Session start is a default (R-001, owner decision 2026-10-02, IAN-568): read the handoff if one exists, then classify the session from the user's first message. No declaration line is required. Read a Tier 2 file only when the session type's work needs it; the Load column names the candidates. Ambiguous or mixed: take the superset of what the work needs.
 
 | Session type | Trigger signals | Load |
 |---|---|---|
@@ -8,8 +8,8 @@ Classify the session from the user's first message. Ambiguous or mixed: load the
 | `bugfix` | Fixing bug, failing test, regression | core only |
 | `refactor` | Restructuring code without changing behavior | core only |
 | `exploration` | Reading code, answering questions, research, no writes | core only |
-| `planning` | Designing feature, writing spec or plan | core + cost |
-| `multi-agent` | Dispatching subagents, parallel worktrees, multi-repo | core + agents + cost |
+| `planning` | Designing feature, writing spec or plan | core (cost when routing models or estimating) |
+| `multi-agent` | Dispatching subagents, parallel worktrees, multi-repo | core + agents |
 | `audit` | Running engineering, security, criticism, or other audit | core + audits |
 | `deploy` | Railway deploys, env config, infrastructure | core only |
 

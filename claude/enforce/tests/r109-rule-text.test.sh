@@ -47,17 +47,16 @@ lineNumberOf() {
 # ---------------------------------------------------------------------------
 # Item 1: the R-109 norm line in CLAUDE.md.
 # ---------------------------------------------------------------------------
-R108_LINE=$(lineNumberOf "$CLAUDE_FILE" '^R-108: ')
+# Since 2026-10-02 (IAN-568) CLAUDE.md carries only the mandatory rules, under
+# one "## Mandatory rules" heading; R-108 merged into R-102 and R-406 became a
+# default, so R-109 is anchored to that section instead.
 R109_LINE=$(lineNumberOf "$CLAUDE_FILE" '^R-109: ')
-SECRETS_HEADING=$(lineNumberOf "$CLAUDE_FILE" '^## Secrets and trust \(R-1xx\)')
-CONDUCT_HEADING=$(lineNumberOf "$CLAUDE_FILE" '^## Conduct and output \(R-2xx\)')
-[ -n "$R108_LINE" ] || fail "CLAUDE.md has no R-108 norm line to anchor R-109 after"
+MANDATORY_HEADING=$(lineNumberOf "$CLAUDE_FILE" '^## Mandatory rules')
+DEFAULTS_HEADING=$(lineNumberOf "$CLAUDE_FILE" '^## Defaults')
 [ -n "$R109_LINE" ] || fail "CLAUDE.md has no R-109 norm line"
-[ -n "$SECRETS_HEADING" ] && [ -n "$CONDUCT_HEADING" ] || fail "CLAUDE.md lost its R-1xx or R-2xx section heading"
-[ "$R109_LINE" -eq $((R108_LINE + 1)) ] || fail "CLAUDE.md R-109 must be the line right after R-108 (R-108 at $R108_LINE, R-109 at $R109_LINE)"
-[ "$R109_LINE" -gt "$SECRETS_HEADING" ] && [ "$R109_LINE" -lt "$CONDUCT_HEADING" ] \
-    || fail "CLAUDE.md R-109 must sit in the Secrets and trust (R-1xx) section"
-
+[ -n "$MANDATORY_HEADING" ] && [ -n "$DEFAULTS_HEADING" ] || fail "CLAUDE.md lost its Mandatory rules or Defaults heading"
+[ "$R109_LINE" -gt "$MANDATORY_HEADING" ] && [ "$R109_LINE" -lt "$DEFAULTS_HEADING" ] \
+    || fail "CLAUDE.md R-109 must sit in the Mandatory rules section"
 R109_NORM=$(sed -n "${R109_LINE}p" "$CLAUDE_FILE")
 requireEitherPhrase "$R109_NORM" 'security is the first-order concern' 'treat security as the first-order concern' \
     "CLAUDE.md R-109 does not make security the first-order concern"
@@ -83,24 +82,11 @@ grep -qE -- "\[[^]]*${ENFORCER}[^]]*\]\$" <<< "$R109_NORM" \
 # ---------------------------------------------------------------------------
 # Item 4: the R-406 norm line in CLAUDE.md covers every security control.
 # ---------------------------------------------------------------------------
-R406_NORM=$(grep -E '^R-406: ' "$CLAUDE_FILE" || true)
-[ -n "$R406_NORM" ] || fail "CLAUDE.md has no R-406 norm line"
-requirePhrase "$R406_NORM" 'negative-input test' \
-    "CLAUDE.md R-406 lost its user-input negative-input test"
-requirePhrase "$R406_NORM" 'every security control' \
-    "CLAUDE.md R-406 does not extend the negative test to every security control"
-requirePhrase "$R406_NORM" 'insecure value' \
-    "CLAUDE.md R-406 does not require feeding a security control its insecure value"
-requirePhrase "$R406_NORM" '`*`, `null`, empty' \
-    "CLAUDE.md R-406 does not list the insecure values (\`*\`, \`null\`, empty)"
-requirePhrase "$R406_NORM" 'weakened flag' \
-    "CLAUDE.md R-406 does not list a weakened flag among the insecure values"
-requirePhrase "$R406_NORM" 'configuration included' \
-    "CLAUDE.md R-406 does not say configuration-sourced values are included"
-
-# ---------------------------------------------------------------------------
-# Item 2: the R-109 entry in rulebook/reference.md.
-# ---------------------------------------------------------------------------
+requirePhrase "$R109_NORM" 'MEDIUM or higher' \
+    "CLAUDE.md R-109 does not state the security review's exception to the 1:1 budget"
+R406_CLASS=$(awk '/^R-406: /{inside=1; next} inside && /^  Class: /{print; exit} inside && /^R-/{exit}' "$REFERENCE_FILE")
+requirePhrase "$R406_CLASS" 'M on high-risk slices' \
+    "rulebook/reference.md R-406 is not mandatory on high-risk slices"
 REF_R108=$(lineNumberOf "$REFERENCE_FILE" '^R-108: ')
 REF_R109=$(lineNumberOf "$REFERENCE_FILE" '^R-109: ')
 REF_CONDUCT=$(lineNumberOf "$REFERENCE_FILE" '^## Conduct and output')
