@@ -2,7 +2,7 @@
 
 # Codex port status
 
-57 of 62 hook registrations port, across 6 Codex events.
+48 of 52 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -17,13 +17,9 @@
 | `protected-path-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `ticket-at-start-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-eslint-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-ruff-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `push-semgrep-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `push-rubocop-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `push-golangci-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `push-feature-docs-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `pr-ticket-ref-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `constant-change-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `audit-signal-check` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
@@ -35,11 +31,6 @@
 | `content-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `protected-path-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `codex-test-author-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `ticket-at-start-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `lexicon-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `scope-widening-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `task-provenance-gate` | PreToolUse (TaskCreate) | not ported: fires on Claude Code's TaskCreate tool, which Codex lacks; a registration on that matcher would never receive an event, so R-213's provenance tag depends on recall under Codex. |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
@@ -50,7 +41,6 @@
 | `flat-directory-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `spec-glossary-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
 | `handoff-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
-| `clean-code-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `observability-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
 | `task-commit-reminder` | PostToolUse (TaskUpdate) | not ported: fires on Claude Code's TaskUpdate tool, which Codex lacks; R-504 depends on recall under Codex. |

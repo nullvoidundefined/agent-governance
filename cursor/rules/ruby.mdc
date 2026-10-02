@@ -246,13 +246,12 @@ This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend fi
 - Test runs (R-509): run the full suite in parallel with `parallel_tests` (`bundle exec parallel_rspec`), one test database per process (`TEST_ENV_NUMBER`). Turn ends, commits, and branch-level merges run only the affected specs: the changed `*_spec.rb` files plus the specs mirroring changed `app/` files (`spec/` mirrors `app/`, R-313). The full parallel run happens as the required CI check before any merge to `main`, not at pre-push (IAN-98). Adding `parallel_tests` is a new dependency and needs its R-331 justification.
 ## Tooling (analog of Prettier/ESLint)
 
-- RuboCop (with rails/rspec plugins) is lint and formatter; `bundle exec rubocop -a` on staged files pre-commit (R-408); full sweep pre-push/CI (R-509).
-- Trust the pre-commit hooks; do not manually re-run them (R-510).
+- RuboCop (with rails/rspec plugins) is lint and formatter; `bundle exec rubocop -a` on staged files pre-commit; full sweep pre-push/CI (R-509).
+- Trust the pre-commit hooks; do not manually re-run them.
 
 ## Enforcement (analog of push-eslint-gate)
 
-- `hook:push-rubocop-gate` runs the bundled `~/.claude/enforce/rubocop-enforce.yml` over the outgoing Ruby diff on `git push`, added lines only: `Style/NestedTernaryOperator` (R-327), `Naming/MethodName`/`Naming/VariableName`/`Naming/ConstantName` (R-316/R-317 support). PATH-resolved RuboCop only, never `bundle exec` (the target repo's Gemfile is untrusted code; 2026-07-31 security audit); fails open without RuboCop.
-- The same gate runs `~/.claude/enforce/data-access/ruby_data_access.rb` (stdlib Ripper) over the changed Ruby files, added lines only: R-361, an ActiveRecord finder or writer on a model constant, connection-level SQL (`exec_query`, `select_all`), or a query object's `.call` inside an iteration block or a `while`/`until`/`for`; R-362, inside a `transaction` or `with_lock` block, an HTTP client call, a mailer `deliver_*`, or a job `perform_later`/`perform_async` (an `after_commit` block is the fix and passes). Lazy association access in a loop is not statically decidable: use `includes` or `preload` and `strict_loading`. The checker runs even without RuboCop and fails open without `ruby`. A deliberately bounded loop carries `# data-access-allow: <the bound>` on the line or the line above.
-- `ci:llm-rule-judge` (the `rule-judge` CI check) judges `*.rb` in each pull request's diff (R-315/R-316/R-317/R-325/R-334, the manifest's llm-judge tier).
-- `hook:structure-gate` scans `app/`- and `lib/`-rooted Ruby trees: snake_case allowed, `lib/` and `db/` blessed; catch-alls, other abbreviations, and co-located specs deny.
+- No Ruby push gate ships: the RuboCop gate and its Ripper data-access checker were removed in IAN-568 because no Ruby project used them; `add-stack-track` re-adds a gate with a real project.
+- `ci:llm-rule-judge` (the `rule-judge` CI check) judges `*.rb` in each pull request's diff (R-316/R-317/R-325/R-334, the manifest's llm-judge tier).
+- `hook:structure-gate` scans `app/`- and `lib/`-rooted Ruby trees: snake_case allowed, `lib/` and `db/` blessed; catch-alls and co-located specs deny, other abbreviations warn.
 - `hook:migration-defaults-guard` covers the Rails migration forms above.

@@ -801,3 +801,11 @@ Default to parallel, affected-only runs; the full suite belongs to CI.
 | Trailing commas | All | `[a, b, c,]` |
 | Indentation | 4 spaces | (n/a) |
 | Line width | 100 chars | (n/a) |
+
+## Incident-backed rules: billing apps
+
+Moved from the global-memory PL list on 2026-10-02 (IAN-568). They apply to an application that charges for usage; they are defaults.
+
+- **PL16.** An action that debits credits, deletes data, or calls a paid API gets a confirm dialog with a cost or impact preview before it proceeds; never charge on a first click without warning.
+- **PL17.** A system that bills on AI or API usage keeps a jobs table (`ai_jobs` or similar) with `estimated_cost_cents`, `actual_cost_cents`, `differential_cents`, `input_tokens`, and `output_tokens`, populated on every call and aggregated in SQL for margin reporting.
+- **PL18.** Every pricing formula carries a comment stating the business intent, not just the math: "uploads at cost plus a 15% minimum profit" is a business decision, while `const TARGET_MARGIN = 0.96` alone is not.

@@ -83,28 +83,12 @@
             "note": "Python analog via push-ruff-gate"
         },
         {
-            "id": "R-324",
-            "tier": "ast",
-            "enforcer": "golangci:mnd",
-            "severity": "error",
-            "autofix": false,
-            "note": "Go analog via push-golangci-gate"
-        },
-        {
             "id": "R-326",
             "tier": "ast",
             "enforcer": "ruff:E731",
             "severity": "error",
             "autofix": false,
             "note": "Python analog (no lambda assigned to a name) via push-ruff-gate"
-        },
-        {
-            "id": "R-327",
-            "tier": "ast",
-            "enforcer": "rubocop:Style/NestedTernaryOperator",
-            "severity": "error",
-            "autofix": false,
-            "note": "Ruby analog via push-rubocop-gate"
         },
         {
             "id": "R-329",
@@ -186,30 +170,6 @@
             "note": "Python analog (no blind except that does not re-raise) via push-ruff-gate"
         },
         {
-            "id": "R-344",
-            "tier": "ast",
-            "enforcer": "golangci:errcheck",
-            "severity": "error",
-            "autofix": false,
-            "note": "Go analog (every error return handled) via push-golangci-gate"
-        },
-        {
-            "id": "R-344",
-            "tier": "ast",
-            "enforcer": "golangci:errorlint",
-            "severity": "error",
-            "autofix": false,
-            "note": "Go analog (%w wrapping, errors.Is/As) via push-golangci-gate"
-        },
-        {
-            "id": "R-344",
-            "tier": "ast",
-            "enforcer": "rubocop:Lint/SuppressedException",
-            "severity": "error",
-            "autofix": false,
-            "note": "Ruby analog (no empty rescue) via push-rubocop-gate"
-        },
-        {
             "id": "R-329",
             "tier": "ast",
             "enforcer": "eslint:ban-ts-comment",
@@ -231,14 +191,6 @@
             "severity": "error",
             "autofix": false,
             "note": "Python analog (no blanket type: ignore / noqa; PGH004 rides the same entry) via push-ruff-gate"
-        },
-        {
-            "id": "R-329",
-            "tier": "ast",
-            "enforcer": "golangci:nolintlint",
-            "severity": "error",
-            "autofix": false,
-            "note": "Go analog (every nolint names a linter and reason) via push-golangci-gate"
         },
         {
             "id": "R-101",
@@ -381,10 +333,11 @@
         },
         {
             "id": "R-403",
-            "tier": "regex",
+            "tier": "advisory",
             "enforcer": "hook:fix-commit-requires-test",
-            "severity": "error",
-            "autofix": false
+            "severity": "warn",
+            "autofix": false,
+            "note": "PreToolUse Bash git commit: a fix-family subject with no staged test file gets non-blocking additionalContext naming the R-403 path; a warning since IAN-568, never a deny. Fixture: hooks/tests/fix-commit-requires-test.test.sh"
         },
         {
             "id": "R-605",
@@ -474,14 +427,6 @@
             "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url, one call; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block, or whose section under that heading lacks a reviewer, a model, or a range line with a value, or whose range line holds no <base>..<head> expression whose head endpoint prefixes the headRefOid the same call returned (a stale range, a head in the base position, a bare object name, or a gh that reports no head commit all deny), or whose body holds more than one Codex review heading, unless the PR is trivial tier: an untracked .claude/task-tier.json at the checkout's top records tier trivial for the PR's headRefName, the PR's url names the checkout's origin repository, and isCrossRepository is false (a trivial marker in the PR body is never read); fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on any merge the hook cannot parse. Merges are found by the quote-aware shell scan in hooks/shell-command-tokens.sh (braces, subshells, backticks, control flow, eval and sh -c strings, heredocs fed to a shell, wrappers, quoting, and escapes are all seen; a shell reading its script from stdin and a gh, pr, or merge word built by expansion count as unreadable merges; a mention inside a quoted argument or a heredoc fed to anything but a shell is not a merge), and only a bare gh pr merge on its own simple command is parseable; its flags are read from the scanned words. Fenced code, indented code, and HTML comments do not count as the section. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh; build-fast (IAN-401): enforce/tests/build-fast-composition.test.sh pins that a lane or merge mode on the ledger changes no merge-guard decision, enforce/tests/build-fast-rule-text.test.sh pins the R-211, R-514, and R-517 build-fast clauses, and enforce/tests/build-lane.test.sh covers the skills/build-fast lane classifier. IAN-521 (2026-10-01): the reviewer runs on sonnet for every PR outside build-fast, security-touching ones included, and a PR gets at most two review rounds, after which LOW findings are ticketed and answered with the key; the hook does not parse review rounds or the reviewer model, so both stay manual (deferred)"
         },
         {
-            "id": "R-511",
-            "tier": "advisory",
-            "enforcer": "hook:git-workflow-guard",
-            "severity": "warn",
-            "autofix": false,
-            "note": "commit-time warning at 5+ files across 3+ directories on main"
-        },
-        {
             "id": "R-508",
             "tier": "advisory",
             "enforcer": "hook:git-workflow-guard",
@@ -530,11 +475,11 @@
         },
         {
             "id": "R-312",
-            "tier": "regex",
+            "tier": "advisory",
             "enforcer": "hook:structure-gate",
-            "severity": "error",
+            "severity": "warn",
             "autofix": false,
-            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/; page and Nitro route directories are exempt as URL segments"
+            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/; page and Nitro route directories are exempt as URL segments; a warning since IAN-568, never a deny"
         },
         {
             "id": "R-306",
@@ -561,11 +506,11 @@
         },
         {
             "id": "R-311",
-            "tier": "regex",
+            "tier": "advisory",
             "enforcer": "hook:structure-gate",
-            "severity": "error",
+            "severity": "warn",
             "autofix": false,
-            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/, so abbreviations there are denied too"
+            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/, so abbreviations there warn too; a warning since IAN-568, never a deny"
         },
         {
             "id": "R-313",
@@ -628,14 +573,6 @@
             "severity": "error",
             "autofix": false,
             "note": "the 2+ property read; \"never destructure a method\" is a type question and stays with the judge"
-        },
-        {
-            "id": "R-322",
-            "tier": "advisory",
-            "enforcer": "hook:clean-code-reminder",
-            "severity": "warn",
-            "autofix": false,
-            "note": "silent in the build-fast fast lane through hooks/build-lane-quiet.sh (IAN-401), fixture enforce/tests/build-lane-quiet.test.sh"
         },
         {
             "id": "R-341",
@@ -702,38 +639,6 @@
             "note": "Python analog via enforce/data-access/python_data_access.py: inside with/async with <expr>.begin()/begin_nested(), an httpx/requests/aiohttp or clients/ call, or a data-access call not given the transaction connection (the as-name or begin receiver, engines excluded); get_connection dependency not inspected. Fixture: enforce/tests/data-access-python.test.sh"
         },
         {
-            "id": "R-361",
-            "tier": "ast",
-            "enforcer": "hook:push-golangci-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "Go analog via enforce/data-access/go/main.go (stdlib go/ast, built and run by push-golangci-gate on added lines, including repos off the golangci trust list since it only parses): Query/QueryRow/Exec/*Context/CopyFrom, repositories/ import, or *Repo/*Repository receiver call in a for/range body, cond/post, or a literal invoked there; helpers not followed; SendBatch results exempt; // data-access-allow: <reason> suppresses. Fixture: enforce/tests/data-access-go.test.sh"
-        },
-        {
-            "id": "R-362",
-            "tier": "ast",
-            "enforcer": "hook:push-golangci-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "Go analog via enforce/data-access/go/main.go: inside a BeginFunc/BeginTxFunc/WithTx/WithTransaction/InTx/RunInTx literal with a *Tx parameter, a data-access call not on or passed the tx, or net/http, .Do on a client, or clients/ calls; a context-carried tx is not checked. Fixture: enforce/tests/data-access-go.test.sh"
-        },
-        {
-            "id": "R-361",
-            "tier": "ast",
-            "enforcer": "hook:push-rubocop-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "Ruby analog via enforce/data-access/ruby_data_access.rb (stdlib Ripper, run by push-rubocop-gate on added lines): ActiveRecord finder or writer on a model constant, connection-level SQL, or query-object .call inside an iteration block or while/until/for; lazy association access is not decidable (strict_loading/includes); # data-access-allow: <reason> suppresses. Fixture: enforce/tests/data-access-ruby.test.sh"
-        },
-        {
-            "id": "R-362",
-            "tier": "ast",
-            "enforcer": "hook:push-rubocop-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "Ruby analog via enforce/data-access/ruby_data_access.rb: network client call, deliver_now/deliver_later, or perform_later/perform_async/perform_in/perform_at inside a transaction or with_lock block (after_commit blocks exempt). Fixture: enforce/tests/data-access-ruby.test.sh"
-        },
-        {
             "id": "R-362",
             "tier": "llm-judge",
             "enforcer": "ci:llm-rule-judge",
@@ -772,13 +677,6 @@
             "severity": "warn",
             "autofix": false,
             "note": "codex CLI invocation with an OPENAI_API_KEY in scope, a --with-api-key/--with-access-token relogin, or a live login status that is not ChatGPT"
-        },
-        {
-            "id": "R-315",
-            "tier": "llm-judge",
-            "enforcer": "ci:llm-rule-judge",
-            "severity": "error",
-            "autofix": false
         },
         {
             "id": "R-316",
@@ -823,7 +721,8 @@
             "tier": "regex",
             "enforcer": "hook:commit-message-guard",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "PreToolUse Bash: denies a non-conventional subject or more than two triage IDs in the scope; judges only the subject line, so a heredoc message (-F - <<EOF or -m \"$(cat <<EOF ...)\") whose body holds expansions passes on a conventional subject (IAN-568); asks only when the subject starts with a substitution or expansion it cannot read. The R-506 body ask and the R-214 out-of-scope refusal were removed in IAN-568. Fixtures: enforce/tests/commit-message-guard*.test.sh"
         },
         {
             "id": "R-504",
@@ -831,14 +730,6 @@
             "enforcer": "hook:task-commit-reminder",
             "severity": "warn",
             "autofix": false
-        },
-        {
-            "id": "R-503",
-            "tier": "advisory",
-            "enforcer": "hook:session-start",
-            "severity": "warn",
-            "autofix": false,
-            "note": "SessionStart, every source: records the start timestamp (first valid transcript timestamp, else the hook clock on startup or clear with no transcript file yet) write-once to ~/.claude/projects/<key>/session-start.<session-id> and injects it; ticket-lifecycle open reads started_at from it. Needs transcript_path in the payload; the Cursor adapter passes a synthetic one keyed on the workspace and conversation_id, so a Cursor conversation records the hook clock once. The percentage announcements and elapsed-time reports stay manual. Fixture: hooks/tests/session-start-timestamp.test.sh"
         },
         {
             "id": "R-601",
@@ -855,30 +746,6 @@
             "severity": "error",
             "autofix": false,
             "note": "PreToolUse Bash gh pr create: denies when no commit in the pull request's range (base from --base, else origin's default branch) and no --body or --body-file text carries a `Refs: <KEY>` line; exempts a docs-only range and a trivial tier recorded for the current branch in .claude/task-tier.json; with ~/.claude/TICKET-TRACKER.json absent it allows with a warning naming the degraded path. Ticket opening, advancing, and the key on specs and handoffs stay manual. Fixture: enforce/tests/pr-ticket-ref-gate.test.sh"
-        },
-        {
-            "id": "R-605",
-            "tier": "regex",
-            "enforcer": "hook:ticket-at-start-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Write|Edit and Bash git commit (every commit in the command, read by the quote-aware scan in shell-command-scan.sh after cd/pushd, env assignments, wrappers, shell keywords, and git -C / --work-tree / --git-dir; a commit inside sh -c, bash -c, or eval denies as unreadable; cherry-pick, revert, am, and merge are not gated): denies when the checkout's .claude/task-tier.json is missing, tracked by git, unreadable, names another branch, or records a tier above trivial with no ticket key; task-tier.sh set refuses a tier above trivial without --ticket <KEY> while a tracker is configured, and a same-branch reclassification keeps the key. Not gated: no ~/.claude/TICKET-TRACKER.json, outside a git work tree, detached HEAD, paths under <top>/.claude/ or gitignored. Opening the ticket itself and the key's match to the work stay manual. Fixtures: enforce/tests/ticket-at-start-gate.test.sh, enforce/tests/task-tier.test.sh; enforce/tests/task-tier-lane.test.sh covers the build-fast ledger fields (--lane, --lane-override, --merge-mode, IAN-401)"
-        },
-        {
-            "id": "R-607",
-            "tier": "regex",
-            "enforcer": "hook:push-feature-docs-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Bash git push: runs the canonical enforce/require-feature-checklist.sh over the outgoing diff (never the target repository's copy) and denies when the branch adds a Next, Nuxt, FastAPI, or Express route without changing docs/feature-list/features.md, a docs/user-stories/ story, and an e2e spec; .enforce.json productDocs false opts a repository out. Fixtures: enforce/tests/push-feature-docs-gate.test.sh, enforce/tests/require-feature-checklist.test.sh"
-        },
-        {
-            "id": "R-608",
-            "tier": "regex",
-            "enforcer": "hook:push-feature-docs-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Bash git push: after the R-607 checklist, runs the canonical enforce/require-stack-observability-docs.sh over the outgoing diff (never the target repository's copy) and denies when a package.json, pyproject.toml, Gemfile, or go.mod gains or loses a dependency name without docs/stack.md changing, or when an analytics event registry entry, an error-code registry entry, or a log event name is added or removed without docs/observability.md changing; .enforce.json stackDoc false and observabilityDoc false opt a repository out of each half. Fixtures: enforce/tests/require-stack-observability-docs.test.sh, enforce/tests/push-feature-docs-gate.test.sh"
         },
         {
             "id": "R-513",
@@ -910,13 +777,6 @@
             "autofix": false
         },
         {
-            "id": "R-506",
-            "tier": "advisory",
-            "enforcer": "hook:commit-message-guard",
-            "severity": "warn",
-            "autofix": false
-        },
-        {
             "id": "R-330",
             "tier": "advisory",
             "enforcer": "hook:spec-glossary-check",
@@ -925,52 +785,12 @@
             "note": "design doc written without a Domain vocabulary glossary, an Acceptance criteria section, or a Non-goals section; template in prompts/spec-template.md"
         },
         {
-            "id": "R-330",
-            "tier": "regex",
-            "enforcer": "hook:lexicon-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Write|Edit (only a brand-new file is judged; an Edit of an existing file is a no-op here): denies a brand-new file with a gated source extension (ts, tsx, js, jsx, mjs, py, rb, go, vue; .d.ts exempted per R-320) inside a git work tree, linked worktrees included, that carries no \"## Domain vocabulary\" heading anywhere. Any file already on disk, a non-gated extension, a repo that already has the heading anywhere, and a path outside any work tree are silent; a filesystem read error elsewhere in the tree fails open rather than denying. Fixture: enforce/tests/lexicon-gate.test.sh"
-        },
-        {
             "id": "R-331",
             "tier": "regex",
             "enforcer": "hook:dependency-add-guard",
             "severity": "error",
             "autofix": false,
             "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
-        },
-        {
-            "id": "R-212",
-            "tier": "regex",
-            "enforcer": "hook:scope-widening-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Write|Edit: asks when the target sits outside the file scope the task-start ledger (.claude/task-tier.json) declares for the branch checked out; silent when no scope is declared, when the ledger names another branch, under the repository own .claude/, for git-ignored paths, and outside a git work tree; fixtures: tests/scope-widening-gate.test.sh and tests/bash32-builtin-floor.test.sh, the latter holding the bash 3.2 floor after IAN-267 found mapfile aborting this guard into a silent allow"
-        },
-        {
-            "id": "R-213",
-            "tier": "regex",
-            "enforcer": "hook:task-provenance-gate",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse TaskCreate: denies a subject whose leading tag is not [requested], [required] or [self]; case and leading whitespace tolerated, TaskUpdate never gated, an empty subject left to the tool; task-state-tracker.sh records the parsed tag and skills/task-start/scripts/task-provenance.sh folds it into the status line; fixture: tests/task-provenance-gate.test.sh"
-        },
-        {
-            "id": "R-214",
-            "tier": "regex",
-            "enforcer": "hook:commit-message-guard",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Bash, the R-214 half beside R-505 and R-506: denies a git commit whose staged diff reaches outside the scope the task-start ledger declares unless the message Refs: trailer names a ticket other than the task own, and asks instead when no message is readable (-F file, a bare commit in the editor, an amend reusing its message) because the Refs escape cannot be evaluated there; a ledger declaring a scope but no ticket cannot be satisfied by any trailer; silent with no declared scope, outside a work tree, on a detached HEAD, and for .claude/ paths; reads the index, so git commit -a and a trailing pathspec are not covered (IAN-224) and the repository is this process own rather than the commit target after a cd (IAN-225); the ledger is skills/task-start/scripts/finding.sh writing .claude/findings.json; scope reading and matching shared with scope-widening-gate.sh via hooks/scope-match.sh; fixtures: tests/finding-ledger.test.sh and tests/bash32-builtin-floor.test.sh, the latter holding the bash 3.2 floor after IAN-267 found mapfile aborting this guard into a silent allow"
-        },
-        {
-            "id": "R-215",
-            "tier": "regex",
-            "enforcer": "ci:doc-sha-reachability",
-            "severity": "error",
-            "autofix": false,
-            "note": "enforce/doc-sha-reachability.sh: every backticked 7-to-40 hex token, either case and normalised to lowercase, in docs/ and claude/docs/ that resolves to a commit here must be reachable from some ref, reported as DOC-SHA-UNREACHABLE with the citing file and line; a token that resolves to nothing is never a finding, since documents cite other repositories; resolution is one git cat-file --batch-check over all tokens and one git rev-list --all, never a process per token (IAN-183); the escape hatch is an unreachable-sha HTML comment naming the same SHA on the same line with a reason holding a real word, outside inline code, fences and enclosing comments, one marker per citation; every state it cannot judge (shallow clone, unreadable document, failed resolver, unlistable change set) exits 2 rather than reporting success; hooks/pre-push.sample runs --push, which reads the pre-push ref list on stdin and inspects the pushed commits rather than the working tree, and aborts on exit 2 as well as 1; the push half is inert until install-git-hooks.sh is re-run in a repository, since git hooks are not version-controlled; fixture enforce/tests/doc-sha-reachability.test.sh carries the IAN-260 spec and its three keep/ tags as the live regression case; the historical corpus is reported by --all and is not gated (IAN-308 phase 1, IAN-322)"
         },
         {
             "id": "R-334",
@@ -1019,14 +839,6 @@
             "severity": "error",
             "autofix": false,
             "note": "the dispatch half of R-412: everything after tdd.sh open is the same lock and guard; opening the slice and committing between RED and GREEN stay manual"
-        },
-        {
-            "id": "R-907",
-            "tier": "regex",
-            "enforcer": "hook:codex-test-author-guard",
-            "severity": "error",
-            "autofix": false,
-            "note": "asks when Claude Write/Edit targets a test file; silent for the test-author agent and for CLAUDE_HOOK_RUNTIME=codex, the marker the codex hook adapter exports; CODEX_TEST_GUARD=off silences. Since IAN-521 (2026-10-01) the separate test author is required by the slice's R-110 risk, not the task tier, but the guard still reads the tier: on a standard-risk slice inside a Complex or Saga task it asks on the session's own test write, and on a Standard or Trivial ledger it stays silent, so a high-risk slice inside a Standard task is not mechanically held to a separate test author (task-start tells the session to dispatch test-author explicitly); teaching it the plan's Risk line is deferred"
         }
     ]
 }

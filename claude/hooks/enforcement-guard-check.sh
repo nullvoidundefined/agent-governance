@@ -5,8 +5,8 @@
 # rule-file Enforcement line has a manifest entry, so coverage drift is
 # self-detecting rather than audit-detected. Warns (never blocks). Mirrors
 # redaction-guard-check.sh. Required hooks are derived from the manifest: each
-# "hook:<name>" enforcer, plus the matching push gate whenever any "eslint:*",
-# "ruff:*", "rubocop:*", or "golangci:*" rule exists.
+# "hook:<name>" enforcer, plus the matching push gate whenever any "eslint:*"
+# or "ruff:*" rule exists.
 set -euo pipefail
 cat >/dev/null 2>&1 || true   # drain stdin
 
@@ -18,8 +18,6 @@ REQUIRED=$(jq -r '.rules[].enforcer' "$MANIFEST" | awk '
   /^hook:/     { sub(/^hook:/,""); print $0 ".sh" }
   /^eslint:/   { print "push-eslint-gate.sh" }
   /^ruff:/     { print "push-ruff-gate.sh" }
-  /^rubocop:/  { print "push-rubocop-gate.sh" }
-  /^golangci:/ { print "push-golangci-gate.sh" }
 ' | sort -u)
 
 REGISTERED=$(jq -r '[.. | .command? // empty] | .[]' "$SETTINGS" | sed 's#.*/##' | sort -u)

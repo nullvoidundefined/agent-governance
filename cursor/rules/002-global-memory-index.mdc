@@ -17,7 +17,7 @@ Cross-project memories consolidated from 14 per-project memory directories on 20
 - [`feedback_no_tls_bypass.md`](./feedback_no_tls_bypass.md): Never disable TLS verification to unblock a deploy
 - [`feedback_mock_third_party_services.md`](./feedback_mock_third_party_services.md): Wrap SaaS in service interfaces with mocks
 - [`feedback_mjs_prettier_config.md`](./feedback_mjs_prettier_config.md): Prettier configs use `.mjs` extension
-- [`feedback_process_learnings_20_rules.md`](./feedback_process_learnings_20_rules.md): PL1 through PL20 incident-backed rules from 2026-04-05 and 2026-04-06
+- [`feedback_process_learnings_20_rules.md`](./feedback_process_learnings_20_rules.md): pointer only; the PL incident rules moved into the stack convention files on 2026-10-02 (PL4, PL10 deleted)
 - [`feedback_no_empty_praise.md`](./feedback_no_empty_praise.md): Never compliment the user's work without specific, falsifiable reasoning. Default to critical analysis.
 - [`feedback_no_fluff.md`](./feedback_no_fluff.md): Ban all LLM filler patterns per R-209.
 - [`feedback_pr_constant_value_check.md`](./feedback_pr_constant_value_check.md): When a constant value changes, grep tests for the old value before pushing and update all stale assertions in the same commit.

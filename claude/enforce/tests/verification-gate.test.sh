@@ -21,6 +21,10 @@
 #   14. A changed package manifest is a harness file, so the full suite runs.
 #   15. A failing typecheck in a mapped project is not labelled related-only.
 #   16. A failing related-test command is labelled related-only.
+#   17. A slice lock in phase red whose failures all lie in its locked tests
+#       ends the turn (tdd.sh expected-red, I5); any other failure blocks.
+#       The expected RED replaces the test-suite check alone: a failing
+#       typecheck beside it still blocks (17b).
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/verification-gate.sh"
@@ -284,6 +288,43 @@ echo 'export const d = 4;' >> "$REPO/src/a.ts"
 GOT=$(PATH="$REPO/stub-bin:$PATH" gate "$REPO")
 grep -q 'RELATED_MARKER' <<< "$GOT" || { echo "FAIL: 16 expected the related-test block, got: $GOT"; exit 1; }
 grep -q 'related tests only' <<< "$GOT" || { echo "FAIL: 16 a related-test failure must carry the note, got: $GOT"; exit 1; }
+
+# 17. A slice deliberately red (I5, IAN-568): with .claude/tdd-lock.json in
+# phase red and every failure inside the locked tests, the gate asks
+# `tdd.sh expected-red` first and lets the turn end, even though the
+# project's own check fails. A failure outside the locked tests still blocks.
+REPO=$(new_repo)
+mkdir -p "$REPO/tests"
+printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$REPO/tests/baseline.test.sh"
+printf '.claude/tdd-lock.json\n' > "$REPO/.gitignore"
+write_package_json "$REPO" 1
+git -C "$REPO" add -A && git -C "$REPO" commit -qm "chore: shell fixtures"
+printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/../scripts/score.sh" || { echo "FAIL: score.sh missing"; exit 1; }\necho "score.test.sh PASS"\n' > "$REPO/tests/score.test.sh"
+(cd "$REPO" && export CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" && bash "$CLAUDE_HARNESS_ROOT/enforce/tdd.sh" open "V-1 score" >/dev/null && bash "$CLAUDE_HARNESS_ROOT/enforce/tdd.sh" red tests/score.test.sh >/dev/null) \
+  || { echo "FAIL: 17 setup: tdd.sh red on the missing script must succeed"; exit 1; }
+GOT=$(CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" gate "$REPO")
+[ "$GOT" = "none" ] || { echo "FAIL: 17 a red slice whose only failures are its locked tests must end the turn, got: $GOT"; exit 1; }
+printf '#!/usr/bin/env bash\necho "FAIL: baseline broke"; exit 1\n' > "$REPO/tests/baseline.test.sh"
+GOT=$(CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" gate "$REPO")
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: 17 a failure outside the locked tests must still block, got: $GOT"; exit 1; }
+
+# 17b. A passing `tdd.sh expected-red` stands in for the test-suite check
+# alone (R-109 r1 #2 on PR #182): the typecheck beside it still
+# runs and still blocks, carrying its own output.
+REPO=$(new_repo)
+mkdir -p "$REPO/tests"
+printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$REPO/tests/baseline.test.sh"
+printf '.claude/tdd-lock.json\n' > "$REPO/.gitignore"
+write_package_json "$REPO" 1
+jq '.scripts.typecheck = "echo TYPECHECK_RED_MARKER; exit 1"' "$REPO/package.json" > "$REPO/p.tmp" && mv "$REPO/p.tmp" "$REPO/package.json"
+git -C "$REPO" add -A && git -C "$REPO" commit -qm "chore: shell fixtures with a typecheck"
+printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/../scripts/score.sh" || { echo "FAIL: score.sh missing"; exit 1; }\necho "score.test.sh PASS"\n' > "$REPO/tests/score.test.sh"
+(cd "$REPO" && export CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" && bash "$CLAUDE_HARNESS_ROOT/enforce/tdd.sh" open "V-1 score" >/dev/null && bash "$CLAUDE_HARNESS_ROOT/enforce/tdd.sh" red tests/score.test.sh >/dev/null) \
+  || { echo "FAIL: 17b setup: tdd.sh red on the missing script must succeed"; exit 1; }
+GOT=$(CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" gate "$REPO")
+grep -q 'TYPECHECK_RED_MARKER' <<< "$GOT" \
+  || { echo "FAIL: 17b a failing typecheck must block a red slice even when expected-red passes, got: $GOT"; exit 1; }
+if grep -q 'GATE_MARKER_OUTPUT' <<< "$GOT"; then echo "FAIL: 17b the test suite must be the check expected-red replaces, got: $GOT"; exit 1; fi
 
 # No HOME (program row 2a, IAN-436): a dirty tree with a failing check still
 # blocks when the session starts the gate with HOME unset and no memo-dir

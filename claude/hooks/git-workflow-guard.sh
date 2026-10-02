@@ -12,10 +12,13 @@
 #          the `reviewer` that ran, the `model` it ran on, and the `range` it
 #          read as a `<base>..<head>` expression whose head endpoint is the
 #          head commit the same `gh pr view` reports, or an older commit of
-#          the PR after which every change is a regular file under the
-#          top-level docs/ tree (IAN-516; is_docs_only_tail) (the blocking
-#          pre-merge Codex review, proved by its artefact rather than by the
-#          heading),
+#          the PR after which every commit is a docs-only commit (regular
+#          files under the top-level docs/ tree, IAN-516), a clean merge of
+#          the base branch, or a commit the section's findings table marks
+#          `fixed <sha>` (IAN-568 I6; is_reviewed_tail) (the blocking
+#          pre-merge review, proved by its artefact rather than by the
+#          heading; nothing else in the section, and no decisions or
+#          reflection section, is checked),
 #          and only one such section exists, or task-start's untracked
 #          ledger records the trivial tier for the PR's own head branch in the
 #          same origin repository, read in the merge's checkout or in a local
@@ -26,7 +29,10 @@
 #          carries one `## Security review` section with a `reviewer`, a
 #          `model` equal to securityReviewModel in
 #          enforce/security-review-model.json, a `range` whose head endpoint
-#          is the PR head, and an `artefact` line naming the reviewer's saved
+#          is the PR head or an older PR commit after which every commit is a
+#          clean base merge (IAN-568 I6; no docs-only and no `fixed <sha>`
+#          exemption here, R-109 r1 #3 on PR #182), whose ledger entry is
+#          keyed by that endpoint, and an `artefact` line naming the reviewer's saved
 #          output (B-10c); a missing detector, an unresolvable range,
 #          a failed detector, or one that outlives
 #          CLAUDE_SECURITY_DETECTOR_TIMEOUT_SECONDS (default 30; its whole
@@ -62,8 +68,6 @@
 #          never read (B-10e); and a
 #          security-touching merge denies when gh reports no baseRefOid or one
 #          that differs from the local origin/<baseRefName> (B-10b)
-#   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
-#          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
 #          and touches no README
 #
@@ -506,30 +510,108 @@ resolve_commit_by_prefix() {
   printf '%s' "$candidates"
 }
 
-# is_docs_only_tail <checkout top> <review head> <PR head oid> <base>: true
-# when the review's head endpoint names exactly one commit this checkout holds
-# (by object name, never a ref), that commit is an ancestor of the PR head but
-# not of <base> (so the review read part of the PR), and every commit after it,
-# each side of a merge included, changes only regular files under the
-# repository's top-level docs/ tree (IAN-516, owner decision 2026-09-30). A PR
-# note or a handoff committed after the R-517 review cannot change what the
-# review read, and re-reviewing for them cost 3 of 4 rounds on IAN-352. The
-# exception covers the R-517 Codex review only: five review rounds on PR #172
-# found binding the R-109 artefact to what its reviewer saw unbounded, so the
-# Security review keeps the exact-head rule. Every git call ignores
-# refs/replace and forces separate merge diffs, so local state cannot show the
-# check a different history than the one GitHub merges. Anything else is
-# false and the exact-head rule applies, including a git failure.
-is_docs_only_tail() {
-  local top="$1" review_head="$2" head_oid="$3" base="$4" review_oid tail_changes
-  review_oid=$(resolve_commit_by_prefix "$top" "$review_head") || return 1
-  is_commit_inside_range "$top" "$review_oid" "$head_oid" "$base" || return 1
-  tail_changes=$(git --no-replace-objects -c core.quotePath=false -C "$top" log --format= --raw --diff-merges=separate \
-    --no-renames --no-abbrev --ignore-submodules=none "$review_oid..$head_oid" 2>/dev/null) || return 1
-  printf '%s\n' "$tail_changes" | awk -F '\t' '
+# is_docs_only_commit <checkout top> <commit oid>: true when the commit, each
+# side of a merge included, changes only regular files under the repository's
+# top-level docs/ tree (IAN-516, owner decision 2026-09-30). A PR note or a
+# handoff committed after the R-517 review cannot change what the review read.
+# Every git call ignores refs/replace and forces separate merge diffs, so
+# local state cannot show the check a different history than the one GitHub
+# merges; a git failure is false.
+is_docs_only_commit() {
+  local top="$1" commit_oid="$2" commit_changes
+  commit_changes=$(git --no-replace-objects -c core.quotePath=false -C "$top" log -1 --format= --raw --diff-merges=separate \
+    --no-renames --no-abbrev --ignore-submodules=none "$commit_oid" 2>/dev/null) || return 1
+  printf '%s\n' "$commit_changes" | awk -F '\t' '
     NF == 0 { next }
     { split($1, fields, " "); if ((fields[2] != "100644" && fields[2] != "000000") || $2 !~ /^docs\//) outside = 1 }
     END { exit outside }'
+}
+
+# is_clean_base_merge <checkout top> <commit oid> <base>: true when the commit
+# is a two-parent merge whose second parent is on the base branch (an ancestor
+# of <base>, origin/<baseRefName>) and whose tree is exactly the conflict-free
+# result `git merge-tree` computes for its parents, so the merge brings in the
+# base and nothing else (IAN-568, I6). A conflicted merge, a merge carrying
+# its own edits, a merge of any other branch, or a git failure is false.
+is_clean_base_merge() {
+  local top="$1" commit_oid="$2" base="$3" parent_line commit_tree merged_tree
+  local -a parent_oids=()
+  parent_line=$(git --no-replace-objects -C "$top" rev-list --parents -n 1 "$commit_oid" 2>/dev/null) || return 1
+  read -r -a parent_oids <<< "$parent_line"
+  [ "${#parent_oids[@]}" -eq 3 ] || return 1
+  git --no-replace-objects -C "$top" merge-base --is-ancestor "${parent_oids[2]}" "$base" 2>/dev/null || return 1
+  commit_tree=$(git --no-replace-objects -C "$top" rev-parse --verify --quiet "$commit_oid^{tree}" 2>/dev/null) || return 1
+  merged_tree=$(git --no-replace-objects -C "$top" merge-tree --write-tree "${parent_oids[1]}" "${parent_oids[2]}" 2>/dev/null) || return 1
+  [ -n "$commit_tree" ] && [ "$commit_tree" = "$(printf '%s\n' "$merged_tree" | head -n 1)" ]
+}
+
+# list_fixed_commit_names <section>: prints, one per line and lowercased,
+# every object name (7 to 40 hex digits) inside a cell of the section's
+# findings table whose text starts with `fixed`, such as `fixed abc1234` or
+# `Fixed in abc1234`. A name anywhere else in the section is not listed, so a
+# commit counts as a fix only where the table records it as one.
+list_fixed_commit_names() {
+  printf '%s\n' "$1" | awk '
+    /^[ \t]*\|/ {
+      cell_count = split($0, cells, "|")
+      for (i = 1; i <= cell_count; i++) {
+        cell = tolower(cells[i])
+        sub(/^[ \t]+/, "", cell)
+        if (index(cell, "fixed") != 1) continue
+        word_count = split(cell, words, /[^0-9a-z]+/)
+        for (j = 1; j <= word_count; j++) {
+          word = words[j]
+          if (length(word) >= 7 && length(word) <= 40 && word !~ /[^0-9a-f]/) print word
+        }
+      }
+    }'
+}
+
+# is_listed_fix_commit <commit oid> <fixed names>: true when one of the
+# newline-separated names the findings table marks fixed is a prefix (7 or
+# more digits) of the commit's object name.
+is_listed_fix_commit() {
+  local commit_oid="$1" fixed_name
+  while IFS= read -r fixed_name; do
+    [ -n "$fixed_name" ] || continue
+    is_head_commit_prefix "$fixed_name" "$commit_oid" && return 0
+  done <<< "$2"
+  return 1
+}
+
+# is_reviewed_tail <checkout top> <review head> <PR head oid> <base> <section>
+# <codex exemptions allowed>: true when the review's head endpoint names
+# exactly one commit this checkout holds (by object name, never a ref), that
+# commit is an ancestor of the PR head but not of <base> (so the review read
+# part of the PR), and every commit after it that the base branch does not
+# already hold is a clean merge of the base branch (is_clean_base_merge) or,
+# when <codex exemptions allowed> is 1, a commit the section's findings table
+# marks fixed (list_fixed_commit_names) or a docs-only commit
+# (is_docs_only_commit). The review range may then end before the PR head
+# (IAN-516 for docs, IAN-568 I6 for base merges and named fixes): a base merge
+# or, for the Codex review, a fix tied to a named finding no longer forces
+# another review round, and CI still runs on the head. R-109 passes 0: five
+# review rounds on PR #172 found binding the security artefact to a docs/ tail
+# unbounded, and a `fixed <sha>` cell is self-attested in the mutable PR body,
+# so any security-review tail commit other than a clean base merge needs a new
+# round whose range ends at the head (R-109 r1 #3 on PR #182). Anything else
+# is false and the exact-head rule applies, including a git failure.
+is_reviewed_tail() {
+  local top="$1" review_head="$2" head_oid="$3" base="$4" section="$5" is_codex_exemption_allowed="$6"
+  local review_oid tail_commits fixed_names tail_commit
+  review_oid=$(resolve_commit_by_prefix "$top" "$review_head") || return 1
+  is_commit_inside_range "$top" "$review_oid" "$head_oid" "$base" || return 1
+  tail_commits=$(git --no-replace-objects -C "$top" rev-list "$head_oid" "^$review_oid" "^$base" 2>/dev/null) || return 1
+  fixed_names=$(list_fixed_commit_names "$section")
+  while IFS= read -r tail_commit; do
+    [ -n "$tail_commit" ] || continue
+    is_clean_base_merge "$top" "$tail_commit" "$base" && continue
+    [ "$is_codex_exemption_allowed" = 1 ] || return 1
+    is_listed_fix_commit "$tail_commit" "$fixed_names" && continue
+    is_docs_only_commit "$top" "$tail_commit" && continue
+    return 1
+  done <<< "$tail_commits"
+  return 0
 }
 
 # is_commit_inside_range <checkout top> <commit oid> <head oid> <base>: true
@@ -574,9 +656,9 @@ read_codex_artefact_verdict() {
   [ -n "$range_head" ] ||
     { echo "its \`## Codex review\` section gives the range as \`$range\`, which holds no \`<base>..<head>\` range expression, so nothing in the PR says which diff was read"; return 0; }
   is_head_commit_prefix "$range_head" "$head_oid" ||
-    is_docs_only_tail "$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null)" "$range_head" "$head_oid" \
-      "refs/remotes/origin/$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null)" ||
-    { echo "its \`## Codex review\` section gives the range as \`$range\`, whose head endpoint \`$range_head\` does not identify $(printf '%.7s' "$head_oid"), the commit this PR would merge, and no docs-only tail from it to that commit could be proved, so the review read a tree other than the one that would merge"; return 0; }
+    is_reviewed_tail "$(git -C "$MERGE_CWD" rev-parse --show-toplevel 2>/dev/null)" "$range_head" "$head_oid" \
+      "refs/remotes/origin/$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null)" "$section" 1 ||
+    { echo "its \`## Codex review\` section gives the range as \`$range\`, whose head endpoint \`$range_head\` does not identify $(printf '%.7s' "$head_oid"), the commit this PR would merge, and not every later commit is a docs-only commit, a clean merge of the base branch, or a commit the section's findings table marks \`fixed <sha>\`, so the review read a tree other than the one that would merge"; return 0; }
   echo ok
 }
 
@@ -798,7 +880,9 @@ read_security_artefact_verdict() {
   [ -n "$range_head" ] ||
     { echo "its \`## Security review\` section carries no \`range\` line holding a \`<base>..<head>\` expression"; return 0; }
   is_head_commit_prefix "$range_head" "$SECURITY_HEAD" ||
-    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, so the review is stale (the docs-only tail exception covers the Codex review only)"; return 0; }
+    is_reviewed_tail "$SECURITY_TOP" "$range_head" "$SECURITY_HEAD" \
+      "refs/remotes/origin/$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null)" "$section" 0 ||
+    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, and not every later commit is a clean merge of the base branch, so the review is stale; run a new security review round whose range ends at the head (a fix commit listed \`fixed <sha>\` and a docs-only tail are exempt for the Codex review only)"; return 0; }
   [ -n "$(read_review_field "$section" artefact)" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line naming the reviewer's saved output, so nothing proves what the review found; commit the artefact, record it with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head, and name it on an \`artefact\` line"; return 0; }
   echo ok
@@ -1056,13 +1140,28 @@ read_base_currency_verdict() {
   echo ok
 }
 
-# read_ledger_entry_field <ledger path> <field>: prints the named field of the
-# ledger's entry for SECURITY_HEAD, and returns non-zero when the ledger is
-# missing or unreadable, holds no object entry for the head, or the field is
-# not a non-empty string.
+# read_ledger_entry_field <ledger path> <field> <head oid>: prints the named
+# field of the ledger's entry for <head oid>, and returns non-zero when the
+# ledger is missing or unreadable, holds no object entry for the head, or the
+# field is not a non-empty string.
 read_ledger_entry_field() {
-  jq -er --arg head "$SECURITY_HEAD" --arg field "$2" \
+  jq -er --arg head "$3" --arg field "$2" \
     '.[$head] | objects | .[$field] | strings | select(length > 0)' "$1" 2>/dev/null
+}
+
+# read_security_reviewed_oid <section>: prints the full object name of the
+# commit the Security review's range ends at: SECURITY_HEAD when the endpoint
+# identifies it, otherwise the one commit the endpoint names (a reviewed tail,
+# IAN-568 I6, already proved by read_security_artefact_verdict). The ledger
+# entry is keyed by this commit, since the record was made with it checked out.
+read_security_reviewed_oid() {
+  local range_head
+  range_head=$(read_range_head "$(read_review_field "$1" range)")
+  if is_head_commit_prefix "$range_head" "$SECURITY_HEAD"; then
+    printf '%s' "$SECURITY_HEAD"
+    return 0
+  fi
+  resolve_commit_by_prefix "$SECURITY_TOP" "$range_head"
 }
 
 SECURITY_LEDGER_PATH_HELPER="$(dirname "${BASH_SOURCE[0]}")/security-review-ledger-path.sh"
@@ -1108,25 +1207,29 @@ read_security_repository_verdict() {
 # read_security_ledger_verdict <section>: prints "ok" when the merge
 # checkout's origin is the PR's repository and the shared ledger
 # enforce/security-review-record.sh wrote for that repository holds an entry
-# for SECURITY_HEAD whose path is the section's artefact line's and whose blob
-# is that path's blob at SECURITY_HEAD; otherwise the sentence naming the
-# first mismatch (B-10b), a missing artefact line first (B-10c), then an
-# origin that is missing, unreadable, or another repository (B-10e, B-10f).
+# for the reviewed commit (SECURITY_HEAD, or the earlier range head of a
+# reviewed tail) whose path is the section's artefact line's and whose blob
+# is that path's blob at SECURITY_HEAD, so the artefact is unchanged since the
+# record; otherwise the sentence naming the first mismatch (B-10b), a missing
+# artefact line first (B-10c), then an origin that is missing, unreadable, or
+# another repository (B-10e, B-10f).
 read_security_ledger_verdict() {
-  local artefact_path repository_verdict ledger_path recorded_path recorded_blob head_blob
+  local artefact_path repository_verdict ledger_path reviewed_oid recorded_path recorded_blob head_blob
   artefact_path=$(read_review_field "$1" artefact)
   [ -n "$artefact_path" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line, so no artefact recorded at review time can be matched to it"; return 0; }
   repository_verdict=$(read_security_repository_verdict)
   case "$repository_verdict" in "ok "*) ;; *) echo "$repository_verdict"; return 0 ;; esac
+  reviewed_oid=$(read_security_reviewed_oid "$1") ||
+    { echo "the hook could not resolve the commit the \`## Security review\` range ends at, so no record made at review time can be matched to it"; return 0; }
   ledger_path=$(load_security_ledger_path_helper && print_security_review_ledger_path_for_identity "${repository_verdict#ok }") ||
-    { echo "no artefact recorded at review time can be found for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger ~/.claude/security-review-ledger/<key>.json cannot be located (HOME is unset or the digest failed)"; return 0; }
-  recorded_path=$(read_ledger_entry_field "$ledger_path" path) ||
-    { echo "no artefact was recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD"): the shared ledger $ledger_path is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
+    { echo "no artefact recorded at review time can be found for head $(printf '%.7s' "$reviewed_oid"): the shared ledger ~/.claude/security-review-ledger/<key>.json cannot be located (HOME is unset or the digest failed)"; return 0; }
+  recorded_path=$(read_ledger_entry_field "$ledger_path" path "$reviewed_oid") ||
+    { echo "no artefact was recorded at review time for head $(printf '%.7s' "$reviewed_oid"): the shared ledger $ledger_path is missing, unreadable, or holds no entry for it; run \`enforce/security-review-record.sh $artefact_path\` with the head checked out"; return 0; }
   [ "$recorded_path" = "$artefact_path" ] ||
-    { echo "the artefact recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") is \`$recorded_path\`, not \`$artefact_path\` as the section names"; return 0; }
-  recorded_blob=$(read_ledger_entry_field "$ledger_path" blob) ||
-    { echo "the ledger entry recorded at review time for head $(printf '%.7s' "$SECURITY_HEAD") carries no blob"; return 0; }
+    { echo "the artefact recorded at review time for head $(printf '%.7s' "$reviewed_oid") is \`$recorded_path\`, not \`$artefact_path\` as the section names"; return 0; }
+  recorded_blob=$(read_ledger_entry_field "$ledger_path" blob "$reviewed_oid") ||
+    { echo "the ledger entry recorded at review time for head $(printf '%.7s' "$reviewed_oid") carries no blob"; return 0; }
   head_blob=$(git -C "$SECURITY_TOP" rev-parse --verify --quiet "$SECURITY_HEAD:$artefact_path" 2>/dev/null) ||
     { echo "its artefact \`$artefact_path\` cannot be read at the PR head $(printf '%.7s' "$SECURITY_HEAD") to compare with the blob recorded at review time"; return 0; }
   [ "$recorded_blob" = "$head_blob" ] ||
@@ -1402,20 +1505,6 @@ $(printf '%s\n' "$WORKING" | awk '/^(\?\?|A)/ {print $NF}')"
 fi
 CHANGED=$(printf '%s\n' "$CHANGED" | grep -v '^$' | sort -u || true)
 [ -z "$CHANGED" ] && exit 0
-
-# R-511: breadth is the signal. A change touching this many files across this
-# many directories is the cross-cutting refactor that wants its own branch.
-if [ "$is_global_repo" -eq 0 ] && [ "$on_trunk" -eq 1 ]; then
-  FILE_COUNT=$(printf '%s\n' "$CHANGED" | wc -l | tr -d ' ')
-  # dirname per line, not via xargs: a path holding a quote or a space makes
-  # xargs exit non-zero, and under pipefail that took the whole advisory with it.
-  DIR_COUNT=$(while IFS= read -r changed_path; do
-    [ -n "$changed_path" ] && dirname "$changed_path"
-  done <<<"$CHANGED" | sort -u | wc -l | tr -d ' ')
-  if [ "$FILE_COUNT" -ge 5 ] && [ "$DIR_COUNT" -ge 3 ]; then
-    echo "git-workflow-guard: this commit spans $FILE_COUNT files across $DIR_COUNT directories on $BRANCH. R-511 runs a cross-cutting change on its own branch, one at a time, so it can be reviewed and reverted as a unit." >&2
-  fi
-fi
 
 # R-508: a new route, handler, page, or setup change is user-facing by
 # definition, and the README is where a user finds out. The route patterns

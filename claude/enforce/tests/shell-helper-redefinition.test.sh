@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Covers: hook:ticket-at-start-gate
+# Covers: hook:commit-message-guard
 # Fails when a hook defines a function, or assigns a constant, that a shell
-# helper it sources also defines. ticket-at-start-gate.sh kept its own
+# helper it sources also defines. ticket-at-start-gate.sh (since removed) kept its own
 # strip_command_prefixes (prints words) and then sourced shell-command-scan.sh,
 # which since PR #79 defines one too (sets STRIPPED_WORDS, prints nothing). The
 # later definition won, the gate read empty output and failed open on commits;

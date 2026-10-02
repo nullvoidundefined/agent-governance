@@ -40,14 +40,18 @@ forbidText() {
 }
 
 # The canon, always present under the harness root.
-requireText "$ROOT/CLAUDE.md" "$MECHANICAL_TEST" \
-    "CLAUDE.md R-001 does not state the mechanical test: $MECHANICAL_TEST"
-requireText "$ROOT/CLAUDE.md" "$NAMED_INVOCATIONS" \
-    "CLAUDE.md R-001 does not name the exempt invocations: $NAMED_INVOCATIONS"
-requireText "$ROOT/CLAUDE.md" "$EXCLUSIONS" \
-    "CLAUDE.md R-001 does not name the exclusions: $EXCLUSIONS"
+# R-001 is a default since 2026-10-02 (IAN-568): its norm line left CLAUDE.md,
+# so the scope is checked in the reference Spec, and CLAUDE.md only indexes it.
+grep -qE '^- Session start: R-001' "$ROOT/CLAUDE.md" \
+    || fail "CLAUDE.md's Defaults index does not name R-001"
+grep -qE '^R-001:' "$ROOT/CLAUDE.md" \
+    && fail "CLAUDE.md still carries an R-001 norm line; R-001 is a default"
+requireText "$ROOT/rulebook/reference.md" "$NAMED_INVOCATIONS" \
+    "rulebook/reference.md R-001 does not name the exempt invocations: $NAMED_INVOCATIONS"
+forbidText "$ROOT/rulebook/reference.md" 'First line of the response after the reads' \
+    "rulebook/reference.md R-001 still requires the declaration line"
 forbidText "$ROOT/CLAUDE.md" "$RATIONALE_CLAUSE" \
-    "CLAUDE.md R-001 carries rationale that belongs in PROTOCOL.md (R-206): $RATIONALE_CLAUSE"
+    "CLAUDE.md R-001 carries rationale that belongs in PROTOCOL.md: $RATIONALE_CLAUSE"
 forbidText "$ROOT/CLAUDE.md" "$LOOSE_WORDING" \
     "CLAUDE.md R-001 still carries the undefined wording: $LOOSE_WORDING"
 forbidText "$ROOT/CLAUDE.md" "$RETIRED_R002" \
@@ -63,20 +67,14 @@ forbidText "$ROOT/rulebook/reference.md" "$RETIRED_R002" \
 # The ports, present only when the test runs beside a repository checkout.
 CODEX_AGENTS="$REPO_ROOT/codex/AGENTS.md"
 if [ -f "$CODEX_AGENTS" ]; then
-    requireText "$CODEX_AGENTS" "$MECHANICAL_TEST" \
-        "the Codex port of CLAUDE.md lacks the R-001 scope"
-    requireText "$CODEX_AGENTS" "$EXCLUSIONS" \
-        "the Codex port of CLAUDE.md does not name the R-001 exclusions"
     forbidText "$CODEX_AGENTS" "$LOOSE_WORDING" \
         "the Codex port of CLAUDE.md still carries the undefined wording"
 fi
 
-CURSOR_GLOBAL="$REPO_ROOT/cursor/rules/000-global-rules.mdc"
-if [ -f "$CURSOR_GLOBAL" ]; then
-    requireText "$CURSOR_GLOBAL" "$MECHANICAL_TEST" \
-        "the Cursor port of CLAUDE.md lacks the R-001 scope"
-    requireText "$CURSOR_GLOBAL" "$EXCLUSIONS" \
-        "the Cursor port of CLAUDE.md does not name the R-001 exclusions"
+CURSOR_REFERENCE="$REPO_ROOT/cursor/rules/rulebook-reference-r0xx-session-init.mdc"
+if [ -f "$CURSOR_REFERENCE" ]; then
+    requireText "$CURSOR_REFERENCE" "$MECHANICAL_TEST" \
+        "the Cursor port of reference.md lacks the R-001 scope"
 fi
 
 CODEX_SKILL="$REPO_ROOT/codex/skills/session-start/SKILL.md"

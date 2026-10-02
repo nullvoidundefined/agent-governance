@@ -9,20 +9,21 @@ Source: `~/.claude/rulebook/reference.md`, section "Session init (R-0xx)". Enfor
 
 ## Session init (R-0xx)
 
-R-001: Run the session-start procedure before any other work.
+R-001: Start each session by reading the handoff and classifying the session.
+  Class: D; delivery: skill (`task-start`) and `rules/session-types.md`.
   Spec:
   1. Confirm the SessionStart hook (`hooks/session-start.sh`) injected `~/.claude/global-memory/INDEX.md` and the SHA-verified project handoff; Read either only when its block is absent from the injected context (`lesson_no_reread_auto_injected_context.md`). Auto memory (`~/.claude/projects/<project>/memory/MEMORY.md`, first 200 lines) loads on its own and is re-injected after compaction.
   2. Read `~/.claude/rules/session-types.md`; classify the session type from the user's first message.
-  3. Read Tier 2 files for that session type per the session-types load map.
+  3. Read a Tier 2 file only when the session type's work needs it (an audit reads `audits.md`, a dispatch reads `agents.md`); the load map lists the candidates.
   4. Run `git -C "$(cat ~/.claude/.sync-source)" status -s`; triage non-empty (`~/.claude` is a sync target of the agent-governance repo, not a git repo itself).
   5. Read `docs/session-handoff/session-handoff.md` if present; verify the last-commit SHA against `git log`.
   6. Confirm the running tool loaded its project instruction file (Claude Code: `CLAUDE.md` or `.claude/CLAUDE.md`; Codex: `AGENTS.md`; Cursor: `.cursor/rules/`); Read it only when its content is absent from the injected context. A repo with none lists `no project file` under Skipped, and the procedure continues.
-  - First line of the response after the reads: `Session: <type> | Loaded: <files or "core only"> | Skipped: <files>`.
-  - On reclassification: re-read files and update the declaration.
+  - No declaration line is required (owner decision 2026-10-02, IAN-568); on reclassification, read what the new type needs.
   Scope: Skip this procedure when no user turn follows the invocation: `codex exec` and `claude -p` with a supplied prompt. Every interactive session runs it, cloud and resumed sessions included, and so does every dispatched subagent.
   Enforcement: manual
 
 R-003: Run every session under the synced harness; no session runs bare.
+  Class: M; delivery: hook.
   Scope: every Claude Code session, local or remote (Claude Code on the web), in every project; the Cursor and Codex ports through their adapters.
   Spec:
   - At SessionStart, `hooks/harness-sync.sh` finds the agent-governance checkout (its argument, then the `~/.claude/.sync-source` stamp `sync.sh` writes, then `$CLAUDE_PROJECT_DIR` when that is the harness repo) and compares every tracked `claude/` file against the live `~/.claude`; any missing or different file runs `./sync.sh`, and `enforce/node_modules` is installed with npm when absent so the ESLint push gates can run.

@@ -69,8 +69,10 @@ forbidText() {
   if grep -qF -- "$2" "$1"; then echo "FAIL: $3"; exit 1; fi
 }
 
-NORM_LINE="$(grep -m1 -F 'R-334: Name every schema' "$ROOT/CLAUDE.md" || true)"
-[ -n "$NORM_LINE" ] || { echo "FAIL: CLAUDE.md carries no R-334 norm line to check"; exit 1; }
+# R-334 is a default since 2026-10-02 (IAN-568): its norm line left CLAUDE.md
+# and is kept verbatim in the reference block as its `Norm` line.
+NORM_LINE="$(grep -m1 -F 'Norm (the CLAUDE.md line until 2026-10-02): Name every schema' "$ROOT/rulebook/reference.md" || true)"
+[ -n "$NORM_LINE" ] || { echo "FAIL: rulebook/reference.md carries no R-334 Norm line to check"; exit 1; }
 requireIn "$NORM_LINE" "$SEPARATOR_CLAUSE" \
   "CLAUDE.md R-334 norm line does not say that $SEPARATOR_CLAUSE"
 requireIn "$NORM_LINE" "$AGGREGATE_ROOT_CLAUSE" \
@@ -131,14 +133,5 @@ if [ -f "$CURSOR_REFERENCE" ]; then
     "the Cursor port of the rulebook still declares one universal foreign-key form: $STALE_SINGLE_KEY_FORM"
 fi
 
-CURSOR_GLOBAL="$REPO_ROOT/cursor/rules/000-global-rules.mdc"
-if [ -f "$CURSOR_GLOBAL" ]; then
-  requireText "$CURSOR_GLOBAL" "$SEPARATOR_CLAUSE" \
-    "the Cursor port of CLAUDE.md lacks the R-334 clause: $SEPARATOR_CLAUSE"
-  requireText "$CURSOR_GLOBAL" "$AGGREGATE_ROOT_CLAUSE" \
-    "the Cursor port of CLAUDE.md lacks the R-334 meaning half: $AGGREGATE_ROOT_CLAUSE"
-  requireText "$CURSOR_GLOBAL" "$MONGO_FORM" \
-    "the Cursor port of CLAUDE.md lacks the engine-cased example $MONGO_FORM"
-fi
 
 echo "r334-engine-case-rule-text.test.sh PASS"

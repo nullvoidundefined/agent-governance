@@ -5,8 +5,8 @@
 # merge (R-514), denies a non-squash merge (R-512) except a rebase of a PR
 # labeled bundle whose every commit carries a Refs: trailer, denies any merge
 # whose PR body lacks a Codex review section naming the reviewer, the model,
-# and a range containing the PR's head commit (R-517), and warns on a cross-cutting
-# commit to main (R-511) and a surface-adding commit with no README (R-508),
+# and a range containing the PR's head commit (R-517), and warns on a
+# surface-adding commit with no README (R-508),
 # whose surface list covers every route the R-607 checklist triggers on.
 set -euo pipefail
 # Name the failing assertion: under set -e a bare `[ ... ]` exits silently,
@@ -576,24 +576,24 @@ git -C "$GOV_REPO" init -q -b main
 git -C "$GOV_REPO" remote add origin "https://github.com/nullvoidundefined/agent-governance.git"
 [ "$(decision 'git push' "$GOV_REPO")" = "none" ]  # global repo exempt (by origin remote): R-106 owns its pushes
 
-# R-511: five files across three directories staged on main.
+# R-511 was deleted 2026-10-02 (IAN-568): five files across three directories
+# staged on main no longer warn.
 for path in src/routes/jobs.ts src/routes/users.ts src/handlers/scoreJob.ts src/services/score.ts src/services/rank.ts; do
   : >"$REPO/$path"
 done
 git -C "$REPO" add src
-warns R-511 'git commit -m "refactor: regroup"' "$REPO"
+silent_on R-511 'git commit -m "refactor: regroup"' "$REPO"
 # R-508: the staged routes are new surface and no README is staged.
 warns R-508 'git commit -m "feat: scoring"' "$REPO"
-# Staging the README silences R-508 but not R-511.
+# Staging the README silences R-508.
 printf 'docs\n' >"$REPO/README.md"
 git -C "$REPO" add README.md
 silent_on R-508 'git commit -m "feat: scoring"' "$REPO"
-warns R-511 'git commit -m "feat: scoring"' "$REPO"
 
 # A path holding an apostrophe must not crash the advisory pass.
 : >"$REPO/src/services/o'brien.ts"
 git -C "$REPO" add "src/services/o'brien.ts"
-warns R-511 'git commit -m "refactor: regroup"' "$REPO"
+silent_on R-511 'git commit -m "refactor: regroup"' "$REPO"
 git -C "$REPO" rm -q --cached "src/services/o'brien.ts"
 rm -f "$REPO/src/services/o'brien.ts"
 

@@ -38,13 +38,15 @@ expect deny "$(printf '2>/dev/null git commit -m "%s"' "$BAD_SUBJECT")"
 expect deny "$(printf '>/tmp/commit-guard-log git commit -m "%s"' "$BAD_SUBJECT")"
 expect none "$(printf 'A=1 < /dev/null git commit -m "%s"' "$GOOD_SUBJECT")"
 
-# Case 4: an unreadable substitution makes the body uncountable, so the guard asks.
-expect ask "$(printf "git commit -m \"%s \$(printf 'x')\"" "$GOOD_SUBJECT")"
-expect ask "$(printf 'git commit -m "%s" -m "$(date)"' "$GOOD_SUBJECT")"
+# Case 4: an unreadable substitution asks only when it hides the subject. Since
+# R-506 was removed (IAN-568) the body is not counted, so a substitution after
+# a conventional subject, or in a later -m, passes.
+expect none "$(printf "git commit -m \"%s \$(printf 'x')\"" "$GOOD_SUBJECT")"
+expect none "$(printf 'git commit -m "%s" -m "$(date)"' "$GOOD_SUBJECT")"
 expect ask 'git commit -m "$(git log -1 --format=%s)"'
-expect ask "$(printf 'git commit -m "%s" -m "`date`"' "$GOOD_SUBJECT")"
+expect none "$(printf 'git commit -m "%s" -m "`date`"' "$GOOD_SUBJECT")"
 
-# Case 4 regressions: the heredoc form stays readable; deny beats ask.
+# Case 4 regressions: the heredoc form stays readable; a bad subject denies.
 expect none "$(printf "git commit -m \"\$(cat <<'EOF'\n%s\n\nOne body line.\nEOF\n)\"" "$GOOD_SUBJECT")"
 expect deny "$(printf 'git commit -m "%s" -m "$(date)"' "$BAD_SUBJECT")"
 

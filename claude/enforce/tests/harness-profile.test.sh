@@ -71,7 +71,7 @@ const protectedCases = [
   ["files", "prompts/security-review-prompt.md"], ["files", "prompts/codex-pr-review-prompt.md"],
   ["files", "prompts/spec-template.md"],
   ["files", "hooks/pre-push.sample"], ["files", "hooks/shell-command-segments.py"],
-  ["files", "hooks/clean-code-scan.mjs"], ["files", "hooks/shell-command-tokens.sh"],
+  ["files", "hooks/shell-command-tokens.sh"],
 ];
 for (const [kind, id] of protectedCases) {
   const widened = structuredClone(profiles);
@@ -101,11 +101,11 @@ const ruleLine = /^(R-\d{3})( \[[a-z]+\])?:/;
 const sourceRules = text(source, "CLAUDE.md").split("\n").filter((line) => ruleLine.test(line));
 const leanRules = text(files, "CLAUDE.md").split("\n").filter((line) => ruleLine.test(line));
 const listed = new Set(lean.rules);
-check("lean lists 40 rules (41 before R-002 was deleted, IAN-518)", lean.rules.length === 40);
+check("lean lists 5 rules (40 before CLAUDE.md kept only its mandatory rules, IAN-568)", lean.rules.length === 5);
 check("lean CLAUDE.md lacks every listed rule", leanRules.every((line) => !listed.has(ruleLine.exec(line)[1])));
 const expectedKept = sourceRules.filter((line) => !listed.has(ruleLine.exec(line)[1]));
 check("lean CLAUDE.md keeps every other rule line verbatim", JSON.stringify(leanRules) === JSON.stringify(expectedKept));
-check("lean CLAUDE.md keeps R-003 and R-109", leanRules.some((l) => l.startsWith("R-003:")) && leanRules.some((l) => l.startsWith("R-109:")));
+check("lean CLAUDE.md keeps R-101 and R-109", leanRules.some((l) => l.startsWith("R-101:")) && leanRules.some((l) => l.startsWith("R-109:")));
 
 // settings.json: listed hooks gone from every event, every other hook kept.
 const hookNames = (settings) => {
@@ -122,7 +122,7 @@ check("lean never drops harness-sync", !droppedHooks.has("harness-sync") && lean
 check("lean drops every listed hook", lean.hooks.every((name) => !leanHooks.includes(name)));
 const keptHooks = hookNames(sourceSettings).filter((name) => !droppedHooks.has(name));
 check("lean keeps every other hook registration", JSON.stringify(leanHooks) === JSON.stringify(keptHooks));
-for (const guard of ["secret-scan", "protected-path-guard", "git-workflow-guard", "verification-gate", "settings-change-guard", "ticket-at-start-gate", "no-em-dash"])
+for (const guard of ["secret-scan", "protected-path-guard", "git-workflow-guard", "verification-gate", "settings-change-guard", "no-em-dash"])
   check(`lean keeps enforcing hook ${guard}`, leanHooks.includes(guard));
 // Exact retention (PR #175 review): lean's hooks object equals the full one
 // with exactly the listed commands removed, every other field of every
@@ -142,10 +142,10 @@ check("lean hooks equal full hooks minus exactly the listed commands, field for 
 const guardNames = [
   "secret-scan", "no-em-dash", "fix-commit-requires-test", "conflict-markers", "commit-message-guard",
   "destructive-db-guard", "destructive-command-guard", "codex-billing-guard", "protected-path-guard",
-  "global-repo-push-guard", "git-workflow-guard", "ticket-at-start-gate", "push-eslint-gate", "push-ruff-gate",
-  "push-semgrep-gate", "push-rubocop-gate", "push-golangci-gate", "push-feature-docs-gate", "pr-ticket-ref-gate",
+  "global-repo-push-guard", "git-workflow-guard", "push-eslint-gate", "push-ruff-gate",
+  "push-semgrep-gate", "pr-ticket-ref-gate",
   "constant-change-guard", "migration-defaults-guard", "structure-gate", "content-gate", "dependency-add-guard",
-  "codex-test-author-guard", "lexicon-gate", "scope-widening-gate", "task-provenance-gate", "mcp-action-guard",
+  "mcp-action-guard",
   "linear-todo-label-gate", "verification-gate", "settings-change-guard", "harness-sync",
 ];
 const registrationsOf = (settings, name) => {
@@ -167,7 +167,7 @@ check("lean settings.json keeps every non-hook key", JSON.stringify(sourceRest) 
 const skillDirs = fs.readdirSync(path.join(claudeDir, "skills"));
 check("lean lists every skill", lean.skills.length === skillDirs.length && skillDirs.every((d) => lean.skills.includes(d)));
 check("lean omits every SKILL.md", skillDirs.every((d) => !files.has(`skills/${d}/SKILL.md`) && omitted.has(`skills/${d}/SKILL.md`)));
-for (const keep of ["skills/task-start/scripts/task-tier.sh", "skills/task-start/scripts/finding.sh", "skills/task-start/scripts/task-provenance.sh", "skills/build-fast/scripts/build-lane.sh", "skills/build-fast/lane-rules.json"])
+for (const keep of ["skills/task-start/scripts/task-tier.sh", "skills/task-start/scripts/finding.sh", "skills/build-fast/scripts/build-lane.sh", "skills/build-fast/lane-rules.json"])
   check(`lean keeps ${keep}`, files.has(keep) && files.get(keep) === source.get(keep));
 
 // Agents: the nine audit agents hidden, the six structural ones kept.
@@ -204,7 +204,7 @@ check "--in-place exits 0" test $? -eq 0
 check "--in-place removes skills/gof/SKILL.md" test ! -e "$TMP/copy/claude/skills/gof/SKILL.md"
 check "--in-place removes the rules/python.md symlink" test ! -L "$TMP/copy/claude/rules/python.md"
 check "--in-place keeps task-tier.sh executable" test -x "$TMP/copy/claude/skills/task-start/scripts/task-tier.sh"
-check "--in-place drops R-001 from CLAUDE.md" not_grep '^R-001:' "$TMP/copy/claude/CLAUDE.md"
+check "--in-place drops R-104 from CLAUDE.md" not_grep '^R-104:' "$TMP/copy/claude/CLAUDE.md"
 check "--in-place keeps R-101 in CLAUDE.md" grep -q '^R-101:' "$TMP/copy/claude/CLAUDE.md"
 check "--in-place leaves settings.json valid JSON without session-start" jq -e '[.hooks[][].hooks[].command] | map(select(test("session-start"))) | length == 0' "$TMP/copy/claude/settings.json"
 

@@ -178,9 +178,9 @@ p { margin: 0; }
 /* Honest accounting */
 .tally { margin: 0; display: flex; flex-direction: column; gap: 18px; }
 .tally-bar { display: flex; height: 44px; border-radius: 6px; overflow: hidden; }
-.tally-code { width: 71.2%; background: var(--signal); }
-.tally-judge { width: 6.8%; background: #b0712a; }
-.tally-advisory { width: 22.0%; background: #3a3b33; }
+.tally-code { width: 66.7%; background: var(--signal); }
+.tally-judge { width: 7.4%; background: #b0712a; }
+.tally-advisory { width: 25.9%; background: #3a3b33; }
 .tally-legend { display: flex; flex-wrap: wrap; gap: 8px 32px; font-family: var(--font-mono); font-size: 14px; color: var(--text-soft); }
 .tally-legend-code { color: var(--signal); }
 .tally-legend-judge { color: var(--judge); }
