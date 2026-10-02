@@ -4,9 +4,10 @@
 # R-503 start timestamp; an invalid tier is refused; get and summary read it
 # back; a second set records the reclassification; clear removes it; the
 # gitignore note fires only when the project does not ignore the ledger.
-# IAN-149 (R-605 at task start): --ticket <KEY> records the tracker ticket; with
-# the tracker configured a non-trivial tier needs one (a same-branch ledger's
-# ticket carries over on reclassification); a malformed key is refused; the
+# IAN-149: --ticket <KEY> records the tracker ticket (a same-branch ledger's
+# ticket carries over on reclassification); a malformed key is refused; since
+# IAN-568 (2026-10-02) the ticket opens at PR time, so a non-trivial tier with a
+# tracker configured and no --ticket is recorded rather than refused; the
 # summary names the ticket. HOME is always a sandbox: the cases above the
 # IAN-149 block run with the tracker NOT configured.
 set -uo pipefail
@@ -106,13 +107,14 @@ check "T-1 --share then --ticket exits 0" test "$ST" -eq 0
 check "T-1 --share then --ticket records the ticket" test "$(field .ticket)" = "IAN-9"
 check "T-1 --share then --ticket records the share" test "$(field .sharePercent)" = "25"
 
-# T-2: tracker configured, non-trivial tier, no --ticket, no ledger: refused, nothing written.
+# T-2: tracker configured, non-trivial tier, no --ticket: recorded with no
+# ticket, because the ticket opens with the draft PR (IAN-568).
 for tier in standard complex saga investigation; do
   rm -f "$TLEDGER"
-  tier_set "$TRACKED_HOME" "$tier" "needs a ticket"
-  check "T-2 $tier without --ticket exits 1" test "$ST" -eq 1
-  check "T-2 $tier refusal names --ticket" reports "--ticket"
-  check "T-2 $tier refusal writes no ledger" test ! -e "$TLEDGER"
+  tier_set "$TRACKED_HOME" "$tier" "ticket opens at PR time"
+  check "T-2 $tier without --ticket exits 0" test "$ST" -eq 0
+  check "T-2 $tier without --ticket is recorded" test "$(field .tier)" = "$tier"
+  check "T-2 $tier without --ticket records no ticket" test "$(field '.ticket // "none"')" = "none"
 done
 
 # T-3: tracker configured, trivial tier needs no ticket.
@@ -121,12 +123,10 @@ tier_set "$TRACKED_HOME" trivial "one-line typo"
 check "T-3 trivial without --ticket exits 0" test "$ST" -eq 0
 check "T-3 trivial recorded" test "$(field .tier)" = "trivial"
 
-# T-2: an existing ledger without a ticket is left byte-for-byte unchanged by the refusal.
-cp "$TLEDGER" "$SB/ledger-before.json"
+# T-2: reclassifying an unticketed trivial ledger upward without --ticket succeeds.
 tier_set "$TRACKED_HOME" complex "grew past trivial"
-check "T-2 reclassify from an unticketed ledger without --ticket exits 1" test "$ST" -eq 1
-check "T-2 refusal names --ticket" reports "--ticket"
-check "T-2 refusal leaves the existing ledger unchanged" ledger_unchanged
+check "T-2 reclassify from an unticketed ledger without --ticket exits 0" test "$ST" -eq 0
+check "T-2 reclassify records the new tier" test "$(field .tier)" = "complex"
 
 # T-4: tracker NOT configured, non-trivial tier without --ticket succeeds (degraded path).
 rm -f "$TLEDGER"
@@ -162,8 +162,8 @@ check "T-7 summary names the ticket" reports "IAN-11"
 # T-6 boundary: a ticket recorded for another branch does not carry over.
 git -C "$T" switch -q -c feat/other
 tier_set "$TRACKED_HOME" complex "new task on another branch"
-check "T-6 other-branch ledger ticket does not carry over (exits 1)" test "$ST" -eq 1
-check "T-6 other-branch refusal names --ticket" reports "--ticket"
+check "T-6 other-branch set without --ticket exits 0" test "$ST" -eq 0
+check "T-6 other-branch ledger ticket does not carry over" test "$(field '.ticket // "none"')" = "none"
 
 # S-1 (IAN-193, R-212): --scope records the declared file scope that
 # hooks/scope-widening-gate.sh reads, every entry of it. The first version

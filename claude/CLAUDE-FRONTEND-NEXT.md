@@ -105,3 +105,13 @@ Projects built against the old single-file conventions use `lib/` and a flat `ho
 ## Containers (R-351)
 
 A Next.js app is a deployable artifact: it ships its `Dockerfile` in the commit that creates it. Set `output: "standalone"` in `next.config.ts`; the multi-stage image builds on `node:22-alpine`, copies `.next/standalone`, `.next/static`, and `public/` into the runtime stage, runs `USER node`, declares `HEALTHCHECK` against a `/api/health` route handler, and starts with `CMD ["node", "server.js"]`. `.dockerignore` excludes `.git`, `node_modules`, `.next`, `.env*`, and the test trees. `NEXT_PUBLIC_*` values are build arguments by nature, so they are the one exception to run-time-only configuration and never carry a secret. The image is the deploy unit: Railway builds it from the Dockerfile (`CLOUD-DEPLOYMENT.md`), and CI builds and smoke-tests the same image on every pull request.
+
+## Incident-backed rules
+
+Moved from the global-memory PL list on 2026-10-02 (IAN-568). Each came from a production incident in a 2026-04 debug session; they are defaults.
+
+- **PL5.** In a pnpm monorepo, set `outputFileTracingRoot: path.resolve(__dirname, '..')` in `next.config.ts`; without it dynamic routes work locally and return 500 on Vercel, because the bundler cannot find the hoisted `node_modules`.
+- **PL6.** `pnpm.autoInstallPeers: true` installs optional peers too; suppress an unwanted optional peer with a `pnpm.overrides` entry of `"pkg": "never"`.
+- **PL7.** `@playwright/test` anywhere in a Next.js app's dependency tree causes `Cannot find module 'next/dist/compiled/source-map'` on Vercel; keep Playwright in the monorepo root `devDependencies` only and suppress it from the app's peer resolution.
+- **PL8.** Delete passthrough `middleware.ts` files: every middleware runs every request through the Edge runtime, even one that only calls `NextResponse.next()`.
+- **PL9.** After the second unexplained 500 on an App Router route, add an `error.tsx` boundary, which surfaces the real error at once instead of leaving the route to be debugged blind.

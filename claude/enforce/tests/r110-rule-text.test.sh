@@ -46,24 +46,27 @@ requireText "$ROOT/rulebook/reference.md" 'R-110: Classify every slice and PR by
 requireText "$ROOT/rulebook/reference.md" 'are deferred to follow-up work' "reference.md R-110 does not name the deferred detector and merge-time checks"
 
 # R-412, R-707, R-907: risk, not tier, decides the triad.
-requireNormText 'R-412' 'only for a high-risk slice (R-110), at any task tier'
+requireNormText 'R-110' 'standard-risk runs the lean tier'
+requireText "$ROOT/rulebook/reference.md" 'Scope: high-risk slices only (owner decision 2026-10-02, IAN-568' "reference.md R-412 does not limit the lock to high-risk slices"
 requireText "$ROOT/rulebook/agents.md" 'for every high-risk slice (R-110), at any task tier, and for no other slice' "agents.md R-707 still dispatches by tier"
 forbidText "$ROOT/rulebook/agents.md" 'Dispatch the `slice-critic` for Complex and Saga' "agents.md R-705 still dispatches the critic by tier"
-requireText "$ROOT/rulebook/cost.md" 'for every high-risk slice (R-110), at any task tier' "cost.md R-907 still separates the author by tier"
+requireText "$ROOT/rulebook/cost.md" 'R-907: Deleted 2026-10-02 (IAN-568)' "cost.md R-907 was not tombstoned"
 requireText "$ROOT/skills/tdd-gated-dispatch/SKILL.md" '## High-risk slice: three roles, fresh context each' "tdd-gated-dispatch still sections the roles by tier"
 
 # R-517: sonnet for every PR, two-round cap, LOW ticketed, security never ticketed.
-requireNormText 'R-517' 'on `sonnet` for every PR, security-touching ones included'
-requireNormText 'R-517' 'run at most two review rounds per PR'
-requireNormText 'R-517' 'a security finding of any severity is fixed, a further round allowed for it, or waived by the owner, never ticketed (R-109)'
+requireNormText 'R-517' 'on `sonnet`, security-touching PRs included'
+requireNormText 'R-517' 'one round, and a second only when round one finds a HIGH'
+requireNormText 'R-517' 'fixes land as ordinary commits with a test'
+requireText "$ROOT/rulebook/reference.md" 'A security finding of any severity, LOW included, is never ticketed' "reference.md R-517 lost the never-ticketed security finding"
+forbidText "$ROOT/CLAUDE.md" 'run at most two review rounds per PR' "CLAUDE.md R-517 still allows two routine review rounds"
 forbidText "$ROOT/CLAUDE.md" 'only when the owner opts in or the diff touches auth, money, or concurrency' "CLAUDE.md R-517 still escalates the reviewer model by diff content"
 requireText "$ROOT/rulebook/reference.md" 'the merge gate does not yet parse review rounds' "reference.md R-517 does not say the round cap is not yet gated"
 requireText "$ROOT/prompts/codex-pr-review-prompt.md" '| # | Round | Severity |' "the PR review prompt's output table has no Round column"
 
 # Gate 1 and measurement.
 requireText "$ROOT/skills/build-by-slice-require-review/SKILL.md" '## Fuzzy controls (asked before any code, at Gate 1)' "build-by-slice lacks the fuzzy-control tiles"
-requireText "$ROOT/skills/build-by-slice-require-review/SKILL.md" '**Round cap:**' "build-by-slice lacks the review round cap"
-requireText "$ROOT/skills/task-cleanup/SKILL.md" '**Round cap.**' "task-cleanup lacks the review round cap"
+requireText "$ROOT/skills/build-by-slice-require-review/SKILL.md" '**Review rounds:**' "build-by-slice lacks the review-round rule"
+requireText "$ROOT/skills/task-cleanup/SKILL.md" '**Review rounds.**' "task-cleanup lacks the review-round rule"
 requireText "$ROOT/skills/ticket-lifecycle/SKILL.md" '## Operation: report risk' "ticket-lifecycle lacks the report risk rollup"
 for field in '`risk`' '`findings_by_round`' '`escaped_bugs`'; do
   requireText "$ROOT/skills/ticket-lifecycle/SKILL.md" "| $field |" "ticket-lifecycle lacks the canonical field $field"

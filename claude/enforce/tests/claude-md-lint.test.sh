@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # claude-md-lint.test.sh: guard the always-loaded prompt's context budget and
 # the CLAUDE.md <-> rulebook/reference.md split introduced 2026-07-29.
-# Three invariants:
-#   1. CLAUDE.md stays under 200 lines (published adherence threshold).
-#   2. Every rule ID with a norm line has a full-Spec block in rulebook/reference.md
-#      and vice versa (no drift between norm lines and reference Specs). A norm
-#      line may live in CLAUDE.md or in a skills/*/SKILL.md: the 2026-09-04
-#      config audit moved the conditional, mechanically enforced structure rules
-#      into skills/structure-conventions so they stop costing context on every
-#      session. Relocation is allowed; an orphan Spec with no norm line anywhere
-#      is still a failure.
+# Invariants:
+#   1. CLAUDE.md stays under 200 lines and under 8000 bytes (the 2026-10-02
+#      pruning, IAN-568, cut it from 30 KB to about 8 KB).
+#   2. Every rule ID with a norm line (in CLAUDE.md or a skills/*/SKILL.md) has a
+#      block in rulebook/reference.md, and every live rule in reference.md is
+#      reachable from the always-loaded file: either its norm line is in
+#      CLAUDE.md or a skill, or CLAUDE.md's Defaults index names its ID. A rule
+#      deleted or merged on 2026-10-02 keeps a one-line tombstone in reference.md
+#      ("Deleted <date>" or "Merged <date>"); a tombstoned ID must not carry a
+#      norm line anywhere.
 #   3. Un-frontmattered files in ~/.claude/rules/ auto-load into every session,
 #      so only session-types.md may live there without a paths: header.
 set -euo pipefail
@@ -23,10 +24,16 @@ REFERENCE_MD="${CLAUDE_REFERENCE_FILE:-$CLAUDE_HARNESS_ROOT/rulebook/reference.m
 # the repo went unlinted until it was synced (2026-09-17 audit P2-8).
 RULES_DIR="${CLAUDE_RULES_DIR:-$CLAUDE_HARNESS_ROOT/rules}"
 MAX_LINES=200
+MAX_BYTES=8000
 
 LINE_COUNT=$(wc -l < "$CLAUDE_MD" | tr -d ' ')
 if [ "$LINE_COUNT" -gt "$MAX_LINES" ]; then
   echo "FAIL: CLAUDE.md is $LINE_COUNT lines (max $MAX_LINES). Collapse rule prose into rulebook/reference.md; the always-loaded file carries one norm line per rule." >&2
+  exit 1
+fi
+BYTE_COUNT=$(wc -c < "$CLAUDE_MD" | tr -d ' ')
+if [ "$BYTE_COUNT" -gt "$MAX_BYTES" ]; then
+  echo "FAIL: CLAUDE.md is $BYTE_COUNT bytes (max $MAX_BYTES). Only mandatory rules carry a norm line there; defaults are indexed by ID and live in skills, path files, and the rulebook." >&2
   exit 1
 fi
 
@@ -35,15 +42,25 @@ CLAUDE_MD_IDS=$(grep -oE '^R-[0-9]{3}' "$CLAUDE_MD" | sort -u)
 SKILL_IDS=$(cat "$SKILLS_DIR"/*/SKILL.md 2>/dev/null | grep -oE '^R-[0-9]{3}' | sort -u)
 NORM_IDS=$(printf '%s\n%s\n' "$CLAUDE_MD_IDS" "$SKILL_IDS" | grep -E '^R-[0-9]{3}$' | sort -u)
 REFERENCE_IDS=$(grep -oE '^R-[0-9]{3}' "$REFERENCE_MD" | sort -u)
+TOMBSTONE_IDS=$(grep -E '^R-[0-9]{3}: (Deleted|Merged) [0-9]{4}-[0-9]{2}-[0-9]{2}' "$REFERENCE_MD" | grep -oE '^R-[0-9]{3}' | sort -u)
+LIVE_IDS=$(comm -23 <(printf '%s\n' "$REFERENCE_IDS") <(printf '%s\n' "$TOMBSTONE_IDS"))
+# IDs CLAUDE.md names anywhere (norm lines and the Defaults index).
+INDEXED_IDS=$(grep -oE 'R-[0-9]{3}' "$CLAUDE_MD" | sort -u)
+REACHABLE_IDS=$(printf '%s\n%s\n' "$NORM_IDS" "$INDEXED_IDS" | grep -E '^R-[0-9]{3}$' | sort -u)
 MISSING_IN_REFERENCE=$(comm -23 <(printf '%s\n' "$NORM_IDS") <(printf '%s\n' "$REFERENCE_IDS"))
-MISSING_NORM_LINE=$(comm -13 <(printf '%s\n' "$NORM_IDS") <(printf '%s\n' "$REFERENCE_IDS"))
+MISSING_NORM_LINE=$(comm -23 <(printf '%s\n' "$LIVE_IDS") <(printf '%s\n' "$REACHABLE_IDS"))
+TOMBSTONE_WITH_NORM=$(comm -12 <(printf '%s\n' "$TOMBSTONE_IDS") <(printf '%s\n' "$NORM_IDS"))
 DUPLICATED=$(comm -12 <(printf '%s\n' "$CLAUDE_MD_IDS") <(printf '%s\n' "$SKILL_IDS"))
 if [ -n "$MISSING_IN_REFERENCE" ]; then
   echo "FAIL: rule IDs with a norm line but no Spec block in rulebook/reference.md: $(echo "$MISSING_IN_REFERENCE" | tr '\n' ' ')" >&2
   exit 1
 fi
 if [ -n "$MISSING_NORM_LINE" ]; then
-  echo "FAIL: rule IDs in rulebook/reference.md with no norm line in CLAUDE.md or any skills/*/SKILL.md: $(echo "$MISSING_NORM_LINE" | tr '\n' ' ')" >&2
+  echo "FAIL: live rule IDs in rulebook/reference.md that CLAUDE.md neither carries nor indexes, and no skills/*/SKILL.md carries: $(echo "$MISSING_NORM_LINE" | tr '\n' ' ')" >&2
+  exit 1
+fi
+if [ -n "$TOMBSTONE_WITH_NORM" ]; then
+  echo "FAIL: deleted or merged rule IDs that still carry a norm line: $(echo "$TOMBSTONE_WITH_NORM" | tr '\n' ' ')" >&2
   exit 1
 fi
 # A rule carried in both places drifts silently. It belongs in exactly one.

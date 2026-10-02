@@ -3,11 +3,11 @@
     "lean": {
       "description": "Hides every COACHING and ORCHESTRATION item classified in docs/harness-audit.md (IAN-518) without deleting it: the listed CLAUDE.md rule lines, hook registrations, SKILL.md files, audit agents, and reference files are left out of the installed or ported tree. Every ENFORCE hook, harness-sync, and every skill script a gate reads stay.",
       "rules": [
-        "R-001", "R-104", "R-201", "R-202", "R-204", "R-205", "R-206", "R-208", "R-209", "R-210", "R-211",
-        "R-301", "R-307", "R-308", "R-318", "R-322", "R-332", "R-341", "R-345", "R-346", "R-351",
-        "R-404", "R-406", "R-408", "R-409",
-        "R-501", "R-502", "R-503", "R-504", "R-508", "R-510", "R-511", "R-515", "R-516", "R-518",
-        "R-601", "R-602", "R-603", "R-604", "R-606"
+        "R-104",
+        "R-201",
+        "R-204",
+        "R-211",
+        "R-308"
       ],
       "hooks": [
         "audit-signal-check", "clean-code-reminder", "dockerfile-reminder", "enforcement-guard-check",

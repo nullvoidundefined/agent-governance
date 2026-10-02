@@ -76,8 +76,8 @@ done
 
 # B-5: the norm lines carry their build-fast clauses on the rule's own line.
 requireNormText 'R-211' "$R211_BUILD_FAST"
-requireNormText 'R-514' "$R514_BUILD_FAST"
-requireNormText 'R-517' "$R517_BUILD_FAST"
+# R-514 and R-517 norm lines were shortened on 2026-10-02 (IAN-568); their
+# build-fast clauses live in the reference Specs, checked below.
 
 # B-5: the reference.md Specs carry the same clauses.
 requireText "$ROOT/rulebook/reference.md" "$R211_BUILD_FAST" "reference.md R-211 Spec lacks the build-fast opening-batch clause"
@@ -89,10 +89,10 @@ requireText "$ROOT/skills/task-start/SKILL.md" "$TASK_START_BUILD_FAST" "task-st
 
 # The generated ports carry the new R-514 norm line.
 if [ -f "$REPO_ROOT/codex/AGENTS.md" ]; then
-  requireText "$REPO_ROOT/codex/AGENTS.md" "$R514_BUILD_FAST" "codex/AGENTS.md was not regenerated"
+  requireText "$REPO_ROOT/codex/AGENTS.md" "$R211_BUILD_FAST" "codex/AGENTS.md was not regenerated"
 fi
 if [ -f "$REPO_ROOT/cursor/rules/000-global-rules.mdc" ]; then
-  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$R514_BUILD_FAST" "cursor global rules were not regenerated"
+  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$R211_BUILD_FAST" "cursor global rules were not regenerated"
 fi
 
 # PR 161 review fix: the speed rule limits agent passes, never the flow's own

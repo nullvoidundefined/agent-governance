@@ -51,10 +51,10 @@ check "codex --check with no profile reports the lean tree as stale" test $? -eq
 
 # Cursor lean tree.
 C="$ROOT/cursor"
-check "cursor lean drops R-001" lacks '^R-001:' "$C/rules/000-global-rules.mdc"
-check "cursor lean drops R-606" lacks '^R-606:' "$C/rules/000-global-rules.mdc"
+check "cursor lean drops R-104" lacks '^R-104:' "$C/rules/000-global-rules.mdc"
+check "cursor lean drops R-308" lacks '^R-308:' "$C/rules/000-global-rules.mdc"
 check "cursor lean keeps R-101" grep -q '^R-101:' "$C/rules/000-global-rules.mdc"
-check "cursor lean keeps R-412" grep -q '^R-412:' "$C/rules/000-global-rules.mdc"
+check "cursor lean keeps R-517" grep -q '^R-517:' "$C/rules/000-global-rules.mdc"
 check "cursor lean drops the session-types rule" test ! -e "$C/rules/001-session-types.mdc"
 check "cursor lean drops the python stack rule" test ! -e "$C/rules/python.mdc"
 check "cursor lean drops the structure-conventions rule" test ! -e "$C/rules/structure-conventions.mdc"
@@ -72,7 +72,7 @@ check "cursor lean keeps hand-authored README" test -f "$C/README.md"
 
 # Codex lean tree.
 X="$ROOT/codex"
-check "codex lean drops R-001" lacks '^R-001:' "$X/AGENTS.md"
+check "codex lean drops R-104" lacks '^R-104:' "$X/AGENTS.md"
 check "codex lean keeps R-101" grep -q '^R-101:' "$X/AGENTS.md"
 check "codex lean drops the session-types appendix" lacks '^# Session Types' "$X/AGENTS.md"
 check "codex lean drops skills/gof" test ! -e "$X/skills/gof/SKILL.md"
