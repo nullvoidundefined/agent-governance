@@ -35,7 +35,7 @@
 #      command reaches the hooks as one PreToolUse Bash event whose tool_input
 #      carries a command string and no path at all. Codex registers the
 #      write-target gates (structure-gate, content-gate, dependency-add-guard,
-#      migration-defaults-guard, codex-test-author-guard) on the Write|Edit
+#      migration-defaults-guard) on the Write|Edit
 #      matcher, so before 2026-09-18 none of them ever saw a file written by a
 #      redirection: the same edit was denied through apply_patch and allowed
 #      through `printf ... > path`. The adapter now extracts the write targets
@@ -43,20 +43,12 @@
 #      target to those gates, IN ADDITION to the ordinary Bash event, which
 #      still runs unchanged. See the extractor section below for exactly what
 #      that analysis catches and what it cannot.
-#   5. A hook cannot otherwise tell that its caller is Codex, and one hook needs
-#      to: codex-test-author-guard (R-907) asks whenever a Write or Edit targets
-#      a test file, because tests are authored by the codex CLI and never by the
-#      model writing the implementation. Under Codex that ask becomes a deny by
-#      rule 2 above, so the guard denied Codex the very job R-907 assigns it (a
-#      `codex exec -s workspace-write` run writing a test file was blocked,
-#      observed 2026-09-19 in template-fastapi-nuxt; the report's further claim
-#      that creates succeeded while edits were denied is not reproducible, and
-#      the guard's own header says why). The adapter therefore exports
-#      CLAUDE_HOOK_RUNTIME=codex, below, into every hook child it runs, on both
-#      dispatch paths: the event's own hook list and the synthesized write
-#      events of item 4. A Claude Code session sets no such variable, so its own
-#      writes to a test file keep asking. Any hook may read the marker; only
-#      that guard does today.
+#   5. A hook cannot otherwise tell that its caller is Codex. The adapter
+#      exports CLAUDE_HOOK_RUNTIME=codex, below, into every hook child it runs,
+#      on both dispatch paths: the event's own hook list and the synthesized
+#      write events of item 4. A Claude Code session sets no such variable. The
+#      one hook that read it, codex-test-author-guard (R-907), was removed in
+#      IAN-568; the marker stays so a future hook can tell the runtimes apart.
 #
 # Usage (from ~/.codex/hooks.json, one entry per hook group; this file is
 # copied to ~/.codex/hooks/ by openai/build.mjs):
@@ -100,7 +92,7 @@ PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/setti
 # in or out of that group fails a test instead of silently narrowing the port.
 # Overridable so the fixtures can observe what is dispatched; setting it empty
 # turns the synthetic dispatch off.
-read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard codex-test-author-guard ticket-at-start-gate lexicon-gate scope-widening-gate}"
+read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard}"
 
 # The permission helper is resolved deterministically and its absence is
 # recorded rather than swallowed. PERMISSION_RULES_ERROR non-empty means the
