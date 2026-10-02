@@ -6,9 +6,10 @@
 # project's .venv interpreter with a warning otherwise, in both cases via the
 # bootstrap that confines bytecode to a per-run cache, and the JUnit XML
 # pytest writes is converted into the report shape red and green already
-# read. Red accepts an assertion failure and a missing module and refuses a
-# test failing for an unclassified reason beside an assertion failure, a
-# passing test, a skipped test, a syntax error, a file with no tests, and a
+# read. Red accepts an assertion failure, a missing module or fixture, and any
+# exception the test body or its setup raises (recording its class), and
+# refuses a test failing on infrastructure beside an assertion failure, a
+# collection error, a teardown error, a passing test, a skipped test, a syntax error, a file with no tests, and a
 # slice that mixes runners; green accepts the fixed implementation and
 # refuses a still failing test (also when stale bytecode in the tree holds
 # the passing version), a skipped test, and a dropped baseline; the JUnit
@@ -94,11 +95,57 @@ expect_fail "pytest red on a syntax error" bash "$TDD" red "$TEST" | grep -q 'do
 printf 'NOTHING = 1\n' > "$TEST"
 expect_fail "pytest red on a file with no tests" bash "$TDD" red "$TEST" | grep -q 'contains no tests' || { echo "FAIL: a pytest file with no tests must be refused as containing none"; exit 1; }
 # Each test of a file named whole is classified on its own (IAN-160): one
-# failing for an unclassified reason is refused by id even though the other
-# test's assertion failure would classify the file's joined messages.
-printf 'def test_asserts():\n    assert 1 == 2\n\n\ndef test_raises():\n    raise RuntimeError("boom")\n' > "$TEST"
-expect_fail "pytest red with one unclassified failure in the file" bash "$TDD" red "$TEST" | grep -q "$TEST::test_raises fails for a reason this script does not classify" || { echo "FAIL: a test failing for an unclassified reason must be refused by its id beside an assertion failure"; exit 1; }
+# failing on infrastructure (a refused connection, a timeout) is refused by id
+# even though the other test's assertion failure would classify the file.
+printf 'def test_asserts():\n    assert 1 == 2\n\n\ndef test_raises():\n    raise ConnectionRefusedError(61, "Connection refused")\n' > "$TEST"
+expect_fail "pytest red with one infrastructure failure in the file" bash "$TDD" red "$TEST" | grep -q "$TEST::test_raises fails on infrastructure" || { echo "FAIL: a test failing on infrastructure must be refused by its id beside an assertion failure"; exit 1; }
+printf 'def test_slow():\n    raise TimeoutError("query timed out")\n' > "$TEST"
+expect_fail "pytest red on a timeout" bash "$TDD" red "$TEST" | grep -q "fails on infrastructure" || { echo "FAIL: a timeout must be refused as infrastructure"; exit 1; }
+# A test file that raises while it is imported is a collection error, not a
+# RED, whatever the exception (I3 keeps collection errors refused).
+printf 'raise TypeError("module level")\n\n\ndef test_never_runs():\n    assert 1 == 2\n' > "$TEST"
+expect_fail "pytest red on a collection error" bash "$TDD" red "$TEST" | grep -q 'does not classify' || { echo "FAIL: a collection error must stay refused"; exit 1; }
+# A fixture whose teardown fails is not a RED: the test body passed.
+printf 'import pytest\n\n\n@pytest.fixture\ndef leaky():\n    yield 1\n    raise ValueError("teardown")\n\n\ndef test_teardown(leaky):\n    assert leaky == 1\n' > "$TEST"
+expect_fail "pytest red on a teardown error" bash "$TDD" red "$TEST" | grep -q 'teardown' || { echo "FAIL: a teardown error must be refused naming the teardown"; exit 1; }
 [ "$(lock_field .phase)" = "open" ] || { echo "FAIL: refused pytest reds must leave the phase open"; exit 1; }
+
+# red: any exception the test body or its setup raises is a RED (I3,
+# IAN-568): a new keyword argument (TypeError), an unwritten method
+# (NotImplementedError), and a fixture whose insert hits a column the
+# migration has not added (a setup error). The lock records the classes.
+cat > "$TEST" <<'PYTEST'
+import pytest
+
+
+class UndefinedColumnError(Exception):
+    pass
+
+
+@pytest.fixture
+def seeded_row():
+    raise UndefinedColumnError('column "included_type" does not exist')
+
+
+def test_new_keyword():
+    def search(text):
+        return text
+    assert search("x", included_type="park") == "x"
+
+
+def test_unwritten():
+    raise NotImplementedError
+
+
+def test_seeded(seeded_row):
+    assert seeded_row
+PYTEST
+out=$(bash "$TDD" red "$TEST" 2>&1) || { echo "FAIL: pytest red on exceptions in the body and setup must succeed; output: $out"; exit 1; }
+[ "$(lock_field '.tests[0].failureClass')" = "NotImplementedError,TypeError,UndefinedColumnError" ] || { echo "FAIL: the lock must record the exception classes, got $(lock_field '.tests[0].failureClass')"; exit 1; }
+# A fixture the test asks for that is not written yet is the missing-module RED.
+printf 'def test_uses_new_fixture(trip_factory):\n    assert trip_factory\n' > "$TEST"
+bash "$TDD" red "$TEST" >/dev/null || { echo "FAIL: a missing fixture must be a RED"; exit 1; }
+[ "$(lock_field '.tests[0].failureClass')" = "missing-module" ] || { echo "FAIL: a missing fixture must be the missing-module RED, got $(lock_field '.tests[0].failureClass')"; exit 1; }
 
 # red: a pytest file named beside a JavaScript test is refused; one runner per slice.
 red_test
@@ -224,11 +271,11 @@ cp "$STUBS/test_score.py.saved" "$TEST"
 sed 's/^def test_scores_a_job_at_2/@pytest.mark.skip(reason="parked")\ndef test_scores_a_job_at_2/' "$STUBS/test_score.py.saved" > "$TEST"
 expect_fail "node red beside a skipped unnamed test" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" | grep -q "$TEST::test_scores_a_job_at_2 is skipped" || { echo "FAIL: a skipped unnamed test in an id-named file must be refused by its id"; exit 1; }
 cp "$STUBS/test_score.py.saved" "$TEST"
-# Each named test is classified on its own (PR #74 review): one failing for an
-# unclassified reason is refused by id even when another named test's
+# Each named test is classified on its own (PR #74 review): one failing on
+# infrastructure is refused by id even when another named test's
 # missing-module failure would classify the pair.
-sed 's/from app.boost import boosted_score/raise RuntimeError("boom")/' "$STUBS/test_score.py.saved" > "$TEST"
-expect_fail "node red with one unclassified named failure" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" | grep -q "$TEST::TestBoost::test_boosted fails for a reason this script does not classify" || { echo "FAIL: a named test failing for an unclassified reason must be refused by its id"; exit 1; }
+sed 's/from app.boost import boosted_score/raise ConnectionRefusedError(61, "Connection refused")/' "$STUBS/test_score.py.saved" > "$TEST"
+expect_fail "node red with one infrastructure named failure" bash "$TDD" red "$TEST::TestBoost::test_boosted" "$TEST::test_scales" | grep -q "$TEST::TestBoost::test_boosted fails on infrastructure" || { echo "FAIL: a named test failing on infrastructure must be refused by its id"; exit 1; }
 cp "$STUBS/test_score.py.saved" "$TEST"
 # The same file named whole and by id is ambiguous and refused, rather than
 # the ids being dropped silently (PR review).

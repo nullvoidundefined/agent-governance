@@ -81,6 +81,9 @@
 # collection error is a file with
 # no tests carrying the error text, so a SyntaxError is refused as a parse
 # failure and an ImportError or ModuleNotFoundError is the missing-module RED.
+# A pytest test that runs and raises any other exception, in its body or its
+# fixtures' setup, is a RED recorded by exception class; infrastructure
+# failures and teardown errors are refused (pytest_exception_class).
 # Any other path, or no path, uses Vitest or Jest resolved from the project's
 # node_modules/.bin, then the copy bundled under ~/.claude/enforce/node_modules
 # (with a warning). A slice never mixes runners. go test and RSpec arrive with
@@ -492,12 +495,20 @@ ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
 SHELL_ASSERTION='FAIL'
-# pytest: an import that cannot resolve (a module or a name not written yet) is
-# the missing-module RED, a failed assert or an unmet pytest.raises is the
-# assertion RED, and any SyntaxError subclass is a test that does not parse.
-PYTEST_MISSING='ModuleNotFoundError|ImportError'
+# pytest: an import that cannot resolve (a module or a name not written yet),
+# or a fixture not written yet, is the missing-module RED, a failed assert or
+# an unmet pytest.raises is the assertion RED, and any SyntaxError subclass is
+# a test that does not parse. Any other exception the test body or its setup
+# raises is a RED too, recorded by its class (I3, IAN-568): a new keyword
+# argument (TypeError), an unwritten method, a column a migration has not
+# added yet, a fixture insert failing on setup. Refused: a failure whose first
+# line is infrastructure (PYTEST_INFRASTRUCTURE), a teardown error (the test
+# body passed), and anything that names no exception class. A collection error
+# never reaches this point: classify_red refuses it as a file with no tests.
+PYTEST_MISSING='ModuleNotFoundError|ImportError|fixture '"'"'[^'"'"']+'"'"' not found'
 PYTEST_ASSERTION='AssertionError|DID NOT RAISE'
 PYTEST_PARSE_FAILURE='SyntaxError|IndentationError|TabError'
+PYTEST_INFRASTRUCTURE='ConnectionRefusedError|ConnectionResetError|ConnectionAbortedError|TimeoutError|socket\.timeout|Connection refused|could not connect to server|connection to server at .* failed|Name or service not known|nodename nor servname|timed out|Timeout >'
 
 # Classifies one RED file from its report record, each of its tests on its own
 # (classify_failures). Prints the failure class or dies with the refusal.
@@ -567,7 +578,7 @@ def failure_result: {key: test_key, failures: ((.failureMessages // []) | map(to
 # is missing-module when any test is, assertion otherwise. A test with no
 # failure message, or no result at all, is refused, never an assertion.
 classify_failures() {
-  local rel="$1" results="$2" result key failures class=assertion count=0
+  local rel="$1" results="$2" result key failures class=assertion count=0 exception classes=""
   while IFS= read -r result; do
     [ -n "$result" ] || continue
     count=$((count + 1))
@@ -575,12 +586,40 @@ classify_failures() {
     failures=$(jq -r '.failures' <<< "$result")
     [ -n "$(tr -d '[:space:]' <<< "$failures")" ] || die "$rel::$key failed with no failure message to classify"
     if grep -qE "$MISSING_MODULE" <<< "$failures"; then class=missing-module
-    elif ! grep -qE "$ASSERTION" <<< "$failures"; then
+    elif grep -qE "$ASSERTION" <<< "$failures"; then classes="${classes}assertion"$'\n'
+    elif [ "$RUNNER_KIND" = pytest ]; then
+      exception=$(pytest_exception_class "$rel::$key" "$failures") || exit 1
+      classes="${classes}${exception}"$'\n'
+    else
       die "$rel::$key fails for a reason this script does not classify: $(printf '%s' "$failures" | grep -m1 . || true)"
     fi
   done <<< "$results"
   [ "$count" -gt 0 ] || die "$rel has no failing test result to classify"
+  # Missing-module wins, as before; otherwise the classes seen, sorted and
+  # joined, which is plain "assertion" for every runner but pytest.
+  [ "$class" = missing-module ] || class=$(printf '%s' "$classes" | sed '/^$/d' | sort -u | paste -sd, -)
   printf '%s' "$class"
+}
+
+# pytest_exception_class <test> <failures>: prints the class of the exception
+# a pytest test failed with, read from the first line of its failure (the
+# JUnit message: `TypeError: ...`, `pkg.mod.UndefinedColumnError: ...`, or
+# `failed on setup with "<the same>"`), or dies with the refusal for an
+# infrastructure failure, a teardown error, a SyntaxError, or a line that
+# names no exception class.
+pytest_exception_class() {
+  local test="$1" first name
+  first=$(printf '%s' "$2" | grep -m1 . || true)
+  case "$first" in
+    'failed on teardown with'*) die "$test passed and then failed in teardown; a teardown error is not a RED: $first" ;;
+  esac
+  first="${first#failed on setup with \"}"
+  grep -qE "$PYTEST_INFRASTRUCTURE" <<< "$first" && die "$test fails on infrastructure, not on the behavior; start the service or fix the environment and run red again: $first"
+  name=$(sed -nE 's/^([A-Za-z_][A-Za-z0-9_.]*)(:.*)?$/\1/p' <<< "$first")
+  name="${name##*.}"
+  [ -n "$name" ] || die "$test fails for a reason this script does not classify: $first"
+  grep -qE "^($PYTEST_PARSE_FAILURE)$" <<< "$name" && die "$test raised $name, which is a parse failure, not a RED: $first"
+  printf '%s' "$name"
 }
 
 # classify_named <rel> <ids json>: classify_red for a file named by test ids.
