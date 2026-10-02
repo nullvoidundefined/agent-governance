@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Covers: hook:clean-code-reminder
 # Covers: hook:observability-reminder
 # Covers: hook:new-file-header-reminder
 # Covers: hook:dockerfile-reminder
 # Covers: hook:flat-directory-reminder
-# build-lane-quiet.test.sh: verifies that the five reminder-only hooks go quiet
+# build-lane-quiet.test.sh: verifies that the four reminder-only hooks go quiet
 # in the build-fast fast lane and only there (IAN-401, spec B-6, acceptance
 # criterion 9). Every hook runs inside one sandbox git repository on branch
 # feat/q, with the working directory inside that repository and a file path
@@ -15,12 +14,11 @@
 #   3. {"branch":"other","lane":"fast"}: the reminder (another task's ledger).
 #   4. malformed JSON: the reminder (fail toward reminding).
 #   5. no ledger: the reminder.
-# Then an input clean-code-reminder's own fixture expects to be silent (a short
-# function) is still silent with no ledger, so the existing exemptions hold.
-# Finally the two blocking gates, protected-path-guard.sh and
-# scope-widening-gate.sh, fed one Write into the sandbox repository, produce
-# byte-identical output with and without the fast lane on the ledger, both
-# with no scope declared and with a declared scope the target falls outside.
+# Finally the blocking gate protected-path-guard.sh, fed one Write into the
+# sandbox repository, produces byte-identical output with and without the fast
+# lane on the ledger, both with no scope declared and with a declared scope
+# the target falls outside. (clean-code-reminder and scope-widening-gate were
+# removed in IAN-568.)
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOKS="$CLAUDE_HARNESS_ROOT/hooks"
@@ -40,15 +38,7 @@ mkdir -p "$REPO/.claude"
 LEDGER="$REPO/.claude/task-tier.json"
 
 # --- Triggering inputs, one per hook, taken from each hook's own fixture ------
-# clean-code-reminder: a function body past the R-322 ceiling, plus a short one.
 mkdir -p "$REPO/src"
-{
-  printf 'export function oversizedComputation(): number {\n'
-  printf '    let total = 0;\n'
-  for i in $(seq 1 30); do printf '    total += %s;\n' "$i"; done
-  printf '    return total;\n}\n'
-} > "$REPO/src/long.ts"
-printf 'export function addNumbers(a: number, b: number): number {\n    return a + b;\n}\n' > "$REPO/src/short.ts"
 # observability-reminder: an Express app with routes and no /health.
 mkdir -p "$REPO/apps/server/src"
 printf 'import express from "express";\nconst app = express();\napp.use(express.json());\napp.get("/notes", listNotes);\nexport { app };\n' > "$REPO/apps/server/src/app.ts"
@@ -77,7 +67,6 @@ post_write() { # post_write <file-path> [content]
 }
 context() { printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
 
-run_clean_code() { drive clean-code-reminder "$(post_write "$REPO/src/long.ts")" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
 run_observability() { drive observability-reminder "$(post_write "$REPO/apps/server/src/app.ts")" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
 run_new_file_header() { drive new-file-header-reminder "$(post_write "$REPO/src/services/foo.ts" 'export const x = 1;
 ')" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
@@ -85,7 +74,6 @@ run_dockerfile() { drive dockerfile-reminder "$(post_write "$REPO/apps/server/sr
 run_flat_directory() { drive flat-directory-reminder "$(post_write "$REPO/over/module21.ts")" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"; }
 
 # Reminder predicates: the same text each hook's own fixture asserts.
-reminds_clean_code() { context | grep -q 'R-322'; }
 reminds_observability() { context | grep -q 'R-345'; }
 reminds_new_file_header() { context | grep -q 'has no file-level header'; }
 reminds_dockerfile() { context | grep -q 'R-351.*no Dockerfile exists'; }
@@ -106,7 +94,7 @@ set_ledger() { # set_ledger <state>
 }
 
 # --- The five ledger states for each reminder-only hook --------------------------
-for hook in clean_code observability new_file_header dockerfile flat_directory; do
+for hook in observability new_file_header dockerfile flat_directory; do
   set_ledger fast; "run_$hook"
   check "$hook: fast lane on this branch prints nothing and exits 0" is_quiet
   for state in guarded other-branch malformed absent; do
@@ -115,18 +103,13 @@ for hook in clean_code observability new_file_header dockerfile flat_directory; 
   done
 done
 
-# --- Existing exemptions hold: a short function stays silent with no ledger ------
-set_ledger absent
-drive clean-code-reminder "$(post_write "$REPO/src/short.ts")" CLAUDE_FIRE_LOG="$CLAUDE_FIRE_LOG"
-check "clean_code: a short function is silent with no ledger" is_quiet
-
 # --- Blocking gates decide the same with and without the fast lane ---------------
 GATE_PAYLOAD=$(jq -nc --arg f "$REPO/.enforce.json" --arg d "$REPO" \
   '{hook_event_name:"PreToolUse",tool_name:"Write",cwd:$d,tool_input:{file_path:$f,content:"{}"}}')
 gate_output() { # gate_output <hook-name>: stdout and stderr together, then the exit status
   (cd "$REPO" && printf '%s' "$GATE_PAYLOAD" | bash "$HOOKS/$1.sh" 2>&1; echo "exit=$?")
 }
-for gate in protected-path-guard scope-widening-gate; do
+for gate in protected-path-guard; do
   set_ledger absent; WITHOUT_LANE=$(gate_output "$gate")
   set_ledger fast; WITH_LANE=$(gate_output "$gate")
   check "$gate: identical output with no ledger and with the fast lane" test "$WITHOUT_LANE" = "$WITH_LANE"
@@ -138,7 +121,7 @@ for gate in protected-path-guard scope-widening-gate; do
 done
 
 # --- Hardening: ledger shapes, HEAD state, ledger provenance, helper loss ------
-REMINDER_HOOKS="clean_code observability new_file_header dockerfile flat_directory"
+REMINDER_HOOKS="observability new_file_header dockerfile flat_directory"
 check_all_remind() { # check_all_remind <label>: every reminder hook prints its reminder
   local hook
   for hook in $REMINDER_HOOKS; do
@@ -275,11 +258,11 @@ for hook in $REMINDER_HOOKS; do
     bash -c '! grep -q build-lane-quiet <<< "$1"' _ "$ERR"
 done
 
-# Exactly the five reminder hooks source the helper.
+# Exactly the four reminder hooks source the helper.
 HELPER_USERS=$(cd "$HOOKS" && grep -l 'build-lane-quiet' -- *.sh | grep -vx 'build-lane-quiet.sh' | sort | tr '\n' ' ')
-EXPECTED_USERS=$(printf '%s\n' clean-code-reminder.sh dockerfile-reminder.sh flat-directory-reminder.sh \
+EXPECTED_USERS=$(printf '%s\n' dockerfile-reminder.sh flat-directory-reminder.sh \
   new-file-header-reminder.sh observability-reminder.sh | sort | tr '\n' ' ')
-check "only the five reminder hooks reference build-lane-quiet" test "$HELPER_USERS" = "$EXPECTED_USERS"
+check "only the four reminder hooks reference build-lane-quiet" test "$HELPER_USERS" = "$EXPECTED_USERS"
 
 # new-file-header-reminder's own exemption: content opening with a comment.
 set_ledger absent
@@ -291,8 +274,8 @@ check "new_file_header: content opening with a comment is silent with no ledger"
 # The real ledger writer's fast lane silences a reminder.
 (cd "$REPO" && bash "$CLAUDE_HARNESS_ROOT/skills/task-start/scripts/task-tier.sh" set standard r --ticket IAN-1 --lane fast >/dev/null 2>&1)
 check "task-tier.sh --lane fast wrote a fast ledger" test "$(jq -r '.lane' "$LEDGER" 2>/dev/null)" = "fast"
-run_clean_code
-check "clean_code: a ledger written by task-tier.sh --lane fast is quiet" is_quiet
+run_observability
+check "observability: a ledger written by task-tier.sh --lane fast is quiet" is_quiet
 set_ledger absent
 
 if [ "$fail" -ne 0 ]; then exit 1; fi

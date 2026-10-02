@@ -166,7 +166,7 @@ check "T-6 other-branch ledger ticket does not carry over (exits 1)" test "$ST" 
 check "T-6 other-branch refusal names --ticket" reports "--ticket"
 
 # S-1 (IAN-193, R-212): --scope records the declared file scope that
-# hooks/scope-widening-gate.sh reads, every entry of it. The first version
+# hooks/scope-match.sh readers (build-lane.sh) use, every entry of it. The first version
 # split the comma-separated list with `printf '%s'`, which emits no trailing
 # newline, so `while read` silently dropped the last entry and the gate then
 # asked about a file the task had legitimately declared.
@@ -198,9 +198,9 @@ check "S-1 omitting --scope keeps the scope already on this branch" test "$(jq -
 
 # S-1 (finding 6 of the PR #96 review): the case the label above used to
 # promise and never tested. A FIRST set on a branch that never declared a
-# scope must omit the key entirely, because that absence is what makes
-# scope-widening-gate.sh and the R-214 commit gate stay silent (R-212's
-# degraded path). Asserting it here is what would catch read_previous_scope
+# scope must omit the key entirely, because that absence is what tells the
+# scope readers no scope was declared (R-212's degraded path; the scope gate
+# and the R-214 commit gate that once read it were removed in IAN-568). Asserting it here is what would catch read_previous_scope
 # returning `[]` instead of nothing.
 git -C "$S1" switch -q -c feat/scope-fresh
 OUT=$(cd "$S1" && bash "$TIER" set standard "no scope declared here" 2>&1)

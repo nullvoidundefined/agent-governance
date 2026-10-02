@@ -10,7 +10,7 @@
         "R-601", "R-602", "R-603", "R-604", "R-606"
       ],
       "hooks": [
-        "audit-signal-check", "clean-code-reminder", "dockerfile-reminder", "enforcement-guard-check",
+        "audit-signal-check", "dockerfile-reminder", "enforcement-guard-check",
         "flat-directory-reminder", "handoff-check", "hook-integrity-check", "hookspath-drift-check",
         "model-switch-guard", "new-file-header-reminder", "observability-reminder", "parallel-session-check",
         "post-compact-rules", "pr-monitor-reminder", "redact-output", "redaction-guard-check",

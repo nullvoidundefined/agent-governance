@@ -77,8 +77,8 @@ export_head_files() {
 }
 
 # True when the pushed repository's origin URL is listed in
-# ~/.claude/enforce/gate-trusted-repos.txt, the same opt-in push-golangci-gate
-# requires before running anything that belongs to the target repository.
+# ~/.claude/enforce/gate-trusted-repos.txt, the opt-in required before running
+# anything that belongs to the target repository.
 is_trusted_repository() {
   local trusted_file="$HOME/.claude/enforce/gate-trusted-repos.txt" origin_url
   origin_url=$(run_git_on_target remote get-url origin 2>/dev/null || true)

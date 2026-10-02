@@ -24,8 +24,9 @@
 # Line shape: {"ts":"<ISO8601 UTC>","task_id":"<id>","subject":"...",
 # "status":"created|in_progress|completed|deleted","cwd":"...","branch":"...",
 # "provenance":"requested|required|self|untagged|"}. The provenance field
-# (R-213, IAN-199) is parsed from the subject's leading tag, which
-# task-provenance-gate.sh makes mandatory at TaskCreate, and is what
+# (R-213, IAN-199) is parsed from the subject's leading tag, when one is
+# present (the TaskCreate gate that made it mandatory was removed in
+# IAN-568, so an untagged subject records "untagged"), and is what
 # skills/task-start/scripts/task-provenance.sh folds into the status line
 # telling the user whether the task they actually asked for is finished. It
 # is empty on a status-only TaskUpdate line that carries no subject, and the

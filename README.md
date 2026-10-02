@@ -130,9 +130,6 @@ named in brackets, so its full specification can be read in `claude/rulebook/ref
 
 | Feature | Fires on | Effect |
 |---|---|---|
-| `ticket-at-start-gate.sh` refuses the first edit and every `git commit` until the branch's task ledger names a tracker ticket, for any task above the trivial tier (R-605). | `Write`, `Edit`, `Bash` | Deny |
-| `scope-widening-gate.sh` asks before a write that lands outside the file scope declared at task start, so a widening reaches the user as a question rather than as a larger diff (R-212). | `Write`, `Edit` | Ask |
-| `task-provenance-gate.sh` refuses a task whose subject does not start with `[requested]`, `[required]`, or `[self]`, so the user can tell what they asked for from what the agent added (R-213). | `TaskCreate` | Deny |
 | `task-commit-reminder.sh` reminds the session to commit when a task is marked complete while the tree still holds uncommitted changes (R-504). | `TaskUpdate` | Advise |
 | `task-state-tracker.sh` appends every task event to a crash-safe log that the handoff and the provenance summary read. | `TaskCreate`, `TaskUpdate` | Record |
 | `parallel-session-check.sh` warns when another live session is working in the same working tree (R-501). | Session start | Advise |
@@ -143,16 +140,15 @@ named in brackets, so its full specification can be read in `claude/rulebook/ref
 |---|---|---|
 | The slice lock (`claude/enforce/tdd.sh` read by `protected-path-guard.sh`) refuses production writes until a failing test is proven RED, then refuses test, fixture, and spec edits until the slice closes (R-410, R-412). The build-skills section below describes it in full. | `Write`, `Edit`, `Bash` | Deny |
 | `claude/enforce/role-policy.json` restricts each build agent to its own files: the test author writes only tests and fixtures, the implementer never writes them, and the slice critic writes nothing (R-411). | `Write`, `Edit` | Deny |
-| `fix-commit-requires-test.sh` refuses a `fix:` commit that stages no test file (R-403). | `git commit` | Deny |
+| `fix-commit-requires-test.sh` warns, without blocking, on a `fix:` commit that stages no test file (R-403). | `git commit` | Advise |
 | `content-gate.sh` refuses content that skips or focuses a test (`.skip`, `.only`, `xit`, `pytest.mark.skip`, `t.Skip`) or that weakens a protection such as CORS, CSP, rate limits, or bcrypt rounds (R-401, R-405). | `Write`, `Edit` | Deny |
-| `codex-test-author-guard.sh` asks before the session edits a test file in the tiers where a separate author owns the tests (R-907). | `Write`, `Edit` | Ask |
 | `verification-gate.sh` runs the project's own checks (the tests the changed files affect, and the translator port checks) and refuses to let the turn or a writing subagent end on a red result (R-509). | Turn end, subagent end | Block |
 
 ### Git and pull request workflow
 
 | Feature | Fires on | Effect |
 |---|---|---|
-| `commit-message-guard.sh` refuses a non-conventional subject or more than two triage IDs, asks on a long body, and refuses a commit that stages files outside the declared scope unless it names that work's own ticket (R-214, R-505, R-506). | `git commit` | Deny, Ask |
+| `commit-message-guard.sh` refuses a non-conventional subject or more than two triage IDs, judging only the subject line, so a heredoc message passes on a conventional subject (R-505). | `git commit` | Deny, Ask |
 | `conflict-markers.sh` refuses a commit whose staged files contain conflict markers (R-507). | `git commit` | Deny |
 | `git-workflow-guard.sh` asks before a push to `main` and before any `gh pr merge`, refuses a non-squash merge, and refuses a merge while the PR body lacks its pre-merge review section or, on a security-touching range, a current security review (R-109, R-512, R-514, R-517). | `git push`, `gh pr merge` | Deny, Ask |
 | `pr-ticket-ref-gate.sh` refuses a pull request whose commits and body carry no `Refs: <KEY>` ticket reference (R-605). | `gh pr create` | Deny |
@@ -164,12 +160,11 @@ named in brackets, so its full specification can be read in `claude/rulebook/ref
 
 | Feature | Fires on | Effect |
 |---|---|---|
-| `structure-gate.sh` refuses banned catch-all directories (`utils`, `helpers`, `common`, and the rest), wrong directory case, co-located tests, and loose modules at a server's `src/` root (R-304, R-306, R-312 to R-314). | `Write`, `Edit` | Deny |
-| `lexicon-gate.sh` refuses the first source file in a repository that has not yet written down its domain vocabulary (R-330). | `Write`, `Edit` | Deny |
+| `structure-gate.sh` refuses banned catch-all directories (`utils`, `helpers`, `common`, and the rest), co-located tests, and loose modules at a server's `src/` root (R-304, R-306, R-313, R-314), and warns on an abbreviated or wrongly cased directory name (R-311, R-312). | `Write`, `Edit` | Deny, Advise |
 | `migration-defaults-guard.sh` refuses the two known-bad migration default forms: a double-wrapped string literal and a bare SQL function string (R-328). | `Write`, `Edit` | Deny |
 | `dependency-add-guard.sh` asks before a manifest gains a third-party dependency it did not have (R-331). | `Write`, `Edit` | Ask |
 | `no-em-dash.sh` refuses any command or file content containing an em dash (R-207). | `Bash`, `Write`, `Edit` | Deny |
-| Reminders after each write: `clean-code-reminder.sh` (functions over the ~25-line ceiling, R-322), `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351). | After `Write` or `Edit` | Advise |
+| Reminders after each write: `new-file-header-reminder.sh` (a missing file header, R-320), `flat-directory-reminder.sh` (an over-full directory, R-310), `observability-reminder.sh` (missing health endpoints, request IDs, or client instrumentation, R-341, R-345, R-346), and `dockerfile-reminder.sh` (a deployable with no `Dockerfile`, R-351). | After `Write` or `Edit` | Advise |
 
 ### Push-time linters and security scanning
 
@@ -178,10 +173,9 @@ Heavy checks run once per push over the outgoing diff rather than on every edit.
 | Feature | Fires on | Effect |
 |---|---|---|
 | `push-eslint-gate.sh` runs the bundled ESLint config and its 12 custom rules in `claude/enforce/rules/` (naming lexicon, one export per file, file header, destructured reads, structured log calls, no swallowed catch, analytics event names, no query in a loop, transaction client required, behavior assertions, no self-mocking, and data-access calls) over the changed TypeScript files. | `git push` | Deny |
-| `push-ruff-gate.sh`, `push-rubocop-gate.sh`, and `push-golangci-gate.sh` run the equivalent rule analogs for Python, Ruby, and Go, plus the standard-library data-access checkers in `claude/enforce/data-access/` for N+1 queries and transaction use (R-361, R-362). | `git push` | Deny |
+| `push-ruff-gate.sh` runs the equivalent rule analogs for Python, plus the standard-library data-access checker in `claude/enforce/data-access/` for N+1 queries and transaction use (R-361, R-362). | `git push` | Deny |
 | `push-semgrep-gate.sh` runs the security rule pack in `claude/enforce/semgrep/` (weak bcrypt cost, `SameSite=None` without `Secure`, wildcard or unvalidated CORS, disabled TLS verification) over every changed code file (R-109). | `git push` | Deny |
 | `security-surface.sh` decides whether a range touches a security control, by path, by added content, or by a Semgrep finding, and fails closed when it cannot tell. The merge guard uses it to demand a security review only where one is needed (R-109). | Merge, as a helper | Feeds a Deny |
-| `push-feature-docs-gate.sh` refuses a push that adds a page or API route without the matching feature-list row, user story, and e2e spec, or that changes dependencies or log events without updating `docs/stack.md` or `docs/observability.md` (R-607, R-608). | `git push` | Deny |
 
 ### Session lifecycle and memory
 
@@ -235,9 +229,7 @@ spec, one plan, an isolated worktree, and test-first slices. Investigation is or
 other four and is chosen by what the task produces (an answer) rather than by how large it is.
 
 **2. A ticket, before the first edit.** Above the Trivial tier, `ticket-lifecycle` opens a tracker
-ticket carrying the tier, the estimate, the model, the repository, and the branch. This is
-mechanically gated: `ticket-at-start-gate.sh` refuses the first `Write` and every `git commit` until
-the ledger on that branch names the ticket. The estimate comes from the history of closed tickets in
+ticket carrying the tier, the estimate, the model, the repository, and the branch. The estimate comes from the history of closed tickets in
 the same tier rather than from a guess, and at close the ticket records attributable working minutes
 so the next estimate is better than this one.
 
@@ -468,9 +460,8 @@ still says to clone the repository to `~/.claude`, which describes the layout be
 monorepo. The quick start below is the current path, and `sync.sh` is the authority on it.
 
 You need `git` and `bash` (macOS or Linux; on Windows use WSL, because the hooks are bash), `jq`
-(every `PreToolUse` and `SessionStart` hook parses its input with it), `node` (the clean-code scanner
-and the ESLint push gate), and `python3` (the manifest closure test and the latency test's clock).
-Per-stack linters (`ruff`, `rubocop`, `golangci-lint`) are optional at runtime and fail open when
+(every `PreToolUse` and `SessionStart` hook parses its input with it), `node` (the ESLint push gate), and `python3` (the manifest closure test and the latency test's clock).
+The per-stack linter (`ruff`) is optional at runtime and fails open when
 absent, with one exception: `ruff` must be on `PATH` to run the fixture suite, because one fixture
 drives the real binary.
 

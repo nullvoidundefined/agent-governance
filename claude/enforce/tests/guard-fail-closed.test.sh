@@ -106,10 +106,7 @@ while IFS= read -r hook; do
   probe_without_home "$hook" "a gh pr create" '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t --body b"}}'
   probe_without_home "$hook" "a source Write" '{"tool_name":"Write","tool_input":{"file_path":"'"$NO_HOME_CWD"'/src/probe.ts","content":"export const probe = 1;\n"}}'
   probe_without_home "$hook" "an MCP call" '{"tool_name":"mcp__linear__save_issue","tool_input":{"title":"t"}}'
-  # ticket-at-start-gate alone takes an explicit degraded path instead (IAN-149's
-  # test R-6, kept by owner decision): named, so no other guard can borrow it.
-  if grep -qE '\$HOME|\$\{HOME' "$hook" && ! grep -qF -- "$HOME_NORMALIZER" "$hook" \
-    && [ "$(basename "$hook")" != "ticket-at-start-gate.sh" ]; then
+  if grep -qE '\$HOME|\$\{HOME' "$hook" && ! grep -qF -- "$HOME_NORMALIZER" "$hook"; then
     echo "FAIL: $(basename "$hook") expands \$HOME without first filling it from the account entry ($HOME_NORMALIZER)"
     fail=1
   fi
