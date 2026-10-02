@@ -23,20 +23,21 @@ R-517: Before any PR merges, have one reviewer in a fresh context (the read-only
 
 ## Defaults
 
-Each line names an area's default rules and where their text lives; every ID keeps its full Spec in the rulebook.
+Each line names an area's default rules, then where their text lives.
 
-- Hook-delivered (mandatory; the hook states the rule): R-003, R-105, R-106, R-107, R-207, R-507, R-908.
+- Hook-delivered (mandatory): R-003, R-105, R-106, R-107, R-207, R-507, R-908.
 - Session start: R-001, R-205: `rules/session-types.md`, `/task-start`.
-- Prose and conduct: R-208, R-209, R-210: `rulebook/reference.md` R-2xx.
+- Prose and conduct: R-208, R-209, R-210: reference.md.
 - Scope and findings: R-212, R-214: `/task-start`.
-- Architecture and naming: R-301, R-302, R-303, R-306, R-307, R-315, R-316, R-317, R-318, R-320, R-325, R-330, R-331, R-332, R-334: reference.md R-3xx, `/structure-conventions`, `CLAUDE-*.md`.
+- Architecture and naming: R-301, R-302, R-303, R-306, R-307, R-315, R-316, R-317, R-318, R-320, R-325, R-330, R-331, R-332, R-334: reference.md, `CLAUDE-*.md`.
+- Structure, stack-specific: R-304, R-305, R-309 to R-314, R-319, R-321, R-323, R-324, R-326 to R-329, R-407: `/structure-conventions`.
 - Observability, deploy, data: R-341, R-342, R-343, R-344, R-345, R-346, R-351, R-361, R-362, R-363, R-364, R-365 (R-365 mandatory): `CLAUDE-OBSERVABILITY.md`, `CLAUDE-DATABASE.md`.
 - Testing: R-404, R-406; R-410, R-411, R-412 (mandatory on high-risk slices): `/tdd-gated-dispatch`.
 - Git and PRs: R-501, R-504, R-505, R-508, R-509, R-512, R-513, R-515, R-516, R-518: their hooks, `/task-cleanup`.
 - Lifecycle and memory: R-601, R-602, R-603, R-604, R-605, R-606, R-607, R-608: `/task-cleanup`, `/ticket-lifecycle`.
-- Agents, audits, cost: R-7xx, R-8xx, R-9xx: `rulebook/agents.md`, `audits.md`, `cost.md`.
-- Merged 2026-10-02 (IAN-568): R-103, R-108, R-202 into R-102; R-405 into R-204.
-- Deleted 2026-10-02 (IAN-568), tombstones in the rulebook: R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R-510, R-511, R-906, R-907.
+- Agents, audits, cost: R-701 to R-707, R-801 to R-805, R-901 to R-905: `rulebook/agents.md`, `audits.md`, `cost.md`.
+- Merged (IAN-568): R-103, R-108, R-202 into R-102; R-405 into R-204.
+- Deleted (IAN-568), tombstoned: R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R-510, R-511, R-906, R-907.
 
 ## Convention files
 

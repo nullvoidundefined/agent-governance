@@ -69,6 +69,25 @@ if [ -n "$DUPLICATED" ]; then
   exit 1
 fi
 
+# Invariant 2b (IAN-568 R-517 r1 #2): the Defaults index names every surviving
+# rule ID itself, a skill's norm line not counting, across reference.md and the
+# Tier 2 rulebooks; "R-301 to R-305" names every ID in that range.
+RULEBOOK_DIR=$(dirname "$REFERENCE_MD")
+TIER2_FILES=$(for tier2 in agents.md audits.md cost.md; do [ -f "$RULEBOOK_DIR/$tier2" ] && printf '%s\n' "$RULEBOOK_DIR/$tier2"; done)
+ALL_RULE_FILES=$(printf '%s\n%s\n' "$REFERENCE_MD" "$TIER2_FILES" | grep -v '^$')
+ALL_RULEBOOK_IDS=$(while IFS= read -r ruleFile; do grep -oE '^R-[0-9]{3}' "$ruleFile" || true; done <<< "$ALL_RULE_FILES" | sort -u)
+ALL_TOMBSTONE_IDS=$(while IFS= read -r ruleFile; do { grep -E '^R-[0-9]{3}: (Deleted|Merged) [0-9]{4}-[0-9]{2}-[0-9]{2}' "$ruleFile" || true; } | grep -oE '^R-[0-9]{3}' || true; done <<< "$ALL_RULE_FILES" | sort -u)
+ALL_LIVE_IDS=$(comm -23 <(printf '%s\n' "$ALL_RULEBOOK_IDS") <(printf '%s\n' "$ALL_TOMBSTONE_IDS"))
+RANGE_IDS=$({ grep -oE 'R-[0-9]{3} to R-[0-9]{3}' "$CLAUDE_MD" || true; } | while read -r rangeStart _ rangeEnd; do
+  seq "$((10#${rangeStart#R-}))" "$((10#${rangeEnd#R-}))" | while read -r rangeNumber; do printf 'R-%03d\n' "$rangeNumber"; done
+done)
+NAMED_IDS=$(printf '%s\n%s\n' "$INDEXED_IDS" "$RANGE_IDS" | grep -E '^R-[0-9]{3}$' | sort -u)
+UNNAMED_IDS=$(comm -23 <(printf '%s\n' "$ALL_LIVE_IDS") <(printf '%s\n' "$NAMED_IDS"))
+if [ -n "$UNNAMED_IDS" ]; then
+  echo "FAIL: live rule IDs that CLAUDE.md does not name (a skill's norm line does not count): $(echo "$UNNAMED_IDS" | tr '\n' ' ')" >&2
+  exit 1
+fi
+
 # Invariant 3 inspected nothing and passed in silence when the glob matched
 # no file, the same shape P1-4 found in deny-tier-set-convention.test.sh. The
 # directory always holds session-types.md plus the path-scoped stack symlinks,
