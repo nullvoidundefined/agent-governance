@@ -681,6 +681,24 @@ acquire_run_lock() {
   wait_for_run_slot "$wait_cap" "$started" "$run_cap"
 }
 
+# report_run_timing <mode> <lock wait s> <count> <total> <run s> <tests dir>:
+# prints one timing line and appends it, stamped with the time and the tests
+# directory, to timings.log in the private lock directory when that exists
+# (IAN-566). It separates queueing from selection from fixture time, which
+# earlier speed passes had to guess at. A log that cannot be written is
+# skipped; timing never changes a run's verdict.
+report_run_timing() {
+  local mode="$1" lock_wait="$2" count="$3" total="$4" run_time="$5" tests_dir="$6" selection timing_line
+  selection="${mode#--}"
+  [ -z "$REASON" ] || selection="everything: $REASON"
+  timing_line="fixture-shards: timing: waited ${lock_wait}s for the run lock, ran $count of $total fixtures in ${run_time}s ($selection)"
+  echo "$timing_line"
+  # The lock checks are skipped when perl is missing, so the directory and the
+  # log are re-checked here: neither may be a symlink (PR #181 review).
+  [ ! -L "$RUN_LOCK_DIR" ] && [ -d "$RUN_LOCK_DIR" ] && [ -O "$RUN_LOCK_DIR" ] && [ ! -L "$RUN_LOCK_DIR/timings.log" ] || return 0
+  printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tests_dir" "$timing_line" >> "$RUN_LOCK_DIR/timings.log" 2>/dev/null || true
+}
+
 # usage_error <message>: exits 2 with the message and the usage line.
 usage_error() {
   echo "run-fixture-shards.sh: $1" >&2
@@ -689,7 +707,7 @@ usage_error() {
 }
 
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" also="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" also="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap lock_started lock_wait run_started
   [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
   case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
   shift 2
@@ -729,14 +747,18 @@ main() {
   # After --list, which runs nothing and so ignores a bad cap, and before the
   # job count, which should read the load once the run ahead has finished.
   run_cap=$(max_concurrent_runs) || exit 2
+  lock_started="$SECONDS"
   acquire_run_lock "$run_cap"
+  lock_wait=$(( SECONDS - lock_started ))
   [ -n "$jobs" ] || jobs=$(default_job_count)
   echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
   [ -z "$RUN_SLOT" ] || echo "fixture-shards: run slot $RUN_SLOT of $run_cap (FIXTURE_SHARDS_MAX_RUNS, default half the CPUs)"
   result_dir="${kept_dir:-$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")}"
   export CLAUDE_FIRE_LOG=/dev/null
+  run_started="$SECONDS"
   run_selected "$SELECTED" "$jobs" "$result_dir" "$settle_seconds" "$settle_max_seconds"
   report_results "$SELECTED" "$result_dir"; status=$?
+  report_run_timing "$mode" "$lock_wait" "$count" "$total" "$(( SECONDS - run_started ))" "$tests_dir"
   [ -n "$kept_dir" ] || rm -rf "$result_dir"
   exit "$status"
 }
