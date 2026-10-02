@@ -187,16 +187,16 @@ R-211: When a task carries two or more judgment calls, ask them through option t
 R-212: Deliver exactly what the turn asked for; never widen the diff without asking first.
   Class: D; delivery: skill (`task-start`).
   Spec:
-  - Declaring the scope in the ledger is optional since 2026-10-02 (IAN-568); the rule is a default. When a scope is declared, the gate below asks on writes outside it.
+  - Declaring the scope in the ledger is optional since 2026-10-02 (IAN-568); the rule is a default. No hook gates writes against it since scope-widening-gate was removed the same day; build-fast's `build-lane.sh` still reads a declared scope to predict its lane.
   - Declare the task's file scope at task-start, beside the tier: `task-tier.sh set <tier> "<reason>" --ticket <KEY> --scope <glob>[,<glob>...]`. The scope is the set of paths the request itself implies, written as repository-relative globs, and a bare directory covers everything beneath it.
   - Keep every write inside the declared scope. A write outside it is a widening, and a widening is a judgment call under R-211: put it to the user as a question before making it, never as a report afterward.
   - The four widenings this rule exists to stop: fixing an adjacent defect noticed while reading, refactoring a file the task only needed to read, adding tests or documentation nobody asked for, and continuing into the next task once the one asked for is finished.
   - A real defect found outside the scope is still worth raising. Name it, say where it is, and leave it there; the user decides whether it joins this task or becomes a ticket of its own.
   - This rule never licenses an incomplete deliverable. Everything the request implies is in scope, including the tests, docs, and ports the repository's own rules already require for the files being changed (R-403, R-508, R-607). Scope discipline bounds what is added beyond the request, never what the request itself needs.
-  - Declaring no scope declares no constraint: the gate stays silent and the rule falls back to recall, which is the degraded path and not the intended one.
+  - Declaring no scope declares no constraint, and the rule rests on recall either way.
   - Origin: 2026-09-20, the report that task execution had become "greedy", delivering the thing asked for and then continuing into adjacent fixes, unrequested refactors, and extra files, so the diff arrived several times the size of the request.
-  Scope: writes, not reads, since R-202 already bounds what a turn may read. Session state (the repository's own `.claude/`) and git-ignored paths are never gated, because every task writes them. The confirmation gates that exist for other reasons (R-105, R-514, the destructive-action guards) are unaffected.
-  Enforcement: hook:scope-widening-gate
+  Scope: writes, not reads, since R-202 already bounds what a turn may read. Session state (the repository's own `.claude/`) and git-ignored paths are outside it, because every task writes them. The confirmation gates that exist for other reasons (R-105, R-514, the destructive-action guards) are unaffected.
+  Enforcement: manual (`task-start`; scope-widening-gate was removed 2026-10-02, IAN-568)
 
 R-213: Deleted 2026-10-02 (IAN-568): the provenance tag on every task had no consumer and no recorded catch.
 
@@ -214,7 +214,7 @@ R-214: Record every task, bug, and optimization you discover as its own ticket r
   Scope: work discovered while doing something else. Work the request itself implies is in scope and needs no finding, and a defect in the code the task is already changing is part of the task, not a discovery.
   Enforcement: manual
 
-R-215: Deleted 2026-10-02 (IAN-568): niche, with no recorded broken citation; `enforce/doc-sha-reachability.sh` stays available as a tool.
+R-215: Deleted 2026-10-02 (IAN-568): niche, with no recorded broken citation; `enforce/doc-sha-reachability.sh`, its fixture, and its pre-push step were removed with it.
 
 ## Architecture and naming (R-3xx)
 
@@ -419,7 +419,7 @@ R-324: Extract every literal that carries meaning to a named constant; no magic 
   - Module `ALL_CAPS` for shared or configurable values (timeouts, limits, URLs, status strings); a named local `const` for single-use.
   - Any string literal appearing 2+ times becomes a named constant or a union type.
   - Exempt: `0`, `1`, `-1`, `''`, booleans, and literals in tests and fixtures.
-  Enforcement: eslint:no-magic-numbers (numbers); ruff:PLR2004 via push-ruff-gate (Python comparisons); golangci:mnd via push-golangci-gate (Go); manual (strings)
+  Enforcement: eslint:no-magic-numbers (numbers); ruff:PLR2004 via push-ruff-gate (Python comparisons); manual (strings)
 
 R-325: Destructure when reading two or more properties from the same object; never destructure a method off its object.
   Class: D; delivery: path (`CLAUDE-*.md` for the stack).
@@ -436,7 +436,7 @@ R-327 [ts]: Never nest ternaries; a conditional expression whose consequent or a
   Class: D; delivery: skill (`structure-conventions`).
   Scope: especially inside a React component's render/return block. The Ruby analog is identical; Go has no ternary, so the rule is structurally satisfied there.
   Spec: replace with an early-return helper function or extracted component, a lookup map, or named boolean variables.
-  Enforcement: eslint:no-nested-ternary; rubocop:Style/NestedTernaryOperator via push-rubocop-gate (Ruby)
+  Enforcement: eslint:no-nested-ternary
 
 R-328 [ts]: Write migration defaults as bare strings for constants (`default: 'active'`) and `pgm.func()` for SQL expressions; never nest quotes.
   Class: D; delivery: skill (`structure-conventions`).
@@ -451,7 +451,7 @@ R-329 [ts]: Never use `any` or suppress type errors with `@ts-ignore`/`@ts-noche
   - `@ts-expect-error` with a description is the only permitted suppression; it fails when the underlying error disappears.
   Python analog: never `typing.Any` in signatures; suppressions carry specific codes (`# type: ignore[code]`, `# noqa: CODE`), never blanket.
   Go analog: every `//nolint` names a specific linter and a reason, never blanket.
-  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment; ruff:ANN401 + PGH003/PGH004 via push-ruff-gate (Python); golangci:nolintlint via push-golangci-gate (Go)
+  Enforcement: eslint:no-explicit-any, eslint:ban-ts-comment; ruff:ANN401 + PGH003/PGH004 via push-ruff-gate (Python)
 
 R-330: Settle the domain vocabulary before the first line of code, spec or no spec, before naming propagates.
   Class: D; delivery: skill (`task-start`).
@@ -464,7 +464,7 @@ R-330: Settle the domain vocabulary before the first line of code, spec or no sp
   - Prefer domain-precise terms over evocative metaphors unless a framework makes the metaphor standard (ECS `World`, Cucumber `World`).
   Spec (2026-09-06): the spec also carries `## Acceptance criteria` (one numbered behavior per line, `B-1`, `B-2`, each a slice R-412 runs as RED then GREEN) and `## Non-goals`; the full heading set with each heading's intent is `prompts/spec-template.md`, and `spec-grounding` adds the missing headings when it rewrites an external spec.
   Spec (2026-09-24, IAN-365): the walking-skeleton clause above is deterministic, not advisory. A brand-new file with a gated source extension (ts, tsx, js, jsx, mjs, py, rb, go, vue), inside a git work tree that carries the `## Domain vocabulary` heading nowhere at all, is denied rather than nudged; an existing file, a non-gated extension, and a repo that already has the heading anywhere pass. This is a start-of-project gate, not a per-file one: once any file in the repo carries the heading, every later write passes it, so the round happens exactly once, before the first line of code.
-  Enforcement: hook:spec-glossary-check (advisory, checks the glossary's internal format and entry shape once a superpowers spec exists); hook:lexicon-gate (deterministic, denies the first source-code write in a repo that has no glossary anywhere yet)
+  Enforcement: hook:spec-glossary-check (advisory, checks the glossary's internal format and entry shape once a superpowers spec exists); the deterministic lexicon-gate was removed 2026-10-02 (IAN-568)
 
 R-331: Justify every new third-party dependency before adding it.
   Class: D; delivery: hook.
@@ -587,7 +587,7 @@ R-361: Never query once per element of a collection (the N+1); load or write the
   - Every endpoint and job that reads a collection has a query-budget test: run it with one parent and with several against the test database and assert the query count is the same. It catches the N+1 the AST rule cannot see, a query hidden behind a helper function.
   - The pool wrapper counts queries per request and the request's completion log line carries `queryCount`; a count above the named threshold logs at `warn`, which surfaces an N+1 that reached production.
   - Python, Ruby, and Go apply the same shapes through their own data layer: SQLAlchemy `selectinload` or an `ANY(:ids)` query, ActiveRecord `includes` or `preload` with `strict_loading`, `database/sql` with `ANY($1)`.
-  Enforcement: eslint:no-query-in-loop (decides a data-access call, meaning the pool `query`, any `.query`, or a function imported from a `repositories/`, `database/`, or `db/` module, inside a loop body, a loop test or update clause, or an array iteration callback; a query hidden behind a helper declared elsewhere is not followed); hook:push-ruff-gate, hook:push-golangci-gate, hook:push-rubocop-gate (the Python, Go, and Ruby analogs: stdlib AST checkers under `enforce/data-access/`, run on the added lines of the outgoing diff, suppressed by `data-access-allow: <reason>`; Ruby lazy association access is not decidable); the query-budget test and the `queryCount` log line are manual
+  Enforcement: eslint:no-query-in-loop (decides a data-access call, meaning the pool `query`, any `.query`, or a function imported from a `repositories/`, `database/`, or `db/` module, inside a loop body, a loop test or update clause, or an array iteration callback; a query hidden behind a helper declared elsewhere is not followed); hook:push-ruff-gate (the Python analog: stdlib AST checkers under `enforce/data-access/`, run on the added lines of the outgoing diff, suppressed by `data-access-allow: <reason>`); the query-budget test and the `queryCount` log line are manual
 
 R-362: Run every group of writes that must succeed or fail together in one transaction, every statement on the transaction's client, and nothing slow inside it.
   Class: D; delivery: path (`CLAUDE-DATABASE.md`).
@@ -597,7 +597,7 @@ R-362: Run every group of writes that must succeed or fail together in one trans
   - Statements on one client run in sequence: `await` each in turn, never `Promise.all` over one client.
   - An explicit TypeScript transaction never waits on the network: HTTP calls, queue enqueues, emails, and provider SDK calls happen before it opens or after it commits. A side effect that must happen exactly when the commit happens is written as an outbox row inside the transaction and delivered by a worker.
   - Keep a transaction short: no user input, no sleeps, no unbounded loops inside it. When it locks more than one row, it takes the locks in primary-key order, so two transactions cannot deadlock each other.
-  Enforcement: eslint:transaction-client-required (decides, inside a `withTransaction` callback, a data-access call that neither runs on nor receives the client, a callback that declares no client parameter, and a `fetch` or `clients/` call); hook:push-ruff-gate, hook:push-golangci-gate, hook:push-rubocop-gate (Python: network or non-connection data access inside an explicit `begin()`/`begin_nested()` block; Go: the same inside a `BeginFunc`-style callback with a `Tx` parameter; Ruby: network calls, mailer delivery, or job enqueues inside a `transaction` or `with_lock` block); whether a group of writes needed a transaction at all depends on intent and goes to the judge (warn)
+  Enforcement: eslint:transaction-client-required (decides, inside a `withTransaction` callback, a data-access call that neither runs on nor receives the client, a callback that declares no client parameter, and a `fetch` or `clients/` call); hook:push-ruff-gate (Python: network or non-connection data access inside an explicit `begin()`/`begin_nested()` block; the Go and Ruby push gates were removed 2026-10-02, IAN-568); whether a group of writes needed a transaction at all depends on intent and goes to the judge (warn)
 
 R-363: Make every read-modify-write atomic in the database; never read a value, change it in application code, and write it back unguarded.
   Class: D; delivery: path (`CLAUDE-DATABASE.md`).
@@ -914,7 +914,7 @@ R-607: Keep a features list and per-area user stories in every application repos
   - A repository adds trigger patterns as data in `.enforce.json` (`"productDocs": {"extraTriggers": ["<ERE>"]}`) and opts out with `"productDocs": false`, which `repo-setup --no-product-docs` records for a library or tooling repository.
   - When an existing story and spec already cover a new route, update them (tick the criterion, name the route) so the branch shows the coverage; there is no bypass flag in the harness gate.
   Scope: every repository with a user-facing surface; libraries and tooling repositories opt out once. Pushes of `main` itself are not checked.
-  Enforcement: manual (`task-cleanup` at feature completion; the push gate was retired 2026-10-02, IAN-568). `enforce/require-feature-checklist.sh` stays available as a check. The repository's own `scripts/require-feature-checklist.sh`, seeded by `repo-setup`, is for its git pre-push hook and CI. Fixtures: `enforce/tests/require-feature-checklist.test.sh`, `enforce/tests/push-feature-docs-gate.test.sh`, `enforce/tests/repo-setup.test.sh`, `enforce/tests/feature-create-scaffold.test.sh`.
+  Enforcement: manual (`task-cleanup` at feature completion; the push gate was retired 2026-10-02, IAN-568). `enforce/require-feature-checklist.sh` stays available as a check. The repository's own `scripts/require-feature-checklist.sh`, seeded by `repo-setup`, is for its git pre-push hook and CI. Fixtures: `enforce/tests/require-feature-checklist.test.sh`, `enforce/tests/repo-setup.test.sh`, `enforce/tests/feature-create-scaffold.test.sh`.
 
 R-608: Keep a stack document and an observability catalog in every application repository, and change each in the same task that changes what it lists.
   Class: D; delivery: skill (`task-cleanup`).
@@ -927,7 +927,7 @@ R-608: Keep a stack document and an observability catalog in every application r
   - What the push check cannot see stays manual: a major upgrade or a replacement that keeps the dependency's name, a tracker tag, a scrubbing rule, a health check, a metric, and a log event named through a variable.
   - A repository adds registry path patterns as data in `.enforce.json` (`"observabilityDoc": {"extraRegistries": ["<ERE>"]}`) and opts out of either half with `"stackDoc": false` or `"observabilityDoc": false`, which `repo-setup --no-stack-doc` and `--no-observability-doc` record for a library or tooling repository.
   Scope: every repository with a deployable application; libraries and tooling repositories opt out once. Pushes of `main` itself are not checked.
-  Enforcement: manual (`task-cleanup` at feature completion; the push gate was retired 2026-10-02, IAN-568). `enforce/require-stack-observability-docs.sh` stays available as a check. Fixtures: `enforce/tests/require-stack-observability-docs.test.sh`, `enforce/tests/push-feature-docs-gate.test.sh`, `enforce/tests/repo-setup.test.sh`.
+  Enforcement: manual (`task-cleanup` at feature completion; the push gate was retired 2026-10-02, IAN-568). `enforce/require-stack-observability-docs.sh` stays available as a check. Fixtures: `enforce/tests/require-stack-observability-docs.test.sh`, `enforce/tests/repo-setup.test.sh`.
 
 ## Convention files
 

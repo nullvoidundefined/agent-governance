@@ -15,8 +15,8 @@
 #                             reclassification on the same branch keeps it
 #                             --scope records the files the request implies, as
 #                             repository-relative globs, repeatable and comma
-#                             separated; hooks/scope-widening-gate.sh reads it and
-#                             asks before a write lands outside it (R-212), and a
+#                             separated; build-lane.sh reads it to predict a lane
+#                             (R-212 itself is recall since IAN-568), and a
 #                             reclassification on the same branch keeps it
 #                             --lane <fast|guarded>, --lane-override <fast|guarded>, and
 #                             --merge-mode <owner|green> record build-fast's lane, the

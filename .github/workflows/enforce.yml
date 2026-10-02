@@ -234,7 +234,7 @@ jobs:
   # suite goes green.
   #
   # That gap shipped a real failure on 2026-09-20 (IAN-267). PR #96 introduced
-  # `mapfile`, a bash 4 builtin, into scope-widening-gate.sh and
+  # `mapfile`, a bash 4 builtin, into scope-widening-gate.sh (since removed) and
   # commit-message-guard.sh. Under bash 3.2 both hooks aborted at that line and
   # emitted nothing, and a PreToolUse hook that emits nothing is an ALLOW, so
   # R-212's scope gate and R-214's out-of-scope commit gate enforced nothing for

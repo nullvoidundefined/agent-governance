@@ -37,6 +37,8 @@ The hook row counts protected-path-guard under ENFORCE and again under STRUCTURA
 
 Only COACHING and ORCHESTRATION rows list dependents. "Base" means the generated ports that carry every rule verbatim: `cursor/rules/000-global-rules.mdc`, `codex/AGENTS.md`, and the `cursor/rules/rulebook-reference-r*xx-*.mdc` bands. Tokens are the rule line's always-loaded cost.
 
+IAN-568 deleted R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R-510, R-511, R-906, and R-907; their rows stay for the record with the class DELETED, and the rows below name only the enforcers that still exist.
+
 | id | class | rationale | dependents | tokens |
 |---|---|---|---|---|
 | R-001 | ORCHESTRATION | session-start procedure; session-start.sh injects the index and handoff but checks nothing | base, cursor session-start and session-handoff commands, codex session skills, rulebook audits/cost/agents .mdc; fixtures r001-project-file-rule-text, r001-non-interactive-scope-rule-text, session-start, protocol-section, skills-lint | 278 |
@@ -56,16 +58,16 @@ Only COACHING and ORCHESTRATION rows list dependents. "Base" means the generated
 | R-203 | ENFORCE | destructive-command-guard and settings-change-guard block; hook-integrity-check only warns | | 51 |
 | R-204 | COACHING | root-cause discipline; the weakening subset is R-405 | base, build-fast ports; fixtures hook-path-walk-budget, hook-latency, ratchet | 65 |
 | R-205 | COACHING | investigate-first behaviour | base | 49 |
-| R-206 | COACHING | prompt wording | base; fixture r001-non-interactive-scope-rule-text | 22 |
+| R-206 | DELETED (IAN-568) | prompt wording | base; fixture r001-non-interactive-scope-rule-text | 22 |
 | R-207 | ENFORCE | no-em-dash denies | | 13 |
 | R-208 | COACHING | tone | base | 25 |
 | R-209 | COACHING | output style | base, 002-global-memory-index.mdc | 46 |
 | R-210 | COACHING | prose style | base, documentation-create ports | 84 |
 | R-211 | ORCHESTRATION | sequences owner questions | base, 002-global-memory-index.mdc, build-by-slice and task-start ports; fixtures merge-authority-rule-text, build-fast-rule-text | 151 |
-| R-212 | ENFORCE | scope-widening-gate asks | | 80 |
-| R-213 | ENFORCE | task-provenance-gate denies | | 117 |
+| R-212 | COACHING | scope-widening-gate was removed in IAN-568; the declared scope is recall | | 80 |
+| R-213 | DELETED (IAN-568) | task-provenance-gate denies | | 117 |
 | R-214 | ENFORCE | commit-message-guard denies out-of-scope staging without a Refs trailer; the file-a-ticket habit is coaching | | 146 |
-| R-215 | ENFORCE | pre-push hook from install-git-hooks.sh; the `ci:` tag is wrong, no workflow runs it | | 109 |
+| R-215 | DELETED (IAN-568) | pre-push hook from install-git-hooks.sh; the `ci:` tag is wrong, no workflow runs it | | 109 |
 | R-301 [ts] | COACHING | monorepo layout | base; fixture structure-gate | 53 |
 | R-302 | ENFORCE | content-gate denies escaping imports | | 38 |
 | R-303 | ENFORCE | ESLint no-cycle always; no-restricted-paths only with importZones | | 62 |
@@ -77,9 +79,9 @@ Only COACHING and ORCHESTRATION rows list dependents. "Base" means the generated
 | R-317 | ENFORCE | opt-in lexicon ESLint plus judge | | 50 |
 | R-318 | COACHING | size is a smell | base, python .mdc, codex implementer | 20 |
 | R-320 | ENFORCE | opt-in ESLint file-header; the reminder hook is advisory | | 50 |
-| R-322 | COACHING | clean-code-reminder never blocks | manifest advisory entry; base, python .mdc, codex implementer; fixtures clean-code-reminder, build-lane-quiet, judge-diff, build-fast-composition | 47 |
+| R-322 | DELETED (IAN-568) | clean-code-reminder never blocks | manifest advisory entry; base, python .mdc, codex implementer; fixtures clean-code-reminder, build-lane-quiet, judge-diff, build-fast-composition | 47 |
 | R-325 | ENFORCE | ESLint destructure-object-reads plus judge | | 36 |
-| R-330 | ENFORCE | lexicon-gate denies; spec-glossary-check is advisory | | 75 |
+| R-330 | COACHING | spec-glossary-check is advisory; lexicon-gate was removed in IAN-568 | | 75 |
 | R-331 | ENFORCE | dependency-add-guard asks | | 56 |
 | R-332 | COACHING | comments stay true | base | 60 |
 | R-334 | ENFORCE | CI judge only | | 139 |
@@ -100,22 +102,22 @@ Only COACHING and ORCHESTRATION rows list dependents. "Base" means the generated
 | R-404 | COACHING | reproduce before deploy | base | 15 |
 | R-405 | ENFORCE | content-gate denies weakened protections | | 35 |
 | R-406 | COACHING | negative-input tests; no check | base, ruby/python/go .mdc, codex test-author; fixtures r109-rule-text(-2) | 63 |
-| R-408 | COACHING | lint scope habit | base, ruby/python/go .mdc | 23 |
-| R-409 | COACHING | diagnose repeated cleanups | base | 27 |
+| R-408 | DELETED (IAN-568) | lint scope habit | base, ruby/python/go .mdc | 23 |
+| R-409 | DELETED (IAN-568) | diagnose repeated cleanups | base | 27 |
 | R-410 | STRUCTURAL | gate inputs and locked tests writable only by their author role | | 94 |
 | R-411 | STRUCTURAL | independent test authorship: the test-author writes tests in its own context and the implementer cannot change them (it still reads them and writes code to pass them) | | 54 |
 | R-412 | STRUCTURAL | the tdd.sh lock makes RED-before-GREEN provable | | 91 |
 | R-501 | COACHING | parallel-session-check only warns | manifest advisory; base, build-fast ports; fixtures parallel-session-check, translate-codex, translate-cursor | 38 |
-| R-502 | ORCHESTRATION | task-list hygiene | base, cursor README; fixtures translate-codex, translate-cursor | 24 |
-| R-503 | ORCHESTRATION | progress shares and timestamps; session-start only records the start | manifest advisory; base, cursor hook adapter, task-cleanup/task-start/ticket-lifecycle ports; fixtures task-tier, cursor-adapter-contract, translate-cursor, session-start-timestamp | 69 |
+| R-502 | DELETED (IAN-568) | task-list hygiene | base, cursor README; fixtures translate-codex, translate-cursor | 24 |
+| R-503 | DELETED (IAN-568) | progress shares and timestamps; session-start only records the start | manifest advisory; base, cursor hook adapter, task-cleanup/task-start/ticket-lifecycle ports; fixtures task-tier, cursor-adapter-contract, translate-cursor, session-start-timestamp | 69 |
 | R-504 | COACHING | task-commit-reminder is advisory | manifest advisory; base, both PORT-STATUS files; fixtures task-commit-reminder, translate-cursor, post-compact-rules | 32 |
 | R-505 | ENFORCE | commit-message-guard denies | | 36 |
-| R-506 | ENFORCE | commit-message-guard asks (the manifest's advisory tier is stale) | | 37 |
+| R-506 | DELETED (IAN-568) | commit-message-guard asks (the manifest's advisory tier is stale) | | 37 |
 | R-507 | ENFORCE | conflict-markers denies | | 18 |
 | R-508 | COACHING | git-workflow-guard's README clause is stderr only | manifest advisory; base, task-cleanup ports; fixture git-workflow-guard | 34 |
 | R-509 | ENFORCE | verification-gate blocks Stop on a red affected suite | | 95 |
-| R-510 | COACHING | do not re-run hook steps | base, ruby/python/go .mdc | 29 |
-| R-511 | COACHING | git-workflow-guard's refactor clause is stderr only | manifest advisory; base; fixture git-workflow-guard | 30 |
+| R-510 | DELETED (IAN-568) | do not re-run hook steps | base, ruby/python/go .mdc | 29 |
+| R-511 | DELETED (IAN-568) | git-workflow-guard's refactor clause is stderr only | manifest advisory; base; fixture git-workflow-guard | 30 |
 | R-512 | ENFORCE | git-workflow-guard denies non-squash merges | | 129 |
 | R-513 | ENFORCE | constant-change-guard asks (the manifest's advisory tier is stale) | | 41 |
 | R-514 | ENFORCE | git-workflow-guard asks on merge and push to main | | 243 |
@@ -127,10 +129,10 @@ Only COACHING and ORCHESTRATION rows list dependents. "Base" means the generated
 | R-602 | COACHING | handoff-check never blocks | manifest advisory; base, session and task skill ports; fixtures handoff-check, handoff-session-file-check, session-metrics, session-start | 69 |
 | R-603 | COACHING | memory routing | base, 002-global-memory-index.mdc, session-handoff ports | 33 |
 | R-604 | COACHING | memory scope | base | 39 |
-| R-605 | ENFORCE | ticket-at-start-gate, pr-ticket-ref-gate, linear-todo-label-gate deny; the bookkeeping clauses are coaching | | 285 |
+| R-605 | ENFORCE | pr-ticket-ref-gate and linear-todo-label-gate deny (ticket-at-start-gate was removed in IAN-568); the bookkeeping clauses are coaching | | 285 |
 | R-606 | COACHING | ticket-close bookkeeping | base, rulebook-cost.mdc, build-fast/task-cleanup/task-start/ticket-lifecycle ports | 93 |
-| R-607 | ENFORCE | push-feature-docs-gate denies | | 174 |
-| R-608 | ENFORCE | push-feature-docs-gate denies | | 206 |
+| R-607 | COACHING | push-feature-docs-gate was removed in IAN-568; task-cleanup checks it | | 174 |
+| R-608 | COACHING | push-feature-docs-gate was removed in IAN-568; task-cleanup checks it | | 206 |
 
 ## Convention files, rulebook, and rule files
 
@@ -170,7 +172,7 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | audit-signal-check | PreToolUse Bash | COACHING | additionalContext only | R-801, R-904; 2 manifest rows; both hooks.json and PORT-STATUS; fixture audit-signal-check | about 130 tokens on some pushes |
 | build-cheatsheets | PreToolUse Bash | ORCHESTRATION | regenerates cheatsheets, no output | both hooks.json and PORT-STATUS; 2 fixtures | 0 |
 | codex-billing-guard | PreToolUse Bash | ENFORCE | asks before metered Codex calls | | |
-| commit-message-guard | PreToolUse Bash | ENFORCE | deny/ask on R-505, R-506, R-214 | | |
+| commit-message-guard | PreToolUse Bash | ENFORCE | denies on R-505 (the R-506 ask and R-214 refusal were removed in IAN-568) | | |
 | conflict-markers | PreToolUse Bash | ENFORCE | denies | | |
 | constant-change-guard | PreToolUse Bash | ENFORCE | asks | | |
 | content-gate | PreToolUse Write/Edit | ENFORCE | denies | | |
@@ -216,9 +218,9 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | task-state-tracker | PostToolUse TaskCreate/TaskUpdate | ORCHESTRATION | appends task events; no output | R-213, R-601; manifest; 4 fixtures | 0 |
 | verification-gate | Stop, SubagentStop | ENFORCE | blocks Stop on a red suite | | |
 
-ENFORCE outside `settings.json`: `pre-push.sample`, installed as the git pre-push hook by `install-git-hooks.sh`, aborts a push when port verification or SHA reachability fails (R-215); it enforces only where that installer has run.
+ENFORCE outside `settings.json`: `pre-push.sample`, installed as the git pre-push hook by `install-git-hooks.sh`, aborts a push when port verification fails (its R-215 SHA-reachability step was removed in IAN-568); it enforces only where that installer has run.
 
-SUPPORT (sourced, not registered): build-lane-quiet, clean-code-scan.mjs, dependency-add-scan.py, git-invocation, log-rule-fire, pr-monitor-instruction, pr-range-checks, repo-identity, scope-match, security-review-ledger-path, security-surface, session-metrics, shell-command-scan, shell-command-segments.py, shell-command-tokens, tool-response-output, install-git-hooks (a manual installer). No dead hook was found.
+SUPPORT (sourced, not registered): build-lane-quiet, dependency-add-scan.py, git-invocation, log-rule-fire, pr-monitor-instruction, pr-range-checks, repo-identity, scope-match, security-review-ledger-path, security-surface, session-metrics, shell-command-scan, shell-command-segments.py, shell-command-tokens, tool-response-output, install-git-hooks (a manual installer). No dead hook was found.
 
 ## Skills, agent roles, audit definitions, and prompts
 
@@ -226,7 +228,7 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 
 | item | type | class | rationale | enforce-backed part | other dependents | always / body tokens |
 |---|---|---|---|---|---|---|
-| task-start | skill | ORCHESTRATION | start checklist | task-tier.sh, finding.sh, task-provenance.sh: the ledger ten gates read | rules R-109, R-212, R-517; 3 manifest rows; many fixtures; invoked by build-fast, task-cleanup, ticket-lifecycle | 34 / 7,100 |
+| task-start | skill | ORCHESTRATION | start checklist | task-tier.sh, finding.sh: the ledger the gates read (task-provenance.sh was removed in IAN-568) | rules R-109, R-212, R-517; 3 manifest rows; many fixtures; invoked by build-fast, task-cleanup, ticket-lifecycle | 34 / 7,100 |
 | task-cleanup | skill | ORCHESTRATION | end checklist | scan.sh has a fixture only | R-607, R-608; fixtures task-cleanup-scan, merge-authority-rule-text | 31 / 5,400 |
 | ticket-lifecycle | skill | ORCHESTRATION | ticket narration; the gates check the key, not the skill | none | R-106, R-503, R-605, R-606; 2 manifest rows | 70 / 3,400 |
 | tdd-gated-dispatch | skill | ORCHESTRATION | slice sequencing; enforcement is tdd.sh plus protected-path-guard, outside the skill | none | R-403, R-412 name it; uses test-author, implementer, slice-critic | 162 / 5,000 |
@@ -245,7 +247,7 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 | known-issues | skill | COACHING | pointer | none | | 30 / 170 |
 | protocol | skill | COACHING | pointer | section.sh fixture only | | 30 / 170 |
 | structure-conventions | skill | COACHING | pre-read of rules the hooks already enforce | none (enforcement is in structure-gate and siblings) | eleven R-3xx ids; skills-lint property 7; cursor .mdc via render-cursor-skills | 127 / 1,400 |
-| test-author | agent | STRUCTURAL | TDD authorship split: writes only tests | role-policy.json via protected-path-guard; codex-test-author-guard | | 112 / 800 |
+| test-author | agent | STRUCTURAL | TDD authorship split: writes only tests | role-policy.json via protected-path-guard (codex-test-author-guard was removed in IAN-568) | | 112 / 800 |
 | implementer | agent | STRUCTURAL | makes RED green, never writes tests | role-policy.json | | 93 / 700 |
 | slice-critic | agent | STRUCTURAL | read-only fresh-context slice review | role-policy.json deny any | | 135 / 800 |
 | spec-conformance-review | agent | STRUCTURAL | read-only diff-against-spec review | role-policy.json | | 176 / 1,300 |
@@ -262,10 +264,9 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 
 ## Stale or wrong enforcer tags
 
-- **R-215** is tagged `ci:doc-sha-reachability`, but it runs only as a git pre-push hook installed by `install-git-hooks.sh`; no workflow runs it.
 - **R-506 and R-513**: the manifest says advisory, but the hooks emit `ask`.
 - **R-107 and R-203** name warn-only SessionStart checks (hookspath-drift-check, hook-integrity-check); the real denials are destructive-command-guard and settings-change-guard.
-- **R-102** names redact-output, which cannot block. **R-330** names spec-glossary-check, which is advisory; lexicon-gate does the deny. **R-516** names the advisory enforcement-guard-check and omits settings-change-guard. **R-605** omits linear-todo-label-gate.
+- **R-102** names redact-output, which cannot block. **R-330** names spec-glossary-check, which is advisory (lexicon-gate, which did the deny, was removed in IAN-568). **R-516** names the advisory enforcement-guard-check and omits settings-change-guard. **R-605** omits linear-todo-label-gate.
 - **R-316, R-317, R-320** rely on ESLint rules that are opt-in per repository (`.enforce.json`); with the option off, only the judge or an advisory reminder remains. **R-303**'s no-restricted-paths needs `importZones`.
 - **Hook-tagged rules that are really COACHING**: R-322, R-341, R-345, R-346, R-351, R-501, R-503, R-504, R-508, R-511, R-518, R-601, R-602.
 - **Judge-only rules** (R-315, R-334, R-363, R-364, R-365) are probabilistic and pass when the judge has no API key.
@@ -274,9 +275,9 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 
 1. **Secret rules R-102, R-103, R-108** all resolve to secret-scan; R-103 is a subset of R-102.
 2. **R-107 and R-203 share destructive-command-guard** for attempted hooksPath changes, but hookspath-drift-check is not a duplicate: it detects a hooksPath configured before the session began, which no command in the session would trigger. The two are complementary prevention and detection, not redundant.
-3. **Ticket presence is checked by three hooks**, each with a different guarantee: ticket-at-start-gate checks the local ledger before the first edit and every commit, pr-ticket-ref-gate checks that the published commits or PR body carry a `Refs:` line, and commit-message-guard's R-214 trailer covers out-of-scope staging. A valid local ledger does not publish the reference, so the PR-time check is not subsumed; the overlap is in timing, not in what is proved.
-4. **Scope is checked twice** from one ledger: scope-widening-gate asks at write time, commit-message-guard denies at commit.
-5. **Test-file edits**: codex-test-author-guard asks, then protected-path-guard denies the same write once a slice is RED, so the user is asked about an edit that will be refused.
+3. **Ticket presence was checked by three hooks** until IAN-568 removed ticket-at-start-gate, which checked the local ledger before the first edit and every commit; pr-ticket-ref-gate checks that the published commits or PR body carry a `Refs:` line, and commit-message-guard's R-214 trailer check, also removed in IAN-568, covered out-of-scope staging. A valid local ledger does not publish the reference, so the PR-time check is not subsumed; the overlap is in timing, not in what is proved.
+4. **Scope was checked twice** from one ledger, by scope-widening-gate at write time and commit-message-guard at commit; IAN-568 removed both.
+5. **Test-file edits** (resolved in IAN-568, which removed codex-test-author-guard): codex-test-author-guard asked, then protected-path-guard denied the same write once a slice is RED, so the user is asked about an edit that will be refused.
 6. **Hook-registration checks**: settings-change-guard (blocks) and enforcement-guard-check (warns) compute the same required-minus-registered set from command basenames. redaction-guard-check is narrower but not redundant: it also checks that the two secret hooks are registered on the right events and exist on disk, which the basename comparison does not.
 7. **Push-time cost**: about ten hooks spawn per push, four of them per-language linter gates with identical structure, each resolving the outgoing base again.
 8. **R-316, R-317, R-325** carry both a deterministic ESLint rule and the probabilistic judge; where the rule is on, the judge adds little. **R-362 is not in this group**: transaction-client-required checks statements inside an existing transaction callback, while the judge also catches related writes that never open a transaction, so both halves stay.

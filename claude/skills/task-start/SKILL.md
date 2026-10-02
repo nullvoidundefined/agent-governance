@@ -37,7 +37,7 @@ Record the tier on the task's branch once it exists, so it survives compaction:
 bash ~/.claude/skills/task-start/scripts/task-tier.sh set <tier> "<one-sentence reason>" [--ticket <KEY>] [--scope <glob>[,<glob>...]]
 ```
 
-No ticket is needed before the first edit: it opens with the draft PR at the latest (R-605, `/ticket-lifecycle`). `--scope` is optional (R-212 is a default): declare it when the request has a clear file boundary, and `scope-widening-gate.sh` then asks before a write lands outside it. A defect noticed outside the request is recorded rather than fixed inline (R-214, a default): `bash ~/.claude/skills/task-start/scripts/finding.sh add "<what>" --kind bug|task|optimization --value breaking|high|medium|low|none`, and a `low` or `none` finding is not worked this session unless the owner pulls it in.
+No ticket is needed before the first edit: it opens with the draft PR at the latest (R-605, `/ticket-lifecycle`). `--scope` is optional (R-212 is a default): declare it when the request has a clear file boundary; no hook gates writes against it, and build-fast's `build-lane.sh` reads it to predict a lane. A defect noticed outside the request is recorded rather than fixed inline (R-214, a default): `bash ~/.claude/skills/task-start/scripts/finding.sh add "<what>" --kind bug|task|optimization --value breaking|high|medium|low|none`, and a `low` or `none` finding is not worked this session unless the owner pulls it in.
 
 ## Step 2: Process by tier and risk
 
