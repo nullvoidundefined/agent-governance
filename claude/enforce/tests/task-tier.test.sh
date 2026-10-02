@@ -58,7 +58,7 @@ check "gitignore note when not ignored" reports "not gitignored"
 check "ledger written" test -f "$REPO/.claude/task-tier.json"
 check "ledger carries the tier" test "$(jq -r .tier "$REPO/.claude/task-tier.json")" = "standard"
 check "ledger carries the branch" test "$(jq -r .branch "$REPO/.claude/task-tier.json")" = "feat/presets"
-check "ledger carries the share" test "$(jq -r .sharePercent "$REPO/.claude/task-tier.json")" = "40"
+check "--share is accepted and ignored (R-503 deleted)" test "$(jq -r 'has("sharePercent")' "$REPO/.claude/task-tier.json")" = "false"
 check "ledger carries an epoch start" test "$(jq -r .startedAt "$REPO/.claude/task-tier.json")" -gt 1700000000
 
 printf '.claude/task-tier.json\n' > "$REPO/.gitignore"
@@ -101,11 +101,11 @@ check "T-1 ledger carries the ticket" test "$(field .ticket)" = "IAN-7"
 tier_set "$TRACKED_HOME" standard "multi-file change" --ticket IAN-8 --share 30
 check "T-1 --ticket then --share exits 0" test "$ST" -eq 0
 check "T-1 --ticket then --share records the ticket" test "$(field .ticket)" = "IAN-8"
-check "T-1 --ticket then --share records the share" test "$(field .sharePercent)" = "30"
+check "T-1 --ticket then --share records no share" test "$(field .sharePercent)" = "null"
 tier_set "$TRACKED_HOME" standard "multi-file change" --share 25 --ticket IAN-9
 check "T-1 --share then --ticket exits 0" test "$ST" -eq 0
 check "T-1 --share then --ticket records the ticket" test "$(field .ticket)" = "IAN-9"
-check "T-1 --share then --ticket records the share" test "$(field .sharePercent)" = "25"
+check "T-1 --share then --ticket records no share" test "$(field .sharePercent)" = "null"
 
 # T-2: tracker configured, non-trivial tier, no --ticket: recorded with no
 # ticket, because the ticket opens with the draft PR (IAN-568).
