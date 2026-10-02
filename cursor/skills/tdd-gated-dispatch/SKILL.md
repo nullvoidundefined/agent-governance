@@ -50,7 +50,7 @@ Name new tests in a file that already holds passing ones by id: `tdd.sh red 'tes
 8. close      tdd.sh close; accepted candidates become B-n+1
 ```
 
-A repository whose pre-commit hook reformats tests names that formatter as `testFormatCommand` in `.enforce.json` (the formatter binary named directly with its flags, such as `ruff format`, `black -q`, or `node_modules/.bin/prettier --write`, never a `--fix` linter; it runs as an argument vector with no shell, and a value holding a shell metacharacter or naming a shell, interpreter, launcher, package runner, or a path outside `node_modules/.bin/` and `.venv/bin/` is refused), so `tdd.sh red` hashes the formatted test and a later reformat is not read as a change (I2).
+A repository whose pre-commit hook reformats tests names that formatter as `testFormatCommand` in `.enforce.json` (the formatter binary named directly with its flags, such as `ruff format`, `black -q`, or `node_modules/.bin/prettier --write`, never a `--fix` linter; it runs as an argument vector with no shell, and a value holding a shell metacharacter or naming a shell, interpreter, launcher, package runner, or a path outside `node_modules/.bin/` and `.venv/bin/` is refused), so `tdd.sh red` hashes the formatted test and a later reformat is not read as a change (I2). A formatter that loads repository-local plugins or config (prettier plugins, eslint config) keeps the lock only as strong as those files; the owner accepted this residual on 2026-10-02 (IAN-568, R-109 r3 #2 waived).
 
 ## High-risk slice: three roles, fresh context each
 
