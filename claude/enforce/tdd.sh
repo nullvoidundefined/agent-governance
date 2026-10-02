@@ -929,17 +929,27 @@ format_test_files() {
 
 # formatted_sha <content file> <rel>: the sha256 of <content file> once a copy
 # placed beside <rel> (so the formatter finds the same configuration) is
-# formatted; the copy is removed. Fails when no testFormatCommand is set.
-formatted_sha() {
-  local copy digest
+# formatted. Fails when no testFormatCommand is set. The copy is named
+# tddfmt_<pid>.<extension of rel>, which no test glob (`test_*.py`,
+# `*_test.py`, `*.test.*`, `*.spec.*`) matches, so a copy left behind is never
+# collected as a passing duplicate; the body runs in a subshell whose trap
+# removes the copy on exit, interrupt, or termination (R-109 r1 #5, IAN-568).
+# The variables are plain subshell globals, not locals: bash 3.2 unwinds a
+# local before a signal's EXIT trap reads it, which would leave the copy.
+formatted_sha() (
+  suffix=""
   [ -n "$(test_format_command)" ] || return 1
-  copy="$(dirname "$2")/tdd-format-$$-$(basename "$2")"
+  base=$(basename "$2")
+  case "$base" in *.*) suffix=".${base##*.}" ;; esac
+  copy="$(dirname "$2")/tddfmt_$$${suffix}"
+  trap 'rm -f "$ROOT/$copy"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   cp "$1" "$ROOT/$copy" || return 1
   format_test_files "$copy" 2>/dev/null
   digest=$(sha "$ROOT/$copy")
-  rm -f "$ROOT/$copy"
   printf '%s' "$digest"
-}
+)
 
 # matches_recorded <content file> <rel> <sha>: true when the content hashes to
 # <sha> as it stands or once formatted.

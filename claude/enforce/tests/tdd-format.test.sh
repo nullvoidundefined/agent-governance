@@ -4,7 +4,8 @@
 # red formats the named test before hashing it, so a later reformat by the
 # same formatter (a pre-commit hook) before green is not read as a change,
 # while a real edit to the locked test still is. A value holding a shell
-# operator is refused (R-109 r1 #4). Drives the bash *.test.sh
+# operator is refused (R-109 r1 #4), and the formatted copy green hashes
+# matches no test glob (R-109 r1 #5). Drives the bash *.test.sh
 # runner through the real run-fixture-shards.sh in a throwaway repository.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -66,5 +67,49 @@ grep -q 'testFormatCommand is refused' <<< "$out" || { echo "FAIL: red must warn
 grep -q '[[:space:]]$' tests/pad.test.sh || { echo "FAIL: a refused testFormatCommand must leave the test unformatted"; exit 1; }
 [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: a refused testFormatCommand must leave the hash byte-exact"; exit 1; }
 echo "PASS: a testFormatCommand holding a shell operator is refused and hashing stays byte-exact"
+
+# --- the formatted copy matches no test glob (R-109 r1 #5) -------------------
+# green formats a copy of a reformatted test beside it; an interrupted run that
+# left a copy named after the test would be collected as a passing duplicate.
+# The formatter here logs the basename of every file it formats.
+rm -f .claude/tdd-lock.json tests/pad.test.sh
+printf '#!/usr/bin/env bash\nfor f in "$@"; do basename "$f" >> "$(dirname "$0")/../fmt.log"; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > scripts/fmtlog.sh
+jq -n '{testFormatCommand: "bash scripts/fmtlog.sh"}' > .enforce.json
+bash "$TDD" open "F-3 copy.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/copy.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "copy.test.sh PASS"\n' > tests/copy.test.sh
+bash "$TDD" red tests/copy.test.sh >/dev/null || { echo "FAIL: red with the logging formatter must succeed"; exit 1; }
+perl -pi -e 's/$/ /' tests/copy.test.sh
+printf '#!/usr/bin/env bash\necho ok\n' > scripts/copy.sh
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept the reformatted test; output: $out"; exit 1; }
+copyNames=$(grep -v '^copy\.test\.sh$' fmt.log || true)
+[ -n "$copyNames" ] || { echo "FAIL: green must format a copy of the reformatted test; log: $(cat fmt.log)"; exit 1; }
+while IFS= read -r copyName; do
+  grep -qE '^tddfmt_[0-9]+\.sh$' <<< "$copyName" || { echo "FAIL: the formatted copy is named tddfmt_<pid>.<ext>, got $copyName"; exit 1; }
+  case "$copyName" in
+    test_*.py | *_test.py | *.test.* | *.spec.*) echo "FAIL: the formatted copy $copyName matches a test glob"; exit 1 ;;
+  esac
+done <<< "$copyNames"
+[ -z "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: green must remove the formatted copy"; exit 1; }
+echo "PASS: the formatted copy matches no test glob and is removed"
+
+# --- an interrupted green removes the copy (R-109 r1 #5) ----------------------
+# The formatter stalls on the copy; terminating green's process group mid-format
+# must still remove it through the trap.
+rm -f .claude/tdd-lock.json fmt.log
+printf '#!/usr/bin/env bash\ncase "$(basename "$1")" in tddfmt_*) sleep 20 ;; esac\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > scripts/slowfmt.sh
+jq -n '{testFormatCommand: "bash scripts/slowfmt.sh"}' > .enforce.json
+bash "$TDD" open "F-4 stall.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \n[ "$(bash "$(dirname "$0")/../scripts/stall.sh")" = ok ] || { echo "FAIL: expected ok"; exit 1; }\n' > tests/stall.test.sh
+bash "$TDD" red tests/stall.test.sh >/dev/null || { echo "FAIL: red with the stalling formatter must succeed"; exit 1; }
+perl -pi -e 's/$/ /' tests/stall.test.sh
+printf '#!/usr/bin/env bash\necho ok\n' > scripts/stall.sh
+set -m; bash "$TDD" green >/dev/null 2>&1 & greenPid=$!; set +m
+for _ in $(seq 1 100); do [ -n "$(find tests -name 'tddfmt_*')" ] && break; sleep 0.1; done
+[ -n "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: green never wrote the formatted copy"; exit 1; }
+kill -TERM -- "-$greenPid" 2>/dev/null || true
+wait "$greenPid" 2>/dev/null || true
+for _ in $(seq 1 30); do [ -z "$(find tests -name 'tddfmt_*')" ] && break; sleep 0.1; done
+[ -z "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: a terminated green must remove the formatted copy"; exit 1; }
+echo "PASS: a terminated green removes the formatted copy"
 
 echo "tdd-format.test.sh PASS"

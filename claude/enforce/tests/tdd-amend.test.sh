@@ -127,7 +127,7 @@ if grep -q '[[:space:]]$' tests/trim.test.sh; then echo "FAIL: red must run test
 perl -pi -e 's/$/ /' tests/trim.test.sh
 printf '#!/usr/bin/env bash\necho ok\n' > scripts/trim.sh
 out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept a locked test that differs only by formatting; output: $out"; exit 1; }
-[ -z "$(find tests -name 'tdd-format-*')" ] || { echo "FAIL: green must remove the formatted copy it hashes"; exit 1; }
+[ -z "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: green must remove the formatted copy it hashes"; exit 1; }
 # Any change the formatter does not undo is still a changed test.
 printf 'echo changed\n' >> tests/trim.test.sh
 expect_fail "green after a real change to the locked test" bash "$TDD" green | grep -q 'changed since RED' || { echo "FAIL: green must refuse a locked test changed beyond formatting"; exit 1; }
