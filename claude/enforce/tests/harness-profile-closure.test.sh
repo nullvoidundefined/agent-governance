@@ -39,7 +39,8 @@ const isEnforcing = (cls) => /ENFORCE|STRUCTURAL/.test(cls);
 
 const hookRows = sectionRows("## Hooks").map(([name, , cls]) => ({ name, cls }));
 const ruleRows = sectionRows("## Rules in `claude/CLAUDE.md`").map(([id, cls]) => ({ id: id.split(" ")[0], cls }));
-check("the audit Hooks table parses to at least 50 rows", hookRows.length >= 50);
+// A parse sanity floor, lowered from 50 when IAN-568 removed nine hooks (48 rows remain).
+check("the audit Hooks table parses to at least 40 rows", hookRows.length >= 40);
 check("the audit rules table parses to at least 90 rows", ruleRows.length >= 90);
 
 for (const { name } of hookRows.filter(({ cls }) => isEnforcing(cls)))

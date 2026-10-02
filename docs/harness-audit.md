@@ -163,13 +163,13 @@ Convention files load only when a matching path is touched (through `claude/rule
 
 Registration counts per event: 23 on every Bash call, 11 on every Write or Edit, 3 on `mcp__.*`, 7 at SessionStart, plus Stop, SessionEnd, ConfigChange, PreModelSwitch, and TaskCreate/TaskUpdate hooks. No PostToolUse hook can block.
 
+IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gate, push-rubocop-gate, clean-code-reminder, ticket-at-start-gate, push-feature-docs-gate, scope-widening-gate, and lexicon-gate; their rows are gone from this table and the registration counts above predate that removal.
+
 | hook | event | class | evidence | dependents (COACHING/ORCH only) | context cost |
 |---|---|---|---|---|---|
 | audit-signal-check | PreToolUse Bash | COACHING | additionalContext only | R-801, R-904; 2 manifest rows; both hooks.json and PORT-STATUS; fixture audit-signal-check | about 130 tokens on some pushes |
 | build-cheatsheets | PreToolUse Bash | ORCHESTRATION | regenerates cheatsheets, no output | both hooks.json and PORT-STATUS; 2 fixtures | 0 |
-| clean-code-reminder | PostToolUse Write/Edit | COACHING | additionalContext only | R-322; manifest; ports; 3 fixtures | about 170 per long function written |
 | codex-billing-guard | PreToolUse Bash | ENFORCE | asks before metered Codex calls | | |
-| codex-test-author-guard | PreToolUse Write/Edit | ENFORCE | asks on test edits (R-907) | | |
 | commit-message-guard | PreToolUse Bash | ENFORCE | deny/ask on R-505, R-506, R-214 | | |
 | conflict-markers | PreToolUse Bash | ENFORCE | denies | | |
 | constant-change-guard | PreToolUse Bash | ENFORCE | asks | | |
@@ -188,7 +188,6 @@ Registration counts per event: 23 on every Bash call, 11 on every Write or Edit,
 | harness-sync | SessionStart | ORCHESTRATION | runs sync.sh; the delivery path of every other hook (R-003) | R-003; manifest; ports; 4 fixtures | 0 when in sync |
 | hook-integrity-check | SessionStart | COACHING | hash mismatch warns, never blocks | R-106, R-203; manifest; ports; 5 fixtures | 0 when clean |
 | hookspath-drift-check | SessionStart | COACHING | warns | R-107; manifest; ports; fixture | 0 when clean |
-| lexicon-gate | PreToolUse Write | ENFORCE | denies | | |
 | linear-todo-label-gate | PreToolUse mcp | ENFORCE | denies | | |
 | mcp-action-guard | PreToolUse mcp | ENFORCE | asks | | |
 | migration-defaults-guard | PreToolUse Write/Edit | ENFORCE | denies | | |
@@ -202,14 +201,10 @@ Registration counts per event: 23 on every Bash call, 11 on every Write or Edit,
 | pr-ticket-ref-gate | PreToolUse Bash | ENFORCE | denies | | |
 | protected-path-guard | PreToolUse Bash, Write/Edit | STRUCTURAL and ENFORCE | denies; role and gate-input boundaries | | |
 | push-eslint-gate | PreToolUse Bash | ENFORCE | denies | | |
-| push-feature-docs-gate | PreToolUse Bash | ENFORCE | denies | | |
-| push-golangci-gate | PreToolUse Bash | ENFORCE | denies | | |
-| push-rubocop-gate | PreToolUse Bash | ENFORCE | denies | | |
 | push-ruff-gate | PreToolUse Bash | ENFORCE | denies | | |
 | push-semgrep-gate | PreToolUse Bash | ENFORCE | denies | | |
 | redact-output | PostToolUse Bash | COACHING | detects a leak after the fact; cannot rewrite output | R-102; manifest; ports; 2 fixtures | about 200 on a leak |
 | redaction-guard-check | SessionStart | COACHING | warns when two named hooks are unregistered | R-102; manifest; ports; fixture | 0 when healthy |
-| scope-widening-gate | PreToolUse Write/Edit | ENFORCE | asks | | |
 | secret-scan | PreToolUse Bash, Write/Edit | ENFORCE | denies | | |
 | session-end | SessionEnd | ORCHESTRATION | routes memory lines, writes a resume snapshot | R-602, R-603; ports; 6 fixtures | 0 |
 | session-start | SessionStart | ORCHESTRATION | injects the memory index, handoff, start time, resume offer | R-001, R-002, R-201, R-503, R-602; manifest; ports; 11 fixtures | 2,000 to 4,500 every session start, the largest fixed cost |
@@ -218,9 +213,7 @@ Registration counts per event: 23 on every Bash call, 11 on every Write or Edit,
 | spec-glossary-check | PostToolUse Write | COACHING | additionalContext only | R-330, R-412, R-514, R-517; manifest; ports; fixture | about 150 on an incomplete spec |
 | structure-gate | PreToolUse Write/Edit | ENFORCE | denies | | |
 | task-commit-reminder | PostToolUse TaskUpdate | COACHING | additionalContext only | R-504; manifest; PORT-STATUS only; 2 fixtures | about 100 per completed task with a dirty tree |
-| task-provenance-gate | PreToolUse TaskCreate | ENFORCE | denies | | |
 | task-state-tracker | PostToolUse TaskCreate/TaskUpdate | ORCHESTRATION | appends task events; no output | R-213, R-601; manifest; 4 fixtures | 0 |
-| ticket-at-start-gate | PreToolUse Bash, Write/Edit | ENFORCE | denies | | |
 | verification-gate | Stop, SubagentStop | ENFORCE | blocks Stop on a red suite | | |
 
 ENFORCE outside `settings.json`: `pre-push.sample`, installed as the git pre-push hook by `install-git-hooks.sh`, aborts a push when port verification or SHA reachability fails (R-215); it enforces only where that installer has run.
