@@ -37,9 +37,11 @@
 #       commit), or identical once .enforce.json's testFormatCommand formats
 #       a copy (red and amend run that formatter before hashing; the key names
 #       the formatter binary directly with its flags, run as an argument
-#       vector with no shell, and a value holding a shell metacharacter or
-#       naming a shell, interpreter, launcher, package runner, or a path
-#       outside node_modules/.bin/ and .venv/bin/ is refused with a warning);
+#       vector with no shell; its program must be an allowlisted formatter,
+#       black, ruff format, prettier, biome format, dprint fmt, gofmt,
+#       goimports, rustfmt, shfmt, isort, yapf, or clang-format, by its exact
+#       file name, with options only after it, and anything else, a shell
+#       metacharacter included, is refused with a warning);
 #       a gitignored
 #       lock has no RED commit, so one commit per slice is fine; runs the suite and requires every named test to pass, none
 #       skipped, no other failure, and the pass count outside the named tests
@@ -910,9 +912,12 @@ cmd_red() {
 # split into words with no shell evaluation and run as an argument vector,
 # never under `bash -c`. It is refused with a warning, and the hash check
 # stays byte-exact, when it holds a shell operator or metacharacter, when its
-# program is an assignment, a shell, an interpreter, a launcher, or a package
-# runner, or when its program is a path outside node_modules/.bin/ and
-# .venv/bin/ (R-109 r1 #4, r2 #1, IAN-568).
+# program is not an allowlisted formatter (black, ruff, prettier, biome,
+# dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format) by the
+# exact name of its file, or is a path outside node_modules/.bin/ and
+# .venv/bin/, or when its other words are not options only after the
+# subcommand ruff and biome (`format`) and dprint (`fmt`) require (R-109 r1
+# #4, r2 #1, r4 #1 #2, IAN-568).
 test_format_command() {
   local command program
   local -a words
@@ -928,16 +933,32 @@ test_format_command() {
   read -r -a words <<< "$command"
   program="${words[0]:-}"
   if ! format_program_path "$program" >/dev/null; then
-    say "warning: testFormatCommand is refused because its program ($program) is not a formatter binary named directly (a bare name on PATH, node_modules/.bin/<tool>, or .venv/bin/<tool>; never an assignment, shell, interpreter, launcher, or package runner). Hashing the test(s) byte-exact" >&2
+    say "warning: testFormatCommand is refused because its program ($program) is not an allowlisted formatter (black, ruff, prettier, biome, dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format, by the exact name of its file) named as a bare name on PATH, node_modules/.bin/<tool>, or .venv/bin/<tool>. Hashing the test(s) byte-exact" >&2
+    return 0
+  fi
+  if ! format_arguments_allowed "${words[@]}"; then
+    say "warning: testFormatCommand is refused because its arguments are not options only (ruff and biome take format first, dprint fmt; every other word starts with - and names no path). Hashing the test(s) byte-exact" >&2
     return 0
   fi
   printf '%s' "$command"
 }
 
-# is_launcher_name <name>: true when <name> is a shell, interpreter, launcher,
-# package runner, or hook manager, which testFormatCommand never runs.
-is_launcher_name() {
+# is_formatter_name <name>: true when <name> is one of the formatters
+# testFormatCommand may run (R-109 r4 #1 #2, IAN-568), compared byte-exactly.
+is_formatter_name() {
   case "$1" in
+    black | ruff | prettier | biome | dprint | gofmt | goimports | rustfmt | shfmt | isort | yapf \
+      | clang-format)
+      return 0 ;;
+  esac
+  return 1
+}
+
+# is_launcher_name <name>: true when <name>, compared case-insensitively, is a
+# shell, interpreter, launcher, package runner, or hook manager; an extra
+# guard on the basename an allowlisted entry resolves to.
+is_launcher_name() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
     bash | sh | zsh | dash | ksh | mksh | csh | tcsh | fish | env | eval | exec | xargs \
       | nohup | sudo | doas | su | timeout | gtimeout | nice | ionice | time | command | builtin \
       | source | . | python | python2 | python3 | python3.* | pypy* | ipython* | jupyter* \
@@ -945,10 +966,44 @@ is_launcher_name() {
       | perl | ruby | php | lua | tclsh | osascript | awk | gawk | nawk | sed | find | git | make \
       | script | arch | caffeinate | stdbuf | setsid | chroot | watch | parallel | open | flock \
       | uv | uvx | npx | pnpm | pnpx | yarn | npm | bunx | pipx | poetry | pdm | hatch | tox | nox \
-      | pre-commit)
+      | pre-commit | go | bundle | pipenv)
       return 0 ;;
   esac
   return 1
+}
+
+# is_exact_directory_entry <path>: true when the directory holding <path>
+# lists an entry whose name equals <path>'s basename byte-exactly; on a
+# case-insensitive filesystem `Node` opens node, and the listing tells them
+# apart.
+is_exact_directory_entry() {
+  local dir name
+  dir=$(dirname -- "$1")
+  name=$(basename -- "$1")
+  ls -1a -- "$dir" 2>/dev/null | grep -Fxq -- "$name"
+}
+
+# format_arguments_allowed <program> [word...]: true when testFormatCommand's
+# words after its program are what the allowlisted formatter needs: `format`
+# first for ruff and biome, `fmt` first for dprint, and every other word an
+# option (leading `-`, never `-` alone) that holds no `/` and names no path in
+# the repository. A positional word would make the formatter read or rewrite
+# a file of the session's choosing, or select a subcommand that is not a
+# formatter (R-109 r4 #1, IAN-568).
+format_arguments_allowed() {
+  local name word
+  name=$(basename -- "$1")
+  shift
+  case "$name" in
+    ruff | biome) [ "${1:-}" = format ] || return 1; shift ;;
+    dprint) [ "${1:-}" = fmt ] || return 1; shift ;;
+  esac
+  for word in "$@"; do
+    case "$word" in -) return 1 ;; -*) ;; *) return 1 ;; esac
+    case "$word" in */*) return 1 ;; esac
+    [ ! -e "$ROOT/$word" ] && [ ! -L "$ROOT/$word" ] || return 1
+  done
+  return 0
 }
 
 # resolve_physical_path <path>: prints <path> with every symbolic link
@@ -968,19 +1023,21 @@ resolve_physical_path() {
 }
 
 # format_program_path <program>: prints the absolute path testFormatCommand's
-# program runs from, or fails when the program is refused: an assignment, a
-# launcher by name (is_launcher_name), a path other than
-# node_modules/.bin/<tool> or .venv/bin/<tool>, or a bare name that PATH
-# resolves to nothing or to a relative path. The program is then resolved
-# through every link (R-109 r3 #2, IAN-568) and refused when the file it
-# resolves to carries a launcher's name, when a bare name resolves into the
-# repository, or when a node_modules/.bin/ or .venv/bin/ entry resolves into
-# the repository outside node_modules/ and .venv/ (a link into scripts/).
+# program runs from, or fails when the program is refused. The program is
+# node_modules/.bin/<name>, .venv/bin/<name>, or a bare <name> PATH resolves
+# to an absolute path outside the repository, and <name> must be on the
+# formatter allowlist (is_formatter_name) as the exact name of the directory
+# entry it opens (R-109 r4 #1 #2, IAN-568); an assignment, a leading `-`, or
+# `..` is refused first. The entry is then resolved through every link (R-109
+# r3 #2) and refused when the file it resolves to carries a launcher's name,
+# when a bare name resolves into the repository, or when a node_modules/.bin/
+# or .venv/bin/ entry resolves into the repository outside node_modules/ and
+# .venv/ (a link into scripts/); a .bin link into node_modules/<package>/ is
+# how npm installs a formatter and is accepted.
 format_program_path() {
   local program="$1" name candidate resolved
   [ -n "$program" ] || return 1
   case "$program" in *=* | -* | *..*) return 1 ;; esac
-  is_launcher_name "$(basename "$program")" && return 1
   case "$program" in
     */*)
       case "$program" in
@@ -989,15 +1046,20 @@ format_program_path() {
         *) return 1 ;;
       esac
       case "$name" in */*) return 1 ;; esac
+      is_formatter_name "$name" || return 1
       [ -f "$ROOT/$program" ] && [ -x "$ROOT/$program" ] || return 1
       candidate="$ROOT/$program" ;;
     *)
+      name="$program"
+      is_formatter_name "$name" || return 1
       candidate=$(type -P -- "$program" 2>/dev/null) || return 1
       case "$candidate" in /*) ;; *) return 1 ;; esac
       case "$candidate" in "$ROOT"/* | "$ROOT_PHYSICAL"/*) return 1 ;; esac ;;
   esac
+  [ "$(basename -- "$candidate")" = "$name" ] || return 1
+  is_exact_directory_entry "$candidate" || return 1
   resolved=$(resolve_physical_path "$candidate") || return 1
-  is_launcher_name "$(basename "$resolved")" && return 1
+  is_launcher_name "$(basename -- "$resolved")" && return 1
   case "$resolved" in
     "$ROOT_PHYSICAL"/node_modules/* | "$ROOT_PHYSICAL"/.venv/*)
       case "$program" in */*) ;; *) return 1 ;; esac ;;

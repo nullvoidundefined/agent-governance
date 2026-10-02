@@ -117,9 +117,9 @@ expect_fail "amend after the RED is pushed" bash "$TDD" amend tests/reject.test.
 rm -f .claude/tdd-lock.json
 printf '#!/usr/bin/env bash\nexit 1\n' > scripts/reject.sh
 mkdir -p node_modules/.bin
-printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/trimfmt
-chmod +x node_modules/.bin/trimfmt
-jq -n '{testFormatCommand: "node_modules/.bin/trimfmt"}' > .enforce.json
+printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/shfmt
+chmod +x node_modules/.bin/shfmt
+jq -n '{testFormatCommand: "node_modules/.bin/shfmt"}' > .enforce.json
 git add -A && git commit -qm "chore: formatter"
 bash "$TDD" open "A-3 trim.sh prints ok" >/dev/null
 printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/trim.sh")  \n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "trim.test.sh PASS"\n' > tests/trim.test.sh

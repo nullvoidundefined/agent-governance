@@ -4,9 +4,10 @@
 # red formats the named test before hashing it, so a later reformat by the
 # same formatter (a pre-commit hook) before green is not read as a change,
 # while a real edit to the locked test still is. A value holding a shell
-# operator or metacharacter, or naming a shell, interpreter, launcher,
-# package runner, or a path outside node_modules/.bin/ and .venv/bin/, is
-# refused with nothing executed (R-109 r1 #4, r2 #1), as is an entry that
+# operator or metacharacter, a program outside the formatter allowlist by its
+# exact on-disk name, a wrong subcommand, a positional word, or a path outside
+# node_modules/.bin/ and .venv/bin/ is refused with nothing executed (R-109
+# r1 #4, r2 #1, r4 #1 #2), as is an entry that
 # resolves through a link into the repository outside node_modules/ and
 # .venv/ or onto a launcher (R-109 r3 #2), and the formatted copy
 # green hashes matches no test glob (R-109 r1 #5), lives in a fresh scratch
@@ -30,9 +31,9 @@ mkdir -p "$P/tests" "$P/scripts" "$P/node_modules/.bin"
 printf '.claude/tdd-lock.json\n' > "$P/.gitignore"
 printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$P/tests/baseline.test.sh"
 # The formatter strips trailing whitespace in place.
-printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > "$P/node_modules/.bin/fmt"
-chmod +x "$P/node_modules/.bin/fmt"
-jq -n '{testFormatCommand: "node_modules/.bin/fmt"}' > "$P/.enforce.json"
+printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > "$P/node_modules/.bin/shfmt"
+chmod +x "$P/node_modules/.bin/shfmt"
+jq -n '{testFormatCommand: "node_modules/.bin/shfmt"}' > "$P/.enforce.json"
 git -C "$P" add -A && git -C "$P" commit -qm "chore: init"
 cd "$P"
 
@@ -54,7 +55,7 @@ printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/trim.sh")
 bash "$TDD" red tests/trim.test.sh >/dev/null || { echo "FAIL: red with a testFormatCommand must succeed"; exit 1; }
 [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/trim.test.sh)" ] || { echo "FAIL: red must record the hash of the file as it left red"; exit 1; }
 # The pre-commit hook runs the same formatter before green.
-node_modules/.bin/fmt tests/trim.test.sh
+node_modules/.bin/shfmt tests/trim.test.sh
 [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/trim.test.sh)" ] || { echo "FAIL: red must record the formatted hash, so the same formatter changes nothing afterwards"; exit 1; }
 printf '#!/usr/bin/env bash\necho ok\n' > scripts/trim.sh
 out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept a test the same formatter reformatted after red; output: $out"; exit 1; }
@@ -69,7 +70,7 @@ echo "PASS: a semantic edit to the locked test still trips the hash check"
 # The key names one formatter binary and its flags only; a refused value
 # warns, formats nothing, and leaves the hash byte-exact.
 rm -f .claude/tdd-lock.json
-jq -n '{testFormatCommand: "node_modules/.bin/fmt; touch injected"}' > .enforce.json
+jq -n '{testFormatCommand: "node_modules/.bin/shfmt; touch injected"}' > .enforce.json
 bash "$TDD" open "F-2 pad.sh prints ok" >/dev/null
 printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/pad.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "pad.test.sh PASS"\n' > tests/pad.test.sh
 out=$(bash "$TDD" red tests/pad.test.sh 2>&1) || { echo "FAIL: red with a refused testFormatCommand must still succeed; output: $out"; exit 1; }
@@ -84,9 +85,9 @@ echo "PASS: a testFormatCommand holding a shell operator is refused and hashing 
 # left a copy named after the test would be collected as a passing duplicate.
 # The formatter here logs the root-relative path of every file it formats.
 rm -f .claude/tdd-lock.json tests/pad.test.sh
-printf '#!/usr/bin/env bash\nfor f in "$@"; do printf "%%s\\n" "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fmtlog
-chmod +x node_modules/.bin/fmtlog
-jq -n '{testFormatCommand: "node_modules/.bin/fmtlog"}' > .enforce.json
+printf '#!/usr/bin/env bash\nfor f in "$@"; do printf "%%s\\n" "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/isort
+chmod +x node_modules/.bin/isort
+jq -n '{testFormatCommand: "node_modules/.bin/isort"}' > .enforce.json
 bash "$TDD" open "F-3 copy.sh prints ok" >/dev/null
 printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/copy.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "copy.test.sh PASS"\n' > tests/copy.test.sh
 bash "$TDD" red tests/copy.test.sh >/dev/null || { echo "FAIL: red with the logging formatter must succeed"; exit 1; }
@@ -108,9 +109,9 @@ echo "PASS: the formatted copy matches no test glob and is removed"
 # The formatter stalls on the copy; terminating green's process group mid-format
 # must still remove it through the trap.
 rm -f .claude/tdd-lock.json fmt.log
-printf '#!/usr/bin/env bash\ncase "$(basename "$1")" in tddfmt.*) sleep 20 ;; esac\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/slowfmt
-chmod +x node_modules/.bin/slowfmt
-jq -n '{testFormatCommand: "node_modules/.bin/slowfmt"}' > .enforce.json
+printf '#!/usr/bin/env bash\ncase "$(basename "$1")" in tddfmt.*) sleep 20 ;; esac\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/yapf
+chmod +x node_modules/.bin/yapf
+jq -n '{testFormatCommand: "node_modules/.bin/yapf"}' > .enforce.json
 bash "$TDD" open "F-4 stall.sh prints ok" >/dev/null
 printf '#!/usr/bin/env bash   \n[ "$(bash "$(dirname "$0")/../scripts/stall.sh")" = ok ] || { echo "FAIL: expected ok"; exit 1; }\n' > tests/stall.test.sh
 bash "$TDD" red tests/stall.test.sh >/dev/null || { echo "FAIL: red with the stalling formatter must succeed"; exit 1; }
@@ -125,29 +126,47 @@ for _ in $(seq 1 30); do [ -z "$(find tests -name '.tddfmt_*')" ] && break; slee
 [ -z "$(find tests -name '.tddfmt_*')" ] || { echo "FAIL: a terminated green must remove the scratch directory"; exit 1; }
 echo "PASS: a terminated green removes the formatted copy"
 
-# --- only a formatter binary named directly runs (R-109 r2 #1) ---------------
+# --- only an allowlisted formatter runs (R-109 r2 #1, r4 #1 #2) ---------------
 # The value is split into words and run as an argument vector, never through a
-# shell. A shell, interpreter, launcher, or package runner as the program, an
-# assignment before it, or a path outside node_modules/.bin/ and .venv/bin/
-# (a repository script the session could edit) is refused: nothing runs, the
-# test stays unformatted, and the hash stays byte-exact. Each refused program
-# would create the marker file `injected` if it ran. The stalled test above
-# prints no PASS line, so it leaves the suite.
+# shell. Its program must be one of the allowlisted formatters by the exact
+# name of its on-disk directory entry (a case-insensitive filesystem resolves
+# `Node` to node and `BASH` to bash), ruff and biome take `format` and dprint
+# `fmt` as their first argument, and every other word is an option naming no
+# path. Anything else is refused: nothing runs, the test stays unformatted,
+# and the hash stays byte-exact. Each refused program would create the marker
+# file `injected` if it ran. The stalled test above prints no PASS line, so it
+# leaves the suite.
 rm -f .claude/tdd-lock.json fmt.log tests/stall.test.sh
+# write_trim_stub <path>: writes an executable formatter stub that strips
+# trailing whitespace from every argument naming an existing file, skipping
+# options and subcommands the way a real formatter consumes them.
+write_trim_stub() {
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do [ -f "$a" ] && perl -pi -e '"'"'s/[ \\t]+$//'"'"' "$a"; done\nexit 0\n' > "$1"
+  chmod +x "$1"
+}
 printf '#!/usr/bin/env bash\ntouch injected\n' > scripts/fmt.sh
 chmod +x scripts/fmt.sh
 printf 'open("injected", "w")\n' > scripts/inject.py
-printf '#!/usr/bin/env bash\ntouch injected\n' > "$B/npx"
+printf 'open("injected", "w")\n' > x.py
+printf 'open(my $f, ">", "injected");\n' > x
+printf 'require("fs").writeFileSync("injected", "");\n' > scripts/fmt.js
+for runner in npx go bundle pipenv; do
+  printf '#!/usr/bin/env bash\ntouch injected\n' > "$B/$runner"
+  chmod +x "$B/$runner"
+done
 printf '#!/usr/bin/env bash\ntouch injected\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > "$B/marker"
-chmod +x "$B/npx" "$B/marker"
-# R-109 r3 #2: an allowed-directory entry that links into the repository
-# outside node_modules/ and .venv/, a bare name on PATH that links into the
-# repository, and a hook manager or TypeScript launcher are refused too.
+chmod +x "$B/marker"
+write_trim_stub "$B/black"
+write_trim_stub "$B/ruff"
+# R-109 r3 #2: an allowlisted entry in an allowed directory that links into
+# the repository outside node_modules/ and .venv/, an allowlisted bare name on
+# PATH that links into the repository, and a hook manager or TypeScript
+# launcher are refused too.
 mkdir -p .venv/bin
 printf '#!/usr/bin/env bash\ntouch injected\n' > scripts/x.sh
 chmod +x scripts/x.sh
-ln -s ../../scripts/x.sh node_modules/.bin/x
-ln -s "$P/scripts/x.sh" "$B/linkfmt"
+ln -s ../../scripts/x.sh node_modules/.bin/rustfmt
+ln -s "$P/scripts/x.sh" "$B/goimports"
 printf '#!/usr/bin/env bash\ntouch injected\n' > .venv/bin/pre-commit
 printf '#!/usr/bin/env bash\ntouch injected\n' > node_modules/.bin/tsx
 chmod +x .venv/bin/pre-commit node_modules/.bin/tsx
@@ -159,10 +178,20 @@ refusedValues=(
   "scripts/fmt.sh"
   "npx prettier --write"
   "node_modules/.bin/../../scripts/fmt.sh"
-  "node_modules/.bin/x"
-  "linkfmt"
+  "node_modules/.bin/rustfmt"
+  "goimports"
   ".venv/bin/pre-commit"
   "node_modules/.bin/tsx"
+  "Node scripts/fmt.js"
+  "BASH scripts/x.sh"
+  "Perl x"
+  "go run ./scripts/fmt"
+  "bundle exec rubocop -A"
+  "pipenv run python3 x.py"
+  "ruff check --fix"
+  "black scripts/x.py"
+  "black x"
+  "Black -q"
 )
 for refusedValue in "${refusedValues[@]}"; do
   rm -f .claude/tdd-lock.json injected tests/pad.test.sh
@@ -175,18 +204,17 @@ for refusedValue in "${refusedValues[@]}"; do
   grep -q '[[:space:]]$' tests/pad.test.sh || { echo "FAIL: the refused testFormatCommand [$refusedValue] must leave the test unformatted"; exit 1; }
   [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: the refused testFormatCommand [$refusedValue] must leave the hash byte-exact"; exit 1; }
 done
-echo "PASS: a shell, interpreter, launcher, package runner, hook manager, assignment, repository script, or link into the repository as testFormatCommand is refused with nothing executed"
+echo "PASS: a program outside the formatter allowlist (by exact on-disk name), a wrong subcommand, a positional word, an assignment, a repository script, or a link into the repository as testFormatCommand is refused with nothing executed"
 
-# A stub in node_modules/.bin/, a node_modules/.bin/ link into a package
-# under node_modules/ (how npm installs a bin), and a bare stub on PATH are
-# accepted and run.
-printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fakefmt
-mkdir -p node_modules/pkgfmt/bin
-cp node_modules/.bin/fakefmt node_modules/pkgfmt/bin/pkgfmt.js
-ln -s ../pkgfmt/bin/pkgfmt.js node_modules/.bin/pkgfmt
-printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > "$B/barefmt"
-chmod +x node_modules/.bin/fakefmt node_modules/pkgfmt/bin/pkgfmt.js "$B/barefmt"
-for acceptedValue in "node_modules/.bin/fakefmt" "node_modules/.bin/pkgfmt" "barefmt"; do
+# An allowlisted stub in node_modules/.bin/, a node_modules/.bin/ link into a
+# package under node_modules/ (how npm installs a bin; the allowlist reads the
+# .bin entry's own name), and bare allowlisted stubs on PATH with their
+# required subcommand and options are accepted and run.
+write_trim_stub node_modules/.bin/gofmt
+mkdir -p node_modules/prettier/bin
+write_trim_stub node_modules/prettier/bin/prettier.cjs
+ln -s ../prettier/bin/prettier.cjs node_modules/.bin/prettier
+for acceptedValue in "node_modules/.bin/gofmt" "node_modules/.bin/prettier --write" "black -q" "ruff format"; do
   rm -f .claude/tdd-lock.json tests/pad.test.sh
   jq -n --arg c "$acceptedValue" '{testFormatCommand: $c}' > .enforce.json
   bash "$TDD" open "F-6 pad.sh prints ok" >/dev/null
@@ -197,7 +225,7 @@ for acceptedValue in "node_modules/.bin/fakefmt" "node_modules/.bin/pkgfmt" "bar
   [ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: red must hash the test [$acceptedValue] formatted"; exit 1; }
 done
 rm -f .claude/tdd-lock.json tests/pad.test.sh
-echo "PASS: a formatter in node_modules/.bin/, a bin link into node_modules/, and a bare formatter on PATH are accepted and run"
+echo "PASS: an allowlisted formatter in node_modules/.bin/, a bin link into node_modules/, and bare allowlisted formatters on PATH are accepted and run"
 
 # --- the formatted copy never follows a planted symlink (R-109 r2 #2, r3 #1) --
 # Bash noclobber opens a link to an existing non-regular file (a FIFO,
@@ -216,9 +244,9 @@ chmod +x "$S/rm" "$S/mkdir"
 printf 'sentinel\n' > sentinel.txt
 mkfifo fifo
 mkdir outside
-printf '#!/usr/bin/env bash\nfor f in "$@"; do printf "%%s\\n" "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fmtlog
-chmod +x node_modules/.bin/fmtlog
-jq -n '{testFormatCommand: "node_modules/.bin/fmtlog"}' > .enforce.json
+printf '#!/usr/bin/env bash\nfor f in "$@"; do printf "%%s\\n" "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/isort
+chmod +x node_modules/.bin/isort
+jq -n '{testFormatCommand: "node_modules/.bin/isort"}' > .enforce.json
 
 # prepare_reformatted_slice <name>: opens a slice for tests/<name>.test.sh,
 # records RED, then reformats the test the way a pre-commit hook would.
