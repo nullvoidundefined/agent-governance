@@ -995,7 +995,10 @@ format_test_files() {
 # collected as a passing duplicate; the body runs in a subshell whose trap
 # removes the copy on exit, interrupt, or termination (R-109 r1 #5, IAN-568).
 # The variables are plain subshell globals, not locals: bash 3.2 unwinds a
-# local before a signal's EXIT trap reads it, which would leave the copy.
+# local before a signal's EXIT trap reads it, which would leave the copy. The
+# copy is removed and then created under noclobber, an exclusive create
+# (O_EXCL) that fails on any path already there, a planted symlink included,
+# so the copy never writes through a link to its target (R-109 r2 #2).
 formatted_sha() (
   suffix=""
   [ -n "$(test_format_command)" ] || return 1
@@ -1005,7 +1008,8 @@ formatted_sha() (
   trap 'rm -f "$ROOT/$copy"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  cp "$1" "$ROOT/$copy" || return 1
+  rm -f "$ROOT/$copy"
+  ( set -C; cat -- "$1" > "$ROOT/$copy" ) || return 1
   format_test_files "$copy" 2>/dev/null
   digest=$(sha "$ROOT/$copy")
   printf '%s' "$digest"

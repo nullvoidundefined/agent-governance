@@ -7,7 +7,8 @@
 # operator or metacharacter, or naming a shell, interpreter, launcher,
 # package runner, or a path outside node_modules/.bin/ and .venv/bin/, is
 # refused with nothing executed (R-109 r1 #4, r2 #1), and the formatted copy
-# green hashes matches no test glob (R-109 r1 #5). Drives the bash *.test.sh
+# green hashes matches no test glob (R-109 r1 #5) and never writes through a
+# symlink planted at its path (R-109 r2 #2). Drives the bash *.test.sh
 # runner through the real run-fixture-shards.sh in a throwaway repository.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -173,5 +174,30 @@ for acceptedValue in "node_modules/.bin/fakefmt" "barefmt"; do
 done
 rm -f .claude/tdd-lock.json tests/pad.test.sh
 echo "PASS: a formatter in node_modules/.bin/ and a bare formatter on PATH are accepted and run"
+
+# --- the formatted copy never follows a planted symlink (R-109 r2 #2) --------
+# green writes its copy at tests/tddfmt_<pid>.<ext>; a symlink planted at that
+# path must not let the copy truncate or overwrite the link's target. Links
+# are planted for the PID range the next processes take, pointing at a
+# sentinel outside the test tree.
+rm -f .claude/tdd-lock.json
+printf 'sentinel\n' > sentinel.txt
+jq -n '{testFormatCommand: "node_modules/.bin/fmt"}' > .enforce.json
+bash "$TDD" open "F-7 link.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/link.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "link.test.sh PASS"\n' > tests/link.test.sh
+bash "$TDD" red tests/link.test.sh >/dev/null || { echo "FAIL: red for the symlink case must succeed"; exit 1; }
+perl -pi -e 's/$/ /' tests/link.test.sh
+printf '#!/usr/bin/env bash\necho ok\n' > scripts/link.sh
+# One perl process plants every link, so planting consumes no PIDs itself.
+nextPid=$(bash -c 'echo $$')
+perl -e 'symlink("../sentinel.txt", "tests/tddfmt_$_.sh") or die "symlink: $!" for $ARGV[0] .. $ARGV[0] + 2000' "$nextPid"
+linksBefore=$(find tests -name 'tddfmt_*' -type l | wc -l)
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept the reformatted test with links planted; output: $out"; exit 1; }
+linksAfter=$(find tests -name 'tddfmt_*' -type l | wc -l)
+[ "$(cat sentinel.txt)" = sentinel ] || { echo "FAIL: the formatted copy must not write through a planted symlink; sentinel now: $(head -c 200 sentinel.txt)"; exit 1; }
+[ "$linksAfter" -lt "$linksBefore" ] || { echo "FAIL: green's copy path was not among the planted links, so the case proved nothing"; exit 1; }
+find tests -name 'tddfmt_*' -type l -delete
+rm -f .claude/tdd-lock.json tests/link.test.sh
+echo "PASS: the formatted copy never writes through a symlink planted at its path"
 
 echo "tdd-format.test.sh PASS"
