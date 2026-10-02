@@ -21,7 +21,9 @@
 #   paceRatio   = burn / dailyBudget
 #   exhausted   = usedPct >= 90, or less than one day left at this burn while
 #                 the reset is further away than that
-# A provider's ratio is its worst bucket's; it is exhausted when any bucket is.
+# A provider's ratio is its worst current bucket's: a stale bucket never sets
+# it, so a caller reading paceRatio alone cannot act on old data. A provider
+# is exhausted when any bucket, stale ones included, says so.
 #
 # Environment: CLAUDE_QUOTA_FILE (default ~/.claude/quota.json), QUOTA_NOW
 # (epoch seconds, pins the clock for tests), QUOTA_STALE_HOURS (default 24).
@@ -75,6 +77,8 @@ readQuotaFile() {
   [ -f "$QUOTA_FILE" ] || fail "no quota file at $QUOTA_FILE; copy ~/.claude/quota.template.json there or run 'quota-pace.sh record'"
   jq -e '.buckets | type == "object"' "$QUOTA_FILE" >/dev/null 2>&1 ||
     fail "$QUOTA_FILE is not valid JSON with a \"buckets\" object"
+  jq -e '.buckets | length > 0' "$QUOTA_FILE" >/dev/null 2>&1 ||
+    fail "$QUOTA_FILE has no buckets; record one with 'quota-pace.sh record'"
   cat "$QUOTA_FILE"
 }
 
@@ -89,6 +93,26 @@ writeQuotaFile() {
     rm -f "$tmp"
     fail "cannot write $QUOTA_FILE"
   }
+}
+
+# lockQuotaFile: takes the writer lock, a directory next to the quota file
+# (mkdir is atomic everywhere, flock is not on macOS), so two recorders,
+# such as the status line and the owner, never lose each other's snapshot.
+# Waits up to about five seconds; a lock older than a minute is from a dead
+# writer and is broken.
+lockQuotaFile() {
+  local lock="$QUOTA_FILE.lock" tries=0
+  mkdir -p "$(dirname "$QUOTA_FILE")" || fail "cannot create $(dirname "$QUOTA_FILE")"
+  until mkdir "$lock" 2>/dev/null; do
+    if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+      rmdir "$lock" 2>/dev/null
+      continue
+    fi
+    tries=$((tries + 1))
+    [ "$tries" -lt 50 ] || fail "the quota file is locked by another writer ($lock)"
+    sleep 0.1
+  done
+  trap 'rmdir "$QUOTA_FILE.lock" 2>/dev/null' EXIT
 }
 
 # recordSnapshot <args...>: appends one snapshot to a bucket, creating the
@@ -116,7 +140,14 @@ recordSnapshot() {
   [ -z "$window" ] || [[ "$window" =~ ^[1-9][0-9]*$ ]] || fail "--window-days '$window' must be a positive integer"
 
   local current now
-  if [ -f "$QUOTA_FILE" ]; then current=$(readQuotaFile) || exit 1; else current='{"buckets":{}}'; fi
+  lockQuotaFile
+  if [ -f "$QUOTA_FILE" ] && jq -e '.buckets | length == 0' "$QUOTA_FILE" >/dev/null 2>&1; then
+    current='{"buckets":{}}'
+  elif [ -f "$QUOTA_FILE" ]; then
+    current=$(readQuotaFile) || exit 1
+  else
+    current='{"buckets":{}}'
+  fi
   now=$(nowEpoch)
   local updated
   updated=$(jq -e "$JQ_LIB"'
@@ -163,10 +194,10 @@ reportJson() {
             | select(.at >= $start and .at <= $now)] | sort_by(.at)) as $snaps
         | {bucket: $name, provider: (.provider // $name), resetsAt: .resetsAt}
         + if $reset <= $now then
-            {status: "window-rolled", paceRatio: null, exhausted: false,
+            {status: "window-rolled", stale: false, paceRatio: null, exhausted: false,
              note: "the reset time has passed; record a snapshot with the new --resets-at"}
           elif ($snaps | length) == 0 then
-            {status: "no-data", paceRatio: null, exhausted: false,
+            {status: "no-data", stale: false, paceRatio: null, exhausted: false,
              note: "no snapshot inside the current window"}
           else
             ($snaps[-1]) as $last
@@ -184,7 +215,9 @@ reportJson() {
                elif $remaining <= 0 then null
                else $b.burn / $budget end) as $ratio
             | (if $b.burn != null and $b.burn > 0 then $remaining / $b.burn else null end) as $projected
-            | {status: (if ($now - $last.at) > $staleS then "stale" else "ok" end),
+            | (($now - $last.at) > $staleS) as $stale
+            | {status: (if $stale then "stale" else "ok" end),
+               stale: $stale,
                usedPct: $last.used,
                snapshotAt: ($last.at | todate),
                snapshotSource: $last.source,
@@ -202,8 +235,8 @@ reportJson() {
        buckets: $buckets,
        providers: ($buckets | group_by(.provider) | map({
          provider: .[0].provider,
-         paceRatio: ([.[].paceRatio | select(. != null)] | max),
-         worstBucket: ((map(select(.paceRatio != null)) | max_by(.paceRatio) | .bucket) // null),
+         paceRatio: ([.[] | select(.status == "ok") | .paceRatio | select(. != null)] | max),
+         worstBucket: ((map(select(.status == "ok" and .paceRatio != null)) | max_by(.paceRatio) | .bucket) // null),
          exhausted: any(.[]; .exhausted),
          status: (if any(.[]; .status == "ok") then
                     (if any(.[]; .status != "ok") then "partial" else "ok" end)

@@ -103,6 +103,9 @@ QUOTA_NOW=$((NOW_OWNER + 25 * HOUR))
 export QUOTA_NOW
 [ "$(field '.buckets[0].status')" = "stale" ] || failCase "a 25h-old snapshot must read stale"
 [ "$(QUOTA_STALE_HOURS=48 field '.buckets[0].status')" = "ok" ] || failCase "QUOTA_STALE_HOURS must widen the stale window"
+[ "$(field '.buckets[0].stale')" = "true" ] || failCase "a stale bucket must carry stale: true"
+[ "$(field '.providers[0].paceRatio')" = "null" ] || failCase "a stale bucket must not set the provider ratio"
+[ "$(field '.buckets[0].paceRatio != null')" = "true" ] || failCase "setup: the stale bucket itself still shows its ratio"
 # 2026-10-08T11:00:00+07:00, three minutes after the codex reset.
 export QUOTA_NOW=1791432000
 [ "$(field '.buckets[0].status')" = "window-rolled" ] || failCase "a passed reset must read window-rolled"
@@ -120,6 +123,8 @@ if bash "$SCRIPT" report >/dev/null 2>&1; then failCase "a missing quota file mu
 { bash "$SCRIPT" report 2>&1 || true; } | grep -q "no quota file" || failCase "a missing file must say so"
 echo '{"nope":1}' >"$CLAUDE_QUOTA_FILE"
 if bash "$SCRIPT" report >/dev/null 2>&1; then failCase "a file without buckets must exit nonzero"; fi
+echo '{"buckets":{}}' >"$CLAUDE_QUOTA_FILE"
+if bash "$SCRIPT" report >/dev/null 2>&1; then failCase "an empty buckets object must exit nonzero"; fi
 rm -f "$CLAUDE_QUOTA_FILE"
 if bash "$SCRIPT" record codex 13 >/dev/null 2>&1; then failCase "a new bucket without --resets-at must fail"; fi
 [ ! -f "$CLAUDE_QUOTA_FILE" ] || failCase "a failed record must not create the file"
@@ -127,7 +132,20 @@ if bash "$SCRIPT" record codex 130 --resets-at 2026-10-08T10:57:00+07:00 >/dev/n
 if bash "$SCRIPT" record codex 13 --resets-at 'next tuesday' >/dev/null 2>&1; then failCase "an unparseable reset must fail"; fi
 if bash "$SCRIPT" record 'Codex!' 13 --resets-at 2026-10-08T10:57:00+07:00 >/dev/null 2>&1; then failCase "a bad bucket name must fail"; fi
 
-# --- 7. Offsets parse to the same instant as Z. ---
+# --- 7. Concurrent recorders never lose a snapshot. ---
+rm -f "$CLAUDE_QUOTA_FILE"
+export QUOTA_NOW=$NOW_OWNER
+bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
+pids=""
+for i in 2 3 4 5 6 7 8 9; do
+  bash "$SCRIPT" record codex "$i" --at $((NOW_OWNER - (20 - i) * HOUR)) &
+  pids="$pids $!"
+done
+for p in $pids; do wait "$p" || failCase "a concurrent record failed"; done
+[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "9" ] || failCase "concurrent records must all land (want 9 snapshots)"
+[ ! -d "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the writer lock must be released"
+
+# --- 8. Offsets parse to the same instant as Z. ---
 # A snapshot two hours into the window survives re-recording the same reset
 # in another offset form. Were an offset ignored, the reset would read as a
 # different instant, the window start would move by hours, and the snapshot
