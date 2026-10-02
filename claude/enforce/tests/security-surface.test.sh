@@ -257,13 +257,13 @@ expect_hits "docs-only range" "" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB
 
 # --- 4b. Prose paths skip the path patterns (IAN-568, I7) --------------------
 # The per-session handoff path contains `session`, an unanchored path
-# pattern, and flagged every handoff PR for a security review. Paths under
-# docs/ and Markdown files are prose and skip the path patterns; a code file
-# whose name carries the same substring is still marked.
+# pattern, and flagged every handoff PR for a security review. Markdown and
+# .txt files under docs/ or at the repository root are prose and skip the path
+# patterns; a code file whose name carries the same substring is still marked.
 REPO=$(new_repo handoff-only)
 BASE=$(head_of "$REPO")
 write_file "$REPO" docs/session-handoff/session-handoff.md $'# Session handoff\n\n- Slice 04 merged; next is the showcase cut.\n'
-write_file "$REPO" notes/token-budget.md $'# Budget\n\nThe daily budget resets at midnight.\n'
+write_file "$REPO" token-budget.md $'# Budget\n\nThe daily budget resets at midnight.\n'
 commit_all "$REPO" "write the session handoff"
 expect_unmarked "handoff-only range" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 expect_hits "handoff-only range" "" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
@@ -276,9 +276,22 @@ expect_marked "code file named session.py" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$
 expect_hits "code file named session.py" "app/session.py:0 path" \
   "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
 
+# The prose exclusion covers only Markdown and .txt under docs/ or at the
+# root (R-109 r1 #1): a script under docs/ and a configuration-bearing
+# Markdown file such as an agent definition, whose frontmatter grants tools,
+# still meet the path patterns.
+REPO=$(new_repo prose-narrowed)
+BASE=$(head_of "$REPO")
+write_file "$REPO" docs/scripts/session-sync.sh $'echo synced\n'
+write_file "$REPO" claude/agents/security-reviewer.md $'---\nname: reviewer\n---\nReviews hunks.\n'
+commit_all "$REPO" "add a docs script and an agent definition"
+expect_marked "docs script and agent definition" "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+expect_hits "docs script and agent definition" $'claude/agents/security-reviewer.md:0 path\ndocs/scripts/session-sync.sh:0 path' \
+  "$REPO" "$BASE" CLAUDE_SEMGREP_CMD="$CLEAN_STUB"
+
 # --- 5. securitySurfaceExclude (B-8) -----------------------------------------
-# notes/auth-session.txt matches a path pattern (it is neither under docs/ nor
-# Markdown, which the path patterns skip): without an exclude list the
+# notes/auth-session.txt matches a path pattern (it is .txt but neither under docs/ nor
+# at the root, which the path patterns skip): without an exclude list the
 # range is marked, and with notes/** excluded it is not.
 REPO=$(new_repo exclude-control)
 BASE=$(head_of "$REPO")

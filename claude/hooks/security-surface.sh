@@ -112,11 +112,14 @@ list_included_changed_files() {
 }
 
 # SECURITY_SURFACE_PROSE_PATH_PATTERN: the paths the `paths` patterns never
-# read (IAN-568, I7): anything under the top-level docs/ tree and any Markdown
-# file. The unanchored substrings `session` and `token` flagged every
-# docs/session-handoff/ commit; prose does not execute. The `content`
-# patterns and Semgrep still read these files.
-SECURITY_SURFACE_PROSE_PATH_PATTERN='(^docs/|\.md$)'
+# read (IAN-568, I7): Markdown and .txt files under the top-level docs/ tree
+# or at the repository root, which cannot carry configuration. The unanchored
+# substrings `session` and `token` flagged every docs/session-handoff/ commit.
+# A script under docs/ and a Markdown file elsewhere (an agent's frontmatter,
+# a prompt, a skill, a rule) can configure the harness and stay on the path
+# patterns (R-109 r1 #1). The `content` patterns and Semgrep still read every
+# file.
+SECURITY_SURFACE_PROSE_PATH_PATTERN='^(docs/.*|[^/]*)\.(md|txt)$'
 
 # list_path_hits <file list> <path patterns file>: prints `path:0 path` for
 # each newline-separated path, outside the prose paths, matching a path
