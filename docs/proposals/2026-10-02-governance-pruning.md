@@ -1,7 +1,7 @@
 # Governance pruning proposal
 
 **Ticket:** IAN-568
-**Status:** Draft for owner decision. No rule, hook, or skill changes until the owner approves.
+**Status:** All eight decisions answered by the owner on 2026-10-02 (see the last section). Awaiting the owner's approval of the proposal as a whole; no rule, hook, or skill changes until then.
 **Date:** 2026-10-02
 
 ## Summary
@@ -375,8 +375,8 @@ Each is asked through an answer tile, one per turn, and recorded here with the a
 1. Sequencing: land the interlock fixes (I1, I2, I3, I5, I7, I9) as one PR first, or wait for the whole pruning. **Answer (2026-10-02): wait for the full pruning; every change lands as one planned change after all decisions are made.**
 2. TDD lock scope: high-risk slices only, delete it everywhere, or keep it everywhere with the fixes. **Answer (2026-10-02): high-risk slices only. Standard-risk slices use the lean tier; high-risk slices keep the lock and the triad with I1, I2, I3, I5, and I8 fixed.**
 3. Hook-only delivery: remove the norm text of hook-enforced rules from `CLAUDE.md`. **Answer (2026-10-02): yes. Hook-enforced rules keep firing and leave the always-loaded file; the hook's message carries the rule.**
-4. Ticket timing: before the first edit (gate), at PR open (default), or optional below Complex.
-5. Product docs: gate on push, update at feature completion, or drop.
-6. The DELETE list: approve as a batch or rule by rule.
-7. IAN-565 (`feat/tdd-dispute-reopen`): drop it if I1 lands, or keep it.
-8. The 1:1 budget (owner principle, 2026-10-02: process never exceeds work unless cutting loses something of significant value): approve the four further cuts, and confirm the single exception, the R-109 security review running past budget while each round still finds MEDIUM or higher.
+4. Ticket timing: before the first edit (gate), at PR open (default), or optional below Complex. **Answer (2026-10-02): at PR open. The ticket-at-start gate goes; the ticket opens with the draft PR carrying six fields and closes with `actual_minutes` and `risk`.**
+5. Product docs: gate on push, update at feature completion, or drop. **Answer (2026-10-02): at feature completion. The push gate goes; `task-cleanup` updates the docs once when a feature finishes.**
+6. The DELETE list: approve as a batch or rule by rule. **Answer (2026-10-02): approved as a batch: R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R-510, R-511, R-906, R-907, the golangci and rubocop gates, PL4, and PL10.**
+7. IAN-565 (`feat/tdd-dispute-reopen`): drop it if I1 lands, or keep it. **Answer (2026-10-02): drop it. IAN-565 closes as dropped, citing this proposal, once the proposal is approved; the I1 ask replaces it.**
+8. The 1:1 budget (owner principle, 2026-10-02: process never exceeds work unless cutting loses something of significant value): approve the four further cuts, and confirm the single exception, the R-109 security review running past budget while each round still finds MEDIUM or higher. **Answer (2026-10-02): approved with the exception. All four further cuts apply; everything, high-risk PRs included, is held to 1:1 except the R-109 security review while its rounds still find MEDIUM or higher.**
