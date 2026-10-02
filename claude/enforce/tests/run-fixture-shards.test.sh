@@ -8,6 +8,8 @@
 # falls back to everything when a changed file maps to no fixture, is shared
 # by all of them, or cannot be listed. A fixture passes only on exit 0 with a
 # PASS line and no FAIL line, the verdict the old sequential runners applied.
+# Every run prints and logs one timing line: the lock wait, the selection,
+# and the run time (IAN-566).
 #
 # The fixtures under test are fakes in a sandbox git repository that write
 # marker files, so each case asserts which fixtures ran, not what they print.
@@ -503,6 +505,40 @@ check "a kept results dir survives the run" [ -f "$KEPT/fast-b.test.sh.status" ]
 rm -f "$TESTS/fast-e.test.sh"
 OUT=$(bash "$RUNNER" "$TESTS" --all --results-dir "$SANDBOX/absent" --settle-seconds 0 --load-from "$LOAD_FILE" 2>&1); STATUS=$?
 check "a results dir that does not exist is a usage error" [ "$STATUS" -eq 2 ]
+
+# --- timing (IAN-566) ---
+# Every run prints one timing line naming the lock wait, the selection, and
+# the run time, and appends it to timings.log in the per-user lock directory,
+# so a slow run can be traced to waiting, selection, or the fixtures.
+TIMING_TMP="$SANDBOX/timing-tmp"; mkdir -p "$TIMING_TMP"
+TIMING_LOG="$TIMING_TMP/claude-fixture-shards.$(id -u)/timings.log"
+OUT=$(cd "$REPO" && TMPDIR="$TIMING_TMP" bash "$RUNNER" "$TESTS" --all "${RUN_OPTS[@]}" </dev/null 2>&1)
+timing_line_matches() { grep -qE "$1" <<< "$OUT"; }
+check "a run prints a timing line with the lock wait and run time" \
+  timing_line_matches '^fixture-shards: timing: waited [0-9]+s for the run lock, ran [0-9]+ of [0-9]+ fixtures in [0-9]+s \(all\)$'
+check "a run appends its timing line to timings.log" \
+  grep -qE 'fixture-shards: timing: waited [0-9]+s for the run lock, ran [0-9]+ of [0-9]+ fixtures in [0-9]+s \(all\)$' "$TIMING_LOG"
+OUT=$(cd "$REPO" && TMPDIR="$TIMING_TMP" bash "$RUNNER" "$TESTS" --affected "${RUN_OPTS[@]}" --changed-from "$(changes_file 'claude/hooks/unnamed-anywhere.sh')" </dev/null 2>&1)
+check "a fallback run names its reason in the timing line" \
+  timing_line_matches '^fixture-shards: timing: .* \(everything: unmapped: claude/hooks/unnamed-anywhere\.sh\)$'
+check "each run adds one line to timings.log" [ "$(grep -c 'fixture-shards: timing:' "$TIMING_LOG")" -eq 2 ]
+# A lock directory that is a symlink (planted, or left by an older layout)
+# never receives the log, even when it points at a directory this user owns
+# and the run skips the lock checks because perl is missing.
+LINKED_TMP="$SANDBOX/linked-tmp"; LINK_TARGET="$SANDBOX/link-target"; NO_PERL_BIN="$SANDBOX/no-perl-bin"
+mkdir -p "$LINKED_TMP" "$LINK_TARGET" "$NO_PERL_BIN"
+ln -s "$LINK_TARGET" "$LINKED_TMP/claude-fixture-shards.$(id -u)"
+for tool in bash git cat ls sort sed grep awk basename dirname mktemp rm mkdir date id head tail wc touch printf env uname sysctl nproc getconf tr cut xargs find sleep stat readlink; do
+  tool_path=$(type -P "$tool" 2>/dev/null) && ln -sf "$tool_path" "$NO_PERL_BIN/$tool"
+done
+OUT=$(cd "$REPO" && TMPDIR="$LINKED_TMP" PATH="$NO_PERL_BIN" "$(type -P bash)" "$RUNNER" "$TESTS" --all "${RUN_OPTS[@]}" </dev/null 2>&1); STATUS=$?
+check "a perl-less run still prints its timing line" timing_line_matches '^fixture-shards: timing: '
+check "a symlinked lock directory never receives timings.log" [ ! -e "$LINK_TARGET/timings.log" ]
+# A timings.log that cannot be written leaves the verdict unchanged.
+chmod 400 "$TIMING_LOG"
+OUT=$(cd "$REPO" && TMPDIR="$TIMING_TMP" bash "$RUNNER" "$TESTS" --all "${RUN_OPTS[@]}" </dev/null 2>&1); STATUS=$?
+check "an unwritable timings.log does not change a passing verdict" [ "$STATUS" -eq 0 ]
+chmod 600 "$TIMING_LOG"
 
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --all --settle-seconds 5 --settle-max-seconds 2 --load-from "$LOAD_FILE" </dev/null 2>&1); STATUS=$?
