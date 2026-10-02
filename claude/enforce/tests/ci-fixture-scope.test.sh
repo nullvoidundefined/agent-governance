@@ -22,7 +22,9 @@
 # - A draft pull_request answers false, even over a code change.
 # - A non-draft pull_request answers false only when the three-dot diff
 #   succeeds, is non-empty, and every path starts with docs/: adding,
-#   modifying, or deleting a docs/ file answers false.
+#   modifying, or deleting a docs/ file answers false, and so does adding
+#   6000 docs/ files and nothing else, a docs-only list larger than the 64 KiB
+#   pipe buffer.
 # - Insecure values answer true (R-109 review): a code file renamed into docs/
 #   with unchanged content; docsx/, Docs/ and foo/docs/ lookalike paths; a
 #   mixed docs/ plus code change; a deleted code file; a docs/ file whose name
@@ -32,7 +34,9 @@
 #   pull_request with a code change; a plain non-draft code change; and a code
 #   file (aaa/x.ts) sorting before 6000 added docs/ files, a changed-file list
 #   larger than the 64 KiB pipe buffer, so an early-exiting reader cannot turn
-#   a SIGPIPE into a skip.
+#   a SIGPIPE into a skip; and a docs-only range checked under a PATH that
+#   holds git, bash and the basic tools but no grep, so a check that never
+#   ran (exit 127) cannot answer skip.
 # - Every case also asserts exit status 0 and that stdout is exactly the one
 #   expected line.
 set -uo pipefail
@@ -100,6 +104,43 @@ expectScope() {
   echo "PASS: $name"
 }
 
+# Tools resolved before any case swaps PATH: the no-grep case starts bash by
+# absolute path and gives the script a PATH holding only these.
+BASH_BIN=$(command -v bash)
+NO_GREP_BIN="$SB/no-grep-bin"
+mkdir -p "$NO_GREP_BIN"
+# type -P names the binary even for printf, which command -v reports as the
+# builtin.
+for noGrepTool in git bash cat printf env; do
+  noGrepToolPath=$(type -P "$noGrepTool") && [ -n "$noGrepToolPath" ] \
+    || { echo "FAIL: cannot resolve $noGrepTool for the no-grep PATH"; exit 1; }
+  ln -s "$noGrepToolPath" "$NO_GREP_BIN/$noGrepTool"
+done
+
+# expectScopeWithoutGrep <name> <expected line> <EVENT_NAME> <IS_DRAFT> <BASE_SHA> <HEAD_SHA>:
+# runs the script like expectScope, but with PATH set to the no-grep directory
+# and bash started by absolute path, after asserting that PATH really finds git
+# and does not find grep, so the case cannot pass for another reason.
+expectScopeWithoutGrep() {
+  local name="$1" expected="$2" out rc
+  if PATH="$NO_GREP_BIN" "$BASH_BIN" -c 'command -v grep' >/dev/null 2>&1; then
+    echo "FAIL: $name: grep is still reachable on the no-grep PATH"; fail=1; return
+  fi
+  if ! (cd "$REPO" && PATH="$NO_GREP_BIN" "$BASH_BIN" -c 'git rev-parse HEAD' >/dev/null 2>&1); then
+    echo "FAIL: $name: git does not run on the no-grep PATH"; fail=1; return
+  fi
+  out=$(cd "$REPO" && PATH="$NO_GREP_BIN" EVENT_NAME="$3" IS_DRAFT="$4" BASE_SHA="$5" \
+    HEAD_SHA="$6" "$BASH_BIN" "$SCOPE" 2>/dev/null)
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL: $name: exit status $rc, expected 0"; fail=1; return
+  fi
+  if [ "$out" != "$expected" ]; then
+    echo "FAIL: $name: stdout was [$out], expected [$expected]"; fail=1; return
+  fi
+  echo "PASS: $name"
+}
+
 # ---- Head commits, one per case --------------------------------------------
 
 startCase docs-add; writeFile docs/new.md '# new'; DOCS_ADD=$(finishCase)
@@ -131,6 +172,15 @@ while [ "$bigDocsIndex" -lt 106000 ]; do
   bigDocsIndex=$((bigDocsIndex + 1))
 done
 BIG_DOCS_LIST=$(finishCase)
+# 6000 docs/ files and nothing else: a docs-only list past the 64 KiB pipe
+# buffer, which must still answer false.
+startCase big-docs-only
+bigDocsIndex=100000
+while [ "$bigDocsIndex" -lt 106000 ]; do
+  : > "$REPO/docs/file-${bigDocsIndex#1}.md"
+  bigDocsIndex=$((bigDocsIndex + 1))
+done
+BIG_DOCS_ONLY=$(finishCase)
 startCase newline-name; printf '# nl\n' > "$REPO/docs/a
 b.md"; NEWLINE_NAME=$(finishCase)
 
@@ -163,6 +213,7 @@ expectScope "draft PR with a code change" "should_run=false" pull_request true "
 expectScope "non-draft PR adding a docs/ file" "should_run=false" pull_request false "$BASE" "$DOCS_ADD"
 expectScope "non-draft PR modifying a docs/ file" "should_run=false" pull_request false "$BASE" "$DOCS_MODIFY"
 expectScope "non-draft PR deleting a docs/ file" "should_run=false" pull_request false "$BASE" "$DOCS_DELETE"
+expectScope "non-draft PR adding 6000 docs/ files and nothing else" "should_run=false" pull_request false "$BASE" "$BIG_DOCS_ONLY"
 
 # ---- Non-draft pull_request ranges that answer true ------------------------
 
@@ -176,6 +227,7 @@ expectScope "foo/docs/ nested path" "should_run=true" pull_request false "$BASE"
 expectScope "docs/ file whose name holds a newline" "should_run=true" pull_request false "$BASE" "$NEWLINE_NAME"
 expectScope "code path before a docs/ list larger than the pipe buffer" "should_run=true" pull_request false "$BASE" "$BIG_DOCS_LIST"
 expectScope "empty diff (base equals head)" "should_run=true" pull_request false "$BASE" "$BASE"
+expectScopeWithoutGrep "docs-only range with no grep on PATH" "should_run=true" pull_request false "$BASE" "$DOCS_ADD"
 
 # ---- Diff errors answer true -----------------------------------------------
 

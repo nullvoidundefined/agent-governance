@@ -16,15 +16,17 @@ set -uo pipefail
 # The list is fed to grep through a here-string, never a pipe: under pipefail,
 # `printf | grep -q` made printf die of SIGPIPE (141) once grep exited early on
 # a list past 64 KiB, and the function wrongly answered docs-only (skip). The
-# R-109 review found that case.
+# R-109 review found that case. Only a counted zero means docs-only, so any
+# failure of the check (a missing grep, an error, an uncreatable here-string
+# file) leaves the count empty and answers run (the R-109 review, round 3).
 isDocsOnlyChange() {
   [ -n "${BASE_SHA:-}" ] && [ -n "${HEAD_SHA:-}" ] || return 1
   local changedFiles
   changedFiles=$(git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" 2>/dev/null) || return 1
   [ -n "$changedFiles" ] || return 1
-  if grep -qv '^docs/' <<<"$changedFiles"; then
-    return 1
-  fi
+  local nonDocsCount
+  nonDocsCount=$(grep -cv '^docs/' <<<"$changedFiles" 2>/dev/null)
+  [ "$nonDocsCount" = "0" ] || return 1
   return 0
 }
 
