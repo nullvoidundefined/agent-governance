@@ -67,7 +67,7 @@
     "rules/rulebook-reference-r1xx-secrets-and-trust.mdc": "sha256:e086803920275f9dccb9aec5f11fdcc1c77e627bba0ce8736e2c666e09f1da9a",
     "rules/rulebook-reference-r2xx-conduct-and-output.mdc": "sha256:f9b3ded2f644c2849ffda0fb258b70a220c5fd2771f4f23eaa8aa152287732a2",
     "rules/rulebook-reference-r3xx-architecture-and-naming.mdc": "sha256:09eb143d383b631f82b659f577baa8003d00d81876272f7003e71d508e751c32",
-    "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:eb6b90a63fd396e0b308ba41de2133a44fd03e467d6e1dc3409996578ea76fe4",
+    "rules/rulebook-reference-r4xx-testing-and-quality.mdc": "sha256:2e4a002c6470669321dda4bb961cdebf805be7e9143b70f839743ab34d7868ac",
     "rules/rulebook-reference-r5xx-git-and-process.mdc": "sha256:8503598c630ad7b71bebd2380dc02b6274f727d062256d6c44a0f72c8ac88ca1",
     "rules/rulebook-reference-r6xx-lifecycle-and-memory.mdc": "sha256:652b4a1c960862f820137673662071291752d2d8d017320cce6750f2cbe652b6",
     "rules/structure-conventions.mdc": "sha256:5dc9000eae7a56bef27dfb93b29aa756b453e4c1ac28ff0ec14796fa30bb8ec5",
@@ -111,7 +111,7 @@
     "skills/task-start/SKILL.md": "sha256:ea38c09e4e8a4d3a5c299c3f029876a16d4b4c30810d6f0f84b60a9a56c2e21e",
     "skills/task-start/scripts/finding.sh": "sha256:d512dacdbb10075114d45e08b73cacbcccd2424a6b4ab986ce5da5b9dc1e1b62",
     "skills/task-start/scripts/task-tier.sh": "sha256:8d875d3ebba8aea8da33d71c63fdd759bb6006302796f3acf59a0d7fecb7e554",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:1193c947e5b04d3c7dfaa590006ba79c80f305e1fa1d987cb6a44da4b723f905",
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:a17d4a8877efce36a6b4ea54b5e19f768d5486e0f565e9970f16997d3acf16ed",
     "skills/ticket-lifecycle/SKILL.md": "sha256:b296161e570c1b94ea614651131046a2d7cfeb94e308512e9b0a33e43a68bc01"
   },
   "classes": {
