@@ -51,7 +51,7 @@ R-209: Delete filler before sending: action announcements, question echoes, tran
 R-210: Write human-facing prose in complete sentences with full context: not terse, not verbose, leaning toward verbose.
   Class: D; delivery: this file (output style).
   Spec:
-  - Scope: documents (specs, plans, READMEs, slice plans), PR bodies, chat explanations, and code comments. Model-facing instruction files stay imperative and lean per R-206.
+  - Scope: documents (specs, plans, READMEs, slice plans), PR bodies, chat explanations, and code comments. Model-facing instruction files stay imperative and lean (the `writing-skills` skill).
   - Complete sentences only: no fragments, no stripped particles or articles, no punchy noun-phrase prose that looks impressive without explaining what is happening.
   - Every sentence carries its context. The four faults named in the documentation-create skill are defects: a definite reference to something never introduced, a count without its items, a judgement without its reason, a comparison missing a term.
   - When length and context conflict, choose the longer sentence that carries full context over the shorter one that does not.

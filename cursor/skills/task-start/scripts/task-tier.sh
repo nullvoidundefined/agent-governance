@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # task-tier.sh: the task-start skill's ledger (2026-09-17 skills audit, S-8).
-# The tier task-start announces, the reason, the R-503 start timestamp, and
+# The tier task-start announces, the reason, the session start timestamp, and
 # the branch lived only in the transcript, so after a compaction the tier
 # task-cleanup scales its work by was whatever the model recalled. This
 # writes them to .claude/task-tier.json at the repo root, where task-cleanup's
@@ -137,7 +137,7 @@ cmd_set() {
     + (if $previous != "" and $previous != $tier then {reclassifiedFrom: $previous} else {} end)
   ' > "$LEDGER" || die "could not write $LEDGER_RELATIVE"
   if ! git -C "$ROOT" check-ignore -q "$LEDGER_RELATIVE" 2>/dev/null; then
-    printf 'task-tier: note: %s is not gitignored in this project; add it, it is session state (R-503 ledger), not source\n' "$LEDGER_RELATIVE" >&2
+    printf 'task-tier: note: %s is not gitignored in this project; add it, it is session state (the task-tier ledger), not source\n' "$LEDGER_RELATIVE" >&2
   fi
   if [ -n "$previous" ] && [ "$previous" != "$tier" ]; then
     printf 'task-tier: reclassified %s -> %s: %s\n' "$previous" "$tier" "$reason"
