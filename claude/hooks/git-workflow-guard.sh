@@ -68,8 +68,6 @@
 #          never read (B-10e); and a
 #          security-touching merge denies when gh reports no baseRefOid or one
 #          that differs from the local origin/<baseRefName> (B-10b)
-#   R-511  advisory: a cross-cutting change (5+ files, 3+ directories) landing
-#          directly on main wants its own branch
 #   R-508  advisory: a commit that adds a user-facing surface or changes setup
 #          and touches no README
 #
@@ -1503,20 +1501,6 @@ $(printf '%s\n' "$WORKING" | awk '/^(\?\?|A)/ {print $NF}')"
 fi
 CHANGED=$(printf '%s\n' "$CHANGED" | grep -v '^$' | sort -u || true)
 [ -z "$CHANGED" ] && exit 0
-
-# R-511: breadth is the signal. A change touching this many files across this
-# many directories is the cross-cutting refactor that wants its own branch.
-if [ "$is_global_repo" -eq 0 ] && [ "$on_trunk" -eq 1 ]; then
-  FILE_COUNT=$(printf '%s\n' "$CHANGED" | wc -l | tr -d ' ')
-  # dirname per line, not via xargs: a path holding a quote or a space makes
-  # xargs exit non-zero, and under pipefail that took the whole advisory with it.
-  DIR_COUNT=$(while IFS= read -r changed_path; do
-    [ -n "$changed_path" ] && dirname "$changed_path"
-  done <<<"$CHANGED" | sort -u | wc -l | tr -d ' ')
-  if [ "$FILE_COUNT" -ge 5 ] && [ "$DIR_COUNT" -ge 3 ]; then
-    echo "git-workflow-guard: this commit spans $FILE_COUNT files across $DIR_COUNT directories on $BRANCH. R-511 runs a cross-cutting change on its own branch, one at a time, so it can be reviewed and reverted as a unit." >&2
-  fi
-fi
 
 # R-508: a new route, handler, page, or setup change is user-facing by
 # definition, and the README is where a user finds out. The route patterns
