@@ -693,7 +693,9 @@ report_run_timing() {
   [ -z "$REASON" ] || selection="everything: $REASON"
   timing_line="fixture-shards: timing: waited ${lock_wait}s for the run lock, ran $count of $total fixtures in ${run_time}s ($selection)"
   echo "$timing_line"
-  [ -d "$RUN_LOCK_DIR" ] && [ -O "$RUN_LOCK_DIR" ] || return 0
+  # The lock checks are skipped when perl is missing, so the directory and the
+  # log are re-checked here: neither may be a symlink (PR #181 review).
+  [ ! -L "$RUN_LOCK_DIR" ] && [ -d "$RUN_LOCK_DIR" ] && [ -O "$RUN_LOCK_DIR" ] && [ ! -L "$RUN_LOCK_DIR/timings.log" ] || return 0
   printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tests_dir" "$timing_line" >> "$RUN_LOCK_DIR/timings.log" 2>/dev/null || true
 }
 

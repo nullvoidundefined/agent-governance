@@ -522,6 +522,23 @@ OUT=$(cd "$REPO" && TMPDIR="$TIMING_TMP" bash "$RUNNER" "$TESTS" --affected "${R
 check "a fallback run names its reason in the timing line" \
   timing_line_matches '^fixture-shards: timing: .* \(everything: unmapped: claude/hooks/unnamed-anywhere\.sh\)$'
 check "each run adds one line to timings.log" [ "$(grep -c 'fixture-shards: timing:' "$TIMING_LOG")" -eq 2 ]
+# A lock directory that is a symlink (planted, or left by an older layout)
+# never receives the log, even when it points at a directory this user owns
+# and the run skips the lock checks because perl is missing.
+LINKED_TMP="$SANDBOX/linked-tmp"; LINK_TARGET="$SANDBOX/link-target"; NO_PERL_BIN="$SANDBOX/no-perl-bin"
+mkdir -p "$LINKED_TMP" "$LINK_TARGET" "$NO_PERL_BIN"
+ln -s "$LINK_TARGET" "$LINKED_TMP/claude-fixture-shards.$(id -u)"
+for tool in bash git cat ls sort sed grep awk basename dirname mktemp rm mkdir date id head tail wc touch printf env uname sysctl nproc getconf tr cut xargs find sleep stat readlink; do
+  tool_path=$(type -P "$tool" 2>/dev/null) && ln -sf "$tool_path" "$NO_PERL_BIN/$tool"
+done
+OUT=$(cd "$REPO" && TMPDIR="$LINKED_TMP" PATH="$NO_PERL_BIN" "$(type -P bash)" "$RUNNER" "$TESTS" --all "${RUN_OPTS[@]}" </dev/null 2>&1); STATUS=$?
+check "a perl-less run still prints its timing line" timing_line_matches '^fixture-shards: timing: '
+check "a symlinked lock directory never receives timings.log" [ ! -e "$LINK_TARGET/timings.log" ]
+# A timings.log that cannot be written leaves the verdict unchanged.
+chmod 400 "$TIMING_LOG"
+OUT=$(cd "$REPO" && TMPDIR="$TIMING_TMP" bash "$RUNNER" "$TESTS" --all "${RUN_OPTS[@]}" </dev/null 2>&1); STATUS=$?
+check "an unwritable timings.log does not change a passing verdict" [ "$STATUS" -eq 0 ]
+chmod 600 "$TIMING_LOG"
 
 # --- usage ---
 OUT=$(bash "$RUNNER" "$TESTS" --all --settle-seconds 5 --settle-max-seconds 2 --load-from "$LOAD_FILE" </dev/null 2>&1); STATUS=$?
