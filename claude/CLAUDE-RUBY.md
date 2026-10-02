@@ -245,8 +245,8 @@ This section lives in `CLAUDE-OBSERVABILITY.md`, which loads on every backend fi
 - Test runs (R-509): run the full suite in parallel with `parallel_tests` (`bundle exec parallel_rspec`), one test database per process (`TEST_ENV_NUMBER`). Turn ends, commits, and branch-level merges run only the affected specs: the changed `*_spec.rb` files plus the specs mirroring changed `app/` files (`spec/` mirrors `app/`, R-313). The full parallel run happens as the required CI check before any merge to `main`, not at pre-push (IAN-98). Adding `parallel_tests` is a new dependency and needs its R-331 justification.
 ## Tooling (analog of Prettier/ESLint)
 
-- RuboCop (with rails/rspec plugins) is lint and formatter; `bundle exec rubocop -a` on staged files pre-commit (R-408); full sweep pre-push/CI (R-509).
-- Trust the pre-commit hooks; do not manually re-run them (R-510).
+- RuboCop (with rails/rspec plugins) is lint and formatter; `bundle exec rubocop -a` on staged files pre-commit; full sweep pre-push/CI (R-509).
+- Trust the pre-commit hooks; do not manually re-run them.
 
 ## Enforcement (analog of push-eslint-gate)
 

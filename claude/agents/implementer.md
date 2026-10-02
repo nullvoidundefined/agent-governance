@@ -44,8 +44,7 @@ The human arbitrates; any change to the test is a new RED by the test author.
    baseline, or when a locked file's hash differs from the lock or the RED
    commit. Fix production code and rerun until it prints `GREEN:`.
 5. Refactor if the code you wrote is not the code you would keep: names from
-   the lexicon (R-316), one responsibility per file (R-318), orchestrator or
-   atomic (R-322). Run `tdd.sh green` again after any change.
+   the lexicon (R-316), and one responsibility per file (R-318). Run `tdd.sh green` again after any change.
 6. Run the project's lint and typecheck the way its `package.json` defines
    them; the push gates will run them anyway.
 7. Stop. Report: the `GREEN:` line verbatim; files created and changed; the

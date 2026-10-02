@@ -227,7 +227,7 @@ def create_app() -> FastAPI:
 - uvicorn starts it with `uvicorn app.main:create_app --factory`
 - Nothing runs at import time: settings, the engine, the Redis connection, and every SDK client are built inside `create_app()`, inside the lifespan, or inside a cached dependency, so tests import any module without environment variables
 - The `lifespan` async context manager opens the engine and Redis on startup, stores them on `app.state`, and disposes them on shutdown; `@app.on_event` is not used
-- The `register_*` functions live in `main.py` beside the factory, and each is an atomic function (R-322)
+- The `register_*` functions live in `main.py` beside the factory, and each does one small thing (R-318)
 
 ---
 
@@ -645,7 +645,7 @@ async def get_trip(trip_id: UUID, trips: TripsRepository = Depends(get_trips_rep
 ```
 
 - One router per resource, prefixed `/v1/<resource>`, with the auth dependency on the router rather than on each route
-- Route functions stay under the atomic-function ceiling (R-322): one call into a service or repository, one response
+- Route functions stay small: one call into a service or repository, one response
 - A list route returns `{ data, meta: { total, limit, offset } }` through a `ModelListResponse`; `response_model` on every route; `status_code` declared for anything other than 200
 - Domain errors raise the app's own `AppError` subclasses (Error Handling below), never `HTTPException` with a free-form `detail`
 
@@ -968,8 +968,8 @@ Path parameters are `snake_case` and named for the resource (`trip_id`, never `i
 ## Tooling
 
 - **ruff** for lint and import sorting (`select` includes `E`, `F`, `I`, `B`, `UP`, `S`, `D`, `ANN`, `PL`), **black** for formatting at `line-length = 100` to match the portfolio-wide Prettier width, and **mypy --strict**
-- Pre-commit runs ruff, black, and mypy on staged files only (R-408); the full sweep runs at pre-push and in CI (R-509)
-- Trust the pre-commit hooks and do not re-run what they already ran (R-510)
+- Pre-commit runs ruff, black, and mypy on staged files only; the full sweep runs at pre-push and in CI (R-509)
+- Trust the pre-commit hooks and do not re-run what they already ran
 - All tool configuration lives in `pyproject.toml`; no `setup.cfg`, no `.flake8`
 
 ---

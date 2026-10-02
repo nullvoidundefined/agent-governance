@@ -107,7 +107,7 @@ The design goal is to migrate prose down to mechanical as enforcement paths get 
 │   ├── redact-output.sh             # PostToolUse Bash. Detects a secret that already reached the output and warns; cannot unsend it.
 │   ├── post-compact-rules.sh        # SessionStart(compact). Re-injects the critical rules after compaction.
 │   ├── harness-sync.sh              # SessionStart. Re-syncs ~/.claude from the checkout when they differ (R-003).
-│   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc; records and injects the session start timestamp (R-503); on resume, reports drift against the last resume snapshot (B-8).
+│   ├── session-start.sh             # SessionStart. Auto-loads INDEX + handoff doc; records and injects the session start timestamp (the ticket's `started_at`); on resume, reports drift against the last resume snapshot (B-8).
 │   ├── session-end.sh               # SessionEnd. Routes fire/miss entries to logs; writes the resume snapshot the next resume diffs against (B-8).
 │   ├── verification-gate.sh         # Stop, SubagentStop. Blocks the turn on a red test/typecheck run.
 │   ├── protected-path-guard.sh      # PreToolUse. Locks tests, fixtures, specs, and gate inputs per slice and role.
@@ -249,7 +249,7 @@ This directory is the `claude/` section of the agent-governance monorepo; `./syn
 4. Verify `settings.json` hook paths resolve on your system. The hooks use `~/.claude/hooks/...` which assumes the repo is at `~/.claude/`.
 5. Install the git hook: `bash hooks/install-git-hooks.sh`, which writes `.git/hooks/pre-push` from the tracked `hooks/pre-push.sample` and refuses to clobber a pre-push it did not write, naming the exact `mv` to run if you want it replaced. The one hook it replaces without asking is its own superseded predecessor, identified by that hook's header and backed up to `pre-push.legacy.bak` first. Regenerate the integrity manifest after any intentional change to a hook, a custom ESLint rule, or the lexicon: `hooks/hook-integrity-check.sh --update`.
 6. Run a dry test: `bash enforce/doctor.sh --full` (wraps both fixture suites, 87 fixture tests total, plus the install checks: settings parse, schema keys, hook registration, hook integrity, hook executability, deps, sandbox availability, statusline, port freshness; see `enforce/README.md`), then start a session and confirm the `SessionStart` hook emits the global memory INDEX. Try a Write call containing U+2014 and confirm it blocks.
-7. Recalibrate to yourself: R-906 (estimation) lives in `rulebook/cost.md`, R-903 (model routing) beside it, and the collaboration preferences are the `global-memory/feedback_*.md` files. `SETUP.md` covers which of those to keep, edit, or truncate on a fresh install.
+7. Recalibrate to yourself: R-903 (model routing) lives in `rulebook/cost.md`, `/ticket-lifecycle` `estimate` reads your closed tickets, and the collaboration preferences are the `global-memory/feedback_*.md` files. `SETUP.md` covers which of those to keep, edit, or truncate on a fresh install.
 
 The runtime directories (`sessions/`, `cache/`, `history.jsonl`, `paste-cache/`, `shell-snapshots/`) are gitignored and populated by Claude Code as you work.
 

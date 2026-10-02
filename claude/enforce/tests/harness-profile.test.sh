@@ -101,11 +101,11 @@ const ruleLine = /^(R-\d{3})( \[[a-z]+\])?:/;
 const sourceRules = text(source, "CLAUDE.md").split("\n").filter((line) => ruleLine.test(line));
 const leanRules = text(files, "CLAUDE.md").split("\n").filter((line) => ruleLine.test(line));
 const listed = new Set(lean.rules);
-check("lean lists 40 rules (41 before R-002 was deleted, IAN-518)", lean.rules.length === 40);
+check("lean lists 5 rules (40 before CLAUDE.md kept only its mandatory rules, IAN-568)", lean.rules.length === 5);
 check("lean CLAUDE.md lacks every listed rule", leanRules.every((line) => !listed.has(ruleLine.exec(line)[1])));
 const expectedKept = sourceRules.filter((line) => !listed.has(ruleLine.exec(line)[1]));
 check("lean CLAUDE.md keeps every other rule line verbatim", JSON.stringify(leanRules) === JSON.stringify(expectedKept));
-check("lean CLAUDE.md keeps R-003 and R-109", leanRules.some((l) => l.startsWith("R-003:")) && leanRules.some((l) => l.startsWith("R-109:")));
+check("lean CLAUDE.md keeps R-101 and R-109", leanRules.some((l) => l.startsWith("R-101:")) && leanRules.some((l) => l.startsWith("R-109:")));
 
 // settings.json: listed hooks gone from every event, every other hook kept.
 const hookNames = (settings) => {
@@ -204,7 +204,7 @@ check "--in-place exits 0" test $? -eq 0
 check "--in-place removes skills/gof/SKILL.md" test ! -e "$TMP/copy/claude/skills/gof/SKILL.md"
 check "--in-place removes the rules/python.md symlink" test ! -L "$TMP/copy/claude/rules/python.md"
 check "--in-place keeps task-tier.sh executable" test -x "$TMP/copy/claude/skills/task-start/scripts/task-tier.sh"
-check "--in-place drops R-001 from CLAUDE.md" not_grep '^R-001:' "$TMP/copy/claude/CLAUDE.md"
+check "--in-place drops R-104 from CLAUDE.md" not_grep '^R-104:' "$TMP/copy/claude/CLAUDE.md"
 check "--in-place keeps R-101 in CLAUDE.md" grep -q '^R-101:' "$TMP/copy/claude/CLAUDE.md"
 check "--in-place leaves settings.json valid JSON without session-start" jq -e '[.hooks[][].hooks[].command] | map(select(test("session-start"))) | length == 0' "$TMP/copy/claude/settings.json"
 
