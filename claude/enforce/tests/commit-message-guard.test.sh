@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Covers: hook:commit-message-guard
 # Verifies commit-message-guard.sh: conventional subject and max-2 triage IDs (deny, R-505),
-# oversized body (ask, R-506), everything else untouched.
+# everything else untouched; a long body no longer asks (R-506 removed, IAN-568), and a
+# heredoc message whose body holds expansions passes on a conventional subject.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/commit-message-guard.sh"
@@ -71,11 +72,24 @@ Third body sentence here.
 Fourth body sentence here.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"'
-expect ask "$MULTILINE"
+expect none "$MULTILINE"
 SHORTBODY='git commit -m "feat(core): add feature
 
 One sentence body.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"'
 expect none "$SHORTBODY"
+
+# IAN-568 heredoc false positives: a conventional subject passes whatever the
+# body holds, for a quoted or unquoted `-F -` heredoc, a `$(cat <<EOF ...)`
+# message, and a `<<-` heredoc whose lines are tab-indented. A bad subject in
+# the same shapes still denies.
+EXPANDING_BODY='Body with `code`, $HOME, and $(date).'
+expect none "$(printf "git commit -q -F - <<'EOF'\n%s\n\n%s\nEOF" "$GOOD_SUBJECT" "$EXPANDING_BODY")"
+expect none "$(printf 'git commit -q -F - <<EOF\n%s\n\n%s\nEOF' "$GOOD_SUBJECT" "$EXPANDING_BODY")"
+expect none "$(printf 'git commit -m "$(cat <<EOF\n%s\n\n%s\nEOF\n)"' "$GOOD_SUBJECT" 'Body with $HOME.')"
+expect none "$(printf 'git commit -m "$(cat <<-EOF\n\t%s\n\tEOF\n)"' "$GOOD_SUBJECT")"
+expect none "$(printf 'git commit -F - <<-EOF\n\t%s\n\tEOF' "$GOOD_SUBJECT")"
+expect deny "$(printf 'git commit -q -F - <<EOF\n%s\n\n%s\nEOF' "$BAD_SUBJECT" "$EXPANDING_BODY")"
+expect deny "$(printf 'git commit -m "$(cat <<EOF\n%s\n\n%s\nEOF\n)"' "$BAD_SUBJECT" 'Body with $HOME.')"
 echo "commit-message-guard.test.sh PASS"

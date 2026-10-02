@@ -4,7 +4,10 @@
 # still misread: env's split-string option (-S, --split-string) that runs an
 # embedded command, sudo options that take a value (-R, -T), and unquoted
 # heredocs whose body holds an expansion the shell runs before cat reads it,
-# which makes the body uncountable. Each case below pins one.
+# which made the body uncountable. Since R-506 was removed (IAN-568) the body
+# is not counted, so those heredocs pass on a conventional subject and the
+# cases now pin that pass (the IAN-568 heredoc false positive). Each case
+# below pins one.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/commit-message-guard.sh"
@@ -31,15 +34,16 @@ expect none "$(printf "env -S 'git commit -m \"%s\"'" "$GOOD_SUBJECT")"
 expect deny "$(printf 'sudo -R /root git commit -m "%s"' "$BAD_SUBJECT")"
 expect deny "$(printf 'sudo -T 30 git commit -m "%s"' "$BAD_SUBJECT")"
 
-# Case 3: an unquoted heredoc expands its body, so an expansion there is uncountable.
-expect ask "$(printf "git commit -m \"\$(cat <<EOF\n%s\n\n\$(printf 'One')\nEOF\n)\"" "$GOOD_SUBJECT")"
-expect ask "$(printf "git commit -m \"\$(cat <<EOF\n%s\n\n\`printf 'One'\`\nEOF\n)\"" "$GOOD_SUBJECT")"
+# Case 3: an unquoted heredoc expands its body, which no longer matters: only
+# the subject is judged.
+expect none "$(printf "git commit -m \"\$(cat <<EOF\n%s\n\n\$(printf 'One')\nEOF\n)\"" "$GOOD_SUBJECT")"
+expect none "$(printf "git commit -m \"\$(cat <<EOF\n%s\n\n\`printf 'One'\`\nEOF\n)\"" "$GOOD_SUBJECT")"
 expect none "$(printf "git commit -m \"\$(cat <<'EOF'\n%s\n\n\$(printf 'One')\nEOF\n)\"" "$GOOD_SUBJECT")"
 expect none "$(printf "git commit -m \"\$(cat <<EOF\n%s\n\nOne body line.\nEOF\n)\"" "$GOOD_SUBJECT")"
 expect deny "$(printf "git commit -m \"\$(cat <<EOF\n%s\n\n\$(printf 'One')\nEOF\n)\"" "$BAD_SUBJECT")"
 
 # Case 4: -F - fed by an unquoted heredoc whose body holds an expansion.
-expect ask "$(printf "git commit -F - <<MSG\n%s\n\n\$(printf 'One')\nMSG" "$GOOD_SUBJECT")"
+expect none "$(printf "git commit -F - <<MSG\n%s\n\n\$(printf 'One')\nMSG" "$GOOD_SUBJECT")"
 expect none "$(printf "git commit -F - <<MSG\n%s\n\nOne body line.\nMSG" "$GOOD_SUBJECT")"
 
 echo "commit-message-guard-copilot-round2.test.sh PASS"

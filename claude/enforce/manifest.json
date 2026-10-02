@@ -824,7 +824,8 @@
             "tier": "regex",
             "enforcer": "hook:commit-message-guard",
             "severity": "error",
-            "autofix": false
+            "autofix": false,
+            "note": "PreToolUse Bash: denies a non-conventional subject or more than two triage IDs in the scope; judges only the subject line, so a heredoc message (-F - <<EOF or -m \"$(cat <<EOF ...)\") whose body holds expansions passes on a conventional subject (IAN-568); asks only when the subject starts with a substitution or expansion it cannot read. The R-506 body ask and the R-214 out-of-scope refusal were removed in IAN-568. Fixtures: enforce/tests/commit-message-guard*.test.sh"
         },
         {
             "id": "R-504",
@@ -911,13 +912,6 @@
             "autofix": false
         },
         {
-            "id": "R-506",
-            "tier": "advisory",
-            "enforcer": "hook:commit-message-guard",
-            "severity": "warn",
-            "autofix": false
-        },
-        {
             "id": "R-330",
             "tier": "advisory",
             "enforcer": "hook:spec-glossary-check",
@@ -956,14 +950,6 @@
             "severity": "error",
             "autofix": false,
             "note": "PreToolUse TaskCreate: denies a subject whose leading tag is not [requested], [required] or [self]; case and leading whitespace tolerated, TaskUpdate never gated, an empty subject left to the tool; task-state-tracker.sh records the parsed tag and skills/task-start/scripts/task-provenance.sh folds it into the status line; fixture: tests/task-provenance-gate.test.sh"
-        },
-        {
-            "id": "R-214",
-            "tier": "regex",
-            "enforcer": "hook:commit-message-guard",
-            "severity": "error",
-            "autofix": false,
-            "note": "PreToolUse Bash, the R-214 half beside R-505 and R-506: denies a git commit whose staged diff reaches outside the scope the task-start ledger declares unless the message Refs: trailer names a ticket other than the task own, and asks instead when no message is readable (-F file, a bare commit in the editor, an amend reusing its message) because the Refs escape cannot be evaluated there; a ledger declaring a scope but no ticket cannot be satisfied by any trailer; silent with no declared scope, outside a work tree, on a detached HEAD, and for .claude/ paths; reads the index, so git commit -a and a trailing pathspec are not covered (IAN-224) and the repository is this process own rather than the commit target after a cd (IAN-225); the ledger is skills/task-start/scripts/finding.sh writing .claude/findings.json; scope reading and matching shared with scope-widening-gate.sh via hooks/scope-match.sh; fixtures: tests/finding-ledger.test.sh and tests/bash32-builtin-floor.test.sh, the latter holding the bash 3.2 floor after IAN-267 found mapfile aborting this guard into a silent allow"
         },
         {
             "id": "R-215",

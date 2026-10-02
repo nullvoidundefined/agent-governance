@@ -62,8 +62,8 @@ expect none "$(printf 'git commit -m "$(cat <<'\''EOF'\''\n%s\n\nbody\nEOF\n)"' 
 # Case 17: A valid subject in preceding data cannot hide a bad real commit.
 expect deny "$(printf "cat > /tmp/x <<'EOF'\ngit commit -m \"%s\"\nEOF\ngit commit -m \"%s\"" "$GOOD_SUBJECT" "$BAD_SUBJECT")"
 
-# Cases 18-19: Preserve body-length asks and message-free amendments.
-expect ask "$(printf 'env A=1 git commit -m "%s\n\nOne.\nTwo.\nThree.\nFour."' "$GOOD_SUBJECT")"
+# Cases 18-19: a long body passes (R-506 removed, IAN-568) and message-free amendments pass.
+expect none "$(printf 'env A=1 git commit -m "%s\n\nOne.\nTwo.\nThree.\nFour."' "$GOOD_SUBJECT")"
 expect none 'git commit --amend --no-edit'
 
 echo "commit-message-guard-shell-scan.test.sh PASS"

@@ -3,20 +3,16 @@
 # commit` a Bash command really runs (-m, or -F - fed by a heredoc), including
 # one run through `bash -c`, `sh -c`, `eval`, or a heredoc fed to a shell.
 # Denies a non-conventional subject or more than two triage IDs in the scope
-# (R-505); asks on a body longer than three non-trailer lines (R-506, whose
-# multi-line exemption is a user judgment), and a deny on any commit in the
-# command wins over an ask on another. A message holding a command
-# substitution whose output the hook cannot read is an ask; `-F <file>` is out
-# of reach and allowed.
-#
-# It also carries R-214 (IAN-201), which is about the diff rather than the
-# message: a commit staging files outside the scope the task-start ledger
-# declares is denied unless the message's `Refs:` trailer names a ticket other
-# than the task's own. Work discovered while doing something else is then
-# recorded where the user can find it instead of riding along inside an
-# unrelated commit. The check lives here rather than in a hook of its own
-# because this is already the one place that reads a commit's real message
-# through the quote-aware scan, and a second parser would drift from it.
+# (R-505), and a deny on any commit in the command wins over an ask on
+# another. Only the subject line is judged: a body holding `$`, a backtick, or
+# a substitution is never a reason to ask, so a heredoc message
+# (`-F - <<EOF` or `-m "$(cat <<EOF ...)"`) with a conventional subject
+# passes. A subject this hook cannot read (a message that starts with a
+# command substitution other than a cat heredoc, or a non-conventional
+# subject holding an expansion) is an ask; `-F <file>` is out of reach and
+# allowed. The R-506 body-length ask and the R-214 out-of-scope refusal were
+# removed in IAN-568 (both had no recorded catch and cost an owner click or a
+# retry each time).
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
 # allow; a guard fails closed by structure, never open by accident
@@ -35,10 +31,6 @@ PREFILTER_TEXT=$(tr -d "\\\\\"'" <<< "$CMD")
 grep -Eq '(^|[^[:alnum:]_.-])git([^[:alnum:]_-]|$)' <<< "$PREFILTER_TEXT" || exit 0
 grep -q 'commit' <<< "$PREFILTER_TEXT" || exit 0
 
-SCOPE_MATCH_HELPER="$(dirname "${BASH_SOURCE[0]}")/scope-match.sh"
-# shellcheck source=/dev/null
-[ -f "$SCOPE_MATCH_HELPER" ] && source "$SCOPE_MATCH_HELPER"
-
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
@@ -49,7 +41,7 @@ deny() {
   exit 0
 }
 ask() {
-  log_rule_fire "R-506" "commit-message-guard" "ask"
+  log_rule_fire "R-505" "commit-message-guard" "ask"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
   exit 0
 }
@@ -70,26 +62,18 @@ fi
 
 # read_substituted_heredoc <word>: prints the body of a `$(cat <<'EOF' ...
 # EOF)` substitution, the form a multi-line -m message usually takes; prints
-# nothing for any other substitution, whose value the scan never computes.
-# Exits 3 when the delimiter is unquoted and the body holds a `$`, backtick,
-# or backslash, since the shell expands those before cat reads the body, so
-# the printed text is not the message git receives.
+# nothing for any other substitution, whose value the scan never computes. A
+# `<<-` heredoc has its leading tabs stripped, as the shell does. An unquoted
+# delimiter's expansions are left as literal text; the caller asks only when
+# one sits in a subject that is not already conventional.
 read_substituted_heredoc() {
   printf '%s' "$1" | perl -0777 -ne '
-    if (/\A\$\(\s*cat\s*<<-?\s*(['\''"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\n(.*?)\n[ \t]*\2[ \t]*\n?\s*\)\s*\z/s) {
-      print $3;
-      exit(($1 eq "" && $3 =~ /[\$`\\]/) ? 3 : 0);
+    if (/\A\$\(\s*cat\s*<<(-?)\s*(['\''"]?)([A-Za-z_][A-Za-z0-9_]*)\2[ \t]*\n(.*?)\n[ \t]*\3[ \t]*\n?\s*\)\s*\z/s) {
+      my ($dash, $body) = ($1, $4);
+      $body =~ s/^\t+//mg if $dash eq "-";
+      print $body;
     }
   '
-}
-
-# has_shell_expansion <text>: true when the text holds a parameter expansion,
-# a command substitution, or a backtick, the shapes an unquoted heredoc
-# expands. The scan does not record whether a `-F -` heredoc's delimiter was
-# quoted, so such a body is treated as expanded either way.
-has_shell_expansion() {
-  # shellcheck disable=SC2016  # the literal `$` and backtick being looked for
-  grep -qE '\$[({A-Za-z_]|`' <<< "$1"
 }
 
 # read_short_option_cluster <word> <next word>: reads one bundled short-option
@@ -142,116 +126,45 @@ collect_commit_messages() {
 
 # join_commit_messages: sets MSG to the MESSAGES git would join with a blank
 # line, each `$(cat <<EOF ...)` value read from its heredoc. Any other command
-# substitution's output is unknown, so it sets IS_MESSAGE_UNCOUNTABLE: a value
-# that starts with one is dropped, and when that is the first value, which
-# carries the subject, MSG stays empty; a substitution later in a value is kept
-# as literal text, since the subject's conventional prefix is literal either
-# way, but its output may add body lines (Copilot on PR #79).
+# substitution's output is unknown: a value that starts with one is dropped,
+# and when that is the first value, which carries the subject, MSG stays empty
+# and IS_SUBJECT_UNREADABLE is set. A substitution later in a value is kept as
+# literal text, since the subject's conventional prefix is literal either way
+# (Copilot on PR #79).
 join_commit_messages() {
   local message index=0
-  MSG=''; IS_MESSAGE_UNCOUNTABLE=0
+  MSG=''; IS_SUBJECT_UNREADABLE=0
   for message in ${MESSAGES[@]+"${MESSAGES[@]}"}; do
     # shellcheck disable=SC2016  # the literal `$(` of a substitution, not an expansion
     case "$message" in
       '$('* | '`'*)
         message=$(read_substituted_heredoc "$message")
-        [ "$?" -eq 3 ] && IS_MESSAGE_UNCOUNTABLE=1
         if [ -z "$message" ]; then
-          IS_MESSAGE_UNCOUNTABLE=1
-          [ "$index" -eq 0 ] && return 0
+          [ "$index" -eq 0 ] && { IS_SUBJECT_UNREADABLE=1; return 0; }
           index=$((index + 1)); continue
         fi ;;
-      *'$('* | *'`'*) IS_MESSAGE_UNCOUNTABLE=1 ;;
     esac
     MSG="${MSG:+$MSG$'\n\n'}$message"
     index=$((index + 1))
   done
 }
 
-# message_references_other_ticket <own-ticket>: true when the message's Refs:
-# trailer names a tracker key that is not the task's own. The task's own key
-# is on every commit of the branch already, so accepting it would make the
-# gate satisfiable by the trailer the session writes anyway.
-message_references_other_ticket() {
-  local own="$1" key
-  while IFS= read -r key; do
-    [ -n "$key" ] && [ "$key" != "$own" ] && return 0
-  done < <(printf '%s\n' "$MSG" | sed -n 's/^Refs:[[:space:]]*//p' | grep -oE '[A-Z][A-Z0-9]+-[0-9]+')
-  return 1
-}
-
-# judge_staged_scope: R-214. Denies a commit whose staged diff reaches outside
-# the file scope the task declared at task-start, unless the message names a
-# separate ticket for that work. Silent when the shared scope reader is
-# missing, outside a work tree, on a detached HEAD, and whenever no scope is
-# declared, which is R-212's documented degraded path and not a licence.
-#
-# When the diff reaches outside the scope but no message could be read (a
-# `-F <file>` commit, a bare `git commit` in the editor, `--amend --no-edit`),
-# the `Refs:` escape cannot be evaluated, so this asks rather than allowing or
-# denying: the staged paths are named and the user decides. Allowing there was
-# the defect finding 1 of the PR #96 review caught, and denying would refuse
-# commits whose trailer does name a separate ticket in a file this hook never
-# sees.
-#
-# The repository comes from the payload's `cwd`, never from this process's own
-# directory, and a payload carrying no `cwd` is left alone: there is no commit
-# context to judge, and reading the ambient checkout instead made the verdict
-# depend on whatever the developer happened to have staged, which broke three
-# unrelated fixtures the moment this rule shipped. Real Claude Code always
-# sends `cwd`. Following a `cd` or a `git -C` inside the command itself is
-# still not done (IAN-225).
-#
-# What it reads is the INDEX, not the commit. `git commit -a` and a trailing
-# pathspec both make those differ, and neither is handled yet (IAN-224).
-judge_staged_scope() {
-  type read_declared_scope >/dev/null 2>&1 || return 0
-  local payload_cwd top branch staged own_ticket scope_line
-  local -a scope=() outside=()
-  payload_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
-  [ -n "$payload_cwd" ] || return 0
-  top=$(git -C "$payload_cwd" rev-parse --show-toplevel 2>/dev/null) || return 0
-  top=$(cd "$top" 2>/dev/null && pwd -P) || return 0
-  branch=$(git -C "$top" branch --show-current 2>/dev/null)
-  [ -n "$branch" ] || return 0
-  # bash 3.2 (macOS /bin/bash) has no mapfile, and a guard that aborts on a
-  # missing builtin emits nothing, which a PreToolUse hook reads as an allow
-  # (IAN-267). Read the lines with a loop that every supported shell has.
-  while IFS= read -r scope_line; do
-    [ -n "$scope_line" ] || continue
-    scope+=("$scope_line")
-  done < <(read_declared_scope "$top" "$branch")
-  [ "${#scope[@]}" -gt 0 ] || return 0
-  while IFS= read -r staged; do
-    [ -n "$staged" ] || continue
-    is_exempt_scope_path "$top" "$staged" && continue
-    is_in_scope "$staged" "${scope[@]}" && continue
-    outside+=("$staged")
-    # -z with core.quotePath off: git's default renders a non-ASCII path as
-    # `"claude/h\303\251llo.sh"`, quotes and escapes included, which matches
-    # no scope entry and denies an in-scope file (finding 8).
-  done < <(git -C "$top" -c core.quotePath=false diff --cached -z --name-only 2>/dev/null | tr '\0' '\n')
-  [ "${#outside[@]}" -gt 0 ] || return 0
-  if [ -z "$MSG" ]; then
-    PENDING_ASK_REASON="commit-message-guard (R-214): this commit stages $(printf '%s, ' "${outside[@]}" | sed 's/, $//'), outside the scope this task declared at task-start (${scope[*]}), and its message is one this hook cannot read (a \`-F <file>\` commit, a bare \`git commit\` opened in the editor, or an amend reusing an existing message), so it cannot tell whether a \`Refs:\` trailer already names a separate ticket for that work. Confirm only if those files belong to this task or the message names their own ticket; otherwise record them with \`finding.sh add\` and commit them separately."
-    return 0
-  fi
-  own_ticket=$(read_declared_ticket "$top" "$branch")
-  # With no ticket on the ledger there is no key to tell "this task" from
-  # "other work", so no trailer can satisfy the gate and every out-of-scope
-  # commit is refused (finding 3). Accepting any key there would have made the
-  # gate satisfiable by the `Refs:` trailer R-605 already requires on every
-  # commit, which is the exact loophole this function exists to close.
-  [ -n "$own_ticket" ] && message_references_other_ticket "$own_ticket" && return 0
-  deny "commit-message-guard BLOCKED this commit (R-214): it stages $(printf '%s, ' "${outside[@]}" | sed 's/, $//'), outside the scope this task declared at task-start (${scope[*]}), and the message names no ticket for that work. Work found while doing something else gets its own record, not a ride inside an unrelated commit: record it with \`bash ~/.claude/skills/task-start/scripts/finding.sh add \"<what>\" --kind bug|task|optimization --value breaking|high|medium|low|none\`, open its ticket, and either commit that work separately under its own key or add a \`Refs: <KEY>\` trailer naming it. If those files are genuinely part of this task after all, re-record the scope with \`task-tier.sh set <tier> \"<reason>\" --scope <glob>[,<glob>...]\` so the ledger matches the work." "R-214"
-}
-
-# judge_commit_message: denies the commit in MSG on an R-505 subject problem,
-# or records an R-506 ask in PENDING_ASK_REASON for after every commit is read.
+# judge_commit_message: denies the commit in MSG on an R-505 subject problem.
+# A subject that starts with a shell expansion is recorded as an ask in
+# PENDING_ASK_REASON instead, since its type is unknown here; an expansion
+# later in the subject leaves the literal type prefix to judge.
 judge_commit_message() {
-  local subject scope comma_count body_line_count
+  local subject scope comma_count
   subject=$(printf '%s\n' "$MSG" | head -1)
+  # Leading tabs come from a `<<-` heredoc whose tabs the scan kept.
+  subject="${subject#"${subject%%[!$'\t']*}"}"
   if ! grep -qE '^(feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert)(\([^)]*\))?!?: .+' <<< "$subject"; then
+    # shellcheck disable=SC2016  # the literal `$` and backtick being looked for
+    case "$subject" in
+      '$'* | '`'*)
+        [ -n "$PENDING_ASK_REASON" ] || PENDING_ASK_REASON="commit-message-guard (R-505): the subject '$subject' starts with a shell expansion this hook cannot evaluate. Confirm to proceed if the expanded subject is in 'type(scope): summary' form."
+        return 0 ;;
+    esac
     deny "commit-message-guard BLOCKED this commit (R-505): subject '$subject' is not in conventional form 'type(scope): summary'. Types: feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert."
   fi
   scope=$(printf '%s' "$subject" | sed -nE 's/^[a-z]+\(([^)]*)\).*/\1/p')
@@ -260,13 +173,6 @@ judge_commit_message() {
     if [ "$comma_count" -gt 1 ]; then
       deny "commit-message-guard BLOCKED this commit (R-505): scope '($scope)' carries more than two triage IDs. One commit per triage ID; two IDs max when inseparable."
     fi
-  fi
-  body_line_count=$(printf '%s\n' "$MSG" | tail -n +2 \
-    | grep -v '^[[:space:]]*$' \
-    | grep -vE '^(Co-Authored-By|Signed-off-by|Reviewed-by|Refs):' \
-    | grep -cv "Generated with" || true)
-  if [ "${body_line_count:-0}" -gt 3 ]; then
-    PENDING_ASK_REASON="commit-message-guard (R-506): the body has $body_line_count non-trailer lines; the norm is a one-sentence body, with multi-line reserved for business-logic bugs, architectural refactors, and security changes. Confirm to proceed if this commit qualifies."
   fi
 }
 
@@ -302,23 +208,15 @@ read_shell_script() {
 judge_simple_command() {
   if is_git_commit_command "$@"; then
     collect_commit_messages ${INVOCATION_ARGS[@]+"${INVOCATION_ARGS[@]}"}
-    IS_MESSAGE_UNCOUNTABLE=0
+    IS_SUBJECT_UNREADABLE=0
     if [ "$IS_STDIN_MESSAGE" -eq 1 ] && [ "${#MESSAGES[@]}" -eq 0 ]; then
       MSG="$INVOCATION_STDIN"
-      has_shell_expansion "$MSG" && IS_MESSAGE_UNCOUNTABLE=1
     else
       join_commit_messages
     fi
     [ -n "$MSG" ] && judge_commit_message
-    # R-214 judges the staged diff, which is readable whether or not the
-    # message was (finding 1 of the PR #96 review). Called here rather than
-    # from judge_commit_message so `git commit -F <file>`, a bare `git commit`
-    # opened in the editor, `--amend --no-edit` and `-C HEAD` are covered:
-    # in every one of those the diff is perfectly readable and the gate used
-    # to be skipped entirely, with no ask either.
-    judge_staged_scope
-    if [ "$IS_MESSAGE_UNCOUNTABLE" -eq 1 ] && [ -z "$PENDING_ASK_REASON" ]; then
-      PENDING_ASK_REASON="commit-message-guard (R-505, R-506): the message holds a command substitution whose output this hook cannot read, so it cannot check the subject or count the body. Confirm to proceed if the resulting message has a conventional subject and a short body."
+    if [ "$IS_SUBJECT_UNREADABLE" -eq 1 ] && [ -z "$PENDING_ASK_REASON" ]; then
+      PENDING_ASK_REASON="commit-message-guard (R-505): the message starts with a command substitution whose output this hook cannot read, so it cannot check the subject. Confirm to proceed if the resulting subject is in 'type(scope): summary' form."
     fi
     return 1
   fi

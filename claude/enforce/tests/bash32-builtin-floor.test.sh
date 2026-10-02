@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Covers: hook:scope-widening-gate, hook:commit-message-guard
+# Covers: hook:commit-message-guard
 # bash32-builtin-floor.test.sh: every hook must run under GNU bash 3.2,
 # because that is what macOS ships and what this harness runs under on the
 # owner's machine (IAN-267).
@@ -13,6 +13,10 @@
 #
 # CI runs ubuntu with bash 5, so the two behavioural fixtures passed there and
 # failed only on the platform the work actually happens on.
+#
+# IAN-568 removed scope-widening-gate.sh and the R-214 half of
+# commit-message-guard.sh, so the behavioural anchor now drives the guard's
+# R-505 subject check, the decision it still emits.
 #
 # Two layers, because either alone is insufficient:
 #
@@ -103,53 +107,24 @@ echo "INFO: this run used bash $BASH_VERSION"
 [ "${BASH_VERSINFO[0]}" -ge 4 ] && \
   echo "INFO: bash ${BASH_VERSINFO[0]} cannot execute-test the 3.2 floor; the anchors below still run."
 
-# --- Behavioural anchors. Each drives a guard that IAN-267 broke and asserts
-# the guard emits its decision. An unlisted bash 4 construct aborts the hook
-# into silence, and silence fails these. ---
-SB=$(mktemp -d); trap 'rm -rf "$SB"' EXIT
-REPO="$SB/repo"; mkdir -p "$REPO/src/api" "$REPO/docs" "$REPO/.claude"
-git -C "$REPO" init -q -b feat/scoped
-git -C "$REPO" config user.email t@example.invalid; git -C "$REPO" config user.name t
-printf 'seed\n' > "$REPO/seed.txt"; git -C "$REPO" add -A; git -C "$REPO" commit -qm init
-cat > "$REPO/.claude/task-tier.json" <<JSON
-{"tier":"standard","reason":"fixture","branch":"feat/scoped","startedAt":0,"startedAtIso":"2026-09-20T00:00:00Z","ticket":"IAN-300","scope":["src/api/**"]}
-JSON
-
+# --- Behavioural anchor. It drives commit-message-guard.sh, one of the
+# guards IAN-267 broke, and asserts the guard emits its decision. An unlisted
+# bash 4 construct aborts the hook into silence, and silence fails this. ---
 decision() { printf '%s' "$1" | jq -r '.hookSpecificOutput.permissionDecision // ""'; }
 
-# R-212: an out-of-scope Write must ask.
-OUT=$(jq -n --arg p "$REPO/docs/notes.md" --arg d "$REPO" \
-  '{tool_name:"Write",cwd:$d,tool_input:{file_path:$p,content:"x"}}' \
-  | bash "$CLAUDE_HARNESS_ROOT/hooks/scope-widening-gate.sh" 2>/dev/null)
-check "the scope gate emits an ask on an out-of-scope write (empty output is the fail-open signature)" \
-  test "$(decision "$OUT")" = "ask"
-
-# R-214: an out-of-scope staged commit must be denied. This is the other half
-# of the IAN-267 break; without it the `# Covers:` line above is grep-only.
-printf 'drive-by\n' > "$REPO/docs/notes.md"
-git -C "$REPO" add docs/notes.md
-OUT=$(jq -n --arg c 'git commit -m "feat(api): handle the thing"' --arg d "$REPO" \
-  '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' \
+# R-505: a non-conventional subject must be denied.
+OUT=$(jq -n --arg c 'git commit -m "update stuff"' \
+  '{tool_name:"Bash",tool_input:{command:$c}}' \
   | bash "$CLAUDE_HARNESS_ROOT/hooks/commit-message-guard.sh" 2>/dev/null)
-check "the commit guard emits a deny on an out-of-scope staged commit (empty output is the fail-open signature)" \
+check "the commit guard emits a deny on a non-conventional subject (empty output is the fail-open signature)" \
   test "$(decision "$OUT")" = "deny"
 
-# Negative controls: the anchors above must be reacting to the scope, not
-# firing unconditionally, or they would pass against a guard that denies
-# everything just as happily as against a correct one.
-OUT=$(jq -n --arg p "$REPO/src/api/handler.ts" --arg d "$REPO" \
-  '{tool_name:"Write",cwd:$d,tool_input:{file_path:$p,content:"x"}}' \
-  | bash "$CLAUDE_HARNESS_ROOT/hooks/scope-widening-gate.sh" 2>/dev/null)
-check "the scope gate does not ask on an in-scope write" \
-  test "$(decision "$OUT")" != "ask"
-
-git -C "$REPO" rm -q --cached docs/notes.md
-printf 'changed\n' > "$REPO/src/api/handler.ts"
-git -C "$REPO" add src/api/handler.ts
-OUT=$(jq -n --arg c 'git commit -m "feat(api): handle the thing"' --arg d "$REPO" \
-  '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' \
+# Negative control: the anchor must be reacting to the subject, not firing
+# unconditionally, or it would pass against a guard that denies everything.
+OUT=$(jq -n --arg c 'git commit -m "feat(api): handle the thing"' \
+  '{tool_name:"Bash",tool_input:{command:$c}}' \
   | bash "$CLAUDE_HARNESS_ROOT/hooks/commit-message-guard.sh" 2>/dev/null)
-check "the commit guard does not deny an in-scope staged commit" \
+check "the commit guard does not deny a conventional subject" \
   test "$(decision "$OUT")" != "deny"
 
 [ "$fail" -eq 0 ] && echo "bash32-builtin-floor.test.sh PASS"
