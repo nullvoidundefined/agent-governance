@@ -34,16 +34,14 @@
 #   tdd.sh green
 #       requires the containing files to be byte-identical to the lock and,
 #       when the lock is committed, to the commit that introduced it (the RED
-#       commit), or identical once .enforce.json's testFormatCommand formats
-#       a copy (red and amend run that formatter before hashing; the key names
-#       the formatter binary directly with its flags, run as an argument
-#       vector with no shell; its program must be an allowlisted formatter,
-#       black, ruff format, prettier, biome format, dprint fmt, gofmt,
-#       goimports, rustfmt, shfmt, isort, yapf, or clang-format, by its exact
-#       file name, with options only after it, and anything else, a shell
-#       metacharacter included, is refused with a warning);
-#       a gitignored
-#       lock has no RED commit, so one commit per slice is fine; runs the suite and requires every named test to pass, none
+#       commit), byte-exact: green runs no formatter and no other program
+#       on the tests before comparing (red and amend format them with
+#       .enforce.json's testFormatCommand before hashing, so a pre-commit
+#       hook running that same formatter leaves them unchanged; when the
+#       hook's formatter differs and rewrites a test, re-hash it with
+#       `tdd.sh amend`); a gitignored lock has no RED commit, so one commit
+#       per slice is fine; runs the suite and requires every named test to
+#       pass, none
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
 #       refactor.
@@ -899,25 +897,28 @@ cmd_red() {
 # place (for example "black -q" or "node_modules/.bin/prettier --write"). When
 # it is set, red and amend run
 # it on the named tests before hashing them, so the hash is of the formatted
-# file, and green accepts a locked file whose hash differs only when a
-# formatted copy of it hashes to the recorded value: a formatting-only change
-# passes, any other change is still refused. .enforce.json is a gate input
-# the session cannot write (R-410), so the command is the owner's. With no key
-# nothing is formatted and the hash check is byte-exact, as before; a repo
-# with a pre-commit formatter should set the key to that same formatter.
+# file and a pre-commit run of the same idempotent formatter is a no-op.
+# Formatting happens at red and amend only: green compares byte-exactly and
+# runs no formatter, so no program's output can influence a green or close
+# verdict (R-109 r5, IAN-568). When the pre-commit hook's formatter differs
+# from testFormatCommand and rewrites a test, the session re-hashes it with
+# `tdd.sh amend`. .enforce.json is a gate input the session cannot write
+# (R-410), so the command is the owner's; a repo with a pre-commit formatter
+# should set the key to that same formatter.
 
 # test_format_command: prints .enforce.json's testFormatCommand, or nothing.
 # The value names the formatter binary directly with its flags (for example
 # `ruff format`, `black -q`, `node_modules/.bin/prettier --write`); it is
 # split into words with no shell evaluation and run as an argument vector,
-# never under `bash -c`. It is refused with a warning, and the hash check
-# stays byte-exact, when it holds a shell operator or metacharacter, when its
+# never under `bash -c`. It is refused with a warning, and red hashes the
+# test(s) as they stand, when it holds a shell operator or metacharacter, when its
 # program is not an allowlisted formatter (black, ruff, prettier, biome,
 # dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format) by the
 # exact name of its file, or is a path outside node_modules/.bin/ and
 # .venv/bin/, or when its other words are not options only after the
-# subcommand ruff and biome (`format`) and dprint (`fmt`) require (R-109 r1
-# #4, r2 #1, r4 #1 #2, IAN-568).
+# subcommand ruff and biome (`format`) and dprint (`fmt`) require, or when an
+# option names a configuration or plugin file (R-109 r1 #4, r2 #1, r4 #1 #2,
+# r5 #3, IAN-568).
 test_format_command() {
   local command program
   local -a words
@@ -927,17 +928,17 @@ test_format_command() {
   case "$command" in
     *'|'* | *';'* | *'&'* | *'$'* | *'`'* | *'>'* | *'<'* | *$'\n'* | *$'\r'* \
       | *'\'* | *'"'* | *"'"* | *'('* | *')'* | *'{'* | *'}'* | *'*'* | *'?'* | *'~'* | *'['* | *'#'*)
-      say "warning: testFormatCommand is refused because it holds a shell operator or metacharacter; name one formatter program and its flags. Hashing the test(s) byte-exact" >&2
+      say "warning: testFormatCommand is refused because it holds a shell operator or metacharacter; name one formatter program and its flags. Hashing the test(s) as they stand" >&2
       return 0 ;;
   esac
   read -r -a words <<< "$command"
   program="${words[0]:-}"
   if ! format_program_path "$program" >/dev/null; then
-    say "warning: testFormatCommand is refused because its program ($program) is not an allowlisted formatter (black, ruff, prettier, biome, dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format, by the exact name of its file) named as a bare name on PATH, node_modules/.bin/<tool>, or .venv/bin/<tool>. Hashing the test(s) byte-exact" >&2
+    say "warning: testFormatCommand is refused because its program ($program) is not an allowlisted formatter (black, ruff, prettier, biome, dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format, by the exact name of its file) named as a bare name on PATH, node_modules/.bin/<tool>, or .venv/bin/<tool>. Hashing the test(s) as they stand" >&2
     return 0
   fi
   if ! format_arguments_allowed "${words[@]}"; then
-    say "warning: testFormatCommand is refused because its arguments are not options only (ruff and biome take format first, dprint fmt; every other word starts with - and names no path). Hashing the test(s) byte-exact" >&2
+    say "warning: testFormatCommand is refused because its arguments are not options only (ruff and biome take format first, dprint fmt; every other word starts with - and names no path, and --config, --plugin, --style, --settings-path, and --config-path are refused). Hashing the test(s) as they stand" >&2
     return 0
   fi
   printf '%s' "$command"
@@ -987,11 +988,15 @@ is_exact_directory_entry() {
 # words after its program are what the allowlisted formatter needs: `format`
 # first for ruff and biome, `fmt` first for dprint, and every other word an
 # option (leading `-`, never `-` alone) that holds no `/` and names no path in
-# the repository. A positional word would make the formatter read or rewrite
-# a file of the session's choosing, or select a subcommand that is not a
-# formatter (R-109 r4 #1, IAN-568).
+# the repository, checked on the whole word and on the value after its first
+# `=`. A positional word would make the formatter read or rewrite a file of
+# the session's choosing, or select a subcommand that is not a formatter
+# (R-109 r4 #1); an option that loads a configuration or plugin file
+# (--config, --plugin, --style, --settings-path, --config-path, alone or in
+# its `=` form) is refused outright, since that file can run code (R-109 r5
+# #3, IAN-568).
 format_arguments_allowed() {
-  local name word
+  local name word option value
   name=$(basename -- "$1")
   shift
   case "$name" in
@@ -1000,8 +1005,12 @@ format_arguments_allowed() {
   esac
   for word in "$@"; do
     case "$word" in -) return 1 ;; -*) ;; *) return 1 ;; esac
-    case "$word" in */*) return 1 ;; esac
-    [ ! -e "$ROOT/$word" ] && [ ! -L "$ROOT/$word" ] || return 1
+    option="${word%%=*}"
+    case "$option" in --config | --plugin | --style | --settings-path | --config-path) return 1 ;; esac
+    for value in "$word" "${word#*=}"; do
+      case "$value" in */*) return 1 ;; esac
+      [ ! -e "$ROOT/$value" ] && [ ! -L "$ROOT/$value" ] || return 1
+    done
   done
   return 0
 }
@@ -1084,82 +1093,28 @@ format_test_files() {
     || say "warning: testFormatCommand ($command) exited non-zero on $*; hashing the file(s) as they stand" >&2
 }
 
-# formatted_sha <content file> <rel>: the sha256 of <content file> once a copy
-# placed beside <rel> (so the formatter finds the same configuration walking
-# upward) is formatted. Fails when no testFormatCommand is set, and fails
-# closed (the caller keeps the byte-exact hash) when the copy cannot be made
-# safely. The copy lives in a fresh scratch directory beside <rel>, named
-# .tddfmt_<pid>_<random> and made with mkdir, which is atomic, fails on any
-# path already there, and never follows a planted link; a taken name is
-# retried under a new random suffix and never reused (R-109 r3 #1, IAN-568).
-# Bash noclobber alone is not O_EXCL: a link to an existing non-regular file
-# (a FIFO, /dev/null) is opened through, so a link raced in beside the test
-# could be written through. Inside the fresh directory the copy is
-# tddfmt.<extension of rel>, created under noclobber and then required to be a
-# regular file and not a link before it is formatted or hashed. The dot
-# directory is skipped by pytest's collection and the copy's name matches no
-# test glob (`test_*.py`, `*_test.py`, `*.test.*`, `*.spec.*`), so a copy left
-# behind is never collected as a passing duplicate. The body runs in a
-# subshell whose trap removes that exact scratch directory on exit,
-# interrupt, or termination (R-109 r1 #5). The variables are plain subshell
-# globals, not locals: bash 3.2 unwinds a local before a signal's EXIT trap
-# reads it, which would leave the directory behind.
-formatted_sha() (
-  suffix=""
-  scratch=""
-  [ -n "$(test_format_command)" ] || return 1
-  base=$(basename "$2")
-  case "$base" in *.*) suffix=".${base##*.}" ;; esac
-  trap '[ -z "$scratch" ] || rm -rf -- "$ROOT/$scratch"' EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
-  for attempt in 1 2 3 4 5; do
-    candidate="$(dirname "$2")/.tddfmt_$$_${RANDOM}${RANDOM}"
-    if mkdir -- "$ROOT/$candidate" 2>/dev/null; then
-      scratch="$candidate"
-      break
-    fi
-  done
-  [ -n "$scratch" ] || return 1
-  copy="$scratch/tddfmt${suffix}"
-  ( set -C; cat -- "$1" > "$ROOT/$copy" ) 2>/dev/null || return 1
-  [ -f "$ROOT/$copy" ] && [ ! -L "$ROOT/$copy" ] || return 1
-  format_test_files "$copy" 2>/dev/null
-  [ -f "$ROOT/$copy" ] && [ ! -L "$ROOT/$copy" ] || return 1
-  digest=$(sha "$ROOT/$copy")
-  printf '%s' "$digest"
-)
-
-# matches_recorded <content file> <rel> <sha>: true when the content hashes to
-# <sha> as it stands or once formatted.
-matches_recorded() {
-  [ "$(sha "$1")" = "$3" ] && return 0
-  [ "$(formatted_sha "$1" "$2" 2>/dev/null)" = "$3" ]
-}
-
 # lock_is_ignored: true when git ignores the lock, so it can never be
 # committed and the RED commit has no anchor to bind (I8, IAN-568): one
 # commit per slice, test and implementation together, loses nothing.
 lock_is_ignored() { git check-ignore -q -- "$LOCK_RELATIVE" 2>/dev/null; }
 
+# check_hashes: refuses unless every locked test is byte-identical to its
+# recorded hash and, when the lock is committed, to its RED-commit blob. No
+# formatter or other program runs here (R-109 r5, IAN-568).
 check_hashes() {
   local changed
   changed=$(jq -r '.tests[] | "\(.path) \(.sha256)"' "$LOCK" | while read -r path recorded; do
     [ -f "$path" ] || { printf '%s deleted\n' "$path"; continue; }
-    matches_recorded "$path" "$path" "$recorded" || printf '%s\n' "$path"
+    [ "$(sha "$path")" = "$recorded" ] || printf '%s\n' "$path"
   done)
   [ -z "$changed" ] || die "locked test file(s) changed since RED (R-410): $(printf '%s' "$changed" | tr '\n' ' '). The tests are the contract; if one is wrong, return 'DISPUTE: <test id>: <why>' and stop."
   local red_commit
   red_commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
   if [ -n "$red_commit" ] && git show "$red_commit:$LOCK_RELATIVE" 2>/dev/null | jq -e '.phase == "red" or .phase == "green" or .phase == "refactor"' >/dev/null 2>&1; then
-    local committed_copy
-    committed_copy=$(mktemp)
     changed=$(git show "$red_commit:$LOCK_RELATIVE" | jq -r '.tests[] | "\(.path) \(.sha256)"' | while read -r path recorded; do
-      git show "$red_commit:$path" > "$committed_copy" 2>/dev/null || : > "$committed_copy"
-      matches_recorded "$committed_copy" "$path" "$recorded" && [ -f "$path" ] \
-        && { [ "$(sha "$path")" = "$(sha "$committed_copy")" ] || matches_recorded "$path" "$path" "$recorded"; } || printf '%s\n' "$path"
+      committed=$(git show "$red_commit:$path" 2>/dev/null | shasum -a 256 | awk '{print $1}')
+      [ "$committed" = "$recorded" ] && [ -f "$path" ] && [ "$(sha "$path")" = "$committed" ] || printf '%s\n' "$path"
     done)
-    rm -f "$committed_copy"
     [ -z "$changed" ] || die "locked test file(s) differ from the RED commit ${red_commit:0:7} (R-410): $(printf '%s' "$changed" | tr '\n' ' ')"
   elif [ "$(phase)" != "refactor" ] && ! lock_is_ignored; then
     say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
