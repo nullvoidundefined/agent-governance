@@ -7,7 +7,10 @@
 # writable; the second re-runs the suite, requires the amended test to still
 # fail for a classified reason, re-hashes it, and records the amendment. It is
 # refused for a test the slice did not lock, outside phase red (after green
-# above all), and once the RED version of the test has been pushed. Drives the
+# above all), and once the RED version of the test has been pushed. With the
+# lock gitignored, green does not ask for a separate RED commit (I8). With
+# .enforce.json's testFormatCommand set, red formats the test before hashing
+# it and green tolerates a formatting-only change (I2). Drives the
 # bash *.test.sh runner through the real run-fixture-shards.sh and the real
 # protected-path-guard.sh.
 set -euo pipefail
@@ -83,7 +86,11 @@ new_sha=$(shasum -a 256 tests/score.test.sh | awk '{print $1}')
 
 # The amended test is the contract green checks.
 printf '#!/usr/bin/env bash\necho 3\n' > scripts/score.sh
-bash "$TDD" green >/dev/null || { echo "FAIL: green must pass against the amended test"; exit 1; }
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must pass against the amended test; output: $out"; exit 1; }
+# The lock is gitignored here, so the RED commit has no anchor to bind and one
+# commit per slice is allowed (I8, IAN-568): green does not ask for a separate
+# RED commit.
+if grep -q 'commit the RED test' <<< "$out"; then echo "FAIL: green must not ask for a separate RED commit when the lock is gitignored; output: $out"; exit 1; fi
 expect_fail "amend after green" bash "$TDD" amend tests/score.test.sh | grep -q 'only while' || { echo "FAIL: amend after green must be refused"; exit 1; }
 bash "$TDD" close >/dev/null
 
@@ -101,6 +108,29 @@ git add tests/reject.test.sh && git commit -qm "test: RED for letters"
 git push -q origin HEAD:refs/heads/feature 2>/dev/null
 expect_fail "amend after the RED is pushed" bash "$TDD" amend tests/reject.test.sh | grep -q 'pushed' || { echo "FAIL: amend after the RED commit is pushed must be refused"; exit 1; }
 [ "$(lock_field .phase)" = "red" ] || { echo "FAIL: a refused amend must leave the phase red"; exit 1; }
+
+# --- testFormatCommand (I2, IAN-568) -----------------------------------------
+# red runs the repository's formatter on the named tests before hashing them,
+# and green accepts a locked test that differs from the lock only by
+# formatting (a pre-commit hook running another formatter), while any other
+# change is still refused. The formatter here strips trailing whitespace.
+rm -f .claude/tdd-lock.json
+printf '#!/usr/bin/env bash\nexit 1\n' > scripts/reject.sh
+jq -n --arg c "perl -pi -e 's/[ \\t]+\$//'" '{testFormatCommand: $c}' > .enforce.json
+git add -A && git commit -qm "chore: formatter"
+bash "$TDD" open "A-3 trim.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/trim.sh")  \n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "trim.test.sh PASS"\n' > tests/trim.test.sh
+bash "$TDD" red tests/trim.test.sh >/dev/null || { echo "FAIL: red with a testFormatCommand must succeed"; exit 1; }
+if grep -q '[[:space:]]$' tests/trim.test.sh; then echo "FAIL: red must run testFormatCommand on the test before hashing it"; exit 1; fi
+[ "$(lock_field '.tests[0].sha256')" = "$(shasum -a 256 tests/trim.test.sh | awk '{print $1}')" ] || { echo "FAIL: red must hash the formatted test"; exit 1; }
+# A pre-commit formatter that disagrees rewrites the layout after the hash.
+perl -pi -e 's/$/ /' tests/trim.test.sh
+printf '#!/usr/bin/env bash\necho ok\n' > scripts/trim.sh
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept a locked test that differs only by formatting; output: $out"; exit 1; }
+[ -z "$(find tests -name 'tdd-format-*')" ] || { echo "FAIL: green must remove the formatted copy it hashes"; exit 1; }
+# Any change the formatter does not undo is still a changed test.
+printf 'echo changed\n' >> tests/trim.test.sh
+expect_fail "green after a real change to the locked test" bash "$TDD" green | grep -q 'changed since RED' || { echo "FAIL: green must refuse a locked test changed beyond formatting"; exit 1; }
 
 cd /; rm -rf "$P" "$REMOTE"
 echo "tdd-amend.test.sh PASS"

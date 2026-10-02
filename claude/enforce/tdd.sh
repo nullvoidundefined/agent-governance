@@ -34,7 +34,9 @@
 #   tdd.sh green
 #       requires the containing files to be byte-identical to the lock and,
 #       when the lock is committed, to the commit that introduced it (the RED
-#       commit); runs the suite and requires every named test to pass, none
+#       commit), or identical once .enforce.json's testFormatCommand formats
+#       a copy (red and amend run that formatter before hashing); a gitignored
+#       lock has no RED commit, so one commit per slice is fine; runs the suite and requires every named test to pass, none
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
 #       refactor.
@@ -857,6 +859,7 @@ cmd_red() {
     spec=$(add_named "$spec" "$rel" "$id") || exit 1
   done
   while IFS= read -r rel; do rels+=("$rel"); done < <(jq -r '.[].path' <<< "$spec")
+  format_test_files "${rels[@]}"
   run_suite "${rels[@]}"
   local entries='[]' class ids
   for rel in "${rels[@]}"; do
@@ -878,23 +881,83 @@ cmd_red() {
   say "RED: $summary; baseline $baseline passing outside. Tests are locked; implement, then 'tdd.sh green'."
 }
 
+# --- test formatting (I2, IAN-568) -------------------------------------------
+# A repository's pre-commit hook may reformat a test after `red` hashed it
+# (black after a `ruff format` check), and green then reported the test as
+# changed. `.enforce.json` may name the formatter as `testFormatCommand`, a
+# shell command that takes file paths and rewrites them in place (for example
+# "uv run --project apps/server black -q"). When it is set, red and amend run
+# it on the named tests before hashing them, so the hash is of the formatted
+# file, and green accepts a locked file whose hash differs only when a
+# formatted copy of it hashes to the recorded value: a formatting-only change
+# passes, any other change is still refused. .enforce.json is a gate input
+# the session cannot write (R-410), so the command is the owner's. With no key
+# nothing is formatted and the hash check is byte-exact, as before; a repo
+# with a pre-commit formatter should set the key to that same formatter.
+
+# test_format_command: prints .enforce.json's testFormatCommand, or nothing.
+test_format_command() {
+  [ -f "$ROOT/.enforce.json" ] || return 0
+  jq -r '.testFormatCommand // empty' "$ROOT/.enforce.json" 2>/dev/null || true
+}
+
+# format_test_files <rel>...: runs testFormatCommand on the root-relative
+# files from the repository root; a non-zero exit warns and is not a refusal.
+format_test_files() {
+  local command
+  command=$(test_format_command)
+  [ -n "$command" ] && [ $# -gt 0 ] || return 0
+  (cd "$ROOT" && bash -c "$command \"\$@\"" tdd-format "$@") >/dev/null 2>&1 \
+    || say "warning: testFormatCommand ($command) exited non-zero on $*; hashing the file(s) as they stand" >&2
+}
+
+# formatted_sha <content file> <rel>: the sha256 of <content file> once a copy
+# placed beside <rel> (so the formatter finds the same configuration) is
+# formatted; the copy is removed. Fails when no testFormatCommand is set.
+formatted_sha() {
+  local copy digest
+  [ -n "$(test_format_command)" ] || return 1
+  copy="$(dirname "$2")/tdd-format-$$-$(basename "$2")"
+  cp "$1" "$ROOT/$copy" || return 1
+  format_test_files "$copy" 2>/dev/null
+  digest=$(sha "$ROOT/$copy")
+  rm -f "$ROOT/$copy"
+  printf '%s' "$digest"
+}
+
+# matches_recorded <content file> <rel> <sha>: true when the content hashes to
+# <sha> as it stands or once formatted.
+matches_recorded() {
+  [ "$(sha "$1")" = "$3" ] && return 0
+  [ "$(formatted_sha "$1" "$2" 2>/dev/null)" = "$3" ]
+}
+
+# lock_is_ignored: true when git ignores the lock, so it can never be
+# committed and the RED commit has no anchor to bind (I8, IAN-568): one
+# commit per slice, test and implementation together, loses nothing.
+lock_is_ignored() { git check-ignore -q -- "$LOCK_RELATIVE" 2>/dev/null; }
+
 check_hashes() {
   local changed
   changed=$(jq -r '.tests[] | "\(.path) \(.sha256)"' "$LOCK" | while read -r path recorded; do
     [ -f "$path" ] || { printf '%s deleted\n' "$path"; continue; }
-    [ "$(sha "$path")" = "$recorded" ] || printf '%s\n' "$path"
+    matches_recorded "$path" "$path" "$recorded" || printf '%s\n' "$path"
   done)
   [ -z "$changed" ] || die "locked test file(s) changed since RED (R-410): $(printf '%s' "$changed" | tr '\n' ' '). The tests are the contract; if one is wrong, return 'DISPUTE: <test id>: <why>' and stop."
   local red_commit
   red_commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
   if [ -n "$red_commit" ] && git show "$red_commit:$LOCK_RELATIVE" 2>/dev/null | jq -e '.phase == "red" or .phase == "green" or .phase == "refactor"' >/dev/null 2>&1; then
+    local committed_copy
+    committed_copy=$(mktemp)
     changed=$(git show "$red_commit:$LOCK_RELATIVE" | jq -r '.tests[] | "\(.path) \(.sha256)"' | while read -r path recorded; do
-      committed=$(git show "$red_commit:$path" 2>/dev/null | shasum -a 256 | awk '{print $1}')
-      [ "$committed" = "$recorded" ] && [ -f "$path" ] && [ "$(sha "$path")" = "$committed" ] || printf '%s\n' "$path"
+      git show "$red_commit:$path" > "$committed_copy" 2>/dev/null || : > "$committed_copy"
+      matches_recorded "$committed_copy" "$path" "$recorded" && [ -f "$path" ] \
+        && { [ "$(sha "$path")" = "$(sha "$committed_copy")" ] || matches_recorded "$path" "$path" "$recorded"; } || printf '%s\n' "$path"
     done)
+    rm -f "$committed_copy"
     [ -z "$changed" ] || die "locked test file(s) differ from the RED commit ${red_commit:0:7} (R-410): $(printf '%s' "$changed" | tr '\n' ' ')"
-  else
-    [ "$(phase)" = "refactor" ] || say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
+  elif [ "$(phase)" != "refactor" ] && ! lock_is_ignored; then
+    say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
   fi
 }
 
@@ -1031,6 +1094,7 @@ finish_amendment() {
   before=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
   ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
   while IFS= read -r path; do [ -n "$path" ] && locked_rels+=("$path"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  format_test_files "$rel"
   run_suite "${locked_rels[@]}"
   if [ "$ids" = null ]; then class=$(classify_red "$rel") || exit 1
   else class=$(classify_named "$rel" "$ids") || exit 1
@@ -1046,7 +1110,9 @@ finish_amendment() {
     .tests |= map(if .path == $p then .sha256 = $to | .failureClass = $c | .tests = $n else . end)
     | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, fromBlob: $fb, toBlob: $tb, failureClass: $c, at: $at}])
     | .phase = "red" | del(.amending)' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
-  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). Commit the amended test before the implementation, then 'tdd.sh green'."
+  local next="Commit the amended test before the implementation, then 'tdd.sh green'."
+  lock_is_ignored && next="Then 'tdd.sh green'."
+  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). $next"
 }
 
 # red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding
