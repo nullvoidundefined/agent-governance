@@ -444,6 +444,10 @@ runLane "$PREDICT" predict 'src/billing/**'
 assertPrefix "predict src/billing/**" "guarded path: predicted "
 runLane "$PREDICT" predict README.md
 assertLine "predict README.md" "fast predicted"
+# I7 (IAN-568): docs/ and Markdown paths never match the security-surface
+# path patterns, matching hooks/security-surface.sh, so a handoff predicts fast.
+runLane "$PREDICT" predict docs/session-handoff/session-handoff.md
+assertLine "predict a docs path whose name matches a security pattern" "fast predicted"
 runLane "$PREDICT" predict 'src/payments/**'
 assertPrefix "predict a glob matching no file yet tests the glob text" "guarded path: predicted "
 runLane "$PREDICT" predict 'src/auth/**'
