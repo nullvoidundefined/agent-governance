@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Verifies session-start.sh records the session's start timestamp (R-503) to
+# Verifies session-start.sh records the session's start timestamp to
 # ~/.claude/projects/<key>/session-start.<session-id> and injects it as
 # additionalContext, so ticket-lifecycle's `open` reads started_at instead of
 # the model recalling it. Origin: on 2026-09-18 a session opened a ticket with

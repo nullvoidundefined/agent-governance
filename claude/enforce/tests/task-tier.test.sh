@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # task-tier.test.sh: verifies skills/task-start/scripts/task-tier.sh (2026-09-17
 # skills audit, S-8): set writes the ledger with tier, reason, branch, and the
-# R-503 start timestamp; an invalid tier is refused; get and summary read it
+# start timestamp; an invalid tier is refused; get and summary read it
 # back; a second set records the reclassification; clear removes it; the
 # gitignore note fires only when the project does not ignore the ledger.
 # IAN-149: --ticket <KEY> records the tracker ticket (a same-branch ledger's

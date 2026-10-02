@@ -34,9 +34,9 @@
 # skips the drift check entirely.
 #
 # On every source whose payload carries transcript_path, the hook also
-# records the session's start timestamp (R-503) to
+# records the session's start timestamp to
 # ~/.claude/projects/<key>/session-start.<session-id> and injects it as a
-# "## Session start (R-503)" block, which ticket-lifecycle's `open` reads as
+# "## Session start timestamp" block, which ticket-lifecycle's `open` reads as
 # started_at (see record_session_start below for when it declines to).
 #
 # To test manually:
@@ -434,7 +434,7 @@ check_interrupted_tasks() (
   return 0
 )
 
-# record_session_start writes the session's start timestamp (R-503) to
+# record_session_start writes the session's start timestamp to
 # ~/.claude/projects/<key>/session-start.<session-id>, one UTC ISO-8601 line,
 # and prints it. ticket-lifecycle's `open` reads started_at from here or from
 # the context block below, never from recall: on 2026-09-18 a recalled
@@ -525,9 +525,9 @@ record_session_start() (
 
 SESSION_START_OUTPUT=$(record_session_start "$TRANSCRIPT_PATH" "$SOURCE" 2>/dev/null || true)
 if [ -n "$SESSION_START_OUTPUT" ]; then
-  CTX+=$'## Session start (R-503)\n\n'
+  CTX+=$'## Session start timestamp\n\n'
   CTX+="$SESSION_START_OUTPUT"
-  CTX+=$'\nThis is the R-503 start timestamp and ticket-lifecycle `open` started_at. Read it from here or the record; never estimate it.\n\n'
+  CTX+=$'\nThis is the session start timestamp and ticket-lifecycle `open` started_at. Read it from here or the record; never estimate it.\n\n'
 fi
 
 if [ "$SOURCE" = "resume" ]; then
