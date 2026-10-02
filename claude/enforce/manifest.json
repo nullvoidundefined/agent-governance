@@ -687,13 +687,6 @@
             "note": "codex CLI invocation with an OPENAI_API_KEY in scope, a --with-api-key/--with-access-token relogin, or a live login status that is not ChatGPT"
         },
         {
-            "id": "R-315",
-            "tier": "llm-judge",
-            "enforcer": "ci:llm-rule-judge",
-            "severity": "error",
-            "autofix": false
-        },
-        {
             "id": "R-316",
             "tier": "ast",
             "enforcer": "eslint:naming-lexicon",

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # judge-diff.sh: the CI rule judge for the llm-judge tier rules in
-# manifest.json (R-315, R-316, R-317, R-325, R-334, R-362 to R-365), the semantic rules no
+# manifest.json (R-316, R-317, R-325, R-334, R-362 to R-365), the semantic rules no
 # linter can express. Asks a fast model to judge the diff between two refs.
 # Exit 1 on an error-severity finding at or above the confidence threshold,
 # printing one "<rule> [<file>]: <why>" line each on stdout; warn-severity
@@ -208,7 +208,7 @@ ASK_HITS='[]'
 while IFS= read -r violation; do
   rule_id=$(printf '%s' "$violation" | jq -r '.rule // ""')
   # A rule id can carry several manifest rows across tiers (R-324/R-329 have
-  # eslint+ruff+golangci entries); take the llm-judge row's severity, falling
+  # eslint+ruff entries); take the llm-judge row's severity, falling
   # back to the strictest row for the id (2026-07-31 criticism audit P1: the
   # unfiltered multi-line result never equaled "error", silently downgrading
   # every judged rule to warn).
