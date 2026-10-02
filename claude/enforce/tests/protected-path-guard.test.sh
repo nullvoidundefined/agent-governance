@@ -79,7 +79,16 @@ edit "$REPO/src/__tests__/score.test.ts" 'scores' 'scored' | expect deny "Edit t
 write "$REPO/src/__tests__/score.test.ts" 'x' | expect_reason 'DISPUTE' "locked-test reason names the escalation path"
 write "$REPO/src/__fixtures__/score.json" '{}' | expect deny "Write into a locked fixture dir"
 write "$REPO/docs/specs/score.md" '# spec' | expect deny "Write to the locked spec"
-write "$REPO/src/__tests__/other.test.ts" 'it("z", () => {});' | expect deny "any test write once the slice is red"
+# A test outside the slice is collateral (I1, IAN-568): the owner approves it
+# in an ask instead of deleting the lock, and the reason says so.
+write "$REPO/src/__tests__/other.test.ts" 'it("z", () => {});' | expect ask "a test outside the slice asks once the slice is red"
+write "$REPO/src/__tests__/other.test.ts" 'x' | expect_reason 'outside slice' "collateral-test reason says the file is outside the slice"
+write "$REPO/src/__tests__/other.test.ts" 'x' | expect_reason 'approve' "collateral-test reason asks the owner to approve"
+bash_call "sed -i 's/z/y/' src/__tests__/other.test.ts" | expect ask "Bash sed -i on a test outside the slice asks"
+# An ask never outranks a deny: a command writing a collateral test and the
+# locked test is denied whichever target comes first.
+bash_call "sed -i 's/z/y/' src/__tests__/other.test.ts src/__tests__/score.test.ts" | expect deny "Bash write to a collateral test and the RED test"
+bash_call "echo x > src/__tests__/other.test.ts; echo x > src/__tests__/score.test.ts" | expect deny "Bash redirects into a collateral test then the RED test"
 write "$REPO/src/services/score.ts" 'export function score() { return 3; }' | expect allow "production write while red"
 write "$REPO/src/services/rank.ts" 'export function rank() {}' | expect allow "new production module while red"
 bash_call 'rm src/__tests__/score.test.ts' | expect deny "Bash rm of the RED test"
@@ -102,11 +111,12 @@ write "$REPO/.claude/tdd-lock.json" '{}' | expect deny "Write to the lock"
 jq -n '{slice:"B-1",phase:"green",tests:[{path:"src/__tests__/score.test.ts",sha256:"0"}],locked:[]}' > "$REPO/.claude/tdd-lock.json"
 write "$REPO/src/__tests__/score.test.ts" 'x' | expect deny "Write to the test while green"
 write "$REPO/src/services/score.ts" 'x' | expect allow "production write while green"
+write "$REPO/src/__tests__/other.test.ts" 'x' | expect ask "a test outside the slice asks while green"
 
 # --- Slice lock, phase refactor: same protection as red (R-410) ---------------
 jq -n '{slice:"R-1",phase:"refactor",tests:[{path:"src/__tests__/score.test.ts",sha256:"0"}],locked:[]}' > "$REPO/.claude/tdd-lock.json"
 write "$REPO/src/__tests__/score.test.ts" 'x' | expect deny "Write to a refactor-locked test"
-write "$REPO/src/__tests__/other.test.ts" 'x' | expect deny "any test write while refactoring"
+write "$REPO/src/__tests__/other.test.ts" 'x' | expect ask "a test outside the refactor slice asks"
 write "$REPO/src/services/score.ts" 'x' | expect allow "production write while refactoring"
 
 printf '{not json' > "$REPO/.claude/tdd-lock.json"
@@ -137,6 +147,7 @@ write "/tmp/scratch-$$/note.ts" 'x' test-author | expect allow "write outside th
 jq -n '{slice:"B-1",phase:"red",tests:[{path:"src/__tests__/score.test.ts",sha256:"0"}],locked:[]}' > "$REPO/.claude/tdd-lock.json"
 write "$REPO/src/services/score.ts" 'x' implementer | expect allow "implementer production write while red"
 write "$REPO/src/services/score.ts" 'x' test-author | expect deny "test-author production write while red"
+write "$REPO/src/__tests__/other.test.ts" 'x' implementer | expect deny "implementer collateral test write while red stays denied by its role"
 
 rm -rf "$REPO"
 echo "protected-path-guard.test.sh PASS"

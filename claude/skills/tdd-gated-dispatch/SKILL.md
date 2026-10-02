@@ -49,6 +49,8 @@ Name new tests in a file that already holds passing ones by id: `tdd.sh red 'tes
 8. close      tdd.sh close; accepted candidates become B-n+1
 ```
 
+A repository whose pre-commit hook reformats tests names that formatter as `testFormatCommand` in `.enforce.json`, so `tdd.sh red` hashes the formatted test and a later reformat is not read as a change (I2).
+
 ## High-risk slice: three roles, fresh context each
 
 Dispatch each role with the Agent tool, `subagent_type` naming its file in `~/.claude/agents/`: `test-author` and `slice-critic` on Opus, `implementer` on Sonnet. Prompts carry paths, not content (R-701), plus the branch block from `~/.claude/prompts/subagent-branch-setup.md` (R-702); none of them commits.

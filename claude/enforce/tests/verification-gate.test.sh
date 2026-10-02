@@ -21,6 +21,8 @@
 #   14. A changed package manifest is a harness file, so the full suite runs.
 #   15. A failing typecheck in a mapped project is not labelled related-only.
 #   16. A failing related-test command is labelled related-only.
+#   17. A slice lock in phase red whose failures all lie in its locked tests
+#       ends the turn (tdd.sh expected-red, I5); any other failure blocks.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/verification-gate.sh"
@@ -284,6 +286,25 @@ echo 'export const d = 4;' >> "$REPO/src/a.ts"
 GOT=$(PATH="$REPO/stub-bin:$PATH" gate "$REPO")
 grep -q 'RELATED_MARKER' <<< "$GOT" || { echo "FAIL: 16 expected the related-test block, got: $GOT"; exit 1; }
 grep -q 'related tests only' <<< "$GOT" || { echo "FAIL: 16 a related-test failure must carry the note, got: $GOT"; exit 1; }
+
+# 17. A slice deliberately red (I5, IAN-568): with .claude/tdd-lock.json in
+# phase red and every failure inside the locked tests, the gate asks
+# `tdd.sh expected-red` first and lets the turn end, even though the
+# project's own check fails. A failure outside the locked tests still blocks.
+REPO=$(new_repo)
+mkdir -p "$REPO/tests"
+printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$REPO/tests/baseline.test.sh"
+printf '.claude/tdd-lock.json\n' > "$REPO/.gitignore"
+write_package_json "$REPO" 1
+git -C "$REPO" add -A && git -C "$REPO" commit -qm "chore: shell fixtures"
+printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/../scripts/score.sh" || { echo "FAIL: score.sh missing"; exit 1; }\necho "score.test.sh PASS"\n' > "$REPO/tests/score.test.sh"
+(cd "$REPO" && export CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" && bash "$CLAUDE_HARNESS_ROOT/enforce/tdd.sh" open "V-1 score" >/dev/null && bash "$CLAUDE_HARNESS_ROOT/enforce/tdd.sh" red tests/score.test.sh >/dev/null) \
+  || { echo "FAIL: 17 setup: tdd.sh red on the missing script must succeed"; exit 1; }
+GOT=$(CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" gate "$REPO")
+[ "$GOT" = "none" ] || { echo "FAIL: 17 a red slice whose only failures are its locked tests must end the turn, got: $GOT"; exit 1; }
+printf '#!/usr/bin/env bash\necho "FAIL: baseline broke"; exit 1\n' > "$REPO/tests/baseline.test.sh"
+GOT=$(CLAUDE_TDD_HOME="$CLAUDE_HARNESS_ROOT" gate "$REPO")
+grep -q 'R-509' <<< "$GOT" || { echo "FAIL: 17 a failure outside the locked tests must still block, got: $GOT"; exit 1; }
 
 # No HOME (program row 2a, IAN-436): a dirty tree with a failing check still
 # blocks when the session starts the gate with HOME unset and no memo-dir

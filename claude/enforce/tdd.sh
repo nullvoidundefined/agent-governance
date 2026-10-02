@@ -34,7 +34,9 @@
 #   tdd.sh green
 #       requires the containing files to be byte-identical to the lock and,
 #       when the lock is committed, to the commit that introduced it (the RED
-#       commit); runs the suite and requires every named test to pass, none
+#       commit), or identical once .enforce.json's testFormatCommand formats
+#       a copy (red and amend run that formatter before hashing); a gitignored
+#       lock has no RED commit, so one commit per slice is fine; runs the suite and requires every named test to pass, none
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
 #       refactor.
@@ -81,6 +83,9 @@
 # collection error is a file with
 # no tests carrying the error text, so a SyntaxError is refused as a parse
 # failure and an ImportError or ModuleNotFoundError is the missing-module RED.
+# A pytest test that runs and raises any other exception, in its body or its
+# fixtures' setup, is a RED recorded by exception class; infrastructure
+# failures and teardown errors are refused (pytest_exception_class).
 # Any other path, or no path, uses Vitest or Jest resolved from the project's
 # node_modules/.bin, then the copy bundled under ~/.claude/enforce/node_modules
 # (with a warning). A slice never mixes runners. go test and RSpec arrive with
@@ -492,12 +497,20 @@ ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
 SHELL_ASSERTION='FAIL'
-# pytest: an import that cannot resolve (a module or a name not written yet) is
-# the missing-module RED, a failed assert or an unmet pytest.raises is the
-# assertion RED, and any SyntaxError subclass is a test that does not parse.
-PYTEST_MISSING='ModuleNotFoundError|ImportError'
+# pytest: an import that cannot resolve (a module or a name not written yet),
+# or a fixture not written yet, is the missing-module RED, a failed assert or
+# an unmet pytest.raises is the assertion RED, and any SyntaxError subclass is
+# a test that does not parse. Any other exception the test body or its setup
+# raises is a RED too, recorded by its class (I3, IAN-568): a new keyword
+# argument (TypeError), an unwritten method, a column a migration has not
+# added yet, a fixture insert failing on setup. Refused: a failure whose first
+# line is infrastructure (PYTEST_INFRASTRUCTURE), a teardown error (the test
+# body passed), and anything that names no exception class. A collection error
+# never reaches this point: classify_red refuses it as a file with no tests.
+PYTEST_MISSING='ModuleNotFoundError|ImportError|fixture '"'"'[^'"'"']+'"'"' not found'
 PYTEST_ASSERTION='AssertionError|DID NOT RAISE'
 PYTEST_PARSE_FAILURE='SyntaxError|IndentationError|TabError'
+PYTEST_INFRASTRUCTURE='ConnectionRefusedError|ConnectionResetError|ConnectionAbortedError|TimeoutError|socket\.timeout|Connection refused|could not connect to server|connection to server at .* failed|Name or service not known|nodename nor servname|timed out|Timeout >'
 
 # Classifies one RED file from its report record, each of its tests on its own
 # (classify_failures). Prints the failure class or dies with the refusal.
@@ -567,7 +580,7 @@ def failure_result: {key: test_key, failures: ((.failureMessages // []) | map(to
 # is missing-module when any test is, assertion otherwise. A test with no
 # failure message, or no result at all, is refused, never an assertion.
 classify_failures() {
-  local rel="$1" results="$2" result key failures class=assertion count=0
+  local rel="$1" results="$2" result key failures class=assertion count=0 exception classes=""
   while IFS= read -r result; do
     [ -n "$result" ] || continue
     count=$((count + 1))
@@ -575,12 +588,40 @@ classify_failures() {
     failures=$(jq -r '.failures' <<< "$result")
     [ -n "$(tr -d '[:space:]' <<< "$failures")" ] || die "$rel::$key failed with no failure message to classify"
     if grep -qE "$MISSING_MODULE" <<< "$failures"; then class=missing-module
-    elif ! grep -qE "$ASSERTION" <<< "$failures"; then
+    elif grep -qE "$ASSERTION" <<< "$failures"; then classes="${classes}assertion"$'\n'
+    elif [ "$RUNNER_KIND" = pytest ]; then
+      exception=$(pytest_exception_class "$rel::$key" "$failures") || exit 1
+      classes="${classes}${exception}"$'\n'
+    else
       die "$rel::$key fails for a reason this script does not classify: $(printf '%s' "$failures" | grep -m1 . || true)"
     fi
   done <<< "$results"
   [ "$count" -gt 0 ] || die "$rel has no failing test result to classify"
+  # Missing-module wins, as before; otherwise the classes seen, sorted and
+  # joined, which is plain "assertion" for every runner but pytest.
+  [ "$class" = missing-module ] || class=$(printf '%s' "$classes" | sed '/^$/d' | sort -u | paste -sd, -)
   printf '%s' "$class"
+}
+
+# pytest_exception_class <test> <failures>: prints the class of the exception
+# a pytest test failed with, read from the first line of its failure (the
+# JUnit message: `TypeError: ...`, `pkg.mod.UndefinedColumnError: ...`, or
+# `failed on setup with "<the same>"`), or dies with the refusal for an
+# infrastructure failure, a teardown error, a SyntaxError, or a line that
+# names no exception class.
+pytest_exception_class() {
+  local test="$1" first name
+  first=$(printf '%s' "$2" | grep -m1 . || true)
+  case "$first" in
+    'failed on teardown with'*) die "$test passed and then failed in teardown; a teardown error is not a RED: $first" ;;
+  esac
+  first="${first#failed on setup with \"}"
+  grep -qE "$PYTEST_INFRASTRUCTURE" <<< "$first" && die "$test fails on infrastructure, not on the behavior; start the service or fix the environment and run red again: $first"
+  name=$(sed -nE 's/^([A-Za-z_][A-Za-z0-9_.]*)(:.*)?$/\1/p' <<< "$first")
+  name="${name##*.}"
+  [ -n "$name" ] || die "$test fails for a reason this script does not classify: $first"
+  grep -qE "^($PYTEST_PARSE_FAILURE)$" <<< "$name" && die "$test raised $name, which is a parse failure, not a RED: $first"
+  printf '%s' "$name"
 }
 
 # classify_named <rel> <ids json>: classify_red for a file named by test ids.
@@ -818,6 +859,7 @@ cmd_red() {
     spec=$(add_named "$spec" "$rel" "$id") || exit 1
   done
   while IFS= read -r rel; do rels+=("$rel"); done < <(jq -r '.[].path' <<< "$spec")
+  format_test_files "${rels[@]}"
   run_suite "${rels[@]}"
   local entries='[]' class ids
   for rel in "${rels[@]}"; do
@@ -839,23 +881,83 @@ cmd_red() {
   say "RED: $summary; baseline $baseline passing outside. Tests are locked; implement, then 'tdd.sh green'."
 }
 
+# --- test formatting (I2, IAN-568) -------------------------------------------
+# A repository's pre-commit hook may reformat a test after `red` hashed it
+# (black after a `ruff format` check), and green then reported the test as
+# changed. `.enforce.json` may name the formatter as `testFormatCommand`, a
+# shell command that takes file paths and rewrites them in place (for example
+# "uv run --project apps/server black -q"). When it is set, red and amend run
+# it on the named tests before hashing them, so the hash is of the formatted
+# file, and green accepts a locked file whose hash differs only when a
+# formatted copy of it hashes to the recorded value: a formatting-only change
+# passes, any other change is still refused. .enforce.json is a gate input
+# the session cannot write (R-410), so the command is the owner's. With no key
+# nothing is formatted and the hash check is byte-exact, as before; a repo
+# with a pre-commit formatter should set the key to that same formatter.
+
+# test_format_command: prints .enforce.json's testFormatCommand, or nothing.
+test_format_command() {
+  [ -f "$ROOT/.enforce.json" ] || return 0
+  jq -r '.testFormatCommand // empty' "$ROOT/.enforce.json" 2>/dev/null || true
+}
+
+# format_test_files <rel>...: runs testFormatCommand on the root-relative
+# files from the repository root; a non-zero exit warns and is not a refusal.
+format_test_files() {
+  local command
+  command=$(test_format_command)
+  [ -n "$command" ] && [ $# -gt 0 ] || return 0
+  (cd "$ROOT" && bash -c "$command \"\$@\"" tdd-format "$@") >/dev/null 2>&1 \
+    || say "warning: testFormatCommand ($command) exited non-zero on $*; hashing the file(s) as they stand" >&2
+}
+
+# formatted_sha <content file> <rel>: the sha256 of <content file> once a copy
+# placed beside <rel> (so the formatter finds the same configuration) is
+# formatted; the copy is removed. Fails when no testFormatCommand is set.
+formatted_sha() {
+  local copy digest
+  [ -n "$(test_format_command)" ] || return 1
+  copy="$(dirname "$2")/tdd-format-$$-$(basename "$2")"
+  cp "$1" "$ROOT/$copy" || return 1
+  format_test_files "$copy" 2>/dev/null
+  digest=$(sha "$ROOT/$copy")
+  rm -f "$ROOT/$copy"
+  printf '%s' "$digest"
+}
+
+# matches_recorded <content file> <rel> <sha>: true when the content hashes to
+# <sha> as it stands or once formatted.
+matches_recorded() {
+  [ "$(sha "$1")" = "$3" ] && return 0
+  [ "$(formatted_sha "$1" "$2" 2>/dev/null)" = "$3" ]
+}
+
+# lock_is_ignored: true when git ignores the lock, so it can never be
+# committed and the RED commit has no anchor to bind (I8, IAN-568): one
+# commit per slice, test and implementation together, loses nothing.
+lock_is_ignored() { git check-ignore -q -- "$LOCK_RELATIVE" 2>/dev/null; }
+
 check_hashes() {
   local changed
   changed=$(jq -r '.tests[] | "\(.path) \(.sha256)"' "$LOCK" | while read -r path recorded; do
     [ -f "$path" ] || { printf '%s deleted\n' "$path"; continue; }
-    [ "$(sha "$path")" = "$recorded" ] || printf '%s\n' "$path"
+    matches_recorded "$path" "$path" "$recorded" || printf '%s\n' "$path"
   done)
   [ -z "$changed" ] || die "locked test file(s) changed since RED (R-410): $(printf '%s' "$changed" | tr '\n' ' '). The tests are the contract; if one is wrong, return 'DISPUTE: <test id>: <why>' and stop."
   local red_commit
   red_commit=$(git log -1 --format=%H -- "$LOCK_RELATIVE" 2>/dev/null || true)
   if [ -n "$red_commit" ] && git show "$red_commit:$LOCK_RELATIVE" 2>/dev/null | jq -e '.phase == "red" or .phase == "green" or .phase == "refactor"' >/dev/null 2>&1; then
+    local committed_copy
+    committed_copy=$(mktemp)
     changed=$(git show "$red_commit:$LOCK_RELATIVE" | jq -r '.tests[] | "\(.path) \(.sha256)"' | while read -r path recorded; do
-      committed=$(git show "$red_commit:$path" 2>/dev/null | shasum -a 256 | awk '{print $1}')
-      [ "$committed" = "$recorded" ] && [ -f "$path" ] && [ "$(sha "$path")" = "$committed" ] || printf '%s\n' "$path"
+      git show "$red_commit:$path" > "$committed_copy" 2>/dev/null || : > "$committed_copy"
+      matches_recorded "$committed_copy" "$path" "$recorded" && [ -f "$path" ] \
+        && { [ "$(sha "$path")" = "$(sha "$committed_copy")" ] || matches_recorded "$path" "$path" "$recorded"; } || printf '%s\n' "$path"
     done)
+    rm -f "$committed_copy"
     [ -z "$changed" ] || die "locked test file(s) differ from the RED commit ${red_commit:0:7} (R-410): $(printf '%s' "$changed" | tr '\n' ' ')"
-  else
-    [ "$(phase)" = "refactor" ] || say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
+  elif [ "$(phase)" != "refactor" ] && ! lock_is_ignored; then
+    say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
   fi
 }
 
@@ -992,6 +1094,7 @@ finish_amendment() {
   before=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
   ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
   while IFS= read -r path; do [ -n "$path" ] && locked_rels+=("$path"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  format_test_files "$rel"
   run_suite "${locked_rels[@]}"
   if [ "$ids" = null ]; then class=$(classify_red "$rel") || exit 1
   else class=$(classify_named "$rel" "$ids") || exit 1
@@ -1007,7 +1110,9 @@ finish_amendment() {
     .tests |= map(if .path == $p then .sha256 = $to | .failureClass = $c | .tests = $n else . end)
     | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, fromBlob: $fb, toBlob: $tb, failureClass: $c, at: $at}])
     | .phase = "red" | del(.amending)' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
-  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). Commit the amended test before the implementation, then 'tdd.sh green'."
+  local next="Commit the amended test before the implementation, then 'tdd.sh green'."
+  lock_is_ignored && next="Then 'tdd.sh green'."
+  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). $next"
 }
 
 # red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding

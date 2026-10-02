@@ -6,10 +6,12 @@
 #          Security review ledger directory
 #          $HOME/.claude/security-review-ledger/, which only
 #          enforce/security-review-record.sh writes, B-10e) are never written,
-#          deleted, or moved by a session, and once a slice is RED every test tree, every locked
-#          fixture dir, and the locked spec are read-only until the slice
-#          closes; a test the implementer believes wrong is returned as
-#          `DISPUTE: <test>` for the human, never edited
+#          deleted, or moved by a session, and once a slice is RED the tests,
+#          fixture dirs, and spec the lock names are read-only until the
+#          slice closes; a test the implementer believes wrong is returned as
+#          `DISPUTE: <test>` for the human, never edited. Any other test-tree
+#          file asks instead (I1, IAN-568): a collateral edit to an older test
+#          the owner approves in one click, never a manual lock deletion
 #   R-411  role boundaries by agent_type (enforce/role-policy.json): a
 #          test-author writes only test and fixture trees, an implementer
 #          never writes tests, fixtures, or specs, a slice-critic writes nothing
@@ -278,8 +280,18 @@ verdict_for() {
           return
         fi ;;
       red | green | refactor)
-        if is_locked "$rel" || matches "$rel" "$TESTS_PATTERN"; then
-          printf 'deny|%s' "'$rel' is locked for slice '$(jq -r '.slice // "?"' "$LOCK")' (R-410): once the slice is red, tests, fixtures, and the spec are the contract and stay read-only through GREEN and REFACTOR. Make the implementation satisfy the test. If the test is wrong, return 'DISPUTE: <test id>: <why>' and stop; the user decides, and any change is a new RED. A new behavior is a new slice: 'tdd.sh close' then 'tdd.sh open'."
+        if is_locked "$rel"; then
+          printf 'deny|%s' "'$rel' is locked for slice '$(jq -r '.slice // "?"' "$LOCK")' (R-410): once the slice is red, its own tests, fixtures, and spec are the contract and stay read-only through GREEN and REFACTOR. Make the implementation satisfy the test. If the test is wrong, return 'DISPUTE: <test id>: <why>' and stop; the user decides, and any change is a new RED. A new behavior is a new slice: 'tdd.sh close' then 'tdd.sh open'."
+          return
+        fi
+        # A test the lock does not name is collateral: an older test this
+        # slice's change breaks on purpose (a schema change an older test
+        # pins). It asks rather than denies, so the owner approves the edit in
+        # one click and the slice stays red, instead of deleting the lock
+        # (I1, IAN-568); tdd.sh green still refuses any drop in the passing
+        # count outside the slice.
+        if matches "$rel" "$TESTS_PATTERN"; then
+          printf 'ask|%s' "'$rel' is a test outside slice '$(jq -r '.slice // "?"' "$LOCK")': the lock names only the slice's own tests, so this is a collateral edit to an older test (R-410). Owner: approve it only if this test must change because of the slice's behavior change (for example a column the migration adds), not to make a failing run pass. 'tdd.sh green' still refuses any drop in the passing count outside the slice."
           return
         fi ;;
     esac
@@ -308,18 +320,29 @@ package_scripts_change() {
   fi
 }
 
+# apply_verdict <rel>: a deny is emitted at once; an ask is held in
+# PENDING_ASK until every target is judged, so a Bash command writing a
+# collateral test and then a locked one is denied rather than asked about
+# (emit_pending_ask runs after the last target).
+PENDING_ASK=""
 apply_verdict() {
   local rel="$1" verdict
   [ -n "$rel" ] || return 0
   verdict=$(verdict_for "$rel")
-  [ -n "$verdict" ] && emit "${verdict%%|*}" "${verdict#*|}"
-  if package_scripts_change "$rel"; then
-    emit ask "This changes the package.json test or typecheck script, which is what the verification gate and tdd.sh run (R-410). Confirm the change is deliberate and not a way to make a failing run pass."
+  case "$verdict" in
+    deny\|*) emit deny "${verdict#*|}" ;;
+    ask\|*) [ -n "$PENDING_ASK" ] || PENDING_ASK="${verdict#*|}" ;;
+  esac
+  if package_scripts_change "$rel" && [ -z "$PENDING_ASK" ]; then
+    PENDING_ASK="This changes the package.json test or typecheck script, which is what the verification gate and tdd.sh run (R-410). Confirm the change is deliberate and not a way to make a failing run pass."
   fi
 }
 
+emit_pending_ask() { [ -z "$PENDING_ASK" ] || emit ask "$PENDING_ASK"; }
+
 if [ "$TOOL" != "Bash" ]; then
   apply_verdict "$(relative_path "$FILE_PHYSICAL")"
+  emit_pending_ask
   exit 0
 fi
 
@@ -595,4 +618,5 @@ while IFS= read -r target; do
   deny_ledger_target "$target_physical"
   apply_verdict "$(relative_path "$target_physical")"
 done <<< "$TARGETS"
+emit_pending_ask
 exit 0
