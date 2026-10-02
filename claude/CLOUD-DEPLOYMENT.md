@@ -253,6 +253,12 @@ When the user reports "Failed to fetch" or a CORS error:
 
 ---
 
+## Incident-backed rules
+
+Moved from the global-memory PL list on 2026-10-02 (IAN-568); a default.
+
+- **PL13.** The first step of any post-deploy workflow setup is `gh variable set` for every `${{ vars.X }}` the workflow references. A missing variable resolves to an empty string, and `curl` then fails with exit code 3 (malformed URL), which is easy to misdiagnose.
+
 ## Per-Project Overrides
 
 Project-specific deployment details (service IDs, custom domains, workspace-specific env vars) live in each project's own `CLAUDE.md` file. The rules above are the universal defaults.
