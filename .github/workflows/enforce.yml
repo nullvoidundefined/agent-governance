@@ -25,10 +25,15 @@ name: enforce
 # push on every branch PLUS pull_request double-billed every PR branch: runs 5
 # and 6 both ran the full suite on 49c06b1. Pushes to the default branch, PRs,
 # and manual dispatch cover everything without the overlap.
+#
+# ready_for_review is listed because the fixture jobs skip draft pull requests
+# (see the fixture-scope job): marking a draft ready is what runs them on its
+# head. The default types are kept alongside it.
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # A second push supersedes the first; without this the older run bills to
@@ -43,16 +48,52 @@ permissions:
   contents: read
 
 jobs:
+  # fixture-scope decides once whether the fixture suites run, so CI costs one
+  # run per pull request instead of one per fix-round push (IAN-552). It
+  # answers false for a draft pull request, whose rounds the local
+  # affected-fixture runs already cover, and for a pull request whose every
+  # changed file is under docs/, which no fixture reads. It answers true for
+  # every other event (a push to main, a manual dispatch) and whenever the
+  # changed-file list cannot be read, so a failure runs the suites rather than
+  # skipping them. The decision lives in claude/enforce/ci-fixture-scope.sh,
+  # and the suites' `if:` runs them unless this job succeeded and answered
+  # exactly false, so a failed scope job or an empty or garbled answer never
+  # reads as a skip. A job skipped by its `if` reports
+  # as skipped, which the required `fixtures` status check accepts, so branch
+  # protection still sees a result. The security workflows are separate and
+  # unaffected.
+  fixture-scope:
+    name: fixture scope
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          bash claude/enforce/ci-fixture-scope.sh >> "$GITHUB_OUTPUT"
+          grep '^should_run=' "$GITHUB_OUTPUT"
+
   fixtures:
     name: fixtures
+    needs: fixture-scope
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run != 'false') }}
     runs-on: ubuntu-latest
     steps:
       # v7: the v4 majors of both actions declare a node20 runtime, which GitHub
       # removes from hosted runners on 2026-09-23. Dependabot (.github/dependabot.yml)
       # carries the next bump.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -64,7 +105,7 @@ jobs:
       # ubuntu image's preinstalled one is whatever the image carries, so both
       # jobs pin the same version. The checker has no module and no go.sum, so
       # there is nothing for the cache to key on.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.24"
           cache: false
@@ -226,12 +267,14 @@ jobs:
   # whose result depends on the shell and on the userland the shell calls.
   fixtures-macos:
     name: fixtures (macOS, bash 3.2)
+    needs: fixture-scope
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run != 'false') }}
     runs-on: macos-latest
     # A hung fixture on a 10x-billed runner costs ~3600 ubuntu-equivalent
     # minutes against an observed 13-minute run (R-517 review of PR #115).
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Installing a newer bash here would recreate the very gap this job
       # exists to close, so the image's own /bin/bash is the subject and this
@@ -271,7 +314,7 @@ jobs:
           fi
           exit "$status"
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -283,7 +326,7 @@ jobs:
       # ubuntu image's preinstalled one is whatever the image carries, so both
       # jobs pin the same version. The checker has no module and no go.sum, so
       # there is nothing for the cache to key on.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.24"
           cache: false

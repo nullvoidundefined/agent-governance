@@ -1,3 +1,4 @@
+6333b3d925940f24c5a10ad0e5939be7c68e67d30f3fd211c649c4fbd876d1ab  enforce/ci-fixture-scope.sh
 cfcad956a2276e266be44c3bd31a8bc0a6f2b42f28f3da7e3b3a384416506698  enforce/data-access/go/main.go
 2d088d22b6e84ce3076a9a4ac3c551707d9f25b36c72115140cdbcc651919896  enforce/data-access/python_data_access.py
 9bbbd357afdbc09897feab65015951d69bdbcad73f7b4031a803c4c7f6cddc8d  enforce/data-access/ruby_data_access.rb
@@ -52,6 +53,8 @@ a53de1641175cef00514b135c60511a6085ec2ee817082edbca3d258a1a3ccf9  enforce/tests/
 33b604b0fc5de1ead64d676f72a632c62e9d5308d2d4323614039e9d33ed798d  enforce/tests/build-fast-rule-text.test.sh
 941c169154ddf113ac2a813de83dc4994d857bcf9085f738de68eda8b7844b94  enforce/tests/build-lane-quiet.test.sh
 679719e31557adf4b1529310314b674af1c5a79704af817694b1bbaa594cc02e  enforce/tests/build-lane.test.sh
+4dd46df9910b1fc0982ba3296de7adff078be0ceeac54df2d437f4166fa2effa  enforce/tests/ci-fixture-scope-wiring.test.sh
+092922c44d71f429882f3e4287a6a4cbe1a0a6ccde99ea70103bb468deaf4ae2  enforce/tests/ci-fixture-scope.test.sh
 eb74056eae3e00d3376fdb9eeacc77b35f51333e3a5dcc85531179db19c0bd54  enforce/tests/claude-md-lint.test.sh
 82a3e27d132a2f546493ee056f19b96f781ae1ab3f6c37cb5b07aab4180a1df8  enforce/tests/clean-code-reminder.test.sh
 39d81a19e4b9d3b6da9914468139c80ecb8d24bd8040d5a3ca21414d57bcbbb2  enforce/tests/codex-adapter-contract.test.sh
