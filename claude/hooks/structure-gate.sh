@@ -5,6 +5,9 @@
 # and loose modules at an Express server's src/ root (R-304 layer vocabulary).
 # Nuxt packages root the walk at app/ and server/, and .vue components get the
 # same folder-pairing check as .tsx ones (R-305).
+# R-311 (abbreviated directory) and R-312 (directory case) warn instead of
+# deny since IAN-568: their recorded fires were all fixture runs, so they
+# add context and let the write proceed; every other check still denies.
 # Per-edit, no Node spawn.
 # set -uo, no -e: an unexpected internal error under -e kills the hook before
 # it can emit a decision, and a PreToolUse hook that emits nothing is an
@@ -27,6 +30,28 @@ deny() {
   log_rule_fire "$(printf '%s' "$1" | grep -oE 'R-[0-9]{3}' | head -1)" "structure-gate" "deny"
   jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
+}
+
+# warn: records a non-blocking finding; emit_warnings prints them at the end
+# unless a deny has already exited.
+WARNINGS=""
+warn() {
+  WARNINGS="${WARNINGS:+$WARNINGS }$1"
+}
+
+# emit_warnings: prints the collected warnings as PreToolUse context and logs
+# one warn fire per rule.
+emit_warnings() {
+  [ -n "$WARNINGS" ] || return 0
+  LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+  [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
+  type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
+  local warned_rule
+  for warned_rule in $(printf '%s' "$WARNINGS" | grep -oE 'R-[0-9]{3}' | sort -u); do
+    log_rule_fire "$warned_rule" "structure-gate" "warn"
+  done
+  jq -n --arg m "structure-gate (advisory, the write proceeds): $WARNINGS" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
 }
 
 # The two vocabulary checks below both ask "what kind of package is this file in".
@@ -130,16 +155,16 @@ for seg in "${PARTS[@]}"; do
     # CLAUDE-PYTHON.md blesses db/ as the engine/session home; Rails db/ and
     # Go db packages are the same term of art.
     { [ "$is_python" -eq 1 ] || [ "$is_ruby" -eq 1 ] || [ "$is_go" -eq 1 ]; } && [ "$seg" = "db" ] && continue
-    deny "Directory '$seg' is an abbreviation (R-311). Use the full word: database/, dependencyInjection/, services/, controllers or handlers/, middleware/, config/."
+    warn "Directory '$seg' is an abbreviation (R-311). Prefer the full word: database/, dependencyInjection/, services/, controllers or handlers/, middleware/, config/."
   fi
   if [[ "$seg" == *-* || "$seg" == *_* ]]; then
     [ "$in_app" -eq 1 ] && continue
     # Python and Ruby package directories are importable/require-able names:
-    # snake_case is the idiom (R-312 exception); kebab-case stays denied.
+    # snake_case is the idiom (R-312 exception); kebab-case still warns.
     { [ "$is_python" -eq 1 ] || [ "$is_ruby" -eq 1 ]; } && [[ "$seg" != *-* ]] && continue
     # Go waives dir-case entirely: lowercase packages, kebab cmd/ binary names.
     [ "$is_go" -eq 1 ] && continue
-    deny "Directory '$seg' must be camelCase, not kebab/snake (R-312)."
+    warn "Directory '$seg' should be camelCase, not kebab/snake (R-312)."
   fi
 done
 
@@ -223,4 +248,5 @@ if [ -n "$PACKAGE_FILE" ] && [[ "$FILE" == *.vue ]] && [ "$(basename "$PARENT_DI
     deny "'$BASE' would sit loose in components/ (R-305). Each component owns a folder: components/$COMPONENT_NAME/$BASE alongside $COMPONENT_NAME.module.scss. Write it at that path instead."
   fi
 fi
+emit_warnings
 exit 0

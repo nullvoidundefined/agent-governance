@@ -530,11 +530,11 @@
         },
         {
             "id": "R-312",
-            "tier": "regex",
+            "tier": "advisory",
             "enforcer": "hook:structure-gate",
-            "severity": "error",
+            "severity": "warn",
             "autofix": false,
-            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/; page and Nitro route directories are exempt as URL segments"
+            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/; page and Nitro route directories are exempt as URL segments; a warning since IAN-568, never a deny"
         },
         {
             "id": "R-306",
@@ -561,11 +561,11 @@
         },
         {
             "id": "R-311",
-            "tier": "regex",
+            "tier": "advisory",
             "enforcer": "hook:structure-gate",
-            "severity": "error",
+            "severity": "warn",
             "autofix": false,
-            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/, so abbreviations there are denied too"
+            "note": "Nuxt packages (nuxt dependency) root the walk at app/ and server/, so abbreviations there warn too; a warning since IAN-568, never a deny"
         },
         {
             "id": "R-313",
