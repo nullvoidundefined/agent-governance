@@ -6,23 +6,131 @@
   "reviewedCode": "bd7e31a09174f8fc1db4c6a40df2b7ef2d6dbd9f",
   "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The controls under review are the guard and lock changes of the governance pruning (protected-path-guard collateral-test ask, tdd.sh RED classes and test formatting, verification-gate expected-red, security-surface and build-lane prose exclusion, git-workflow-guard reviewed tail, log-rule-fire session field) and the removal of non-security hooks. Six rounds ran; round 6 found nothing above LOW, which ends the review under the 1:1 budget's security exception. Every finding below is fixed in range with a fixture feeding the control its insecure value, or waived by the owner. The review of the head that adds this file is the PR body's Security review section.",
   "findings": [
-    { "round": 1, "id": 1, "severity": "MEDIUM", "summary": "the docs/ and *.md prose exclusion also exempted agent, prompt and skill Markdown and scripts under docs/", "status": "fixed 0642403b" },
-    { "round": 1, "id": 2, "severity": "MEDIUM", "summary": "verification-gate's expected-red exit skipped typecheck, verify.sh and fixture checks", "status": "fixed 126d4faf" },
-    { "round": 1, "id": 3, "severity": "LOW", "summary": "the self-attested fixed-sha review tail applied to the security review", "status": "fixed c9d0a277" },
-    { "round": 1, "id": 4, "severity": "LOW", "summary": "testFormatCommand ran through bash -c", "status": "fixed 0ffd8cb2, superseded by dabf9d6a" },
-    { "round": 1, "id": 5, "severity": "LOW", "summary": "the formatted copy kept a test suffix and survived an interrupt", "status": "fixed c7e409b0, code removed in 5d16f175" },
-    { "round": 1, "id": 6, "severity": "LOW", "summary": "the CLAUDE_SESSION_ID value could forge fire-log lines", "status": "fixed ca4c2e3b" },
-    { "round": 2, "id": 1, "severity": "LOW", "summary": "the operator refusal did not stop shells, launchers or repository scripts", "status": "fixed dabf9d6a, then 7fa361eb" },
-    { "round": 2, "id": 2, "severity": "LOW", "summary": "cp followed a planted symlink at the formatted copy path", "status": "fixed 0a1cb593, code removed in 5d16f175" },
-    { "round": 3, "id": 1, "severity": "LOW", "summary": "noclobber follows a link to a FIFO or device in the create window", "status": "fixed a9296c84, code removed in 5d16f175" },
-    { "round": 3, "id": 2, "severity": "LOW", "summary": "a formatter that loads repository-local plugins or config keeps the lock only as strong as those files", "status": "waived by the owner 2026-10-02; hardening f1e6f9e4; no verdict depends on a formatter after 5d16f175" },
-    { "round": 4, "id": 1, "severity": "HIGH", "summary": "the case-sensitive launcher denylist was bypassed on a case-insensitive filesystem", "status": "fixed 7fa361eb (formatter allowlist)" },
-    { "round": 4, "id": 2, "severity": "MEDIUM", "summary": "the launcher denylist omitted go, bundle, pipenv and other launchers", "status": "fixed 7fa361eb (formatter allowlist)" },
-    { "round": 4, "id": 3, "severity": "LOW", "summary": "no fixture fed a symlink cycle", "status": "fixed 3e4fd9cb" },
-    { "round": 5, "id": 1, "severity": "HIGH", "summary": "a session-written node_modules/.bin or .venv/bin formatter decided green's tolerance verdict", "status": "fixed 5d16f175 (green is byte-exact and runs no formatter)" },
-    { "round": 5, "id": 2, "severity": "HIGH", "summary": "a PATH-earlier session-written formatter decided green's tolerance verdict", "status": "fixed 5d16f175 (green is byte-exact and runs no formatter)" },
-    { "round": 5, "id": 3, "severity": "LOW", "summary": "option values after = escaped the repository-path check", "status": "fixed 5d16f175" },
-    { "round": 5, "id": 4, "severity": "MEDIUM", "summary": "no fixture fed the allowlist its insecure values", "status": "fixed 5d16f175" },
-    { "round": 6, "id": 1, "severity": "LOW", "summary": "formatter option aliases (-style=file, isort --sp, dprint -c) load repository-root config at red time", "status": "within the owner's round-3 #2 waiver (repository-local formatter config); no verdict impact because green is byte-exact" }
+    {
+      "round": 1,
+      "id": 1,
+      "severity": "MEDIUM",
+      "summary": "the docs/ and *.md prose exclusion also exempted agent, prompt and skill Markdown and scripts under docs/",
+      "status": "fixed 0642403b"
+    },
+    {
+      "round": 1,
+      "id": 2,
+      "severity": "MEDIUM",
+      "summary": "verification-gate's expected-red exit skipped typecheck, verify.sh and fixture checks",
+      "status": "fixed 126d4faf"
+    },
+    {
+      "round": 1,
+      "id": 3,
+      "severity": "LOW",
+      "summary": "the self-attested fixed-sha review tail applied to the security review",
+      "status": "fixed c9d0a277"
+    },
+    {
+      "round": 1,
+      "id": 4,
+      "severity": "LOW",
+      "summary": "testFormatCommand ran through bash -c",
+      "status": "fixed 0ffd8cb2, superseded by dabf9d6a"
+    },
+    {
+      "round": 1,
+      "id": 5,
+      "severity": "LOW",
+      "summary": "the formatted copy kept a test suffix and survived an interrupt",
+      "status": "fixed c7e409b0, code removed in 5d16f175"
+    },
+    {
+      "round": 1,
+      "id": 6,
+      "severity": "LOW",
+      "summary": "the CLAUDE_SESSION_ID value could forge fire-log lines",
+      "status": "fixed ca4c2e3b"
+    },
+    {
+      "round": 2,
+      "id": 1,
+      "severity": "LOW",
+      "summary": "the operator refusal did not stop shells, launchers or repository scripts",
+      "status": "fixed dabf9d6a, then 7fa361eb"
+    },
+    {
+      "round": 2,
+      "id": 2,
+      "severity": "LOW",
+      "summary": "cp followed a planted symlink at the formatted copy path",
+      "status": "fixed 0a1cb593, code removed in 5d16f175"
+    },
+    {
+      "round": 3,
+      "id": 1,
+      "severity": "LOW",
+      "summary": "noclobber follows a link to a FIFO or device in the create window",
+      "status": "fixed a9296c84, code removed in 5d16f175"
+    },
+    {
+      "round": 3,
+      "id": 2,
+      "severity": "LOW",
+      "summary": "a formatter that loads repository-local plugins or config keeps the lock only as strong as those files",
+      "status": "waived by owner 2026-10-02 (hardening f1e6f9e4; no verdict depends on a formatter after 5d16f175)"
+    },
+    {
+      "round": 4,
+      "id": 1,
+      "severity": "HIGH",
+      "summary": "the case-sensitive launcher denylist was bypassed on a case-insensitive filesystem",
+      "status": "fixed 7fa361eb (formatter allowlist)"
+    },
+    {
+      "round": 4,
+      "id": 2,
+      "severity": "MEDIUM",
+      "summary": "the launcher denylist omitted go, bundle, pipenv and other launchers",
+      "status": "fixed 7fa361eb (formatter allowlist)"
+    },
+    {
+      "round": 4,
+      "id": 3,
+      "severity": "LOW",
+      "summary": "no fixture fed a symlink cycle",
+      "status": "fixed 3e4fd9cb"
+    },
+    {
+      "round": 5,
+      "id": 1,
+      "severity": "HIGH",
+      "summary": "a session-written node_modules/.bin or .venv/bin formatter decided green's tolerance verdict",
+      "status": "fixed 5d16f175 (green is byte-exact and runs no formatter)"
+    },
+    {
+      "round": 5,
+      "id": 2,
+      "severity": "HIGH",
+      "summary": "a PATH-earlier session-written formatter decided green's tolerance verdict",
+      "status": "fixed 5d16f175 (green is byte-exact and runs no formatter)"
+    },
+    {
+      "round": 5,
+      "id": 3,
+      "severity": "LOW",
+      "summary": "option values after = escaped the repository-path check",
+      "status": "fixed 5d16f175"
+    },
+    {
+      "round": 5,
+      "id": 4,
+      "severity": "MEDIUM",
+      "summary": "no fixture fed the allowlist its insecure values",
+      "status": "fixed 5d16f175"
+    },
+    {
+      "round": 6,
+      "id": 1,
+      "severity": "LOW",
+      "summary": "formatter option aliases (-style=file, isort --sp, dprint -c) load repository-root config at red time",
+      "status": "waived by owner 2026-10-02 (no verdict impact: green is byte-exact and runs no formatter)"
+    }
   ]
 }
