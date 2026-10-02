@@ -315,7 +315,10 @@ run_shell_suite() {
   dirs=$(for rel in "$@"; do dirname "$rel"; done | sort -u)
   while IFS= read -r dir; do
     results=$(mktemp -d); scratch=$(mktemp -d)
-    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --affected "${also[@]}" --results-dir "$results" >/dev/null 2>&1)
+    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --affected "${also[@]}" --results-dir "$results" >"$scratch/runner.out" 2>&1)
+    # The runner's own summary (selection, run slot, and the IAN-566 timing
+    # line) goes to stderr, so a slow red or green shows where its time went.
+    grep '^fixture-shards: ' "$scratch/runner.out" >&2
     for fixture in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
       [ -f "$fixture" ] || continue
       [ -f "$results/$(basename "$fixture").status" ] || is_named_fixture "$fixture" "$@" || continue
