@@ -137,11 +137,15 @@ FIXTURE_LOCK_GAVE_UP_STATUS=75
 # recorded RED, the failing tests are the outcome the slice exists to produce,
 # so blocking the turn on them only costs an extra turn. `tdd.sh
 # expected-red` answers whether every failure lies in the locked tests; it
-# refuses every other phase and any failure outside the lock, and the checks
-# below then run as usual.
+# refuses every other phase and any failure outside the lock. A passing answer
+# stands in for the project's test-suite check alone (add_test_check below):
+# the typecheck, .claude/verify.sh, the fixture suites, and the port checks
+# still run and still block (R-109 r1 #2 on PR #182), and the run writes no
+# memo, because the tree was never verified as a whole.
 TDD_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)/tdd.sh"
+IS_EXPECTED_RED=0
 if [ -f "$ROOT/.claude/tdd-lock.json" ] && [ -f "$TDD_SCRIPT" ]; then
-  bash "$TDD_SCRIPT" expected-red >/dev/null 2>&1 && exit 0
+  bash "$TDD_SCRIPT" expected-red >/dev/null 2>&1 && IS_EXPECTED_RED=1
 fi
 MAX_OUTPUT_LINES=200
 MAX_OUTPUT_CHARS=8000
@@ -176,9 +180,11 @@ RELATED_CHECKS=""
 
 # add_test_check <stack> <full-suite commands, one per line>
 # Adds the related-test commands for the stack when the mapping answers, and
-# the full-suite commands when it falls back or the helper is missing.
+# the full-suite commands when it falls back or the helper is missing. Adds
+# nothing while a passing expected-red stands in for the test suite.
 add_test_check() {
   local related line
+  [ "$IS_EXPECTED_RED" -eq 1 ] && return 0
   if type buildRelatedTestCommands >/dev/null 2>&1 && related=$(buildRelatedTestCommands "$1"); then
     while IFS= read -r line; do
       [ -n "$line" ] || continue
@@ -250,6 +256,9 @@ elif [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ]; then
   fi
 elif [ -f go.mod ]; then
   command -v go >/dev/null 2>&1 && add_test_check go "go test ./..."$'\n'"go vet ./..."
+  # go vet travels with the go test commands above; an expected RED replaces
+  # only the tests, so vet still runs on its own.
+  [ "$IS_EXPECTED_RED" -eq 1 ] && command -v go >/dev/null 2>&1 && add_check "go vet ./..."
 elif [ -f Gemfile ] && [ -d spec ]; then
   command -v bundle >/dev/null 2>&1 && add_check "bundle exec rspec"
 fi
@@ -351,8 +360,9 @@ ${TAIL}
 Fix the root cause (R-204: never make this pass by relaxing the gate that caught it). To end the turn without fixing, re-run with CLAUDE_SKIP_VERIFY=1 set."
 done <<< "$CHECKS"
 
-# Every check passed: remember this tree so the next turn on it is free.
-if [ -n "$TREE_KEY" ]; then
+# Every check passed: remember this tree so the next turn on it is free. A
+# run whose test suite an expected RED replaced verified only part of it.
+if [ -n "$TREE_KEY" ] && [ "$IS_EXPECTED_RED" -eq 0 ]; then
   mkdir -p "$MEMO_DIR" 2>/dev/null && printf '%s\n' "$TREE_KEY" > "$MEMO_FILE" 2>/dev/null || true
 fi
 
