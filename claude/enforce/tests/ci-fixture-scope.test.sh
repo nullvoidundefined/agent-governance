@@ -29,7 +29,10 @@
 #   holds a newline (git quotes it); an empty diff (base equals head); a
 #   BASE_SHA naming no commit; an empty BASE_SHA; a base sharing no merge base
 #   with the head (an orphan history); IS_DRAFT empty or `null` on a
-#   pull_request with a code change; and a plain non-draft code change.
+#   pull_request with a code change; a plain non-draft code change; and a code
+#   file (aaa/x.ts) sorting before 6000 added docs/ files, a changed-file list
+#   larger than the 64 KiB pipe buffer, so an early-exiting reader cannot turn
+#   a SIGPIPE into a skip.
 # - Every case also asserts exit status 0 and that stdout is exactly the one
 #   expected line.
 set -uo pipefail
@@ -116,6 +119,18 @@ git -C "$REPO" update-index --add --cacheinfo "100644,$UPPER_BLOB,Docs/upper.md"
 git -C "$REPO" commit -qm "case"; DOCS_UPPER=$(git -C "$REPO" rev-parse HEAD)
 git -C "$REPO" checkout -q -f main
 startCase nested-docs; writeFile foo/docs/a.md '# nested'; NESTED_DOCS=$(finishCase)
+# A code path sorting before 6000 docs/ paths: the changed-file list (about
+# 108 KiB) exceeds the 64 KiB pipe buffer, so a reader that exits on the first
+# line leaves the writer to die of SIGPIPE.
+startCase big-docs-list; writeFile aaa/x.ts 'export const x = 1;'
+# 100000 + n with its leading 1 stripped zero-pads n to five digits without
+# forking a printf per file.
+bigDocsIndex=100000
+while [ "$bigDocsIndex" -lt 106000 ]; do
+  : > "$REPO/docs/file-${bigDocsIndex#1}.md"
+  bigDocsIndex=$((bigDocsIndex + 1))
+done
+BIG_DOCS_LIST=$(finishCase)
 startCase newline-name; printf '# nl\n' > "$REPO/docs/a
 b.md"; NEWLINE_NAME=$(finishCase)
 
@@ -159,6 +174,7 @@ expectScope "docsx/ lookalike path" "should_run=true" pull_request false "$BASE"
 expectScope "Docs/ uppercase path" "should_run=true" pull_request false "$BASE" "$DOCS_UPPER"
 expectScope "foo/docs/ nested path" "should_run=true" pull_request false "$BASE" "$NESTED_DOCS"
 expectScope "docs/ file whose name holds a newline" "should_run=true" pull_request false "$BASE" "$NEWLINE_NAME"
+expectScope "code path before a docs/ list larger than the pipe buffer" "should_run=true" pull_request false "$BASE" "$BIG_DOCS_LIST"
 expectScope "empty diff (base equals head)" "should_run=true" pull_request false "$BASE" "$BASE"
 
 # ---- Diff errors answer true -----------------------------------------------

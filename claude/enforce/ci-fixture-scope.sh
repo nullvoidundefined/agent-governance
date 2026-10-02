@@ -13,12 +13,16 @@ set -uo pipefail
 
 # isDocsOnlyChange: succeeds only when BASE_SHA and HEAD_SHA are non-empty, the
 # diff between them succeeds and is non-empty, and every path starts with docs/.
+# The list is fed to grep through a here-string, never a pipe: under pipefail,
+# `printf | grep -q` made printf die of SIGPIPE (141) once grep exited early on
+# a list past 64 KiB, and the function wrongly answered docs-only (skip). The
+# R-109 review found that case.
 isDocsOnlyChange() {
   [ -n "${BASE_SHA:-}" ] && [ -n "${HEAD_SHA:-}" ] || return 1
   local changedFiles
   changedFiles=$(git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" 2>/dev/null) || return 1
   [ -n "$changedFiles" ] || return 1
-  if printf '%s\n' "$changedFiles" | grep -qv '^docs/'; then
+  if grep -qv '^docs/' <<<"$changedFiles"; then
     return 1
   fi
   return 0
