@@ -8,11 +8,11 @@
 #
 # Usage:
 #   task-tier.sh set <trivial|standard|complex|saga|investigation> "<reason>" [--ticket <KEY>] [--share <percent>] [--scope <glob>[,<glob>...]]
-#                             above trivial, --ticket is required whenever a tracker is
-#                             configured (~/.claude/TICKET-TRACKER.json), so the ticket
-#                             exists before the work: ticket-at-start-gate.sh denies
-#                             edits and commits until the ledger carries it (R-605,
-#                             IAN-149); a reclassification on the same branch keeps it
+#                             --ticket is optional at every tier: the ticket opens
+#                             by the time the draft PR opens (R-605, owner decision
+#                             2026-10-02, IAN-568, which retired the IAN-149 rule
+#                             that refused a tier above trivial without one); a
+#                             reclassification on the same branch keeps it
 #                             --scope records the files the request implies, as
 #                             repository-relative globs, repeatable and comma
 #                             separated; hooks/scope-widening-gate.sh reads it and
@@ -113,9 +113,6 @@ cmd_set() {
   [ -n "$lane" ] || lane=$(read_previous_lane_field "$branch" "$ticket" lane)
   [ -n "$lane_override" ] || lane_override=$(read_previous_lane_field "$branch" "$ticket" laneOverride)
   [ -n "$merge_mode" ] || merge_mode=$(read_previous_lane_field "$branch" "$ticket" mergeMode)
-  if [ "$tier" != "trivial" ] && [ -z "$ticket" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.claude/TICKET-TRACKER.json" ]; then
-    die "a $tier task needs its ticket before the work starts (R-605): open it with /ticket-lifecycle, then re-run with --ticket <KEY>"
-  fi
   if [ "$has_scope_flag" -eq 1 ]; then
     [ "${#scope_entries[@]}" -gt 0 ] || die "--scope takes at least one repository-relative glob, such as --scope 'src/services/**,src/api/**'"
     scope_json=$(printf '%s\n' "${scope_entries[@]}" | jq -R . | jq -sc .)
