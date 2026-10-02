@@ -74,7 +74,12 @@ component (the only R-705 exception). Everything else is a slice.
 ```
 
 Step 3 before step 4 is what makes `tdd.sh green`'s hash check bind to a git
-object: skip it and the check runs against the lock only, and says so.
+object: skip it and the check runs against the lock only, and says so. When
+the repository gitignores `.claude/tdd-lock.json` there is no RED commit to
+bind, so steps 3 and 6 merge into one commit per slice (I8, IAN-568).
+A repository whose pre-commit hook reformats tests names that formatter as
+`testFormatCommand` in `.enforce.json`, so `tdd.sh red` hashes the formatted
+test and a later reformat is not read as a change (I2).
 
 ## Who writes the test (R-907)
 
@@ -301,6 +306,13 @@ never amend, since role policy denies it every test write; on a standard-risk sl
 one session writes both, the only brake is the still-failing requirement and
 the recorded diff, so amend to fix the test's own mistake, never to make the
 implementation easier. Weakening a test is a `DISPUTE:`.
+
+**A collateral test.** While the slice is red, a test the lock does not name
+(an older test the change breaks on purpose, such as one pinning the column
+set a migration extends) is not denied: the guard asks, the owner approves the
+edit in one click, and the slice stays red. `tdd.sh green` still refuses any
+drop in the passing count outside the slice. A dispatched `implementer` is
+still denied every test write by its role and returns `DISPUTE:` for it.
 
 A `DISPUTE:` return stops the loop. Show the user the test, the claim, and the
 spec line. If the user agrees the test is wrong, `tdd.sh` cannot unlock it: the
