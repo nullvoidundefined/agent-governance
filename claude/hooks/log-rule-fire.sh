@@ -37,10 +37,14 @@ is_scratch_fire_location() {
 }
 
 # read_fire_session_id: prints the session ID for the fire line, or `-`.
+# Both sources lose every `|`, line feed, and carriage return, so a session ID
+# can neither shift the fields nor forge a further line (R-109 r1 #6 on PR
+# #182).
 read_fire_session_id() {
-  local session_id="${CLAUDE_SESSION_ID:-}"
+  local session_id
+  session_id=$(printf '%s' "${CLAUDE_SESSION_ID:-}" | tr -d '|\n\r')
   if [ -z "$session_id" ] && [ -n "${INPUT:-}" ]; then
-    session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null | tr -d '|\n')
+    session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null | tr -d '|\n\r')
   fi
   printf '%s' "${session_id:--}"
 }

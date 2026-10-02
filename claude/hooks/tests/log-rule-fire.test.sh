@@ -42,6 +42,21 @@ grep -qE '\|R-998\|test-hook\|deny\|[^|]+\|sess-env$' "$FIRE_DEFAULT" \
 grep -qE '\|R-997\|test-hook\|deny\|[^|]+\|sess-payload$' "$FIRE_DEFAULT" \
   || { echo "FAIL: payload session_id was not the session field: $(cat "$FIRE_DEFAULT")"; exit 1; }
 
+# A session ID carrying a field separator or a line break is stripped of them
+# in both branches, so it can neither shift the fields nor forge a second line
+# (R-109 r1 #6 on PR #182).
+for forged_session_id in 'a|b' $'a\nb' $'a\r\nb'; do
+  FORGED_LOG=$(mktemp)
+  ( CLAUDE_FIRE_LOG="$FORGED_LOG"; CLAUDE_SESSION_ID="$forged_session_id"; source "$HELPER"; log_rule_fire "R-992" "test-hook" "deny" )
+  ( CLAUDE_FIRE_LOG="$FORGED_LOG"; unset CLAUDE_SESSION_ID; INPUT=$(jq -nc --arg s "$forged_session_id" '{session_id:$s}'); source "$HELPER"; log_rule_fire "R-991" "test-hook" "deny" )
+  [ "$(wc -l < "$FORGED_LOG" | tr -d ' ')" = 2 ] \
+    || { echo "FAIL: a forged session ID did not yield exactly one line per fire: $(cat "$FORGED_LOG")"; exit 1; }
+  if awk -F'|' 'NF != 6 || $6 != "ab" { bad = 1 } END { exit !bad }' "$FORGED_LOG"; then
+    echo "FAIL: a forged session ID did not yield six fields ending in ab: $(cat -v "$FORGED_LOG")"; exit 1
+  fi
+  rm -f "$FORGED_LOG"
+done
+
 # Fixture runs never reach the default live log: a working directory under a
 # temporary directory, or a repository that resolves to `unknown`, is skipped.
 SCRATCH_REPO=$(mktemp -d)
