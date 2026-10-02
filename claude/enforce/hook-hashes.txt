@@ -45,7 +45,7 @@ c79b2e875379ebe1af5118dcc85851b836059638758387e550e6c577d8ac0ec8  enforce/securi
 06ad568ff8d0406f2e6279fc8854c77c4cf61a21a1662b5b49f2fe2e0e0148c9  enforce/tests/audit-signal-check.test.sh
 c225a7ba8769c2987b798d6215bcf726fea5e656f4d5ea8d9cb27a0137ca63fa  enforce/tests/bash32-builtin-floor.test.sh
 f61329f8f21c6bee49edd9574227d6b6280fc47b3d8753c19495a80f18bee1dd  enforce/tests/build-fast-composition.test.sh
-89d51bdcf4e6d9ce80dd56b7d0a2a200b4f10c4d32dbd2ddc2c7390c98bebb86  enforce/tests/build-fast-rule-text.test.sh
+f880b030034fdc82312ca5f2fbc0844f2397a6298aee9bb95fb2f95586530d95  enforce/tests/build-fast-rule-text.test.sh
 721f86d049ed628e607868afbf3dd945c78db071b2ec3bc6ed52fd51e68c2123  enforce/tests/build-lane-quiet.test.sh
 757a9e5f7a35d7eaf349471832ddb6d69ec3cbbc93488c58a85cb103ed6e2fae  enforce/tests/build-lane.test.sh
 4dd46df9910b1fc0982ba3296de7adff078be0ceeac54df2d437f4166fa2effa  enforce/tests/ci-fixture-scope-wiring.test.sh

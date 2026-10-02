@@ -53,7 +53,7 @@
     "skills/bug-hunt/SKILL.md": "sha256:6ed8d92d5c55d97dc08f0c86039a1972bdb0189fc75c239c8d0b36ada44929d6",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
     "skills/build-by-slice-require-review/SKILL.md": "sha256:07374d013831a0eb2308a17138b94f9479a795f2143d5920279d7e477573703c",
-    "skills/build-fast/SKILL.md": "sha256:18e4dad29c6ba8a601e2fff06e242424cb14ee3ef9ca7703874171cd405b1ace",
+    "skills/build-fast/SKILL.md": "sha256:bb80ead69fe9eac38c4d93e0c1938ee8ac18ff1b286f1e17e1ab8720c94444c1",
     "skills/build-fast/lane-rules.json": "sha256:14fc46df58a5a09d0ceef2165375d75cfeb82f88784961d56e3830cd4bf40ff9",
     "skills/build-fast/scripts/build-lane.sh": "sha256:c6dd4910d630e4d4fda172a07d44fb2bec81c6fd55a2ac0d6786f5087bd554ce",
     "skills/cleanup-specs-plans/SKILL.md": "sha256:0414853899097a42da75e1b2e9914f1443ceefb651d9a8de4a409d090e50907b",

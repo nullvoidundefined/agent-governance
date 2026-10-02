@@ -106,4 +106,11 @@ forbidText "$SKILL" 'Skip any step that does not change whether' "build-fast SKI
 forbidText "$SKILL" 'Reliability comes from the deterministic gates' "build-fast SKILL.md still carries the old reliability sentence"
 requireText "$SKILL" "Spend no agent pass that does not change whether the requested change works or is safe; the flow's own steps are never skipped" \
   "build-fast SKILL.md lacks the revised speed rule"
+# IAN-568 R-517 r1 #1: the flow follows owner decisions 2, 5, and 8.
+forbidText "$SKILL" 'One `tdd.sh` slice for the whole change' "build-fast SKILL.md still locks every change"
+forbidText "$SKILL" 'Search the tracker by branch, then open or advance the ticket' "build-fast SKILL.md still opens the ticket in Setup"
+requireText "$SKILL" 'Guarded lane (high-risk or security): one `tdd.sh` slice' "build-fast SKILL.md lacks the guarded-lane lock"
+requireText "$SKILL" 'only when round one found a HIGH' "build-fast SKILL.md lacks the one-round review rule"
+requireText "$SKILL" '`fixed <sha>`' "build-fast SKILL.md lacks the fixed-sha findings record"
+requireText "$SKILL" '(title, tier, branch, `started_at`, `actual_minutes`, `risk`)' "build-fast SKILL.md lacks the six close fields"
 echo "build-fast-rule-text.test.sh PASS"
