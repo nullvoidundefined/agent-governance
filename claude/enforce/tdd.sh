@@ -36,8 +36,11 @@
 #       when the lock is committed, to the commit that introduced it (the RED
 #       commit), or identical once .enforce.json's testFormatCommand formats
 #       a copy (red and amend run that formatter before hashing; the key names
-#       one pure formatter and its flags, and a value holding a shell operator
-#       is refused with a warning); a gitignored
+#       the formatter binary directly with its flags, run as an argument
+#       vector with no shell, and a value holding a shell metacharacter or
+#       naming a shell, interpreter, launcher, package runner, or a path
+#       outside node_modules/.bin/ and .venv/bin/ is refused with a warning);
+#       a gitignored
 #       lock has no RED commit, so one commit per slice is fine; runs the suite and requires every named test to pass, none
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
@@ -889,9 +892,10 @@ cmd_red() {
 # --- test formatting (I2, IAN-568) -------------------------------------------
 # A repository's pre-commit hook may reformat a test after `red` hashed it
 # (black after a `ruff format` check), and green then reported the test as
-# changed. `.enforce.json` may name the formatter as `testFormatCommand`, a
-# shell command that takes file paths and rewrites them in place (for example
-# "uv run --project apps/server black -q"). When it is set, red and amend run
+# changed. `.enforce.json` may name the formatter as `testFormatCommand`, the
+# formatter binary and its flags, which takes file paths and rewrites them in
+# place (for example "black -q" or "node_modules/.bin/prettier --write"). When
+# it is set, red and amend run
 # it on the named tests before hashing them, so the hash is of the formatted
 # file, and green accepts a locked file whose hash differs only when a
 # formatted copy of it hashes to the recorded value: a formatting-only change
@@ -901,29 +905,85 @@ cmd_red() {
 # with a pre-commit formatter should set the key to that same formatter.
 
 # test_format_command: prints .enforce.json's testFormatCommand, or nothing.
-# The value runs under `bash -c`, so it must name one pure formatter program
-# and its flags (never a --fix linter): a value holding a shell operator
-# (`|`, `;`, `&`, `$(`, a backtick, `>`, `<`, or a newline) is refused with a
-# warning and the hash check stays byte-exact (R-109 r1 #4, IAN-568).
+# The value names the formatter binary directly with its flags (for example
+# `ruff format`, `black -q`, `node_modules/.bin/prettier --write`); it is
+# split into words with no shell evaluation and run as an argument vector,
+# never under `bash -c`. It is refused with a warning, and the hash check
+# stays byte-exact, when it holds a shell operator or metacharacter, when its
+# program is an assignment, a shell, an interpreter, a launcher, or a package
+# runner, or when its program is a path outside node_modules/.bin/ and
+# .venv/bin/ (R-109 r1 #4, r2 #1, IAN-568).
 test_format_command() {
-  local command
+  local command program
+  local -a words
   [ -f "$ROOT/.enforce.json" ] || return 0
   command=$(jq -r '.testFormatCommand // empty' "$ROOT/.enforce.json" 2>/dev/null || true)
+  [ -n "$command" ] || return 0
   case "$command" in
-    *'|'* | *';'* | *'&'* | *'$('* | *'`'* | *'>'* | *'<'* | *$'\n'*)
-      say "warning: testFormatCommand is refused because it holds a shell operator; name one formatter program and its flags. Hashing the test(s) byte-exact" >&2
+    *'|'* | *';'* | *'&'* | *'$'* | *'`'* | *'>'* | *'<'* | *$'\n'* | *$'\r'* \
+      | *'\'* | *'"'* | *"'"* | *'('* | *')'* | *'{'* | *'}'* | *'*'* | *'?'* | *'~'* | *'['* | *'#'*)
+      say "warning: testFormatCommand is refused because it holds a shell operator or metacharacter; name one formatter program and its flags. Hashing the test(s) byte-exact" >&2
       return 0 ;;
   esac
+  read -r -a words <<< "$command"
+  program="${words[0]:-}"
+  if ! format_program_path "$program" >/dev/null; then
+    say "warning: testFormatCommand is refused because its program ($program) is not a formatter binary named directly (a bare name on PATH, node_modules/.bin/<tool>, or .venv/bin/<tool>; never an assignment, shell, interpreter, launcher, or package runner). Hashing the test(s) byte-exact" >&2
+    return 0
+  fi
   printf '%s' "$command"
 }
 
+# format_program_path <program>: prints the absolute path testFormatCommand's
+# program runs from, or fails when the program is refused: an assignment, a
+# shell, interpreter, launcher, or package runner, a path other than
+# node_modules/.bin/<tool> or .venv/bin/<tool>, or a bare name that PATH
+# resolves to nothing or to a relative or in-repository file.
+format_program_path() {
+  local program="$1" name resolved
+  [ -n "$program" ] || return 1
+  case "$program" in *=* | -* | *..*) return 1 ;; esac
+  name=$(basename "$program")
+  case "$name" in
+    bash | sh | zsh | dash | ksh | mksh | csh | tcsh | fish | env | eval | exec | xargs \
+      | nohup | sudo | doas | su | timeout | gtimeout | nice | ionice | time | command | builtin \
+      | source | . | python | python2 | python3 | python3.* | pypy | pypy3 | node | nodejs | deno | bun \
+      | perl | ruby | php | lua | tclsh | osascript | awk | gawk | nawk | sed | find | git | make \
+      | script | arch | caffeinate | stdbuf | setsid | chroot | watch | parallel | open | flock \
+      | uv | uvx | npx | pnpm | pnpx | yarn | npm | bunx | pipx | poetry | pdm | hatch | tox | nox)
+      return 1 ;;
+  esac
+  case "$program" in
+    */*)
+      case "$program" in
+        node_modules/.bin/?*) name="${program#node_modules/.bin/}" ;;
+        .venv/bin/?*) name="${program#.venv/bin/}" ;;
+        *) return 1 ;;
+      esac
+      case "$name" in */*) return 1 ;; esac
+      [ -f "$ROOT/$program" ] && [ -x "$ROOT/$program" ] || return 1
+      printf '%s' "$ROOT/$program" ;;
+    *)
+      resolved=$(type -P -- "$program" 2>/dev/null) || return 1
+      case "$resolved" in /*) ;; *) return 1 ;; esac
+      case "$resolved" in "$ROOT"/*) return 1 ;; esac
+      printf '%s' "$resolved" ;;
+  esac
+}
+
 # format_test_files <rel>...: runs testFormatCommand on the root-relative
-# files from the repository root; a non-zero exit warns and is not a refusal.
+# files from the repository root as an argument vector (the program resolved
+# to its absolute path, so no function, builtin, or alias runs in its place);
+# a non-zero exit warns and is not a refusal.
 format_test_files() {
-  local command
+  local command program
+  local -a words
   command=$(test_format_command)
   [ -n "$command" ] && [ $# -gt 0 ] || return 0
-  (cd "$ROOT" && bash -c "$command \"\$@\"" tdd-format "$@") >/dev/null 2>&1 \
+  read -r -a words <<< "$command"
+  program=$(format_program_path "${words[0]}") || return 0
+  words[0]="$program"
+  (cd "$ROOT" && "${words[@]}" "$@") >/dev/null 2>&1 \
     || say "warning: testFormatCommand ($command) exited non-zero on $*; hashing the file(s) as they stand" >&2
 }
 
