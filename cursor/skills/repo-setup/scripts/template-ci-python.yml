@@ -54,5 +54,7 @@ jobs:
           python-version-file: pyproject.toml
       - run: uv sync --frozen
       - run: uv run ruff check .
+      # ruff format is the one formatter for a new repo (CLAUDE-PYTHON.md Tooling);
+      # an existing repo that configures another formatter swaps this step for it.
       - run: uv run ruff format --check .
       - run: uv run pytest

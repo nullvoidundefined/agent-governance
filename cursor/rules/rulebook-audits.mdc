@@ -12,6 +12,7 @@ Source: `~/.claude/rulebook/audits.md`, section "Audits (R-8xx)". Enforcement li
 Diff-level review routes through the native commands first: `/code-review` for correctness and quality on the working diff or a PR, `/security-review` for diff-level security. Dispatch the audit roles below for what native review does not cover: architecture drift, strategy, unit economics, compliance, and the other whole-project dimensions.
 
 R-801: Run audits on signal only.
+  Class: D; delivery: this file, read on demand.
   Spec:
   - Pre-launch: all three standing roles.
   - Specific risk signal: the matching role only.
@@ -20,6 +21,7 @@ R-801: Run audits on signal only.
   Enforcement: hook:audit-signal-check (advisory; detects the 5+ commits signal at push time); manual for pre-launch and risk-signal triggers
 
 R-802: Have audit roles declare P0-P3 findings independently and never act on them directly.
+  Class: D; delivery: this file, read on demand.
   Spec:
   - Reports to `docs/audits/YYYY-MM-DD-<role>.md`, resolved from the repository root (the directory `audit-signal-check.sh` reads to advance its baseline); never under a per-tool folder such as `claude/docs/audits/`.
   - P0/P1 current-effort; P2/P3 to `ISSUES.md`.
@@ -27,9 +29,11 @@ R-802: Have audit roles declare P0-P3 findings independently and never act on th
   Enforcement: manual
 
 R-803: Invoke on-request roles (UX, Design, Marketing, Financial, Legal) only when their specific signal is present.
+  Class: D; delivery: this file, read on demand.
   Enforcement: manual
 
 R-804: Treat audit findings as the graded deliverable and proposed fixes as unverified hypotheses, never applied as-is.
+  Class: D; delivery: this file, read on demand.
   Scope: every standing and on-request role; audit dispatch prompts restate (a) through (c).
   Spec:
   - (a) Every finding pastes the actual offending code (the real key order, signature, markup, config) with file:line, names the governing rule or standard, and carries a P0-P3 severity. A finding whose pasted evidence shows compliance is dropped, not reported.
@@ -39,6 +43,7 @@ R-804: Treat audit findings as the graded deliverable and proposed fixes as unve
   Enforcement: manual
 
 R-805: Restrict audit roles to reading project source/docs/tests; Security additionally reads `.env.example`.
+  Class: D; delivery: this file, read on demand.
   Spec: no role reads `.env`, `~/.aws`, `~/.ssh`, or keychains without per-turn authorization.
   Enforcement: manual
 

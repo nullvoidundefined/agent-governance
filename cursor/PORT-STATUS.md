@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-55 of 62 hook registrations port, across 9 Cursor events.
+46 of 52 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -17,13 +17,9 @@
 | `protected-path-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `ticket-at-start-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-eslint-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-ruff-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `push-semgrep-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `push-rubocop-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `push-golangci-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `push-feature-docs-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `pr-ticket-ref-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `constant-change-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `audit-signal-check` | PreToolUse (Bash) | ported: `beforeShellExecution` |
@@ -35,11 +31,6 @@
 | `content-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `protected-path-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `codex-test-author-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `ticket-at-start-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `lexicon-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `scope-widening-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `task-provenance-gate` | PreToolUse (TaskCreate) | not ported: fires on Claude Code's TaskCreate tool, which Cursor lacks; a registration on that matcher would never receive an event, so R-213's provenance tag depends on recall under Cursor. |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
@@ -50,7 +41,6 @@
 | `flat-directory-reminder` | PostToolUse (Write) | ported: `afterFileEdit` |
 | `spec-glossary-check` | PostToolUse (Write) | ported: `afterFileEdit` |
 | `handoff-check` | PostToolUse (Write) | ported: `afterFileEdit` |
-| `clean-code-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
 | `observability-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
 | `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
 | `task-commit-reminder` | PostToolUse (TaskUpdate) | not ported: fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor. |
