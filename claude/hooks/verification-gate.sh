@@ -132,6 +132,17 @@ export FIXTURE_SHARDS_LOCK_WAIT_SECONDS=480
 # fixture-suite check returns it: the retry would queue for a second 480
 # seconds and overrun the budget anyway.
 FIXTURE_LOCK_GAVE_UP_STATUS=75
+
+# A slice deliberately red (I5, IAN-568): while .claude/tdd-lock.json holds a
+# recorded RED, the failing tests are the outcome the slice exists to produce,
+# so blocking the turn on them only costs an extra turn. `tdd.sh
+# expected-red` answers whether every failure lies in the locked tests; it
+# refuses every other phase and any failure outside the lock, and the checks
+# below then run as usual.
+TDD_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" 2>/dev/null && pwd)/tdd.sh"
+if [ -f "$ROOT/.claude/tdd-lock.json" ] && [ -f "$TDD_SCRIPT" ]; then
+  bash "$TDD_SCRIPT" expected-red >/dev/null 2>&1 && exit 0
+fi
 MAX_OUTPUT_LINES=200
 MAX_OUTPUT_CHARS=8000
 
