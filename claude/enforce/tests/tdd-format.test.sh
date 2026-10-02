@@ -227,6 +227,28 @@ done
 rm -f .claude/tdd-lock.json tests/pad.test.sh
 echo "PASS: an allowlisted formatter in node_modules/.bin/, a bin link into node_modules/, and bare allowlisted formatters on PATH are accepted and run"
 
+# --- a symlink cycle is refused promptly (R-109 r4 #3) -----------------------
+# node_modules/.bin/black -> black2 -> black never resolves; red must warn and
+# hash byte-exact instead of looping. A watchdog kills red after 20 seconds so
+# a loop fails the fixture instead of hanging it.
+ln -s black2 node_modules/.bin/black
+ln -s black node_modules/.bin/black2
+jq -n '{testFormatCommand: "node_modules/.bin/black -q"}' > .enforce.json
+bash "$TDD" open "F-6b pad.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/pad.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "pad.test.sh PASS"\n' > tests/pad.test.sh
+set -m; bash "$TDD" red tests/pad.test.sh > cycle.out 2>&1 & redPid=$!; set +m
+for _ in $(seq 1 200); do kill -0 "$redPid" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$redPid" 2>/dev/null; then
+  kill -TERM -- "-$redPid" 2>/dev/null || true; wait "$redPid" 2>/dev/null || true
+  echo "FAIL: red must refuse a symlink-cycle testFormatCommand promptly, not loop"; exit 1
+fi
+wait "$redPid" || { echo "FAIL: red with a symlink-cycle testFormatCommand must still succeed; output: $(cat cycle.out)"; exit 1; }
+grep -q 'testFormatCommand is refused' cycle.out || { echo "FAIL: red must warn that the symlink cycle is refused; output: $(cat cycle.out)"; exit 1; }
+grep -q '[[:space:]]$' tests/pad.test.sh || { echo "FAIL: a symlink-cycle testFormatCommand must leave the test unformatted"; exit 1; }
+[ "$(lock_field '.tests[0].sha256')" = "$(file_sha tests/pad.test.sh)" ] || { echo "FAIL: a symlink-cycle testFormatCommand must leave the hash byte-exact"; exit 1; }
+rm -f .claude/tdd-lock.json tests/pad.test.sh cycle.out node_modules/.bin/black node_modules/.bin/black2
+echo "PASS: a symlink cycle as testFormatCommand is refused promptly with nothing executed"
+
 # --- the formatted copy never follows a planted symlink (R-109 r2 #2, r3 #1) --
 # Bash noclobber opens a link to an existing non-regular file (a FIFO,
 # /dev/null) through, so the old copy path, removed and then recreated beside
