@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Covers: hook:fix-commit-requires-test
 # Verifies fix-commit-requires-test.sh (R-403): a fix-family commit with no staged
-# test file denies; staged TS or Python test files allow. The tests/ tree and
+# test file warns without denying (IAN-568); staged TS or Python test files are silent. The tests/ tree and
 # pytest filename conventions (test_*.py, *_test.py) count as test files.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -10,17 +10,19 @@ HOOK="$CLAUDE_HARNESS_ROOT/hooks/fix-commit-requires-test.sh"
 payload() { jq -n --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
 decision() {
   OUT=$(payload "$1" | "$HOOK")
-  if [ -z "$OUT" ]; then echo none; else printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision // "none"'; fi
+  # A warning is additionalContext with no permissionDecision; any decision
+  # field is reported as itself so a regression back to deny fails.
+  if [ -z "$OUT" ]; then echo none; else printf '%s' "$OUT" | jq -r '.hookSpecificOutput | .permissionDecision // (if .additionalContext then "warn" else "none" end)'; fi
 }
 
 REPO=$(mktemp -d); cd "$REPO"; git init -q
 git config user.email t@t && git config user.name t
 git commit -q --allow-empty -m init
 
-# fix: with no staged test -> deny
+# fix: with no staged test -> warn
 printf 'export const x = 1;\n' > fixOnly.ts; git add fixOnly.ts
 GOT=$(decision 'git commit -m "fix: broken thing"')
-[ "$GOT" = "deny" ] || { echo "FAIL: expected deny with no staged test, got $GOT"; exit 1; }
+[ "$GOT" = "warn" ] || { echo "FAIL: expected warn with no staged test, got $GOT"; exit 1; }
 
 # P2-7 (2026-09-17 audit): the same commit written with `-F -` and a heredoc,
 # which is the form the agents in this repo actually use. The subject sits in
@@ -32,33 +34,33 @@ FIX_SUBJECT="fix$(printf ':') broken thing"
 SCOPED_SUBJECT="fix(scope)$(printf ':') broken thing"
 CHORE_SUBJECT="chore$(printf ':') not a fix"
 GOT=$(decision "$(printf 'git commit -q -F - <<MSG\n%s\n\nbody line\nMSG' "$FIX_SUBJECT")")
-[ "$GOT" = "deny" ] || { echo "FAIL: expected deny for the -F - heredoc form, got $GOT"; exit 1; }
+[ "$GOT" = "warn" ] || { echo "FAIL: expected warn for the -F - heredoc form, got $GOT"; exit 1; }
 GOT=$(decision "$(printf "git commit -F - <<'EOF'\n%s\nEOF" "$SCOPED_SUBJECT")")
-[ "$GOT" = "deny" ] || { echo "FAIL: expected deny for a quoted heredoc delimiter, got $GOT"; exit 1; }
+[ "$GOT" = "warn" ] || { echo "FAIL: expected warn for a quoted heredoc delimiter, got $GOT"; exit 1; }
 GOT=$(decision "$(printf 'git commit -q -F - <<MSG\n%s\nMSG' "$CHORE_SUBJECT")")
 [ "$GOT" = "none" ] || { echo "FAIL: a non-fix subject in the -F - form must pass, got $GOT"; exit 1; }
 
 # PR #8 review (Copilot, claude/hooks/fix-commit-requires-test.sh): the -m
 # branch printed the whole message rather than its first line, so any body line
 # or trailer beginning with a fix-family prefix made a docs: or chore: commit
-# read as a bug fix and deny. R-403 is about the subject; the subject is the
+# read as a bug fix and warn. R-403 is about the subject; the subject is the
 # first non-empty line of the message and nothing below it.
 DOCS_SUBJECT="docs(hooks)$(printf ':') describe the guard"
 FIX_BODY_LINE="fix$(printf ':') this prefix opens a body line, not the subject"
 GOT=$(decision "$(printf 'git commit -m "%s\n\n%s\n\nCo-Authored-By: A B <a@b>"' "$DOCS_SUBJECT" "$FIX_BODY_LINE")")
-[ "$GOT" = "none" ] || { echo "FAIL: a fix-family prefix inside the body must not make a docs: commit deny, got $GOT"; exit 1; }
+[ "$GOT" = "none" ] || { echo "FAIL: a fix-family prefix inside the body must not make a docs: commit warn, got $GOT"; exit 1; }
 
 # The extractor reads only from the `git commit` token onward: a `-m "..."`
 # string sitting in an earlier command's heredoc payload is not this commit's
 # message, and reading it there silently bypassed R-403 for the real commit.
 PAYLOAD_HEREDOC='cat > /tmp/fix-commit-requires-test-fixture-out <<PAYLOAD'
 GOT=$(decision "$(printf '%s\n-m "%s"\nPAYLOAD\ngit commit -q -F - <<MSG\n%s\nMSG' "$PAYLOAD_HEREDOC" "$CHORE_SUBJECT" "$FIX_SUBJECT")")
-[ "$GOT" = "deny" ] || { echo "FAIL: an unrelated -m in a heredoc payload must not stand in for the commit subject, got $GOT"; exit 1; }
+[ "$GOT" = "warn" ] || { echo "FAIL: an unrelated -m in a heredoc payload must not stand in for the commit subject, got $GOT"; exit 1; }
 
 # A heredoc delimiter ends the message at its own line; further commands may
 # follow it in the same Bash call without hiding the subject.
 GOT=$(decision "$(printf 'git commit -q -F - <<MSG\n%s\nMSG\ngit push origin main' "$FIX_SUBJECT")")
-[ "$GOT" = "deny" ] || { echo "FAIL: a command after the heredoc delimiter must not hide the subject, got $GOT"; exit 1; }
+[ "$GOT" = "warn" ] || { echo "FAIL: a command after the heredoc delimiter must not hide the subject, got $GOT"; exit 1; }
 
 git commit -qm "chore: clear" >/dev/null
 
@@ -97,10 +99,10 @@ GOT=$(decision 'git commit -m "feat: no test needed"')
 git commit -qm "chore: clear6" >/dev/null
 
 # Chained add+commit bypass (2026-07-31 engineering audit P1): nothing staged
-# yet, the add happens inside the same command. Fix without a test -> deny.
+# yet, the add happens inside the same command. Fix without a test -> warn.
 printf 'y = 3\n' > chained.py
 GOT=$(decision 'git add chained.py && git commit -m "fix: chained no test"')
-[ "$GOT" = "deny" ] || { echo "FAIL: expected deny for chained add+commit without test, got $GOT"; exit 1; }
+[ "$GOT" = "warn" ] || { echo "FAIL: expected warn for chained add+commit without test, got $GOT"; exit 1; }
 
 # Chained add+commit including a test file -> allow.
 printf 'def test_chained():\n    assert True\n' > tests/test_chained.py

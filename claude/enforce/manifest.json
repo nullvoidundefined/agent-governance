@@ -381,10 +381,11 @@
         },
         {
             "id": "R-403",
-            "tier": "regex",
+            "tier": "advisory",
             "enforcer": "hook:fix-commit-requires-test",
-            "severity": "error",
-            "autofix": false
+            "severity": "warn",
+            "autofix": false,
+            "note": "PreToolUse Bash git commit: a fix-family subject with no staged test file gets non-blocking additionalContext naming the R-403 path; a warning since IAN-568, never a deny. Fixture: hooks/tests/fix-commit-requires-test.test.sh"
         },
         {
             "id": "R-605",
