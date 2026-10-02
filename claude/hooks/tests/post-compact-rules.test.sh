@@ -22,7 +22,11 @@ printf '%s' "$OUT" | jq -e . >/dev/null || { echo "FAIL: emitted invalid JSON"; 
 EVENT=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName')
 [ "$EVENT" = "SessionStart" ] || { echo "FAIL: hookEventName is '$EVENT', not SessionStart"; exit 1; }
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext')
-grep -q 'R-504' <<< "$CTX" || { echo "FAIL: rules missing from additionalContext"; exit 1; }
+grep -q 'R-201' <<< "$CTX" || { echo "FAIL: rules missing from additionalContext"; exit 1; }
+# IAN-568: deleted and defaulted rules are no longer re-injected.
+for gone in R-206 R-503 R-212 R-504; do
+  grep -q "$gone" <<< "$CTX" && { echo "FAIL: $gone is still re-injected after compaction"; exit 1; } || true
+done
 grep -q 'PreCompact\|UserPromptSubmit' <<< "$OUT" && { echo "FAIL: emits a retired event name"; exit 1; } || true
 
 # 5. The task-start ledger (2026-09-17 skills audit S-8) is re-injected when

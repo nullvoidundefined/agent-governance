@@ -167,7 +167,7 @@ check("lean settings.json keeps every non-hook key", JSON.stringify(sourceRest) 
 const skillDirs = fs.readdirSync(path.join(claudeDir, "skills"));
 check("lean lists every skill", lean.skills.length === skillDirs.length && skillDirs.every((d) => lean.skills.includes(d)));
 check("lean omits every SKILL.md", skillDirs.every((d) => !files.has(`skills/${d}/SKILL.md`) && omitted.has(`skills/${d}/SKILL.md`)));
-for (const keep of ["skills/task-start/scripts/task-tier.sh", "skills/task-start/scripts/finding.sh", "skills/task-start/scripts/task-provenance.sh", "skills/build-fast/scripts/build-lane.sh", "skills/build-fast/lane-rules.json"])
+for (const keep of ["skills/task-start/scripts/task-tier.sh", "skills/task-start/scripts/finding.sh", "skills/build-fast/scripts/build-lane.sh", "skills/build-fast/lane-rules.json"])
   check(`lean keeps ${keep}`, files.has(keep) && files.get(keep) === source.get(keep));
 
 // Agents: the nine audit agents hidden, the six structural ones kept.

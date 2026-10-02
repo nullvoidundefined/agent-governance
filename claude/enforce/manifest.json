@@ -427,14 +427,6 @@
             "note": "denies every gh pr merge whose PR body (gh pr view --json labels,commits,body,headRefName,headRefOid,isCrossRepository,url, one call; labels and commits must parse too) lacks a Markdown heading starting with Codex review followed by at least one non-blank line outside a fenced code block, or whose section under that heading lacks a reviewer, a model, or a range line with a value, or whose range line holds no <base>..<head> expression whose head endpoint prefixes the headRefOid the same call returned (a stale range, a head in the base position, a bare object name, or a gh that reports no head commit all deny), or whose body holds more than one Codex review heading, unless the PR is trivial tier: an untracked .claude/task-tier.json at the checkout's top records tier trivial for the PR's headRefName, the PR's url names the checkout's origin repository, and isCrossRepository is false (a trivial marker in the PR body is never read); fail-closed on gh error, timeout, cd, or GH_REPO, on a command that runs more than one merge, and on any merge the hook cannot parse. Merges are found by the quote-aware shell scan in hooks/shell-command-tokens.sh (braces, subshells, backticks, control flow, eval and sh -c strings, heredocs fed to a shell, wrappers, quoting, and escapes are all seen; a shell reading its script from stdin and a gh, pr, or merge word built by expansion count as unreadable merges; a mention inside a quoted argument or a heredoc fed to anything but a shell is not a merge), and only a bare gh pr merge on its own simple command is parseable; its flags are read from the scanned words. Fenced code, indented code, and HTML comments do not count as the section. Running the review, and fixing or answering each finding, stay manual. Fixture: enforce/tests/git-workflow-guard.test.sh; build-fast (IAN-401): enforce/tests/build-fast-composition.test.sh pins that a lane or merge mode on the ledger changes no merge-guard decision, enforce/tests/build-fast-rule-text.test.sh pins the R-211, R-514, and R-517 build-fast clauses, and enforce/tests/build-lane.test.sh covers the skills/build-fast lane classifier. IAN-521 (2026-10-01): the reviewer runs on sonnet for every PR outside build-fast, security-touching ones included, and a PR gets at most two review rounds, after which LOW findings are ticketed and answered with the key; the hook does not parse review rounds or the reviewer model, so both stay manual (deferred)"
         },
         {
-            "id": "R-511",
-            "tier": "advisory",
-            "enforcer": "hook:git-workflow-guard",
-            "severity": "warn",
-            "autofix": false,
-            "note": "commit-time warning at 5+ files across 3+ directories on main"
-        },
-        {
             "id": "R-508",
             "tier": "advisory",
             "enforcer": "hook:git-workflow-guard",
@@ -740,14 +732,6 @@
             "autofix": false
         },
         {
-            "id": "R-503",
-            "tier": "advisory",
-            "enforcer": "hook:session-start",
-            "severity": "warn",
-            "autofix": false,
-            "note": "SessionStart, every source: records the start timestamp (first valid transcript timestamp, else the hook clock on startup or clear with no transcript file yet) write-once to ~/.claude/projects/<key>/session-start.<session-id> and injects it; ticket-lifecycle open reads started_at from it. Needs transcript_path in the payload; the Cursor adapter passes a synthetic one keyed on the workspace and conversation_id, so a Cursor conversation records the hook clock once. The percentage announcements and elapsed-time reports stay manual. Fixture: hooks/tests/session-start-timestamp.test.sh"
-        },
-        {
             "id": "R-601",
             "tier": "advisory",
             "enforcer": "hook:task-state-tracker",
@@ -807,14 +791,6 @@
             "severity": "error",
             "autofix": false,
             "note": "asks when package.json, pyproject.toml, go.mod, or a Gemfile gains a dependency name it did not have on disk; version changes, removals, lockfiles, and indirect go requires are silent; parsing in hooks/dependency-add-scan.py, fails open"
-        },
-        {
-            "id": "R-215",
-            "tier": "regex",
-            "enforcer": "ci:doc-sha-reachability",
-            "severity": "error",
-            "autofix": false,
-            "note": "enforce/doc-sha-reachability.sh: every backticked 7-to-40 hex token, either case and normalised to lowercase, in docs/ and claude/docs/ that resolves to a commit here must be reachable from some ref, reported as DOC-SHA-UNREACHABLE with the citing file and line; a token that resolves to nothing is never a finding, since documents cite other repositories; resolution is one git cat-file --batch-check over all tokens and one git rev-list --all, never a process per token (IAN-183); the escape hatch is an unreachable-sha HTML comment naming the same SHA on the same line with a reason holding a real word, outside inline code, fences and enclosing comments, one marker per citation; every state it cannot judge (shallow clone, unreadable document, failed resolver, unlistable change set) exits 2 rather than reporting success; hooks/pre-push.sample runs --push, which reads the pre-push ref list on stdin and inspects the pushed commits rather than the working tree, and aborts on exit 2 as well as 1; the push half is inert until install-git-hooks.sh is re-run in a repository, since git hooks are not version-controlled; fixture enforce/tests/doc-sha-reachability.test.sh carries the IAN-260 spec and its three keep/ tags as the live regression case; the historical corpus is reported by --all and is not gated (IAN-308 phase 1, IAN-322)"
         },
         {
             "id": "R-334",
