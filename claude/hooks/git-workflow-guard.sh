@@ -30,8 +30,8 @@
 #          `model` equal to securityReviewModel in
 #          enforce/security-review-model.json, a `range` whose head endpoint
 #          is the PR head or an older PR commit after which every commit is a
-#          clean base merge or a commit its findings table marks `fixed <sha>`
-#          (IAN-568 I6; no docs-only exemption here), whose ledger entry is
+#          clean base merge (IAN-568 I6; no docs-only and no `fixed <sha>`
+#          exemption here, R-109 r1 #3 on PR #182), whose ledger entry is
 #          keyed by that endpoint, and an `artefact` line naming the reviewer's saved
 #          output (B-10c); a missing detector, an unresolvable range,
 #          a failed detector, or one that outlives
@@ -580,21 +580,24 @@ is_listed_fix_commit() {
 }
 
 # is_reviewed_tail <checkout top> <review head> <PR head oid> <base> <section>
-# <docs allowed>: true when the review's head endpoint names exactly one commit
-# this checkout holds (by object name, never a ref), that commit is an ancestor
-# of the PR head but not of <base> (so the review read part of the PR), and
-# every commit after it that the base branch does not already hold is one of:
-# a clean merge of the base branch (is_clean_base_merge), a commit the
-# section's findings table marks fixed (list_fixed_commit_names), or, when
-# <docs allowed> is 1, a docs-only commit (is_docs_only_commit). The review
-# range may then end before the PR head (IAN-516 for docs, IAN-568 I6 for base
-# merges and named fixes): a base merge or a fix tied to a named finding no
-# longer forces another review round, and CI still runs on the head. R-109
-# passes 0 for <docs allowed>: five review rounds on PR #172 found binding the
-# security artefact to a docs/ tail unbounded. Anything else is false and the
-# exact-head rule applies, including a git failure.
+# <codex exemptions allowed>: true when the review's head endpoint names
+# exactly one commit this checkout holds (by object name, never a ref), that
+# commit is an ancestor of the PR head but not of <base> (so the review read
+# part of the PR), and every commit after it that the base branch does not
+# already hold is a clean merge of the base branch (is_clean_base_merge) or,
+# when <codex exemptions allowed> is 1, a commit the section's findings table
+# marks fixed (list_fixed_commit_names) or a docs-only commit
+# (is_docs_only_commit). The review range may then end before the PR head
+# (IAN-516 for docs, IAN-568 I6 for base merges and named fixes): a base merge
+# or, for the Codex review, a fix tied to a named finding no longer forces
+# another review round, and CI still runs on the head. R-109 passes 0: five
+# review rounds on PR #172 found binding the security artefact to a docs/ tail
+# unbounded, and a `fixed <sha>` cell is self-attested in the mutable PR body,
+# so any security-review tail commit other than a clean base merge needs a new
+# round whose range ends at the head (R-109 r1 #3 on PR #182). Anything else
+# is false and the exact-head rule applies, including a git failure.
 is_reviewed_tail() {
-  local top="$1" review_head="$2" head_oid="$3" base="$4" section="$5" is_docs_allowed="$6"
+  local top="$1" review_head="$2" head_oid="$3" base="$4" section="$5" is_codex_exemption_allowed="$6"
   local review_oid tail_commits fixed_names tail_commit
   review_oid=$(resolve_commit_by_prefix "$top" "$review_head") || return 1
   is_commit_inside_range "$top" "$review_oid" "$head_oid" "$base" || return 1
@@ -603,8 +606,9 @@ is_reviewed_tail() {
   while IFS= read -r tail_commit; do
     [ -n "$tail_commit" ] || continue
     is_clean_base_merge "$top" "$tail_commit" "$base" && continue
+    [ "$is_codex_exemption_allowed" = 1 ] || return 1
     is_listed_fix_commit "$tail_commit" "$fixed_names" && continue
-    [ "$is_docs_allowed" = 1 ] && is_docs_only_commit "$top" "$tail_commit" && continue
+    is_docs_only_commit "$top" "$tail_commit" && continue
     return 1
   done <<< "$tail_commits"
   return 0
@@ -878,7 +882,7 @@ read_security_artefact_verdict() {
   is_head_commit_prefix "$range_head" "$SECURITY_HEAD" ||
     is_reviewed_tail "$SECURITY_TOP" "$range_head" "$SECURITY_HEAD" \
       "refs/remotes/origin/$(printf '%s' "$PR_JSON" | jq -r '.baseRefName // "" | strings' 2>/dev/null)" "$section" 0 ||
-    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, and not every later commit is a clean merge of the base branch or a commit the findings table marks \`fixed <sha>\`, so the review is stale (a docs-only tail is exempt for the Codex review only)"; return 0; }
+    { echo "its \`## Security review\` section's range head \`$range_head\` does not identify $(printf '%.7s' "$SECURITY_HEAD"), the commit this PR would merge, and not every later commit is a clean merge of the base branch, so the review is stale; run a new security review round whose range ends at the head (a fix commit listed \`fixed <sha>\` and a docs-only tail are exempt for the Codex review only)"; return 0; }
   [ -n "$(read_review_field "$section" artefact)" ] ||
     { echo "its \`## Security review\` section carries no \`artefact\` line naming the reviewer's saved output, so nothing proves what the review found; commit the artefact, record it with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head, and name it on an \`artefact\` line"; return 0; }
   echo ok

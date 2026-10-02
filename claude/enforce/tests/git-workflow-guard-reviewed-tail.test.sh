@@ -2,11 +2,14 @@
 # Shard: slow
 # Covers: hook:git-workflow-guard
 # Verifies that the merge gate in git-workflow-guard.sh accepts an R-517
-# `## Codex review` or an R-109 `## Security review` whose range head is an
-# older PR commit when every later commit is a clean merge of the base branch
-# or a commit the section's findings table marks `fixed <sha>` (IAN-568, I6:
-# every fix or base merge moved the head and forced another review round), and
-# still denies when a later commit is neither:
+# `## Codex review` whose range head is an older PR commit when every later
+# commit is a clean merge of the base branch or a commit the section's
+# findings table marks `fixed <sha>` (IAN-568, I6: every fix or base merge
+# moved the head and forced another review round), and an R-109
+# `## Security review` whose later commits are clean base merges only: the
+# `fixed <sha>` cell is self-attested in the mutable PR body, so a security
+# fix commit needs a new review round whose range ends at the head (R-109 r1
+# #3 on PR #182). Every other later commit is denied:
 #
 #   base merge, Codex        main gains code and is merged into the branch
 #                            after the review: reaches the R-514 ask.
@@ -18,9 +21,11 @@
 #                            that does not say fixed: denied, R-517.
 #   listed fix, Security     a fix commit named `fixed <sha>` in the Security
 #                            findings table after the recorded review head:
-#                            reaches the R-514 ask.
-#   base merge, Security     a clean base merge after the recorded review
-#                            head: reaches the R-514 ask.
+#                            denied, R-109.
+#   base merge, Security     a clean base merge, and nothing else, after the
+#                            recorded review head: reaches the R-514 ask.
+#   fix and base merge,      a listed fix commit and then a clean base merge
+#   Security                 after the recorded review head: denied, R-109.
 #   neither, Security        an unlisted code commit after the recorded
 #                            review head: denied, R-109.
 #
@@ -276,12 +281,13 @@ security_table_section() {
 
 # build_security_review_repo <name>: a PR changing a CORS config, then a
 # commit adding the Security review artefact (one MEDIUM finding), recorded in
-# the ledger with that commit checked out. Sets SR_DIR, SR_BASE, and
+# the ledger with that commit checked out. Sets SR_DIR, SR_BASE, SR_CHANGE
+# (the PR commit narrowing the config, inside the reviewed range), and
 # SR_REVIEWED (the recorded review head).
 build_security_review_repo() {
   build_pr_repo "$1" app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' \
     'ALLOWED_ORIGINS = ["*"]'
-  SR_DIR="$REPO_DIR" SR_BASE="$REPO_BASE"
+  SR_DIR="$REPO_DIR" SR_BASE="$REPO_BASE" SR_CHANGE="$REPO_HEAD"
   git_in "$SR_DIR" checkout -q feature
   mkdir -p "$SR_DIR/docs/reviews"
   printf '%s\n' '{"findings":[{"id":1,"severity":"MEDIUM"}]}' > "$SR_DIR/$SECURITY_ARTEFACT"
@@ -328,20 +334,32 @@ S_HEAD=$(add_commit "$S_DIR" app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["
 S_FIXED="fixed $(printf '%.7s' "$S_HEAD")"
 S_BODY=$(pr_body "$(codex_table_section "$S_BASE" "$S_REVIEWED" "$S_FIXED")" "$(security_table_section "$S_BASE" "$S_REVIEWED" "$S_FIXED")")
 STUB=$(write_pr_stub secfix "$S_BODY" "$S_HEAD" "$S_BASE" secfix)
-expect_r514_ask "fix commit listed fixed in the Security table" \
+expect_r109_deny "fix commit listed fixed in the Security table" \
   "$(run_guard "$STUB" "$S_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $S_HEAD")"
 
-# --- 6. a clean base merge after the Security review ------------------------
+# --- 6. a clean base merge, and nothing else, after the Security review -----
+# The finding's fix is the reviewed PR commit, inside the review's own range.
 build_security_review_repo secmerge
 M_DIR="$SR_DIR" M_BASE="$SR_BASE" M_REVIEWED="$SR_REVIEWED"
-M_FIX=$(add_commit "$M_DIR" app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' "fix: narrow the origins")
 M_NEW_BASE=$(advance_base "$M_DIR" app/main_work.py 'MAIN = 3')
 M_HEAD=$(merge_base_into_feature "$M_DIR")
-M_FIXED="fixed $(printf '%.7s' "$M_FIX")"
+M_FIXED="fixed $(printf '%.7s' "$SR_CHANGE")"
 M_BODY=$(pr_body "$(codex_table_section "$M_BASE" "$M_REVIEWED" "$M_FIXED")" "$(security_table_section "$M_BASE" "$M_REVIEWED" "$M_FIXED")")
 STUB=$(write_pr_stub secmerge "$M_BODY" "$M_HEAD" "$M_NEW_BASE" secmerge)
-expect_r514_ask "fix and clean base merge after the Security review" \
+expect_r514_ask "clean base merge only after the Security review" \
   "$(run_guard "$STUB" "$M_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $M_HEAD")"
+
+# --- 6b. a listed fix and then a clean base merge after the Security review --
+build_security_review_repo secfixmerge
+X_DIR="$SR_DIR" X_BASE="$SR_BASE" X_REVIEWED="$SR_REVIEWED"
+X_FIX=$(add_commit "$X_DIR" app/middleware/cors_config.py 'ALLOWED_ORIGINS = ["https://app.example.com"]' "fix: narrow the origins")
+X_NEW_BASE=$(advance_base "$X_DIR" app/main_work.py 'MAIN = 4')
+X_HEAD=$(merge_base_into_feature "$X_DIR")
+X_FIXED="fixed $(printf '%.7s' "$X_FIX")"
+X_BODY=$(pr_body "$(codex_table_section "$X_BASE" "$X_REVIEWED" "$X_FIXED")" "$(security_table_section "$X_BASE" "$X_REVIEWED" "$X_FIXED")")
+STUB=$(write_pr_stub secfixmerge "$X_BODY" "$X_HEAD" "$X_NEW_BASE" secfixmerge)
+expect_r109_deny "fix and clean base merge after the Security review" \
+  "$(run_guard "$STUB" "$X_DIR" "$CLEAN_STUB" "gh pr merge 42 --squash --match-head-commit $X_HEAD")"
 
 # --- 7. an unlisted code commit after the Security review -------------------
 build_security_review_repo secneither
