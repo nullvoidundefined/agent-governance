@@ -145,6 +145,70 @@ for p in $pids; do wait "$p" || failCase "a concurrent record failed"; done
 [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "9" ] || failCase "concurrent records must all land (want 9 snapshots)"
 [ ! -d "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the writer lock must be released"
 
+# --- 9. Insecure values: the option parser and the lock (R-109 r1). ---
+# expectFail <description> <command...>: the command must exit nonzero within
+# ten seconds; a hang (timeout's 124) is a failure of its own.
+expectFail() {
+  local what="$1" rc=0
+  shift
+  timeout 10 "$@" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 124 ] || failCase "$what: hung"
+  [ "$rc" -ne 0 ] || failCase "$what: exited 0"
+}
+rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE.lock"
+export QUOTA_NOW=$NOW_OWNER
+for flag in --resets-at --provider --window-days --at --source; do
+  expectFail "a dangling $flag" bash "$SCRIPT" record codex 13 "$flag"
+done
+expectFail "an unknown option" bash "$SCRIPT" record codex 13 --bogus x
+expectFail "a provider with control characters" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00 --provider "$(printf 'co\tdex\nprovider fake')"
+expectFail "an offset past 14 hours" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+99:99
+[ ! -f "$CLAUDE_QUOTA_FILE" ] || failCase "a refused record must not create the file"
+# A fresh foreign lock: record waits out its bound and fails, never hangs.
+mkdir "$CLAUDE_QUOTA_FILE.lock"
+expectFail "a fresh foreign lock" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00
+[ -d "$CLAUDE_QUOTA_FILE.lock" ] || failCase "a refused writer must not remove another writer's lock"
+# A stale lock, empty or not, is broken and the record lands.
+touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
+bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00 || failCase "a stale empty lock must be broken"
+mkdir "$CLAUDE_QUOTA_FILE.lock" && echo 123 >"$CLAUDE_QUOTA_FILE.lock/pid"
+touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
+timeout 10 bash "$SCRIPT" record codex 14 || failCase "a stale non-empty lock must be broken, not spun on"
+[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "both records past stale locks must land"
+[ ! -e "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the lock must be released after a stale break"
+# A failure inside the locked region still releases the lock.
+echo 'not json' >"$CLAUDE_QUOTA_FILE"
+expectFail "a malformed file under the lock" bash "$SCRIPT" record codex 15
+[ ! -e "$CLAUDE_QUOTA_FILE.lock" ] || failCase "a failed record must release the lock"
+[ "$(cat "$CLAUDE_QUOTA_FILE")" = "not json" ] || failCase "a malformed file must never be overwritten"
+
+# --- 10. Insecure values: file contents, environment, and targets. ---
+# writeBucket <bucket json>: writes a one-bucket quota file named codex.
+writeBucket() {
+  jq -n --argjson b "$1" '{buckets: {codex: $b}}' >"$CLAUDE_QUOTA_FILE"
+}
+GOOD='{"provider":"codex","resetsAt":"2026-10-08T10:57:00+07:00","windowDays":7,"snapshots":[{"at":"2026-10-03T00:00:00+07:00","usedPct":13}]}'
+writeBucket "$GOOD"
+bash "$SCRIPT" report >/dev/null || failCase "setup: the good bucket must report"
+for bad in '.snapshots[0].usedPct = -1000' '.snapshots[0].usedPct = 101' '.snapshots[0].usedPct = "55"' \
+  '.snapshots[0].usedPct = null' '.resetsAt = null' '.windowDays = 0' '.windowDays = -7' '.windowDays = "7"' \
+  '.resetsAt = "2026-10-08T10:57:00+99:99"' '.provider = "co\ndex"'; do
+  writeBucket "$(jq -c "$bad" <<<"$GOOD")"
+  expectFail "file value $bad" bash "$SCRIPT" report
+done
+jq -n --argjson b "$GOOD" '{buckets: {"co\u001b[31mdex": $b}}' >"$CLAUDE_QUOTA_FILE"
+expectFail "a bucket key with an escape byte" bash "$SCRIPT" report
+writeBucket "$GOOD"
+expectFail "QUOTA_NOW=abc" env QUOTA_NOW=abc bash "$SCRIPT" report
+expectFail "QUOTA_NOW=-5" env QUOTA_NOW=-5 bash "$SCRIPT" report
+expectFail "QUOTA_STALE_HOURS=abc" env QUOTA_STALE_HOURS=abc bash "$SCRIPT" report
+expectFail "QUOTA_STALE_HOURS=-1" env QUOTA_STALE_HOURS=-1 bash "$SCRIPT" report
+[ "$(QUOTA_NOW=$((NOW_OWNER + 60)) QUOTA_STALE_HOURS=0 field '.buckets[0].status')" = "stale" ] || failCase "QUOTA_STALE_HOURS=0 must read a minute-old snapshot stale"
+mkdir -p "$WORK/adir"
+expectFail "a quota path naming a directory (record)" env CLAUDE_QUOTA_FILE="$WORK/adir" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00
+expectFail "a quota path naming a directory (report)" env CLAUDE_QUOTA_FILE="$WORK/adir" bash "$SCRIPT" report
+[ -z "$(ls -A "$WORK/adir")" ] || failCase "a directory target must receive nothing"
+
 # --- 8. Offsets parse to the same instant as Z. ---
 # A snapshot two hours into the window survives re-recording the same reset
 # in another offset form. Were an offset ignored, the reset would read as a

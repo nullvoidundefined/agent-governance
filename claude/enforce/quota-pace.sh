@@ -38,13 +38,14 @@ MAX_SNAPSHOTS=50
 # jq helpers shared by both commands. toEpoch accepts epoch seconds (a
 # number or an all-digit string, the form Claude Code's status line gives
 # resets_at in) or ISO 8601 with Z or a +HH:MM/-HH:MM offset (jq's
-# fromdateiso8601 takes only Z).
+# fromdateiso8601 takes only Z). An offset beyond +/-14:59 is refused, since
+# no zone uses one and a typo there would move the reset by days.
 JQ_LIB='
 def toEpoch:
   if type == "number" then .
   elif test("^[0-9]+$") then tonumber
   else
-    (capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})(?<s>:[0-9]{2})?(\\.[0-9]+)?(?<tz>Z|[+-][0-9]{2}:?[0-9]{2})$")
+    (capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})(?<s>:[0-9]{2})?(\\.[0-9]+)?(?<tz>Z|[+-](0[0-9]|1[0-4]):?[0-5][0-9])$")
       // error("bad timestamp: \(.)")) as $m
     | ((($m.d + ($m.s // ":00") + "Z") | fromdateiso8601)) as $local
     | if $m.tz == "Z" then $local
@@ -65,6 +66,7 @@ fail() {
 # nowEpoch: prints the current time in epoch seconds, or QUOTA_NOW when set.
 nowEpoch() {
   if [ -n "${QUOTA_NOW:-}" ]; then
+    [[ "$QUOTA_NOW" =~ ^[0-9]+$ ]] || fail "QUOTA_NOW '$QUOTA_NOW' must be epoch seconds"
     printf '%s\n' "$QUOTA_NOW"
   else
     date +%s
@@ -74,6 +76,7 @@ nowEpoch() {
 # readQuotaFile: prints the quota file's JSON, failing loudly when it is
 # missing or does not carry a buckets object, never reading as zero usage.
 readQuotaFile() {
+  [ ! -d "$QUOTA_FILE" ] || fail "$QUOTA_FILE is a directory, not a quota file"
   [ -f "$QUOTA_FILE" ] || fail "no quota file at $QUOTA_FILE; copy ~/.claude/quota.template.json there or run 'quota-pace.sh record'"
   jq -e '.buckets | type == "object"' "$QUOTA_FILE" >/dev/null 2>&1 ||
     fail "$QUOTA_FILE is not valid JSON with a \"buckets\" object"
@@ -86,6 +89,7 @@ readQuotaFile() {
 # file in the same directory, so a reader never sees a half-written file.
 writeQuotaFile() {
   local dir tmp
+  [ ! -d "$QUOTA_FILE" ] || fail "$QUOTA_FILE is a directory, not a quota file"
   dir=$(dirname "$QUOTA_FILE")
   mkdir -p "$dir" || fail "cannot create $dir"
   tmp=$(mktemp "$dir/.quota.json.XXXXXX") || fail "cannot create a temp file in $dir"
@@ -98,18 +102,22 @@ writeQuotaFile() {
 # lockQuotaFile: takes the writer lock, a directory next to the quota file
 # (mkdir is atomic everywhere, flock is not on macOS), so two recorders,
 # such as the status line and the owner, never lose each other's snapshot.
-# Waits up to about five seconds; a lock older than a minute is from a dead
-# writer and is broken.
+# Waits up to about five seconds. A lock older than a minute is from a dead
+# writer and is broken by renaming it to a name only this process uses: the
+# rename is atomic, so of two waiters that both see it stale only one wins,
+# and the loser can never remove the winner's fresh lock. Every pass counts
+# toward the bound, a broken lock included, so no lock state can spin forever.
 lockQuotaFile() {
   local lock="$QUOTA_FILE.lock" tries=0
   mkdir -p "$(dirname "$QUOTA_FILE")" || fail "cannot create $(dirname "$QUOTA_FILE")"
   until mkdir "$lock" 2>/dev/null; do
-    if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-      rmdir "$lock" 2>/dev/null
+    tries=$((tries + 1))
+    [ "$tries" -le 50 ] || fail "the quota file is locked by another writer ($lock)"
+    if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] &&
+      mv "$lock" "$lock.stale.$$" 2>/dev/null; then
+      rm -rf "$lock.stale.$$"
       continue
     fi
-    tries=$((tries + 1))
-    [ "$tries" -lt 50 ] || fail "the quota file is locked by another writer ($lock)"
     sleep 0.1
   done
   trap 'rmdir "$QUOTA_FILE.lock" 2>/dev/null' EXIT
@@ -126,6 +134,9 @@ recordSnapshot() {
   local resets="" provider="" window="" at="" source="owner"
   while [ $# -gt 0 ]; do
     case "$1" in
+      --*) [ $# -ge 2 ] || fail "option $1 needs a value" ;;
+    esac
+    case "$1" in
       --resets-at) resets="${2:-}"; shift 2 ;;
       --provider) provider="${2:-}"; shift 2 ;;
       --window-days) window="${2:-}"; shift 2 ;;
@@ -135,11 +146,14 @@ recordSnapshot() {
     esac
   done
   [[ "$bucket" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "bucket name '$bucket' must be lowercase letters, digits, - or _"
+  [ -z "$provider" ] || [[ "$provider" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "provider '$provider' must be lowercase letters, digits, - or _"
+  [[ "$source" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "source '$source' must be lowercase letters, digits, - or _"
   [[ "$used" =~ ^[0-9]+([.][0-9]+)?$ ]] && jq -en --argjson u "$used" '$u <= 100' >/dev/null ||
     fail "usedPct '$used' must be a number from 0 to 100"
   [ -z "$window" ] || [[ "$window" =~ ^[1-9][0-9]*$ ]] || fail "--window-days '$window' must be a positive integer"
 
   local current now
+  now=$(nowEpoch) || exit 1
   lockQuotaFile
   if [ -f "$QUOTA_FILE" ] && jq -e '.buckets | length == 0' "$QUOTA_FILE" >/dev/null 2>&1; then
     current='{"buckets":{}}'
@@ -148,7 +162,6 @@ recordSnapshot() {
   else
     current='{"buckets":{}}'
   fi
-  now=$(nowEpoch)
   local updated
   updated=$(jq -e "$JQ_LIB"'
     ($resets | if . == "" then null else (toEpoch | todate) end) as $newReset
@@ -181,13 +194,23 @@ recordSnapshot() {
 # saying why, so a caller can never mistake missing data for a zero burn.
 reportJson() {
   local now
-  now=$(nowEpoch)
+  now=$(nowEpoch) || exit 1
   jq "$JQ_LIB"'
     ($now | tonumber) as $now
     | ($staleH | tonumber * 3600) as $staleS
     | def round2: (. * 100 | round) / 100;
+      def checkName($what): if type == "string" and test("^[a-z0-9][a-z0-9_-]*$") then .
+        else error("\($what) \(tojson) must be lowercase letters, digits, - or _") end;
+      def checkBucket($name):
+        ($name | checkName("bucket name")) as $_
+        | ((.provider // $name) | checkName("provider")) as $_
+        | if ((.windowDays // 7) | type) == "number" and (.windowDays // 7) > 0 then .
+          else error("bucket \($name): windowDays must be a positive number") end
+        | if all((.snapshots // [])[]; (.usedPct | type) == "number" and .usedPct >= 0 and .usedPct <= 100) then .
+          else error("bucket \($name): every usedPct must be a number from 0 to 100") end;
       def bucketReport($name):
-        (.windowDays // 7) as $wd
+        checkBucket($name)
+        | (.windowDays // 7) as $wd
         | (.resetsAt | toEpoch) as $reset
         | ($reset - $wd * 86400) as $start
         | ([(.snapshots // [])[] | {at: (.at | toEpoch), used: .usedPct, source: (.source // "owner")}
@@ -276,6 +299,7 @@ case "${1:-}" in
     ;;
   report)
     shift
+    [[ "$STALE_HOURS" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "QUOTA_STALE_HOURS '$STALE_HOURS' must be a non-negative number of hours"
     quota=$(readQuotaFile) || exit 1
     report=$(reportJson <<<"$quota" 2>&1) || fail "cannot compute the report: $report"
     if [ "${1:-}" = "--json" ]; then printf '%s\n' "$report"; else reportText "$report"; fi
