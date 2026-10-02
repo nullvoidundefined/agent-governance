@@ -130,8 +130,8 @@ for case_id in C1 C2 C3; do
 done
 
 # Python-track block (spec AC-3, AC-4). The Python file offers no alternative to
-# a settled decision, carries a level-two heading for each of the spec's 40
-# outline rows, and sits in the 800 to 1000 line band that matches the Express file.
+# a settled decision, carries a level-two heading for each section kept after the
+# IAN-568 prune, and stays inside a 300 to 1000 line band (a ceiling, not a target).
 python_track="$real_tree/CLAUDE-PYTHON.md"
 # find_banned_python_terms prints each line of the named file that names a rejected
 # alternative. `structlog.stdlib` is structlog's own API (ProcessorFormatter), not the
@@ -160,33 +160,30 @@ fi
 
 python_outline_headings=(
   'Stack' 'Directory Structure' 'Layer Responsibilities' 'File and Module Naming'
-  'File Layout' 'Import Ordering' 'Entry Point (App Factory)' 'Build Tool (uv)'
-  'Health Endpoints' 'Worker Pattern (arq)' 'Containers (R-351)' 'Session Store' 'CSRF'
-  'Rate Limiting' 'Idempotency Keys' 'Request Timeout' 'Environment Validation'
-  'FastAPI App Structure' 'Router Pattern' 'Validation (Pydantic)' 'Repository Pattern'
-  'Database Session and Engine' 'Migrations (Alembic)' 'Risky Migrations'
-  'Error Handling and Response Envelope' 'Stripe Webhook' 'Email (Resend)'
-  'Object Storage (Cloudflare R2)' 'Error Tracking (Sentry)' 'Circuit Breaker'
-  'Logging (structlog)' 'Observability (R-341 to R-346)' 'pg_cron Cleanup Jobs'
-  'OpenAPI and /v1 Versioning' 'Python Typing Patterns' 'RESTful Route Naming'
-  'Testing (pytest)' 'Tooling' 'Enforcement' 'Build/Run Assets (R-407)'
+  'Entry Point (App Factory)' 'Health Endpoints' 'Worker Pattern (arq)' 'Containers (R-351)'
+  'Session Store' 'CSRF' 'Rate Limiting' 'Idempotency Keys' 'Request Timeout'
+  'Environment Validation' 'FastAPI App Structure' 'Router Pattern' 'Validation (Pydantic)'
+  'Repository Pattern' 'Database Session and Engine' 'Migrations (Alembic)'
+  'Error Handling and Response Envelope' 'Stripe Webhook' 'Provider Clients and Operations'
+  'Python Typing Patterns' 'Testing (pytest)' 'Tooling' 'Enforcement'
+  'Build/Run Assets (R-407)'
 )
 missing_python_headings=()
 for heading in "${python_outline_headings[@]}"; do
   grep -Fxq "## $heading" "$python_track" || missing_python_headings+=("$heading")
 done
-if [ "${#python_outline_headings[@]}" -eq 40 ] && [ "${#missing_python_headings[@]}" -eq 0 ]; then
-  echo 'PASS: P2 Python track carries all 40 outline headings'
+if [ "${#python_outline_headings[@]}" -eq 28 ] && [ "${#missing_python_headings[@]}" -eq 0 ]; then
+  echo 'PASS: P2 Python track carries all 28 outline headings'
 else
   printf 'FAIL: P2 Python track is missing headings: %s\n' "${missing_python_headings[*]}"
   failure=1
 fi
 
 python_line_count=$(wc -l < "$python_track" | tr -d ' ')
-if [ "$python_line_count" -ge 800 ] && [ "$python_line_count" -le 1000 ]; then
-  printf 'PASS: P3 Python track is %s lines, inside 800 to 1000\n' "$python_line_count"
+if [ "$python_line_count" -ge 300 ] && [ "$python_line_count" -le 1000 ]; then
+  printf 'PASS: P3 Python track is %s lines, inside 300 to 1000\n' "$python_line_count"
 else
-  printf 'FAIL: P3 Python track is %s lines, outside 800 to 1000\n' "$python_line_count"
+  printf 'FAIL: P3 Python track is %s lines, outside 300 to 1000\n' "$python_line_count"
   failure=1
 fi
 
