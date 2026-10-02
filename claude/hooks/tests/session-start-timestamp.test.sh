@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Covers: hook:session-start
 #
 # Verifies session-start.sh records the session's start timestamp (R-503) to
 # ~/.claude/projects/<key>/session-start.<session-id> and injects it as

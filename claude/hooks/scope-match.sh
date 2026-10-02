@@ -3,15 +3,12 @@
 # scope, sourced by every gate that has to decide whether a path belongs to
 # the task in hand (IAN-201).
 #
-# Two hooks ask that question from opposite ends. scope-widening-gate.sh asks
-# it per write, before the edit lands (R-212), and commit-message-guard.sh
-# asks it per commit, over the staged diff (R-214). They must agree: a path
-# the write gate waved through and the commit gate then refuses, or the
-# reverse, is worse than either gate alone, because the session learns the
-# rules are arbitrary. A second copy of the matcher is how that disagreement
-# starts, and this repository has already been bitten by a local helper
-# silently shadowed by a shared one (IAN-152), so the matcher lives here once
-# and nowhere else.
+# Its readers are security-surface.sh (glob matching for the
+# securitySurfaceExclude list) and the build-fast build-lane.sh. The R-212
+# write gate and the R-214 commit gate that once shared it were removed in
+# IAN-568. Every caller must agree on what a scope entry matches, and this
+# repository has already been bitten by a local helper silently shadowed by a
+# shared one (IAN-152), so the matcher lives here once and nowhere else.
 #
 # Sourced, never executed. Every function prints or returns; none exits, so a
 # caller keeps control of its own decision and its own failure mode.

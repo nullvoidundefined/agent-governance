@@ -401,7 +401,7 @@ Pydantic `BaseModel` at every boundary (request bodies, responses, job payloads,
 ## Enforcement
 
 - `hook:push-ruff-gate` runs `~/.claude/enforce/ruff-enforce.toml` (codes listed in its header; repos in `enforce/exempt-repos.txt` skip it; fails open without ruff or uv) over the added lines of the outgoing diff on `git push`, and `~/.claude/enforce/data-access/python_data_access.py` over the changed files: R-361, a repository- or `db`-imported call or an `execute`/`scalar(s)`/`stream` call inside a loop or comprehension; R-362, inside a `begin()`/`begin_nested()` block, an `httpx`/`requests`/`aiohttp` or `clients` call, or a data-access call not given the transaction's connection. A deliberately bounded loop carries `# data-access-allow: <the bound>`. `D100` and `D103` (R-320) join when `.enforce.json` sets `fileHeaders: true`
-- `ci:llm-rule-judge` judges `*.py` against R-315, R-316, R-317, R-325, R-334
+- `ci:llm-rule-judge` judges `*.py` against R-316, R-317, R-325, R-334
 - `hook:structure-gate` allows `snake_case` package directories plus `db/`, `core/`, `middleware/`, `dependencies/` and denies catch-all directories, kebab-case, and co-located tests; `hook:migration-defaults-guard` checks the Alembic default forms in Migrations
 
 ---

@@ -74,16 +74,15 @@ trap 'rm -rf "$SANDBOX"' EXIT
 SHIM_DIR="$SANDBOX/shim"
 mkdir -p "$SHIM_DIR"
 
-# A sandboxed HOME carrying a ticket tracker, and the reason this fixture needs
-# one. ticket-at-start-gate.sh is in this chain and returns at its second line
+# A sandboxed HOME carrying a ticket tracker, and the reason this fixture needed
+# one. ticket-at-start-gate.sh (removed in IAN-568) was in this chain and returned at its second line
 # when `$HOME/.claude/TICKET-TRACKER.json` is absent, before either of its two
 # path walks runs. A container without a tracker therefore measures a shorter
 # chain than a developer machine, and the first version of this fixture passed
 # here while failing on any machine configured the way R-605 requires: the
 # chain grew 9 processes over 9 levels with a tracker present and 0 without.
 # A fixture whose verdict depends on the developer's own configuration is not
-# a gate, so the tracker is supplied here and every hook runs its full path on
-# every machine.
+# a gate, so the tracker is still supplied here for any hook that reads it.
 HOME_SANDBOX="$SANDBOX/home"
 mkdir -p "$HOME_SANDBOX/.claude"
 printf '{"tracker":"none"}\n' > "$HOME_SANDBOX/.claude/TICKET-TRACKER.json"

@@ -30,13 +30,13 @@ const RULE_LINE = /^(R-\d{3})( \[[a-z]+\])?:/;
 // rulebook/reference.md.
 export const PROTECTED_HOOKS = new Set([
   "harness-sync",
-  "codex-billing-guard", "codex-test-author-guard", "commit-message-guard", "conflict-markers",
+  "codex-billing-guard", "commit-message-guard", "conflict-markers",
   "constant-change-guard", "content-gate", "dependency-add-guard", "destructive-command-guard",
   "destructive-db-guard", "fix-commit-requires-test", "git-workflow-guard", "global-repo-push-guard",
-  "lexicon-gate", "linear-todo-label-gate", "mcp-action-guard", "migration-defaults-guard", "no-em-dash",
-  "pr-ticket-ref-gate", "protected-path-guard", "push-eslint-gate", "push-feature-docs-gate",
-  "push-golangci-gate", "push-rubocop-gate", "push-ruff-gate", "push-semgrep-gate", "scope-widening-gate",
-  "secret-scan", "settings-change-guard", "structure-gate", "task-provenance-gate", "ticket-at-start-gate",
+  "linear-todo-label-gate", "mcp-action-guard", "migration-defaults-guard", "no-em-dash",
+  "pr-ticket-ref-gate", "protected-path-guard", "push-eslint-gate",
+  "push-ruff-gate", "push-semgrep-gate",
+  "secret-scan", "settings-change-guard", "structure-gate",
   "verification-gate",
 ]);
 export const PROTECTED_RULES = new Set([
@@ -62,7 +62,7 @@ const PROTECTED_EXACT_PATHS = new Set([
 // protected, so the rule cannot be bypassed by a helper an enforcing hook
 // needs (PR #175 review round 2).
 const REMOVABLE_HOOK_SCRIPTS = new Set([
-  "audit-signal-check", "build-cheatsheets", "clean-code-reminder", "dockerfile-reminder",
+  "audit-signal-check", "build-cheatsheets", "dockerfile-reminder",
   "draft-pr-on-first-push", "enforcement-guard-check", "flat-directory-reminder", "handoff-check",
   "hook-integrity-check", "hookspath-drift-check", "model-switch-guard", "new-file-header-reminder",
   "observability-reminder", "parallel-session-check", "post-compact-rules", "pr-monitor-reminder",

@@ -7,7 +7,7 @@ Every user-facing feature in {{PROJECT}} is documented as a user story (R-607). 
 - One file per product area: `docs/user-stories/<area>.md`, matching one `## <Area>` section of `docs/feature-list/features.md`.
 - Story identifiers are `US-<AREA>-NNN`, numbered in order within the area and never reused or renumbered.
 - Each story has the "As / I want to / So that" form, an acceptance-criteria checklist, an `**E2E test:**` line naming the covering spec, and a `**Ticket:**` line.
-- A branch that adds a page or an API route must also change `docs/feature-list/features.md`, a story file here, and an e2e spec; the repository's own `scripts/require-feature-checklist.sh` checks it in the pre-push hook and CI, and the harness updates these docs once at feature completion (`task-cleanup`).
+- When a feature that adds a page or an API route is complete, `docs/feature-list/features.md`, a story file here, and an e2e spec change with it (task-cleanup does this at feature completion); the repository's `scripts/require-feature-checklist.sh` can check it.
 
 ## Files
 

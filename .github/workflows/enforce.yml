@@ -99,17 +99,6 @@ jobs:
           cache: npm
           cache-dependency-path: claude/enforce/package-lock.json
 
-      # data-access-go.test.sh builds the stdlib-only R-361/R-362 checker in
-      # enforce/data-access/go and fails, by design, when no go toolchain is
-      # present. The macOS image ships none (first seen on PR #140), and the
-      # ubuntu image's preinstalled one is whatever the image carries, so both
-      # jobs pin the same version. The checker has no module and no go.sum, so
-      # there is nothing for the cache to key on.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.24"
-          cache: false
-
       # node_modules is gitignored, so a fresh clone has none and the six
       # ESLint-backed fixtures fail on a missing ESLint rather than on a defect.
       # Locked installs only. The fallback to `npm install` that used to sit
@@ -129,12 +118,10 @@ jobs:
           echo "npm ci failed three times: the lockfile or the registry is the problem, and npm install would only hide which" >&2
           exit 1
 
-      # push-ruff-gate.test.sh drives the REAL ruff binary. The rubocop and
-      # golangci fixtures stub their linters through CLAUDE_*_CMD, so they pass
-      # on a bare runner; the ruff one does not, and the first CI runs failed on
-      # "no ruff or uvx on PATH" rather than on any defect. Stubbing ruff to
-      # match the other two would make the suite hermetic at the cost of no
-      # longer checking that enforce/ruff-enforce.toml actually selects the
+      # push-ruff-gate.test.sh drives the REAL ruff binary, so it does not pass
+      # on a bare runner, and the first CI runs failed on "no ruff or uvx on
+      # PATH" rather than on any defect. Stubbing ruff would make the suite
+      # hermetic at the cost of no longer checking that enforce/ruff-enforce.toml actually selects the
       # codes it lists, so CI provides the binary instead. The fixture drives
       # ANN401, BLE001, E722, E731, PGH003, PLR2004, S110 and T201; this line
       # named ANN401 among three codes while the fixture exercised none of it
@@ -319,17 +306,6 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: claude/enforce/package-lock.json
-
-      # data-access-go.test.sh builds the stdlib-only R-361/R-362 checker in
-      # enforce/data-access/go and fails, by design, when no go toolchain is
-      # present. The macOS image ships none (first seen on PR #140), and the
-      # ubuntu image's preinstalled one is whatever the image carries, so both
-      # jobs pin the same version. The checker has no module and no go.sum, so
-      # there is nothing for the cache to key on.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.24"
-          cache: false
 
       # Locked installs only, and retried as the same locked operation, for the
       # reasons the ubuntu job records above.

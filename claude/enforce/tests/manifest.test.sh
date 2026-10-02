@@ -36,8 +36,6 @@ for entry in manifest['rules']:
 assert not missing_hooks, f'manifest enforcers with no hook script: {missing_hooks}'
 GATE_ARTIFACTS = {
     'ruff:': ['hooks/push-ruff-gate.sh', 'enforce/ruff-enforce.toml'],
-    'rubocop:': ['hooks/push-rubocop-gate.sh', 'enforce/rubocop-enforce.yml'],
-    'golangci:': ['hooks/push-golangci-gate.sh', 'enforce/golangci-enforce.yml'],
 }
 for prefix, artifacts in GATE_ARTIFACTS.items():
     if any(entry['enforcer'].startswith(prefix) for entry in manifest['rules']):
