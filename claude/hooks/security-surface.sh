@@ -18,7 +18,8 @@
 #
 # <head-oid> defaults to HEAD and names the commit whose file list, diffs, and
 # blobs are read. A range is marked by any of three triggers: a changed path
-# matching a `paths` regex in enforce/security-surface.json, an added or
+# outside docs/ and not ending in .md matching a `paths` regex in
+# enforce/security-surface.json (IAN-568, I7), an added or
 # removed line matching a `content` regex there (both case-insensitive
 # extended regexes; a removed line reports its pre-image line number), or a
 # finding from the rule pack in enforce/semgrep/ on a changed code file. Every
@@ -110,12 +111,19 @@ list_included_changed_files() {
   done <<< "$changed_files"
 }
 
+# SECURITY_SURFACE_PROSE_PATH_PATTERN: the paths the `paths` patterns never
+# read (IAN-568, I7): anything under the top-level docs/ tree and any Markdown
+# file. The unanchored substrings `session` and `token` flagged every
+# docs/session-handoff/ commit; prose does not execute. The `content`
+# patterns and Semgrep still read these files.
+SECURITY_SURFACE_PROSE_PATH_PATTERN='(^docs/|\.md$)'
+
 # list_path_hits <file list> <path patterns file>: prints `path:0 path` for
-# each newline-separated path matching a path pattern. Returns non-zero when
-# grep fails on the patterns.
+# each newline-separated path, outside the prose paths, matching a path
+# pattern. Returns non-zero when grep fails on the patterns.
 list_path_hits() {
   local file_list="$1" patterns_file="$2" matched_paths grep_status
-  matched_paths=$(printf '%s\n' "$file_list" | grep -Ei -f "$patterns_file")
+  matched_paths=$(printf '%s\n' "$file_list" | grep -Eiv "$SECURITY_SURFACE_PROSE_PATH_PATTERN" | grep -Ei -f "$patterns_file")
   grep_status=$?
   [ "$grep_status" -le 1 ] || return 1
   [ -n "$matched_paths" ] && printf '%s\n' "$matched_paths" | sed 's/$/:0 path/'
