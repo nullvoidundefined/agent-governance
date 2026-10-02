@@ -74,11 +74,20 @@ rm -f "$CLAUDE_QUOTA_FILE"
 # 90% used reads exhausted even with a slow burn.
 bash "$SCRIPT" record claude 90 --resets-at 2026-10-06T23:59:00+07:00 --window-days 30 --at 2026-10-03T00:00:00+07:00
 [ "$(field '.buckets[0].exhausted')" = "true" ] || failCase "90% used must be exhausted"
+# The reset-sooner clause, at 89% used so the 90% rule stays out of it.
+# Window 2026-09-29T23:59 to 2026-10-06T23:59 +07:00 (epoch below).
+RESET_CLAUDE=1791305940
+START_CLAUDE=$((RESET_CLAUDE - 7 * 24 * HOUR))
+# Six days in: burn 14.83/day, 11% left is 0.74 days, reset 1.0 day away.
 rm -f "$CLAUDE_QUOTA_FILE"
-# Under one day left at burn but the reset comes sooner: not exhausted.
-QUOTA_NOW=$(( $(date -d 2026-10-06T20:00:00+07:00 +%s) ))
-export QUOTA_NOW
-bash "$SCRIPT" record claude 85 --resets-at 2026-10-06T23:59:00+07:00 --at 2026-10-06T20:00:00+07:00
+export QUOTA_NOW=$((START_CLAUDE + 6 * 24 * HOUR))
+bash "$SCRIPT" record claude 89 --resets-at 2026-10-06T23:59:00+07:00 --at "$QUOTA_NOW"
+[ "$(field '.buckets[0].exhausted')" = "true" ] || failCase "0.74 days left at burn with the reset 1 day away must be exhausted"
+# Three hours before reset: 0.85 days left at burn, but the reset is sooner.
+rm -f "$CLAUDE_QUOTA_FILE"
+export QUOTA_NOW=$((RESET_CLAUDE - 3 * HOUR))
+bash "$SCRIPT" record claude 89 --resets-at 2026-10-06T23:59:00+07:00 --at "$QUOTA_NOW"
+[ "$(field '.buckets[0].projectedDaysLeft < 1')" = "true" ] || failCase "setup: projected days left must be under 1"
 [ "$(field '.buckets[0].exhausted')" = "false" ] || failCase "a reset that lands before run-out must not read exhausted"
 # 100% used: no ratio (no budget left), exhausted, never a division error.
 rm -f "$CLAUDE_QUOTA_FILE"
@@ -94,8 +103,8 @@ QUOTA_NOW=$((NOW_OWNER + 25 * HOUR))
 export QUOTA_NOW
 [ "$(field '.buckets[0].status')" = "stale" ] || failCase "a 25h-old snapshot must read stale"
 [ "$(QUOTA_STALE_HOURS=48 field '.buckets[0].status')" = "ok" ] || failCase "QUOTA_STALE_HOURS must widen the stale window"
-QUOTA_NOW=$(( $(date -d 2026-10-08T11:00:00+07:00 +%s) ))
-export QUOTA_NOW
+# 2026-10-08T11:00:00+07:00, three minutes after the codex reset.
+export QUOTA_NOW=1791432000
 [ "$(field '.buckets[0].status')" = "window-rolled" ] || failCase "a passed reset must read window-rolled"
 [ "$(field '.buckets[0].paceRatio')" = "null" ] || failCase "a rolled window must give no ratio"
 [ "$(field '.providers[0].status')" = "no-usable-data" ] || failCase "a provider with only a rolled bucket has no usable data"
@@ -119,8 +128,17 @@ if bash "$SCRIPT" record codex 13 --resets-at 'next tuesday' >/dev/null 2>&1; th
 if bash "$SCRIPT" record 'Codex!' 13 --resets-at 2026-10-08T10:57:00+07:00 >/dev/null 2>&1; then failCase "a bad bucket name must fail"; fi
 
 # --- 7. Offsets parse to the same instant as Z. ---
-bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T03:57:00Z --at 2026-10-02T17:00:00Z
-bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00 --at 2026-10-03T00:00:00+07:00
-[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "the same reset in Z and +07:00 must not open a new window"
+# A snapshot two hours into the window survives re-recording the same reset
+# in another offset form. Were an offset ignored, the reset would read as a
+# different instant, the window start would move by hours, and the snapshot
+# would be dropped as belonging to an older window.
+rm -f "$CLAUDE_QUOTA_FILE"
+export QUOTA_NOW=$((START_CLAUDE + 3 * HOUR))
+bash "$SCRIPT" record claude 1 --resets-at 2026-10-06T16:59:00Z --at $((START_CLAUDE + 2 * HOUR))
+bash "$SCRIPT" record claude 2 --resets-at 2026-10-06T23:59:00+07:00 --at "$QUOTA_NOW"
+bash "$SCRIPT" record claude 2 --resets-at 2026-10-06T11:59:00-05:00 --at "$QUOTA_NOW"
+bash "$SCRIPT" record claude 2 --resets-at 2026-10-06T23:59+0700 --at "$QUOTA_NOW"
+[ "$(jq '.buckets.claude.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "4" ] || failCase "the same reset in Z, +07:00, -05:00 and +0700 (no seconds) must not open a new window"
+[ "$(field '.buckets[0].status')" = "ok" ] || failCase "offset forms must keep the window current"
 
 echo "PASS: quota-pace"

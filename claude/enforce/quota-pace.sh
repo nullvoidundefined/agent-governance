@@ -33,11 +33,14 @@ QUOTA_FILE="${CLAUDE_QUOTA_FILE:-${HOME:-~}/.claude/quota.json}"
 STALE_HOURS="${QUOTA_STALE_HOURS:-24}"
 MAX_SNAPSHOTS=50
 
-# jq helpers shared by both commands. toEpoch accepts epoch seconds or ISO
-# 8601 with Z or a +HH:MM/-HH:MM offset (jq's fromdateiso8601 takes only Z).
+# jq helpers shared by both commands. toEpoch accepts epoch seconds (a
+# number or an all-digit string, the form Claude Code's status line gives
+# resets_at in) or ISO 8601 with Z or a +HH:MM/-HH:MM offset (jq's
+# fromdateiso8601 takes only Z).
 JQ_LIB='
 def toEpoch:
   if type == "number" then .
+  elif test("^[0-9]+$") then tonumber
   else
     (capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})(?<s>:[0-9]{2})?(\\.[0-9]+)?(?<tz>Z|[+-][0-9]{2}:?[0-9]{2})$")
       // error("bad timestamp: \(.)")) as $m
