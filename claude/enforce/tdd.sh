@@ -988,29 +988,47 @@ format_test_files() {
 }
 
 # formatted_sha <content file> <rel>: the sha256 of <content file> once a copy
-# placed beside <rel> (so the formatter finds the same configuration) is
-# formatted. Fails when no testFormatCommand is set. The copy is named
-# tddfmt_<pid>.<extension of rel>, which no test glob (`test_*.py`,
-# `*_test.py`, `*.test.*`, `*.spec.*`) matches, so a copy left behind is never
-# collected as a passing duplicate; the body runs in a subshell whose trap
-# removes the copy on exit, interrupt, or termination (R-109 r1 #5, IAN-568).
-# The variables are plain subshell globals, not locals: bash 3.2 unwinds a
-# local before a signal's EXIT trap reads it, which would leave the copy. The
-# copy is removed and then created under noclobber, an exclusive create
-# (O_EXCL) that fails on any path already there, a planted symlink included,
-# so the copy never writes through a link to its target (R-109 r2 #2).
+# placed beside <rel> (so the formatter finds the same configuration walking
+# upward) is formatted. Fails when no testFormatCommand is set, and fails
+# closed (the caller keeps the byte-exact hash) when the copy cannot be made
+# safely. The copy lives in a fresh scratch directory beside <rel>, named
+# .tddfmt_<pid>_<random> and made with mkdir, which is atomic, fails on any
+# path already there, and never follows a planted link; a taken name is
+# retried under a new random suffix and never reused (R-109 r3 #1, IAN-568).
+# Bash noclobber alone is not O_EXCL: a link to an existing non-regular file
+# (a FIFO, /dev/null) is opened through, so a link raced in beside the test
+# could be written through. Inside the fresh directory the copy is
+# tddfmt.<extension of rel>, created under noclobber and then required to be a
+# regular file and not a link before it is formatted or hashed. The dot
+# directory is skipped by pytest's collection and the copy's name matches no
+# test glob (`test_*.py`, `*_test.py`, `*.test.*`, `*.spec.*`), so a copy left
+# behind is never collected as a passing duplicate. The body runs in a
+# subshell whose trap removes that exact scratch directory on exit,
+# interrupt, or termination (R-109 r1 #5). The variables are plain subshell
+# globals, not locals: bash 3.2 unwinds a local before a signal's EXIT trap
+# reads it, which would leave the directory behind.
 formatted_sha() (
   suffix=""
+  scratch=""
   [ -n "$(test_format_command)" ] || return 1
   base=$(basename "$2")
   case "$base" in *.*) suffix=".${base##*.}" ;; esac
-  copy="$(dirname "$2")/tddfmt_$$${suffix}"
-  trap 'rm -f "$ROOT/$copy"' EXIT
+  trap '[ -z "$scratch" ] || rm -rf -- "$ROOT/$scratch"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  rm -f "$ROOT/$copy"
-  ( set -C; cat -- "$1" > "$ROOT/$copy" ) || return 1
+  for attempt in 1 2 3 4 5; do
+    candidate="$(dirname "$2")/.tddfmt_$$_${RANDOM}${RANDOM}"
+    if mkdir -- "$ROOT/$candidate" 2>/dev/null; then
+      scratch="$candidate"
+      break
+    fi
+  done
+  [ -n "$scratch" ] || return 1
+  copy="$scratch/tddfmt${suffix}"
+  ( set -C; cat -- "$1" > "$ROOT/$copy" ) 2>/dev/null || return 1
+  [ -f "$ROOT/$copy" ] && [ ! -L "$ROOT/$copy" ] || return 1
   format_test_files "$copy" 2>/dev/null
+  [ -f "$ROOT/$copy" ] && [ ! -L "$ROOT/$copy" ] || return 1
   digest=$(sha "$ROOT/$copy")
   printf '%s' "$digest"
 )

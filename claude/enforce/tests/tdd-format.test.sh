@@ -7,9 +7,11 @@
 # operator or metacharacter, or naming a shell, interpreter, launcher,
 # package runner, or a path outside node_modules/.bin/ and .venv/bin/, is
 # refused with nothing executed (R-109 r1 #4, r2 #1), and the formatted copy
-# green hashes matches no test glob (R-109 r1 #5) and never writes through a
-# symlink planted at its path (R-109 r2 #2). Drives the bash *.test.sh
-# runner through the real run-fixture-shards.sh in a throwaway repository.
+# green hashes matches no test glob (R-109 r1 #5), lives in a fresh scratch
+# directory made with mkdir, and never writes through a symlink planted at
+# its old or a predictable path, a FIFO or /dev/null target included (R-109
+# r2 #2, r3 #1). Drives the bash *.test.sh runner through the real
+# run-fixture-shards.sh in a throwaway repository.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"
@@ -78,9 +80,9 @@ echo "PASS: a testFormatCommand holding a shell operator is refused and hashing 
 # --- the formatted copy matches no test glob (R-109 r1 #5) -------------------
 # green formats a copy of a reformatted test beside it; an interrupted run that
 # left a copy named after the test would be collected as a passing duplicate.
-# The formatter here logs the basename of every file it formats.
+# The formatter here logs the root-relative path of every file it formats.
 rm -f .claude/tdd-lock.json tests/pad.test.sh
-printf '#!/usr/bin/env bash\nfor f in "$@"; do basename "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fmtlog
+printf '#!/usr/bin/env bash\nfor f in "$@"; do printf "%%s\\n" "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fmtlog
 chmod +x node_modules/.bin/fmtlog
 jq -n '{testFormatCommand: "node_modules/.bin/fmtlog"}' > .enforce.json
 bash "$TDD" open "F-3 copy.sh prints ok" >/dev/null
@@ -89,22 +91,22 @@ bash "$TDD" red tests/copy.test.sh >/dev/null || { echo "FAIL: red with the logg
 perl -pi -e 's/$/ /' tests/copy.test.sh
 printf '#!/usr/bin/env bash\necho ok\n' > scripts/copy.sh
 out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept the reformatted test; output: $out"; exit 1; }
-copyNames=$(grep -v '^copy\.test\.sh$' fmt.log || true)
+copyNames=$(grep -v '^tests/copy\.test\.sh$' fmt.log || true)
 [ -n "$copyNames" ] || { echo "FAIL: green must format a copy of the reformatted test; log: $(cat fmt.log)"; exit 1; }
 while IFS= read -r copyName; do
-  grep -qE '^tddfmt_[0-9]+\.sh$' <<< "$copyName" || { echo "FAIL: the formatted copy is named tddfmt_<pid>.<ext>, got $copyName"; exit 1; }
-  case "$copyName" in
+  grep -qE '^tests/\.tddfmt_[0-9]+_[0-9]+/tddfmt\.sh$' <<< "$copyName" || { echo "FAIL: the formatted copy is tests/.tddfmt_<pid>_<random>/tddfmt.<ext>, got $copyName"; exit 1; }
+  case "$(basename "$copyName")" in
     test_*.py | *_test.py | *.test.* | *.spec.*) echo "FAIL: the formatted copy $copyName matches a test glob"; exit 1 ;;
   esac
 done <<< "$copyNames"
-[ -z "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: green must remove the formatted copy"; exit 1; }
+[ -z "$(find tests -name '.tddfmt_*')" ] || { echo "FAIL: green must remove the scratch directory"; exit 1; }
 echo "PASS: the formatted copy matches no test glob and is removed"
 
 # --- an interrupted green removes the copy (R-109 r1 #5) ----------------------
 # The formatter stalls on the copy; terminating green's process group mid-format
 # must still remove it through the trap.
 rm -f .claude/tdd-lock.json fmt.log
-printf '#!/usr/bin/env bash\ncase "$(basename "$1")" in tddfmt_*) sleep 20 ;; esac\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/slowfmt
+printf '#!/usr/bin/env bash\ncase "$(basename "$1")" in tddfmt.*) sleep 20 ;; esac\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/slowfmt
 chmod +x node_modules/.bin/slowfmt
 jq -n '{testFormatCommand: "node_modules/.bin/slowfmt"}' > .enforce.json
 bash "$TDD" open "F-4 stall.sh prints ok" >/dev/null
@@ -113,12 +115,12 @@ bash "$TDD" red tests/stall.test.sh >/dev/null || { echo "FAIL: red with the sta
 perl -pi -e 's/$/ /' tests/stall.test.sh
 printf '#!/usr/bin/env bash\necho ok\n' > scripts/stall.sh
 set -m; bash "$TDD" green >/dev/null 2>&1 & greenPid=$!; set +m
-for _ in $(seq 1 100); do [ -n "$(find tests -name 'tddfmt_*')" ] && break; sleep 0.1; done
-[ -n "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: green never wrote the formatted copy"; exit 1; }
+for _ in $(seq 1 100); do [ -n "$(find tests -name '.tddfmt_*')" ] && break; sleep 0.1; done
+[ -n "$(find tests -name '.tddfmt_*')" ] || { echo "FAIL: green never made the scratch directory"; exit 1; }
 kill -TERM -- "-$greenPid" 2>/dev/null || true
 wait "$greenPid" 2>/dev/null || true
-for _ in $(seq 1 30); do [ -z "$(find tests -name 'tddfmt_*')" ] && break; sleep 0.1; done
-[ -z "$(find tests -name 'tddfmt_*')" ] || { echo "FAIL: a terminated green must remove the formatted copy"; exit 1; }
+for _ in $(seq 1 30); do [ -z "$(find tests -name '.tddfmt_*')" ] && break; sleep 0.1; done
+[ -z "$(find tests -name '.tddfmt_*')" ] || { echo "FAIL: a terminated green must remove the scratch directory"; exit 1; }
 echo "PASS: a terminated green removes the formatted copy"
 
 # --- only a formatter binary named directly runs (R-109 r2 #1) ---------------
@@ -175,29 +177,105 @@ done
 rm -f .claude/tdd-lock.json tests/pad.test.sh
 echo "PASS: a formatter in node_modules/.bin/ and a bare formatter on PATH are accepted and run"
 
-# --- the formatted copy never follows a planted symlink (R-109 r2 #2) --------
-# green writes its copy at tests/tddfmt_<pid>.<ext>; a symlink planted at that
-# path must not let the copy truncate or overwrite the link's target. Links
-# are planted for the PID range the next processes take, pointing at a
-# sentinel outside the test tree.
-rm -f .claude/tdd-lock.json
+# --- the formatted copy never follows a planted symlink (R-109 r2 #2, r3 #1) --
+# Bash noclobber opens a link to an existing non-regular file (a FIFO,
+# /dev/null) through, so the old copy path, removed and then recreated beside
+# the test, could be written through by a link raced into that window. Stubs
+# for rm and mkdir, on PATH for the green call only, delegate to the real
+# tools and plant links deterministically: S/rm plants a link at any removed
+# path named like the old copy (tests/tddfmt_<pid>.<ext>), the race window
+# itself; S/mkdir plants per $PLANT_MODE. Links at the old path are also
+# planted ahead for the PID range the next processes take.
+S=$(cd "$(mktemp -d)" && pwd -P)
+trap 'cd /; rm -rf "$P" "$B" "$S"' EXIT
+printf '#!/usr/bin/env bash\n/bin/rm "$@"; status=$?\nfor a in "$@"; do case "$a" in */tddfmt_*) [ -z "${PLANT_TARGET:-}" ] || ln -s "$PLANT_TARGET" "$a" 2>/dev/null ;; esac; done\nexit $status\n' > "$S/rm"
+printf '#!/usr/bin/env bash\nlast="${!#}"\ncase "$last:${PLANT_MODE:-}" in\n  */.tddfmt_*:collide) [ -e "$PLANT_ONCE" ] || { : > "$PLANT_ONCE"; ln -s "$PLANT_TARGET" "$last"; } ;;\nesac\n/bin/mkdir "$@"; status=$?\ncase "$last:${PLANT_MODE:-}" in\n  */.tddfmt_*:inside) [ $status -ne 0 ] || ln -s "$PLANT_TARGET" "$last/tddfmt.sh" ;;\nesac\nexit $status\n' > "$S/mkdir"
+chmod +x "$S/rm" "$S/mkdir"
 printf 'sentinel\n' > sentinel.txt
-jq -n '{testFormatCommand: "node_modules/.bin/fmt"}' > .enforce.json
-bash "$TDD" open "F-7 link.sh prints ok" >/dev/null
-printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/link.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "link.test.sh PASS"\n' > tests/link.test.sh
-bash "$TDD" red tests/link.test.sh >/dev/null || { echo "FAIL: red for the symlink case must succeed"; exit 1; }
-perl -pi -e 's/$/ /' tests/link.test.sh
-printf '#!/usr/bin/env bash\necho ok\n' > scripts/link.sh
-# One perl process plants every link, so planting consumes no PIDs itself.
+mkfifo fifo
+mkdir outside
+printf '#!/usr/bin/env bash\nfor f in "$@"; do printf "%%s\\n" "$f" >> fmt.log; done\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/fmtlog
+chmod +x node_modules/.bin/fmtlog
+jq -n '{testFormatCommand: "node_modules/.bin/fmtlog"}' > .enforce.json
+
+# prepare_reformatted_slice <name>: opens a slice for tests/<name>.test.sh,
+# records RED, then reformats the test the way a pre-commit hook would.
+prepare_reformatted_slice() {
+  rm -f .claude/tdd-lock.json fmt.log
+  bash "$TDD" open "F-7 $1.sh prints ok" >/dev/null
+  printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/%s.sh")\n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "%s.test.sh PASS"\n' "$1" "$1" > "tests/$1.test.sh"
+  bash "$TDD" red "tests/$1.test.sh" >/dev/null || { echo "FAIL: red for the $1 case must succeed"; exit 1; }
+  perl -pi -e 's/$/ /' "tests/$1.test.sh"
+  printf '#!/usr/bin/env bash\necho ok\n' > "scripts/$1.sh"
+}
+# run_green_watched <out file> [env assignments...]: runs green with the stubs
+# on PATH in its own process group and kills the group after 20 seconds, so a
+# write blocked on a FIFO fails the fixture instead of hanging it; prints
+# green's exit status, or "timeout".
+run_green_watched() {
+  local outFile="$1" greenPid; shift
+  set -m; env "$@" PATH="$S:$PATH" bash "$TDD" green > "$outFile" 2>&1 & greenPid=$!; set +m
+  for _ in $(seq 1 200); do kill -0 "$greenPid" 2>/dev/null || break; sleep 0.1; done
+  if kill -0 "$greenPid" 2>/dev/null; then
+    kill -TERM -- "-$greenPid" 2>/dev/null || true; wait "$greenPid" 2>/dev/null || true; echo timeout; return 0
+  fi
+  local status=0; wait "$greenPid" || status=$?; echo "$status"
+}
+# remove_planted_links: deletes every link left at the old copy path.
+remove_planted_links() { find tests -name 'tddfmt_*' -type l -exec /bin/rm -f {} +; }
+
+# A link to a FIFO raced in at the old path: a reader on the FIFO captures
+# anything written through it.
+prepare_reformatted_slice fifolink
+perl -e 'alarm 25; open(my $f, "<", $ARGV[0]) or exit; print while <$f>' fifo > captured.txt & readerPid=$!
 nextPid=$(bash -c 'echo $$')
-perl -e 'symlink("../sentinel.txt", "tests/tddfmt_$_.sh") or die "symlink: $!" for $ARGV[0] .. $ARGV[0] + 2000' "$nextPid"
-linksBefore=$(find tests -name 'tddfmt_*' -type l | wc -l)
-out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must accept the reformatted test with links planted; output: $out"; exit 1; }
-linksAfter=$(find tests -name 'tddfmt_*' -type l | wc -l)
-[ "$(cat sentinel.txt)" = sentinel ] || { echo "FAIL: the formatted copy must not write through a planted symlink; sentinel now: $(head -c 200 sentinel.txt)"; exit 1; }
-[ "$linksAfter" -lt "$linksBefore" ] || { echo "FAIL: green's copy path was not among the planted links, so the case proved nothing"; exit 1; }
-find tests -name 'tddfmt_*' -type l -delete
-rm -f .claude/tdd-lock.json tests/link.test.sh
-echo "PASS: the formatted copy never writes through a symlink planted at its path"
+perl -e 'symlink("../fifo", "tests/tddfmt_$_.sh") for $ARGV[0] .. $ARGV[0] + 50' "$nextPid"
+status=$(run_green_watched green.out PLANT_TARGET="$P/fifo")
+kill "$readerPid" 2>/dev/null || true; wait "$readerPid" 2>/dev/null || true
+[ ! -s captured.txt ] || { echo "FAIL: the formatted copy was written through a link to a FIFO; the reader captured: $(head -c 200 captured.txt)"; exit 1; }
+[ "$status" = 0 ] || { echo "FAIL: green must accept the reformatted test with FIFO links planted (status $status); output: $(cat green.out)"; exit 1; }
+[ -p fifo ] || { echo "FAIL: the FIFO must be left in place"; exit 1; }
+remove_planted_links; rm -f tests/fifolink.test.sh captured.txt
+echo "PASS: the formatted copy never writes through a link to a FIFO planted at its old path"
+
+# A link to /dev/null and one to a regular sentinel raced in at the old path.
+for target in /dev/null "$P/sentinel.txt"; do
+  case "$target" in /dev/null) slice=devnull ;; *) slice=sentinellink ;; esac
+  prepare_reformatted_slice "$slice"
+  nextPid=$(bash -c 'echo $$')
+  perl -e 'symlink($ARGV[1], "tests/tddfmt_$_.sh") for $ARGV[0] .. $ARGV[0] + 50' "$nextPid" "$target"
+  status=$(run_green_watched green.out PLANT_TARGET="$target")
+  [ "$status" = 0 ] || { echo "FAIL: green must accept the reformatted test with links to $target planted (status $status); output: $(cat green.out)"; exit 1; }
+  [ "$(cat sentinel.txt)" = sentinel ] || { echo "FAIL: the formatted copy wrote through a planted link; sentinel now: $(head -c 200 sentinel.txt)"; exit 1; }
+  [ -c /dev/null ] || { echo "FAIL: /dev/null must stay a character device"; exit 1; }
+  if grep -q '^tests/tddfmt_' fmt.log; then echo "FAIL: the formatter must never run on the old copy path; log: $(cat fmt.log)"; exit 1; fi
+  remove_planted_links; rm -f "tests/$slice.test.sh"
+done
+echo "PASS: the formatted copy never writes through a link to /dev/null or a regular file planted at its old path"
+
+# A link planted at the scratch directory's own name before mkdir runs: mkdir
+# fails on it without following it, and green retries under a new name.
+prepare_reformatted_slice collide
+status=$(run_green_watched green.out PLANT_MODE=collide PLANT_TARGET="$P/outside" PLANT_ONCE="$P/plant.once")
+[ "$status" = 0 ] || { echo "FAIL: green must retry past a taken scratch name (status $status); output: $(cat green.out)"; exit 1; }
+[ -e plant.once ] || { echo "FAIL: the collision was never planted, so the case proved nothing"; exit 1; }
+[ -z "$(ls -A outside)" ] || { echo "FAIL: mkdir followed the planted link into outside/: $(ls -A outside)"; exit 1; }
+[ "$(find tests -name '.tddfmt_*' -type l | wc -l | tr -d ' ')" = 1 ] || { echo "FAIL: the planted link must be left alone, never reused or removed by the trap"; exit 1; }
+[ -z "$(find tests -name '.tddfmt_*' -type d)" ] || { echo "FAIL: green must remove its own scratch directory"; exit 1; }
+find tests -name '.tddfmt_*' -type l -exec /bin/rm -f {} +; rm -f tests/collide.test.sh plant.once
+echo "PASS: a link at the scratch directory's name is never followed or reused"
+
+# A link to /dev/null raced in inside the fresh scratch directory: the
+# post-create check refuses the copy, nothing is formatted or hashed through
+# it, and green fails closed on the byte-exact hash.
+prepare_reformatted_slice inside
+status=$(run_green_watched green.out PLANT_MODE=inside PLANT_TARGET=/dev/null)
+[ "$status" != 0 ] && [ "$status" != timeout ] || { echo "FAIL: green must fail closed when the copy is not a regular file (status $status); output: $(cat green.out)"; exit 1; }
+grep -q 'changed since RED' green.out || { echo "FAIL: green must fall back to the byte-exact hash; output: $(cat green.out)"; exit 1; }
+if grep -q '/tddfmt\.sh$' fmt.log; then echo "FAIL: the formatter must never run on a copy that is a link; log: $(cat fmt.log)"; exit 1; fi
+[ -c /dev/null ] || { echo "FAIL: /dev/null must stay a character device"; exit 1; }
+[ -z "$(find tests -name '.tddfmt_*')" ] || { echo "FAIL: green must remove its scratch directory after refusing the copy"; exit 1; }
+rm -f .claude/tdd-lock.json tests/inside.test.sh fmt.log green.out
+echo "PASS: a copy that is not a regular file is never formatted or hashed, and green fails closed"
 
 echo "tdd-format.test.sh PASS"
