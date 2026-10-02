@@ -4,7 +4,7 @@
 # across CLAUDE.md, the rulebook, and the skills: R-110 classifies each slice
 # by risk and records it at Gate 1 with one owner tile per fuzzy control; the
 # slice-role triad and the per-slice critic follow the risk, not the tier
-# (R-412, R-707, R-907); the R-517 reviewer runs on sonnet for every PR with a
+# (R-412, R-707); the R-517 reviewer runs on sonnet for every PR with a
 # two-round cap; ticket-lifecycle records the risk measures and reports them.
 # R-110 is a manual rule, so this fixture pins its text rather than a hook.
 set -euo pipefail
@@ -45,7 +45,7 @@ requireNormText 'R-110' '[manual]'
 requireText "$ROOT/rulebook/reference.md" 'R-110: Classify every slice and PR by risk' "reference.md has no R-110 entry"
 requireText "$ROOT/rulebook/reference.md" 'are deferred to follow-up work' "reference.md R-110 does not name the deferred detector and merge-time checks"
 
-# R-412, R-707, R-907: risk, not tier, decides the triad.
+# R-412, R-707: risk, not tier, decides the triad.
 requireNormText 'R-110' 'standard-risk runs the lean tier'
 requireText "$ROOT/rulebook/reference.md" 'Scope: high-risk slices only (owner decision 2026-10-02, IAN-568' "reference.md R-412 does not limit the lock to high-risk slices"
 requireText "$ROOT/rulebook/agents.md" 'for every high-risk slice (R-110), at any task tier, and for no other slice' "agents.md R-707 still dispatches by tier"

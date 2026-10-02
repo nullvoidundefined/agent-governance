@@ -396,7 +396,7 @@ Two custom rules under `rules/`, active only in test trees. `no-self-mock` repor
 
 It decides: the leading word of a named function is an approved verb or a boolean prefix; a noun follows it; the verb is not a banned synonym (the report names the canonical replacement); a function annotated `: boolean` leads with `is`/`has`/`can`/`should`; with a glossary configured, the head noun is a declared domain term. For variables it decides two things only: a collection is named in the plural, and a single-word name is not a bare adjective.
 
-It does not decide whether the lexicon carves the domain well, nor R-318/R-322 (one responsibility), which are undecidable and stay with the judge rather than being faked with a line-count proxy.
+It does not decide whether the lexicon carves the domain well, nor R-318 (one responsibility), which are undecidable and stay with the judge rather than being faked with a line-count proxy.
 
 `lexicon.json` is the single source. The R-316 verb lists in `rulebook/reference.md` are generated from it by `render-lexicon-spec.mjs` between `<!-- lexicon:begin -->` markers: change the registry, run `node enforce/render-lexicon-spec.mjs --write`, commit both. `lexicon-spec-sync.test.sh` fails the suite if they diverge, and `--check`/`--write` also reject a registry that contradicts itself (a banned verb still bound to a layer by `verbGroups` or `scopeVerbs`).
 

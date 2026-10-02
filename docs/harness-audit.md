@@ -209,13 +209,13 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | redaction-guard-check | SessionStart | COACHING | warns when two named hooks are unregistered | R-102; manifest; ports; fixture | 0 when healthy |
 | secret-scan | PreToolUse Bash, Write/Edit | ENFORCE | denies | | |
 | session-end | SessionEnd | ORCHESTRATION | routes memory lines, writes a resume snapshot | R-602, R-603; ports; 6 fixtures | 0 |
-| session-start | SessionStart | ORCHESTRATION | injects the memory index, handoff, start time, resume offer | R-001, R-002, R-201, R-503, R-602; manifest; ports; 11 fixtures | 2,000 to 4,500 every session start, the largest fixed cost |
+| session-start | SessionStart | ORCHESTRATION | injects the memory index, handoff, start time, resume offer | R-001, R-002, R-201, R-602; manifest; ports; 11 fixtures | 2,000 to 4,500 every session start, the largest fixed cost |
 | settings-change-guard | ConfigChange | ENFORCE | blocks a settings change that drops a required hook | | |
 | single-file-folder-reminder | PreToolUse Bash | COACHING | writes to stderr and exits 0, so the model likely never sees it | R-305, R-309; manifest; ports; 2 fixtures | about 40 on some pushes |
 | spec-glossary-check | PostToolUse Write | COACHING | additionalContext only | R-330, R-412, R-514, R-517; manifest; ports; fixture | about 150 on an incomplete spec |
 | structure-gate | PreToolUse Write/Edit | ENFORCE | denies | | |
 | task-commit-reminder | PostToolUse TaskUpdate | COACHING | additionalContext only | R-504; manifest; PORT-STATUS only; 2 fixtures | about 100 per completed task with a dirty tree |
-| task-state-tracker | PostToolUse TaskCreate/TaskUpdate | ORCHESTRATION | appends task events; no output | R-213, R-601; manifest; 4 fixtures | 0 |
+| task-state-tracker | PostToolUse TaskCreate/TaskUpdate | ORCHESTRATION | appends task events; no output | R-601; manifest; 4 fixtures | 0 |
 | verification-gate | Stop, SubagentStop | ENFORCE | blocks Stop on a red suite | | |
 
 ENFORCE outside `settings.json`: `pre-push.sample`, installed as the git pre-push hook by `install-git-hooks.sh`, aborts a push when port verification fails (its R-215 SHA-reachability step was removed in IAN-568); it enforces only where that installer has run.
@@ -230,7 +230,7 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 |---|---|---|---|---|---|---|
 | task-start | skill | ORCHESTRATION | start checklist | task-tier.sh, finding.sh: the ledger the gates read (task-provenance.sh was removed in IAN-568) | rules R-109, R-212, R-517; 3 manifest rows; many fixtures; invoked by build-fast, task-cleanup, ticket-lifecycle | 34 / 7,100 |
 | task-cleanup | skill | ORCHESTRATION | end checklist | scan.sh has a fixture only | R-607, R-608; fixtures task-cleanup-scan, merge-authority-rule-text | 31 / 5,400 |
-| ticket-lifecycle | skill | ORCHESTRATION | ticket narration; the gates check the key, not the skill | none | R-106, R-503, R-605, R-606; 2 manifest rows | 70 / 3,400 |
+| ticket-lifecycle | skill | ORCHESTRATION | ticket narration; the gates check the key, not the skill | none | R-106, R-605, R-606; 2 manifest rows | 70 / 3,400 |
 | tdd-gated-dispatch | skill | ORCHESTRATION | slice sequencing; enforcement is tdd.sh plus protected-path-guard, outside the skill | none | R-403, R-412 name it; uses test-author, implementer, slice-critic | 162 / 5,000 |
 | build-by-slice-require-review | skill | ORCHESTRATION | slice-plan sequencing | none | R-517; fixture spec-glossary-check | 130 / 2,800 |
 | build-fast | skill | ORCHESTRATION | speed workflow | build-lane.sh read by build-lane-quiet (relaxes reminders only) | R-109, R-211, R-514, R-517; 10 manifest rows; 5 fixtures | 99 / 1,300 |
@@ -264,11 +264,11 @@ Every skill is ported to `cursor/skills/<name>/` and `codex/skills/<name>/`, and
 
 ## Stale or wrong enforcer tags
 
-- **R-506 and R-513**: the manifest says advisory, but the hooks emit `ask`.
+- **R-513**: the manifest says advisory, but the hook emits `ask` (R-506, the other case, was deleted in IAN-568).
 - **R-107 and R-203** name warn-only SessionStart checks (hookspath-drift-check, hook-integrity-check); the real denials are destructive-command-guard and settings-change-guard.
 - **R-102** names redact-output, which cannot block. **R-330** names spec-glossary-check, which is advisory (lexicon-gate, which did the deny, was removed in IAN-568). **R-516** names the advisory enforcement-guard-check and omits settings-change-guard. **R-605** omits linear-todo-label-gate.
 - **R-316, R-317, R-320** rely on ESLint rules that are opt-in per repository (`.enforce.json`); with the option off, only the judge or an advisory reminder remains. **R-303**'s no-restricted-paths needs `importZones`.
-- **Hook-tagged rules that are really COACHING**: R-322, R-341, R-345, R-346, R-351, R-501, R-503, R-504, R-508, R-511, R-518, R-601, R-602.
+- **Hook-tagged rules that are really COACHING**: R-341, R-345, R-346, R-351, R-501, R-504, R-508, R-518, R-601, R-602.
 - **Judge-only rules** (R-315, R-334, R-363, R-364, R-365) are probabilistic and pass when the judge has no API key.
 
 ## ENFORCE items that look redundant

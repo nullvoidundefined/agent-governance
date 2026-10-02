@@ -51,7 +51,7 @@ requireText "$ROOT/rulebook/reference.md" "$NAMED_INVOCATIONS" \
 forbidText "$ROOT/rulebook/reference.md" 'First line of the response after the reads' \
     "rulebook/reference.md R-001 still requires the declaration line"
 forbidText "$ROOT/CLAUDE.md" "$RATIONALE_CLAUSE" \
-    "CLAUDE.md R-001 carries rationale that belongs in PROTOCOL.md (R-206): $RATIONALE_CLAUSE"
+    "CLAUDE.md R-001 carries rationale that belongs in PROTOCOL.md: $RATIONALE_CLAUSE"
 forbidText "$ROOT/CLAUDE.md" "$LOOSE_WORDING" \
     "CLAUDE.md R-001 still carries the undefined wording: $LOOSE_WORDING"
 forbidText "$ROOT/CLAUDE.md" "$RETIRED_R002" \
