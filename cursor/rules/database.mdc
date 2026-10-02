@@ -591,3 +591,12 @@ it("lists trips with their legs in a constant number of queries", async () => {
 - Every repository query includes `user_id = $N` scoping
 - No direct frontend-to-database connections
 - The API server is the only database client
+
+## Incident-backed rules
+
+Moved from the global-memory PL list on 2026-10-02 (IAN-568). Each came from a production incident in a 2026-04 debug session; they are defaults.
+
+- **PL1.** Every handler that touches the database gets an integration test against real Postgres; a unit test that mocks a broken repository call passes while production fails. Incident: a subscription-lookup query referenced a removed column, the mocked unit test passed, and the first production request returned a 500.
+- **PL2.** After any destructive migration (a column removal or a type change), grep the whole codebase for the column name, its type, and every repository function that used it, and delete the dead code in the same commit as the migration.
+- **PL15.** After a deploy that carries a migration, exercise every endpoint that reads or writes the changed tables by hand; do not trust CI alone.
+- **PL19.** Removing a subscription, tier, or plan system is a whole-codebase sweep, not just a migration: every column, type, handler, constant, and piece of UI copy that refers to it is deleted in the same PR.

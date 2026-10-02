@@ -5,8 +5,7 @@
 #
 # N6, the trust boundary: the Python parse check may run the pushed
 # repository's own <repo>/.venv/bin/python3 only when the repository's origin
-# URL is listed in $HOME/.claude/enforce/gate-trusted-repos.txt, the same
-# opt-in push-golangci-gate.sh uses. Otherwise it uses python3 on PATH, so a
+# URL is listed in $HOME/.claude/enforce/gate-trusted-repos.txt. Otherwise it uses python3 on PATH, so a
 # linter never executes a binary the target repository ships.
 #   (a) Untrusted: the repository's .venv/bin/python3 is a stub that writes a
 #       marker file and exits 0, and the pushed app/models.py has a syntax

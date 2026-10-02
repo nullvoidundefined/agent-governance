@@ -30,22 +30,22 @@ const RULE_LINE = /^(R-\d{3})( \[[a-z]+\])?:/;
 // rulebook/reference.md.
 export const PROTECTED_HOOKS = new Set([
   "harness-sync",
-  "codex-billing-guard", "codex-test-author-guard", "commit-message-guard", "conflict-markers",
+  "codex-billing-guard", "commit-message-guard", "conflict-markers",
   "constant-change-guard", "content-gate", "dependency-add-guard", "destructive-command-guard",
   "destructive-db-guard", "fix-commit-requires-test", "git-workflow-guard", "global-repo-push-guard",
-  "lexicon-gate", "linear-todo-label-gate", "mcp-action-guard", "migration-defaults-guard", "no-em-dash",
-  "pr-ticket-ref-gate", "protected-path-guard", "push-eslint-gate", "push-feature-docs-gate",
-  "push-golangci-gate", "push-rubocop-gate", "push-ruff-gate", "push-semgrep-gate", "scope-widening-gate",
-  "secret-scan", "settings-change-guard", "structure-gate", "task-provenance-gate", "ticket-at-start-gate",
+  "linear-todo-label-gate", "mcp-action-guard", "migration-defaults-guard", "no-em-dash",
+  "pr-ticket-ref-gate", "protected-path-guard", "push-eslint-gate",
+  "push-ruff-gate", "push-semgrep-gate",
+  "secret-scan", "settings-change-guard", "structure-gate",
   "verification-gate",
 ]);
 export const PROTECTED_RULES = new Set([
   "R-003", "R-101", "R-102", "R-103", "R-105", "R-106", "R-107", "R-108", "R-109",
-  "R-203", "R-207", "R-212", "R-213", "R-214", "R-215",
+  "R-203", "R-207", "R-212", "R-214",
   "R-302", "R-303", "R-306", "R-315", "R-316", "R-317", "R-320", "R-325", "R-330", "R-331", "R-334",
   "R-342", "R-343", "R-344", "R-361", "R-362", "R-363", "R-364", "R-365",
   "R-401", "R-403", "R-405", "R-410", "R-411", "R-412",
-  "R-505", "R-506", "R-507", "R-509", "R-512", "R-513", "R-514", "R-517",
+  "R-505", "R-507", "R-509", "R-512", "R-513", "R-514", "R-517",
   "R-605", "R-607", "R-608",
 ]);
 const PROTECTED_AGENTS = new Set(["test-author", "implementer", "slice-critic", "spec-conformance-review", "pr-reviewer", "security-reviewer"]);
@@ -62,7 +62,7 @@ const PROTECTED_EXACT_PATHS = new Set([
 // protected, so the rule cannot be bypassed by a helper an enforcing hook
 // needs (PR #175 review round 2).
 const REMOVABLE_HOOK_SCRIPTS = new Set([
-  "audit-signal-check", "build-cheatsheets", "clean-code-reminder", "dockerfile-reminder",
+  "audit-signal-check", "build-cheatsheets", "dockerfile-reminder",
   "draft-pr-on-first-push", "enforcement-guard-check", "flat-directory-reminder", "handoff-check",
   "hook-integrity-check", "hookspath-drift-check", "model-switch-guard", "new-file-header-reminder",
   "observability-reminder", "parallel-session-check", "post-compact-rules", "pr-monitor-reminder",

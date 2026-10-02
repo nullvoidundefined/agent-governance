@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
 # Covers: hook:structure-gate
-# Verifies structure-gate.sh denies banned/kebab source dirs and allows camelCase + app routes.
+# Verifies structure-gate.sh denies banned source dirs, warns without denying on
+# abbreviated (R-311) and kebab/snake (R-312) dirs, and allows camelCase + app routes.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 HOOK="$CLAUDE_HARNESS_ROOT/hooks/structure-gate.sh"
 deny() { printf '%s' "$1" | "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null; }
 allow() { [ -z "$(printf '%s' "$1" | "$HOOK")" ]; }
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user-preferences/index.ts"}}'   # kebab (R-312)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user_preferences/index.ts"}}'   # snake (R-312)
+# warn: an R-311 or R-312 finding adds context and never denies (IAN-568).
+warn() {
+  local out
+  out=$(printf '%s' "$1" | "$HOOK")
+  printf '%s' "$out" | jq -e '(.hookSpecificOutput.permissionDecision == null) and (.hookSpecificOutput.additionalContext | test("R-31[12]"))' >/dev/null \
+    || { echo "FAIL: expected a non-blocking R-311/R-312 warning for $1, got: $out"; exit 1; }
+}
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user-preferences/index.ts"}}'   # kebab (R-312)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user_preferences/index.ts"}}'   # snake (R-312)
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/utils/format.ts"}}'             # banned (R-306)
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/lib/format.ts"}}'               # banned, 2nd name
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/app/utils/page.tsx"}}'          # banned beats app exemption
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/kebab-dir/app/coming-soon/page.tsx"}}'  # kebab BEFORE app still denied
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/kebab-dir/app/coming-soon/page.tsx"}}'  # kebab BEFORE app still warns
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/userPreferences/index.ts"}}'   # camelCase ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/app/coming-soon/page.tsx"}}'   # app route segment exempt
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/db/pool.ts"}}'                   # abbreviated (R-311)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/di/container.ts"}}'              # abbreviated (R-311)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/svc/user.ts"}}'                  # abbreviated (R-311)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/ctrl/user.ts"}}'                 # abbreviated (R-311)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/mw/auth.ts"}}'                   # abbreviated (R-311)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/cfg/index.ts"}}'                 # abbreviated (R-311)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/db/pool.ts"}}'                   # abbreviated (R-311)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/di/container.ts"}}'              # abbreviated (R-311)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/svc/user.ts"}}'                  # abbreviated (R-311)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/ctrl/user.ts"}}'                 # abbreviated (R-311)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/mw/auth.ts"}}'                   # abbreviated (R-311)
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/cfg/index.ts"}}'                 # abbreviated (R-311)
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/database/pool.ts"}}'            # full word ok
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/dependencyInjection/container.ts"}}'  # full word ok
 # R-313/R-314 test placement
@@ -31,15 +39,15 @@ allow '{"tool_name":"Write","tool_input":{"file_path":"/x/e2e/login.spec.ts"}}' 
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/tests/test_auth.py"}}'                  # python tests/ ok
 # Python tree exceptions: snake_case package dirs, blessed db/ and core/ (CLAUDE-PYTHON.md)
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user_preferences/api.py"}}'         # snake ok for python (R-312 exception)
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user-preferences/api.py"}}'          # kebab still denied for python
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/user-preferences/api.py"}}'          # kebab still warns for python
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/db/engine.py"}}'                    # db/ blessed for python
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/src/core/config.py"}}'                  # core/ blessed for python
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/svc/user.py"}}'                      # other abbrevs still denied for python
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/src/svc/user.py"}}'                      # other abbrevs still warn for python
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/src/utils/format.py"}}'                  # catch-alls still denied for python
 # Python app/ root (CLAUDE-PYTHON.md layout): the gate must fire without a src/ segment
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/format.py"}}'                  # catch-all under app/ root
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/svc/user.py"}}'                      # abbrev under app/ root
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user-preferences/api.py"}}'          # kebab under app/ root
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/app/svc/user.py"}}'                      # abbrev under app/ root
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user-preferences/api.py"}}'          # kebab under app/ root
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user_preferences/api.py"}}'         # snake ok under app/ root
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/db/engine.py"}}'                    # db/ blessed under app/ root
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/core/config.py"}}'                  # core/ blessed under app/ root
@@ -48,8 +56,8 @@ allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/Format.tsx"}
 # Ruby app/ and lib/ roots (CLAUDE-RUBY.md layout)
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/utils/format.rb"}}'                  # catch-all under ruby app/
 deny '{"tool_name":"Write","tool_input":{"file_path":"/x/lib/helpers/format.rb"}}'                # catch-all under ruby lib/
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/svc/user.rb"}}'                      # abbrev under ruby app/
-deny '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user-preferences/api.rb"}}'          # kebab denied for ruby
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/app/svc/user.rb"}}'                      # abbrev under ruby app/
+warn '{"tool_name":"Write","tool_input":{"file_path":"/x/app/user-preferences/api.rb"}}'          # kebab warns for ruby
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/app/services/jobs/score_match.rb"}}'    # snake ok for ruby
 allow '{"tool_name":"Write","tool_input":{"file_path":"/x/lib/tasks/backfill_scores.rb"}}'        # lib/ blessed root for ruby
 # Go internal/, cmd/, pkg/ roots (CLAUDE-GO.md layout)
@@ -129,9 +137,9 @@ allow "$(write_json Write "$NUXT/app/components/TripCard/TripCard.vue")"        
 allow "$(write_json Edit  "$NUXT/app/components/LegacyTile.vue")"                # pre-existing loose file
 deny  "$(write_json Write "$NUXT/app/utils/formatPrice.ts")"                     # catch-all under the Nuxt app/ root (R-306)
 deny  "$(write_json Write "$NUXT/server/utils/readSession.ts")"                  # catch-all under the Nitro server/ root (R-306)
-deny  "$(write_json Write "$NUXT/app/trip-legs/reorderTripLegs.ts")"             # kebab directory (R-312)
-deny  "$(write_json Write "$NUXT/app/trip_legs/reorderTripLegs.ts")"             # snake directory (R-312)
-deny  "$(write_json Write "$NUXT/app/svc/fetchTrips.ts")"                        # abbreviation (R-311)
+warn  "$(write_json Write "$NUXT/app/trip-legs/reorderTripLegs.ts")"             # kebab directory (R-312)
+warn  "$(write_json Write "$NUXT/app/trip_legs/reorderTripLegs.ts")"             # snake directory (R-312)
+warn  "$(write_json Write "$NUXT/app/svc/fetchTrips.ts")"                        # abbreviation (R-311)
 allow "$(write_json Write "$NUXT/app/composables/useTripsQuery.ts")"             # Vue vocabulary ok
 allow "$(write_json Write "$NUXT/server/api/health.get.ts")"                     # Nitro route file ok
 allow "$(write_json Write "$NUXT/app/pages/coming-soon/index.vue")"              # page directories are URL segments (R-312 exception)
@@ -153,7 +161,7 @@ allow '{"tool_name":"Write","tool_input":{"file_path":"/x/server/utils/format.ts
 NESTED_NUXT="$VOCAB_FIXTURE/server/tripPlanner"
 mkdir -p "$NESTED_NUXT/app"
 printf '%s\n' '{"dependencies":{"nuxt":"^4.1.0"}}' >"$NESTED_NUXT/package.json"
-deny  "$(write_json Write "$NESTED_NUXT/app/trip-legs/reorderTripLegs.ts")"      # kebab under the package's own app/ (R-312)
+warn  "$(write_json Write "$NESTED_NUXT/app/trip-legs/reorderTripLegs.ts")"      # kebab under the package's own app/ (R-312)
 allow "$(write_json Write "$NESTED_NUXT/app/pages/coming-soon/index.vue")"       # its pages/ exemption still holds
 rm -rf "$VOCAB_FIXTURE"
 

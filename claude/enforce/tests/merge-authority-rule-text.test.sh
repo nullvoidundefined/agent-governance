@@ -36,7 +36,11 @@ R514_NORM=$(normLine 'R-514')
 R211_NORM=$(normLine 'R-211')
 
 # Trivial-tier exception, stated once in the rule and matched by the skills.
-grep -qF -- "$TRIVIAL_EXCEPTION" <<< "$R514_NORM" || { echo "FAIL: CLAUDE.md R-514 lacks the trivial-tier merge exception"; exit 1; }
+# The R-514 norm line was shortened on 2026-10-02 (IAN-568); it keeps the
+# trivial path in short form and the reference Spec keeps the full exception.
+TRIVIAL_SHORT='a trivial-tier PR merges on green CI'
+grep -qF -- "$TRIVIAL_SHORT" <<< "$R514_NORM" || { echo "FAIL: CLAUDE.md R-514 lacks the trivial-tier merge path"; exit 1; }
+grep -qF -- 'The owner reads and merges every security-touching PR (R-109)' <<< "$R514_NORM" || { echo "FAIL: CLAUDE.md R-514 does not reserve security-touching PRs to the owner"; exit 1; }
 requireText "$ROOT/rulebook/reference.md" "$TRIVIAL_EXCEPTION" "reference.md R-514 Spec lacks the trivial-tier merge exception"
 forbidText "$ROOT/rulebook/reference.md" 'under the same merge authorization as any PR' "reference.md R-514 still requires per-PR authorization for a trivial PR"
 requireText "$ROOT/skills/task-cleanup/SKILL.md" 'merge on green CI' "task-cleanup lost the trivial merge-on-green path"
@@ -58,9 +62,9 @@ requireText "$ROOT/rulebook/reference.md" "$R211_MERGE_MODE" "reference.md R-211
 
 # The generated ports carry the new R-514 norm line.
 if [ -f "$REPO_ROOT/codex/AGENTS.md" ]; then
-  requireText "$REPO_ROOT/codex/AGENTS.md" "$TRIVIAL_EXCEPTION" "codex/AGENTS.md was not regenerated"
+  requireText "$REPO_ROOT/codex/AGENTS.md" "$TRIVIAL_SHORT" "codex/AGENTS.md was not regenerated"
 fi
 if [ -f "$REPO_ROOT/cursor/rules/000-global-rules.mdc" ]; then
-  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$TRIVIAL_EXCEPTION" "cursor global rules were not regenerated"
+  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$TRIVIAL_SHORT" "cursor global rules were not regenerated"
 fi
 echo "merge-authority-rule-text.test.sh PASS"

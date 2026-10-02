@@ -27,7 +27,7 @@
  *          `scored`)
  *
  * What it deliberately does NOT decide: whether the lexicon itself carves the
- * domain well, whether a name is meaningful, or R-318/R-322 (one responsibility),
+ * domain well, whether a name is meaningful, or R-318 (one responsibility),
  * which are undecidable and stay advisory rather than being faked with a proxy.
  *
  * PascalCase identifiers are skipped: React components, classes, and type

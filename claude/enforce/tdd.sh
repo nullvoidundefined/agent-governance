@@ -34,7 +34,14 @@
 #   tdd.sh green
 #       requires the containing files to be byte-identical to the lock and,
 #       when the lock is committed, to the commit that introduced it (the RED
-#       commit); runs the suite and requires every named test to pass, none
+#       commit), byte-exact: green runs no formatter and no other program
+#       on the tests before comparing (red and amend format them with
+#       .enforce.json's testFormatCommand before hashing, so a pre-commit
+#       hook running that same formatter leaves them unchanged; when the
+#       hook's formatter differs and rewrites a test, re-hash it with
+#       `tdd.sh amend`); a gitignored lock has no RED commit, so one commit
+#       per slice is fine; runs the suite and requires every named test to
+#       pass, none
 #       skipped, no other failure, and the pass count outside the named tests
 #       at or above the baseline. Moves to phase "green". Re-run after every
 #       refactor.
@@ -81,6 +88,9 @@
 # collection error is a file with
 # no tests carrying the error text, so a SyntaxError is refused as a parse
 # failure and an ImportError or ModuleNotFoundError is the missing-module RED.
+# A pytest test that runs and raises any other exception, in its body or its
+# fixtures' setup, is a RED recorded by exception class; infrastructure
+# failures and teardown errors are refused (pytest_exception_class).
 # Any other path, or no path, uses Vitest or Jest resolved from the project's
 # node_modules/.bin, then the copy bundled under ~/.claude/enforce/node_modules
 # (with a warning). A slice never mixes runners. go test and RSpec arrive with
@@ -315,7 +325,10 @@ run_shell_suite() {
   dirs=$(for rel in "$@"; do dirname "$rel"; done | sort -u)
   while IFS= read -r dir; do
     results=$(mktemp -d); scratch=$(mktemp -d)
-    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --affected "${also[@]}" --results-dir "$results" >/dev/null 2>&1)
+    (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --affected "${also[@]}" --results-dir "$results" >"$scratch/runner.out" 2>&1)
+    # The runner's own summary (selection, run slot, and the IAN-566 timing
+    # line) goes to stderr, so a slow red or green shows where its time went.
+    grep '^fixture-shards: ' "$scratch/runner.out" >&2
     for fixture in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
       [ -f "$fixture" ] || continue
       [ -f "$results/$(basename "$fixture").status" ] || is_named_fixture "$fixture" "$@" || continue
@@ -492,12 +505,20 @@ ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
 SHELL_ASSERTION='FAIL'
-# pytest: an import that cannot resolve (a module or a name not written yet) is
-# the missing-module RED, a failed assert or an unmet pytest.raises is the
-# assertion RED, and any SyntaxError subclass is a test that does not parse.
-PYTEST_MISSING='ModuleNotFoundError|ImportError'
+# pytest: an import that cannot resolve (a module or a name not written yet),
+# or a fixture not written yet, is the missing-module RED, a failed assert or
+# an unmet pytest.raises is the assertion RED, and any SyntaxError subclass is
+# a test that does not parse. Any other exception the test body or its setup
+# raises is a RED too, recorded by its class (I3, IAN-568): a new keyword
+# argument (TypeError), an unwritten method, a column a migration has not
+# added yet, a fixture insert failing on setup. Refused: a failure whose first
+# line is infrastructure (PYTEST_INFRASTRUCTURE), a teardown error (the test
+# body passed), and anything that names no exception class. A collection error
+# never reaches this point: classify_red refuses it as a file with no tests.
+PYTEST_MISSING='ModuleNotFoundError|ImportError|fixture '"'"'[^'"'"']+'"'"' not found'
 PYTEST_ASSERTION='AssertionError|DID NOT RAISE'
 PYTEST_PARSE_FAILURE='SyntaxError|IndentationError|TabError'
+PYTEST_INFRASTRUCTURE='ConnectionRefusedError|ConnectionResetError|ConnectionAbortedError|TimeoutError|socket\.timeout|Connection refused|could not connect to server|connection to server at .* failed|Name or service not known|nodename nor servname|timed out|Timeout >'
 
 # Classifies one RED file from its report record, each of its tests on its own
 # (classify_failures). Prints the failure class or dies with the refusal.
@@ -567,7 +588,7 @@ def failure_result: {key: test_key, failures: ((.failureMessages // []) | map(to
 # is missing-module when any test is, assertion otherwise. A test with no
 # failure message, or no result at all, is refused, never an assertion.
 classify_failures() {
-  local rel="$1" results="$2" result key failures class=assertion count=0
+  local rel="$1" results="$2" result key failures class=assertion count=0 exception classes=""
   while IFS= read -r result; do
     [ -n "$result" ] || continue
     count=$((count + 1))
@@ -575,12 +596,40 @@ classify_failures() {
     failures=$(jq -r '.failures' <<< "$result")
     [ -n "$(tr -d '[:space:]' <<< "$failures")" ] || die "$rel::$key failed with no failure message to classify"
     if grep -qE "$MISSING_MODULE" <<< "$failures"; then class=missing-module
-    elif ! grep -qE "$ASSERTION" <<< "$failures"; then
+    elif grep -qE "$ASSERTION" <<< "$failures"; then classes="${classes}assertion"$'\n'
+    elif [ "$RUNNER_KIND" = pytest ]; then
+      exception=$(pytest_exception_class "$rel::$key" "$failures") || exit 1
+      classes="${classes}${exception}"$'\n'
+    else
       die "$rel::$key fails for a reason this script does not classify: $(printf '%s' "$failures" | grep -m1 . || true)"
     fi
   done <<< "$results"
   [ "$count" -gt 0 ] || die "$rel has no failing test result to classify"
+  # Missing-module wins, as before; otherwise the classes seen, sorted and
+  # joined, which is plain "assertion" for every runner but pytest.
+  [ "$class" = missing-module ] || class=$(printf '%s' "$classes" | sed '/^$/d' | sort -u | paste -sd, -)
   printf '%s' "$class"
+}
+
+# pytest_exception_class <test> <failures>: prints the class of the exception
+# a pytest test failed with, read from the first line of its failure (the
+# JUnit message: `TypeError: ...`, `pkg.mod.UndefinedColumnError: ...`, or
+# `failed on setup with "<the same>"`), or dies with the refusal for an
+# infrastructure failure, a teardown error, a SyntaxError, or a line that
+# names no exception class.
+pytest_exception_class() {
+  local test="$1" first name
+  first=$(printf '%s' "$2" | grep -m1 . || true)
+  case "$first" in
+    'failed on teardown with'*) die "$test passed and then failed in teardown; a teardown error is not a RED: $first" ;;
+  esac
+  first="${first#failed on setup with \"}"
+  grep -qE "$PYTEST_INFRASTRUCTURE" <<< "$first" && die "$test fails on infrastructure, not on the behavior; start the service or fix the environment and run red again: $first"
+  name=$(sed -nE 's/^([A-Za-z_][A-Za-z0-9_.]*)(:.*)?$/\1/p' <<< "$first")
+  name="${name##*.}"
+  [ -n "$name" ] || die "$test fails for a reason this script does not classify: $first"
+  grep -qE "^($PYTEST_PARSE_FAILURE)$" <<< "$name" && die "$test raised $name, which is a parse failure, not a RED: $first"
+  printf '%s' "$name"
 }
 
 # classify_named <rel> <ids json>: classify_red for a file named by test ids.
@@ -818,6 +867,7 @@ cmd_red() {
     spec=$(add_named "$spec" "$rel" "$id") || exit 1
   done
   while IFS= read -r rel; do rels+=("$rel"); done < <(jq -r '.[].path' <<< "$spec")
+  format_test_files "${rels[@]}"
   run_suite "${rels[@]}"
   local entries='[]' class ids
   for rel in "${rels[@]}"; do
@@ -839,6 +889,218 @@ cmd_red() {
   say "RED: $summary; baseline $baseline passing outside. Tests are locked; implement, then 'tdd.sh green'."
 }
 
+# --- test formatting (I2, IAN-568) -------------------------------------------
+# A repository's pre-commit hook may reformat a test after `red` hashed it
+# (black after a `ruff format` check), and green then reported the test as
+# changed. `.enforce.json` may name the formatter as `testFormatCommand`, the
+# formatter binary and its flags, which takes file paths and rewrites them in
+# place (for example "black -q" or "node_modules/.bin/prettier --write"). When
+# it is set, red and amend run
+# it on the named tests before hashing them, so the hash is of the formatted
+# file and a pre-commit run of the same idempotent formatter is a no-op.
+# Formatting happens at red and amend only: green compares byte-exactly and
+# runs no formatter, so no program's output can influence a green or close
+# verdict (R-109 r5, IAN-568). When the pre-commit hook's formatter differs
+# from testFormatCommand and rewrites a test, the session re-hashes it with
+# `tdd.sh amend`. .enforce.json is a gate input the session cannot write
+# (R-410), so the command is the owner's; a repo with a pre-commit formatter
+# should set the key to that same formatter.
+
+# test_format_command: prints .enforce.json's testFormatCommand, or nothing.
+# The value names the formatter binary directly with its flags (for example
+# `ruff format`, `black -q`, `node_modules/.bin/prettier --write`); it is
+# split into words with no shell evaluation and run as an argument vector,
+# never under `bash -c`. It is refused with a warning, and red hashes the
+# test(s) as they stand, when it holds a shell operator or metacharacter, when its
+# program is not an allowlisted formatter (black, ruff, prettier, biome,
+# dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format) by the
+# exact name of its file, or is a path outside node_modules/.bin/ and
+# .venv/bin/, or when its other words are not options only after the
+# subcommand ruff and biome (`format`) and dprint (`fmt`) require, or when an
+# option names a configuration or plugin file (R-109 r1 #4, r2 #1, r4 #1 #2,
+# r5 #3, IAN-568).
+test_format_command() {
+  local command program
+  local -a words
+  [ -f "$ROOT/.enforce.json" ] || return 0
+  command=$(jq -r '.testFormatCommand // empty' "$ROOT/.enforce.json" 2>/dev/null || true)
+  [ -n "$command" ] || return 0
+  case "$command" in
+    *'|'* | *';'* | *'&'* | *'$'* | *'`'* | *'>'* | *'<'* | *$'\n'* | *$'\r'* \
+      | *'\'* | *'"'* | *"'"* | *'('* | *')'* | *'{'* | *'}'* | *'*'* | *'?'* | *'~'* | *'['* | *'#'*)
+      say "warning: testFormatCommand is refused because it holds a shell operator or metacharacter; name one formatter program and its flags. Hashing the test(s) as they stand" >&2
+      return 0 ;;
+  esac
+  read -r -a words <<< "$command"
+  program="${words[0]:-}"
+  if ! format_program_path "$program" >/dev/null; then
+    say "warning: testFormatCommand is refused because its program ($program) is not an allowlisted formatter (black, ruff, prettier, biome, dprint, gofmt, goimports, rustfmt, shfmt, isort, yapf, clang-format, by the exact name of its file) named as a bare name on PATH, node_modules/.bin/<tool>, or .venv/bin/<tool>. Hashing the test(s) as they stand" >&2
+    return 0
+  fi
+  if ! format_arguments_allowed "${words[@]}"; then
+    say "warning: testFormatCommand is refused because its arguments are not options only (ruff and biome take format first, dprint fmt; every other word starts with - and names no path, and --config, --plugin, --style, --settings-path, and --config-path are refused). Hashing the test(s) as they stand" >&2
+    return 0
+  fi
+  printf '%s' "$command"
+}
+
+# is_formatter_name <name>: true when <name> is one of the formatters
+# testFormatCommand may run (R-109 r4 #1 #2, IAN-568), compared byte-exactly.
+is_formatter_name() {
+  case "$1" in
+    black | ruff | prettier | biome | dprint | gofmt | goimports | rustfmt | shfmt | isort | yapf \
+      | clang-format)
+      return 0 ;;
+  esac
+  return 1
+}
+
+# is_launcher_name <name>: true when <name>, compared case-insensitively, is a
+# shell, interpreter, launcher, package runner, or hook manager; an extra
+# guard on the basename an allowlisted entry resolves to.
+is_launcher_name() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    bash | sh | zsh | dash | ksh | mksh | csh | tcsh | fish | env | eval | exec | xargs \
+      | nohup | sudo | doas | su | timeout | gtimeout | nice | ionice | time | command | builtin \
+      | source | . | python | python2 | python3 | python3.* | pypy* | ipython* | jupyter* \
+      | node | nodejs | deno | bun | tsx | ts-node | busybox \
+      | perl | ruby | php | lua | tclsh | osascript | awk | gawk | nawk | sed | find | git | make \
+      | script | arch | caffeinate | stdbuf | setsid | chroot | watch | parallel | open | flock \
+      | uv | uvx | npx | pnpm | pnpx | yarn | npm | bunx | pipx | poetry | pdm | hatch | tox | nox \
+      | pre-commit | go | bundle | pipenv)
+      return 0 ;;
+  esac
+  return 1
+}
+
+# is_exact_directory_entry <path>: true when the directory holding <path>
+# lists an entry whose name equals <path>'s basename byte-exactly; on a
+# case-insensitive filesystem `Node` opens node, and the listing tells them
+# apart.
+is_exact_directory_entry() {
+  local dir name
+  dir=$(dirname -- "$1")
+  name=$(basename -- "$1")
+  ls -1a -- "$dir" 2>/dev/null | grep -Fxq -- "$name"
+}
+
+# format_arguments_allowed <program> [word...]: true when testFormatCommand's
+# words after its program are what the allowlisted formatter needs: `format`
+# first for ruff and biome, `fmt` first for dprint, and every other word an
+# option (leading `-`, never `-` alone) that holds no `/` and names no path in
+# the repository, checked on the whole word and on the value after its first
+# `=`. A positional word would make the formatter read or rewrite a file of
+# the session's choosing, or select a subcommand that is not a formatter
+# (R-109 r4 #1); an option that loads a configuration or plugin file
+# (--config, --plugin, --style, --settings-path, --config-path, alone or in
+# its `=` form) is refused outright, since that file can run code (R-109 r5
+# #3, IAN-568).
+format_arguments_allowed() {
+  local name word option value
+  name=$(basename -- "$1")
+  shift
+  case "$name" in
+    ruff | biome) [ "${1:-}" = format ] || return 1; shift ;;
+    dprint) [ "${1:-}" = fmt ] || return 1; shift ;;
+  esac
+  for word in "$@"; do
+    case "$word" in -) return 1 ;; -*) ;; *) return 1 ;; esac
+    option="${word%%=*}"
+    case "$option" in --config | --plugin | --style | --settings-path | --config-path) return 1 ;; esac
+    for value in "$word" "${word#*=}"; do
+      case "$value" in */*) return 1 ;; esac
+      [ ! -e "$ROOT/$value" ] && [ ! -L "$ROOT/$value" ] || return 1
+    done
+  done
+  return 0
+}
+
+# resolve_physical_path <path>: prints <path> with every symbolic link
+# followed, the final one by a readlink loop (macOS bash 3.2 has no
+# `readlink -f`) and the directories by `pwd -P`; fails on a loop or a
+# missing directory.
+resolve_physical_path() {
+  local path="$1" link hops=0 dir
+  while [ -L "$path" ]; do
+    hops=$((hops + 1))
+    [ "$hops" -le 40 ] || return 1
+    link=$(readlink -- "$path") || return 1
+    case "$link" in /*) path="$link" ;; *) path="$(dirname -- "$path")/$link" ;; esac
+  done
+  dir=$(cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd -P) || return 1
+  printf '%s/%s' "$dir" "$(basename -- "$path")"
+}
+
+# format_program_path <program>: prints the absolute path testFormatCommand's
+# program runs from, or fails when the program is refused. The program is
+# node_modules/.bin/<name>, .venv/bin/<name>, or a bare <name> PATH resolves
+# to an absolute path outside the repository, and <name> must be on the
+# formatter allowlist (is_formatter_name) as the exact name of the directory
+# entry it opens (R-109 r4 #1 #2, IAN-568); an assignment, a leading `-`, or
+# `..` is refused first. The entry is then resolved through every link (R-109
+# r3 #2) and refused when the file it resolves to carries a launcher's name,
+# when a bare name resolves into the repository, or when a node_modules/.bin/
+# or .venv/bin/ entry resolves into the repository outside node_modules/ and
+# .venv/ (a link into scripts/); a .bin link into node_modules/<package>/ is
+# how npm installs a formatter and is accepted.
+format_program_path() {
+  local program="$1" name candidate resolved
+  [ -n "$program" ] || return 1
+  case "$program" in *=* | -* | *..*) return 1 ;; esac
+  case "$program" in
+    */*)
+      case "$program" in
+        node_modules/.bin/?*) name="${program#node_modules/.bin/}" ;;
+        .venv/bin/?*) name="${program#.venv/bin/}" ;;
+        *) return 1 ;;
+      esac
+      case "$name" in */*) return 1 ;; esac
+      is_formatter_name "$name" || return 1
+      [ -f "$ROOT/$program" ] && [ -x "$ROOT/$program" ] || return 1
+      candidate="$ROOT/$program" ;;
+    *)
+      name="$program"
+      is_formatter_name "$name" || return 1
+      candidate=$(type -P -- "$program" 2>/dev/null) || return 1
+      case "$candidate" in /*) ;; *) return 1 ;; esac
+      case "$candidate" in "$ROOT"/* | "$ROOT_PHYSICAL"/*) return 1 ;; esac ;;
+  esac
+  [ "$(basename -- "$candidate")" = "$name" ] || return 1
+  is_exact_directory_entry "$candidate" || return 1
+  resolved=$(resolve_physical_path "$candidate") || return 1
+  is_launcher_name "$(basename -- "$resolved")" && return 1
+  case "$resolved" in
+    "$ROOT_PHYSICAL"/node_modules/* | "$ROOT_PHYSICAL"/.venv/*)
+      case "$program" in */*) ;; *) return 1 ;; esac ;;
+    "$ROOT_PHYSICAL"/*) return 1 ;;
+  esac
+  printf '%s' "$candidate"
+}
+
+# format_test_files <rel>...: runs testFormatCommand on the root-relative
+# files from the repository root as an argument vector (the program resolved
+# to its absolute path, so no function, builtin, or alias runs in its place);
+# a non-zero exit warns and is not a refusal.
+format_test_files() {
+  local command program
+  local -a words
+  command=$(test_format_command)
+  [ -n "$command" ] && [ $# -gt 0 ] || return 0
+  read -r -a words <<< "$command"
+  program=$(format_program_path "${words[0]}") || return 0
+  words[0]="$program"
+  (cd "$ROOT" && "${words[@]}" "$@") >/dev/null 2>&1 \
+    || say "warning: testFormatCommand ($command) exited non-zero on $*; hashing the file(s) as they stand" >&2
+}
+
+# lock_is_ignored: true when git ignores the lock, so it can never be
+# committed and the RED commit has no anchor to bind (I8, IAN-568): one
+# commit per slice, test and implementation together, loses nothing.
+lock_is_ignored() { git check-ignore -q -- "$LOCK_RELATIVE" 2>/dev/null; }
+
+# check_hashes: refuses unless every locked test is byte-identical to its
+# recorded hash and, when the lock is committed, to its RED-commit blob. No
+# formatter or other program runs here (R-109 r5, IAN-568).
 check_hashes() {
   local changed
   changed=$(jq -r '.tests[] | "\(.path) \(.sha256)"' "$LOCK" | while read -r path recorded; do
@@ -854,8 +1116,8 @@ check_hashes() {
       [ "$committed" = "$recorded" ] && [ -f "$path" ] && [ "$(sha "$path")" = "$committed" ] || printf '%s\n' "$path"
     done)
     [ -z "$changed" ] || die "locked test file(s) differ from the RED commit ${red_commit:0:7} (R-410): $(printf '%s' "$changed" | tr '\n' ' ')"
-  else
-    [ "$(phase)" = "refactor" ] || say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
+  elif [ "$(phase)" != "refactor" ] && ! lock_is_ignored; then
+    say "note: the lock is not committed yet, so the hash check ran against the lock only; commit the RED test before the implementation (R-412)" >&2
   fi
 }
 
@@ -992,6 +1254,7 @@ finish_amendment() {
   before=$(jq -r --arg p "$rel" '.tests[] | select(.path == $p) | .sha256' "$LOCK")
   ids=$(jq -c --arg p "$rel" '.tests[] | select(.path == $p) | .ids // null' "$LOCK")
   while IFS= read -r path; do [ -n "$path" ] && locked_rels+=("$path"); done <<< "$(jq -r '.tests[].path' "$LOCK")"
+  format_test_files "$rel"
   run_suite "${locked_rels[@]}"
   if [ "$ids" = null ]; then class=$(classify_red "$rel") || exit 1
   else class=$(classify_named "$rel" "$ids") || exit 1
@@ -1007,7 +1270,9 @@ finish_amendment() {
     .tests |= map(if .path == $p then .sha256 = $to | .failureClass = $c | .tests = $n else . end)
     | .amendments = ((.amendments // []) + [{path: $p, fromSha256: $from, toSha256: $to, fromBlob: $fb, toBlob: $tb, failureClass: $c, at: $at}])
     | .phase = "red" | del(.amending)' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
-  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). Commit the amended test before the implementation, then 'tdd.sh green'."
+  local next="Commit the amended test before the implementation, then 'tdd.sh green'."
+  lock_is_ignored && next="Then 'tdd.sh green'."
+  say "RED (amended): $rel [$class, $count test(s)]; the amendment is recorded in the lock ('git diff $from_blob $to_blob' shows it). $next"
 }
 
 # red_is_pushed <rel>: true when a remote-tracking ref reaches a commit holding

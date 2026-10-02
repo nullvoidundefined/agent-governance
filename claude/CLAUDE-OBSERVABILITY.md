@@ -260,7 +260,7 @@ export function createCheckoutSession(input: CheckoutInput) {
 - R-341: middleware reads `X-Request-Id` or mints one, writes it to the response, and stores it in `context.Context`; handlers and services log through `slog` with the ID taken from the context (`slog.With("request_id", id)`), never as a parameter threaded by hand.
 - R-342: `slog` with structured attributes (`slog.Info("note loaded", "note_id", id)`), never `fmt.Println` or `log.Printf` with formatted values in service code; manual, no golangci linter is bundled for it.
 - R-343: one `clients/analytics` package wraps the provider; event names are constants in `analytics/events.go`, never a literal at the call site.
-- R-344: every error return is handled or wrapped with `%w`; `_ = err` and an empty `if err != nil {}` are defects; `errcheck` and `errorlint` in `enforce/golangci-enforce.yml` cover the unhandled-return and wrapping halves (the config is v2 schema; a v1 file was silently ignored by v2 binaries until 2026-09-04).
+- R-344: every error return is handled or wrapped with `%w`; `_ = err` and an empty `if err != nil {}` are defects; `errcheck` and `errorlint` in a repository's own golangci-lint config cover the unhandled-return and wrapping halves.
 - R-345: `/health` and `/health/ready` on every service and worker, registered first.
 - R-346: every client call uses a `context.WithTimeout`, logs provider, operation, duration, and outcome, and forwards the request ID on outbound HTTP.
 
@@ -277,6 +277,6 @@ Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag reques
 - R-341: `ActionDispatch::RequestId` honors `X-Request-Id` and sets it on the response; `config.log_tags = [:request_id]` puts it on every line; jobs log with the job ID in the same role.
 - R-342: `Rails.logger.info(event: "note_loaded", note_id: note.id)` through lograge's custom payload, never string interpolation of values into the message and never `puts` in app code; manual, since `Rails/Output` needs the rubocop-rails extension the gate does not bundle.
 - R-343: one `app/clients/analytics.rb` wraps the provider; event names are constants in `app/analytics/events.rb`, never a literal at the call site.
-- R-344: every `rescue` names the exception and logs or re-raises it; an empty `rescue` body is a defect (`Lint/SuppressedException` in `enforce/rubocop-enforce.yml`); a bound-but-unused exception stays manual.
+- R-344: every `rescue` names the exception and logs or re-raises it; an empty `rescue` body is a defect (`Lint/SuppressedException` in a repository's own RuboCop config); a bound-but-unused exception stays manual.
 - R-345: `/health` and `/health/ready` routes registered before application routes.
 - R-346: every client call sets a timeout, logs provider, operation, duration, and outcome, and forwards the request ID.

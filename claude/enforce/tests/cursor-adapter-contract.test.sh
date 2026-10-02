@@ -150,7 +150,7 @@ mv "$SANDBOX/permission-rules.parked" "$SANDBOX_CLAUDE/enforce/settings-permissi
 #
 # Cursor has no transcript at ~/.claude/projects/<key>/<session-id>.jsonl, so
 # the adapter passes a synthetic transcript_path that names a file which never
-# exists. session-start.sh then records the R-503 start from its own clock,
+# exists. session-start.sh then records the start timestamp from its own clock,
 # once per conversation, and re-reads that record on every later start.
 
 cp "$REPO_TOP/claude/hooks/session-start.sh" "$SANDBOX_CLAUDE/hooks/session-start.sh"
@@ -173,7 +173,7 @@ transcript_count_is() { [ "$(find "$SANDBOX_HOME/.claude/projects" -name '*.json
 first_record_is_under_cursor_key() { start_records | head -1 | grep -qE '/projects/cursor-[0-9a-f]+/session-start\.conv-alpha$'; }
 
 OUT=$(run_adapter "$(session_payload conv-alpha)" sessionStart session-start)
-check "a Cursor conversation gets a Session start (R-503) block" context_mentions "## Session start (R-503)" "$OUT"
+check "a Cursor conversation gets a session start timestamp block" context_mentions "## Session start timestamp" "$OUT"
 check "the block names the Cursor conversation as the session" context_mentions "(session conv-alpha)" "$OUT"
 check "exactly one start record is written, under a cursor-<hash> key" first_record_is_under_cursor_key
 check "the synthetic transcript is never created on disk" transcript_count_is 0
@@ -188,9 +188,9 @@ OUT=$(run_adapter "$(session_payload conv-beta)" sessionStart session-start)
 check "a second conversation in the same workspace gets its own record" record_count_is 2
 
 OUT=$(run_adapter "$(session_payload "")" sessionStart session-start)
-check "a payload with no conversation_id gets no R-503 block" not context_mentions "## Session start (R-503)" "$OUT"
+check "a payload with no conversation_id gets no session start timestamp block" not context_mentions "## Session start timestamp" "$OUT"
 OUT=$(run_adapter "$(session_payload default)" sessionStart session-start)
-check "the conversation_id \"default\" gets no R-503 block" not context_mentions "## Session start (R-503)" "$OUT"
+check "the conversation_id \"default\" gets no session start timestamp block" not context_mentions "## Session start timestamp" "$OUT"
 check "neither unkeyed start writes a record" record_count_is 2
 
 # Two ids that sanitize to the same filename characters stay two records: a

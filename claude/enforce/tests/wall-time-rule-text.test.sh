@@ -22,15 +22,17 @@ forbidText() {
   if grep -qF -- "$2" "$1"; then echo "FAIL: $3"; exit 1; fi
 }
 
-requireText "$ROOT/CLAUDE.md" "$R509_TAIL" "CLAUDE.md R-509 must put the full suite in CI only"
+# R-509 is a default since 2026-10-02 (IAN-568): its norm line left CLAUDE.md
+# and is kept verbatim as the reference block's `Norm` line.
+requireText "$ROOT/rulebook/reference.md" "$R509_TAIL" "reference.md R-509 Norm line must put the full suite in CI only"
 forbidText "$ROOT/CLAUDE.md" 'the full suite runs at pre-push' "CLAUDE.md R-509 still runs the full suite at pre-push"
-requireText "$ROOT/CLAUDE.md" '`[judge]` is the CI rule judge' "CLAUDE.md still calls [judge] a push-time judge"
+forbidText "$ROOT/CLAUDE.md" 'push-time judge' "CLAUDE.md still calls [judge] a push-time judge"
 requireText "$ROOT/rulebook/reference.md" 'run the full suite in CI before any merge to main.' "reference.md R-509 must put the full suite in CI only"
 forbidText "$ROOT/rulebook/reference.md" 'Pre-push runs the whole suite' "reference.md R-509 still runs the whole suite at pre-push"
 requireText "$ROOT/rulebook/reference.md" 'trivial-tier PR' "reference.md R-514 lacks the trivial fast path"
 requireText "$ROOT/skills/task-start/SKILL.md" 'no ticket, no PR document, and no R-517 review' "task-start lacks the trivial fast path"
 forbidText "$ROOT/rulebook/reference.md" 'push-time judge' "reference.md still calls the judge push-time"
-requireText "$ROOT/enforce/README.md" 'R-315, R-316, R-317, R-325, R-334, R-362, R-363, R-364, R-365 |' "enforce/README.md judge row must list every llm-judge rule"
+requireText "$ROOT/enforce/README.md" 'R-316, R-317, R-325, R-334, R-362, R-363, R-364, R-365 |' "enforce/README.md judge row must list every llm-judge rule"
 requireText "$ROOT/rulebook/reference.md" 'merges on green CI without per-PR authorization' "R-514's trivial path must state the standing merge exception (owner decision 2026-09-26, IAN-433)"
 PORT_MAP="$REPO_ROOT/translate/cursor-port-map.json"
 if [ -f "$PORT_MAP" ]; then

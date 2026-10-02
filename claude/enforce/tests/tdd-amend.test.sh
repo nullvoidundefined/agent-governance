@@ -7,7 +7,11 @@
 # writable; the second re-runs the suite, requires the amended test to still
 # fail for a classified reason, re-hashes it, and records the amendment. It is
 # refused for a test the slice did not lock, outside phase red (after green
-# above all), and once the RED version of the test has been pushed. Drives the
+# above all), and once the RED version of the test has been pushed. With the
+# lock gitignored, green does not ask for a separate RED commit (I8). With
+# .enforce.json's testFormatCommand set, red and amend format the test before
+# hashing it, green is byte-exact, and a test a differing pre-commit formatter
+# rewrote is re-hashed with amend (I2, R-109 r5). Drives the
 # bash *.test.sh runner through the real run-fixture-shards.sh and the real
 # protected-path-guard.sh.
 set -euo pipefail
@@ -83,7 +87,11 @@ new_sha=$(shasum -a 256 tests/score.test.sh | awk '{print $1}')
 
 # The amended test is the contract green checks.
 printf '#!/usr/bin/env bash\necho 3\n' > scripts/score.sh
-bash "$TDD" green >/dev/null || { echo "FAIL: green must pass against the amended test"; exit 1; }
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must pass against the amended test; output: $out"; exit 1; }
+# The lock is gitignored here, so the RED commit has no anchor to bind and one
+# commit per slice is allowed (I8, IAN-568): green does not ask for a separate
+# RED commit.
+if grep -q 'commit the RED test' <<< "$out"; then echo "FAIL: green must not ask for a separate RED commit when the lock is gitignored; output: $out"; exit 1; fi
 expect_fail "amend after green" bash "$TDD" amend tests/score.test.sh | grep -q 'only while' || { echo "FAIL: amend after green must be refused"; exit 1; }
 bash "$TDD" close >/dev/null
 
@@ -101,6 +109,37 @@ git add tests/reject.test.sh && git commit -qm "test: RED for letters"
 git push -q origin HEAD:refs/heads/feature 2>/dev/null
 expect_fail "amend after the RED is pushed" bash "$TDD" amend tests/reject.test.sh | grep -q 'pushed' || { echo "FAIL: amend after the RED commit is pushed must be refused"; exit 1; }
 [ "$(lock_field .phase)" = "red" ] || { echo "FAIL: a refused amend must leave the phase red"; exit 1; }
+
+# --- testFormatCommand (I2, IAN-568, R-109 r5) ------------------------------
+# red runs the repository's formatter on the named tests before hashing them;
+# green is byte-exact and tolerates no reformat. When a pre-commit formatter
+# that differs from testFormatCommand rewrites a locked test, green refuses it
+# and the session re-hashes it with amend. The formatter here strips trailing
+# whitespace.
+rm -f .claude/tdd-lock.json
+printf '#!/usr/bin/env bash\nexit 1\n' > scripts/reject.sh
+mkdir -p node_modules/.bin
+printf '#!/usr/bin/env bash\nperl -pi -e '"'"'s/[ \\t]+$//'"'"' "$@"\n' > node_modules/.bin/shfmt
+chmod +x node_modules/.bin/shfmt
+jq -n '{testFormatCommand: "node_modules/.bin/shfmt"}' > .enforce.json
+git add -A && git commit -qm "chore: formatter"
+bash "$TDD" open "A-3 trim.sh prints ok" >/dev/null
+printf '#!/usr/bin/env bash   \nout=$(bash "$(dirname "$0")/../scripts/trim.sh")  \n[ "$out" = ok ] || { echo "FAIL: expected ok, got $out"; exit 1; }\necho "trim.test.sh PASS"\n' > tests/trim.test.sh
+bash "$TDD" red tests/trim.test.sh >/dev/null || { echo "FAIL: red with a testFormatCommand must succeed"; exit 1; }
+if grep -q '[[:space:]]$' tests/trim.test.sh; then echo "FAIL: red must run testFormatCommand on the test before hashing it"; exit 1; fi
+[ "$(lock_field '.tests[0].sha256')" = "$(shasum -a 256 tests/trim.test.sh | awk '{print $1}')" ] || { echo "FAIL: red must hash the formatted test"; exit 1; }
+# A pre-commit formatter that differs adds a trailing blank line after the hash.
+printf '\n' >> tests/trim.test.sh
+expect_fail "green after a differing formatter's rewrite" bash "$TDD" green | grep -q 'changed since RED' || { echo "FAIL: green must refuse a test reformatted after red"; exit 1; }
+# amend re-hashes the rewritten test.
+bash "$TDD" amend tests/trim.test.sh >/dev/null || { echo "FAIL: amend must open on the reformatted test"; exit 1; }
+bash "$TDD" amend tests/trim.test.sh >/dev/null || { echo "FAIL: amend must re-hash the reformatted test"; exit 1; }
+[ "$(lock_field '.tests[0].sha256')" = "$(shasum -a 256 tests/trim.test.sh | awk '{print $1}')" ] || { echo "FAIL: amend must record the rewritten test's hash"; exit 1; }
+printf '#!/usr/bin/env bash\necho ok\n' > scripts/trim.sh
+out=$(bash "$TDD" green 2>&1) || { echo "FAIL: green must pass after amend re-hashed the test; output: $out"; exit 1; }
+# Any later change is still a changed test.
+printf 'echo changed\n' >> tests/trim.test.sh
+expect_fail "green after a real change to the locked test" bash "$TDD" green | grep -q 'changed since RED' || { echo "FAIL: green must refuse a locked test changed after amend"; exit 1; }
 
 cd /; rm -rf "$P" "$REMOTE"
 echo "tdd-amend.test.sh PASS"

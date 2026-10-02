@@ -69,8 +69,7 @@
             "SubagentStop": "SubagentStop has no Cursor equivalent; the stop event covers the main loop only. This hook's Stop registration ports (see the row above)."
         },
         "task-commit-reminder": "fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor.",
-        "post-compact-rules": "re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event.",
-        "task-provenance-gate": "fires on Claude Code's TaskCreate tool, which Cursor lacks; a registration on that matcher would never receive an event, so R-213's provenance tag depends on recall under Cursor."
+        "post-compact-rules": "re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event."
     },
     "rule_descriptions": {
         "000-global-rules.mdc": "Global rules R-001 to R-604 - the canonical rule file for every session. Always on.",

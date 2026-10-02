@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# codex-billing-guard.sh: PreToolUse(Bash) hook backing R-908. R-907 dispatches
+# codex-billing-guard.sh: PreToolUse(Bash) hook backing R-908. An opted-in slice dispatches
 # test-writing to the `codex` CLI under the ChatGPT subscription; this warns
 # before any `codex` invocation that would instead bill the metered OpenAI API,
 # so that switch never happens silently. Two things flip billing: an

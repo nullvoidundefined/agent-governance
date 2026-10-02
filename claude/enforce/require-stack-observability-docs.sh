@@ -12,9 +12,9 @@
 #                          event registry or an error-code registry, or a log
 #                          event name that is new to the tree or gone from it
 #
-# Canonical copy: hooks/push-feature-docs-gate.sh runs THIS file at push time
-# and never a repository's own copy (push gates do not execute
-# target-repository code, 2026-07-31 security audit).
+# Canonical copy for repository CI. The harness push gate that once ran it on
+# every push was removed in IAN-568 (stack and observability docs are updated
+# at feature completion).
 #
 # Usage: require-stack-observability-docs.sh [base-ref], run with cwd inside
 # the repository. Base: the argument, else FEATURE_CHECKLIST_BASE, else

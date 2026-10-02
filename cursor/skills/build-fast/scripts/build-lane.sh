@@ -218,7 +218,7 @@ classifyRange() {
 # listScopeCandidates <entry>...: prints each scope entry's text, then every
 # tracked file the entry covers, matched by scope-match.sh's is_in_scope (a glob
 # entry as a shell pattern whose * crosses separators, any other entry as a
-# directory prefix), exactly as scope-widening-gate.sh reads the same entries.
+# directory prefix).
 listScopeCandidates() {
   local scopeEntry trackedPath
   for scopeEntry in "$@"; do
@@ -246,10 +246,17 @@ loadSecurityPathPatterns() {
   done < <(jq -r '.paths[]' "$BUILD_LANE_SECURITY_FILE")
 }
 
+# BUILD_LANE_PROSE_PATH_PATTERN: paths the security-surface `paths` patterns
+# never apply to, the same value as SECURITY_SURFACE_PROSE_PATH_PATTERN in
+# hooks/security-surface.sh (IAN-568, I7).
+BUILD_LANE_PROSE_PATH_PATTERN='^(docs/.*|[^/]*)\.(md|txt)$'
+
 # findSecurityPathPattern <path>: prints the first loaded security-surface
-# `paths` regex the path matches, case-insensitively; returns 1 when none does.
+# `paths` regex the path matches, case-insensitively; returns 1 when none does
+# or when the path is prose (Markdown or .txt under docs/ or at the root).
 findSecurityPathPattern() {
   local candidatePath="$1" pattern
+  printf '%s\n' "$candidatePath" | grep -Eiq -- "$BUILD_LANE_PROSE_PATH_PATTERN" && return 1
   for pattern in "${SECURITY_PATH_PATTERNS[@]}"; do
     if printf '%s\n' "$candidatePath" | grep -Eiq -- "$pattern"; then
       printf '%s' "$pattern"

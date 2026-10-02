@@ -65,7 +65,7 @@ echo "local note" >>"$LIVE/claude/PROTOCOL.md"
 run_sync --profile lean >"$TMP/lean.log" 2>"$TMP/lean.err"
 check "--profile lean exits 0" test $? -eq 0
 check "lean records the profile" grep -qx 'lean' "$LIVE/claude/.harness-profile"
-check "lean CLAUDE.md drops R-001" lacks '^R-001:' "$LIVE/claude/CLAUDE.md"
+check "lean CLAUDE.md drops R-104" lacks '^R-104:' "$LIVE/claude/CLAUDE.md"
 check "lean CLAUDE.md keeps R-101" grep -q '^R-101:' "$LIVE/claude/CLAUDE.md"
 check "lean removes the gof SKILL.md" test ! -e "$LIVE/claude/skills/gof/SKILL.md"
 check "lean removes the emptied gof folder" test ! -e "$LIVE/claude/skills/gof"
@@ -80,19 +80,19 @@ check "lean settings.json keeps secret-scan" grep -q 'hooks/secret-scan.sh' "$LI
 check "lean keeps the hook files themselves" test -f "$LIVE/claude/hooks/session-start.sh"
 check "lean cursor target drops the gof SKILL.md" test ! -e "$LIVE/cursor/skills/gof/SKILL.md"
 check "lean cursor target drops the session-types rule" test ! -e "$LIVE/cursor/rules/001-session-types.mdc"
-check "lean codex target drops R-001" lacks '^R-001:' "$LIVE/codex/AGENTS.md"
+check "lean codex target drops R-104" lacks '^R-104:' "$LIVE/codex/AGENTS.md"
 check "lean codex target keeps task-tier.sh" test -f "$LIVE/codex/skills/task-start/scripts/task-tier.sh"
 check "lean never touches live-only state" test -f "$LIVE/claude/sessions/marker.txt"
 check "lean keeps a hidden file that was edited live" test -f "$LIVE/claude/PROTOCOL.md"
 check "lean reports the kept live edit" grep -q 'KEPT: .*PROTOCOL.md' "$TMP/lean.err"
 check "lean leaves the source checkout untouched" test -f "$REPO/claude/skills/gof/SKILL.md"
-check "lean leaves the source CLAUDE.md untouched" grep -q '^R-001:' "$REPO/claude/CLAUDE.md"
+check "lean leaves the source CLAUDE.md untouched" grep -q '^R-104:' "$REPO/claude/CLAUDE.md"
 check "lean leaves the source cursor port untouched" test -f "$REPO/cursor/skills/gof/SKILL.md"
 
 # --- A plain sync keeps the recorded profile (harness-sync runs exactly this).
 run_sync >"$TMP/plain.log" 2>&1
 check "plain sync after lean exits 0" test $? -eq 0
-check "plain sync keeps the lean CLAUDE.md" lacks '^R-001:' "$LIVE/claude/CLAUDE.md"
+check "plain sync keeps the lean CLAUDE.md" lacks '^R-104:' "$LIVE/claude/CLAUDE.md"
 check "plain sync keeps the gof SKILL.md hidden" test ! -e "$LIVE/claude/skills/gof/SKILL.md"
 check "plain sync keeps the record" grep -qx 'lean' "$LIVE/claude/.harness-profile"
 check "plain sync names the recorded profile" grep -q 'lean' "$TMP/plain.log"

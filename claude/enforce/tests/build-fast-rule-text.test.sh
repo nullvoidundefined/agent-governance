@@ -76,8 +76,8 @@ done
 
 # B-5: the norm lines carry their build-fast clauses on the rule's own line.
 requireNormText 'R-211' "$R211_BUILD_FAST"
-requireNormText 'R-514' "$R514_BUILD_FAST"
-requireNormText 'R-517' "$R517_BUILD_FAST"
+# R-514 and R-517 norm lines were shortened on 2026-10-02 (IAN-568); their
+# build-fast clauses live in the reference Specs, checked below.
 
 # B-5: the reference.md Specs carry the same clauses.
 requireText "$ROOT/rulebook/reference.md" "$R211_BUILD_FAST" "reference.md R-211 Spec lacks the build-fast opening-batch clause"
@@ -89,10 +89,10 @@ requireText "$ROOT/skills/task-start/SKILL.md" "$TASK_START_BUILD_FAST" "task-st
 
 # The generated ports carry the new R-514 norm line.
 if [ -f "$REPO_ROOT/codex/AGENTS.md" ]; then
-  requireText "$REPO_ROOT/codex/AGENTS.md" "$R514_BUILD_FAST" "codex/AGENTS.md was not regenerated"
+  requireText "$REPO_ROOT/codex/AGENTS.md" "$R211_BUILD_FAST" "codex/AGENTS.md was not regenerated"
 fi
 if [ -f "$REPO_ROOT/cursor/rules/000-global-rules.mdc" ]; then
-  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$R514_BUILD_FAST" "cursor global rules were not regenerated"
+  requireText "$REPO_ROOT/cursor/rules/000-global-rules.mdc" "$R211_BUILD_FAST" "cursor global rules were not regenerated"
 fi
 
 # PR 161 review fix: the speed rule limits agent passes, never the flow's own
@@ -106,4 +106,11 @@ forbidText "$SKILL" 'Skip any step that does not change whether' "build-fast SKI
 forbidText "$SKILL" 'Reliability comes from the deterministic gates' "build-fast SKILL.md still carries the old reliability sentence"
 requireText "$SKILL" "Spend no agent pass that does not change whether the requested change works or is safe; the flow's own steps are never skipped" \
   "build-fast SKILL.md lacks the revised speed rule"
+# IAN-568 R-517 r1 #1: the flow follows owner decisions 2, 5, and 8.
+forbidText "$SKILL" 'One `tdd.sh` slice for the whole change' "build-fast SKILL.md still locks every change"
+forbidText "$SKILL" 'Search the tracker by branch, then open or advance the ticket' "build-fast SKILL.md still opens the ticket in Setup"
+requireText "$SKILL" 'Guarded lane (high-risk or security): one `tdd.sh` slice' "build-fast SKILL.md lacks the guarded-lane lock"
+requireText "$SKILL" 'only when round one found a HIGH' "build-fast SKILL.md lacks the one-round review rule"
+requireText "$SKILL" '`fixed <sha>`' "build-fast SKILL.md lacks the fixed-sha findings record"
+requireText "$SKILL" '(title, tier, branch, `started_at`, `actual_minutes`, `risk`)' "build-fast SKILL.md lacks the six close fields"
 echo "build-fast-rule-text.test.sh PASS"

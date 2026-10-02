@@ -25,10 +25,15 @@ name: enforce
 # push on every branch PLUS pull_request double-billed every PR branch: runs 5
 # and 6 both ran the full suite on 49c06b1. Pushes to the default branch, PRs,
 # and manual dispatch cover everything without the overlap.
+#
+# ready_for_review is listed because the fixture jobs skip draft pull requests
+# (see the fixture-scope job): marking a draft ready is what runs them on its
+# head. The default types are kept alongside it.
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # A second push supersedes the first; without this the older run bills to
@@ -43,31 +48,56 @@ permissions:
   contents: read
 
 jobs:
+  # fixture-scope decides once whether the fixture suites run, so CI costs one
+  # run per pull request instead of one per fix-round push (IAN-552). It
+  # answers false for a draft pull request, whose rounds the local
+  # affected-fixture runs already cover, and for a pull request whose every
+  # changed file is under docs/, which no fixture reads. It answers true for
+  # every other event (a push to main, a manual dispatch) and whenever the
+  # changed-file list cannot be read, so a failure runs the suites rather than
+  # skipping them. The decision lives in claude/enforce/ci-fixture-scope.sh,
+  # and the suites' `if:` runs them unless this job succeeded and answered
+  # exactly false, so a failed scope job or an empty or garbled answer never
+  # reads as a skip. A job skipped by its `if` reports
+  # as skipped, which the required `fixtures` status check accepts, so branch
+  # protection still sees a result. The security workflows are separate and
+  # unaffected.
+  fixture-scope:
+    name: fixture scope
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          bash claude/enforce/ci-fixture-scope.sh >> "$GITHUB_OUTPUT"
+          grep '^should_run=' "$GITHUB_OUTPUT"
+
   fixtures:
     name: fixtures
+    needs: fixture-scope
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run != 'false') }}
     runs-on: ubuntu-latest
     steps:
       # v7: the v4 majors of both actions declare a node20 runtime, which GitHub
       # removes from hosted runners on 2026-09-23. Dependabot (.github/dependabot.yml)
       # carries the next bump.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: claude/enforce/package-lock.json
-
-      # data-access-go.test.sh builds the stdlib-only R-361/R-362 checker in
-      # enforce/data-access/go and fails, by design, when no go toolchain is
-      # present. The macOS image ships none (first seen on PR #140), and the
-      # ubuntu image's preinstalled one is whatever the image carries, so both
-      # jobs pin the same version. The checker has no module and no go.sum, so
-      # there is nothing for the cache to key on.
-      - uses: actions/setup-go@v7
-        with:
-          go-version: "1.24"
-          cache: false
 
       # node_modules is gitignored, so a fresh clone has none and the six
       # ESLint-backed fixtures fail on a missing ESLint rather than on a defect.
@@ -88,12 +118,10 @@ jobs:
           echo "npm ci failed three times: the lockfile or the registry is the problem, and npm install would only hide which" >&2
           exit 1
 
-      # push-ruff-gate.test.sh drives the REAL ruff binary. The rubocop and
-      # golangci fixtures stub their linters through CLAUDE_*_CMD, so they pass
-      # on a bare runner; the ruff one does not, and the first CI runs failed on
-      # "no ruff or uvx on PATH" rather than on any defect. Stubbing ruff to
-      # match the other two would make the suite hermetic at the cost of no
-      # longer checking that enforce/ruff-enforce.toml actually selects the
+      # push-ruff-gate.test.sh drives the REAL ruff binary, so it does not pass
+      # on a bare runner, and the first CI runs failed on "no ruff or uvx on
+      # PATH" rather than on any defect. Stubbing ruff would make the suite
+      # hermetic at the cost of no longer checking that enforce/ruff-enforce.toml actually selects the
       # codes it lists, so CI provides the binary instead. The fixture drives
       # ANN401, BLE001, E722, E731, PGH003, PLR2004, S110 and T201; this line
       # named ANN401 among three codes while the fixture exercised none of it
@@ -206,7 +234,7 @@ jobs:
   # suite goes green.
   #
   # That gap shipped a real failure on 2026-09-20 (IAN-267). PR #96 introduced
-  # `mapfile`, a bash 4 builtin, into scope-widening-gate.sh and
+  # `mapfile`, a bash 4 builtin, into scope-widening-gate.sh (since removed) and
   # commit-message-guard.sh. Under bash 3.2 both hooks aborted at that line and
   # emitted nothing, and a PreToolUse hook that emits nothing is an ALLOW, so
   # R-212's scope gate and R-214's out-of-scope commit gate enforced nothing for
@@ -226,12 +254,14 @@ jobs:
   # whose result depends on the shell and on the userland the shell calls.
   fixtures-macos:
     name: fixtures (macOS, bash 3.2)
+    needs: fixture-scope
+    if: ${{ !cancelled() && (needs.fixture-scope.result != 'success' || needs.fixture-scope.outputs.should_run != 'false') }}
     runs-on: macos-latest
     # A hung fixture on a 10x-billed runner costs ~3600 ubuntu-equivalent
     # minutes against an observed 13-minute run (R-517 review of PR #115).
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Installing a newer bash here would recreate the very gap this job
       # exists to close, so the image's own /bin/bash is the subject and this
@@ -271,22 +301,11 @@ jobs:
           fi
           exit "$status"
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: claude/enforce/package-lock.json
-
-      # data-access-go.test.sh builds the stdlib-only R-361/R-362 checker in
-      # enforce/data-access/go and fails, by design, when no go toolchain is
-      # present. The macOS image ships none (first seen on PR #140), and the
-      # ubuntu image's preinstalled one is whatever the image carries, so both
-      # jobs pin the same version. The checker has no module and no go.sum, so
-      # there is nothing for the cache to key on.
-      - uses: actions/setup-go@v7
-        with:
-          go-version: "1.24"
-          cache: false
 
       # Locked installs only, and retried as the same locked operation, for the
       # reasons the ubuntu job records above.

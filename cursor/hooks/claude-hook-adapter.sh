@@ -381,7 +381,7 @@ handle_before_read() {
 }
 
 # Cursor keeps no transcript under ~/.claude/projects, but session-start.sh
-# keys its R-503 start record on transcript_path: the parent directory name
+# keys its start-timestamp record on transcript_path: the parent directory name
 # is the project key and the basename minus .jsonl is the session id. This
 # names a file that is never created, stable per workspace and conversation,
 # so session-start.sh records its own clock on the first start and re-reads

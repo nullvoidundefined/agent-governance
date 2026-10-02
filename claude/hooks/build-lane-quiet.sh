@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build-lane-quiet.sh: a sourced helper, not a hook (IAN-401, spec
-# 2026-09-27-build-fast-design.md B-6). The five reminder-only hooks call
+# 2026-09-27-build-fast-design.md B-6). The four reminder-only hooks call
 # is_reminder_quiet and stay silent in the build-fast fast lane, where the
 # owner chose speed over advisory nudges. No blocking hook sources this file.
 # Sourced, never executed: it sets no shell options and defines one function.

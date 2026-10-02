@@ -198,10 +198,6 @@
                     },
                     {
                         "type": "command",
-                        "command": "~/.claude/hooks/ticket-at-start-gate.sh"
-                    },
-                    {
-                        "type": "command",
                         "command": "~/.claude/hooks/push-eslint-gate.sh",
                         "if": "Bash(git *)"
                     },
@@ -213,21 +209,6 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/push-semgrep-gate.sh",
-                        "if": "Bash(git *)"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/push-rubocop-gate.sh",
-                        "if": "Bash(git *)"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/push-golangci-gate.sh",
-                        "if": "Bash(git *)"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/push-feature-docs-gate.sh",
                         "if": "Bash(git *)"
                     },
                     {
@@ -283,31 +264,6 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/dependency-add-guard.sh"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/codex-test-author-guard.sh"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/ticket-at-start-gate.sh"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/lexicon-gate.sh"
-                    },
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/scope-widening-gate.sh"
-                    }
-                ]
-            },
-            {
-                "matcher": "TaskCreate",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/task-provenance-gate.sh"
                     }
                 ]
             },
@@ -374,10 +330,6 @@
             {
                 "matcher": "Write|Edit",
                 "hooks": [
-                    {
-                        "type": "command",
-                        "command": "~/.claude/hooks/clean-code-reminder.sh"
-                    },
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/observability-reminder.sh"

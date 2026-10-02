@@ -47,7 +47,7 @@ requireSharedWording() {
 }
 
 # The canon, always present under the harness root.
-requireSharedWording "$ROOT/CLAUDE.md" "CLAUDE.md"
+# R-001 left CLAUDE.md on 2026-10-02 (IAN-568); the reference Spec carries it.
 forbidText "$ROOT/CLAUDE.md" "$OLD_NORM_STEP" "CLAUDE.md R-001 still hard-codes the project CLAUDE.md"
 requireSharedWording "$ROOT/rulebook/reference.md" "rulebook/reference.md"
 forbidText "$ROOT/rulebook/reference.md" "$OLD_SPEC_STEP" \
@@ -56,13 +56,11 @@ forbidText "$ROOT/rulebook/reference.md" "$OLD_SPEC_STEP" \
 # The generated ports, present only when the test runs beside a repository checkout.
 CODEX_AGENTS="$REPO_ROOT/codex/AGENTS.md"
 if [ -f "$CODEX_AGENTS" ]; then
-    requireSharedWording "$CODEX_AGENTS" "the Codex port of CLAUDE.md"
     forbidText "$CODEX_AGENTS" "$OLD_NORM_STEP" "the Codex port still hard-codes the project CLAUDE.md"
 fi
 
 CURSOR_GLOBAL="$REPO_ROOT/cursor/rules/000-global-rules.mdc"
 if [ -f "$CURSOR_GLOBAL" ]; then
-    requireSharedWording "$CURSOR_GLOBAL" "the Cursor port of CLAUDE.md"
     forbidText "$CURSOR_GLOBAL" "$OLD_NORM_STEP" "the Cursor port still hard-codes the project CLAUDE.md"
 fi
 

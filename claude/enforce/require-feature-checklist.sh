@@ -5,11 +5,11 @@
 # features list, a user story, and an end-to-end spec; otherwise exit 1 with a
 # report naming the triggering files and each missing artifact.
 #
-# Canonical copy: hooks/push-feature-docs-gate.sh runs THIS file in every
-# repository at push time and never a repository's own copy (push gates do not
-# execute target-repository code, 2026-07-31 security audit). repo-setup copies
-# it into an application repository as scripts/require-feature-checklist.sh,
-# where that repository's own git hook or CI may run it.
+# Canonical copy: repo-setup copies it into an application repository as
+# scripts/require-feature-checklist.sh, where that repository's own git hook
+# or CI may run it. The harness push gate that once ran it on every push was
+# removed in IAN-568 (product docs are updated at feature completion), and
+# enforce/tests/git-workflow-guard.test.sh reads its BUILTIN_TRIGGERS.
 #
 # Usage: require-feature-checklist.sh [base-ref], run with cwd inside the
 # repository. Base: the argument, else FEATURE_CHECKLIST_BASE, else origin/main.

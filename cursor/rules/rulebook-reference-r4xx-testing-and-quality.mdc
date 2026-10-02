@@ -10,6 +10,7 @@ Source: `~/.claude/rulebook/reference.md`, section "Testing and quality (R-4xx)"
 ## Testing and quality (R-4xx)
 
 R-401: Write tests that fail when the implementation is wrong; prefer behavior assertions over mock-call counts.
+  Class: M; delivery: loaded.
   Spec:
   - LLM consumers include one fixture test against a real captured response.
   - Rewrite these anti-patterns on sight:
@@ -24,7 +25,8 @@ R-401: Write tests that fail when the implementation is wrong; prefer behavior a
     9. Persistently red tests: fix or delete. Never `test.fixme`/`test.skip`/`it.skip`/`xit`/`xtest` to suppress a failing test; a test that cannot pass is deleted, not deferred, and re-added when the capability exists.
   Enforcement: hook:content-gate (anti-patterns 8 and 9: `.only` is denied outright, a skip is denied unless its line names a triage ID); eslint:no-self-mock (items 1 and 5 in test trees: a `vi.mock`/`jest.mock` of the module the test file is named for, and a repository test mocking the pool); eslint:behavior-assertion-required (item 3: a test whose only `expect()` matchers are mock-call matchers); items 2, 4, 6, and 7 stay with the slice critic's question 4 and the judge
 
-R-403: Follow the bug-fix path in order; fix bugs test-first.
+R-403: Fix bugs test-first: a test that reproduces the bug and fails, the smallest root-cause fix, the test passing, both in one commit.
+  Class: M; delivery: loaded (one line; the practice, not a gate).
   Scope: exception for test-resistant failures (races, hardware, prod-only env): document, fix, manually verify, log a `tech-debt:` note.
   Spec:
   1. Write the failing test; confirm it FAILS.
@@ -32,16 +34,17 @@ R-403: Follow the bug-fix path in order; fix bugs test-first.
   3. Run verification per R-509 scope: affected tests at commit, full suite in CI.
   4. Commit test and fix together.
   5. Deploy.
-  Enforcement: hook:fix-commit-requires-test
+  - The practice is the rule; the hook only warns (owner decision 2026-10-02, IAN-568).
+  Enforcement: hook:fix-commit-requires-test (warning)
 
 R-404: Reproduce failures locally before deploying.
+  Class: D; delivery: skill (`task-start`).
   Enforcement: manual
 
-R-405: Fix root causes, never weaken the protection that surfaced the failure.
-  Spec: forbidden: weakening CORS, removing CSP, disabling rate limits, lowering bcrypt rounds, `SameSite=None` without `Secure`.
-  Enforcement: hook:content-gate (denies `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`, `verify=False`, `InsecureSkipVerify`, wildcard CORS origins, `contentSecurityPolicy: false`, CSRF disabling, and single-digit bcrypt cost factors, outside test trees; rate-limit ceilings and cookie flags stay manual)
+R-405: Merged 2026-10-02 (IAN-568) into R-204: Fix root causes, never weaken the protection that surfaced the failure.
 
 R-406: Give every user-input handler one negative-input test, and every security control a test that feeds it its insecure value.
+  Class: D, M on high-risk slices; delivery: skill (`tdd-gated-dispatch`) and the R-109 review.
   Spec:
   - A user-input handler's negative-input test sends an oversized payload, an injection attempt, or malformed encoding.
   - A security control's test feeds it its insecure value (`*`, `null`, empty, a weakened flag) and asserts the control refuses it; configuration-sourced values are included, because configuration is not trusted (R-109).
@@ -49,21 +52,22 @@ R-406: Give every user-input handler one negative-input test, and every security
   Enforcement: manual
 
 R-407 [ts]: Add a build-smoke test asserting every runtime-loaded non-code asset (JSON, YAML, SQL, markdown prompt) exists under `dist/`.
+  Class: D; delivery: skill (`structure-conventions`).
   Spec: also assert `dist/` has no `.env*` or secrets matches.
   Enforcement: manual
 
-R-408: Lint/format staged files only in pre-commit hooks; run full sweeps in pre-push and CI.
-  Enforcement: manual
+R-408: Deleted 2026-10-02 (IAN-568): tooling advice, not a rule.
 
-R-409: Diagnose repeated formatting cleanups as a failed pre-commit hook before committing again.
-  Enforcement: manual
+R-409: Deleted 2026-10-02 (IAN-568): replaced by running the repository's formatter before `tdd.sh` hashes a test (I2).
 
 R-410: Never write a gate input, nor a locked test, fixture, or spec path once a slice is red.
+  Class: D, M on high-risk slices; delivery: hook.
   Scope: gate inputs are `.claude/verify.sh`, `.enforce.json`, `.enforce-baseline.json`, and `.claude/tdd-lock.json`; locked paths are every test tree (the `tests` pattern in `enforce/role-policy.json`), the `tests[].path` entries and `locked[]` prefixes in the lock, and the spec named at `tdd.sh open`. Paths outside the repository root are not governed.
   Spec:
   - A gate input changes outside the session, or the session tells the user what must change and why; never by a tool call.
   - From `tdd.sh red` until `tdd.sh close`, the tests are the contract: the implementation changes to satisfy them, never the reverse.
-  - A test believed wrong is returned as `DISPUTE: <test id>: <why>`; the session stops; the user decides; any change is a new RED written by the test author.
+  - Only the slice's own locked files are denied while red; any other test-tree file the change needs (an older test a schema change breaks) is an ask the owner answers in place (I1, IAN-568), and `green` still refuses a drop in the outside pass count.
+  - A locked test believed wrong is returned as `DISPUTE: <test id>: <why>`; the session stops; the user decides; any change is a new RED written by the test author. Deleting the lock by hand is a last resort, never the routine path.
   - One exception, for the author of the current slice only: while the phase is `red`, before any GREEN and before the RED version of the test is pushed, `tdd.sh amend <test file>` opens a window (phase `amending`) in which only that file is writable, production included in the lock; `tdd.sh amend <test file>` again requires the amended test to still fail for a classified reason with nothing else failing, re-hashes it, records the change in the lock's `amendments`, and returns to `red`. A test from an earlier slice, and any test after green, stays under `DISPUTE:`.
   - A new behavior is a new slice (`tdd.sh close`, then `tdd.sh open`), never an edit to the current slice's tests.
   - Test-runner configs (`vitest.config.*`, `jest.config.*`, `playwright.config.*`, `pytest.ini`, `.rspec`) and the `package.json` `test`/`typecheck` scripts ask before changing.
@@ -71,6 +75,7 @@ R-410: Never write a gate input, nor a locked test, fixture, or spec path once a
   Enforcement: hook:protected-path-guard (denies Write and Edit by root-relative path; denies Bash by its write targets, with quoted strings and heredoc bodies set aside first so text that only mentions a path is never a target: redirections, `tee`, the path operands of `rm`, `mv`, `shred`, `truncate`, `unlink`, `sed -i`, `perl -i`, `git rm|mv|checkout|restore|clean|stash`, and `find -delete|-exec`, the destination of `cp`, `rsync`, `install`, and `ln`, a nested shell's targets, and the path literals an inline interpreter script hands to a write call; while `amending`, every path but the one under amendment); `enforce/tdd.sh green` compares locked-file hashes against the lock and the RED commit for anything the parse cannot see (a script file run by name, a path built at run time)
 
 R-411: Subagent roles write only inside their boundary.
+  Class: D, M on high-risk slices; delivery: hook.
   Scope: subagent tool calls, identified by the `agent_type` field in the hook input; the main session and any agent type absent from `enforce/role-policy.json` carry no role restriction (R-410 and R-412 still apply).
   Spec:
   - `test-author`: writes test and fixture trees only (`allow: tests`); reports a missing interface in its summary rather than creating it.
@@ -80,14 +85,15 @@ R-411: Subagent roles write only inside their boundary.
   Enforcement: hook:protected-path-guard (reads `agent_type`; `disallowedTools` in the agent frontmatter is the belt to this hook's braces for the critic)
 
 R-412: Work in slices, each one behavior: open, failing test, red, implementation, green, close.
-  Scope: every tier above Trivial (2026-09-06 decision 3). Risk, not tier, decides the dispatch (owner decision 2026-10-01, IAN-521, R-110): a high-risk slice dispatches the `test-author`, `implementer`, and `slice-critic` roles as separate fresh contexts and runs the per-slice critic, at any task tier; every other slice, inside a Complex or Saga task included, runs in one session, the session writing its own failing test under the lock with no per-slice critic. The task tier still decides the spec, plan, and ticket requirements, and the lock below is the same at every tier and every risk.
+  Class: D, M on high-risk slices; delivery: skill (`tdd-gated-dispatch`).
+  Scope: high-risk slices only (owner decision 2026-10-02, IAN-568, decision 2); a standard-risk slice runs the lean tier of R-110 with no lock. Earlier history: every tier above Trivial (2026-09-06 decision 3). Risk, not tier, decides the dispatch (owner decision 2026-10-01, IAN-521, R-110): a high-risk slice dispatches the `test-author`, `implementer`, and `slice-critic` roles as separate fresh contexts and runs the per-slice critic, at any task tier; every other slice, inside a Complex or Saga task included, runs in one session, the session writing its own failing test under the lock with no per-slice critic. The task tier still decides the spec, plan, and ticket requirements, and the lock below is the same at every tier and every risk.
   Spec, in order:
   1. `bash ~/.claude/enforce/tdd.sh open "<slice>" [--spec <path>]` writes the lock in phase `open`: production paths are read-only, test and spec paths are writable.
   2. Write the failing test for this one behavior.
-  3. `tdd.sh red <test file...>`: the named tests must fail for an assertion or missing-module reason (a syntax error in the test, no tests found, or a skip is rejected); the rest of the suite must be green; the pass count and the test-file hashes are recorded and the phase becomes `red`: test paths are read-only, production opens up. A new test in a file that already holds passing tests is named by id, `<test file>::<test id>` (the pytest node id, or the Vitest or Jest full name); the file's other tests must keep passing. Bash fixtures stay file-level.
+  3. `tdd.sh red <test file...>`: the named tests must fail for a classified reason: an assertion, a missing module, or, under pytest, any exception raised in the test body or its fixture setup (recorded as `failureClass`); a syntax or collection error, a teardown error, an infrastructure failure (connection refused, timeout), no tests found, or a skip is rejected (I3); when `.enforce.json` names `testFormatCommand`, `red` and `amend` format the named tests before hashing them, and only there (I2): `green` compares byte-exactly and runs no formatter, so a pre-commit hook whose formatter differs from `testFormatCommand` and rewrites a test is answered with `tdd.sh amend` to re-hash it; the rest of the suite must be green; the pass count and the test-file hashes are recorded and the phase becomes `red`: test paths are read-only, production opens up. A new test in a file that already holds passing tests is named by id, `<test file>::<test id>` (the pytest node id, or the Vitest or Jest full name); the file's other tests must keep passing. Bash fixtures stay file-level.
   4. Write the minimum implementation. `tdd.sh green`: the named tests pass, the suite count is at or above the baseline, the hashes match the lock and the RED commit; phase becomes `green`.
   5. Refactor under the same lock; `tdd.sh green` again if anything changed.
-  6. Commit; `tdd.sh close` removes the lock. The RED commit (`test:`) precedes the GREEN commit (`feat:`, `fix:`, or `refactor:`).
+  6. Commit; `tdd.sh close` removes the lock. The RED commit (`test:`) precedes the GREEN commit (`feat:`, `fix:`, or `refactor:`) when the lock is tracked; when the repository gitignores the lock, the slice is one commit (I8).
   6a. A lock left by a dead session closes with `tdd.sh abandon`, not by deleting it: refused unless the lock recorded a test, has seen no `tdd.sh` activity for `CLAUDE_TDD_STALE_HOURS` (default 4), no live process outside the caller's session works in the tree, every locked test is committed and identical to HEAD and the lock, and the suite passes with the locked tests included; each close is logged to `telemetry/tdd-abandon.jsonl` under the Claude home.
   7. A behavior-preserving change has no RED: `tdd.sh open --refactor "<slice>" [--lock <test file>]...` requires the whole suite green, locks the named test files (every test file the suite ran when none is named), records the outside pass count, and starts in phase `refactor`, which locks tests like `red`; `tdd.sh green` then proves the same tests pass unchanged.
   Enforcement: hook:protected-path-guard (phase-aware: `open` denies production writes, `red` and `green` deny test writes, `amending` allows only the test under amendment); opening the slice is the manual step the skills instruct

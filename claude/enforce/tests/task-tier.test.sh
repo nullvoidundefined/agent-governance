@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # task-tier.test.sh: verifies skills/task-start/scripts/task-tier.sh (2026-09-17
 # skills audit, S-8): set writes the ledger with tier, reason, branch, and the
-# R-503 start timestamp; an invalid tier is refused; get and summary read it
+# start timestamp; an invalid tier is refused; get and summary read it
 # back; a second set records the reclassification; clear removes it; the
 # gitignore note fires only when the project does not ignore the ledger.
-# IAN-149 (R-605 at task start): --ticket <KEY> records the tracker ticket; with
-# the tracker configured a non-trivial tier needs one (a same-branch ledger's
-# ticket carries over on reclassification); a malformed key is refused; the
+# IAN-149: --ticket <KEY> records the tracker ticket (a same-branch ledger's
+# ticket carries over on reclassification); a malformed key is refused; since
+# IAN-568 (2026-10-02) the ticket opens at PR time, so a non-trivial tier with a
+# tracker configured and no --ticket is recorded rather than refused; the
 # summary names the ticket. HOME is always a sandbox: the cases above the
 # IAN-149 block run with the tracker NOT configured.
 set -uo pipefail
@@ -57,7 +58,7 @@ check "gitignore note when not ignored" reports "not gitignored"
 check "ledger written" test -f "$REPO/.claude/task-tier.json"
 check "ledger carries the tier" test "$(jq -r .tier "$REPO/.claude/task-tier.json")" = "standard"
 check "ledger carries the branch" test "$(jq -r .branch "$REPO/.claude/task-tier.json")" = "feat/presets"
-check "ledger carries the share" test "$(jq -r .sharePercent "$REPO/.claude/task-tier.json")" = "40"
+check "--share is accepted and ignored (R-503 deleted)" test "$(jq -r 'has("sharePercent")' "$REPO/.claude/task-tier.json")" = "false"
 check "ledger carries an epoch start" test "$(jq -r .startedAt "$REPO/.claude/task-tier.json")" -gt 1700000000
 
 printf '.claude/task-tier.json\n' > "$REPO/.gitignore"
@@ -100,19 +101,20 @@ check "T-1 ledger carries the ticket" test "$(field .ticket)" = "IAN-7"
 tier_set "$TRACKED_HOME" standard "multi-file change" --ticket IAN-8 --share 30
 check "T-1 --ticket then --share exits 0" test "$ST" -eq 0
 check "T-1 --ticket then --share records the ticket" test "$(field .ticket)" = "IAN-8"
-check "T-1 --ticket then --share records the share" test "$(field .sharePercent)" = "30"
+check "T-1 --ticket then --share records no share" test "$(field .sharePercent)" = "null"
 tier_set "$TRACKED_HOME" standard "multi-file change" --share 25 --ticket IAN-9
 check "T-1 --share then --ticket exits 0" test "$ST" -eq 0
 check "T-1 --share then --ticket records the ticket" test "$(field .ticket)" = "IAN-9"
-check "T-1 --share then --ticket records the share" test "$(field .sharePercent)" = "25"
+check "T-1 --share then --ticket records no share" test "$(field .sharePercent)" = "null"
 
-# T-2: tracker configured, non-trivial tier, no --ticket, no ledger: refused, nothing written.
+# T-2: tracker configured, non-trivial tier, no --ticket: recorded with no
+# ticket, because the ticket opens with the draft PR (IAN-568).
 for tier in standard complex saga investigation; do
   rm -f "$TLEDGER"
-  tier_set "$TRACKED_HOME" "$tier" "needs a ticket"
-  check "T-2 $tier without --ticket exits 1" test "$ST" -eq 1
-  check "T-2 $tier refusal names --ticket" reports "--ticket"
-  check "T-2 $tier refusal writes no ledger" test ! -e "$TLEDGER"
+  tier_set "$TRACKED_HOME" "$tier" "ticket opens at PR time"
+  check "T-2 $tier without --ticket exits 0" test "$ST" -eq 0
+  check "T-2 $tier without --ticket is recorded" test "$(field .tier)" = "$tier"
+  check "T-2 $tier without --ticket records no ticket" test "$(field '.ticket // "none"')" = "none"
 done
 
 # T-3: tracker configured, trivial tier needs no ticket.
@@ -121,12 +123,10 @@ tier_set "$TRACKED_HOME" trivial "one-line typo"
 check "T-3 trivial without --ticket exits 0" test "$ST" -eq 0
 check "T-3 trivial recorded" test "$(field .tier)" = "trivial"
 
-# T-2: an existing ledger without a ticket is left byte-for-byte unchanged by the refusal.
-cp "$TLEDGER" "$SB/ledger-before.json"
+# T-2: reclassifying an unticketed trivial ledger upward without --ticket succeeds.
 tier_set "$TRACKED_HOME" complex "grew past trivial"
-check "T-2 reclassify from an unticketed ledger without --ticket exits 1" test "$ST" -eq 1
-check "T-2 refusal names --ticket" reports "--ticket"
-check "T-2 refusal leaves the existing ledger unchanged" ledger_unchanged
+check "T-2 reclassify from an unticketed ledger without --ticket exits 0" test "$ST" -eq 0
+check "T-2 reclassify records the new tier" test "$(field .tier)" = "complex"
 
 # T-4: tracker NOT configured, non-trivial tier without --ticket succeeds (degraded path).
 rm -f "$TLEDGER"
@@ -162,11 +162,11 @@ check "T-7 summary names the ticket" reports "IAN-11"
 # T-6 boundary: a ticket recorded for another branch does not carry over.
 git -C "$T" switch -q -c feat/other
 tier_set "$TRACKED_HOME" complex "new task on another branch"
-check "T-6 other-branch ledger ticket does not carry over (exits 1)" test "$ST" -eq 1
-check "T-6 other-branch refusal names --ticket" reports "--ticket"
+check "T-6 other-branch set without --ticket exits 0" test "$ST" -eq 0
+check "T-6 other-branch ledger ticket does not carry over" test "$(field '.ticket // "none"')" = "none"
 
 # S-1 (IAN-193, R-212): --scope records the declared file scope that
-# hooks/scope-widening-gate.sh reads, every entry of it. The first version
+# hooks/scope-match.sh readers (build-lane.sh) use, every entry of it. The first version
 # split the comma-separated list with `printf '%s'`, which emits no trailing
 # newline, so `while read` silently dropped the last entry and the gate then
 # asked about a file the task had legitimately declared.
@@ -198,9 +198,9 @@ check "S-1 omitting --scope keeps the scope already on this branch" test "$(jq -
 
 # S-1 (finding 6 of the PR #96 review): the case the label above used to
 # promise and never tested. A FIRST set on a branch that never declared a
-# scope must omit the key entirely, because that absence is what makes
-# scope-widening-gate.sh and the R-214 commit gate stay silent (R-212's
-# degraded path). Asserting it here is what would catch read_previous_scope
+# scope must omit the key entirely, because that absence is what tells the
+# scope readers no scope was declared (R-212's degraded path; the scope gate
+# and the R-214 commit gate that once read it were removed in IAN-568). Asserting it here is what would catch read_previous_scope
 # returning `[]` instead of nothing.
 git -C "$S1" switch -q -c feat/scope-fresh
 OUT=$(cd "$S1" && bash "$TIER" set standard "no scope declared here" 2>&1)
