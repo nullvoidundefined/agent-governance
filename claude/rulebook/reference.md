@@ -537,7 +537,7 @@ R-344: Never swallow an error.
   - A `catch` binds the error and references it: log with `{ err }` and the request ID, report to the error tracker when the failure is unexpected, then return an error response or rethrow with the original as `cause`.
   - Expected failures (a cache miss, a 404 from a provider) log at `debug` or `warn` and return a defined fallback; they are still bound and referenced.
   - The global error handler is the one place an unexpected error becomes a 500, and it reports before it responds.
-  Enforcement: eslint:no-empty (`allowEmptyCatch: false`); eslint:no-swallowed-catch (decides an unbound `catch` and a bound-but-unreferenced error; what the block does with the error is not decidable and stays manual); ruff:E722, ruff:S110, ruff:BLE001 (Python analogs; a blind except that re-raises passes); golangci:errcheck, golangci:errorlint (Go analogs); rubocop:Lint/SuppressedException (Ruby analog); the two catch rules also cover every `src/services` and `src/clients` tree outside a server root since 2026-09-06 (swallowing an error is not a server-only defect)
+  Enforcement: eslint:no-empty (`allowEmptyCatch: false`); eslint:no-swallowed-catch (decides an unbound `catch` and a bound-but-unreferenced error; what the block does with the error is not decidable and stays manual); ruff:E722, ruff:S110, ruff:BLE001 (Python analogs; a blind except that re-raises passes); the Go and Ruby linter gates were removed 2026-10-02 (IAN-568); the two catch rules also cover every `src/services` and `src/clients` tree outside a server root since 2026-09-06 (swallowing an error is not a server-only defect)
 
 R-345: Expose liveness and readiness probes on every service and worker.
   Class: D; delivery: path (`CLAUDE-OBSERVABILITY.md`).
