@@ -249,11 +249,11 @@ loadSecurityPathPatterns() {
 # BUILD_LANE_PROSE_PATH_PATTERN: paths the security-surface `paths` patterns
 # never apply to, the same value as SECURITY_SURFACE_PROSE_PATH_PATTERN in
 # hooks/security-surface.sh (IAN-568, I7).
-BUILD_LANE_PROSE_PATH_PATTERN='(^docs/|\.md$)'
+BUILD_LANE_PROSE_PATH_PATTERN='^(docs/.*|[^/]*)\.(md|txt)$'
 
 # findSecurityPathPattern <path>: prints the first loaded security-surface
 # `paths` regex the path matches, case-insensitively; returns 1 when none does
-# or when the path is prose (docs/ or Markdown).
+# or when the path is prose (Markdown or .txt under docs/ or at the root).
 findSecurityPathPattern() {
   local candidatePath="$1" pattern
   printf '%s\n' "$candidatePath" | grep -Eiq -- "$BUILD_LANE_PROSE_PATH_PATTERN" && return 1
