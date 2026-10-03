@@ -1,0 +1,123 @@
+{
+  "_comment": "Policy data for hooks/destructive-ops-guard.sh. The deciding logic lives in the hook; edit lists here. Patterns are POSIX extended regular expressions with no backslash classes (bash 3.2 and BSD regex).",
+  "forced_delete_programs": [
+    "rm"
+  ],
+  "plain_delete_programs": [
+    "unlink",
+    "rmdir",
+    "trash",
+    "trash-put"
+  ],
+  "truncate_programs": [
+    "truncate",
+    "shred"
+  ],
+  "find_delete_programs": [
+    "rm",
+    "unlink",
+    "rmdir",
+    "shred",
+    "trash",
+    "trash-put"
+  ],
+  "rsync_delete_options": [
+    "--delete",
+    "--del",
+    "--delete-[a-z]+",
+    "--remove-source-files"
+  ],
+  "redirect_exempt_prefixes": [
+    "/dev/",
+    "/tmp/",
+    "/var/tmp/",
+    "/private/tmp/"
+  ],
+  "interpreter_programs": [
+    "python",
+    "python3",
+    "node",
+    "nodejs",
+    "bun",
+    "deno",
+    "tsx",
+    "ts-node",
+    "perl",
+    "ruby",
+    "php",
+    "npx",
+    "bunx",
+    "pnpx",
+    "pnpm",
+    "yarn",
+    "npm",
+    "rimraf",
+    "del-cli"
+  ],
+  "interpreter_delete_patterns": [
+    "shutil[.]rmtree",
+    "os[.](remove|unlink|rmdir|removedirs)[(]",
+    "[.](unlink|rmdir)[(]",
+    "[.](rm|rmSync|unlinkSync|rmdirSync)[(]",
+    "(^|[^A-Za-z0-9_])rmtree",
+    "(^|[^A-Za-z0-9_])unlink[ (]",
+    "File[.]delete|FileUtils[.](rm|remove)",
+    "(^|[^A-Za-z0-9_/-])rimraf($|[^A-Za-z0-9_])",
+    "del-cli"
+  ],
+  "docker_programs": [
+    "docker",
+    "podman",
+    "nerdctl",
+    "docker-compose"
+  ],
+  "docker_read_only": [
+    "ps",
+    "images",
+    "inspect",
+    "logs",
+    "version",
+    "info",
+    "stats",
+    "top",
+    "port",
+    "diff",
+    "events",
+    "history",
+    "search",
+    "container ls",
+    "container ps",
+    "container list",
+    "container inspect",
+    "container logs",
+    "container top",
+    "container port",
+    "container stats",
+    "container diff",
+    "image ls",
+    "image list",
+    "image inspect",
+    "image history",
+    "volume ls",
+    "volume list",
+    "volume inspect",
+    "network ls",
+    "network list",
+    "network inspect",
+    "context ls",
+    "context list",
+    "context show",
+    "context inspect",
+    "system df",
+    "system info",
+    "system events",
+    "compose ps",
+    "compose logs",
+    "compose config",
+    "compose images",
+    "compose ls",
+    "compose top",
+    "compose version",
+    "compose events"
+  ]
+}

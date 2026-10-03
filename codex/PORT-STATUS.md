@@ -2,7 +2,7 @@
 
 # Codex port status
 
-14 of 14 hook registrations port, across 3 Codex events.
+15 of 15 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -14,6 +14,7 @@
 | `codex-billing-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
+| `destructive-ops-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |

@@ -17,8 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.codex/hooks/codex-hook-adapter.sh secret-scan conflict-markers destructive-db-guard destructive-command-guard codex-billing-guard global-repo-push-guard git-workflow-guard",
-            "timeout": 60
+            "command": "~/.codex/hooks/codex-hook-adapter.sh secret-scan conflict-markers destructive-db-guard destructive-command-guard codex-billing-guard global-repo-push-guard git-workflow-guard destructive-ops-guard",
+            "timeout": 30
           }
         ]
       },

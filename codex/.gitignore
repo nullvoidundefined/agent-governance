@@ -17,6 +17,15 @@
 !/PORT-STATUS.md
 !/README.md
 !/agents/
+!/agents/audit-criticism.toml
+!/agents/audit-customer.toml
+!/agents/audit-design.toml
+!/agents/audit-engineering.toml
+!/agents/audit-financial.toml
+!/agents/audit-legal.toml
+!/agents/audit-marketing.toml
+!/agents/audit-security.toml
+!/agents/audit-ux.toml
 !/agents/pr-reviewer.toml
 !/hooks.json
 !/hooks/

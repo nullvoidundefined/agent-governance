@@ -52,5 +52,6 @@ Build what the owner asks for, quickly and well. These rules state the few thing
 ## Reference
 
 - Stack conventions load automatically from `CLAUDE-<STACK>.md` when matching files are touched.
-- Lessons from past sessions: `~/.claude/global-memory/INDEX.md`, read when a task touches one of its topics.
+- Lessons from past sessions (one line each; read a file when its line is why you need it):
+  @~/.claude/global-memory/INDEX.md
 - Deployment notes: `~/.claude/CLOUD-DEPLOYMENT.md`.

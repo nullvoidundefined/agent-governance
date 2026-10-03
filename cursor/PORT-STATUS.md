@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-12 of 14 hook registrations port, across 7 Cursor events.
+13 of 15 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -14,6 +14,7 @@
 | `codex-billing-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
+| `destructive-ops-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
