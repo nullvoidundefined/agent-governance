@@ -19,8 +19,8 @@ Specs developed conversationally outside Claude Code are strong on intent and
 empty on the repo. They say "the notification service" when the code has
 `src/services/notifications/sendUserNotification.ts`, and they describe
 behavior that already shipped three weeks ago. Implementing directly from an
-ungrounded spec produces duplicated logic (R-308), invented file layouts
-(R-304, R-305), and naming that does not match anything (R-315..R-317).
+ungrounded spec produces duplicated logic, invented file layouts,
+and naming that does not match anything.
 
 The exploration needed to fix that reads a lot of files. Those reads belong in
 subagent context, not yours: you need the conclusions, not the file dumps
@@ -41,11 +41,11 @@ Write this list down before dispatching. It is the input to every subagent.
 
 ### 2. Dispatch exploration subagents
 
-Three concerns, one subagent each. Per R-703, send the first alone as a canary
+Three concerns, one subagent each. Send the first alone as a canary
 and fan out the remaining two only after it returns clean.
 
-Every dispatch prompt carries, per R-701: the task, the file paths in scope,
-the concept list, and the cap. Per R-706, cap each at 50 tool calls and have
+Every dispatch prompt carries: the task, the file paths in scope,
+the concept list, and the cap. Cap each at 50 tool calls and have
 it stop and report on reaching the cap. Give each read-only tools; none of
 them writes anything.
 
@@ -59,18 +59,18 @@ contents; report paths and names only."
 whether this repo already implements it. Report implemented, partially
 implemented, or absent, each with the `file:line` that settles it and one
 sentence of evidence. Search `services/`, `clients/`, `api/`, and the hook
-trees before concluding absent (R-308)."
+trees before concluding absent."
 
 **Subagent C, pattern conflicts.** "The attached spec describes an approach.
 Report where it conflicts with the patterns this repo already uses: dependency
-direction (R-303), the fixed directory vocabulary (R-304, R-305), catch-all
-directories (R-306), test file placement (R-313), naming conventions
-(R-315..R-317), one public export per module (R-319). Report the conflict, the
+direction, the fixed directory vocabulary, catch-all
+directories, test file placement, naming conventions,
+one public export per module. Report the conflict, the
 `file:line` showing the current pattern, and the spec line that conflicts.
 Report nothing where the spec and the repo agree."
 
-Verify each returned claim against the code before writing it into the spec
-(R-201, R-804d). Subagent output is data, not truth.
+Verify each returned claim against the code before writing it into the spec.
+Subagent output is data, not truth.
 
 ### 3. Write the updated spec
 
@@ -99,17 +99,11 @@ Concepts with no match in the repo, which this spec therefore creates: ...
 - Spec says <X>; the repo does <Y> at `file:line` (R-3NN). Resolve before implementing.
 ```
 
-Then **populate the spec's existing `## Domain vocabulary` glossary** (R-330,
-enforced by `hooks/spec-glossary-check.sh` for a spec under
-`docs/superpowers/specs/*-design.md`; a spec handed over at any other path
-never triggers that hook, so either move it there before editing or rely on
-the check script in step 4, which runs the same three-section test on any
-path) from the real exported names
+Then **populate the spec's existing `## Domain vocabulary` glossary** from the real exported names
 Subagent A found. Do not create a competing vocabulary section; the glossary
-already has a home and a gate. If the spec has no glossary section yet, add
-one, since the gate requires it.
+already has a home. If the spec has no glossary section yet, add one.
 
-Add any heading from `~/.claude/prompts/spec-template.md` the spec lacks, at minimum `## Acceptance criteria` (one numbered behavior per line, each a RED slice under R-412) and `## Non-goals`; an external spec usually carries its criteria as prose, and the test author needs them as a list.
+Add any heading from `~/.claude/prompts/spec-template.md` the spec lacks, at minimum `## Acceptance criteria` (one numbered behavior per line) and `## Non-goals`; an external spec usually carries its criteria as prose, and the test author needs them as a list.
 
 Rewrite the spec's prose to use the real names in place of the vague ones. A
 spec that says "the notification service" after grounding has failed to be
@@ -133,7 +127,7 @@ Report to the user:
 
 Then stop. Do not implement, do not scaffold, do not create a branch. Handing
 the grounded spec back is the whole job. Implementation is a separate turn,
-and per R-705 it starts with failing tests.
+and it starts with failing tests.
 
 ## Definition of done
 

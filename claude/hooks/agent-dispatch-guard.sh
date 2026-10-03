@@ -10,7 +10,7 @@
 #
 # Denies an Agent call of a long-running type (owner decision 2026-10-03,
 # IAN-605) unless its `run_in_background` is exactly true: test-author,
-# implementer, slice-critic, pr-reviewer, security-reviewer, general-purpose
+# implementer, pr-reviewer, security-reviewer, general-purpose
 # (also the type an omitted or empty subagent_type means), and every audit-*
 # role. The type is read case-insensitively, without whitespace, and after
 # any `plugin:` namespace.
@@ -45,7 +45,7 @@ AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]' | tr -d 
 # foreground; an audit role is matched by its prefix.
 is_long_running_type() {
   case "$1" in
-    test-author|implementer|slice-critic|pr-reviewer|security-reviewer|general-purpose|audit-*) return 0 ;;
+    test-author|implementer|pr-reviewer|security-reviewer|general-purpose|audit-*) return 0 ;;
     *) return 1 ;;
   esac
 }

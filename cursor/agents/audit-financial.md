@@ -12,7 +12,7 @@ readonly: false
 
 **Preferred model: Sonnet.** Cost structure review, spending caps, and margin checks are math against a clear rubric. Sonnet handles them well. Step up to Opus only if the audit involves ambiguous unit-economics modeling or a strategic pricing decision.
 
-## Finding and fix discipline (R-804)
+## Finding and fix discipline
 
 Findings are the deliverable; proposed fixes are unverified hypotheses the user verifies before applying.
 
