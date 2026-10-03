@@ -7,111 +7,32 @@ paths:
 
 # Next.js Frontend Conventions
 
-Framework-specific rules for Next.js App Router clients. Read together with `~/.claude/CLAUDE-FRONTEND.md` (the shared core) and `~/.claude/CLAUDE-FRONTEND-REACT.md` (the React rules); everything not covered here follows those two.
+Next.js 15+ App Router only (no Pages Router). Follows `CLAUDE-FRONTEND.md` and `CLAUDE-FRONTEND-REACT.md` for everything not covered here.
 
----
+## Layout
 
-## Framework
+- `src/app/` holds routes only: `layout.tsx` (metadata, fonts, providers), `page.tsx`, `globals.scss` (custom properties, resets), `loading.tsx` and `error.tsx` boundaries. Route groups use parentheses: `(auth)`, `(protected)` with an auth-guarded `layout.tsx`.
+- Pages stay thin: compose from `features/` and `components/`, no business logic in `app/`. Everything outside `app/` follows the shared directory vocabulary.
+- Route URL segments are kebab-case (`app/coming-soon/`); route groups and all other directories are camelCase.
+- Files: `page.tsx`, `layout.tsx`, `globals.scss`; route-level styles `camelCase.module.scss`.
+- Legacy projects with `lib/` or a flat `hooks/`: `lib/api.ts` becomes `api/` modules, `lib/queryClient.ts` becomes `config/queryClient.ts`, `hooks/` folds into `state/`.
 
-- **Next.js 15+** with **App Router** (`src/app/`); no Pages Router
+## Components and metadata
 
----
+- Server components are the default. Put `'use client'` as the first line of a component only when it has state, handlers or effects.
+- Export `metadata: Metadata` from server components. Load fonts with `next/font/google` and inject them as CSS variables.
+- Import group 1 is React plus `next/*` (`next/link`, `next/font`, `next` types).
+- Delete passthrough `middleware.ts` files; every middleware runs each request through the Edge runtime.
+- Add an `error.tsx` boundary to a route that returns unexplained 500s.
 
-## Directory Structure
+## Environment and build
 
-```
-src/
-├── app/                      # App Router pages only; no business logic
-│   ├── layout.tsx            # Root layout (metadata, fonts, providers)
-│   ├── page.tsx              # Landing / index page
-│   ├── globals.scss          # CSS custom properties, resets, base styles
-│   ├── (auth)/               # Route group for auth pages
-│   │   ├── login/page.tsx
-│   │   ├── register/page.tsx
-│   │   └── auth.module.scss  # Shared auth styles
-│   └── (protected)/          # Route group for authed pages
-│       ├── layout.tsx        # Auth-guarded layout
-│       └── dashboard/page.tsx
-├── components/               # Shared UI components (see core)
-├── features/                 # Feature slices (see core)
-├── api/                      # Own-backend fetch wrappers (see core)
-├── clients/                  # Third-party SDK wrappers (see core)
-├── services/                 # Domain logic (see core)
-├── state/                    # Stores, hooks, context providers (see the React file)
-├── config/                   # queryClient.ts, env parsing
-├── constants/
-├── data/
-├── styles/                   # Design tokens, shared SCSS partials
-└── types/
-```
+- Browser-visible values use the `NEXT_PUBLIC_` prefix (API base URL: `NEXT_PUBLIC_API_URL`). They are baked in at build time, so never put a secret in one.
+- In a pnpm monorepo set `outputFileTracingRoot: path.resolve(__dirname, '..')` in `next.config.ts`, or dynamic routes 500 on Vercel.
+- Keep `@playwright/test` in the monorepo root `devDependencies` only, not in the app.
+- Suppress an unwanted optional peer with a `pnpm.overrides` entry of `"pkg": "never"`.
 
-### Rules
+## Container
 
-- Pages live in `src/app/` following App Router conventions; route groups use parentheses: `(auth)`, `(protected)`
-- Everything outside `app/` follows the shared directory vocabulary in the core file
-- Directories appear only when occupied (R-309); the vocabulary is fixed, not mandatory on day one
-- Route URL segments are kebab-case (`app/coming-soon/`) per the R-312 exception; route groups and every other directory are camelCase
-- Page components stay thin: compose from `features/` and `components/`; no business logic in `app/`
-
-### Migration from the pre-split structure
-
-Projects built against the old single-file conventions use `lib/` and a flat `hooks/`; both are banned (R-305/R-306). When touching such a project:
-
-- `lib/api.ts` becomes `api/` modules (transport wrapper plus one fetch function per backend route; see the core's API Calls section)
-- `lib/queryClient.ts` becomes `config/queryClient.ts`
-- `hooks/` folds into `state/`
-
----
-
-## `'use client'`
-
-- Directive on every interactive component (has state, handlers, effects), as the first line of the file
-- Server components stay the default; add the directive only when the component needs interactivity
-
----
-
-## Metadata and Fonts
-
-- `layout.tsx` for the root layout: metadata, fonts, global providers
-- `loading.tsx` and `error.tsx` boundary files where appropriate
-- Metadata exported from server components:
-  ```typescript
-  export const metadata: Metadata = {
-      title: 'App Name',
-      description: 'Description here',
-  };
-  ```
-- Font system via `next/font/google` with CSS variable injection
-- Import ordering group 1 (see the React file) is React plus `next/*` imports (`next/link`, `next/font`, `next` types)
-
----
-
-## Environment Variables
-
-- `NEXT_PUBLIC_*` prefix for anything read in the browser
-- API base URL comes from `NEXT_PUBLIC_API_URL`
-
----
-
-## File Naming (framework-specific rows)
-
-| What | Convention | Example |
-|------|-----------|---------|
-| Pages | `page.tsx` | `app/dashboard/page.tsx` |
-| Layouts | `layout.tsx` | `app/(protected)/layout.tsx` |
-| Global styles | `globals.scss` | `app/globals.scss` |
-| Route-level styles | `camelCase.module.scss` | `tripDetail.module.scss` |
-
-## Containers (R-351)
-
-A Next.js app is a deployable artifact: it ships its `Dockerfile` in the commit that creates it. Set `output: "standalone"` in `next.config.ts`; the multi-stage image builds on `node:22-alpine`, copies `.next/standalone`, `.next/static`, and `public/` into the runtime stage, runs `USER node`, declares `HEALTHCHECK` against a `/api/health` route handler, and starts with `CMD ["node", "server.js"]`. `.dockerignore` excludes `.git`, `node_modules`, `.next`, `.env*`, and the test trees. `NEXT_PUBLIC_*` values are build arguments by nature, so they are the one exception to run-time-only configuration and never carry a secret. The image is the deploy unit: Railway builds it from the Dockerfile (`CLOUD-DEPLOYMENT.md`), and CI builds and smoke-tests the same image on every pull request.
-
-## Incident-backed rules
-
-Moved from the global-memory PL list on 2026-10-02 (IAN-568). Each came from a production incident in a 2026-04 debug session; they are defaults.
-
-- **PL5.** In a pnpm monorepo, set `outputFileTracingRoot: path.resolve(__dirname, '..')` in `next.config.ts`; without it dynamic routes work locally and return 500 on Vercel, because the bundler cannot find the hoisted `node_modules`.
-- **PL6.** `pnpm.autoInstallPeers: true` installs optional peers too; suppress an unwanted optional peer with a `pnpm.overrides` entry of `"pkg": "never"`.
-- **PL7.** `@playwright/test` anywhere in a Next.js app's dependency tree causes `Cannot find module 'next/dist/compiled/source-map'` on Vercel; keep Playwright in the monorepo root `devDependencies` only and suppress it from the app's peer resolution.
-- **PL8.** Delete passthrough `middleware.ts` files: every middleware runs every request through the Edge runtime, even one that only calls `NextResponse.next()`.
-- **PL9.** After the second unexplained 500 on an App Router route, add an `error.tsx` boundary, which surfaces the real error at once instead of leaving the route to be debugged blind.
+- Set `output: "standalone"` in `next.config.ts`. The multi-stage Dockerfile builds on `node:22-alpine`, copies `.next/standalone`, `.next/static` and `public/` into the runtime stage, runs `USER node`, has a `HEALTHCHECK` on an `/api/health` route handler, and starts with `CMD ["node", "server.js"]`.
+- `.dockerignore` excludes `.git`, `node_modules`, `.next`, `.env*` and tests. `NEXT_PUBLIC_*` values are the only build arguments.
