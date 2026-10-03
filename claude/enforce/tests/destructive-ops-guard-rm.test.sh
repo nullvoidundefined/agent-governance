@@ -29,7 +29,32 @@ HOOK="$CLAUDE_HARNESS_ROOT/hooks/destructive-ops-guard.sh"
 
 JQ=$(command -v jq) || { echo "FAIL: setup: jq is required to run this fixture"; exit 1; }
 TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
-[ -n "$TIMEOUT_BIN" ] || { echo "FAIL: setup: timeout (or gtimeout) is required to bound the hook"; exit 1; }
+# macOS ships neither timeout nor gtimeout; fall back to a bash watchdog with
+# the same contract: kill the command after the given seconds and return 124
+# when it was killed, so a hang still reads as a hang (IAN-606).
+run_with_watchdog() {
+  local seconds="$1" marker pid watchdog rc
+  shift
+  marker=$(mktemp)
+  rm -f "$marker"
+  "$@" <&0 &
+  pid=$!
+  (
+    sleep "$seconds"
+    kill -0 "$pid" 2>/dev/null && : >"$marker" && kill -9 "$pid" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  watchdog=$!
+  rc=0
+  wait "$pid" || rc=$?
+  kill "$watchdog" 2>/dev/null
+  wait "$watchdog" 2>/dev/null || true
+  if [ -e "$marker" ]; then
+    rm -f "$marker"
+    return 124
+  fi
+  return "$rc"
+}
+[ -n "$TIMEOUT_BIN" ] || TIMEOUT_BIN=run_with_watchdog
 # Every hook run is killed after this many seconds; a kill is a FAIL.
 RUN_BOUND=20
 
