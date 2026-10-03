@@ -34,6 +34,11 @@ jobs:
         run: |
           git config --global user.email "enforce-ci@example.invalid"
           git config --global user.name "enforce CI"
+      - name: Install pytest and vitest (the tdd.sh fixtures drive both runners)
+        run: |
+          pipx install pytest==9.1.1
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install --prefix claude/enforce --no-save --no-package-lock vitest@5.0.0
       - name: Hook fixtures
         run: bash claude/enforce/tests/run-tests.sh
       - name: Sync fixture
