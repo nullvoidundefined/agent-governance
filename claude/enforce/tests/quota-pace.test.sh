@@ -193,9 +193,68 @@ for round in 1 2 3; do
     failCase "recorders racing one stale lock lost a snapshot (round $round)"
   [ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "a lock or break marker was left behind (round $round)"
 done
+# A break lock left by a dead breaker (R-109 r3): stale, it is cleared and
+# the record lands; a fresh one, or one planted as a regular file, makes the
+# writer fail within its bound and name the break lock.
+rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE".lock*
+bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
+mkdir "$CLAUDE_QUOTA_FILE.lock" "$CLAUDE_QUOTA_FILE.lock.break"
+touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock" "$CLAUDE_QUOTA_FILE.lock.break"
+timeout 20 bash "$SCRIPT" record codex 2 || failCase "a stale lock behind a stale break lock must be cleared"
+[ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "a cleared break lock must leave no marker"
+mkdir "$CLAUDE_QUOTA_FILE.lock" && touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
+: >"$CLAUDE_QUOTA_FILE.lock.break"
+msg=$({ timeout 20 bash "$SCRIPT" record codex 3 2>&1 && echo EXIT0; } || true)
+case "$msg" in *EXIT0*) failCase "a fresh break lock file must stop the writer" ;; esac
+case "$msg" in *lock.break*) ;; *) failCase "the failure must name the break lock (got: $msg)" ;; esac
+touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock.break"
+timeout 20 bash "$SCRIPT" record codex 3 || failCase "a stale break lock planted as a file must be cleared"
+[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "3" ] || failCase "records past dead break locks must land"
+
+# A holder stalled past the stale age loses its lock to a breaker (R-109 r3):
+# the holder must notice and fail rather than overwrite the breaker's
+# snapshot. A jq shim stalls only the locked update and backdates the lock.
+rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE".lock* "$WORK/shim"
+bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
+mkdir -p "$WORK/shim"
+REAL_JQ=$(command -v jq)
+cat >"$WORK/shim/jq" <<SHIM
+#!/usr/bin/env bash
+case "\$*" in
+  *newReset*)
+    if [ -f "$WORK/stall-armed" ]; then
+      rm -f "$WORK/stall-armed"
+      touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
+      : >"$WORK/stalled"
+      for _ in \$(seq 1 200); do [ -f "$WORK/release" ] && break; sleep 0.05; done
+    fi ;;
+esac
+exec "$REAL_JQ" "\$@"
+SHIM
+chmod +x "$WORK/shim/jq"
+: >"$WORK/stall-armed"
+rm -f "$WORK/stalled" "$WORK/release"
+PATH="$WORK/shim:$PATH" bash "$SCRIPT" record codex 2 --at $((NOW_OWNER - 10 * HOUR)) >/dev/null 2>&1 &
+holder=$!
+for _ in $(seq 1 200); do [ -f "$WORK/stalled" ] && break; sleep 0.05; done
+[ -f "$WORK/stalled" ] || failCase "setup: the holder never stalled"
+timeout 20 bash "$SCRIPT" record codex 4 --at $((NOW_OWNER - 5 * HOUR)) || failCase "the breaker must take a lock stalled past the stale age"
+: >"$WORK/release"
+holderRc=0
+wait "$holder" || holderRc=$?
+[ "$holderRc" -ne 0 ] || failCase "a holder whose lock was broken must fail, not overwrite"
+[ "$(jq -c '[.buckets.codex.snapshots[].usedPct]' "$CLAUDE_QUOTA_FILE")" = "[1,4]" ] || failCase "the breaker's snapshot must survive the stalled holder"
+[ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "no lock may be left after the stalled-holder race"
+
 # A failure inside the locked region still releases the lock.
 echo 'not json' >"$CLAUDE_QUOTA_FILE"
 expectFail "a malformed file under the lock" bash "$SCRIPT" record codex 15
+for shape in '{"buckets":0}' '{"buckets":null}' '{"buckets":[]}' '{"buckets":""}'; do
+  echo "$shape" >"$CLAUDE_QUOTA_FILE"
+  expectFail "record over buckets $shape" bash "$SCRIPT" record codex 15 --resets-at 2026-10-08T10:57:00+07:00
+  [ "$(cat "$CLAUDE_QUOTA_FILE")" = "$shape" ] || failCase "a wrong-typed buckets file ($shape) must never be overwritten"
+done
+echo 'not json' >"$CLAUDE_QUOTA_FILE"
 [ ! -e "$CLAUDE_QUOTA_FILE.lock" ] || failCase "a failed record must release the lock"
 [ "$(cat "$CLAUDE_QUOTA_FILE")" = "not json" ] || failCase "a malformed file must never be overwritten"
 
@@ -232,6 +291,10 @@ expectFail "report with an unknown option" bash "$SCRIPT" report --jsno
 mkdir -p "$WORK/cwd"
 expectFail "HOME unset with no CLAUDE_QUOTA_FILE" sh -c "cd '$WORK/cwd' && env -u HOME -u CLAUDE_QUOTA_FILE bash '$SCRIPT' record codex 13 --resets-at 2026-10-08T10:57:00+07:00"
 [ -z "$(ls -A "$WORK/cwd")" ] || failCase "an unset HOME must not create a quota file under the cwd"
+for badHome in rel '~'; do
+  expectFail "HOME=$badHome" sh -c "cd '$WORK/cwd' && env -u CLAUDE_QUOTA_FILE HOME='$badHome' bash '$SCRIPT' record codex 13 --resets-at 2026-10-08T10:57:00+07:00"
+done
+[ -z "$(ls -A "$WORK/cwd")" ] || failCase "a relative HOME must not create a quota file under the cwd"
 cp "$CLAUDE_QUOTA_FILE" "$WORK/real.json"
 ln -s "$WORK/real.json" "$WORK/link.json"
 expectFail "a symlinked quota file (record)" env CLAUDE_QUOTA_FILE="$WORK/link.json" bash "$SCRIPT" record codex 14

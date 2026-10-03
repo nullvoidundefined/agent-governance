@@ -34,6 +34,13 @@ set -uo pipefail
 if [ -n "${CLAUDE_QUOTA_FILE:-}" ]; then
   QUOTA_FILE="$CLAUDE_QUOTA_FILE"
 elif [ -n "${HOME:-}" ]; then
+  case "$HOME" in
+    /*) ;;
+    *)
+      echo "quota-pace: HOME '$HOME' is not an absolute path; set CLAUDE_QUOTA_FILE" >&2
+      exit 1
+      ;;
+  esac
   QUOTA_FILE="$HOME/.claude/quota.json"
 else
   echo "quota-pace: HOME is unset; set CLAUDE_QUOTA_FILE" >&2
@@ -102,7 +109,15 @@ writeQuotaFile() {
   dir=$(dirname "$QUOTA_FILE")
   mkdir -p "$dir" || fail "cannot create $dir"
   tmp=$(mktemp "$dir/.quota.json.XXXXXX") || fail "cannot create a temp file in $dir"
-  printf '%s\n' "$1" >"$tmp" && mv "$tmp" "$QUOTA_FILE" || {
+  printf '%s\n' "$1" >"$tmp" || {
+    rm -f "$tmp"
+    fail "cannot write $QUOTA_FILE"
+  }
+  ownsQuotaLock || {
+    rm -f "$tmp"
+    fail "the writer lock was broken while this record waited; snapshot not written, run it again"
+  }
+  mv "$tmp" "$QUOTA_FILE" || {
     rm -f "$tmp"
     fail "cannot write $QUOTA_FILE"
   }
@@ -118,24 +133,41 @@ writeQuotaFile() {
 # the old lock stale but lost the break to another waiter finds, once it
 # holds the break lock, either no lock or a fresh one, and removes neither
 # (R-109 r2). A break lock older than a minute is from a dead breaker and is
-# removed the same way, by whoever then holds no other claim on it.
+# cleared by age the same way, whatever kind of file it is. The holder marks
+# the lock with an owner file and checks it is still there just before it
+# replaces the quota file, so a holder whose lock was broken writes nothing.
 lockQuotaFile() {
   local lock="$QUOTA_FILE.lock" brk="$QUOTA_FILE.lock.break" tries=0
   mkdir -p "$(dirname "$QUOTA_FILE")" || fail "cannot create $(dirname "$QUOTA_FILE")"
   until mkdir "$lock" 2>/dev/null; do
     tries=$((tries + 1))
-    [ "$tries" -le 50 ] || fail "the quota file is locked by another writer ($lock)"
+    [ "$tries" -le 50 ] || fail "the quota file is locked by another writer ($lock)$( [ -e "$brk" ] && printf ' and a break lock is held (%s)' "$brk")"
     if isStaleLock "$lock"; then
       if mkdir "$brk" 2>/dev/null; then
         isStaleLock "$lock" && rm -rf "$lock"
         rmdir "$brk"
         continue
       fi
-      isStaleLock "$brk" && rmdir "$brk" 2>/dev/null
+      isStaleLock "$brk" && rm -rf "$brk"
     fi
     sleep 0.1
   done
-  trap 'rmdir "$QUOTA_FILE.lock" 2>/dev/null' EXIT
+  : >"$lock/owner.$$" || fail "cannot mark the writer lock $lock"
+  trap 'releaseQuotaLock' EXIT
+}
+
+# ownsQuotaLock: succeeds while this process still holds the writer lock. A
+# holder stalled past the stale age (a sleeping laptop, a stopped process)
+# can have its lock broken; it must then write nothing (R-109 r3).
+ownsQuotaLock() {
+  [ -e "$QUOTA_FILE.lock/owner.$$" ]
+}
+
+# releaseQuotaLock: removes the writer lock on exit, but only while this
+# process still owns it, so a holder whose lock was broken never removes the
+# lock the breaker now holds.
+releaseQuotaLock() {
+  ownsQuotaLock && rm -rf "$QUOTA_FILE.lock"
 }
 
 # isStaleLock <path>: succeeds when the path exists and was last modified
@@ -177,7 +209,7 @@ recordSnapshot() {
   local current now
   now=$(nowEpoch) || exit 1
   lockQuotaFile
-  if [ -f "$QUOTA_FILE" ] && jq -e '.buckets | length == 0' "$QUOTA_FILE" >/dev/null 2>&1; then
+  if [ -f "$QUOTA_FILE" ] && jq -e '.buckets | type == "object" and length == 0' "$QUOTA_FILE" >/dev/null 2>&1; then
     current='{"buckets":{}}'
   elif [ -f "$QUOTA_FILE" ]; then
     current=$(readQuotaFile) || exit 1
