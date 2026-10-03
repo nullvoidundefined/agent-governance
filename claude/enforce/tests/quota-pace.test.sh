@@ -43,12 +43,12 @@ if ! command -v timeout >/dev/null 2>&1; then
       shift
       marker=$(mktemp)
       rm -f "$marker"
-      "$@" &
+      "$@" <&0 &
       pid=$!
       (
         sleep "$seconds"
         kill -0 "$pid" 2>/dev/null && : >"$marker" && kill -9 "$pid" 2>/dev/null
-      ) &
+      ) </dev/null >/dev/null 2>&1 &
       watchdog=$!
       rc=0
       wait "$pid" || rc=$?
@@ -332,15 +332,24 @@ case "$msg" in *EXIT0*) failCase "a lock naming pid 1 must stop the writer" ;; e
 case "$msg" in *"pid 1,"*) ;; *) failCase "the failure must name pid 1 (got: $msg)" ;; esac
 [ "$(readlink "$LOCK")" = 1 ] || failCase "a lock naming pid 1 must be kept"
 rm -f "$LOCK"
-# With no ps on PATH, a dead owner's lock is still recognized and broken.
+# With no ps on PATH: a dead owner's lock is broken only where /proc proves it.
 resetLock
 ln -s "$(deadPid)" "$LOCK"
 mkdir -p "$WORK/nops"
 for tool in bash jq mktemp mv rm ln readlink dirname mkdir cat date sleep find sort tr head grep sed awk env; do
   p=$(command -v "$tool" 2>/dev/null) && ln -sf "$p" "$WORK/nops/$tool"
 done
-timeout 20 env PATH="$WORK/nops" bash "$SCRIPT" record codex 2 || failCase "a dead owner must be recognized without ps"
-[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "the record without ps must land"
+# Where /proc lists every pid (Linux), it proves the owner dead and the record
+# lands. Where it does not (macOS has no /proc), nothing can prove a pid dead
+# without ps, so the lock must be kept: the writer fails closed and names it.
+if [ -d /proc/self ] && ! awk '$2 == "/proc" && $3 == "proc" { print $4 }' /proc/mounts 2>/dev/null | grep -Eq '(^|,)hidepid=([1-9]|invisible|noaccess|ptraceable)'; then
+  timeout 20 env PATH="$WORK/nops" bash "$SCRIPT" record codex 2 || failCase "a dead owner must be recognized without ps where /proc shows every pid"
+  [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "the record without ps must land"
+else
+  msg=$({ timeout 20 env PATH="$WORK/nops" bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
+  case "$msg" in *EXIT0*) failCase "with no /proc and no ps, an owner must count as alive" ;; esac
+  [ -L "$LOCK" ] || failCase "with no /proc and no ps, the owner's lock must be kept"
+fi
 rm -rf "$LOCK"
 # On a /proc mounted hidepid, a missing /proc/<pid> proves nothing: with no
 # ps either, a dead-looking owner counts as alive and the writer fails.

@@ -138,7 +138,7 @@ e1d94108f5fd2527efb05e310978a90d8201848af38d012408ff8d5b4e63c2a0  enforce/tests/
 98aa8957146b779a1267ec7c470202f5e99315686df280f23a32030047e99baa  enforce/tests/push-semgrep-gate-report-parsing.test.sh
 96feac42b8a45105add9e185989df60b293c9bf96166af9a0b1522dc8136310f  enforce/tests/push-semgrep-gate-trust.test.sh
 ee00d810a955b12222c95b74e31fcf53d68709b239bedd6a6946d90833842c77  enforce/tests/push-semgrep-gate.test.sh
-6fe7c19410a7644de63f4de99f547b406c32af696419fd7c36e93a04a21c9315  enforce/tests/quota-pace.test.sh
+46c245523b6da6eb16a24a010775b5ef74970f67ff278fd1d83b43f0ffe0d735  enforce/tests/quota-pace.test.sh
 bb37fab32009c9c753688c344ff63d516423a62ad28592100ed24f0544a94cf7  enforce/tests/r001-non-interactive-scope-rule-text.test.sh
 746dead38f8c93206edb7cae8004d22d5345454c11ef91f74418bc6a89a787db  enforce/tests/r001-project-file-rule-text.test.sh
 70d345f79510198ca3aca9fd203716fd8b5fed2234d176c15cc16504cdab2629  enforce/tests/r109-rule-text-2.test.sh
