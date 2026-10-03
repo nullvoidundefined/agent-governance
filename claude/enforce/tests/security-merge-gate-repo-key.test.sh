@@ -63,6 +63,20 @@ export HOME="$SCRATCH_HOME"
 mkdir -p "$SCRATCH_HOME"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_TERMINAL_PROMPT=0
+# Configuration passed through the environment reaches every git call the way
+# system config would. A cloud session that sets url.<base>.insteadOf this way
+# rewrites git@github.com: to https://github.com/ before the guard ever reads
+# the origin, so the spelling cases below would test the rewrite, not the
+# guard (2026-10-03, IAN-606). Clear both channels for the sandbox repos.
+unset GIT_CONFIG_PARAMETERS
+if [ -n "${GIT_CONFIG_COUNT:-}" ]; then
+  i=0
+  while [ "$i" -lt "$GIT_CONFIG_COUNT" ]; do
+    unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"
+    i=$((i + 1))
+  done
+  unset GIT_CONFIG_COUNT
+fi
 
 EXPECTED_MODEL=$(jq -er '.securityReviewModel | strings | select(length > 0)' "$MODEL_FILE" 2>/dev/null) || {
   echo "FAIL security-merge-gate-repo-key.test.sh: $MODEL_FILE has no securityReviewModel string"
