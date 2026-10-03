@@ -99,16 +99,19 @@ has_finished() {
 # transcript, which can be too large for its context.
 # Every value is allowlisted: the transcript can carry text an injected page
 # shaped, and this line lands in the main session's context, so a stop reason
-# outside the API's set and a tool name outside a plain identifier print as
-# `other`, at most five tool names print, and no newline survives (R-109 r1 #2
-# on PR #184).
+# outside the API's set and a tool name outside the harness's tool set print
+# as `other` (an `mcp__` tool as `mcp`), at most five tool names print, and no
+# newline survives (R-109 r1 #2 and r2 #3 on PR #184).
 describe_last_entry() {
   local summary
   summary=$(last_turn_entry | jq -r '
     def stop_word: if (. | type) == "string"
       and (. as $s | ["end_turn","tool_use","max_tokens","stop_sequence","pause_turn","refusal"] | index($s))
       then . else "other" end;
-    def tool_word: if (. | type) == "string" and test("^[A-Za-z0-9_-]{1,64}$") then . else "other" end;
+    def tool_word: if (. | type) != "string" then "other"
+      elif startswith("mcp__") then "mcp"
+      elif (. as $t | ["Bash","Read","Edit","Write","Glob","Grep","Agent","Task","TaskStop","TaskOutput","WebFetch","WebSearch","NotebookEdit","TodoWrite","AskUserQuestion","Skill","ToolSearch","LSP","Monitor","SendMessage"] | index($t)) then .
+      else "other" end;
     "last entry: " + (if .type == "assistant" or .type == "user" then .type else "other" end)
     + (if .message.stop_reason then ", stop " + (.message.stop_reason | stop_word) else "" end)
     + ([.message.content[]? | select(.type == "tool_use") | .name | tool_word] as $tools
@@ -117,10 +120,22 @@ describe_last_entry() {
   printf '%s' "${summary:-last entry: none}"
 }
 
+# shown_path: prints the output file path when it has the harness's launch
+# shape, else a placeholder, so an argument carrying a newline or other text
+# never reaches the wake line verbatim (R-109 r2 #4 on PR #184).
+shown_path() {
+  if printf '%s' "$OUTPUT_FILE" | grep -Eqx '/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/tasks/[A-Za-z0-9_-]+\.output' \
+    && [ "$(printf '%s' "$OUTPUT_FILE" | wc -l | tr -d ' ')" = "0" ]; then
+    printf '%s' "$OUTPUT_FILE"
+  else
+    printf '<path withheld>'
+  fi
+}
+
 # report <reason> <exit code>: prints the wake line and exits with the code.
 report() {
   local now; now=$(date +%s)
-  echo "agent-watchdog: $1 after $((now - STARTED_AT))s; transcript $(transcript_size || true) bytes; $(describe_last_entry); $OUTPUT_FILE"
+  echo "agent-watchdog: $1 after $((now - STARTED_AT))s; transcript $(transcript_size || true) bytes; $(describe_last_entry); $(shown_path)"
   exit "$2"
 }
 
