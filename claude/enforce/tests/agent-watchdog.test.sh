@@ -69,7 +69,9 @@ for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}'
   '{"tool_name":"\u00a0Agent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\u200b","tool_input":{"subagent_type":"implementer"}}' \
   '{"tool_name":"Agent\u3000","tool_input":{"subagent_type":"implementer"}}' \
   '{"tool_name":"\uff21gent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"\u0410gent","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"Ta-sk","tool_input":{"subagent_type":"implementer"}}'; do
+  '{"tool_name":"Ta-sk","tool_input":{"subagent_type":"implementer"}}' \
+  '{"tool_name":"\nAgent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\nBash","tool_input":{"subagent_type":"implementer"}}' \
+  '{"tool_name":"Bash\nAgent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\n ","tool_input":{"subagent_type":"implementer"}}'; do
   # Run under the C locale too, where Unicode spaces are not [:space:] (r4 #1).
   GOT=$(printf '%s' "$payload" | LC_ALL=C "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
   [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied under LC_ALL=C, got $GOT"; exit 1; }

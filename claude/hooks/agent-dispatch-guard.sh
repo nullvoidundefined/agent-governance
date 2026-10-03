@@ -35,7 +35,9 @@ INPUT=$(cat 2>/dev/null || true)
 # class that reducing or stripping the name kept reopening (R-109 r3 #1, r4 #1
 # and r5 #1 on PR #184).
 if TOOL=$(printf '%s' "$INPUT" | jq -er 'if (.tool_name | type) == "string" then .tool_name else "" end' 2>/dev/null); then
-  if printf '%s' "$TOOL" | LC_ALL=C grep -Eqx '[A-Za-z_][A-Za-z0-9_]*'; then
+  # bash's own regex tests the whole string; grep -x would accept a name with
+  # any one identifier line, so "\nAgent" passed (R-109 r6 #1 on PR #184).
+  if LC_ALL=C; [[ "$TOOL" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
     case "$(printf '%s' "$TOOL" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in agent|task) ;; *) exit 0 ;; esac
   fi
 fi
