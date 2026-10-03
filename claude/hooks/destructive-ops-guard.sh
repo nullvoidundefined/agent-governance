@@ -144,7 +144,7 @@ load_policy() {
         (.interpreter_programs | join(" ")),
         (.interpreter_delete_patterns | join("|")),
         (.docker_programs | join(" ")),
-        (.docker_read_only | join("|"))' "$DESTRUCTIVE_OPS_POLICY" 2>/dev/null)" || return 1
+        (.docker_allowed | join("|"))' "$DESTRUCTIVE_OPS_POLICY" 2>/dev/null)" || return 1
     {
         IFS= read -r FORCED_DELETE_PROGRAMS
         IFS= read -r PLAIN_DELETE_PROGRAMS
@@ -155,7 +155,7 @@ load_policy() {
         IFS= read -r INTERPRETER_PROGRAMS
         IFS= read -r INTERPRETER_DELETE_PATTERN
         IFS= read -r DOCKER_PROGRAMS
-        IFS= read -r DOCKER_READ_ONLY
+        IFS= read -r DOCKER_ALLOWED
     } <<< "$lines"
     [ -n "$FORCED_DELETE_PROGRAMS" ] && [ -n "$INTERPRETER_DELETE_PATTERN" ]
 }
@@ -589,8 +589,9 @@ apply_cd_segment() {
 }
 
 # Docker and its look-alikes (owner decision 2026-10-03, after an unscoped
-# `docker rm -f` deleted every container): read-only subcommands run, every
-# other subcommand asks. $1 = the program's base name.
+# `docker rm -f` deleted every container): the subcommands in docker_allowed
+# (reads, builds, runs, starts and stops) run; every other subcommand (rm,
+# rmi, kill, prune, down, push, and anything unlisted) asks. $1 = the program's base name.
 judge_docker_segment() {
     local index=0 word sub="" sub2=""
     local -a words=("${ARGUMENTS[@]+"${ARGUMENTS[@]}"}")
@@ -612,8 +613,8 @@ judge_docker_segment() {
     local key="$sub"
     [ -n "$sub2" ] && key="$sub $sub2"
     [ -n "$key" ] || return 0
-    printf '%s\n' "$DOCKER_READ_ONLY" | tr '|' '\n' | grep -qxF -- "$key" && return 0
-    record_ask "it runs \`$1 $key\`, which can change or remove containers, images, volumes, or networks; only read-only $1 commands run without asking"
+    printf '%s\n' "$DOCKER_ALLOWED" | tr '|' '\n' | grep -qxF -- "$key" && return 0
+    record_ask "it runs \`$1 $key\`, which can change or remove containers, images, volumes, or networks; only the non-destructive $1 commands listed in enforce/destructive-ops.json run without asking"
 }
 
 # Judges one segment (WORDS holds its words): records assignments, follows cd,

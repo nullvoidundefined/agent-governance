@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# destructive-ops-guard: read-only docker, podman, nerdctl and compose commands
-# run; every other subcommand asks, through wrappers and absolute paths. A
+# destructive-ops-guard: non-destructive docker, podman, nerdctl and compose
+# commands (reads, builds, runs, starts, stops) run; every other subcommand asks, through wrappers and absolute paths. A
 # delete of the repository root itself is denied.
 set -uo pipefail
 HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hooks" && pwd)/destructive-ops-guard.sh"
@@ -15,12 +15,12 @@ expect() {
   got=$(decision "$2")
   if [ "$got" = "$1" ]; then echo "PASS: $1 for: $2"; else echo "FAIL: expected $1, got $got for: $2"; fail=1; fi
 }
-for c in "docker ps -a" "docker logs web" "docker compose ps" "docker --context prod ps" "docker container ls" "docker-compose logs" "podman images"; do
+for c in "docker ps -a" "docker logs web" "docker compose ps" "docker --context prod ps" "docker container ls" "docker-compose logs" "podman images" "docker build -t app ." "docker run --rm app" "docker exec -it web sh" "docker compose up -d" "docker compose build" "docker pull node:20" "docker stop web" "docker-compose up"; do
   expect none "$c"
 done
 for c in "docker rm -f web" 'docker rm -f $(docker ps -aq)' "docker system prune -af" "sudo docker volume rm data" \
   "/usr/local/bin/docker kill web" "bash -c 'docker rm -f web'" "docker-compose down -v" "docker compose down" \
-  "podman rmi x" "nerdctl rm -f x" "docker image prune"; do
+  "podman rmi x" "nerdctl rm -f x" "docker image prune" "docker push app" "docker compose rm" "docker volume prune"; do
   expect ask "$c"
 done
 expect deny "rm -rf ."
