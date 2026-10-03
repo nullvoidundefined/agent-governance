@@ -78,14 +78,15 @@ for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}'
   GOT=$(printf '%s' "$payload" | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
   [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied, got $GOT"; exit 1; }
 done
-# A plain identifier naming another tool is still ignored (R-109 r5 #1 on #184).
-GOT=$(guard_decision mcp__linear__save_issue '{"run_in_background":false}')
-[ "$GOT" = "none" ] || { echo "FAIL: an mcp tool must be ignored, got $GOT"; exit 1; }
-GOT=$(guard_decision TaskUpdate '{"run_in_background":false}')
-[ "$GOT" = "none" ] || { echo "FAIL: TaskUpdate must be ignored, got $GOT"; exit 1; }
-# Other tools are not this hook's business.
+# The hook judges every payload, whatever its tool_name, because settings.json
+# routes only Agent and Task to it (owner decision 2026-10-03). The matcher is
+# the trust boundary, so it is pinned here: widening it would make the hook
+# judge other tools' calls.
 GOT=$(guard_decision Bash '{"command":"ls","run_in_background":false}')
-[ "$GOT" = "none" ] || { echo "FAIL: a Bash call must pass, got $GOT"; exit 1; }
+[ "$GOT" = "deny" ] || { echo "FAIL: the hook must judge every payload it receives, got $GOT"; exit 1; }
+SETTINGS="$CLAUDE_HARNESS_ROOT/settings.json"
+MATCHERS=$(jq -r '[.hooks.PreToolUse[] | select(any(.hooks[]; .command | endswith("/agent-dispatch-guard.sh"))) | .matcher] | join(",")' "$SETTINGS")
+[ "$MATCHERS" = "Agent|Task" ] || { echo "FAIL: agent-dispatch-guard must be registered for Agent|Task only, got '$MATCHERS'"; exit 1; }
 # The reason names the rule and the way out.
 REASON=$(jq -n '{tool_name:"Agent", tool_input:{subagent_type:"implementer", run_in_background:false}}' | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecisionReason')
 case "$REASON" in *R-708*agent-watchdog.sh*TaskStop*) ;; *) echo "FAIL: the reason must name R-708, the watchdog and TaskStop: $REASON"; exit 1 ;; esac

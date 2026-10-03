@@ -23,24 +23,13 @@
 # (convention in enforce/README.md).
 set -uo pipefail
 INPUT=$(cat 2>/dev/null || true)
-# settings.json registers this hook for Agent and Task only, so a payload jq
-# cannot parse is still a subagent dispatch: it is judged, never waved through
-# (R-109 r1 #5 on PR #184). A parsed payload naming another tool is ignored.
-# A missing, null or differently cased name is judged too; only a payload that
-# names another tool outright is ignored (R-109 r2 #2 on PR #184).
-# Only a plain ASCII identifier that names another tool (Bash, an mcp__ tool)
-# is ignored. Anything else is judged as a dispatch: a non-string or empty
-# name, padding of any kind, or a homoglyph such as a fullwidth or Cyrillic
-# letter, whatever the locale. Allowlisting the ignore branch closes the
-# class that reducing or stripping the name kept reopening (R-109 r3 #1, r4 #1
-# and r5 #1 on PR #184).
-if TOOL=$(printf '%s' "$INPUT" | jq -er 'if (.tool_name | type) == "string" then .tool_name else "" end' 2>/dev/null); then
-  # bash's own regex tests the whole string; grep -x would accept a name with
-  # any one identifier line, so "\nAgent" passed (R-109 r6 #1 on PR #184).
-  if LC_ALL=C; [[ "$TOOL" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-    case "$(printf '%s' "$TOOL" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in agent|task) ;; *) exit 0 ;; esac
-  fi
-fi
+# The hook does not read tool_name at all. settings.json registers it for the
+# Agent and Task tools only (agent-watchdog.test.sh pins that matcher), so
+# every payload it receives is a dispatch and is judged. Six review rounds on
+# PR #184 each found another way to disguise a name for an "is this another
+# tool?" check (padding, Unicode spaces, homoglyphs, newlines, non-strings);
+# with no such check there is nothing to disguise (owner decision 2026-10-03,
+# R-109 r1 #5 to r6 #1).
 
 # A jq failure reads as "not background" and "general-purpose", so a payload
 # the hook cannot parse is judged as the riskiest dispatch, never waved through.
