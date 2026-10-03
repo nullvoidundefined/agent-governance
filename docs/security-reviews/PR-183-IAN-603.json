@@ -1,0 +1,282 @@
+{
+  "pr": "nullvoidundefined/agent-governance#183",
+  "ticket": "IAN-603",
+  "reviewer": "security-reviewer subagent",
+  "model": "claude-fable-5-1",
+  "reviewedCode": "2b2bae5e233317784e0a5b65deda9abdb62a0479",
+  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The range was flagged by the security-surface detector on the word rate_limits (Claude Code's quota field); the controls under review are enforce/quota-pace.sh's input validation, quota-file path checks, and its writer lock (redesigned in round 4 as a pid symlink broken only when its owner is dead). Seven rounds ran; round 7 (on 2b2bae5) found nothing above LOW, which ends the review under the 1:1 budget's security exception. Round 7's two LOWs are fixed in f2d0def. Every finding below is fixed in range with a fixture feeding the control its insecure value, or waived by the owner. The review of the head that adds this file is the PR body's Security review section.",
+  "findings": [
+    {
+      "id": 1,
+      "round": 1,
+      "roundFinding": 1,
+      "severity": "MEDIUM",
+      "summary": "a dangling option flag made the record parser loop forever",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 2,
+      "round": 1,
+      "roundFinding": 2,
+      "severity": "MEDIUM",
+      "summary": "a stale non-empty lock spun forever and two waiters could both break one lock",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 3,
+      "round": 1,
+      "roundFinding": 3,
+      "severity": "LOW",
+      "summary": "hand-edited usedPct or windowDays out of range still produced a ratio",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 4,
+      "round": 1,
+      "roundFinding": 4,
+      "severity": "LOW",
+      "summary": "an offset like +99:99 moved the reset time by days",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 5,
+      "round": 1,
+      "roundFinding": 5,
+      "severity": "LOW",
+      "summary": "control bytes in provider or bucket names forged text-report lines",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 6,
+      "round": 1,
+      "roundFinding": 6,
+      "severity": "LOW",
+      "summary": "a quota path naming a directory swallowed the snapshot",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 7,
+      "round": 1,
+      "roundFinding": 7,
+      "severity": "MEDIUM",
+      "summary": "no insecure-value tests for the lock and the option parser",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 8,
+      "round": 1,
+      "roundFinding": 8,
+      "severity": "MEDIUM",
+      "summary": "no insecure-value tests for file contents, environment, and offsets",
+      "status": "fixed 5572cb8"
+    },
+    {
+      "id": 9,
+      "round": 2,
+      "roundFinding": 1,
+      "severity": "MEDIUM",
+      "summary": "the find-then-mv stale-lock break let two writers hold the lock under contention",
+      "status": "fixed f87ef44"
+    },
+    {
+      "id": 10,
+      "round": 2,
+      "roundFinding": 2,
+      "severity": "MEDIUM",
+      "summary": "no test raced many recorders against one stale lock",
+      "status": "fixed f87ef44"
+    },
+    {
+      "id": 11,
+      "round": 2,
+      "roundFinding": 3,
+      "severity": "LOW",
+      "summary": "--window-days and file windowDays were unbounded",
+      "status": "fixed f87ef44"
+    },
+    {
+      "id": 12,
+      "round": 2,
+      "roundFinding": 4,
+      "severity": "LOW",
+      "summary": "an unset HOME wrote ./~/.claude/quota.json under the cwd",
+      "status": "fixed f87ef44"
+    },
+    {
+      "id": 13,
+      "round": 2,
+      "roundFinding": 5,
+      "severity": "LOW",
+      "summary": "a symlinked quota file was replaced by a detached regular file",
+      "status": "fixed f87ef44"
+    },
+    {
+      "id": 14,
+      "round": 2,
+      "roundFinding": 6,
+      "severity": "LOW",
+      "summary": "report accepted unknown options",
+      "status": "fixed f87ef44"
+    },
+    {
+      "id": 15,
+      "round": 3,
+      "roundFinding": 1,
+      "severity": "MEDIUM",
+      "summary": "the dead-breaker path was untested and a break lock planted as a file stopped every writer",
+      "status": "fixed fdefde8"
+    },
+    {
+      "id": 16,
+      "round": 3,
+      "roundFinding": 2,
+      "severity": "LOW",
+      "summary": "a holder stalled past the stale age could overwrite the breaker's snapshot",
+      "status": "fixed fdefde8"
+    },
+    {
+      "id": 17,
+      "round": 3,
+      "roundFinding": 3,
+      "severity": "LOW",
+      "summary": "record overwrote a file whose buckets was 0, null, [] or empty string",
+      "status": "fixed fdefde8"
+    },
+    {
+      "id": 18,
+      "round": 3,
+      "roundFinding": 4,
+      "severity": "LOW",
+      "summary": "a relative HOME misplaced the quota file under the cwd",
+      "status": "fixed fdefde8"
+    },
+    {
+      "id": 19,
+      "round": 4,
+      "roundFinding": 1,
+      "severity": "MEDIUM",
+      "summary": "the owner marker was not atomic with the mkdir lock",
+      "status": "fixed 2ee0596"
+    },
+    {
+      "id": 20,
+      "round": 4,
+      "roundFinding": 2,
+      "severity": "LOW",
+      "summary": "check-then-act between the ownership check and the write or release",
+      "status": "fixed 2ee0596"
+    },
+    {
+      "id": 21,
+      "round": 4,
+      "roundFinding": 3,
+      "severity": "LOW",
+      "summary": "the stale breaker recursively deleted any old object at the lock path",
+      "status": "fixed 2ee0596"
+    },
+    {
+      "id": 22,
+      "round": 4,
+      "roundFinding": 4,
+      "severity": "LOW",
+      "summary": "a failed marker write left an ownerless lock",
+      "status": "fixed 2ee0596"
+    },
+    {
+      "id": 23,
+      "round": 4,
+      "roundFinding": 5,
+      "severity": "LOW",
+      "summary": "snapshot source read from the file was not validated",
+      "status": "fixed 2ee0596"
+    },
+    {
+      "id": 24,
+      "round": 4,
+      "roundFinding": 6,
+      "severity": "LOW",
+      "summary": "a relative CLAUDE_QUOTA_FILE was accepted",
+      "status": "fixed 2ee0596"
+    },
+    {
+      "id": 25,
+      "round": 5,
+      "roundFinding": 1,
+      "severity": "MEDIUM",
+      "summary": "ln -s into a directory at the break path let every waiter hold the break lock",
+      "status": "fixed 1689ddc"
+    },
+    {
+      "id": 26,
+      "round": 5,
+      "roundFinding": 2,
+      "severity": "LOW",
+      "summary": "ln -s into a directory at the lock path ran the locked region without exclusion",
+      "status": "fixed 1689ddc"
+    },
+    {
+      "id": 27,
+      "round": 5,
+      "roundFinding": 3,
+      "severity": "MEDIUM",
+      "summary": "no test fed the lock a live pid this process cannot signal (EPERM)",
+      "status": "fixed 1689ddc"
+    },
+    {
+      "id": 28,
+      "round": 5,
+      "roundFinding": 4,
+      "severity": "LOW",
+      "summary": "a missing or limited ps read a foreign live pid as dead",
+      "status": "fixed 1689ddc"
+    },
+    {
+      "id": 29,
+      "round": 5,
+      "roundFinding": 5,
+      "severity": "LOW",
+      "summary": "clearing a dead break lock is check-then-act, so two waiters can briefly both hold it",
+      "status": "waived by owner 2026-10-03"
+    },
+    {
+      "id": 30,
+      "round": 5,
+      "roundFinding": 6,
+      "severity": "LOW",
+      "summary": "pid liveness is judged per host and container, so a shared quota file fails a writer in another namespace",
+      "status": "waived by owner 2026-10-03"
+    },
+    {
+      "id": 31,
+      "round": 6,
+      "roundFinding": 1,
+      "severity": "LOW",
+      "summary": "on a /proc mounted hidepid, a missing /proc/<pid> read a live foreign owner as dead",
+      "status": "fixed 9c0add6"
+    },
+    {
+      "id": 32,
+      "round": 6,
+      "roundFinding": 2,
+      "severity": "LOW",
+      "summary": "the pid-1 test never reached the EPERM branch on a root runner",
+      "status": "fixed 9c0add6"
+    },
+    {
+      "id": 33,
+      "round": 7,
+      "roundFinding": 1,
+      "severity": "LOW",
+      "summary": "a QUOTA_PROC_MOUNTS value naming no /proc proc mount read as showing every pid",
+      "status": "fixed f2d0def"
+    },
+    {
+      "id": 34,
+      "round": 7,
+      "roundFinding": 2,
+      "severity": "LOW",
+      "summary": "ratioComplete was vacuously true for a provider with no current bucket",
+      "status": "fixed f2d0def"
+    }
+  ]
+}
