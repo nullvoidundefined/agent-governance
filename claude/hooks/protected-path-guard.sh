@@ -14,7 +14,7 @@
 #          the owner approves in one click, never a manual lock deletion
 #   R-411  role boundaries by agent_type (enforce/role-policy.json): a
 #          test-author writes only test and fixture trees, an implementer
-#          never writes tests, fixtures, or specs, a slice-critic writes nothing
+#          never writes tests, fixtures, or specs, a read-only reviewer writes nothing
 #   R-412  slice order: while .claude/tdd-lock.json says phase "open", only
 #          test, fixture, and spec paths may be written; `tdd.sh red` moves
 #          the slice to "red" and production writes open up

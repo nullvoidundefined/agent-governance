@@ -10,7 +10,7 @@ Autonomous audit of recent changes for bugs, race conditions, security issues, a
 
 ## Precedence
 
-`rulebook/audits.md` routes diff-level review through the native commands first: `/code-review` for correctness and quality on a working diff or a PR, `/security-review` for diff-level security. Those run first.
+Prefer the native commands for diff-level review: `/code-review` for correctness and quality on a working diff or a PR, `/security-review` for diff-level security. Use this skill when you want a deeper pass than those give.
 
 Use this skill when the target is not a single diff:
 
@@ -31,7 +31,7 @@ git diff <range> --stat             # what changed
 git diff <range> --diff-filter=DR --name-only   # deleted and renamed files, for step 4
 ```
 
-Run `node ~/.claude/enforce/lint.mjs <changed files>` before reading anything: R-303, R-319, R-321 to R-329, and R-342 to R-344 are the linter's, and the read-and-audit pass below covers only what the linter cannot decide.
+Run the project's own linter on the changed files first, so the read below can skip what it already catches.
 
 3. **Read and audit each changed file.** For each file, check:
    - Logic bugs, off-by-one errors, wrong comparisons
@@ -53,7 +53,7 @@ bash ~/.claude/skills/bug-hunt/scripts/dangling-refs.sh [<range>]
 
 Each `DANGLING:` line is a finding with its `file:line` already attached. Then check by hand what the grep cannot decide: whether new exports are consumed correctly.
 
-5. **Report findings.** The report goes to the conversation, not to `docs/audits/`; this is a diff-level tool, not an R-802 audit role. Use this format:
+5. **Report findings.** The report goes to the conversation, not to `docs/audits/`; this is a diff-level tool, not a full audit role. Use this format:
 
 ```markdown
 ## Bug Audit Report
@@ -74,7 +74,7 @@ Each `DANGLING:` line is a finding with its `file:line` already attached. Then c
 Files reviewed with no issues.
 ```
 
-6. **Fix or file.** For each finding, either fix it inline (with a test per R-403) or add it to `ISSUES.md` with the priority tag.
+6. **Fix or file.** For each finding, either fix it inline (with a test that reproduces it) or add it to `ISSUES.md` with the priority tag.
 
 ## Dispatch Pattern
 

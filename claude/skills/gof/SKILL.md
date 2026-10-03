@@ -10,7 +10,7 @@ Four-perspective review by Product Engineer (PE), Security Engineer, Critic, and
 
 ## Precedence
 
-`/code-review` and `/security-review` review code that already exists, and `rulebook/audits.md` puts them first for anything diff-shaped. The Gang of Four earns its cost on what they cannot read:
+`/code-review` and `/security-review` review code that already exists, and they come first for anything diff-shaped. The Gang of Four earns its cost on what they cannot read:
 
 - a pre-code artifact: a spec, a plan, a design doc
 - a feature area rather than a diff
@@ -41,7 +41,7 @@ Never default to reading todo files. The GoF review targets whatever is in front
 
 1. **Read the target** -- the file(s) the user specified or that context implies
 2. **Read referenced codebase files** -- schemas, handlers, components, migrations, types that the target depends on or modifies
-3. **Run each perspective pass** in sequence within this context, producing findings tagged by role and severity (P0-P3). The passes share one reader, so a later pass sees the earlier findings; that is the cost of running inline. For a target where anchoring matters (a security-sensitive spec, a decision the user wants genuinely contested), dispatch the four roles as read-only agents instead, canary first per R-703, and cross-reference their independent returns.
+3. **Run each perspective pass** in sequence within this context, producing findings tagged by role and severity (P0-P3). The passes share one reader, so a later pass sees the earlier findings; that is the cost of running inline. For a target where anchoring matters (a security-sensitive spec, a decision the user wants genuinely contested), dispatch the four roles as read-only agents instead, one first as a canary, and cross-reference their independent returns.
 4. **Cross-reference findings** -- if two roles flag the same issue, note the overlap and escalate severity
 5. **Present findings** grouped by severity, then by role
 6. **Recommend next steps** -- which findings to fix inline, which to add to todos, which to note in the spec/plan

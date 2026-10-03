@@ -22,7 +22,7 @@ guard_decision() {
   if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
 }
 
-for agent_type in test-author implementer slice-critic pr-reviewer security-reviewer general-purpose audit-security audit-ux; do
+for agent_type in test-author implementer pr-reviewer security-reviewer general-purpose audit-security audit-ux; do
   GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":false,\"prompt\":\"p\"}")
   [ "$GOT" = "deny" ] || { echo "FAIL: a foreground $agent_type must be denied, got $GOT"; exit 1; }
 done
