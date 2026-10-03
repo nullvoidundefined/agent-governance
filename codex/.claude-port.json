@@ -44,7 +44,7 @@
     "skills/gof/SKILL.md": "sha256:8e8cf6c41ab91752482c53866bc8d0ed484c426c9ba78501b7761714669805bf",
     "skills/spec-grounding/SKILL.md": "sha256:fa1481d8b8682e64a791ca417051c342c3a469f3141638bd97f8c95a6d408875",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
-    "skills/structure-conventions/SKILL.md": "sha256:94dd26bb37963209c1d92fa10336269339e7ecf66306306c639004555658118d",
+    "skills/structure-conventions/SKILL.md": "sha256:204164a373fab66829a1fd47a1a2730cc80784966462454bbb6d2a6132acf0da",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:69dbe5c4a7d7581c9e764810c3b0889bde3f017f1ea1e31d80968e238992f760"
   },
   "classes": {
