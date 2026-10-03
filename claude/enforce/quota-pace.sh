@@ -209,13 +209,26 @@ lockOwner() {
   return 0
 }
 
+# procHidesPids: succeeds when /proc is mounted with hidepid (or a value
+# other than 0), which hides other users' live processes, so a missing
+# /proc/<pid> proves nothing there (R-109 r6). An unreadable mounts file
+# counts as hiding. QUOTA_PROC_MOUNTS names another mounts file for tests;
+# any value it can take only moves the check toward ps or "alive".
+procHidesPids() {
+  local mounts="${QUOTA_PROC_MOUNTS:-/proc/mounts}"
+  [ -r "$mounts" ] || return 0
+  awk '$2 == "/proc" && $3 == "proc" { print $4 }' "$mounts" 2>/dev/null |
+    grep -Eq '(^|,)hidepid=([1-9]|invisible|noaccess|ptraceable)'
+}
+
 # isDeadPid <pid>: succeeds only when no process with that pid exists. A
 # process owned by another user makes kill -0 fail with EPERM, so a failed
-# kill -0 is confirmed through /proc where it exists, else through a working
-# ps; with neither, the pid counts as alive, failing closed (R-109 r5).
+# kill -0 is confirmed through /proc where it exists and shows every pid,
+# else through a working ps; with neither, the pid counts as alive, failing
+# closed (R-109 r5, r6).
 isDeadPid() {
   kill -0 "$1" 2>/dev/null && return 1
-  if [ -d /proc/self ]; then
+  if [ -d /proc/self ] && ! procHidesPids; then
     [ ! -d "/proc/$1" ]
   elif ps -p "$$" >/dev/null 2>&1; then
     ! ps -p "$1" >/dev/null 2>&1

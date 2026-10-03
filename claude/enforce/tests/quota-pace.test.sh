@@ -235,6 +235,11 @@ for which in lock brk; do
   done
 done
 # A live pid this process may not own (init, pid 1) is never treated as dead.
+# Only a non-root runner reaches the EPERM branch of isDeadPid this way (CI
+# runs as non-root); as root kill -0 succeeds, so say so rather than claim it.
+if kill -0 1 2>/dev/null && [ "$(id -u)" = 0 ]; then
+  echo "note: running as root, so the pid-1 case exercises kill -0 success, not the EPERM branch (covered on non-root CI runners)"
+fi
 resetLock
 ln -s 1 "$LOCK"
 msg=$({ timeout 20 bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
@@ -251,6 +256,17 @@ for tool in bash jq mktemp mv rm ln readlink dirname mkdir cat date sleep find s
 done
 timeout 20 env PATH="$WORK/nops" bash "$SCRIPT" record codex 2 || failCase "a dead owner must be recognized without ps"
 [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "the record without ps must land"
+rm -rf "$LOCK"
+# On a /proc mounted hidepid, a missing /proc/<pid> proves nothing: with no
+# ps either, a dead-looking owner counts as alive and the writer fails.
+resetLock
+ln -s "$(deadPid)" "$LOCK"
+printf 'proc /proc proc rw,relatime,hidepid=2 0 0\n' >"$WORK/mounts-hidepid"
+msg=$({ timeout 20 env QUOTA_PROC_MOUNTS="$WORK/mounts-hidepid" PATH="$WORK/nops" bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
+case "$msg" in *EXIT0*) failCase "under hidepid with no ps, an owner must count as alive" ;; esac
+[ -L "$LOCK" ] || failCase "under hidepid with no ps, the owner's lock must be kept"
+# The same mounts file with ps available still finds the dead owner.
+timeout 20 env QUOTA_PROC_MOUNTS="$WORK/mounts-hidepid" bash "$SCRIPT" record codex 2 || failCase "under hidepid, ps must still identify a dead owner"
 rm -rf "$LOCK"
 # Many recorders against one dead owner's lock: exactly one breaks it at a
 # time, so every snapshot lands. Probabilistic, so three rounds.
