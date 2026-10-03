@@ -28,8 +28,9 @@ INPUT=$(cat 2>/dev/null || true)
 # (R-109 r1 #5 on PR #184). A parsed payload naming another tool is ignored.
 # A missing, null or differently cased name is judged too; only a payload that
 # names another tool outright is ignored (R-109 r2 #2 on PR #184).
-if TOOL=$(printf '%s' "$INPUT" | jq -er '.tool_name // ""' 2>/dev/null); then
-  case "$(printf '%s' "$TOOL" | tr '[:upper:]' '[:lower:]')" in agent|task|"") ;; *) exit 0 ;; esac
+# A non-string name reads as empty, and whitespace is dropped (r3 #1).
+if TOOL=$(printf '%s' "$INPUT" | jq -er 'if (.tool_name | type) == "string" then .tool_name else "" end' 2>/dev/null); then
+  case "$(printf '%s' "$TOOL" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in agent|task|"") ;; *) exit 0 ;; esac
 fi
 
 # A jq failure reads as "not background" and "general-purpose", so a payload

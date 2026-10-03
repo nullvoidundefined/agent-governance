@@ -63,7 +63,9 @@ GOT=$(printf 'not json' | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecisi
 [ "$GOT" = "deny" ] || { echo "FAIL: a non-JSON payload must be denied, got $GOT"; exit 1; }
 # A parsable payload whose tool name is null, missing or differently cased is
 # still a dispatch (R-109 r2 #2 on #184).
-for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}' '{"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"agent","tool_input":{"subagent_type":"implementer"}}'; do
+for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}' '{"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"agent","tool_input":{"subagent_type":"implementer"}}' \
+  '{"tool_name":" Agent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\t","tool_input":{"subagent_type":"implementer"}}' \
+  '{"tool_name":5,"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":{"x":1},"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":["Agent"],"tool_input":{"subagent_type":"implementer"}}'; do
   GOT=$(printf '%s' "$payload" | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
   [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied, got $GOT"; exit 1; }
 done
@@ -217,7 +219,16 @@ GOT=$(run_watchdog "$NEWLINE_PATH" --stall-seconds 2 --limit-seconds 30 --poll-s
 [ "$GOT" = "3" ] || { echo "FAIL: the odd path must still stall, got $GOT"; exit 1; }
 ! grep -q 'SYSTEM' "$WORK/out" || { echo "FAIL: the path's text reached the wake line: $(cat "$WORK/out")"; exit 1; }
 grep -q '<path withheld>' "$WORK/out" || { echo "FAIL: an odd path must be withheld: $(cat "$WORK/out")"; exit 1; }
-mkdir -p "$WORK/run/tasks"; printf '%s\n' "$ASSISTANT_DONE" > "$WORK/run/tasks/a1.output"
+# A dot segment or an overlong path is withheld too, as the hook withholds it
+# (R-109 r3 #2 on #184).
+mkdir -p "$WORK/run/tasks"; printf '%s\n' "$ASSISTANT_TOOL_CALL" > "$WORK/run/tasks/stall.output"
+GOT=$(run_watchdog "$WORK/run/../run/tasks/stall.output" --stall-seconds 2 --limit-seconds 30 --poll-seconds 1)
+grep -q '<path withheld>' "$WORK/out" || { echo "FAIL: a .. segment must be withheld: $(cat "$WORK/out")"; exit 1; }
+SEGMENT=$(printf 'd%.0s' $(seq 1 100))
+LONG_DIR="$WORK/$SEGMENT/$SEGMENT/$SEGMENT/$SEGMENT/tasks"; mkdir -p "$LONG_DIR"; printf '%s\n' "$ASSISTANT_TOOL_CALL" > "$LONG_DIR/long.output"
+GOT=$(run_watchdog "$LONG_DIR/long.output" --stall-seconds 2 --limit-seconds 30 --poll-seconds 1)
+grep -q '<path withheld>' "$WORK/out" || { echo "FAIL: an overlong path must be withheld"; exit 1; }
+printf '%s\n' "$ASSISTANT_DONE" > "$WORK/run/tasks/a1.output"
 GOT=$(run_watchdog "$WORK/run/tasks/a1.output" --stall-seconds 2 --limit-seconds 30 --poll-seconds 1)
 grep -q "$WORK/run/tasks/a1.output" "$WORK/out" || { echo "FAIL: a launch-shaped path must be shown: $(cat "$WORK/out")"; exit 1; }
 

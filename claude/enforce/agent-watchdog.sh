@@ -123,8 +123,12 @@ describe_last_entry() {
 # shown_path: prints the output file path when it has the harness's launch
 # shape, else a placeholder, so an argument carrying a newline or other text
 # never reaches the wake line verbatim (R-109 r2 #4 on PR #184).
+# The check is the instruction hook's own: no `.` or `..` segment, no empty
+# segment, and at most 300 characters (R-109 r3 #2 on PR #184).
 shown_path() {
-  if printf '%s' "$OUTPUT_FILE" | grep -Eqx '/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/tasks/[A-Za-z0-9_-]+\.output' \
+  case "$OUTPUT_FILE" in */../*|*/./*|*//*) printf '<path withheld>'; return 0 ;; esac
+  if [ "${#OUTPUT_FILE}" -le 300 ] \
+    && printf '%s' "$OUTPUT_FILE" | grep -Eqx '/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/tasks/[A-Za-z0-9_-]+\.output' \
     && [ "$(printf '%s' "$OUTPUT_FILE" | wc -l | tr -d ' ')" = "0" ]; then
     printf '%s' "$OUTPUT_FILE"
   else
