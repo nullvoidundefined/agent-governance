@@ -507,4 +507,45 @@ bash "$SCRIPT" record claude 2 --resets-at 2026-10-06T23:59+0700 --at "$QUOTA_NO
 [ "$(jq '.buckets.claude.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "4" ] || failCase "the same reset in Z, +07:00, -05:00 and +0700 (no seconds) must not open a new window"
 [ "$(field '.buckets[0].status')" = "ok" ] || failCase "offset forms must keep the window current"
 
+
+# --- 9. Owner wins over the status line (slice 04 PR 2). ---
+# A statusline record is a silent no-op while the latest snapshot came from
+# another source less than QUOTA_RECORD_MIN_MINUTES (default 30) ago, in the
+# same window. A new window, an older owner snapshot, and the owner's own
+# record all still write.
+rm -f "$CLAUDE_QUOTA_FILE"
+snapCount() { jq '.buckets.claude.snapshots | length' "$CLAUDE_QUOTA_FILE"; }
+export QUOTA_NOW=$((START_CLAUDE + 3 * HOUR))
+bash "$SCRIPT" record claude 20 --resets-at 2026-10-06T23:59:00+07:00 --at "$QUOTA_NOW"
+QUOTA_NOW=$((QUOTA_NOW + 10 * 60))
+out=$(bash "$SCRIPT" record claude 21 --resets-at 2026-10-06T23:59:00+07:00 --source statusline 2>&1) || failCase "a throttled statusline record must exit 0: $out"
+[ -z "$out" ] || failCase "a throttled statusline record must be silent, got: $out"
+[ "$(snapCount)" = "1" ] || failCase "a statusline record 10 minutes after an owner snapshot must be a no-op"
+# The same record without --resets-at is judged the same way.
+bash "$SCRIPT" record claude 21 --source statusline
+[ "$(snapCount)" = "1" ] || failCase "a statusline record without --resets-at must also yield to a fresh owner snapshot"
+# A new window (different reset) is not blocked by the owner's snapshot.
+bash "$SCRIPT" record claude 1 --resets-at 2026-10-13T23:59:00+07:00 --source statusline
+[ "$(jq -r '.buckets.claude.snapshots[-1].source' "$CLAUDE_QUOTA_FILE")" = "statusline" ] || failCase "a statusline record for a new window must write"
+# Once the owner's snapshot is older than the minimum, the status line writes.
+rm -f "$CLAUDE_QUOTA_FILE"
+export QUOTA_NOW=$((START_CLAUDE + 3 * HOUR))
+bash "$SCRIPT" record claude 20 --resets-at 2026-10-06T23:59:00+07:00 --at "$QUOTA_NOW"
+QUOTA_NOW=$((QUOTA_NOW + 31 * 60))
+bash "$SCRIPT" record claude 22 --resets-at 2026-10-06T23:59:00+07:00 --source statusline
+[ "$(snapCount)" = "2" ] || failCase "a statusline record 31 minutes after the owner's must write"
+# Its own earlier snapshot never blocks it, and an owner record always writes.
+QUOTA_NOW=$((QUOTA_NOW + 60))
+bash "$SCRIPT" record claude 23 --resets-at 2026-10-06T23:59:00+07:00 --source statusline
+[ "$(snapCount)" = "3" ] || failCase "a statusline snapshot must not block the next statusline record"
+bash "$SCRIPT" record claude 24 --resets-at 2026-10-06T23:59:00+07:00 --at "$QUOTA_NOW"
+[ "$(snapCount)" = "4" ] || failCase "an owner record must always write"
+# QUOTA_RECORD_MIN_MINUTES moves the bound: the owner's snapshot is 1 minute old.
+QUOTA_NOW=$((QUOTA_NOW + 60))
+QUOTA_RECORD_MIN_MINUTES=1 bash "$SCRIPT" record claude 25 --resets-at 2026-10-06T23:59:00+07:00 --source statusline
+[ "$(snapCount)" = "5" ] || failCase "QUOTA_RECORD_MIN_MINUTES=1 must let a statusline record write when the owner's snapshot is 1 minute old"
+# A non-numeric bound fails loudly, and writes nothing.
+expectFail "a non-numeric QUOTA_RECORD_MIN_MINUTES (statusline)" env QUOTA_RECORD_MIN_MINUTES=soon bash "$SCRIPT" record claude 26 --resets-at 2026-10-06T23:59:00+07:00 --source statusline
+[ "$(snapCount)" = "5" ] || failCase "a failed statusline record must write nothing"
+
 echo "PASS: quota-pace"

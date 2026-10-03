@@ -306,6 +306,11 @@ recordSnapshot() {
   [ -z "$window" ] || { [[ "$window" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$window" -le 366 ]; } ||
     fail "--window-days '$window' must be a whole number of days from 1 to 366"
 
+  local minMinutes="${QUOTA_RECORD_MIN_MINUTES:-30}"
+  if [ "$source" = "statusline" ]; then
+    [[ "$minMinutes" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "QUOTA_RECORD_MIN_MINUTES '$minMinutes' must be a non-negative number of minutes"
+  fi
+
   local current now
   now=$(nowEpoch) || exit 1
   lockQuotaFile
@@ -315,6 +320,21 @@ recordSnapshot() {
     current=$(readQuotaFile) || exit 1
   else
     current='{"buckets":{}}'
+  fi
+  # Owner wins: a status line record steps aside, silently, while the bucket's
+  # latest snapshot came from another source less than QUOTA_RECORD_MIN_MINUTES
+  # ago, unless it opens a new window (a different --resets-at). The check runs
+  # inside the writer lock, so it sees the owner's write.
+  if [ "$source" = "statusline" ]; then
+    jq -e "$JQ_LIB"'
+      (.buckets[$b] // null) as $o
+      | ($resets | if . == "" then null else (toEpoch | todate) end) as $newReset
+      | ($o != null and ($o.snapshots // []) != []
+         and ($newReset == null or ($o.resetsAt | toEpoch) == ($newReset | toEpoch))
+         and (($o.snapshots | max_by(.at | toEpoch)) as $l
+              | (($l.source // "owner") != "statusline")
+                and (($l.at | toEpoch) > (($now | tonumber) - ($min | tonumber) * 60))))
+    ' --arg b "$bucket" --arg resets "$resets" --arg now "$now" --arg min "$minMinutes" <<<"$current" >/dev/null 2>&1 && return 0
   fi
   local updated
   updated=$(jq -e "$JQ_LIB"'
