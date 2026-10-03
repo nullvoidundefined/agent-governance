@@ -41,7 +41,7 @@ GOT=$(guard_decision Agent '{"subagent_type":"test-author"}')
 GOT=$(guard_decision Agent '{"subagent_type":"Explore"}')
 [ "$GOT" = "none" ] || { echo "FAIL: an omitted flag on a quick type must pass, got $GOT"; exit 1; }
 # An empty, namespaced or differently cased type is still the long type it names.
-for agent_type in "" "plugin:implementer" "Implementer" "PLUGIN:Test-Author" "acme:audit-security" " implementer" "implementer " "plugin: slice-critic"; do
+for agent_type in "" "plugin:implementer" "Implementer" "PLUGIN:Test-Author" "acme:audit-security" " implementer" "implementer " "plugin: pr-reviewer"; do
   GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":false}")
   [ "$GOT" = "deny" ] || { echo "FAIL: a foreground '$agent_type' must be denied, got $GOT"; exit 1; }
 done
