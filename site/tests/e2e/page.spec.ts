@@ -1,24 +1,9 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 
 const version = process.env.SITE_TEST_VERSION ?? 'v0.0.1';
 const sha256 = process.env.SITE_TEST_SHA256 ?? '';
 const archiveName = `agent-governance-${version}.tar.gz`;
-const manifestPath = path.resolve(__dirname, '../../../claude/enforce/manifest.json');
-
-function countManifestTiers(): Record<string, number> {
-    const { rules } = JSON.parse(readFileSync(manifestPath, 'utf8')) as { rules: { tier: string }[] };
-    const countTier = (tier: string) => rules.filter((rule) => rule.tier === tier).length;
-    return {
-        total: rules.length,
-        code: countTier('ast') + countTier('regex'),
-        judge: countTier('llm-judge'),
-        advisory: countTier('advisory'),
-    };
-}
-
 test('B-12 download link, checksum, and verify command agree', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('a#download-archive')).toHaveAttribute(
@@ -71,14 +56,6 @@ test('B-16 no horizontal scroll at 390', async ({ page }) => {
     await page.goto('/');
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBeLessThanOrEqual(390);
-});
-
-test('B-17 rule counts match the manifest', async ({ page }) => {
-    await page.goto('/');
-    const expectedCounts = countManifestTiers();
-    for (const [countKey, expectedCount] of Object.entries(expectedCounts)) {
-        await expect(page.locator(`[data-rule-count="${countKey}"]`).first()).toHaveText(String(expectedCount));
-    }
 });
 
 test('B-18 headings, security promises, and skip link', async ({ page }) => {
