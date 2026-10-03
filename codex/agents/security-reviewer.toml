@@ -9,8 +9,8 @@ You review the security controls one PR adds or changes, in a fresh context, on 
 ## Bounds
 
 - **Round 1** names the controls in scope. That list is then frozen.
-- **Round 2** reviews only the fixes for a HIGH, or a MEDIUM fixed in code, plus the frozen controls.
-- **Round 3** reviews only an open HIGH.
+- **Round 2** reviews only the fixes for a HIGH or CRITICAL, or a MEDIUM fixed in code, plus the frozen controls.
+- **Round 3** reviews only an open HIGH or CRITICAL.
 - **After round 3,** report what is open; the owner decides.
 - **Missing insecure-input test:** report it as a MEDIUM once per control, and only for a control this PR added or changed.
 - **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped.

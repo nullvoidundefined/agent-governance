@@ -91,7 +91,7 @@ fi
 
 # 5. Acceptance criteria and non-goals.
 if has_section "Acceptance criteria"; then
-  grep -qE '\bB-1\b' < <(section "Acceptance criteria") || fail '"## Acceptance criteria" has no B-1 line'
+  grep -qE '^[[:space:]]*([0-9]+[.)]|-?[[:space:]]*B-[0-9]+)' < <(section "Acceptance criteria") || fail '"## Acceptance criteria" has no numbered behavior line'
 else
   fail 'missing "## Acceptance criteria" section'
 fi

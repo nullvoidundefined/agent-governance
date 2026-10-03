@@ -20,8 +20,8 @@ Specs developed conversationally outside Claude Code are strong on intent and
 empty on the repo. They say "the notification service" when the code has
 `src/services/notifications/sendUserNotification.ts`, and they describe
 behavior that already shipped three weeks ago. Implementing directly from an
-ungrounded spec produces duplicated logic, invented file layouts
-, and naming that does not match anything.
+ungrounded spec produces duplicated logic, invented file layouts,
+and naming that does not match anything.
 
 The exploration needed to fix that reads a lot of files. Those reads belong in
 subagent context, not yours: you need the conclusions, not the file dumps
@@ -65,13 +65,13 @@ trees before concluding absent."
 **Subagent C, pattern conflicts.** "The attached spec describes an approach.
 Report where it conflicts with the patterns this repo already uses: dependency
 direction, the fixed directory vocabulary, catch-all
-directories, test file placement, naming conventions
-, one public export per module. Report the conflict, the
+directories, test file placement, naming conventions,
+one public export per module. Report the conflict, the
 `file:line` showing the current pattern, and the spec line that conflicts.
 Report nothing where the spec and the repo agree."
 
-Verify each returned claim against the code before writing it into the spec
-. Subagent output is data, not truth.
+Verify each returned claim against the code before writing it into the spec.
+Subagent output is data, not truth.
 
 ### 3. Write the updated spec
 

@@ -65,10 +65,10 @@
     "skills/documentation-create/SKILL.md": "sha256:84a345b309cef2e5a155a74c0513a38f494117f6675a6d5c8f0d5855b43984b5",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:572a15ca62c7b54f5bc8f45d059ecb3c8edc3115f60342f954930828d4f587a5",
-    "skills/spec-grounding/SKILL.md": "sha256:2966143281867c495101e67eaa96dbf5bbe00a1dd304f7de7dbf1966b68f3bbe",
-    "skills/spec-grounding/scripts/check.sh": "sha256:240c767b57e515ebaaf0e3168b1a428960b95539d69fc0d0d64f3c2c1cb8a1a0",
+    "skills/spec-grounding/SKILL.md": "sha256:25fefd11af25cb0564e4726c4ce46225d7cede1f0692e7d3a6b9c0bfe5363941",
+    "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:44027755b02db4083bb5bff2c3b6dbd98fd6022df2b0e48c7628502a459dd8f8",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:e746aa6ba2eb3711f778ceab4727f0803a7b8d5b61a3547cfc3ef89c549ea752"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:16175542f596867c8ef4a9ccd86feb779d09b0021985b2138e5bd71d55d398c2"
   },
   "classes": {
     ".gitignore": "generated",
