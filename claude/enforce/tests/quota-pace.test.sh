@@ -19,6 +19,17 @@ export CLAUDE_QUOTA_FILE="$WORK/quota.json"
 NOW_OWNER=1790960400
 HOUR=3600
 
+# backdateLink <minutes> <path>: sets a path's own mtime (a symlink's, not its
+# target's) that many minutes back. `touch -d '2 hours ago'` is GNU only; the
+# -t stamp and -h flag work on GNU and BSD touch alike, and the stamp comes
+# from BSD `date -r <epoch>` or, failing that, GNU `date -d @<epoch>`.
+backdateLink() {
+  local epoch stamp
+  epoch=$(( $(date +%s) - $1 * 60 ))
+  stamp=$(date -r "$epoch" +%Y%m%d%H%M.%S 2>/dev/null) || stamp=$(date -d "@$epoch" +%Y%m%d%H%M.%S)
+  touch -h -t "$stamp" "$2"
+}
+
 # macOS ships no `timeout` (GNU coreutils), and the bash 3.2 CI runner has no
 # gtimeout either. Without one, provide the same contract in bash: run the
 # command, kill it after the given seconds, and return 124 when it was killed,
@@ -276,7 +287,7 @@ for kind in dir file badlink; do
     file) echo keep >"$LOCK" ;;
     badlink) ln -s "/etc/passwd" "$LOCK" ;;
   esac
-  touch -h -d '2 hours ago' "$LOCK"
+  backdateLink 120 "$LOCK"
   expectFail "a foreign $kind at the lock path" bash "$SCRIPT" record codex 2
   case "$kind" in
     dir) [ "$(cat "$LOCK/data")" = keep ] || failCase "a foreign directory at the lock path must be left intact" ;;
@@ -406,7 +417,7 @@ PATH="$WORK/shim:$PATH" bash "$SCRIPT" record codex 2 --at $((NOW_OWNER - 10 * H
 holder=$!
 for _ in $(seq 1 200); do [ -f "$WORK/stalled" ] && break; sleep 0.05; done
 [ -f "$WORK/stalled" ] || failCase "setup: the holder never stalled"
-touch -h -d '2 hours ago' "$LOCK"
+backdateLink 120 "$LOCK"
 expectFail "a waiter behind a live stalled holder" bash "$SCRIPT" record codex 4 --at $((NOW_OWNER - 5 * HOUR))
 : >"$WORK/release"
 wait "$holder" || failCase "a live stalled holder must keep its lock and write"
