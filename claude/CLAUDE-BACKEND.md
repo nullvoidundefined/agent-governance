@@ -67,6 +67,10 @@ Stack: Express 5 and TypeScript, PostgreSQL through `pg` (raw parameterized SQL,
 - The cookie is `httpOnly`, `sameSite: "lax"`, and `secure: environment !== "development"`. A check tied to `isProduction()` sent the session cookie over plain HTTP in staging (2026-09 stack audit), so the check names development and nothing else.
 - Build the middleware through `createSessionMiddleware(environment)` so a test can pass `"staging"`. The test sets `trust proxy` and sends `X-Forwarded-Proto: https`, because express-session withholds a Secure cookie from a plain-HTTP request, then asserts `Secure` and `HttpOnly` on `Set-Cookie`.
 
+## Tests
+
+- Run tests in parallel and isolate state per worker (a database or schema per worker); never disable parallelism to hide shared state.
+
 ## Workers (BullMQ)
 
 - The ioredis connection sets `maxRetriesPerRequest: null`; BullMQ refuses to run without it.

@@ -49,7 +49,7 @@ These are hard rules. No exceptions, no shortcuts to facilitate a deploy.
 
 - **Never use `origin: '*'` with `credentials: true`**.
 - `CORS_ORIGIN` must always be set to the exact production frontend URL in Railway. Never use `localhost` in production.
-- Frontends are Railway-hosted containers (R-351); use the custom domain (e.g., `your-app.com`).
+- Frontends are Railway-hosted containers; use the custom domain (e.g., `your-app.com`).
 
 ---
 
@@ -108,12 +108,12 @@ railway list-variables --serviceId <id>
 - Expose a `GET /health` endpoint on every API service that returns `200 { status: "ok" }`.
 - Configure Railway's healthcheck path to `/health`.
 - Railway will wait for the healthcheck to pass before routing traffic to the new deploy.
-- **Workers also need a health server**; BullMQ worker processes must expose a minimal HTTP server on `process.env.PORT` or `3001`, or Railway's healthcheck will mark the service as failed. See `CLAUDE-BACKEND.md` → Workers for the implementation.
+- **Workers also need a health server**; BullMQ worker processes must expose a minimal HTTP server on its own port (`PORT` in TypeScript, `WORKER_PORT` in Python; see `CLAUDE-OBSERVABILITY.md`), or Railway's healthcheck will mark the service as failed. See `CLAUDE-BACKEND.md` → Workers for the implementation.
 - **Cron services do not healthcheck.** A Railway cron runs its start command to completion and exits; there is no long-lived port to probe, so leave the healthcheck unset on cron-only services.
 
 ### Per-Service Dockerfiles
 
-Every deployable artifact (API, worker, cron job) ships its Dockerfile in the commit that creates it (R-351); the image is the deploy unit and Railway builds it from the Dockerfile, never with Nixpacks or buildpacks. Libraries under `packages/*` carry no Dockerfile. The image contract, in every stack:
+Every deployable artifact (API, worker, cron job) ships its Dockerfile in the commit that creates it; the image is the deploy unit and Railway builds it from the Dockerfile, never with Nixpacks or buildpacks. Libraries under `packages/*` carry no Dockerfile. The image contract, in every stack:
 
 - **Multi-stage.** The builder installs and compiles; the runtime stage copies build output and production dependencies only. Base images are pinned to a version tag, never `latest` or untagged.
 - **Non-root.** The runtime stage switches to a non-root user (`USER node` in Node images) after its `COPY` lines.

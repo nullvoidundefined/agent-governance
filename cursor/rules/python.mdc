@@ -34,9 +34,9 @@ The package is always `app`: `main.py` (factory), `core/` (settings, logging, se
 - Every middleware is a pure ASGI class (`async def __call__(self, scope, receive, send)`), never `BaseHTTPMiddleware`, which breaks streaming responses and context propagation.
 - `app.add_middleware` wraps outside-in, so the class added last runs first: register in reverse of the request order. The request order is:
   1. asgi-correlation-id, outermost, so every response carries the ID, 413s included
-  2. `RequestContextMiddleware`: binds the ID and rejects a body over 100 KB with 413 `INPUT_PAYLOAD_TOO_LARGE` unless the route is on the upload allowlist
-  3. security headers
-  4. CORS, so preflights answer before anything can reject them
+  2. security headers, so every response carries them, 413s included
+  3. CORS, so preflights answer before anything can reject them and a cross-origin client can read a 413
+  4. `RequestContextMiddleware`: binds the ID and rejects a body over 100 KB with 413 `INPUT_PAYLOAD_TOO_LARGE` unless the route is on the upload allowlist
   5. rate limit
   6. request timeout (default 30 seconds, 408 `SERVER_REQUEST_TIMEOUT`; SSE routes enforce their own idle timeout)
   7. CSRF guard
@@ -69,7 +69,7 @@ The package is always `app`: `main.py` (factory), `core/` (settings, logging, se
 - Repositories never commit; the transaction belongs to whoever opened the connection. They use Core expressions, or `text()` with bound parameters when Core cannot say it; never string formatting into SQL. Every query on a user-owned table carries `user_id`. Writes use `.returning(...)`; not found is `None` (`False` for a delete), never an exception.
 - Connect args always set the connect `timeout` and `statement_timeout` (10 seconds). Staging and production pass `ssl.create_default_context(cafile=settings.database_ca_cert)`, which verifies chain and hostname; `sslmode=require` encrypts without verifying, so a man in the middle passes.
 - Alembic: working `upgrade()` and `downgrade()`, a linear chain, one logical change per revision, and `--autogenerate` output is a draft to read and edit. `MetaData(naming_convention=...)` names every constraint and index. Enums are explicit: `postgresql.ENUM(..., create_type=False)` on the column, `.create()` in `upgrade()`, `.drop()` after the table in `downgrade()`. Defaults: `server_default="draft"` for a constant, `sa.text("now()")` for an expression, never nested quotes.
-- Migrations run as a release step (`alembic upgrade head`) before the new image takes traffic, never at app startup. Risky changes follow the staged process in `CLAUDE-DATABASE.md`.
+- Migrations run as a release step (`alembic upgrade head`) before the new image takes traffic, never at app startup. Risky changes follow the staged process and the locking rules in `CLAUDE-DATABASE.md`: `CREATE INDEX CONCURRENTLY` runs inside `op.get_context().autocommit_block()`, and `upgrade()` sets `SET lock_timeout` before DDL on a busy table.
 
 ## Data-access discipline
 
