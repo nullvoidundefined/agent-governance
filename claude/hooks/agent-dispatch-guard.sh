@@ -35,7 +35,9 @@ INPUT=$(cat 2>/dev/null || true)
 # the hook cannot parse is judged as the riskiest dispatch, never waved through.
 IS_BACKGROUND=$(printf '%s' "$INPUT" | jq -r '.tool_input.run_in_background == true' 2>/dev/null || echo false)
 [ "$IS_BACKGROUND" = "true" ] && exit 0
-RAW_TYPE=$(printf '%s' "$INPUT" | jq -r '.tool_input.subagent_type // ""' 2>/dev/null || echo "")
+# A non-string type reads as empty, so it falls closed to general-purpose
+# (R-109 r7 #1 on PR #184).
+RAW_TYPE=$(printf '%s' "$INPUT" | jq -r 'if (.tool_input.subagent_type | type) == "string" then .tool_input.subagent_type else "" end' 2>/dev/null || echo "")
 AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 [ -n "$AGENT_TYPE" ] || AGENT_TYPE=general-purpose
 

@@ -78,6 +78,11 @@ for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}'
   GOT=$(printf '%s' "$payload" | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
   [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied, got $GOT"; exit 1; }
 done
+# A non-string subagent_type falls closed to general-purpose (R-109 r7 #1).
+for agent_type in '["implementer"]' '{"a":1}' '5' 'true'; do
+  GOT=$(guard_decision Agent "{\"subagent_type\":$agent_type}")
+  [ "$GOT" = "deny" ] || { echo "FAIL: a non-string subagent_type $agent_type must be denied, got $GOT"; exit 1; }
+done
 # The hook judges every payload, whatever its tool_name, because settings.json
 # routes only Agent and Task to it (owner decision 2026-10-03). The matcher is
 # the trust boundary, so it is pinned here: widening it would make the hook
