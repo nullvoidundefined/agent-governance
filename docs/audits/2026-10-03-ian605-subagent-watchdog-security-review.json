@@ -1,0 +1,142 @@
+{
+    "pr": "nullvoidundefined/agent-governance#184",
+    "ticket": "IAN-605",
+    "reviewer": "security-reviewer subagent",
+    "model": "claude-fable-5-1",
+    "range": "676f39bf..HEAD of PR #184",
+    "note": "Transcribed from security-reviewer runs over PR #184: round 1 over 676f39bf..5c4a9da2 (rows 1 to 6); round 2 over 5c4a9da2..75a976a4, which confirmed rows 1 to 6 fixed and found rows 7 to 10; round 3 over 75a976a4..af36d5aa, which confirmed rows 7 to 10 fixed and found rows 11 and 12; round 4 covers the commit fixing rows 11 and 12 and this artefact.",
+    "findings": [
+        {
+            "id": 1,
+            "severity": "HIGH",
+            "pass": "Round 1, 676f39bf..5c4a9da2",
+            "original_row": 1,
+            "control": "agent-watchdog-instruction async-launch gate read only untrusted response text",
+            "source": "tool_response text",
+            "worst_value": "Launch text quoted in a foreground report, output_file /dev/zero",
+            "fix": "Require tool_input.run_in_background true",
+            "status": "fixed 75a976a4"
+        },
+        {
+            "id": 2,
+            "severity": "HIGH",
+            "pass": "Round 1, 676f39bf..5c4a9da2",
+            "original_row": 2,
+            "control": "Watchdog wake line printed transcript stop_reason and tool names verbatim",
+            "source": "transcript fields",
+            "worst_value": "An injected instruction as stop_reason and as a tool name",
+            "fix": "Allowlist every printed value; one line",
+            "status": "fixed 75a976a4"
+        },
+        {
+            "id": 3,
+            "severity": "MEDIUM",
+            "pass": "Round 1, 676f39bf..5c4a9da2",
+            "original_row": 3,
+            "control": "Instruction hook path check accepted any absolute path",
+            "source": "output_file line",
+            "worst_value": "/dev/zero, a key file, a .. traversal, a doubled slash",
+            "fix": "Only a harness-shaped .../tasks/<name>.output path",
+            "status": "fixed 75a976a4"
+        },
+        {
+            "id": 4,
+            "severity": "MEDIUM",
+            "pass": "Round 1, 676f39bf..5c4a9da2",
+            "original_row": 4,
+            "control": "Watchdog blocked forever on a device or FIFO",
+            "source": "argv path",
+            "worst_value": "/dev/zero, a FIFO",
+            "fix": "Read only a regular file; otherwise exit 2",
+            "status": "fixed 75a976a4"
+        },
+        {
+            "id": 5,
+            "severity": "LOW",
+            "pass": "Round 1, 676f39bf..5c4a9da2",
+            "original_row": 5,
+            "control": "Dispatch guard allowed a payload it could not parse",
+            "source": "hook stdin",
+            "worst_value": "not json",
+            "fix": "Deny an unparseable payload",
+            "status": "fixed 75a976a4"
+        },
+        {
+            "id": 6,
+            "severity": "LOW",
+            "pass": "Round 1, 676f39bf..5c4a9da2",
+            "original_row": 6,
+            "control": "A profile could hide the instruction hook",
+            "source": "profile hooks list",
+            "worst_value": "A lean profile listing agent-watchdog-instruction",
+            "fix": "Add it to PROTECTED_HOOKS",
+            "status": "fixed 75a976a4"
+        },
+        {
+            "id": 7,
+            "severity": "MEDIUM",
+            "pass": "Round 2, 5c4a9da2..75a976a4",
+            "original_row": 1,
+            "control": "No test fed a profile the R-708 hooks",
+            "source": "profile hooks list",
+            "worst_value": "A profile listing both hooks",
+            "fix": "protectedCases in harness-profile.test.sh",
+            "status": "fixed af36d5aa"
+        },
+        {
+            "id": 8,
+            "severity": "LOW",
+            "pass": "Round 2, 5c4a9da2..75a976a4",
+            "original_row": 2,
+            "control": "Guard allowed a null, missing or lowercased tool_name",
+            "source": "hook stdin tool_name",
+            "worst_value": "null, absent, agent",
+            "fix": "Judge empty and case-folded names",
+            "status": "fixed af36d5aa"
+        },
+        {
+            "id": 9,
+            "severity": "LOW",
+            "pass": "Round 2, 5c4a9da2..75a976a4",
+            "original_row": 3,
+            "control": "Wake-line tool names were shape-allowlisted, not value-allowlisted",
+            "source": "transcript tool names",
+            "worst_value": "An identifier-shaped instruction, --force",
+            "fix": "Value allowlist; mcp for mcp__, else other",
+            "status": "fixed af36d5aa"
+        },
+        {
+            "id": 10,
+            "severity": "LOW",
+            "pass": "Round 2, 5c4a9da2..75a976a4",
+            "original_row": 4,
+            "control": "Watchdog echoed its path argument verbatim",
+            "source": "argv path",
+            "worst_value": "A path with a newline and SYSTEM text",
+            "fix": "Show only a launch-shaped path, else withheld",
+            "status": "fixed af36d5aa"
+        },
+        {
+            "id": 11,
+            "severity": "LOW",
+            "pass": "Round 3, 75a976a4..af36d5aa",
+            "original_row": 1,
+            "control": "Guard allowed a padded or non-string tool_name",
+            "source": "hook stdin tool_name",
+            "worst_value": "' Agent', 'Agent\\t', 5, an object, an array",
+            "fix": "Non-string reads as empty; whitespace dropped",
+            "status": "fixed 77f31632"
+        },
+        {
+            "id": 12,
+            "severity": "LOW",
+            "pass": "Round 3, 75a976a4..af36d5aa",
+            "original_row": 2,
+            "control": "Watchdog shown-path check allowed dot segments and any length",
+            "source": "argv path",
+            "worst_value": "A .. segment, a 400-character path",
+            "fix": "The hook's own check plus a 300-character cap",
+            "status": "fixed 77f31632"
+        }
+    ]
+}
