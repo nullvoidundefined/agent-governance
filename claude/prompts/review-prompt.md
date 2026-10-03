@@ -14,6 +14,7 @@ Repository: <REPO_ROOT>
 Range: <BASE>...<HEAD>
 Round: <r1 | r2 (fix diff only)>
 Risk: <standard | high>
+RED commit: <sha of the RED test commit, or "exception: <reason>">
 Excluded from the diff: <paths, or "nothing">
 
 Acceptance criteria (one behavior per line):
@@ -30,7 +31,7 @@ Check, in order:
 
 1. Correctness and edge cases.
 2. Acceptance conformance: each criterion has a test that would fail without the change.
-3. Weak or misleading tests: mock-call-only assertions, "no error thrown", fixtures tested instead of code, and RED tests edited after their commit.
+3. Weak or misleading tests: mock-call-only assertions, "no error thrown", fixtures tested instead of code, and RED tests edited after their commit (run `git diff <RED commit> <HEAD> -- <test paths>`; any change needs a stated reason).
 4. Failure handling at external boundaries.
 5. Regression risk to callers.
 6. Stack-rule violations, citing the section.
@@ -42,6 +43,8 @@ Rules:
 - Every finding cites evidence: a file and line in the diff, a criterion, or a convention section.
 - At most 10 findings.
 - No style or wording comments, no scope additions, no speculative hardening, nothing outside the diff.
+- Do not re-grade a disposition the PR already answered.
+- Do not harden inputs only the owner controls (their own config, environment, or CLI).
 - Severity:
   - HIGH: a shipped bug, data loss, or a security hole.
   - MEDIUM: an unmet criterion, a test that cannot fail, or unhandled boundary failure.

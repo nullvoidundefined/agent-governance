@@ -49,7 +49,7 @@ One test-writing pass per behavior. Do not ask for more tests than the criteria 
 
 ### 3. Review, fix, verify, stop
 
-1. Dispatch one `pr-reviewer` in a fresh context with `prompts/review-prompt.md` filled in. Give it the diff, the criteria, and the risk line. Never give it the implementer's transcript.
+1. Dispatch one `pr-reviewer` in a fresh context with `prompts/review-prompt.md` filled in. Give it the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
 2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Fix a LOW if it takes under five minutes, otherwise note it.
 3. Rerun only the checks the fixes affect.
 4. A second review happens only under the CLAUDE.md conditions, and covers only the fix diff.
@@ -62,7 +62,7 @@ A fix never restarts this loop. It does not mean new criteria, a new test author
 Same as standard, plus:
 
 1. **Threat model:** before any test, ask the owner one question per control with no natural endpoint (rate limits, redaction, allow and deny lists). Settle the attack it must stop, the acceptance boundary, and the severity ceiling. Write the answers into the plan.
-2. **Lock:** open it with `bash ~/.claude/enforce/tdd.sh open "<behavior>" [--spec <path>]`. The test author proves RED with `tdd.sh red <test file>` (or `<file>::<test id>` for a new test in an existing file). From RED to close, production paths stay writable only for the implementer and the locked tests stay read-only (`protected-path-guard`). The implementer, which may be the `implementer` agent, makes it pass with `tdd.sh green`. Close with `tdd.sh close`.
+2. **Lock:** open it with `bash ~/.claude/enforce/tdd.sh open "<behavior>" [--spec <path>]`. The test author proves RED with `tdd.sh red <test file>` (or `<file>::<test id>` for a new test in an existing file). When Codex wrote the tests, the main session runs `tdd.sh red` on them, because Codex does not run the harness. From RED to close, production paths stay writable only for the implementer and the locked tests stay read-only (`protected-path-guard`). The implementer, which may be the `implementer` agent, makes it pass with `tdd.sh green`. Close with `tdd.sh close`.
    - A collateral test outside the lock asks rather than blocks.
    - A test author's own mistake before green is fixed with `tdd.sh amend <file>`, run once to open the window and once to close it.
    - A lock left by a dead session closes with `tdd.sh abandon`, never by deleting the file.
