@@ -20,7 +20,7 @@ A new PreToolUse(Bash) hook, `claude/hooks/destructive-ops-guard.sh`, reads ever
 
 A hook's `ask` overrides an allow rule and the auto classifier, so a person approves the command. Under Codex the adapter's default turns `ask` into `deny` (`CLAUDE_CODEX_ASK_POLICY=deny`), which is stricter.
 
-If the parser is missing or fails, the hook denies (fails closed), the same way `destructive-command-guard.sh` does. The hook is registered in `settings.json` and regenerated into `codex/hooks.json` and the cursor port.
+If the parser is missing, fails, times out (10 s), or prints nothing for a non-empty command, or `jq` is missing, the hook denies every Bash call (owner decision 2026-10-03, after the B-1 slice critic showed word matching is bypassed by quoting, case, and `eval` while the parser is down). This happens only on a broken install, and the deny names the fix. The hook is registered in `settings.json` and regenerated into `codex/hooks.json` and the cursor port.
 
 The policy lives in data (`claude/enforce/destructive-ops.json`): for each program, its read-only subcommands, ask verbs, and deny forms. That way a new CLI is a data change. The deciding logic stays in code under test.
 
