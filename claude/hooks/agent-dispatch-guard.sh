@@ -28,12 +28,16 @@ INPUT=$(cat 2>/dev/null || true)
 # (R-109 r1 #5 on PR #184). A parsed payload naming another tool is ignored.
 # A missing, null or differently cased name is judged too; only a payload that
 # names another tool outright is ignored (R-109 r2 #2 on PR #184).
-# A non-string name reads as empty, and the name is reduced to its ASCII
-# letters, so padding of any kind (ASCII or Unicode spaces, zero-width
-# characters) cannot make a dispatch look like another tool, whatever the
-# locale (R-109 r3 #1 and r4 #1 on PR #184).
+# Only a plain ASCII identifier that names another tool (Bash, an mcp__ tool)
+# is ignored. Anything else is judged as a dispatch: a non-string or empty
+# name, padding of any kind, or a homoglyph such as a fullwidth or Cyrillic
+# letter, whatever the locale. Allowlisting the ignore branch closes the
+# class that reducing or stripping the name kept reopening (R-109 r3 #1, r4 #1
+# and r5 #1 on PR #184).
 if TOOL=$(printf '%s' "$INPUT" | jq -er 'if (.tool_name | type) == "string" then .tool_name else "" end' 2>/dev/null); then
-  case "$(printf '%s' "$TOOL" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd 'a-z')" in agent|task|"") ;; *) exit 0 ;; esac
+  if printf '%s' "$TOOL" | LC_ALL=C grep -Eqx '[A-Za-z_][A-Za-z0-9_]*'; then
+    case "$(printf '%s' "$TOOL" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in agent|task) ;; *) exit 0 ;; esac
+  fi
 fi
 
 # A jq failure reads as "not background" and "general-purpose", so a payload
