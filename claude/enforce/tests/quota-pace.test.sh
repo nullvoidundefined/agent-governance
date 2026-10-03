@@ -65,6 +65,42 @@ bash "$SCRIPT" record codex 13 --at 2026-10-03T00:00:00+07:00
 export QUOTA_NOW=$NOW_OWNER
 [ "$(field '.buckets[0].burnMethod')" = "window-average" ] || failCase "a pair under 12h apart must not count as trailing"
 
+# Trailing burn pairs with the MOST RECENT snapshot at least 12h older: of
+# two qualifying snapshots at different rates, the nearer one decides.
+rm -f "$CLAUDE_QUOTA_FILE"
+export QUOTA_NOW=$NOW_OWNER
+bash "$SCRIPT" record codex 0 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 48 * HOUR))
+bash "$SCRIPT" record codex 10 --at $((NOW_OWNER - 24 * HOUR))
+bash "$SCRIPT" record codex 12 --at "$NOW_OWNER"
+# Most recent qualifying (24h back): 2 points over 1 day = 2. Oldest would give 6.
+[ "$(field '.buckets[0].burn')" = "2" ] || failCase "trailing burn must pair with the most recent snapshot 12h+ older"
+# A correction downward clamps burn to 0, never a negative burn.
+bash "$SCRIPT" record codex 5 --at $((NOW_OWNER + 13 * HOUR))
+export QUOTA_NOW=$((NOW_OWNER + 13 * HOUR))
+[ "$(field '.buckets[0].burn')" = "0" ] || failCase "a drop in used percent must clamp burn to 0"
+# Under an hour into the window there is no burn to judge: method reads
+# insufficient and the ratio is null, never a ratio from a near-zero divisor.
+rm -f "$CLAUDE_QUOTA_FILE"
+export QUOTA_NOW=$((1791432000 + 30 * 60))
+bash "$SCRIPT" record codex 1 --resets-at 2026-10-15T10:57:00+07:00 --at "$QUOTA_NOW"
+[ "$(field '.buckets[0].burnMethod')" = "insufficient" ] || failCase "under an hour into the window must read insufficient"
+[ "$(field '.buckets[0].paceRatio')" = "null" ] || failCase "an insufficient burn must give a null ratio"
+export QUOTA_NOW=$NOW_OWNER
+
+# A provider whose current bucket has no ratio (100% used) must not read as
+# the ratio of its other buckets: its paceRatio is null and ratioComplete
+# false, so a caller reading the ratio alone cannot see a healthy provider.
+rm -f "$CLAUDE_QUOTA_FILE"
+bash "$SCRIPT" record claude 100 --resets-at 2026-10-06T23:59:00+07:00 --at "$NOW_OWNER"
+bash "$SCRIPT" record claude-fable 10 --provider claude --resets-at 2026-10-06T23:59:00+07:00 --at "$NOW_OWNER"
+[ "$(field '.buckets[] | select(.bucket=="claude-fable") | .paceRatio != null')" = "true" ] || failCase "setup: the fable bucket must have a ratio"
+[ "$(field '.providers[0].paceRatio')" = "null" ] || failCase "a provider with a 100%-used bucket must not report its other bucket's ratio"
+[ "$(field '.providers[0].ratioComplete')" = "false" ] || failCase "the provider must say its ratio is incomplete"
+[ "$(field '.providers[0].exhausted')" = "true" ] || failCase "the provider must read exhausted"
+rm -f "$CLAUDE_QUOTA_FILE"
+cp "$CLAUDE_HARNESS_ROOT/quota.template.json" "$CLAUDE_QUOTA_FILE"
+[ "$(field '.providers[] | select(.provider=="claude") | .ratioComplete')" = "true" ] || failCase "a provider with every current bucket rated must read ratioComplete true"
+
 # --- 3. Exhaustion: under one day left at burn, or 90% used. ---
 rm -f "$CLAUDE_QUOTA_FILE"
 # 85% used, 3 days into the window: burn 28.3/day, 15% left is 0.53 days.

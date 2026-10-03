@@ -22,7 +22,10 @@
 #   exhausted   = usedPct >= 90, or less than one day left at this burn while
 #                 the reset is further away than that
 # A provider's ratio is its worst current bucket's: a stale bucket never sets
-# it, so a caller reading paceRatio alone cannot act on old data. A provider
+# it, so a caller reading paceRatio alone cannot act on old data. When a
+# current bucket has no ratio (100% used, or under an hour into its window),
+# the provider's ratio is null and ratioComplete false, so that bucket can
+# never hide behind a healthier sibling. A provider
 # is exhausted when any bucket, stale ones included, says so.
 #
 # Environment: CLAUDE_QUOTA_FILE (default ~/.claude/quota.json), QUOTA_NOW
@@ -405,7 +408,10 @@ reportJson() {
        buckets: $buckets,
        providers: ($buckets | group_by(.provider) | map({
          provider: .[0].provider,
-         paceRatio: ([.[] | select(.status == "ok") | .paceRatio | select(. != null)] | max),
+         ratioComplete: all(.[] | select(.status == "ok"); .paceRatio != null),
+         paceRatio: (if all(.[] | select(.status == "ok"); .paceRatio != null)
+                     then ([.[] | select(.status == "ok") | .paceRatio] | max)
+                     else null end),
          worstBucket: ((map(select(.status == "ok" and .paceRatio != null)) | max_by(.paceRatio) | .bucket) // null),
          exhausted: any(.[]; .exhausted),
          status: (if any(.[]; .status == "ok") then

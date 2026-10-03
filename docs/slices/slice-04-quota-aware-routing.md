@@ -13,7 +13,7 @@ Keep both providers on pace to last their full weekly window, spending Codex's s
 
 1. **High-risk slices split by risk.** On a standard-risk slice, Codex owns the full loop: it writes the tests, runs them, and fixes until green. On a high-risk slice, Codex becomes the default test author, and the Claude `implementer` and `slice-critic` stay separate fresh contexts (R-707). The R-411 write-time role boundary has no `agent_type` under `codex exec`, so the implementer role does not move.
 2. **The R-109 security review stays pinned to `securityReviewModel`.** When Claude wrote a security-touching PR, the router also sends the R-517 review to Codex, so the PR still gets a cross-model read.
-3. **Burn rate.** Actual daily burn comes from the latest snapshot and the most recent earlier snapshot at least 12 hours older in the same window. When no such pair exists, it falls back to the window average: used percent divided by the days elapsed since the window opened.
+3. **Burn rate.** Actual daily burn comes from the latest snapshot and the most recent earlier snapshot at least 12 hours older in the same window. When no such pair exists, it falls back to the window average: used percent divided by the days elapsed since the window opened. Under one hour into a window, the window average is too noisy to trust (a near-zero divisor), so the method reads `insufficient` and the ratio is null until an hour has passed.
 4. **Exhaustion.** A bucket is near exhaustion when less than one day of quota is left at its current burn (remaining percent divided by burn is under 1 day) and its reset is further away than that, or when it is at 90 percent used or more. This revises the first answer, "projected to run out before reset". That condition is the same as a pace ratio above 1.0, so it would trip before the 1.2 shift (owner, 2026-10-02).
 
 ## Formulas
@@ -49,6 +49,8 @@ The quota file is `~/.claude/quota.json`, which `CLAUDE_QUOTA_FILE` can override
 - **Tests:** the session writes them alongside the code (lean tier).
 - **Review focus:** the date parsing with offsets, the pair selection for trailing burn, and division by zero at 100 percent used.
 - **Size:** about 4 files and 450 lines.
+
+**Scope added during review (2026-10-03):** six R-109 security review rounds were run because the security-surface detector flagged the word `rate_limits`. They added a writer lock and stricter input validation. The lock is a pid symlink that is broken only when its owner process is dead. Its accepted residuals are documented in the `lockQuotaFile` header. `record` also gained `--window-days` and `--source`, because PR 2 needs `--source`. PR 1 grew from about 450 lines to about 1,100 as a result. A provider's `paceRatio` is null, and `ratioComplete` is false, whenever one of its current buckets has no ratio.
 
 ### PR 2: Status line records the Claude weekly snapshot
 
