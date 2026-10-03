@@ -210,6 +210,47 @@ for kind in dir file badlink; do
     badlink) [ "$(readlink "$LOCK")" = /etc/passwd ] || failCase "a foreign symlink at the lock path must be left intact" ;;
   esac
 done
+# A directory, or a symlink to a directory, at either lock path (R-109 r5):
+# `ln -s` would create the link inside it, so every waiter would think it
+# held the lock. The writer must fail naming the path and add nothing to it.
+for which in lock brk; do
+  for kind in dir dirlink; do
+    resetLock
+    target="$LOCK"; [ "$which" = brk ] && target="$BRK"
+    [ "$which" = brk ] && ln -s "$(deadPid)" "$LOCK"
+    mkdir -p "$WORK/victim-$which-$kind"
+    case "$kind" in
+      dir) mkdir "$target" ;;
+      dirlink) ln -s "$WORK/victim-$which-$kind" "$target" ;;
+    esac
+    msg=$({ timeout 20 bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
+    case "$msg" in *EXIT0*) failCase "a $kind at the $which path must stop the writer" ;; esac
+    case "$msg" in *"$target"*) ;; *) failCase "the failure must name the $which path for a $kind (got: $msg)" ;; esac
+    if [ "$kind" = dir ]; then
+      [ -z "$(ls -A "$target")" ] || failCase "a $kind at the $which path must gain no entry"
+    else
+      [ -z "$(ls -A "$WORK/victim-$which-$kind")" ] || failCase "a $kind at the $which path must add nothing to its target"
+    fi
+    rm -rf "$LOCK" "$BRK"
+  done
+done
+# A live pid this process may not own (init, pid 1) is never treated as dead.
+resetLock
+ln -s 1 "$LOCK"
+msg=$({ timeout 20 bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
+case "$msg" in *EXIT0*) failCase "a lock naming pid 1 must stop the writer" ;; esac
+case "$msg" in *"pid 1,"*) ;; *) failCase "the failure must name pid 1 (got: $msg)" ;; esac
+[ "$(readlink "$LOCK")" = 1 ] || failCase "a lock naming pid 1 must be kept"
+rm -f "$LOCK"
+# With no ps on PATH, a dead owner's lock is still recognized and broken.
+resetLock
+ln -s "$(deadPid)" "$LOCK"
+mkdir -p "$WORK/nops"
+for tool in bash jq mktemp mv rm ln readlink dirname mkdir cat date sleep find sort tr head grep sed awk env; do
+  p=$(command -v "$tool" 2>/dev/null) && ln -sf "$p" "$WORK/nops/$tool"
+done
+timeout 20 env PATH="$WORK/nops" bash "$SCRIPT" record codex 2 || failCase "a dead owner must be recognized without ps"
+[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "the record without ps must land"
 rm -rf "$LOCK"
 # Many recorders against one dead owner's lock: exactly one breaks it at a
 # time, so every snapshot lands. Probabilistic, so three rounds.

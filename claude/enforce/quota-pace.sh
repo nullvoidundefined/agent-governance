@@ -146,10 +146,18 @@ writeQuotaFile() {
 # Anything at either path that is not a pid symlink is never deleted: the
 # writer fails and names it. A recycled pid makes a dead lock read as live,
 # which fails closed (the waiter stops and names the pid).
+#
+# Accepted residuals, each failing loudly rather than losing a write: pids
+# are judged in the local pid namespace, so the quota file is per host and
+# per container, and a holder in another namespace reads as dead or as a
+# recycled pid; clearing a dead break lock re-reads it before removing it but
+# is not atomic, so two waiters clearing the same dead breaker in the same
+# instant can briefly both hold it, after which the displaced writer fails at
+# the ownership check before its write.
 lockQuotaFile() {
   local lock="$QUOTA_FILE.lock" brk="$QUOTA_FILE.lock.break" tries=0 owner
   mkdir -p "$(dirname "$QUOTA_FILE")" || fail "cannot create $(dirname "$QUOTA_FILE")"
-  until ln -s "$$" "$lock" 2>/dev/null; do
+  until claimPidLink "$lock"; do
     tries=$((tries + 1))
     owner=$(lockOwner "$lock") ||
       fail "$lock exists and is not a quota-pace lock; remove it by hand if nothing is writing $QUOTA_FILE"
@@ -167,6 +175,25 @@ lockQuotaFile() {
   trap 'releaseQuotaLock' EXIT
 }
 
+# claimPidLink <path>: creates a symlink at the path naming this process and
+# succeeds only when the link it made is the object at that path. `ln -s`
+# into an existing directory, or a symlink to one, creates the link inside
+# it and reports success, which would let every waiter think it held the
+# lock (R-109 r5); such a path is refused before and verified after, and a
+# link that landed inside a directory is removed again.
+claimPidLink() {
+  local path="$1"
+  if [ -d "$path" ]; then
+    fail "$path is a directory, not a quota-pace lock; remove it by hand if nothing is writing $QUOTA_FILE"
+  fi
+  ln -sn "$$" "$path" 2>/dev/null || return 1
+  if [ ! -L "$path" ] || [ "$(readlink "$path" 2>/dev/null)" != "$$" ]; then
+    [ -L "$path/$$" ] && rm -f "$path/$$"
+    fail "$path is not a quota-pace lock; remove it by hand if nothing is writing $QUOTA_FILE"
+  fi
+  return 0
+}
+
 # lockOwner <path>: prints the pid a lock symlink names (empty when the lock
 # vanished meanwhile) and fails when the path holds anything other than a
 # pid symlink.
@@ -182,10 +209,19 @@ lockOwner() {
   return 0
 }
 
-# isDeadPid <pid>: succeeds when no process with that pid exists. A process
-# owned by another user (kill -0 refused) counts as alive, failing closed.
+# isDeadPid <pid>: succeeds only when no process with that pid exists. A
+# process owned by another user makes kill -0 fail with EPERM, so a failed
+# kill -0 is confirmed through /proc where it exists, else through a working
+# ps; with neither, the pid counts as alive, failing closed (R-109 r5).
 isDeadPid() {
-  ! kill -0 "$1" 2>/dev/null && ! ps -p "$1" >/dev/null 2>&1
+  kill -0 "$1" 2>/dev/null && return 1
+  if [ -d /proc/self ]; then
+    [ ! -d "/proc/$1" ]
+  elif ps -p "$$" >/dev/null 2>&1; then
+    ! ps -p "$1" >/dev/null 2>&1
+  else
+    return 1
+  fi
 }
 
 # breakDeadLock <lock> <dead pid> <break lock>: removes the lock while
@@ -193,7 +229,7 @@ isDeadPid() {
 # break lock whose own owner is dead. Succeeds when the lock was removed.
 breakDeadLock() {
   local lock="$1" dead="$2" brk="$3" brkOwner removed=1
-  if ln -s "$$" "$brk" 2>/dev/null; then
+  if claimPidLink "$brk"; then
     [ "$(lockOwner "$lock" 2>/dev/null)" = "$dead" ] && rm -f "$lock" && removed=0
     rm -f "$brk"
     return $removed
