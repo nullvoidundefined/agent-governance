@@ -1,128 +1,81 @@
 ---
 name: tdd-gated-dispatch
-description: Use for every high-risk slice (R-110: security, money, or concurrency, at any task tier) once a spec or slice title exists, to run each behavior as one RED/GREEN/REFACTOR/REVIEW slice under the TDD lock, with the `test-author`, `implementer`, and `slice-critic` agents as separate fresh contexts and the harness proving each step. A standard-risk slice does not use this skill; it runs the lean tier (tests alongside the code, one review per PR; owner decision 2026-10-02, IAN-568). Codex writes the test only when the owner opts in for that slice.
+description: Use for every behavioral change once its acceptance criteria exist, to run the test-first loop. Standard risk runs the lightweight loop (a cross-model test author, RED observed and committed, then GREEN, one review, stop). High risk adds the TDD lock (enforce/tdd.sh), a threat model, and the security review. Triggers on implementing a feature, a slice, or a bug fix.
 ---
 
-# TDD-Gated Dispatch
+# Test-first loop
 
-One high-risk behavior at a time. The harness, not the prompt, proves RED and GREEN and keeps the tests out of the implementer's hands. Standard-risk slices skip all of this and use the lean tier from `task-start`. The process is still held to the 1:1 budget; only the R-109 security review may run past it.
+The practice is fixed: a failing test that demonstrates the missing behavior exists before the implementation, and it fails for the expected reason. How strongly that is enforced depends on risk. Every step has a stopping point.
 
-**Stack assumption:** `enforce/tdd.sh` runs Vitest, Jest, pytest, or bash `*.test.sh` fixtures. Any other runner refuses; the loop still applies by hand.
+## Before you start
 
-## What the harness enforces
+- **Risk:** write `**Risk:** standard|high` in the plan or PR (the list is in CLAUDE.md).
+- **Acceptance criteria:** one observable behavior per line, numbered. Each one becomes at least one test.
+- **Skip tests-first only for:** an exploratory spike, non-behavioral config, scaffolding a behavior needs before it can run, or a change that cannot be tested first. Write the one-line reason in the PR. Bug fixes never skip: the reproduction is the first test.
 
-| Step | Mechanism | Rule |
-|---|---|---|
-| No production edit before the failing test | lock phase `open`, `protected-path-guard.sh` | R-412 |
-| The test fails for its own reason and the rest stays green | `tdd.sh red` | R-412 |
-| The slice's locked tests, fixtures, and spec are read-only from RED to close | lock phases `red`/`green` | R-410 |
-| Each role writes only inside its boundary | `agent_type` against `enforce/role-policy.json`; `tdd.sh validate` | R-411 |
-| Named tests pass, the outside count does not drop, the hashes match | `tdd.sh green` | R-412 |
+## Standard risk
 
-What stays with you: choosing the slices, opening each, dispatching the roles, committing, and arbitrating a `DISPUTE:`.
+### 1. RED, written by the other model
 
-## Interlock fixes this skill relies on (IAN-568)
+The test author is the model that will not write the implementation: Codex writes tests for Claude's code, and Claude writes tests for Codex's code. The author gets the acceptance criteria, the files in scope, and the test conventions. It does not get the implementation plan's code.
 
-- **I1, collateral test files ask.** While red, only the files the lock names are denied. Any other test-tree file the change needs (an older test a schema change breaks) is an ask the owner answers in place, so a slice no longer ends in a `DISPUTE:` and a hand-deleted lock. `green` still refuses a drop in the outside pass count.
-- **I2, format before hash.** `tdd.sh red` and `tdd.sh amend` run the repository's own formatter on the named tests before hashing them, so a pre-commit run of the same formatter leaves them unchanged and nothing reads as tampering at `green`; `green` itself is byte-exact and runs no formatter.
-- **I3, a wider RED classifier.** Any exception raised in the test body or its fixtures counts as RED (a `TypeError`, a missing column, a setup error), recorded with its class in the lock. Only parse, collection, and infrastructure errors are refused.
-- **I5, expected red.** While a lock is in phase `red`, the verification gate calls `tdd.sh expected-red`, so a turn may end on the deliberately red slice; it still blocks when anything outside the locked tests fails.
-- **I8, one commit when the lock is untracked.** When the repository gitignores `.claude/tdd-lock.json`, the slice is one commit after green; the separate RED commit exists only to anchor a tracked lock.
-
-## Slicing
-
-Each acceptance criterion a test can fail is a slice, `B-1`, `B-2`, in the order the implementation needs them; in a Standard task the slice title is the behavior line. Give the test author the behavior line and its criteria as text, never the plan's code blocks. Pure pixel, spacing, or color decisions are not slices.
-
-Name new tests in a file that already holds passing ones by id: `tdd.sh red 'tests/test_x.py::test_new'` under pytest, `tdd.sh red 'src/x.test.ts::<describe> <title>'` under Vitest or Jest. Bash fixtures stay file-level.
-
-## The loop, per slice
-
-```
-1. open       bash ~/.claude/enforce/tdd.sh open "B-n <behavior>" [--spec <spec path>]
-2. RED        the test-author agent writes the test (Codex on opt-in); tdd.sh red <file | file::id> prints RED:;
-              tdd.sh validate test-author passes
-3. commit     tracked lock: git commit the test and the lock as "test(<scope>): B-n <behavior>"; untracked lock: skip (I8)
-4. GREEN      the implementer agent writes the minimum; tdd.sh green prints GREEN:
-5. REFACTOR   same lock; tdd.sh green again
-6. commit     "feat(<scope>): B-n <behavior>" (or fix:, refactor:); one commit holding test and code when the lock is untracked
-7. REVIEW     the slice-critic agent returns findings and candidate tests
-8. close      tdd.sh close; accepted candidates become B-n+1
-```
-
-A repository whose pre-commit hook reformats tests names that formatter as `testFormatCommand` in `.enforce.json` (the formatter binary named directly with its flags, such as `ruff format`, `black -q`, or `node_modules/.bin/prettier --write`, never a `--fix` linter; it runs as an argument vector with no shell, its program must be an allowlisted formatter, `black`, `ruff format`, `prettier`, `biome format`, `dprint fmt`, `gofmt`, `goimports`, `rustfmt`, `shfmt`, `isort`, `yapf`, or `clang-format`, by its exact file name, followed only by options naming no path, and anything else is refused), so `tdd.sh red` and `tdd.sh amend` hash the formatted test and the same formatter at pre-commit is a no-op (I2); an option naming a configuration or plugin file (`--config`, `--plugin`, `--style`, `--settings-path`, `--config-path`) is refused too. Formatting happens at `red` and `amend` only: `tdd.sh green` compares the tests byte-exactly and runs no formatter, so no formatter can affect a verdict. When the pre-commit hook's formatter differs from `testFormatCommand` and rewrites a locked test, re-hash it with `tdd.sh amend <test file>` (R-109 r5, IAN-568).
-
-## High-risk slice: three roles, fresh context each
-
-Dispatch each role with the Agent tool, `subagent_type` naming its file in `~/.claude/agents/`: `test-author` and `slice-critic` on Opus, `implementer` on Sonnet. Prompts carry paths, not content (R-701), plus the branch block from `~/.claude/prompts/subagent-branch-setup.md` (R-702); none of them commits.
-
-**Test author prompt:**
-
-```markdown
-## Slice
-B-n: <behavior line>
-## Spec
-<absolute spec path>, the B-n entry (or "none: the slice title is the requirement")
-## Conventions
-<absolute path to the stack's convention file>
-## Branch
-<R-702 block>
-## Definition of done
-Write only test and fixture files. `bash ~/.claude/enforce/tdd.sh red <test file>` prints RED: (name `<file>::<id>` for each new test in an existing file). Report the test path, the ids added, the failure and its class, every interface the test assumes, and any spec ambiguity resolved. Do not implement. Do not commit.
-```
-
-**Implementer prompt** (after RED):
-
-```markdown
-## Slice
-B-n: <behavior line>
-## Contract
-Tests: <paths>. Lock: <repo>/.claude/tdd-lock.json. Spec: <path>, the B-n entry.
-## Branch
-<R-702 block>
-## Definition of done
-`bash ~/.claude/enforce/tdd.sh green` prints GREEN:, then refactor and run it again. Report the GREEN line, files changed, reuse found (R-308), and anything the spec asks that no test covers. A locked test you believe wrong: return `DISPUTE: <file>: <title>: <why>` and stop. Do not edit tests, fixtures, the spec, or the lock. Do not commit.
-```
-
-**Critic prompt** (after GREEN):
-
-```markdown
-## Slice
-B-n: <behavior line>
-## Inputs
-Spec: <path>. Tests: <paths>. Diff: git diff <base>...HEAD.
-## Output
-The seven questions in your role file with file:line evidence or "none found", then ## Candidate tests as behavior statements. Write nothing.
-```
-
-Validate each return before committing: `tdd.sh validate test-author`, `tdd.sh validate implementer`, `tdd.sh validate slice-critic`.
-
-## Codex as test author (owner opt-in only)
+When Claude is the implementer, run Codex as the test author, in the background with stdin closed:
 
 ```bash
 codex exec -s workspace-write -C <repo root> --skip-git-repo-check \
-  -o <scratch>/codex-B-n-final.md "$(cat <scratch>/codex-B-n-prompt.md)" \
-  </dev/null > <scratch>/codex-B-n.log 2>&1
+  -o <scratch>/codex-tests-final.md "$(cat <scratch>/codex-tests-prompt.md)" \
+  </dev/null > <scratch>/codex-tests.log 2>&1
 ```
 
-Run it in the background and poll the log. Close stdin with `</dev/null`, never pipe through `tail`, and omit `-m`; R-908's billing guard applies. Tell Codex not to run `tdd.sh`. For Python, write `UV_CACHE_DIR=.uv-cache uv run pytest <test>` into the prompt, since uv's cache sits outside the sandbox (`-c shell_environment_policy.set.UV_CACHE_DIR=".uv-cache"` covers every command in the run). Before dispatch record `git rev-parse HEAD` and `shasum -a 256 .claude/tdd-lock.json`; afterwards both must be unchanged before you run `tdd.sh red` and `tdd.sh validate test-author`. Any failure discards the run. When Codex is missing, unauthenticated, or rate-limited, dispatch the `test-author` agent with the same prompt and name the fallback in the PR body.
+- **Prompt:** the criteria, the test file locations, the runner command, and the instruction "write failing tests only; do not implement; do not commit".
+- **Billing:** omit `-m`. `codex-billing-guard` asks before anything that would bill the API.
+- **Fallback:** when Codex is missing (cloud containers do not have it), unauthenticated, rate-limited, or would bill the API, dispatch the `test-author` agent in a fresh context (Agent tool, background) with the same prompt. Name the fallback in the PR.
+- **Codex as implementer:** when Codex is the implementer, Claude (the main session or `test-author`) writes the tests.
 
-## Mistakes and disputes
+Then observe RED yourself:
 
-**The author's own mistake.** While still red, before green and before the RED is pushed, fix the test with `tdd.sh amend <test file>` (once to open the window, once to close it after the fix); the amended test must still fail for a classified reason. Never amend to make the implementation easier.
+1. Run the new tests against the unchanged code.
+2. Every new test must fail, and fail for the behavior it names. An import error for a module that does not exist yet is a valid RED. A typo, a syntax error, or a broken fixture is not: the author fixes it once.
+3. Commit the tests alone: `test(<scope>): <behavior>`, with the failing command and its failure line in the commit body. This commit is the RED record.
 
-**A `DISPUTE:`** about a locked test stops the loop: show the owner the test, the claim, and the spec line, and let them decide. A collateral test outside the lock is not a dispute; it is the I1 ask. Deleting `.claude/tdd-lock.json` by hand is the last resort, only when the owner rules a locked test wrong and no `amend` window remains, after which the slice reopens and the test author writes the corrected RED.
+One test-writing pass per behavior. Do not ask for more tests than the criteria need.
 
-**A lock from a dead session** closes with `tdd.sh abandon`, never by deleting it; it refuses unless the lock's tests are committed and passing and nothing has run there for `CLAUDE_TDD_STALE_HOURS` (default 4).
+### 2. GREEN
 
-**Refactor-only work** has no RED: `tdd.sh open --refactor "R-n <what changes>" --lock <test files>` needs a green suite at open, and `tdd.sh green` proves the same tests pass unchanged.
+- Write the smallest coherent change that makes the RED tests pass. Reuse existing services and clients before adding new ones.
+- **The RED tests are the contract.** Do not edit them. If one is wrong, unreachable, or contradicts the criteria, write one line, `DISPUTE: <test>: <why>`. The test author amends it once, or the owner decides. There is no second dispute round.
+- Run the affected tests, the linter, and the type checker.
+
+### 3. Review, fix, verify, stop
+
+1. Dispatch one `pr-reviewer` in a fresh context with `prompts/review-prompt.md` filled in. Give it the diff, the criteria, and the risk line. Never give it the implementer's transcript.
+2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Fix a LOW if it takes under five minutes, otherwise note it.
+3. Rerun only the checks the fixes affect.
+4. A second review happens only under the CLAUDE.md conditions, and covers only the fix diff.
+5. Write `## Verification` and `## Review` in the PR body. Stop.
+
+A fix never restarts this loop. It does not mean new criteria, a new test author, a new full review, or a new ticket. A finding that invalidates the design goes to the owner.
+
+## High risk
+
+Same as standard, plus:
+
+1. **Threat model:** before any test, ask the owner one question per control with no natural endpoint (rate limits, redaction, allow and deny lists). Settle the attack it must stop, the acceptance boundary, and the severity ceiling. Write the answers into the plan.
+2. **Lock:** open it with `bash ~/.claude/enforce/tdd.sh open "<behavior>" [--spec <path>]`. The test author proves RED with `tdd.sh red <test file>` (or `<file>::<test id>` for a new test in an existing file). From RED to close, production paths stay writable only for the implementer and the locked tests stay read-only (`protected-path-guard`). The implementer, which may be the `implementer` agent, makes it pass with `tdd.sh green`. Close with `tdd.sh close`.
+   - A collateral test outside the lock asks rather than blocks.
+   - A test author's own mistake before green is fixed with `tdd.sh amend <file>`, run once to open the window and once to close it.
+   - A lock left by a dead session closes with `tdd.sh abandon`, never by deleting the file.
+3. **Integration:** verify against the real dependency where the behavior depends on it, for example real PostgreSQL for transactions and constraints.
+4. **Security review:** after the general review, dispatch `security-reviewer` with `model: "fable"` (the strongest model) and `prompts/security-review-prompt.md`. The round rules in CLAUDE.md apply: controls are frozen in round one, rounds 2 and 3 are scoped to fixes, and the review stops after three.
+5. Stop.
 
 ## Common mistakes
 
-| Mistake | What happens |
+| Mistake | Instead |
 |---|---|
-| Running this skill on a standard-risk slice | wasted process; use the lean tier |
-| Writing production code before RED | denied by the guard |
-| Handing the test author the plan's code | the test mirrors the plan's misunderstanding |
-| Letting the implementer fix a locked assertion | denied; the path is `DISPUTE:` |
-| Giving the critic the implementer's summary | anchored review; give it paths and the diff only |
-| Batching several behaviors into one slice | no minimal step; slice again |
+| Writing the implementation first, then a test that passes | RED first; the commit order shows it |
+| The implementer editing a RED test to make it pass | `DISPUTE`, then one amendment by the test author |
+| Tests that assert mock calls or "no error thrown" | Assert the visible behavior: return value, response, row, event |
+| Re-running the whole loop after a review finding | Fix in an ordinary commit and rerun only the affected checks |
+| Adding tests because the process seems to want more | One test per criterion and per edge the criterion names |
+| Using the lock on standard work | The lock is for high risk only |

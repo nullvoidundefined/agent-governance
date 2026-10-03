@@ -84,14 +84,14 @@ fi
 
 # 4. Glossary.
 if has_section "Domain vocabulary"; then
-  grep -q 'chosen over:' < <(section "Domain vocabulary") || fail '"## Domain vocabulary" has no "chosen over:" entry (R-330)'
+  grep -q 'chosen over:' < <(section "Domain vocabulary") || fail '"## Domain vocabulary" has no "chosen over:" entry'
 else
-  fail 'missing "## Domain vocabulary" section (R-330)'
+  fail 'missing "## Domain vocabulary" section'
 fi
 
 # 5. Acceptance criteria and non-goals.
 if has_section "Acceptance criteria"; then
-  grep -qE '\bB-1\b' < <(section "Acceptance criteria") || fail '"## Acceptance criteria" has no B-1 line (R-412 slices)'
+  grep -qE '\bB-1\b' < <(section "Acceptance criteria") || fail '"## Acceptance criteria" has no B-1 line'
 else
   fail 'missing "## Acceptance criteria" section'
 fi
