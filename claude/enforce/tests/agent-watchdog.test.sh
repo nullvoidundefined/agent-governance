@@ -41,7 +41,7 @@ GOT=$(guard_decision Agent '{"subagent_type":"test-author"}')
 GOT=$(guard_decision Agent '{"subagent_type":"Explore"}')
 [ "$GOT" = "none" ] || { echo "FAIL: an omitted flag on a quick type must pass, got $GOT"; exit 1; }
 # An empty, namespaced or differently cased type is still the long type it names.
-for agent_type in "" "plugin:implementer" "Implementer" "PLUGIN:Test-Author" "acme:audit-security"; do
+for agent_type in "" "plugin:implementer" "Implementer" "PLUGIN:Test-Author" "acme:audit-security" " implementer" "implementer " "plugin: slice-critic"; do
   GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":false}")
   [ "$GOT" = "deny" ] || { echo "FAIL: a foreground '$agent_type' must be denied, got $GOT"; exit 1; }
 done
@@ -124,6 +124,11 @@ ATTACHMENT='{"type":"attachment","attachment":{"type":"hook_success"}}'
 printf '%s\n%s\n%s\n' "$ASSISTANT_TOOL_CALL" "$ASSISTANT_DONE" "$ATTACHMENT" > "$WORK/trailing.jsonl"
 GOT=$(run_watchdog "$WORK/trailing.jsonl" --stall-seconds 5 --limit-seconds 10 --poll-seconds 1)
 [ "$GOT" = "0" ] || { echo "FAIL: a finished turn followed by an attachment must exit 0, got $GOT: $(cat "$WORK/out")"; exit 1; }
+# A garbled line among the final ones is skipped, not a stop: the finished
+# turn after it is still found (R-517 r2 on #184).
+printf '%s\n%s\n%s\n' "$ASSISTANT_TOOL_CALL" '{"type":"assistant","message":' "$ASSISTANT_DONE" > "$WORK/garbled.jsonl"
+GOT=$(run_watchdog "$WORK/garbled.jsonl" --stall-seconds 5 --limit-seconds 10 --poll-seconds 1)
+[ "$GOT" = "0" ] || { echo "FAIL: a garbled line before the finished turn must not hide it, got $GOT: $(cat "$WORK/out")"; exit 1; }
 # A tool result after the last assistant turn means the agent is mid-work.
 TOOL_RESULT='{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}'
 printf '%s\n%s\n' "$ASSISTANT_DONE" "$TOOL_RESULT" > "$WORK/midwork.jsonl"

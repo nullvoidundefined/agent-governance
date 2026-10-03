@@ -67,11 +67,12 @@ transcript_size() {
 # last_turn_entry: prints, as one compact JSON object, the transcript's last
 # conversation entry (assistant or user) among its final lines. Trailing
 # entries of other types, such as an attachment written after the final turn,
-# are skipped (R-517 r1 on PR #184); a line that is not JSON is ignored.
+# are skipped (R-517 r1 on PR #184). Each line is parsed on its own, so a
+# garbled line is skipped without hiding the lines after it (r2).
 last_turn_entry() {
   [ -e "$OUTPUT_FILE" ] || return 0
   tail -n "$TAIL_LINES" "$OUTPUT_FILE" 2>/dev/null \
-    | jq -c 'select(type == "object" and (.type == "assistant" or .type == "user"))' 2>/dev/null \
+    | jq -cR 'fromjson? | select(type == "object" and (.type == "assistant" or .type == "user"))' 2>/dev/null \
     | tail -n 1
 }
 

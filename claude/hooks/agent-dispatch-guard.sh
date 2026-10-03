@@ -12,7 +12,8 @@
 # IAN-605) unless its `run_in_background` is exactly true: test-author,
 # implementer, slice-critic, pr-reviewer, security-reviewer, general-purpose
 # (also the type an omitted or empty subagent_type means), and every audit-*
-# role. The type is read case-insensitively and after any `plugin:` namespace.
+# role. The type is read case-insensitively, without whitespace, and after
+# any `plugin:` namespace.
 # An omitted flag is denied too: the tool's default has differed between
 # versions, and only an explicit true is certainly a background run (R-517 r1
 # on PR #184). Quick lookups (Explore, claude-code-guide, Plan,
@@ -30,7 +31,7 @@ case "$TOOL" in Agent|Task) ;; *) exit 0 ;; esac
 IS_BACKGROUND=$(printf '%s' "$INPUT" | jq -r '.tool_input.run_in_background == true' 2>/dev/null || echo false)
 [ "$IS_BACKGROUND" = "true" ] && exit 0
 RAW_TYPE=$(printf '%s' "$INPUT" | jq -r '.tool_input.subagent_type // ""' 2>/dev/null || echo "")
-AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]')
+AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 [ -n "$AGENT_TYPE" ] || AGENT_TYPE=general-purpose
 
 # is_long_running_type <type>: true for the types R-708 keeps out of the
