@@ -64,6 +64,10 @@ const removableClass = new Map(hookRows.map(({ name, cls }) => [name, cls]));
 for (const name of lean.hooks)
   check(`lean hook ${name} is classed COACHING or ORCHESTRATION in the audit`, /^(COACHING|ORCHESTRATION)$/.test(removableClass.get(name) ?? ""));
 
+const safety = JSON.parse(fs.readFileSync(path.join(repoTop, "claude/enforce/harness-profiles.json"), "utf8")).profiles.safety;
+for (const name of safety.hooks)
+  check(`safety hook ${name} is classed PROCESS, COACHING or ORCHESTRATION in the audit`, /^(PROCESS|COACHING|ORCHESTRATION)$/.test(removableClass.get(name) ?? ""));
+
 process.stdout.write(`${results.join("\n")}\n`);
 EOF
 

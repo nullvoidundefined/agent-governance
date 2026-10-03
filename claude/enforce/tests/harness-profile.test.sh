@@ -60,14 +60,14 @@ for (const [kind, bogus] of [["rules", "R-999"], ["hooks", "no-such-hook"], ["sk
 // delivers the guards, or holds the TDD and review split can never be
 // removed by any profile, whatever category lists it.
 const protectedCases = [
-  ["hooks", "destructive-db-guard"], ["hooks", "harness-sync"], ["hooks", "verification-gate"],
+  ["hooks", "destructive-db-guard"], ["hooks", "harness-sync"], ["hooks", "secret-scan"],
   // R-708 (IAN-605): the subagent dispatch guard and its watchdog instruction.
   ["hooks", "agent-dispatch-guard"], ["hooks", "agent-watchdog-instruction"],
   ["agents", "security-reviewer"], ["agents", "test-author"],
   ["files", "rulebook/reference.md"], ["files", "skills/task-start/scripts/task-tier.sh"],
   ["files", "hooks/harness-sync.sh"], ["files", "hooks/secret-scan.sh"], ["files", "enforce/role-policy.json"],
   ["files", "enforce/tdd.sh"], ["files", "agents/pr-reviewer.md"], ["files", "settings.json"],
-  ["rules", "R-109"], ["rules", "R-003"], ["rules", "R-412"], ["rules", "R-517"],
+  ["rules", "R-102"], ["rules", "R-003"], ["rules", "R-412"], ["rules", "R-101"],
   // Round 2: the STRUCTURAL prompt contracts and the template a check reads,
   // and every hooks/ file that is not a removable hook script.
   ["files", "prompts/security-review-prompt.md"], ["files", "prompts/codex-pr-review-prompt.md"],

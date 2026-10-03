@@ -10,6 +10,7 @@ As models improve, the parts of this harness that compensate for model weakness 
 
 - **ENFORCE**: mechanically blocks or verifies something at a tool-call, git, or CI boundary (it can deny, ask, block a Stop, or fail a check). Kept by default.
 - **STRUCTURAL**: a separation with a real correctness purpose, such as the TDD authorship split across contexts. Kept; the purpose is stated in one line.
+- **PROCESS**: mechanically enforces a development procedure (test-first, review artefacts, turn-end fixture runs, commit and PR format, lint at push) rather than preventing damage. Reclassified from ENFORCE on 2026-10-03 when the owner chose a safety-only install; the `safety` profile hides these, `full` keeps them.
 - **COACHING**: tells the model how to behave or what procedure to follow, with no mechanical check. A removal candidate.
 - **ORCHESTRATION**: exists mainly to keep the model focused or to sequence its work. A removal candidate.
 - **SUPPORT** (hooks only): a sourced helper library with no registration of its own; it inherits the class of the hooks that use it.
@@ -52,7 +53,7 @@ IAN-568 deleted R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R
 | R-106 | ENFORCE | global-repo-push-guard denies or asks | | 62 |
 | R-107 | ENFORCE | destructive-command-guard denies hooksPath writes; the tagged hookspath-drift-check only warns | | 44 |
 | R-108 | ENFORCE | secret-scan denies credential-shaped literals | | 114 |
-| R-109 | ENFORCE | push-semgrep-gate denies; CI security.yml repeats | | 110 |
+| R-109 | PROCESS | push-semgrep-gate denies; CI security.yml repeats | | 110 |
 | R-201 | COACHING | prompt-injection posture, no check | base, rulebook-audits.mdc, session-start command, spec-grounding ports | 35 |
 | R-202 | COACHING | read-scope discipline; the secret half is R-102 | base | 40 |
 | R-203 | ENFORCE | destructive-command-guard and settings-change-guard block; hook-integrity-check only warns | | 51 |
@@ -98,7 +99,7 @@ IAN-568 deleted R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R
 | R-364 | ENFORCE | CI judge only | | 46 |
 | R-365 | ENFORCE | CI judge only | | 39 |
 | R-401 | ENFORCE | content-gate and ESLint deny test suppression | | 75 |
-| R-403 | ENFORCE | fix-commit-requires-test denies | | 51 |
+| R-403 | PROCESS | fix-commit-requires-test denies | | 51 |
 | R-404 | COACHING | reproduce before deploy | base | 15 |
 | R-405 | ENFORCE | content-gate denies weakened protections | | 35 |
 | R-406 | COACHING | negative-input tests; no check | base, ruby/python/go .mdc, codex test-author; fixtures r109-rule-text(-2) | 63 |
@@ -123,7 +124,7 @@ IAN-568 deleted R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R
 | R-514 | ENFORCE | git-workflow-guard asks on merge and push to main | | 243 |
 | R-515 | COACHING | resolve reviewer threads | base, task-cleanup ports | 35 |
 | R-516 | COACHING | enforcement-guard-check only warns; settings-change-guard blocks only deregistration | manifest entries; base, 002-global-memory-index.mdc, add-stack-track ports; fixtures manifest-fixture-closure, settings-change-guard, r109-rule-text | 52 |
-| R-517 | ENFORCE | git-workflow-guard denies a merge without a current review section | | 349 |
+| R-517 | PROCESS | git-workflow-guard denies a merge without a current review section | | 349 |
 | R-518 | ORCHESTRATION | draft-pr-on-first-push automates, pr-monitor-reminder reminds | manifest advisory entries; base; fixtures pr-monitor-reminder, draft-pr-on-first-push | 116 |
 | R-601 | COACHING | handoff offer; task-state-tracker only records | manifest advisory; base, cursor README and session commands, codex session skills, codex PORT-STATUS | 48 |
 | R-602 | COACHING | handoff-check never blocks | manifest advisory; base, session and task skill ports; fixtures handoff-check, handoff-session-file-check, session-metrics, session-start | 69 |
@@ -172,19 +173,19 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | audit-signal-check | PreToolUse Bash | COACHING | additionalContext only | R-801, R-904; 2 manifest rows; both hooks.json and PORT-STATUS; fixture audit-signal-check | about 130 tokens on some pushes |
 | build-cheatsheets | PreToolUse Bash | ORCHESTRATION | regenerates cheatsheets, no output | both hooks.json and PORT-STATUS; 2 fixtures | 0 |
 | codex-billing-guard | PreToolUse Bash | ENFORCE | asks before metered Codex calls | | |
-| commit-message-guard | PreToolUse Bash | ENFORCE | denies on R-505 (the R-506 ask and R-214 refusal were removed in IAN-568) | | |
+| commit-message-guard | PreToolUse Bash | PROCESS | denies on R-505 (the R-506 ask and R-214 refusal were removed in IAN-568) | | |
 | conflict-markers | PreToolUse Bash | ENFORCE | denies | | |
-| constant-change-guard | PreToolUse Bash | ENFORCE | asks | | |
+| constant-change-guard | PreToolUse Bash | PROCESS | asks | | |
 | agent-dispatch-guard | PreToolUse Agent/Task | ENFORCE | denies a foreground long-running subagent (R-708, IAN-605) | | |
 | agent-watchdog-instruction | PostToolUse Agent/Task | ORCHESTRATION | additionalContext naming the watchdog command after a background launch | R-708; manifest; ports; fixture | about 90 per background launch |
-| content-gate | PreToolUse Write/Edit | ENFORCE | denies | | |
-| dependency-add-guard | PreToolUse Write/Edit | ENFORCE | asks | | |
+| content-gate | PreToolUse Write/Edit | PROCESS | denies | | |
+| dependency-add-guard | PreToolUse Write/Edit | PROCESS | asks | | |
 | destructive-command-guard | PreToolUse Bash | ENFORCE | denies | | |
 | destructive-db-guard | PreToolUse Bash, mcp | ENFORCE | deny/ask | | |
 | dockerfile-reminder | PostToolUse Write/Edit | COACHING | additionalContext only | R-351; manifest; ports; 2 fixtures | about 150 when triggered |
 | draft-pr-on-first-push | PostToolUse Bash | ORCHESTRATION | runs `gh pr create --draft`, then reminds | R-517, R-518, R-605; manifest; ports; fixture | about 225 per new branch |
 | enforcement-guard-check | SessionStart | COACHING | warns, never blocks | R-516; manifest; ports; 5 fixtures | 0 when healthy |
-| fix-commit-requires-test | PreToolUse Bash | ENFORCE | denies | | |
+| fix-commit-requires-test | PreToolUse Bash | PROCESS | denies | | |
 | flat-directory-reminder | PostToolUse Write | COACHING | additionalContext only | R-309, R-310; manifest; ports; 2 fixtures | about 110 when triggered |
 | git-workflow-guard | PreToolUse Bash | ENFORCE | deny/ask for R-512, R-514, R-517, R-109 | | |
 | global-repo-push-guard | PreToolUse Bash | ENFORCE | denies | | |
@@ -192,21 +193,21 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | harness-sync | SessionStart | ORCHESTRATION | runs sync.sh; the delivery path of every other hook (R-003) | R-003; manifest; ports; 4 fixtures | 0 when in sync |
 | hook-integrity-check | SessionStart | COACHING | hash mismatch warns, never blocks | R-106, R-203; manifest; ports; 5 fixtures | 0 when clean |
 | hookspath-drift-check | SessionStart | COACHING | warns | R-107; manifest; ports; fixture | 0 when clean |
-| linear-todo-label-gate | PreToolUse mcp | ENFORCE | denies | | |
+| linear-todo-label-gate | PreToolUse mcp | PROCESS | denies | | |
 | mcp-action-guard | PreToolUse mcp | ENFORCE | asks | | |
-| migration-defaults-guard | PreToolUse Write/Edit | ENFORCE | denies | | |
+| migration-defaults-guard | PreToolUse Write/Edit | PROCESS | denies | | |
 | model-switch-guard | PreModelSwitch | COACHING | systemMessage only | R-903; manifest; PORT-STATUS only (not ported) | about 80 on an upward switch |
 | new-file-header-reminder | PostToolUse Write | COACHING | additionalContext only | R-320; ports; 3 fixtures | about 130 per new file |
-| no-em-dash | PreToolUse Bash, Write/Edit | ENFORCE | denies | | |
+| no-em-dash | PreToolUse Bash, Write/Edit | PROCESS | denies | | |
 | observability-reminder | PostToolUse Write/Edit | COACHING | additionalContext only | R-341, R-345, R-346; 3 manifest rows; ports; 3 fixtures | 130 to 250 when triggered |
 | parallel-session-check | SessionStart | COACHING | warns | R-501; manifest; ports; fixture | about 100 with a sibling session |
 | post-compact-rules | SessionStart compact | COACHING | re-injects a hand-copied rule subset | 15 rule ids; codex hooks.json, cursor PORT-STATUS; 2 fixtures | about 800 per compaction |
 | pr-monitor-reminder | PostToolUse Bash | COACHING | additionalContext only | R-518; manifest; ports; fixture | about 200 per PR opened by hand |
-| pr-ticket-ref-gate | PreToolUse Bash | ENFORCE | denies | | |
-| protected-path-guard | PreToolUse Bash, Write/Edit | STRUCTURAL and ENFORCE | denies; role and gate-input boundaries | | |
-| push-eslint-gate | PreToolUse Bash | ENFORCE | denies | | |
-| push-ruff-gate | PreToolUse Bash | ENFORCE | denies | | |
-| push-semgrep-gate | PreToolUse Bash | ENFORCE | denies | | |
+| pr-ticket-ref-gate | PreToolUse Bash | PROCESS | denies | | |
+| protected-path-guard | PreToolUse Bash, Write/Edit | PROCESS | denies; role and gate-input boundaries | | |
+| push-eslint-gate | PreToolUse Bash | PROCESS | denies | | |
+| push-ruff-gate | PreToolUse Bash | PROCESS | denies | | |
+| push-semgrep-gate | PreToolUse Bash | PROCESS | denies | | |
 | redact-output | PostToolUse Bash | COACHING | detects a leak after the fact; cannot rewrite output | R-102; manifest; ports; 2 fixtures | about 200 on a leak |
 | redaction-guard-check | SessionStart | COACHING | warns when two named hooks are unregistered | R-102; manifest; ports; fixture | 0 when healthy |
 | secret-scan | PreToolUse Bash, Write/Edit | ENFORCE | denies | | |
@@ -215,10 +216,10 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | settings-change-guard | ConfigChange | ENFORCE | blocks a settings change that drops a required hook | | |
 | single-file-folder-reminder | PreToolUse Bash | COACHING | writes to stderr and exits 0, so the model likely never sees it | R-305, R-309; manifest; ports; 2 fixtures | about 40 on some pushes |
 | spec-glossary-check | PostToolUse Write | COACHING | additionalContext only | R-330, R-412, R-514, R-517; manifest; ports; fixture | about 150 on an incomplete spec |
-| structure-gate | PreToolUse Write/Edit | ENFORCE | denies | | |
+| structure-gate | PreToolUse Write/Edit | PROCESS | denies | | |
 | task-commit-reminder | PostToolUse TaskUpdate | COACHING | additionalContext only | R-504; manifest; PORT-STATUS only; 2 fixtures | about 100 per completed task with a dirty tree |
 | task-state-tracker | PostToolUse TaskCreate/TaskUpdate | ORCHESTRATION | appends task events; no output | R-601; manifest; 4 fixtures | 0 |
-| verification-gate | Stop, SubagentStop | ENFORCE | blocks Stop on a red suite | | |
+| verification-gate | Stop, SubagentStop | PROCESS | blocks Stop on a red suite | | |
 
 ENFORCE outside `settings.json`: `pre-push.sample`, installed as the git pre-push hook by `install-git-hooks.sh`, aborts a push when port verification fails (its R-215 SHA-reachability step was removed in IAN-568); it enforces only where that installer has run.
 

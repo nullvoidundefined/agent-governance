@@ -1439,17 +1439,26 @@ if [ "$MERGE_TOTAL" -gt 0 ]; then
     [ "$BUNDLE_VERDICT" = "ok" ] ||
       deny "This rebase-merges the PR, which R-512 allows only for a bundle PR, and $BUNDLE_VERDICT A bundle carries the \`bundle\` label and one commit per ticket, each with its own \`Refs: <KEY>\` trailer line, so every ticket keeps exactly one commit on main. Otherwise re-run with --squash."
   fi
-  CODEX_REVIEW_VERDICT=$(read_codex_review_verdict)
-  [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
-    deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line, a \`range\` line covering the commit this PR would merge, and the findings with their dispositions; then merge again."
-  SECURITY_REVIEW_VERDICT=$(read_security_review_verdict)
-  case "$SECURITY_REVIEW_VERDICT" in
-    ok) ;;
-    "waived: "*)
-      ask "R-109: the Security review marks ${SECURITY_REVIEW_VERDICT#waived: } as waived by owner, and a waived security finding merges only on the owner's confirmation. Confirm each waived row and this merge (R-514) now, or say so and the merge waits." ;;
-    *)
-      deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, a \`range\` line covering the commit this PR would merge, an \`artefact\` line naming the reviewer's saved output (recorded at review time with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head), and the findings table with every row \`fixed <sha>\` in range or \`waived by owner <date>\`; then merge again." ;;
-  esac
+  # The safety profile (owner decision 2026-10-03) drops the R-517 and R-109
+  # PR-body review checks; the R-512 strategy and the R-514 ask still apply.
+  # The record sits beside hooks/ in the installed tree, so a run from the
+  # repository checkout, which has none, keeps every check.
+  PROFILE_RECORD_FILE="$(dirname "${BASH_SOURCE[0]}")/../.harness-profile"
+  INSTALLED_PROFILE=""
+  [ -f "$PROFILE_RECORD_FILE" ] && INSTALLED_PROFILE=$(head -n 1 "$PROFILE_RECORD_FILE" 2>/dev/null)
+  if [ "$INSTALLED_PROFILE" != "safety" ]; then
+    CODEX_REVIEW_VERDICT=$(read_codex_review_verdict)
+    [ "$CODEX_REVIEW_VERDICT" = "ok" ] ||
+      deny "R-517: no PR merges before the blocking Codex review, and $CODEX_REVIEW_VERDICT Run the review with ~/.claude/prompts/codex-pr-review-prompt.md (or its recorded fallback when Codex is unavailable), fix or answer every finding, and add a \`## Codex review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line, a \`range\` line covering the commit this PR would merge, and the findings with their dispositions; then merge again."
+    SECURITY_REVIEW_VERDICT=$(read_security_review_verdict)
+    case "$SECURITY_REVIEW_VERDICT" in
+      ok) ;;
+      "waived: "*)
+        ask "R-109: the Security review marks ${SECURITY_REVIEW_VERDICT#waived: } as waived by owner, and a waived security finding merges only on the owner's confirmation. Confirm each waived row and this merge (R-514) now, or say so and the merge waits." ;;
+      *)
+        deny "R-109: a PR that touches security code merges only after a Security review on the strongest model, and $SECURITY_REVIEW_VERDICT. Run the security-reviewer agent on the PR's range, fix or answer every finding, and add a \`## Security review\` section to the PR body carrying a \`reviewer\` line, a \`model\` line naming securityReviewModel, a \`range\` line covering the commit this PR would merge, an \`artefact\` line naming the reviewer's saved output (recorded at review time with \`enforce/security-review-record.sh <artefact path>\` from a checkout of the head), and the findings table with every row \`fixed <sha>\` in range or \`waived by owner <date>\`; then merge again." ;;
+    esac
+  fi
   ask "R-514: merging a PR needs explicit user authorization in the current turn, and 'merge when ready' from an earlier turn is not it. Confirm this specific merge now, or say so and it waits."
 fi
 
