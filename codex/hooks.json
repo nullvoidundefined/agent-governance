@@ -3,6 +3,16 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh agent-dispatch-guard",
+            "timeout": 60
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -35,6 +45,16 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh agent-watchdog-instruction",
+            "timeout": 60
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [

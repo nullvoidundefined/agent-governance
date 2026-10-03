@@ -44,6 +44,15 @@ R-706: Cap each dispatched subagent task at 50 tool calls; stop and report when 
   Scope: dispatched subagent tasks, not the main session.
   Enforcement: manual
 
+R-708: Dispatch long-running subagents in the background and watch each one: start `enforce/agent-watchdog.sh <output_file>` as a background Bash command after the launch, and stop the agent with TaskStop when the watchdog reports a stall or the time limit, unless its transcript tail shows it plainly progressing.
+  Class: M (owner decision 2026-10-03, IAN-605).
+  Scope: the long-running agent types: test-author, implementer, slice-critic, pr-reviewer, security-reviewer, general-purpose (and an Agent call that names no type), and every audit-* role. Quick lookups (Explore, claude-code-guide, Plan, statusline-setup) may still run in the foreground.
+  Spec:
+  - Why: a foreground subagent blocks the main session, and Claude Code has no subagent timeout; no hook can stop a subagent, only the main session can, with TaskStop on a background agent. On voyager-2 PR 5 one foreground test author sat silent for six and a half hours.
+  - Limits (owner decision 2026-10-03): the watchdog exits 3 when the transcript has not grown for 10 minutes and 4 at 45 minutes after launch; it exits 0 when the agent's last turn ended.
+  - On a wake: read only the transcript's last lines, never the whole file; stop the agent unless it is plainly progressing, and say which.
+  Enforcement: hook:agent-dispatch-guard (PreToolUse on Agent and Task: denies `run_in_background: false` for the scoped types); hook:agent-watchdog-instruction (PostToolUse on Agent and Task: names the exact watchdog command after a background launch); starting the watchdog and the TaskStop decision stay with the model, since a hook can do neither.
+
 R-707: Dispatch the slice roles as separate fresh contexts for every high-risk slice (R-110), at any task tier, and for no other slice: the test author (the `test-author` subagent on Opus, or Codex through `codex exec` when the owner opts in) receives the spec path and the slice id, never a plan's code blocks; `implementer` (Sonnet) receives the spec path, the test paths, and the lock; `slice-critic` (Opus) receives the spec path, the diff range, and the test paths, never the implementer's transcript or summary.
   Class: D, M on high-risk slices (owner decision 2026-10-02, IAN-568).
   Spec:
