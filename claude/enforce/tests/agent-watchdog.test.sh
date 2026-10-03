@@ -65,7 +65,12 @@ GOT=$(printf 'not json' | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecisi
 # still a dispatch (R-109 r2 #2 on #184).
 for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}' '{"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"agent","tool_input":{"subagent_type":"implementer"}}' \
   '{"tool_name":" Agent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\t","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":5,"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":{"x":1},"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":["Agent"],"tool_input":{"subagent_type":"implementer"}}'; do
+  '{"tool_name":5,"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":{"x":1},"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":["Agent"],"tool_input":{"subagent_type":"implementer"}}' \
+  '{"tool_name":"\u00a0Agent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\u200b","tool_input":{"subagent_type":"implementer"}}' \
+  '{"tool_name":"Agent\u3000","tool_input":{"subagent_type":"implementer"}}'; do
+  # Run under the C locale too, where Unicode spaces are not [:space:] (r4 #1).
+  GOT=$(printf '%s' "$payload" | LC_ALL=C "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
+  [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied under LC_ALL=C, got $GOT"; exit 1; }
   GOT=$(printf '%s' "$payload" | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
   [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied, got $GOT"; exit 1; }
 done

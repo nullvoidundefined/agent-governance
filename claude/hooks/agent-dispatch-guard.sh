@@ -28,9 +28,12 @@ INPUT=$(cat 2>/dev/null || true)
 # (R-109 r1 #5 on PR #184). A parsed payload naming another tool is ignored.
 # A missing, null or differently cased name is judged too; only a payload that
 # names another tool outright is ignored (R-109 r2 #2 on PR #184).
-# A non-string name reads as empty, and whitespace is dropped (r3 #1).
+# A non-string name reads as empty, and the name is reduced to its ASCII
+# letters, so padding of any kind (ASCII or Unicode spaces, zero-width
+# characters) cannot make a dispatch look like another tool, whatever the
+# locale (R-109 r3 #1 and r4 #1 on PR #184).
 if TOOL=$(printf '%s' "$INPUT" | jq -er 'if (.tool_name | type) == "string" then .tool_name else "" end' 2>/dev/null); then
-  case "$(printf '%s' "$TOOL" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in agent|task|"") ;; *) exit 0 ;; esac
+  case "$(printf '%s' "$TOOL" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd 'a-z')" in agent|task|"") ;; *) exit 0 ;; esac
 fi
 
 # A jq failure reads as "not background" and "general-purpose", so a payload
