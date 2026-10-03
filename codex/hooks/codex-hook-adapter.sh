@@ -92,7 +92,7 @@ PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/setti
 # in or out of that group fails a test instead of silently narrowing the port.
 # Overridable so the fixtures can observe what is dispatched; setting it empty
 # turns the synthetic dispatch off.
-read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard}"
+read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash protected-path-guard dependency-add-guard}"
 
 # The permission helper is resolved deterministically and its absence is
 # recorded rather than swallowed. PERMISSION_RULES_ERROR non-empty means the

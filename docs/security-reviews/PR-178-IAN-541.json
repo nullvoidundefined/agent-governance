@@ -1,9 +1,0 @@
-{
-  "pr": "nullvoidundefined/agent-governance#178",
-  "ticket": "IAN-541",
-  "reviewer": "security-reviewer subagent",
-  "model": "claude-fable-5-1",
-  "reviewedCode": "b6971812e9e50cc5df9e5e93a5774b52a04ebf8e",
-  "note": "R-109 review artefact read by hooks/git-workflow-guard.sh at the PR head. The detector flagged the range by path name only: the bare path regex `session` in enforce/security-surface.json matches docs/session-handoff/session-handoff.md (false positive filed as IAN-541). The review found no security control in range and no secret, local path, or client-identifying content. The review of the head that adds this text is the PR body's Security review section.",
-  "findings": []
-}

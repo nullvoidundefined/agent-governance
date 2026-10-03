@@ -1,5 +1,5 @@
 ---
-description: Logging and observability for every backend stack - request IDs, structured logging, analytics, error handling, health endpoints, outbound-call instrumentation (R-341 to R-346). Auto-attached to backend files in Python, Express, Go, and Ruby.
+description: Logging and observability for every backend stack - request IDs, structured logging, analytics, error handling, health endpoints, outbound-call instrumentation. Auto-attached to backend files in Python, Express, Go, and Ruby.
 globs: **/*.py,**/src/handlers/**,**/src/repositories/**,**/src/middleware/**,**/src/routes/**,**/src/workers/**,**/src/dependencyInjection/**,**/src/schemas/**,**/src/prompts/**,**/src/services/**,**/src/clients/**,**/*.go,**/*.rb
 alwaysApply: false
 ---

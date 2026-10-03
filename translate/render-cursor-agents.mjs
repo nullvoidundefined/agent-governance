@@ -8,9 +8,7 @@
 // field at all (Cursor carries no tools-allowlist frontmatter key).
 // Commands carry no frontmatter at all: the source's description becomes
 // the opening paragraph, followed by the delegate boilerplate naming this
-// agent's own subagent. commands/session-start.md and
-// commands/session-handoff.md have no claude/agents/ source and so are
-// never touched here; they stay hand-authored (port map).
+// agent's own subagent.
 import { renderGeneratedHeaderFor, matchesAgentSkillList } from "./exporter-core.mjs";
 
 const BUILDER_NAME = "translate/cursor.mjs";
