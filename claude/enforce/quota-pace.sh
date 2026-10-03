@@ -32,6 +32,13 @@
 set -uo pipefail
 
 if [ -n "${CLAUDE_QUOTA_FILE:-}" ]; then
+  case "$CLAUDE_QUOTA_FILE" in
+    /*) ;;
+    *)
+      echo "quota-pace: CLAUDE_QUOTA_FILE '$CLAUDE_QUOTA_FILE' is not an absolute path" >&2
+      exit 1
+      ;;
+  esac
   QUOTA_FILE="$CLAUDE_QUOTA_FILE"
 elif [ -n "${HOME:-}" ]; then
   case "$HOME" in
@@ -115,7 +122,7 @@ writeQuotaFile() {
   }
   ownsQuotaLock || {
     rm -f "$tmp"
-    fail "the writer lock was broken while this record waited; snapshot not written, run it again"
+    fail "the writer lock no longer names this process; snapshot not written, run it again"
   }
   mv "$tmp" "$QUOTA_FILE" || {
     rm -f "$tmp"
@@ -123,57 +130,93 @@ writeQuotaFile() {
   }
 }
 
-# lockQuotaFile: takes the writer lock, a directory next to the quota file
-# (mkdir is atomic everywhere, flock is not on macOS), so two recorders,
-# such as the status line and the owner, never lose each other's snapshot.
-# Waits up to about five seconds; every pass counts toward that bound, so no
-# lock state can spin forever. A lock older than a minute is from a dead
-# writer (a live one holds it for milliseconds). Breaking it takes a second
-# lock, `.lock.break`, and re-checks the age inside it: a waiter that saw
-# the old lock stale but lost the break to another waiter finds, once it
-# holds the break lock, either no lock or a fresh one, and removes neither
-# (R-109 r2). A break lock older than a minute is from a dead breaker and is
-# cleared by age the same way, whatever kind of file it is. The holder marks
-# the lock with an owner file and checks it is still there just before it
-# replaces the quota file, so a holder whose lock was broken writes nothing.
+# lockQuotaFile: takes the writer lock, so two recorders, such as the status
+# line and the owner, never lose each other's snapshot. The lock is a
+# symlink whose target is the owner's pid: `ln -s` creates it atomically
+# (it fails if anything exists at the path), so the lock and its owner token
+# are one step and can never disagree (R-109 r4).
+#
+# A lock is broken only when its owner process is dead. A live owner keeps
+# it however long it has been stalled (a sleeping laptop, a stopped process),
+# and the waiter fails loudly after about five seconds instead of risking an
+# overwrite; round 1 to 4 reviews showed every age-based rule loses writes to
+# a live but slow holder. Breaking takes a second pid lock, `.lock.break`,
+# and re-reads the lock inside it, removing it only while it still names the
+# same dead pid. A break lock whose owner is dead is cleared the same way.
+# Anything at either path that is not a pid symlink is never deleted: the
+# writer fails and names it. A recycled pid makes a dead lock read as live,
+# which fails closed (the waiter stops and names the pid).
 lockQuotaFile() {
-  local lock="$QUOTA_FILE.lock" brk="$QUOTA_FILE.lock.break" tries=0
+  local lock="$QUOTA_FILE.lock" brk="$QUOTA_FILE.lock.break" tries=0 owner
   mkdir -p "$(dirname "$QUOTA_FILE")" || fail "cannot create $(dirname "$QUOTA_FILE")"
-  until mkdir "$lock" 2>/dev/null; do
+  until ln -s "$$" "$lock" 2>/dev/null; do
     tries=$((tries + 1))
-    [ "$tries" -le 50 ] || fail "the quota file is locked by another writer ($lock)$( [ -e "$brk" ] && printf ' and a break lock is held (%s)' "$brk")"
-    if isStaleLock "$lock"; then
-      if mkdir "$brk" 2>/dev/null; then
-        isStaleLock "$lock" && rm -rf "$lock"
-        rmdir "$brk"
-        continue
+    owner=$(lockOwner "$lock") ||
+      fail "$lock exists and is not a quota-pace lock; remove it by hand if nothing is writing $QUOTA_FILE"
+    if [ "$tries" -gt 50 ]; then
+      if [ -L "$brk" ] || [ -e "$brk" ]; then
+        fail "the quota file is locked ($lock, pid $owner) and a break lock is held ($brk)"
       fi
-      isStaleLock "$brk" && rm -rf "$brk"
+      fail "the quota file is locked by a running process (pid $owner, $lock)"
+    fi
+    if [ -n "$owner" ] && isDeadPid "$owner"; then
+      breakDeadLock "$lock" "$owner" "$brk" && continue
     fi
     sleep 0.1
   done
-  : >"$lock/owner.$$" || fail "cannot mark the writer lock $lock"
   trap 'releaseQuotaLock' EXIT
 }
 
-# ownsQuotaLock: succeeds while this process still holds the writer lock. A
-# holder stalled past the stale age (a sleeping laptop, a stopped process)
-# can have its lock broken; it must then write nothing (R-109 r3).
+# lockOwner <path>: prints the pid a lock symlink names (empty when the lock
+# vanished meanwhile) and fails when the path holds anything other than a
+# pid symlink.
+lockOwner() {
+  local target
+  if [ -L "$1" ]; then
+    target=$(readlink "$1" 2>/dev/null) || return 0
+    [[ "$target" =~ ^[1-9][0-9]*$ ]] || return 1
+    printf '%s\n' "$target"
+  elif [ -e "$1" ]; then
+    return 1
+  fi
+  return 0
+}
+
+# isDeadPid <pid>: succeeds when no process with that pid exists. A process
+# owned by another user (kill -0 refused) counts as alive, failing closed.
+isDeadPid() {
+  ! kill -0 "$1" 2>/dev/null && ! ps -p "$1" >/dev/null 2>&1
+}
+
+# breakDeadLock <lock> <dead pid> <break lock>: removes the lock while
+# holding the break lock, only if it still names the same dead pid. Clears a
+# break lock whose own owner is dead. Succeeds when the lock was removed.
+breakDeadLock() {
+  local lock="$1" dead="$2" brk="$3" brkOwner removed=1
+  if ln -s "$$" "$brk" 2>/dev/null; then
+    [ "$(lockOwner "$lock" 2>/dev/null)" = "$dead" ] && rm -f "$lock" && removed=0
+    rm -f "$brk"
+    return $removed
+  fi
+  brkOwner=$(lockOwner "$brk") ||
+    fail "$brk exists and is not a quota-pace break lock; remove it by hand if nothing is writing $QUOTA_FILE"
+  if [ -n "$brkOwner" ] && isDeadPid "$brkOwner" && [ "$(lockOwner "$brk" 2>/dev/null)" = "$brkOwner" ]; then
+    rm -f "$brk"
+  fi
+  return 1
+}
+
+# ownsQuotaLock: succeeds while the writer lock names this process. Since a
+# live owner's lock is never broken, this holds from acquisition to release;
+# it is checked before the write as a last guard all the same.
 ownsQuotaLock() {
-  [ -e "$QUOTA_FILE.lock/owner.$$" ]
+  [ "$(readlink "$QUOTA_FILE.lock" 2>/dev/null)" = "$$" ]
 }
 
-# releaseQuotaLock: removes the writer lock on exit, but only while this
-# process still owns it, so a holder whose lock was broken never removes the
-# lock the breaker now holds.
+# releaseQuotaLock: removes the writer lock on exit while it names this
+# process.
 releaseQuotaLock() {
-  ownsQuotaLock && rm -rf "$QUOTA_FILE.lock"
-}
-
-# isStaleLock <path>: succeeds when the path exists and was last modified
-# more than a minute ago.
-isStaleLock() {
-  [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]
+  ownsQuotaLock && rm -f "$QUOTA_FILE.lock"
 }
 
 # recordSnapshot <args...>: appends one snapshot to a bucket, creating the
@@ -260,6 +303,7 @@ reportJson() {
         | ((.provider // $name) | checkName("provider")) as $_
         | if ((.windowDays // 7) | type) == "number" and (.windowDays // 7) > 0 and (.windowDays // 7) <= 366 then .
           else error("bucket \($name): windowDays must be a number of days from 1 to 366") end
+        | ([(.snapshots // [])[] | (.source // "owner") | checkName("snapshot source")] | length) as $_
         | if all((.snapshots // [])[]; (.usedPct | type) == "number" and .usedPct >= 0 and .usedPct <= 100) then .
           else error("bucket \($name): every usedPct must be a number from 0 to 100") end;
       def bucketReport($name):

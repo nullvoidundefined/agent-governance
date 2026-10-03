@@ -143,7 +143,7 @@ for i in 2 3 4 5 6 7 8 9; do
 done
 for p in $pids; do wait "$p" || failCase "a concurrent record failed"; done
 [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "9" ] || failCase "concurrent records must all land (want 9 snapshots)"
-[ ! -d "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the writer lock must be released"
+[ ! -e "$CLAUDE_QUOTA_FILE.lock" ] && [ ! -L "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the writer lock must be released"
 
 # --- 9. Insecure values: the option parser and the lock (R-109 r1). ---
 # expectFail <description> <command...>: the command must exit nonzero within
@@ -164,58 +164,87 @@ expectFail "an unknown option" bash "$SCRIPT" record codex 13 --bogus x
 expectFail "a provider with control characters" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00 --provider "$(printf 'co\tdex\nprovider fake')"
 expectFail "an offset past 14 hours" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+99:99
 [ ! -f "$CLAUDE_QUOTA_FILE" ] || failCase "a refused record must not create the file"
-# A fresh foreign lock: record waits out its bound and fails, never hangs.
-mkdir "$CLAUDE_QUOTA_FILE.lock"
-expectFail "a fresh foreign lock" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00
-[ -d "$CLAUDE_QUOTA_FILE.lock" ] || failCase "a refused writer must not remove another writer's lock"
-# A stale lock, empty or not, is broken and the record lands.
-touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
-bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00 || failCase "a stale empty lock must be broken"
-mkdir "$CLAUDE_QUOTA_FILE.lock" && echo 123 >"$CLAUDE_QUOTA_FILE.lock/pid"
-touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
-timeout 10 bash "$SCRIPT" record codex 14 || failCase "a stale non-empty lock must be broken, not spun on"
-[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "both records past stale locks must land"
-[ ! -e "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the lock must be released after a stale break"
-# Many recorders against one stale lock (R-109 r2): the break must hand the
-# lock to exactly one writer at a time, or a snapshot is lost while every
-# writer exits 0. The race is probabilistic, so it runs three times.
-for round in 1 2 3; do
-  rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE".lock*
+# The writer lock is a symlink naming its owner's pid (R-109 r4). It is
+# broken only when that process is dead; a live owner, however long it has
+# been stalled, keeps it, and a waiter fails loudly at its bound.
+# deadPid: prints the pid of a process that has exited.
+deadPid() {
+  sh -c 'exit 0' &
+  local p=$!
+  wait "$p"
+  echo "$p"
+}
+LOCK="$CLAUDE_QUOTA_FILE.lock"
+BRK="$CLAUDE_QUOTA_FILE.lock.break"
+resetLock() {
+  rm -rf "$CLAUDE_QUOTA_FILE" "$LOCK" "$BRK" "$WORK/shim"
   bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
-  mkdir "$CLAUDE_QUOTA_FILE.lock" && touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
+}
+# A live foreign owner: record waits out its bound, fails, and leaves the lock.
+resetLock
+sleep 60 &
+LIVE=$!
+ln -s "$LIVE" "$LOCK"
+msg=$({ timeout 20 bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
+case "$msg" in *EXIT0*) failCase "a live owner's lock must stop the writer" ;; esac
+case "$msg" in *"$LIVE"*) ;; *) failCase "the failure must name the live owner pid (got: $msg)" ;; esac
+[ "$(readlink "$LOCK")" = "$LIVE" ] || failCase "a refused writer must not remove a live owner's lock"
+kill "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null || true
+# The same lock, once its owner has died, is broken and the record lands.
+timeout 20 bash "$SCRIPT" record codex 2 || failCase "a dead owner's lock must be broken"
+[ ! -e "$LOCK" ] && [ ! -L "$LOCK" ] || failCase "the lock must be released after a dead-owner break"
+[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "the record past a dead owner must land"
+# Anything at the lock path that is not a pid symlink is never deleted.
+for kind in dir file badlink; do
+  resetLock
+  case "$kind" in
+    dir) mkdir "$LOCK" && echo keep >"$LOCK/data" ;;
+    file) echo keep >"$LOCK" ;;
+    badlink) ln -s "/etc/passwd" "$LOCK" ;;
+  esac
+  touch -h -d '2 hours ago' "$LOCK"
+  expectFail "a foreign $kind at the lock path" bash "$SCRIPT" record codex 2
+  case "$kind" in
+    dir) [ "$(cat "$LOCK/data")" = keep ] || failCase "a foreign directory at the lock path must be left intact" ;;
+    file) [ "$(cat "$LOCK")" = keep ] || failCase "a foreign file at the lock path must be left intact" ;;
+    badlink) [ "$(readlink "$LOCK")" = /etc/passwd ] || failCase "a foreign symlink at the lock path must be left intact" ;;
+  esac
+done
+rm -rf "$LOCK"
+# Many recorders against one dead owner's lock: exactly one breaks it at a
+# time, so every snapshot lands. Probabilistic, so three rounds.
+for round in 1 2 3; do
+  resetLock
+  ln -s "$(deadPid)" "$LOCK"
   pids=""
   for i in 2 3 4 5 6 7 8 9 10 11 12 13; do
     timeout 30 bash "$SCRIPT" record codex "$i" --at $((NOW_OWNER - (20 - i) * HOUR)) &
     pids="$pids $!"
   done
-  for p in $pids; do wait "$p" || failCase "a recorder racing a stale lock failed (round $round)"; done
+  for p in $pids; do wait "$p" || failCase "a recorder racing a dead owner's lock failed (round $round)"; done
   [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "13" ] ||
-    failCase "recorders racing one stale lock lost a snapshot (round $round)"
-  [ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "a lock or break marker was left behind (round $round)"
+    failCase "recorders racing one dead owner's lock lost a snapshot (round $round)"
+  [ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "a lock or break lock was left behind (round $round)"
 done
-# A break lock left by a dead breaker (R-109 r3): stale, it is cleared and
-# the record lands; a fresh one, or one planted as a regular file, makes the
-# writer fail within its bound and name the break lock.
-rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE".lock*
-bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
-mkdir "$CLAUDE_QUOTA_FILE.lock" "$CLAUDE_QUOTA_FILE.lock.break"
-touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock" "$CLAUDE_QUOTA_FILE.lock.break"
-timeout 20 bash "$SCRIPT" record codex 2 || failCase "a stale lock behind a stale break lock must be cleared"
+# A break lock left by a dead breaker is cleared; one held by a live process
+# stops the writer and is named in the failure.
+resetLock
+ln -s "$(deadPid)" "$LOCK"
+ln -s "$(deadPid)" "$BRK"
+timeout 20 bash "$SCRIPT" record codex 2 || failCase "a dead owner behind a dead breaker must be cleared"
 [ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "a cleared break lock must leave no marker"
-mkdir "$CLAUDE_QUOTA_FILE.lock" && touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
-: >"$CLAUDE_QUOTA_FILE.lock.break"
+sleep 60 &
+LIVE=$!
+ln -s "$(deadPid)" "$LOCK"
+ln -s "$LIVE" "$BRK"
 msg=$({ timeout 20 bash "$SCRIPT" record codex 3 2>&1 && echo EXIT0; } || true)
-case "$msg" in *EXIT0*) failCase "a fresh break lock file must stop the writer" ;; esac
+case "$msg" in *EXIT0*) failCase "a live breaker must stop the writer" ;; esac
 case "$msg" in *lock.break*) ;; *) failCase "the failure must name the break lock (got: $msg)" ;; esac
-touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock.break"
-timeout 20 bash "$SCRIPT" record codex 3 || failCase "a stale break lock planted as a file must be cleared"
-[ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "3" ] || failCase "records past dead break locks must land"
-
-# A holder stalled past the stale age loses its lock to a breaker (R-109 r3):
-# the holder must notice and fail rather than overwrite the breaker's
-# snapshot. A jq shim stalls only the locked update and backdates the lock.
-rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE".lock* "$WORK/shim"
-bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
+kill "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null || true
+rm -f "$LOCK" "$BRK"
+# A live holder stalled inside the locked region (the case rounds 3 and 4
+# found) keeps its lock: the waiter fails, the holder's write lands.
+resetLock
 mkdir -p "$WORK/shim"
 REAL_JQ=$(command -v jq)
 cat >"$WORK/shim/jq" <<SHIM
@@ -224,9 +253,8 @@ case "\$*" in
   *newReset*)
     if [ -f "$WORK/stall-armed" ]; then
       rm -f "$WORK/stall-armed"
-      touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
       : >"$WORK/stalled"
-      for _ in \$(seq 1 200); do [ -f "$WORK/release" ] && break; sleep 0.05; done
+      for _ in \$(seq 1 400); do [ -f "$WORK/release" ] && break; sleep 0.05; done
     fi ;;
 esac
 exec "$REAL_JQ" "\$@"
@@ -238,14 +266,12 @@ PATH="$WORK/shim:$PATH" bash "$SCRIPT" record codex 2 --at $((NOW_OWNER - 10 * H
 holder=$!
 for _ in $(seq 1 200); do [ -f "$WORK/stalled" ] && break; sleep 0.05; done
 [ -f "$WORK/stalled" ] || failCase "setup: the holder never stalled"
-timeout 20 bash "$SCRIPT" record codex 4 --at $((NOW_OWNER - 5 * HOUR)) || failCase "the breaker must take a lock stalled past the stale age"
+touch -h -d '2 hours ago' "$LOCK"
+expectFail "a waiter behind a live stalled holder" bash "$SCRIPT" record codex 4 --at $((NOW_OWNER - 5 * HOUR))
 : >"$WORK/release"
-holderRc=0
-wait "$holder" || holderRc=$?
-[ "$holderRc" -ne 0 ] || failCase "a holder whose lock was broken must fail, not overwrite"
-[ "$(jq -c '[.buckets.codex.snapshots[].usedPct]' "$CLAUDE_QUOTA_FILE")" = "[1,4]" ] || failCase "the breaker's snapshot must survive the stalled holder"
-[ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "no lock may be left after the stalled-holder race"
-
+wait "$holder" || failCase "a live stalled holder must keep its lock and write"
+[ "$(jq -c '[.buckets.codex.snapshots[].usedPct]' "$CLAUDE_QUOTA_FILE")" = "[1,2]" ] || failCase "the stalled holder's snapshot must land and the waiter's must not"
+[ ! -e "$LOCK" ] && [ ! -L "$LOCK" ] || failCase "no lock may be left after the stalled-holder case"
 # A failure inside the locked region still releases the lock.
 echo 'not json' >"$CLAUDE_QUOTA_FILE"
 expectFail "a malformed file under the lock" bash "$SCRIPT" record codex 15
@@ -255,7 +281,7 @@ for shape in '{"buckets":0}' '{"buckets":null}' '{"buckets":[]}' '{"buckets":""}
   [ "$(cat "$CLAUDE_QUOTA_FILE")" = "$shape" ] || failCase "a wrong-typed buckets file ($shape) must never be overwritten"
 done
 echo 'not json' >"$CLAUDE_QUOTA_FILE"
-[ ! -e "$CLAUDE_QUOTA_FILE.lock" ] || failCase "a failed record must release the lock"
+[ ! -e "$CLAUDE_QUOTA_FILE.lock" ] && [ ! -L "$CLAUDE_QUOTA_FILE.lock" ] || failCase "a failed record must release the lock"
 [ "$(cat "$CLAUDE_QUOTA_FILE")" = "not json" ] || failCase "a malformed file must never be overwritten"
 
 # --- 10. Insecure values: file contents, environment, and targets. ---
@@ -268,7 +294,7 @@ writeBucket "$GOOD"
 bash "$SCRIPT" report >/dev/null || failCase "setup: the good bucket must report"
 for bad in '.snapshots[0].usedPct = -1000' '.snapshots[0].usedPct = 101' '.snapshots[0].usedPct = "55"' \
   '.snapshots[0].usedPct = null' '.resetsAt = null' '.windowDays = 0' '.windowDays = -7' '.windowDays = "7"' \
-  '.resetsAt = "2026-10-08T10:57:00+99:99"' '.provider = "co\ndex"'; do
+  '.resetsAt = "2026-10-08T10:57:00+99:99"' '.provider = "co\ndex"' '.snapshots[0].source = "ow\u001b[31mner"'; do
   writeBucket "$(jq -c "$bad" <<<"$GOOD")"
   expectFail "file value $bad" bash "$SCRIPT" report
 done
@@ -291,6 +317,7 @@ expectFail "report with an unknown option" bash "$SCRIPT" report --jsno
 mkdir -p "$WORK/cwd"
 expectFail "HOME unset with no CLAUDE_QUOTA_FILE" sh -c "cd '$WORK/cwd' && env -u HOME -u CLAUDE_QUOTA_FILE bash '$SCRIPT' record codex 13 --resets-at 2026-10-08T10:57:00+07:00"
 [ -z "$(ls -A "$WORK/cwd")" ] || failCase "an unset HOME must not create a quota file under the cwd"
+expectFail "a relative CLAUDE_QUOTA_FILE" sh -c "cd '$WORK/cwd' && CLAUDE_QUOTA_FILE=quota.json bash '$SCRIPT' record codex 13 --resets-at 2026-10-08T10:57:00+07:00"
 for badHome in rel '~'; do
   expectFail "HOME=$badHome" sh -c "cd '$WORK/cwd' && env -u CLAUDE_QUOTA_FILE HOME='$badHome' bash '$SCRIPT' record codex 13 --resets-at 2026-10-08T10:57:00+07:00"
 done
