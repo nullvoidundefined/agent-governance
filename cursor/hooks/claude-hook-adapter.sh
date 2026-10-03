@@ -3,8 +3,8 @@
 #
 # Runs the Claude Code hooks under Cursor. Cursor's hook protocol and Claude
 # Code's differ in event names, payload shape, and response shape, but the
-# gates themselves (secret scan, em-dash block, destructive-command guards,
-# push-time linters, the turn-end verification gate) are plain scripts that
+# gates themselves (secret scan, destructive-command guards,
+# workflow guard) are plain scripts that
 # read JSON on stdin and write JSON on stdout. This adapter is the only
 # Cursor-specific code: it translates one Cursor event into the Claude Code
 # payload the hooks expect, runs each hook named on its command line, and
@@ -55,7 +55,7 @@
 #
 # Manual test:
 #   printf '{"command":"ls -la","cwd":"/tmp","workspace_roots":["/tmp"]}' \
-#     | ~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan no-em-dash
+#     | ~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan
 # Should print {"permission":"allow"}.
 
 set -uo pipefail
@@ -370,7 +370,7 @@ handle_before_read() {
   read_is_denied "$file"
   status=$?
   if [ "$status" -eq 0 ]; then
-    deny_read "Read of $file blocked (R-102): credential files stay off-path. Use the value from memory or ask the user; never echo it."
+    deny_read "Read of $file blocked: credential files stay off-path. Use the value from memory or ask the user; never echo it."
     return 0
   fi
   if [ "$status" -ge 2 ]; then
@@ -380,11 +380,11 @@ handle_before_read() {
   printf '{"permission":"allow"}\n'
 }
 
-# Cursor keeps no transcript under ~/.claude/projects, but session-start.sh
-# keys its start-timestamp record on transcript_path: the parent directory name
+# Cursor keeps no transcript under ~/.claude/projects, but a SessionStart
+# hook may key a start-timestamp record on transcript_path: the parent directory name
 # is the project key and the basename minus .jsonl is the session id. This
 # names a file that is never created, stable per workspace and conversation,
-# so session-start.sh records its own clock on the first start and re-reads
+# so such a hook can record its own clock on the first start and re-read
 # that record afterwards. No real conversation id, no path: the "default"
 # fallback would give every conversation one shared, write-once start.
 #

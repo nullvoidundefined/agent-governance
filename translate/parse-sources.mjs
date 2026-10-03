@@ -43,7 +43,7 @@ export function loadSettingsHooks(file) {
 
 export function loadPortMap(file) {
   const map = loadJsonFile(file);
-  for (const key of ["events", "unported_reasons", "agents_to_skills", "hand_authored"])
+  for (const key of ["events", "unported_reasons", "hand_authored"])
     if (!(key in map)) throw new SourceError(file, `port map missing ${key}`);
   if (!("port_status_appendix" in map)) map.port_status_appendix = "";
   return map;
@@ -158,8 +158,7 @@ export function isRegistrationPortedForCursor(event, matcher, portMap) {
 // post-compact-rules, whose only registration (SessionStart, matcher
 // "compact") would otherwise read as porting through that event's broader
 // "*" wildcard fallback, even though compaction genuinely has no Cursor
-// equivalent. An object-valued entry (verification-gate: Stop ports,
-// SubagentStop does not) carries no veto here; portMap.events' own
+// equivalent. An object-valued entry (one event ports, another does not) carries no veto here; portMap.events' own
 // per-event/matcher rows already draw the line correctly for those hooks,
 // and vetoing the whole hook would wrongly mark the porting registration as
 // unported too (a hook-level reason overriding a real per-event port).
@@ -180,26 +179,4 @@ export function unportedReasonFor(hookName, event, portMap) {
   if (typeof entry === "string") return entry;
   if (entry && typeof entry === "object") return entry[event];
   return undefined;
-}
-
-// isHookPortedForCursor(hookName, settingsHooks, portMap): a hook is ported
-// for Cursor when at least one of its settings.json registrations yields a
-// non-empty Cursor event list (isRegistrationPortedForCursor) and that
-// registration's event carries no whole-hook veto (hasWholeHookVeto).
-// Portedness is per-hook, not per-registration: a hook registered under
-// both a porting and a non-porting event/matcher (the verification-gate
-// Stop/SubagentStop shape) still counts as ported once any one registration
-// ports, mirroring isHookPorted's whole-hook "ported somewhere" answer
-// above the cursor-specific per-matcher lookup.
-export function isHookPortedForCursor(hookName, settingsHooks, portMap) {
-  if (hasWholeHookVeto(hookName, portMap)) return false;
-  for (const [event, groups] of Object.entries(settingsHooks)) {
-    for (const group of groups) {
-      for (const hook of group.hooks ?? []) {
-        if (hookNameFromCommand(hook.command) !== hookName) continue;
-        if (isRegistrationPortedForCursor(event, group.matcher ?? "", portMap)) return true;
-      }
-    }
-  }
-  return false;
 }

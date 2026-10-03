@@ -2,64 +2,24 @@
 
 # Cursor port status
 
-46 of 54 hook registrations port, across 9 Cursor events.
+12 of 14 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
 | `agent-dispatch-guard` | PreToolUse (Agent|Task) | not ported: the PreToolUse event has no Cursor equivalent. |
 | `secret-scan` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `no-em-dash` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `fix-commit-requires-test` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `conflict-markers` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `commit-message-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `destructive-db-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `destructive-command-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `codex-billing-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `protected-path-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `push-eslint-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `push-ruff-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `push-semgrep-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `pr-ticket-ref-gate` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `constant-change-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `audit-signal-check` | PreToolUse (Bash) | ported: `beforeShellExecution` |
-| `build-cheatsheets` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `no-em-dash` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `migration-defaults-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `structure-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `content-gate` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `protected-path-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
-| `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
-| `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |
-| `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `afterShellExecution` |
-| `pr-monitor-reminder` | PostToolUse (Bash) | ported: `afterShellExecution` |
-| `new-file-header-reminder` | PostToolUse (Write) | ported: `afterFileEdit` |
-| `flat-directory-reminder` | PostToolUse (Write) | ported: `afterFileEdit` |
-| `spec-glossary-check` | PostToolUse (Write) | ported: `afterFileEdit` |
-| `handoff-check` | PostToolUse (Write) | ported: `afterFileEdit` |
-| `observability-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
-| `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `afterFileEdit` |
-| `task-commit-reminder` | PostToolUse (TaskUpdate) | not ported: fires on Claude Code's TaskUpdate tool, which Cursor lacks; R-504 depends on recall under Cursor. |
-| `task-state-tracker` | PostToolUse (TaskCreate|TaskUpdate) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `harness-sync` | SessionStart | ported: `sessionStart` |
-| `session-start` | SessionStart | ported: `sessionStart` |
-| `hookspath-drift-check` | SessionStart | ported: `sessionStart` |
-| `redaction-guard-check` | SessionStart | ported: `sessionStart` |
-| `enforcement-guard-check` | SessionStart | ported: `sessionStart` |
-| `parallel-session-check` | SessionStart | ported: `sessionStart` |
-| `hook-integrity-check` | SessionStart | ported: `sessionStart` |
-| `post-compact-rules` | SessionStart (compact) | not ported: re-injects rules after compaction; Cursor's preCompact hook cannot inject context and there is no post-compaction event. |
-| `session-end` | SessionEnd | ported: `sessionEnd` |
-| `verification-gate` | Stop | ported: `stop` |
-| `verification-gate` | SubagentStop | not ported: SubagentStop has no Cursor equivalent; the stop event covers the main loop only. This hook's Stop registration ports (see the row above). |
-| `settings-change-guard` | ConfigChange (user_settings) | not ported: ConfigChange is a Claude Code event; Cursor does not read settings.json live. |
-| `model-switch-guard` | PreModelSwitch | not ported: PreModelSwitch is a Claude Code event; Cursor selects models in its own UI. |
 
 ## Permission rules
 

@@ -7,246 +7,49 @@ alwaysApply: false
 
 # Frontend Conventions
 
-These rules apply to all web-client and frontend packages across every app in this portfolio. This file holds everything framework-agnostic; component syntax, state primitives, and framework-specific ESLint rules live in the framework files below, and structure, routing, entry files, and env vars live in the framework's SSR or bundler file.
+Framework-agnostic rules. Component syntax and state live in the framework files: Next.js uses `CLAUDE-FRONTEND-REACT.md` + `CLAUDE-FRONTEND-NEXT.md`; Vite (React SPA with TanStack Router) uses REACT + `CLAUDE-FRONTEND-VITE.md`; Nuxt 4 uses `CLAUDE-FRONTEND-VUE.md` + `CLAUDE-FRONTEND-NUXT.md`.
 
----
+## Stack
 
-## Framework Files
+- TypeScript in strict mode, no `any` (use `unknown` and narrow).
+- SCSS Modules plus CSS custom properties for all styling (see `CLAUDE-STYLING.md`). No Tailwind.
+- A server-state cache (TanStack Query) for all server state. No hand-rolled fetch-in-effect.
 
-Detect the framework from the project root and read the matching files alongside this one:
+## Directories
 
-| Marker | Framework | Read |
-|--------|-----------|------|
-| `next` in `package.json` dependencies | Next.js (App Router) | `~/.claude/CLAUDE-FRONTEND-REACT.md` and `~/.claude/CLAUDE-FRONTEND-NEXT.md` |
-| `vite.config.ts` in project root with `react` in `package.json` | Vite (React SPA + TanStack Router) | `~/.claude/CLAUDE-FRONTEND-REACT.md` and `~/.claude/CLAUDE-FRONTEND-VITE.md` |
-| `nuxt.config.ts` in project root | Nuxt 4 (Vue 3 SSR) | `~/.claude/CLAUDE-FRONTEND-VUE.md` and `~/.claude/CLAUDE-FRONTEND-NUXT.md` |
+`src/` (`app/` under Nuxt): `components/` (one folder per component: `Header/Header.tsx` + `Header.module.scss`), `features/` (one folder per feature slice), `api/` (own-backend fetch wrappers), `clients/` (third-party SDK wrappers), `services/` (domain logic), `state/` (stores and providers; `composables/` and `stores/` under Vue), `config/` (`queryClient.ts`, env parsing), `constants/`, `data/`, `styles/` (tokens, partials), `types/`.
 
----
+- Create a directory only when it has contents.
+- Never `lib/`, `utils/`, `helpers/` or other catch-alls; classify into one of the folders above.
+- No `index.ts` barrel files; import from the file.
 
-## Stack (shared)
+## Naming and imports
 
-- **TypeScript**; strict mode, no `any`
-- **SCSS Modules** for all component styling (see `CLAUDE-STYLING.md`)
-- **A server-state cache** (TanStack Query for the framework) for all server state; no hand-rolled fetch-in-effect
-- **No Tailwind**; all styling through SCSS modules and CSS custom properties
+- SCSS modules: `PascalCase.module.scss`. Services, api and config modules: `camelCase.ts` named for what they do (`fetchTrips.ts`, `queryClient.ts`). Types: `camelCase.ts`.
+- Import groups separated by blank lines: framework, third-party, local `@/` alias, relative siblings, styles last. Sort specifiers alphabetically.
+- `import type` for type-only imports. Use `@/` for the source root; never `../../` beyond one level.
+- Interfaces for component props (declared above the component in the same file); types for unions and utilities. Zod-inferred types when shared with the backend. Shared types go in `types/`.
+- Prettier: single quotes, semicolons, trailing commas `all`, 4 spaces, 100 columns, `arrowParens: "always"`.
+- ESLint: camelCase functions and variables, PascalCase types and components, `curly: 'error'` (always braces), no unused imports, no explicit `any`.
 
----
+## API calls
 
-## Directory Vocabulary
+- `api/apiFetch.ts` is the single typed transport (base URL from the framework's env var, `credentials: 'include'`, `X-Requested-With: XMLHttpRequest` for CSRF, throws with the server's error message). One exported function per backend route in its own module (`api/fetchTrips.ts`).
+- Components never read env vars or call `api/` functions inside effects. They use the cache's query and mutation hooks. Cache client config lives in `config/queryClient.ts`.
 
-Shared across frameworks (R-305). The routing directory, entry files, and the state directory's name are framework-specific; see the framework file.
+## Error handling
 
-```
-src/                          # `app/` under Nuxt; the framework file names the root
-├── components/               # Shared UI components, one folder per component
-│   └── Header/
-│       ├── Header.<ext>      # .tsx under React, .vue under Vue
-│       └── Header.module.scss
-├── features/                 # Feature slices, one folder per feature
-├── api/                      # Own-backend fetch wrappers and transport
-├── clients/                  # Third-party SDK wrappers, one module per provider
-├── services/                 # Domain logic operating on inputs
-├── state/                    # Stores and providers (React); `composables/` and `stores/` under Vue
-├── config/                   # queryClient.ts, env parsing, framework config
-├── constants/
-├── data/                     # Static reference data
-├── styles/                   # Design tokens, shared SCSS partials
-└── types/                    # Shared TypeScript types (frontend-only)
-```
+- API and server errors go to a toast component, via the cache's `onError`. Never show raw error text or stack traces inline.
+- Inline errors only for field-level form validation.
 
-### Rules
+## E2E tests (Playwright)
 
-- Each component gets its own folder: `ComponentName/ComponentName.<ext>` + `ComponentName.module.scss`
-- Never `lib/`, `utils/`, `helpers/`, or other catch-alls (R-306); classify into `api/`, `clients/`, `services/`, or the framework's state directory
-- Directories appear only when occupied (R-309); the vocabulary is fixed, not mandatory on day one
-- No `index.ts` barrel files; import directly from the file
-
----
-
-## File Naming
-
-Framework-specific rows (components, hooks or composables, pages, layouts, routes, global styles) live in the framework files.
-
-| What | Convention | Example |
-|------|-----------|---------|
-| SCSS modules | `PascalCase.module.scss` | `ChatBox.module.scss` |
-| Services / api / config modules | `camelCase.ts`, named per R-315 | `fetchTrips.ts`, `queryClient.ts` |
-| Types | `camelCase.ts` | `trip.ts` |
-
----
-
-## Import Ordering
-
-Imports are grouped with blank lines between groups, in this order; the framework file shows the concrete example and names the packages in group 1:
-
-1. Framework imports (the framework's runtime and its own packages)
-2. Third-party packages
-3. Local imports (`@/` alias paths)
-4. Relative imports (sibling components, helpers)
-5. Style imports (always last)
-
-- Use `type` keyword for type-only imports: `import type { Foo } from '...'`
-- Sort specifiers alphabetically within each import
-- Use `@/` path alias for the source root; never relative `../../` beyond one level
-
----
-
-## TypeScript Patterns
-
-- **Interfaces** for component props; **types** for unions and utility types: `type Status = 'idle' | 'loading' | 'error'`
-- **Zod-inferred types** when shared with backend: `type Job = z.infer<typeof jobSchema>`
-- Props types live in the same file as the component, above it (the framework file shows the declaration form)
-- Shared types go in `types/`
-- Never use `any`; use `unknown` and narrow
-
----
-
-## API Calls
-
-The `api/` tree holds one transport module plus one module per backend route (R-306/R-319):
-
-```typescript
-// api/apiFetch.ts: the single typed transport wrapper
-export async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> {
-    // base URL, credentials, CSRF header, error handling
-}
-
-// api/fetchTrips.ts: one exported fetch function per backend route
-export function fetchTrips(): Promise<Trip[]> {
-    return apiFetch<Trip[]>('/api/trips');
-}
-```
-
-- Base URL from the framework's env var (see framework file); components never read env directly
-- `credentials: 'include'` on every request
-- `X-Requested-With: XMLHttpRequest` header for CSRF
-- Errors throw with the server's error message
-- Components consume these functions through the server-state cache's query and mutation hooks, never by calling them inside an effect or lifecycle callback
-- The cache client config lives in `config/queryClient.ts`
-
----
-
-## Error Handling
-
-- **Toast component** for API/server errors; never show raw error text inline
-- **Inline errors** only for form validation (field-level messages)
-- The server-state cache's `onError` callbacks route to toast
-- Never show stack traces to the user
-
----
-
-## Formatting (Prettier)
-
-```json
-{
-    "singleQuote": true,
-    "semi": true,
-    "trailingComma": "all",
-    "tabWidth": 4,
-    "useTabs": false,
-    "printWidth": 100,
-    "arrowParens": "always",
-    "bracketSpacing": true
-}
-```
-
-| Rule | Value | Example |
-|------|-------|---------|
-| Quotes (JS/TS) | Single | `const x = 'hello';` |
-| Semicolons | Always | `const x = 1;` |
-| Trailing commas | All | `{ a: 1, b: 2, }` |
-| Indentation | 4 spaces | (n/a) |
-| Line width | 100 chars | (n/a) |
-| Arrow parens | Always | `(x) => x` |
-| Bracket spacing | Yes | `{ x: 1 }` not `{x:1}` |
-
-Template-attribute quoting is a framework row (the React file sets `jsxSingleQuote`; the Vue file sets the template attribute style).
-
----
-
-## ESLint Rules (shared)
-
-- `@typescript-eslint/naming-convention`: camelCase for functions/variables, PascalCase for types/components
-- `curly: 'error'`; always use braces
-- No unused imports (eslint-plugin-unused-imports)
-- No explicit `any`
-- Framework plugin rules are listed in the framework file
-
----
-
-## E2E Test Layout (Playwright)
-
-End-to-end tests live in `e2e/` at the repo root and follow a **user-story-driven hybrid structure**.
-
-### Coverage rule
-
-Every user story documented in `docs/USER_STORIES.md` MUST have exactly one mapped E2E test. Include 2-3 journey tests covering realistic multi-story flows.
-
-### Spec file grouping
-
-Group spec files by the `## Section` headings in `docs/USER_STORIES.md`. **Do
-not invent section groupings**; read the full user stories file and mirror
-its actual sections. If the file has sections `Public Pages`, `Authentication`,
-`Trip Management`, etc., the spec files are:
-
-```
-e2e/
-├── public-pages.spec.ts      ; stories in "Public Pages" section
-├── auth.spec.ts              ; stories in "Authentication" section
-├── trip-management.spec.ts   ; stories in "Trip Management" section
-├── ...                       ; one spec file per section heading
-└── journeys/
-    ├── happy-path.spec.ts    ; realistic multi-story success flow
-    ├── returning-user.spec.ts; returning-user iteration flow
-    └── failure-path.spec.ts  ; documented error flows only (no invented stories)
-```
-
-### Running (R-509)
-
-- `fullyParallel: true` in `playwright.config.ts`; a spec that cannot run in parallel is fixed (isolated user, isolated data), not serialized with `workers: 1`.
-- Turn ends, commits, and branch-level merges run `npx playwright test --only-changed=origin/main`, which runs changed spec files and specs importing changed files. Component tests under Vitest follow the Test Runs rules in `CLAUDE-BACKEND.md`.
-- CI runs the full suite; pre-push does not (IAN-98). Shard it across a CI matrix with `--shard=<i>/<n>` when one job is too slow. The full suite is the required check before any merge to `main`.
-
-### Test naming
-
-Each `test()` name starts with the user story ID:
-
-```typescript
-test.describe('Public pages', () => {
-    test('US-1: home page discovery', async ({ page }) => { ... });
-    test('US-2: browse destinations', async ({ page }) => { ... });
-});
-```
-
-### Fixtures and helpers
-
-```
-e2e/
-├── fixtures/  ; mock data for external APIs, seeded test users
-└── helpers/   ; page objects, auth helpers, common interaction helpers
-```
-
-### Rules
-
-- **One test per user story.** Exactly one. Test names include the `US-N:` prefix.
-- **Mirror the user-stories file's sections.** Do not invent categories.
-- **No invented stories.** Journey tests reference only documented user stories. If a journey needs a story that doesn't exist yet, add it to `USER_STORIES.md` first; do not fake it in the test.
-- **Error paths live inside their story's test**, not in a dedicated
-  `error-states.spec.ts`. Example: "failed login" is a documented story
-  (e.g., US-10) and belongs in `auth.spec.ts`, not in a separate file.
-- **Journey tests** (2–3 per project) cover multi-story realistic flows:
-  happy-path success, returning-user iteration, documented failure path.
-- **Mock external APIs in E2E.** Real third-party calls (LLMs, search APIs, payment processors) belong in a separate nightly real-API smoke suite, not the main E2E run.
-- **Tag fast-lane tests with `@fast`** in the test name so pre-push hooks can
-  `--grep '@fast'` for a < 30s subset. Include: smoke test, auth spec, and
-  one happy-path journey test.
-- **Assert data and behavior, never element presence alone.** A test that only checks a component rendered does not prove the flow works; assert the value the user sees or the state the server holds.
-
-## Incident-backed rules
-
-Moved from the global-memory PL list on 2026-10-02 (IAN-568). Each came from a production incident in a 2026-04 debug session; they are defaults.
-
-- **PL3.** Every user flow gets at least one E2E test before it ships; a flow with no E2E test does not exist yet.
-- **PL11.** Kill stale dev servers before running E2E tests locally (`lsof -ti :3000 :3001 | xargs kill -9`); a stale server silently breaks Playwright's `webServer` config.
-- **PL12.** Playwright's `projects` config includes chromium, webkit, and mobile-safari (a real iPhone profile); a chromium-only suite leaves Safari ITP bugs in production.
-- **PL20.** A passing test is not a working feature. For each feature, name the E2E or integration test that would fail if it broke; when the answer is none, the feature is untested.
+- Tests live in `e2e/` at the repo root, one spec file per `## Section` of `docs/USER_STORIES.md` (mirror the file; do not invent groupings), plus 2 to 3 journey specs in `e2e/journeys/` (happy path, returning user, documented failure path).
+- Exactly one test per documented user story, named with its ID: `test('US-1: home page discovery', ...)`. Journeys use only documented stories; add the story to the file first.
+- Error paths live inside their story's test, not in an `error-states.spec.ts`.
+- Mock external APIs (LLMs, search, payments) in E2E; real-API calls belong in a separate nightly smoke suite.
+- Tag a fast lane (smoke, auth, one happy-path journey) with `@fast` in the test name.
+- Assert data and behavior the user sees, never element presence alone.
+- `fullyParallel: true`; isolate users and data instead of using `workers: 1`. Configure `projects` for chromium, webkit and mobile-safari.
+- Fixtures (external API mocks, seeded users) in `e2e/fixtures/`; page objects and auth helpers in `e2e/helpers/`.
+- Locally run `npx playwright test --only-changed=origin/main`; CI runs the full suite.

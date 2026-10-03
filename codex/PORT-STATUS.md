@@ -2,64 +2,24 @@
 
 # Codex port status
 
-50 of 54 hook registrations port, across 6 Codex events.
+14 of 14 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
 | `agent-dispatch-guard` | PreToolUse (Agent|Task) | ported: `PreToolUse` (matcher `Agent|Task`) |
 | `secret-scan` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `no-em-dash` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `fix-commit-requires-test` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `conflict-markers` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `commit-message-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `destructive-db-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `destructive-command-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `codex-billing-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `protected-path-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `push-eslint-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `push-ruff-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `push-semgrep-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `pr-ticket-ref-gate` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `constant-change-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `audit-signal-check` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
-| `build-cheatsheets` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `no-em-dash` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `migration-defaults-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `structure-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `content-gate` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `protected-path-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
-| `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
-| `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | ported: `PostToolUse` (matcher `Agent|Task`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
-| `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
-| `pr-monitor-reminder` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
-| `new-file-header-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
-| `flat-directory-reminder` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
-| `spec-glossary-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
-| `handoff-check` | PostToolUse (Write) | ported: `PostToolUse` (matcher `Write`) |
-| `observability-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
-| `dockerfile-reminder` | PostToolUse (Write|Edit) | ported: `PostToolUse` (matcher `Write|Edit`) |
-| `task-commit-reminder` | PostToolUse (TaskUpdate) | not ported: fires on Claude Code's TaskUpdate tool, which Codex lacks; R-504 depends on recall under Codex. |
-| `task-state-tracker` | PostToolUse (TaskCreate|TaskUpdate) | not ported: fires on Claude Code's TaskCreate and TaskUpdate tools, which Codex lacks; a registration on that matcher would never receive an event, so R-601's crash-safe task state depends on recall under Codex. |
 | `harness-sync` | SessionStart | ported: `SessionStart` |
-| `session-start` | SessionStart | ported: `SessionStart` |
-| `hookspath-drift-check` | SessionStart | ported: `SessionStart` |
-| `redaction-guard-check` | SessionStart | ported: `SessionStart` |
-| `enforcement-guard-check` | SessionStart | ported: `SessionStart` |
-| `parallel-session-check` | SessionStart | ported: `SessionStart` |
-| `hook-integrity-check` | SessionStart | ported: `SessionStart` |
-| `post-compact-rules` | SessionStart (compact) | ported: `SessionStart` (matcher `compact`) |
-| `session-end` | SessionEnd | ported: `SessionEnd` |
-| `verification-gate` | Stop | ported: `Stop` |
-| `verification-gate` | SubagentStop | ported: `SubagentStop` |
-| `settings-change-guard` | ConfigChange (user_settings) | not ported: ConfigChange is a Claude Code event and guards settings.json, which Codex does not read. |
-| `model-switch-guard` | PreModelSwitch | not ported: PreModelSwitch is a Claude Code event; Codex selects models through config.toml and /model. |
 
 ## Permission rules
 

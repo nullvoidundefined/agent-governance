@@ -14,9 +14,7 @@
 #      no delete tool, so `rm` is the shape its guards are written against),
 #      and Move to as the Bash `mv`, which puts both the source and the
 #      destination in front of the guard. Before 2026-09-18 a Delete File
-#      dispatched no event at all and a Move destination was discarded, so a
-#      locked test could be deleted, or a file renamed into a protected tree,
-#      with protected-path-guard never seeing it.
+#      dispatched no event at all and a Move destination was discarded.
 #   2. Codex rejects permissionDecision "ask" (and "allow"). A hook that asks
 #      for confirmation is translated per CLAUDE_CODEX_ASK_POLICY:
 #        deny  (default) the call is denied with the hook's reason and a note
@@ -34,9 +32,8 @@
 #      edit a file, Codex often runs a shell command instead, and a shell
 #      command reaches the hooks as one PreToolUse Bash event whose tool_input
 #      carries a command string and no path at all. Codex registers the
-#      write-target gates (structure-gate, content-gate, dependency-add-guard,
-#      migration-defaults-guard) on the Write|Edit
-#      matcher, so before 2026-09-18 none of them ever saw a file written by a
+#      write-target gate (secret-scan) on the Write|Edit
+#      matcher, so before 2026-09-18 it never saw a file written by a
 #      redirection: the same edit was denied through apply_patch and allowed
 #      through `printf ... > path`. The adapter now extracts the write targets
 #      out of the command text and dispatches one synthetic Write event per
@@ -47,8 +44,7 @@
 #      exports CLAUDE_HOOK_RUNTIME=codex, below, into every hook child it runs,
 #      on both dispatch paths: the event's own hook list and the synthesized
 #      write events of item 4. A Claude Code session sets no such variable. The
-#      one hook that read it, codex-test-author-guard (R-907), was removed in
-#      IAN-568; the marker stays so a future hook can tell the runtimes apart.
+#      marker stays so a future hook can tell the runtimes apart.
 #
 # Usage (from ~/.codex/hooks.json, one entry per hook group; this file is
 # copied to ~/.codex/hooks/ by openai/build.mjs):
@@ -92,7 +88,7 @@ PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/setti
 # in or out of that group fails a test instead of silently narrowing the port.
 # Overridable so the fixtures can observe what is dispatched; setting it empty
 # turns the synthetic dispatch off.
-read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash migration-defaults-guard structure-gate content-gate protected-path-guard dependency-add-guard}"
+read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan}"
 
 # The permission helper is resolved deterministically and its absence is
 # recorded rather than swallowed. PERMISSION_RULES_ERROR non-empty means the
@@ -265,7 +261,7 @@ apply_bash_permission_rules() {
 #   N<TAB><text>                           a line of the new text
 # A Delete File section carries no content, so it opens no content stream; the
 # operation itself is still reported, because the path being deleted is exactly
-# what the protected-path rules need to see.
+# what a path guard needs to see.
 patch_lines() {
   printf '%s\n' "$1" | awk '
     /^\*\*\* Add File: / { active = 1; printf "F\tadd\t%s\n", substr($0, 15); next }
@@ -301,10 +297,8 @@ replay_file() {
 }
 
 # A deletion and a rename have no Write or Edit equivalent: under Claude Code
-# they are shell commands, and the guards that govern them (protected-path-guard
-# above all) read them out of tool_input.command. Replaying them in that shape
-# is what lets a guard deny the deletion of a locked test, or a rename whose
-# destination lands inside a protected tree.
+# they are shell commands, and the guards that govern them read them out of tool_input.command. Replaying them in that shape
+# is what lets a guard see the path being deleted or the rename destination.
 replay_shell_operation() {
   # $1 = Claude event, $2 = the command text the gates should see
   local payload
@@ -375,9 +369,8 @@ replay_patch() {
 # interpreter from inside its own source (`python - <<PY`), by `dd of=`, by an
 # editor, or by any tool whose argument convention is not one of the four verbs
 # above. Redirection is the common shape and is now covered; the rest is not,
-# and a reader must not take this section for total coverage. The backstop for
-# what escapes here is unchanged: `tdd.sh green` compares locked-file hashes
-# against the RED commit, which catches the write after the fact.
+# and a reader must not take this section for total coverage. What escapes
+# here is not caught.
 
 # Heredoc bodies are data, not shell. A `>` inside the text being written names
 # nothing, so the bodies are removed before any token is read; the line opening
