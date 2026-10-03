@@ -19,6 +19,39 @@ export CLAUDE_QUOTA_FILE="$WORK/quota.json"
 NOW_OWNER=1790960400
 HOUR=3600
 
+# macOS ships no `timeout` (GNU coreutils), and the bash 3.2 CI runner has no
+# gtimeout either. Without one, provide the same contract in bash: run the
+# command, kill it after the given seconds, and return 124 when it was killed,
+# so a hang still reads as a hang and never as an ordinary nonzero exit.
+if ! command -v timeout >/dev/null 2>&1; then
+  if command -v gtimeout >/dev/null 2>&1; then
+    timeout() { gtimeout "$@"; }
+  else
+    timeout() {
+      local seconds="$1" marker pid watchdog rc
+      shift
+      marker=$(mktemp)
+      rm -f "$marker"
+      "$@" &
+      pid=$!
+      (
+        sleep "$seconds"
+        kill -0 "$pid" 2>/dev/null && : >"$marker" && kill -9 "$pid" 2>/dev/null
+      ) &
+      watchdog=$!
+      rc=0
+      wait "$pid" || rc=$?
+      kill "$watchdog" 2>/dev/null
+      wait "$watchdog" 2>/dev/null || true
+      if [ -e "$marker" ]; then
+        rm -f "$marker"
+        return 124
+      fi
+      return "$rc"
+    }
+  fi
+fi
+
 failCase() {
   echo "FAIL: $1"
   exit 1
