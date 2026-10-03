@@ -108,12 +108,20 @@ railway list-variables --serviceId <id>
 - Expose a `GET /health` endpoint on every API service that returns `200 { status: "ok" }`.
 - Configure Railway's healthcheck path to `/health`.
 - Railway will wait for the healthcheck to pass before routing traffic to the new deploy.
-- **Workers also need a health server**; BullMQ worker processes must expose a minimal HTTP server on `process.env.PORT` or `3001`, or Railway's healthcheck will mark the service as failed. See `CLAUDE-BACKEND.md` → Worker Pattern for the implementation.
+- **Workers also need a health server**; BullMQ worker processes must expose a minimal HTTP server on `process.env.PORT` or `3001`, or Railway's healthcheck will mark the service as failed. See `CLAUDE-BACKEND.md` → Workers for the implementation.
 - **Cron services do not healthcheck.** A Railway cron runs its start command to completion and exits; there is no long-lived port to probe, so leave the healthcheck unset on cron-only services.
 
 ### Per-Service Dockerfiles
 
-Every deployable artifact is Dockerized from its first commit (R-351); the image is the deploy unit and Railway builds it from the Dockerfile, never with Nixpacks. The image contract (multi-stage, pinned base, non-root user, `HEALTHCHECK`, `.dockerignore`) is in `CLAUDE-BACKEND.md` under Containers. Monorepo apps with both an API and a worker use separate Dockerfiles to control which entrypoint is run:
+Every deployable artifact (API, worker, cron job) ships its Dockerfile in the commit that creates it (R-351); the image is the deploy unit and Railway builds it from the Dockerfile, never with Nixpacks or buildpacks. Libraries under `packages/*` carry no Dockerfile. The image contract, in every stack:
+
+- **Multi-stage.** The builder installs and compiles; the runtime stage copies build output and production dependencies only. Base images are pinned to a version tag, never `latest` or untagged.
+- **Non-root.** The runtime stage switches to a non-root user (`USER node` in Node images) after its `COPY` lines.
+- **`HEALTHCHECK`** targets `/health` (`CLAUDE-OBSERVABILITY.md`); a worker's health server answers the same path, and a cron image declares none because it exits.
+- **`.dockerignore`** beside every Dockerfile excludes `.git`, dependency and build directories, `.env*`, tests and coverage. No secret enters the image; configuration is run-time environment variables, never a build argument or a baked file.
+- **CI** builds every image on every pull request as a required check and runs its `HEALTHCHECK` once; the same image goes to the platform. The build-smoke test for runtime assets runs inside the builder stage, so a missing asset fails the build rather than the first request.
+
+Monorepo apps with both an API and a worker use separate Dockerfiles to control which entrypoint is run:
 
 ```
 Dockerfile          # API service (CMD: node server/dist/index.js or packages/api/dist/index.js)
