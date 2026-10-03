@@ -58,9 +58,16 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$OUTPUT_FILE" ] || usage_error "no output file"
 
+# is_transcript_file: true for a regular file (through a symlink). A device,
+# FIFO or directory would block every read to EOF and silence the wake, so it
+# counts as never having appeared (R-109 r1 #4 on PR #184).
+is_transcript_file() {
+  [ -f "$OUTPUT_FILE" ]
+}
+
 # transcript_size: prints the transcript's byte size, or nothing while absent.
 transcript_size() {
-  [ -e "$OUTPUT_FILE" ] || return 0
+  is_transcript_file || return 0
   wc -c < "$OUTPUT_FILE" 2>/dev/null | tr -d ' '
 }
 
@@ -70,7 +77,7 @@ transcript_size() {
 # are skipped (R-517 r1 on PR #184). Each line is parsed on its own, so a
 # garbled line is skipped without hiding the lines after it (r2).
 last_turn_entry() {
-  [ -e "$OUTPUT_FILE" ] || return 0
+  is_transcript_file || return 0
   tail -n "$TAIL_LINES" "$OUTPUT_FILE" 2>/dev/null \
     | jq -cR 'fromjson? | select(type == "object" and (.type == "assistant" or .type == "user"))' 2>/dev/null \
     | tail -n 1
@@ -90,14 +97,23 @@ has_finished() {
 # conversation entry (its type, stop reason, and the name of any pending tool
 # call), so the woken session can judge progress without reading the
 # transcript, which can be too large for its context.
+# Every value is allowlisted: the transcript can carry text an injected page
+# shaped, and this line lands in the main session's context, so a stop reason
+# outside the API's set and a tool name outside a plain identifier print as
+# `other`, at most five tool names print, and no newline survives (R-109 r1 #2
+# on PR #184).
 describe_last_entry() {
   local summary
   summary=$(last_turn_entry | jq -r '
-    "last entry: " + (.type // "?")
-    + (if .message.stop_reason then ", stop " + .message.stop_reason else "" end)
-    + ([.message.content[]? | select(.type == "tool_use") | .name] as $tools
-       | if ($tools | length) > 0 then ", pending tool " + ($tools | join(",")) else "" end)
-  ' 2>/dev/null)
+    def stop_word: if (. | type) == "string"
+      and (. as $s | ["end_turn","tool_use","max_tokens","stop_sequence","pause_turn","refusal"] | index($s))
+      then . else "other" end;
+    def tool_word: if (. | type) == "string" and test("^[A-Za-z0-9_-]{1,64}$") then . else "other" end;
+    "last entry: " + (if .type == "assistant" or .type == "user" then .type else "other" end)
+    + (if .message.stop_reason then ", stop " + (.message.stop_reason | stop_word) else "" end)
+    + ([.message.content[]? | select(.type == "tool_use") | .name | tool_word] as $tools
+       | if ($tools | length) > 0 then ", pending tool " + ($tools[:5] | join(",")) else "" end)
+  ' 2>/dev/null | tr -d '\n\r' | head -c 200)
   printf '%s' "${summary:-last entry: none}"
 }
 

@@ -28,8 +28,15 @@ OUTPUT_FILE=$(printf '%s\n' "$RESPONSE_TEXT" \
   | sed -n 's/^[[:space:]]*output_file:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' \
   | head -n 1)
 [ -n "$OUTPUT_FILE" ] || exit 0
+# The call itself must have been a background launch: the response text is
+# untrusted and can quote a launch message, so the phrase alone proves nothing
+# (R-109 r1 #1 on PR #184).
+printf '%s' "$INPUT" | jq -e '.tool_input.run_in_background == true' >/dev/null 2>&1 || exit 0
 printf '%s\n' "$RESPONSE_TEXT" | grep -q 'Async agent launched' || exit 0
-printf '%s' "$OUTPUT_FILE" | grep -Eq '^/[A-Za-z0-9._/-]+$' || exit 0
+# Only the harness's own launch shape, a `.../tasks/<name>.output` file, with
+# no empty or `..` segment: never a device, a key file or a traversal (r1 #3).
+printf '%s' "$OUTPUT_FILE" | grep -Eq '^/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/tasks/[A-Za-z0-9_-]+\.output$' || exit 0
+case "$OUTPUT_FILE" in */../*|*/./*|*//*) exit 0 ;; esac
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"

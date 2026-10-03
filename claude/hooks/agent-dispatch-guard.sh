@@ -23,8 +23,12 @@
 # (convention in enforce/README.md).
 set -uo pipefail
 INPUT=$(cat 2>/dev/null || true)
-TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || true)
-case "$TOOL" in Agent|Task) ;; *) exit 0 ;; esac
+# settings.json registers this hook for Agent and Task only, so a payload jq
+# cannot parse is still a subagent dispatch: it is judged, never waved through
+# (R-109 r1 #5 on PR #184). A parsed payload naming another tool is ignored.
+if TOOL=$(printf '%s' "$INPUT" | jq -er '.tool_name // ""' 2>/dev/null); then
+  case "$TOOL" in Agent|Task) ;; *) exit 0 ;; esac
+fi
 
 # A jq failure reads as "not background" and "general-purpose", so a payload
 # the hook cannot parse is judged as the riskiest dispatch, never waved through.
