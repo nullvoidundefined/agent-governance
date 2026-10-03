@@ -26,6 +26,11 @@ diagnose() {
   done
 }
 TMP=$(mktemp -d)
+# import-x/order classifies an import by walking up from the linted file to a
+# package.json, and crashes on a null path when none exists above it. Whether
+# one does depends on where the host's temp directory sits, so the fixture
+# carries its own rather than relying on the runner (2026-10-03, IAN-606).
+printf '{ "name": "eslint-fixture", "private": true }\n' > "$TMP/package.json"
 mkdir -p "$TMP/services" "$TMP/constants"
 printf 'export const a = { b: 2, a: 1 };\n' > "$TMP/keys.ts"
 printf 'export const a = 1;\nexport const b = 2;\n' > "$TMP/services/two.ts"
