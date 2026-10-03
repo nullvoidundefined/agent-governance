@@ -4,7 +4,7 @@
     "reviewer": "security-reviewer subagent",
     "model": "claude-fable-5-1",
     "range": "676f39bf..HEAD of PR #184",
-    "note": "Transcribed from security-reviewer runs over PR #184: round 1 over 676f39bf..5c4a9da2 (rows 1 to 6); round 2 over 5c4a9da2..75a976a4, which confirmed rows 1 to 6 fixed and found rows 7 to 10; round 3 over 75a976a4..af36d5aa, which confirmed rows 7 to 10 fixed and found rows 11 and 12; round 4 over af36d5aa..2a9db883 confirmed rows 11 and 12 fixed and the transcription accurate, and found row 13; round 5 over 2a9db883..7bfcd2e2 confirmed row 13 fixed and the transcription accurate, and found row 14; round 6 over 7bfcd2e2..5d08a7ab confirmed row 14 fixed and the transcription accurate, and found row 15; round 7 was stopped by the watchdog after a 10-minute stall on one Bash call; the owner then chose to remove the tool-name check altogether (commit 43903ada), so the dispatch guard judges every payload and the settings.json matcher, pinned by the fixture, is the trust boundary; rows 5, 8, 11, 13, 14 and 15 are closed by that removal as well as by their own commits. A further round covers that commit and this note.",
+    "note": "Transcribed from security-reviewer runs over PR #184: round 1 over 676f39bf..5c4a9da2 (rows 1 to 6); round 2 over 5c4a9da2..75a976a4, which confirmed rows 1 to 6 fixed and found rows 7 to 10; round 3 over 75a976a4..af36d5aa, which confirmed rows 7 to 10 fixed and found rows 11 and 12; round 4 over af36d5aa..2a9db883 confirmed rows 11 and 12 fixed and the transcription accurate, and found row 13; round 5 over 2a9db883..7bfcd2e2 confirmed row 13 fixed and the transcription accurate, and found row 14; round 6 over 7bfcd2e2..5d08a7ab confirmed row 14 fixed and the transcription accurate, and found row 15; round 7 was stopped by the watchdog after a 10-minute stall on one Bash call; the owner then chose to remove the tool-name check altogether (commit 43903ada), so the dispatch guard judges every payload and the settings.json matcher, pinned by the fixture, is the trust boundary; rows 5, 8, 11, 13, 14 and 15 are closed by that removal as well as by their own commits. Round 7 over 5d08a7ab..c4808434 confirmed the removal, the pinned matcher and this note, and found row 16; round 8 covers the commit fixing row 16 and this artefact's update.",
     "findings": [
         {
             "id": 1,
@@ -170,6 +170,17 @@
             "worst_value": "A leading or embedded newline: \\nAgent, Agent\\nBash, Bash\\nAgent, under both locales",
             "fix": "Match the whole string with bash's own regex under LC_ALL=C",
             "status": "fixed 05cd00e4"
+        },
+        {
+            "id": 16,
+            "severity": "LOW",
+            "pass": "Round 7, 5d08a7ab..c4808434",
+            "original_row": 1,
+            "control": "Dispatch guard: a non-string subagent_type read as an unknown type and was allowed in the foreground",
+            "source": "hook stdin tool_input.subagent_type",
+            "worst_value": "An array, an object, a number",
+            "fix": "A non-string type reads as empty and falls closed to general-purpose",
+            "status": "fixed 67572f49"
         }
     ]
 }
