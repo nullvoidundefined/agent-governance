@@ -232,11 +232,12 @@ for p in $pids; do wait "$p" || failCase "a concurrent record failed"; done
 
 # --- 9. Insecure values: the option parser and the lock (R-109 r1). ---
 # expectFail <description> <command...>: the command must exit nonzero within
-# ten seconds; a hang (timeout's 124) is a failure of its own.
+# thirty seconds (the lock waits about five, longer on a slow macOS runner);
+# a hang (timeout's 124) is a failure of its own.
 expectFail() {
   local what="$1" rc=0
   shift
-  timeout 10 "$@" >/dev/null 2>&1 || rc=$?
+  timeout 30 "$@" >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 124 ] || failCase "$what: hung"
   [ "$rc" -ne 0 ] || failCase "$what: exited 0"
 }
@@ -414,7 +415,7 @@ case "\$*" in
     if [ -f "$WORK/stall-armed" ]; then
       rm -f "$WORK/stall-armed"
       : >"$WORK/stalled"
-      for _ in \$(seq 1 400); do [ -f "$WORK/release" ] && break; sleep 0.05; done
+      for _ in \$(seq 1 1200); do [ -f "$WORK/release" ] && break; sleep 0.05; done
     fi ;;
 esac
 exec "$REAL_JQ" "\$@"
