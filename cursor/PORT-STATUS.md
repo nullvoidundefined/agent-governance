@@ -2,10 +2,11 @@
 
 # Cursor port status
 
-46 of 52 hook registrations port, across 9 Cursor events.
+46 of 54 hook registrations port, across 9 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
+| `agent-dispatch-guard` | PreToolUse (Agent|Task) | not ported: the PreToolUse event has no Cursor equivalent. |
 | `secret-scan` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `no-em-dash` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `fix-commit-requires-test` | PreToolUse (Bash) | ported: `beforeShellExecution` |
@@ -34,6 +35,7 @@
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
+| `agent-watchdog-instruction` | PostToolUse (Agent|Task) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |
 | `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `afterShellExecution` |
 | `pr-monitor-reminder` | PostToolUse (Bash) | ported: `afterShellExecution` |

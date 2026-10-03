@@ -2,10 +2,11 @@
 
 # Codex port status
 
-48 of 52 hook registrations port, across 6 Codex events.
+50 of 54 hook registrations port, across 6 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
+| `agent-dispatch-guard` | PreToolUse (Agent|Task) | ported: `PreToolUse` (matcher `Agent|Task`) |
 | `secret-scan` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `no-em-dash` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `fix-commit-requires-test` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
@@ -34,6 +35,7 @@
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `linear-todo-label-gate` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
+| `agent-watchdog-instruction` | PostToolUse (Agent|Task) | ported: `PostToolUse` (matcher `Agent|Task`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `draft-pr-on-first-push` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `pr-monitor-reminder` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |

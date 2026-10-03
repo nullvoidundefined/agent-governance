@@ -61,6 +61,8 @@ for (const [kind, bogus] of [["rules", "R-999"], ["hooks", "no-such-hook"], ["sk
 // removed by any profile, whatever category lists it.
 const protectedCases = [
   ["hooks", "destructive-db-guard"], ["hooks", "harness-sync"], ["hooks", "verification-gate"],
+  // R-708 (IAN-605): the subagent dispatch guard and its watchdog instruction.
+  ["hooks", "agent-dispatch-guard"], ["hooks", "agent-watchdog-instruction"],
   ["agents", "security-reviewer"], ["agents", "test-author"],
   ["files", "rulebook/reference.md"], ["files", "skills/task-start/scripts/task-tier.sh"],
   ["files", "hooks/harness-sync.sh"], ["files", "hooks/secret-scan.sh"], ["files", "enforce/role-policy.json"],
