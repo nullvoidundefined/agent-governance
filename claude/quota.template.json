@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy to ~/.claude/quota.json (or set CLAUDE_QUOTA_FILE) and keep it current with `bash ~/.claude/enforce/quota-pace.sh record <bucket> <usedPct> --resets-at <iso>`. One bucket per weekly limit; `provider` groups buckets, and a provider's pace ratio is its worst bucket's. Timestamps are ISO 8601 with an offset or Z. Read by enforce/quota-pace.sh (IAN-603).",
+  "buckets": {
+    "claude": {
+      "provider": "claude",
+      "resetsAt": "2026-10-06T23:59:00+07:00",
+      "windowDays": 7,
+      "snapshots": [
+        { "at": "2026-10-03T00:00:00+07:00", "usedPct": 55, "source": "owner" }
+      ]
+    },
+    "claude-fable": {
+      "provider": "claude",
+      "resetsAt": "2026-10-06T23:59:00+07:00",
+      "windowDays": 7,
+      "snapshots": [
+        { "at": "2026-10-03T00:00:00+07:00", "usedPct": 41, "source": "owner" }
+      ]
+    },
+    "codex": {
+      "provider": "codex",
+      "resetsAt": "2026-10-08T10:57:00+07:00",
+      "windowDays": 7,
+      "snapshots": [
+        { "at": "2026-10-03T00:00:00+07:00", "usedPct": 13, "source": "owner" }
+      ]
+    }
+  }
+}
