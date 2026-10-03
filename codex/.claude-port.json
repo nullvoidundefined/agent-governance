@@ -20,7 +20,7 @@
   },
   "files": {
     ".gitignore": "sha256:c923bc570862b078bede7c7f56750562b4eed0aa0bdecb493acafd520e333e58",
-    "AGENTS.md": "sha256:869fae49197397f8d989813c7a657c3f877b4c97700d06363368597fdad4a737",
+    "AGENTS.md": "sha256:aea4fb19bf42c91f982eca072ec33264a6fbbd067d22018047c25caff5a0554e",
     "PORT-STATUS.md": "sha256:9b19e6fe6b1ff5c5b53cb7725cd67edb09978bdec51444fdb63b65d6af5555c4",
     "agents/audit-criticism.toml": "sha256:edb02f9d817166aa1a81e5571de5d161f90728c76486ba7d1199c83345ad365c",
     "agents/audit-customer.toml": "sha256:ab57d57da5b125fb0902f3a3f3d18ed00ef2153f3144af921bb0ceca21e6a31b",

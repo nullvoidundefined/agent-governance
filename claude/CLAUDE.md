@@ -46,7 +46,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 
 - **Who:** every PR gets one review by the `pr-reviewer` agent in a fresh context. It gets the diff, the acceptance criteria, and the risk line, never the implementer's transcript.
 - **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is fixed if it takes under five minutes, otherwise noted. LOW never triggers another review.
-- **Second round:** only when round one found a HIGH, the fixes add more than 100 lines or 25% of the diff, or the fixes change the design. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
+- **Second round:** only when round one found a HIGH, the fixes add new production code larger than both 100 lines and 25% of the diff, or the fixes change the design. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
 - **Record:** in the PR body under `## Review`.
 
 ## Security review

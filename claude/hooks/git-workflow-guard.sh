@@ -83,15 +83,23 @@ check_git() {
 
 check_gh() {
     [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ] || return 0
-    local word pr="" body
+    local word pr="" body pending=""
+    local -a repo_args=()
     for word in "${@:3}"; do
+        case "$pending" in
+            repo) repo_args=(--repo "$word"); pending=""; continue ;;
+            value) pending=""; continue ;;
+        esac
         case "$word" in
             --merge | -m) emit deny "Feature branches squash-merge so each PR is one commit on main. Re-run with --squash." ;;
+            -R | --repo) pending=repo ;;
+            --repo=*) repo_args=("$word") ;;
+            -b | --body | -t | --subject | -F | --body-file | -A | --author-email | --match-head-commit) pending=value ;;
             -*) ;;
             *) [ -n "$pr" ] || pr="$word" ;;
         esac
     done
-    if body="$(cd "${cwd:-.}" 2>/dev/null && gh pr view ${pr:+"$pr"} --json body --jq .body 2>/dev/null)"; then
+    if body="$(cd "${cwd:-.}" 2>/dev/null && gh pr view ${pr:+"$pr"} ${repo_args[@]+"${repo_args[@]}"} --json body --jq .body 2>/dev/null)"; then
         printf '%s\n' "$body" | grep -Eq '^##[[:space:]]+Review[[:space:]]*$' ||
             emit deny "This PR body has no '## Review' section. Every PR gets one fresh-context review before it merges: run the pr-reviewer agent on the diff, fix or answer its findings, and record the reviewer, the range, and the findings with their dispositions under '## Review'."
     fi

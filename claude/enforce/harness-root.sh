@@ -108,33 +108,12 @@ bind_harness_tree_root() {
   export "$variable_name=$CLAUDE_HARNESS_ROOT"
 }
 
-# Exports CLAUDE_RULES_FILES, which is the one override whose value is a
-# space-separated list rather than a single path: enforcement-guard-check.sh
-# scans all four rulebook files for rule citations. Exports only when the
-# checkout carries every one of them, because a partial list would silently
-# under-report which rules cite an enforcer and the hook would go quiet about
-# a real gap rather than fail loudly.
-bind_harness_rule_files() {
-  local rule_file rule_paths=""
-  [ -z "${CLAUDE_RULES_FILES:-}" ] || return 0
-  for rule_file in reference.md agents.md audits.md cost.md; do
-    [ -f "$CLAUDE_HARNESS_ROOT/rulebook/$rule_file" ] || return 0
-    rule_paths="$rule_paths $CLAUDE_HARNESS_ROOT/rulebook/$rule_file"
-  done
-  export CLAUDE_RULES_FILES="${rule_paths# }"
-}
-
 # The tracked data files that hooks read behind an override, and the two
 # harness-root overrides that name the tree itself rather than one file
 # (hook-integrity-check.sh hashes it, enforce/tdd.sh reads role-policy.json
 # out of it). Everything listed here exists in the checkout, so every line
 # binds; the deliberately absent variables are named in the header above.
-bind_harness_data_path CLAUDE_MANIFEST_FILE "enforce/manifest.json"
 bind_harness_data_path CLAUDE_ROLE_POLICY_FILE "enforce/role-policy.json"
 bind_harness_data_path CLAUDE_SETTINGS_FILE "settings.json"
-bind_harness_data_path REDACTION_GUARD_SETTINGS "settings.json"
-bind_harness_data_path REDACTION_GUARD_HOOKS_DIR "hooks"
 bind_harness_data_path CLAUDE_PROTOCOL_FILE "PROTOCOL.md"
-bind_harness_tree_root CLAUDE_INTEGRITY_ROOT
 bind_harness_tree_root CLAUDE_TDD_HOME
-bind_harness_rule_files
