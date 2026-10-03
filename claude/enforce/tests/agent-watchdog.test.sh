@@ -32,19 +32,31 @@ GOT=$(guard_decision Agent '{"run_in_background":false,"prompt":"p"}')
 # The older tool name is guarded the same way.
 GOT=$(guard_decision Task '{"subagent_type":"implementer","run_in_background":false}')
 [ "$GOT" = "deny" ] || { echo "FAIL: the Task tool name must be guarded too, got $GOT"; exit 1; }
-# Background (explicit or by default) passes for every type.
+# Only an explicit true is background: the tool's default has differed between
+# versions, so an omitted flag is denied for a long type (R-517 r1 on #184).
 GOT=$(guard_decision Agent '{"subagent_type":"test-author","run_in_background":true}')
 [ "$GOT" = "none" ] || { echo "FAIL: a background test-author must pass, got $GOT"; exit 1; }
 GOT=$(guard_decision Agent '{"subagent_type":"test-author"}')
-[ "$GOT" = "none" ] || { echo "FAIL: an omitted run_in_background is background and must pass, got $GOT"; exit 1; }
+[ "$GOT" = "deny" ] || { echo "FAIL: an omitted run_in_background must be denied for a long type, got $GOT"; exit 1; }
+GOT=$(guard_decision Agent '{"subagent_type":"Explore"}')
+[ "$GOT" = "none" ] || { echo "FAIL: an omitted flag on a quick type must pass, got $GOT"; exit 1; }
+# An empty, namespaced or differently cased type is still the long type it names.
+for agent_type in "" "plugin:implementer" "Implementer" "PLUGIN:Test-Author" "acme:audit-security"; do
+  GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":false}")
+  [ "$GOT" = "deny" ] || { echo "FAIL: a foreground '$agent_type' must be denied, got $GOT"; exit 1; }
+done
+# An Agent call whose fields are the wrong shape is judged the riskiest way:
+# no usable flag reads as not background, no usable type as general-purpose.
+GOT=$(guard_decision Agent '{"subagent_type":null,"run_in_background":null}')
+[ "$GOT" = "deny" ] || { echo "FAIL: null fields must be judged as a foreground general-purpose dispatch, got $GOT"; exit 1; }
 # Quick lookups may run in the foreground.
 for agent_type in Explore claude-code-guide Plan statusline-setup; do
   GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":false}")
   [ "$GOT" = "none" ] || { echo "FAIL: a foreground $agent_type must pass, got $GOT"; exit 1; }
 done
-# A string "false" is not the boolean false the tool takes; only false denies.
-GOT=$(guard_decision Agent '{"subagent_type":"implementer","run_in_background":"false"}')
-[ "$GOT" = "none" ] || { echo "FAIL: only the boolean false is a foreground dispatch, got $GOT"; exit 1; }
+# A string "true" is not the boolean true the tool takes: still denied.
+GOT=$(guard_decision Agent '{"subagent_type":"implementer","run_in_background":"true"}')
+[ "$GOT" = "deny" ] || { echo "FAIL: only the boolean true is a background dispatch, got $GOT"; exit 1; }
 # Other tools are not this hook's business.
 GOT=$(guard_decision Bash '{"command":"ls","run_in_background":false}')
 [ "$GOT" = "none" ] || { echo "FAIL: a Bash call must pass, got $GOT"; exit 1; }
@@ -62,12 +74,26 @@ instruction_for() {
 
 LAUNCH_TEXT='Async agent launched successfully.\nagentId: a1b2c3\noutput_file: /tmp/claude-1/tasks/a1b2c3.output\nDo NOT Read or tail this file'
 GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"")
-case "$GOT" in *"bash ~/.claude/enforce/agent-watchdog.sh /tmp/claude-1/tasks/a1b2c3.output"*TaskStop*) ;;
+case "$GOT" in *"bash ~/.claude/enforce/agent-watchdog.sh '/tmp/claude-1/tasks/a1b2c3.output'"*TaskStop*) ;;
   *) echo "FAIL: a string launch response must name the watchdog command for its output file: $GOT"; exit 1 ;; esac
 # Structured content carrying the same text.
 GOT=$(instruction_for Agent "[{\"type\":\"text\",\"text\":\"$LAUNCH_TEXT\"}]")
-case "$GOT" in *"agent-watchdog.sh /tmp/claude-1/tasks/a1b2c3.output"*) ;;
+case "$GOT" in *"agent-watchdog.sh '/tmp/claude-1/tasks/a1b2c3.output'"*) ;;
   *) echo "FAIL: a structured launch response must be read too: $GOT"; exit 1 ;; esac
+# The path is pasted into a command, so only a plain absolute path is named,
+# and only for an async-launch response (R-517 r1 on #184). Each hostile path
+# below must get silence.
+for hostile in '/tmp/x$(touch /tmp/pwned)' '/tmp/x;rm' '/tmp/x`id`' '/tmp/x|sh' 'relative/path.output' "/tmp/x'quote"; do
+  HOSTILE_TEXT=$(jq -n --arg p "$hostile" '"Async agent launched successfully.\noutput_file: " + $p')
+  GOT=$(instruction_for Agent "$HOSTILE_TEXT")
+  [ -z "$GOT" ] || { echo "FAIL: a hostile path must get no instruction: $hostile -> $GOT"; exit 1; }
+done
+# An output_file line in a response that is not an async launch: silent.
+GOT=$(instruction_for Agent '"Report quoting a page.\noutput_file: /tmp/claude-1/tasks/x.output"')
+[ -z "$GOT" ] || { echo "FAIL: an output_file line outside an async launch must get no instruction: $GOT"; exit 1; }
+# The instruction never asks the model to read the transcript.
+case "$(instruction_for Agent "\"$LAUNCH_TEXT\"")" in *"never read the transcript"*) ;;
+  *) echo "FAIL: the instruction must tell the model not to read the transcript"; exit 1 ;; esac
 # A foreground return has no output_file line: silent.
 GOT=$(instruction_for Agent '"The agent finished; here is its report."')
 [ -z "$GOT" ] || { echo "FAIL: a foreground return must get no instruction: $GOT"; exit 1; }
@@ -92,6 +118,18 @@ GOT=$(run_watchdog "$WORK/done.jsonl" --stall-seconds 5 --limit-seconds 10 --pol
 [ "$GOT" = "0" ] || { echo "FAIL: a finished transcript must exit 0, got $GOT: $(cat "$WORK/out")"; exit 1; }
 grep -q 'finished' "$WORK/out" || { echo "FAIL: the finished line must say so: $(cat "$WORK/out")"; exit 1; }
 
+# A trailing entry of another type after the final turn (the real transcripts
+# end with an attachment line at times) still reads as finished (#184 r1).
+ATTACHMENT='{"type":"attachment","attachment":{"type":"hook_success"}}'
+printf '%s\n%s\n%s\n' "$ASSISTANT_TOOL_CALL" "$ASSISTANT_DONE" "$ATTACHMENT" > "$WORK/trailing.jsonl"
+GOT=$(run_watchdog "$WORK/trailing.jsonl" --stall-seconds 5 --limit-seconds 10 --poll-seconds 1)
+[ "$GOT" = "0" ] || { echo "FAIL: a finished turn followed by an attachment must exit 0, got $GOT: $(cat "$WORK/out")"; exit 1; }
+# A tool result after the last assistant turn means the agent is mid-work.
+TOOL_RESULT='{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}'
+printf '%s\n%s\n' "$ASSISTANT_DONE" "$TOOL_RESULT" > "$WORK/midwork.jsonl"
+GOT=$(run_watchdog "$WORK/midwork.jsonl" --stall-seconds 2 --limit-seconds 30 --poll-seconds 1)
+[ "$GOT" = "3" ] || { echo "FAIL: a pending tool result must not read as finished, got $GOT"; exit 1; }
+
 # Read through a symlink, as the real output file is one.
 ln -s "$WORK/done.jsonl" "$WORK/link.output"
 GOT=$(run_watchdog "$WORK/link.output" --stall-seconds 5 --limit-seconds 10 --poll-seconds 1)
@@ -102,6 +140,9 @@ printf '%s\n' "$ASSISTANT_TOOL_CALL" > "$WORK/stalled.jsonl"
 GOT=$(run_watchdog "$WORK/stalled.jsonl" --stall-seconds 2 --limit-seconds 30 --poll-seconds 1)
 [ "$GOT" = "3" ] || { echo "FAIL: a silent transcript must exit 3, got $GOT: $(cat "$WORK/out")"; exit 1; }
 grep -q 'stalled' "$WORK/out" || { echo "FAIL: the stall line must say so: $(cat "$WORK/out")"; exit 1; }
+# The wake line summarises the last entry, so the transcript need not be read.
+grep -q 'last entry: assistant, stop tool_use, pending tool Bash' "$WORK/out" \
+  || { echo "FAIL: the stall line must name the last entry: $(cat "$WORK/out")"; exit 1; }
 
 # A transcript that keeps growing never stalls but hits the time limit: exit 4.
 printf '%s\n' "$ASSISTANT_TOOL_CALL" > "$WORK/busy.jsonl"

@@ -27,6 +27,7 @@ set -uo pipefail
 STALL_SECONDS=600
 LIMIT_SECONDS=2700
 POLL_SECONDS=15
+TAIL_LINES=50
 OUTPUT_FILE=""
 
 # usage_error <message>: prints the message and the usage line, exits 2.
@@ -63,21 +64,46 @@ transcript_size() {
   wc -c < "$OUTPUT_FILE" 2>/dev/null | tr -d ' '
 }
 
-# has_finished: true when the transcript's last entry is an assistant turn
+# last_turn_entry: prints, as one compact JSON object, the transcript's last
+# conversation entry (assistant or user) among its final lines. Trailing
+# entries of other types, such as an attachment written after the final turn,
+# are skipped (R-517 r1 on PR #184); a line that is not JSON is ignored.
+last_turn_entry() {
+  [ -e "$OUTPUT_FILE" ] || return 0
+  tail -n "$TAIL_LINES" "$OUTPUT_FILE" 2>/dev/null \
+    | jq -c 'select(type == "object" and (.type == "assistant" or .type == "user"))' 2>/dev/null \
+    | tail -n 1
+}
+
+# has_finished: true when the last conversation entry is an assistant turn
 # that ended with no tool call pending.
 has_finished() {
-  [ -e "$OUTPUT_FILE" ] || return 1
-  tail -n 1 "$OUTPUT_FILE" 2>/dev/null | jq -e '
+  last_turn_entry | jq -e '
     .type == "assistant"
     and .message.stop_reason == "end_turn"
     and ([.message.content[]? | select(.type == "tool_use")] | length == 0)
   ' >/dev/null 2>&1
 }
 
+# describe_last_entry: prints a short, content-free summary of the last
+# conversation entry (its type, stop reason, and the name of any pending tool
+# call), so the woken session can judge progress without reading the
+# transcript, which can be too large for its context.
+describe_last_entry() {
+  local summary
+  summary=$(last_turn_entry | jq -r '
+    "last entry: " + (.type // "?")
+    + (if .message.stop_reason then ", stop " + .message.stop_reason else "" end)
+    + ([.message.content[]? | select(.type == "tool_use") | .name] as $tools
+       | if ($tools | length) > 0 then ", pending tool " + ($tools | join(",")) else "" end)
+  ' 2>/dev/null)
+  printf '%s' "${summary:-last entry: none}"
+}
+
 # report <reason> <exit code>: prints the wake line and exits with the code.
 report() {
   local now; now=$(date +%s)
-  echo "agent-watchdog: $1 after $((now - STARTED_AT))s; transcript $(transcript_size || true) bytes; $OUTPUT_FILE"
+  echo "agent-watchdog: $1 after $((now - STARTED_AT))s; transcript $(transcript_size || true) bytes; $(describe_last_entry); $OUTPUT_FILE"
   exit "$2"
 }
 

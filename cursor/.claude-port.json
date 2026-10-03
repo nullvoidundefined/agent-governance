@@ -59,7 +59,7 @@
     "rules/observability.mdc": "sha256:873cd32c1cd9d41e2d49516ea9439408db5a9cafa57eb580aab0351e53c7a334",
     "rules/python.mdc": "sha256:1240506583177ab57fb6369c40f052a4b995dd91542a4d244ec74de2fdab4d31",
     "rules/ruby.mdc": "sha256:bd1fc65fe5c380166a64909f7d06a92be5cda890536affb1c921b6dbbb481782",
-    "rules/rulebook-agents.mdc": "sha256:df19cccd592919b055f4795afe6c5f9da016aecb01be8e02d4b5a0f67cb9edbc",
+    "rules/rulebook-agents.mdc": "sha256:04e902583ed854e9140d44fec4905f9cf2fadc8f30c322872fbe5ad0136ccccc",
     "rules/rulebook-audits.mdc": "sha256:ae068902e49a2beecea6f8333eed9487ccc1f146e1fa815ffec0608e213405b1",
     "rules/rulebook-cost.mdc": "sha256:ee5dcac0f2fc7faf4f8b03eff0721f6771394e8e0306bf636ee8f3f427f60518",
     "rules/rulebook-reference-convention-files.mdc": "sha256:911a87593a128510b560f2ad04a94a780cb22d5a4a5de675979b6ba112cae6ec",
