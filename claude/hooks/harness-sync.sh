@@ -67,7 +67,7 @@ elif [ -n "${CLAUDE_PROJECT_DIR:-}" ] && is_checkout "$CLAUDE_PROJECT_DIR"; then
 fi
 if [ -z "$CHECKOUT" ]; then
   if [ "$REMOTE" = "true" ]; then
-    say_context "harness-sync (R-003): no agent-governance checkout is reachable (no argument, no ~/.claude/.sync-source, and this project is not the harness repo), so this remote session runs WITHOUT the synced harness. A project's .claude/settings.json SessionStart hook written by repo-setup clones and syncs it; until then, treat every rule as manual."
+    say_context "harness-sync: no agent-governance checkout is reachable (no argument, no ~/.claude/.sync-source, and this project is not the harness repo), so this remote session runs WITHOUT the synced harness. A project's .claude/settings.json SessionStart hook written by repo-setup clones and syncs it; until then, treat every rule as manual."
   fi
   exit 0
 fi
@@ -182,7 +182,7 @@ if [ "$drifted" -gt 0 ]; then
       (apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq rsync >/dev/null 2>&1) || true
     fi
     if ! command -v rsync >/dev/null 2>&1; then
-      say_context "harness-sync (R-003): the live harness (~/.claude, ~/.cursor, ~/.codex) differs from $CHECKOUT in $drifted tracked file(s), and rsync is not installed, so ./sync.sh cannot run. Install rsync and run ./sync.sh from the checkout before relying on any gate this session."
+      say_context "harness-sync: the live harness (~/.claude, ~/.cursor, ~/.codex) differs from $CHECKOUT in $drifted tracked file(s), and rsync is not installed, so ./sync.sh cannot run. Install rsync and run ./sync.sh from the checkout before relying on any gate this session."
       exit 0
     fi
     notes+=("rsync installed")
@@ -196,7 +196,7 @@ if [ "$drifted" -gt 0 ]; then
     kept=$(grep '^KEPT:' <<< "$sync_err" | paste -sd ';' -)
     [ -n "$kept" ] && notes+=("$kept")
   elif grep -q '^REFUSED' <<< "$sync_err"; then
-    say_context "harness-sync (R-003): ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses its payload: $sync_err); sync.sh copies claude/, cursor/, then codex/, so a payload before the refused one may already be updated while the refused one and those after it are not, and $drifted tracked file(s) differed before the run. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
+    say_context "harness-sync: ./sync.sh failed from $CHECKOUT (a JSON file that does not parse refuses its payload: $sync_err); sync.sh copies claude/, cursor/, then codex/, so a payload before the refused one may already be updated while the refused one and those after it are not, and $drifted tracked file(s) differed before the run. Fix the checkout and re-run ./sync.sh before relying on any gate this session."
     exit 0
   elif grep -q '^FAILED:' <<< "$sync_err"; then
     # Only the enforce installer writes FAILED:, and sync.sh runs it after every
@@ -204,25 +204,14 @@ if [ "$drifted" -gt 0 ]; then
     notes+=("synced $drifted changed or missing file(s) from $CHECKOUT, but ./sync.sh then failed: $sync_err")
   else
     # Anything else stopped sync.sh mid-copy (an rsync, mkdir, or git failure).
-    say_context "harness-sync (R-003): ./sync.sh failed before its copy completed from $CHECKOUT: $sync_err. Payloads are copied claude/, cursor/, then codex/, so the live trees may be partly updated; $drifted tracked file(s) differed before the run. Fix the cause and re-run ./sync.sh before relying on any gate this session."
+    say_context "harness-sync: ./sync.sh failed before its copy completed from $CHECKOUT: $sync_err. Payloads are copied claude/, cursor/, then codex/, so the live trees may be partly updated; $drifted tracked file(s) differed before the run. Fix the cause and re-run ./sync.sh before relying on any gate this session."
     exit 0
   fi
 else
   notes+=("live ~/.claude matches $CHECKOUT")
-  # Nothing drifted, so ./sync.sh did not run its own install check; a live
-  # node_modules can still lag its lockfile (a sync from before this check
-  # existed, or a package deleted by hand), and the ESLint push gates need it.
-  if [ -f "$LIVE/enforce/package-lock.json" ] && [ -f "$CHECKOUT/claude/enforce/install-enforce-dependencies.sh" ]; then
-    if install_out=$(bash "$CHECKOUT/claude/enforce/install-enforce-dependencies.sh" "$LIVE/enforce" 2>&1); then
-      [ -n "$install_out" ] && { notes+=("enforce dependencies installed"); deps_reported=1; }
-    else
-      notes+=("enforce dependencies NOT installed: $install_out")
-      deps_reported=1
-    fi
-  fi
 fi
 
 if [ "$drifted" -gt 0 ] || [ "$REMOTE" = "true" ] || [ -n "${deps_reported:-}" ]; then
-  say_context "harness-sync (R-003): $(IFS='; '; echo "${notes[*]}"). Hooks registered in the synced settings.json apply from the next tool call; the rules in CLAUDE.md apply now."
+  say_context "harness-sync: $(IFS='; '; echo "${notes[*]}"). Hooks registered in the synced settings.json apply from the next tool call; the rules in CLAUDE.md apply now."
 fi
 exit 0

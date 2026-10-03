@@ -36,22 +36,8 @@ set -uo pipefail
 
 SECURITY_CI_SEMGREP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_CI_RULES_DIR="$SECURITY_CI_SEMGREP_DIR/semgrep"
-
-# The file extensions Semgrep must report as scanned.
-SECURITY_SURFACE_CODE_FILE_PATTERN='\.(py|ts|tsx|mts|cts|js|jsx|mjs|cjs|go|rb)$'
-
-# resolve_security_surface_semgrep_command: prints the Semgrep command to run,
-# CLAUDE_SEMGREP_CMD first, then `semgrep`, then `uvx semgrep`; prints nothing
-# when none resolves.
-resolve_security_surface_semgrep_command() {
-  if [ -n "${CLAUDE_SEMGREP_CMD:-}" ]; then
-    command -v "${CLAUDE_SEMGREP_CMD%% *}" >/dev/null 2>&1 && printf '%s' "$CLAUDE_SEMGREP_CMD"
-  elif command -v semgrep >/dev/null 2>&1; then
-    printf 'semgrep'
-  elif command -v uvx >/dev/null 2>&1; then
-    printf 'uvx semgrep'
-  fi
-}
+# shellcheck source=../hooks/security-surface.sh
+. "$SECURITY_CI_SEMGREP_DIR/../hooks/security-surface.sh"
 
 # The jq definitions that escape a value for GitHub's workflow-command
 # parser: `%`, CR, and LF everywhere, plus `:` and `,` inside properties.

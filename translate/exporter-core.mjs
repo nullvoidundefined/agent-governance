@@ -13,7 +13,6 @@ import path from "node:path";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { ProfileError } from "./apply-profile.mjs";
 
 // MANIFEST_PATH: the manifest's own target-relative path. Exported so a
 // derived-content renderer that must list the manifest's path in its own
@@ -57,34 +56,24 @@ export function renderGeneratedHeaderFor(builderPath, source) {
 // guessing which argument was refused); runExporterCli below prefixes the
 // exporter's own name and usage line before printing it.
 export function parseCliMode(argv) {
-  const known = new Set(["--write", "--check", "--root", "--profile"]);
+  const known = new Set(["--write", "--check", "--root"]);
   const rootIndex = argv.indexOf("--root");
-  const profileIndex = argv.indexOf("--profile");
   // Every token is accounted for, not just the `--`-prefixed ones. Filtering
   // to `--` tokens meant a bare positional or a single-dash flag was silently
   // discarded and rootDir fell back to this script's own repository, so
   // `--check /some/other/tree` reported on the wrong tree and `--write` pruned
   // orphans and emptied directories in the wrong one (2026-09-17 audit P2-1).
   const rootValueIndex = rootIndex === -1 ? -1 : rootIndex + 1;
-  const profileValueIndex = profileIndex === -1 ? -1 : profileIndex + 1;
   const unexpected = argv.find((token, index) =>
-    index !== rootValueIndex && index !== profileValueIndex && !known.has(token));
+    index !== rootValueIndex && !known.has(token));
   if (unexpected !== undefined) {
     return { error: `unrecognized argument "${unexpected}"; the repository directory goes after --root and there are no positional arguments` };
   }
-  // --profile <name> (IAN-518): renders from the claude/ set that
-  // apply-profile.mjs filters by that harness profile; absent, the sources
-  // are read unfiltered and the output is what it always was.
-  let profile;
-  if (profileIndex !== -1) {
-    profile = argv[profileValueIndex];
-    if (profile === undefined || profile.startsWith("--")) return { error: "--profile was given with no profile name after it" };
-  }
-  const modes = argv.filter((f, index) => (f === "--write" || f === "--check") && index !== profileValueIndex);
+  const modes = argv.filter((f) => f === "--write" || f === "--check");
   if (modes.length === 0) return { error: "no mode given; pass exactly one of --write or --check" };
   if (modes.length > 1) return { error: `${modes.join(" and ")} cannot both be given; pass exactly one of --write or --check` };
   if (rootIndex === -1) {
-    return { mode: modes[0].slice(2), rootDir: path.resolve(fileURLToPath(import.meta.url), "../.."), profile };
+    return { mode: modes[0].slice(2), rootDir: path.resolve(fileURLToPath(import.meta.url), "../..") };
   }
   // A bare --root (no following value, or the next token is itself a flag)
   // is a usage error, not a crash: without this guard rootDir is undefined
@@ -92,7 +81,7 @@ export function parseCliMode(argv) {
   const rootValue = argv[rootIndex + 1];
   if (rootValue === undefined) return { error: "--root was given with no repository directory after it" };
   if (rootValue.startsWith("--")) return { error: `--root was followed by the flag "${rootValue}" rather than a repository directory` };
-  return { mode: modes[0].slice(2), rootDir: rootValue, profile };
+  return { mode: modes[0].slice(2), rootDir: rootValue };
 }
 
 // listFilesWithExtension(dir, extension) -> sorted full paths: every entry
@@ -148,28 +137,6 @@ function loadSkillSupportFiles(skillDir) {
     });
 }
 
-// makeProfiledSkillLoader(loadSkillSource, omitted) -> skillDir => skill: a
-// harness profile (IAN-518, translate/apply-profile.mjs) can hide a skill's
-// SKILL.md while keeping its scripts, which gates still run. Such a skill
-// loads as { file, frontmatter: { name }, hidden: true, supportFiles }, named
-// by its directory, so exporters port the scripts and skip the SKILL.md copy.
-// Only a SKILL.md the profile itself removed is tolerated; any other missing
-// SKILL.md still fails in loadSkillSource.
-export function makeProfiledSkillLoader(loadSkillSource, omitted) {
-  return (skillDir) => {
-    const name = path.basename(skillDir);
-    if (!omitted.has(`skills/${name}/SKILL.md`)) return loadSkillSource(skillDir);
-    return { file: path.join(skillDir, "SKILL.md"), frontmatter: { name }, hidden: true, supportFiles: loadSkillSupportFiles(skillDir) };
-  };
-}
-
-// loadTextUnlessOmitted(loadTextFileFn, claudeDir, rel, omitted) -> text or
-// null: null only when the active harness profile removed rel, so a source
-// deleted by accident still fails loudly in loadTextFileFn.
-export function loadTextUnlessOmitted(loadTextFileFn, claudeDir, rel, omitted) {
-  return omitted.has(rel) ? null : loadTextFileFn(path.join(claudeDir, rel));
-}
-
 // renderSkillSupportFileFor(skill, file) -> { path, content, mode }: one
 // file bundled beside a skill's SKILL.md (file.rel is its path relative to
 // the skill directory, forward-slash separated), copied without alteration;
@@ -215,10 +182,10 @@ export function runExporterCli(argv, hooks) {
   let sources;
   let planned;
   try {
-    sources = hooks.loadSources(cli.rootDir, cli.profile);
+    sources = hooks.loadSources(cli.rootDir);
     planned = hooks.renderPlannedTree(sources);
   } catch (err) {
-    if (!(err instanceof SourceError) && !(err instanceof ProfileError)) throw err;
+    if (!(err instanceof SourceError)) throw err;
     console.error(err.message);
     process.exit(2);
   }

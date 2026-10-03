@@ -89,6 +89,8 @@ fi
 # flag cannot hide inside quotes and a commit message that mentions one is
 # still just the value of -m.
 SHELL_SEGMENTS_HELPER="$(dirname "${BASH_SOURCE[0]}")/shell-command-segments.py"
+# normalize_path and expand_braces, shared with destructive-ops-guard.sh.
+. "$(dirname "${BASH_SOURCE[0]}")/shell-path-helpers.sh"
 REDIRECT_MARK=$'\036'
 
 # Fails closed: when the parser is missing or fails (a python3 that exists
@@ -302,38 +304,8 @@ resolve_path() {
         done
     fi
     case "$path" in /*) ;; *) [ -n "$CD_PREFIX" ] && path="$CD_PREFIX/$path" ;; esac
-    # The patterns live in variables: bash 3.2 keeps a backslash-escaped slash
-    # literally in a replacement, so ${path//\/\//\/} would insert "\/".
-    local slash='/' double_slash='//' dot_segment='/./'
-    while [[ "$path" == *//* ]]; do path="${path//$double_slash/$slash}"; done
-    while [[ "$path" == */./* ]]; do path="${path//$dot_segment/$slash}"; done
-    while [[ "$path" == ./* ]]; do path="${path#./}"; done
-    [[ "$path" == */. ]] && path="${path%/.}"
-    pattern='^(.*/)?([^/]+)/\.\.(/.*)?$'
-    while [[ "$path" =~ $pattern ]] && [ "${BASH_REMATCH[2]}" != ".." ]; do
-        path="${BASH_REMATCH[1]}${BASH_REMATCH[3]#/}"
-    done
-    RESOLVED_PATH="$path"
-}
-
-# Sets EXPANDED_WORDS to the words brace expansion makes of the argument
-# ({a,b} groups, expanded one at a time; capped at 64 results). A word
-# without a brace is its own only expansion.
-expand_braces() {
-    local pending=("$1") word parts alternative prefix suffix pattern='^(.*)\{([^{}]*,[^{}]*)\}(.*)$'
-    EXPANDED_WORDS=()
-    while [ "${#pending[@]}" -gt 0 ] && [ "${#EXPANDED_WORDS[@]}" -lt 64 ]; do
-        word="${pending[0]}"
-        pending=(${pending[@]+"${pending[@]:1}"})
-        if [[ "$word" == *'{'* ]] && [[ "$word" =~ $pattern ]]; then
-            prefix="${BASH_REMATCH[1]}"
-            suffix="${BASH_REMATCH[3]}"
-            IFS=, read -r -a parts <<< "${BASH_REMATCH[2]},"
-            for alternative in "${parts[@]}"; do pending+=("$prefix$alternative$suffix"); done
-        else
-            EXPANDED_WORDS+=("$word")
-        fi
-    done
+    normalize_path "$path"
+    RESOLVED_PATH="$NORMALIZED_PATH"
 }
 
 # True when a resolved path is the .git/hooks directory or a file under it,

@@ -4,8 +4,7 @@
 # for why), removes a file it installed once the repository stops tracking it
 # and only while its live content is unchanged (IAN-116), refuses on invalid JSON without a partial write, is idempotent, and
 # syncs only git-tracked source content (never untracked/gitignored local
-# state such as node_modules), and brings the live enforce node_modules in
-# line with a synced lockfile, failing loudly when npm cannot. Every target is a temp dir via the SYNC_*_HOME
+# state such as node_modules). Every target is a temp dir via the SYNC_*_HOME
 # overrides, so this never touches a real ~/.claude, ~/.cursor, or ~/.codex.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -135,121 +134,6 @@ outside="$TMP/outside.txt"; echo "outside" > "$outside"
 printf '%s  ../outside.txt\n' "$(shasum -a 256 "$outside" | awk '{print $1}')" >> "$MANIFEST"
 run_sync >/dev/null 2>&1
 [ -f "$outside" ] || { echo "FAIL: a manifest entry escaping the target removed a file outside it"; exit 1; }
-
-# --- enforce dependencies (2026-09-18): a synced claude/enforce/package-lock.json
-# that adds a dependency must reach the live node_modules. The copy used to be
-# the whole sync, so a lockfile gaining vue-eslint-parser landed in the live
-# tree while node_modules kept the old set, and lint.mjs crashed with
-# ERR_MODULE_NOT_FOUND on every push until someone ran npm ci by hand. A stub
-# npm (SYNC_NPM) records each call and materializes the locked packages, so
-# this runs offline and asserts on what the live tree ends up holding.
-STUB_NPM="$TMP/stub-npm"
-NPM_LOG="$TMP/npm-calls.log"
-cat > "$STUB_NPM" <<'STUB'
-#!/usr/bin/env bash
-# stub npm: records the call, then installs every non-optional locked package
-# as an empty directory, which is all the dependency check looks at.
-printf '%s\n' "$*" >> "$NPM_LOG"
-[ "${STUB_NPM_FAIL:-}" = "1" ] && { echo "stub npm: registry unreachable" >&2; exit 1; }
-prefix=""
-while [ $# -gt 0 ]; do [ "$1" = "--prefix" ] && prefix="$2"; shift; done
-# npm ci deletes node_modules before installing, stamp included.
-rm -f "$prefix/node_modules/.enforce-installed-lock"
-jq -r '.packages | to_entries[] | select(.key != "" and (.value.optional | not)) | .key' "$prefix/package-lock.json" |
-  while IFS= read -r pkg; do mkdir -p "$prefix/$pkg"; done
-# STUB_NPM_READONLY: leave node_modules unwritable, so the stamp copy that
-# follows a successful install fails.
-[ "${STUB_NPM_READONLY:-}" = "1" ] && chmod a-w "$prefix/node_modules"
-exit 0
-STUB
-chmod +x "$STUB_NPM"
-export NPM_LOG
-
-# writeEnforceLock(packages...): writes a package.json and a lockfile that
-# locks the named packages, then commits both into the fake source repo.
-writeEnforceLock() {
-  local pkg lock='{"name":"enforce","lockfileVersion":3,"packages":{"":{"name":"enforce"}}}'
-  for pkg in "$@"; do lock=$(printf '%s' "$lock" | jq --arg k "node_modules/$pkg" '.packages[$k] = {version: "1.0.0"}'); done
-  mkdir -p "$TMP/repo/claude/enforce"
-  printf '{"name":"enforce","private":true}\n' > "$TMP/repo/claude/enforce/package.json"
-  printf '%s\n' "$lock" > "$TMP/repo/claude/enforce/package-lock.json"
-  git -C "$TMP/repo" add -A
-  git -C "$TMP/repo" commit -q -m "fixture: enforce lock $*"
-}
-
-# npmCallCount(): prints how many times the stub npm has been called.
-npmCallCount() { [ -f "$NPM_LOG" ] && wc -l < "$NPM_LOG" | tr -d ' ' || echo 0; }
-
-mkdir -p "$TMP/repo/claude/enforce"
-cp "$REPO_ROOT/claude/enforce/install-enforce-dependencies.sh" "$TMP/repo/claude/enforce/"
-writeEnforceLock eslint
-SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync with an enforce lockfile failed"; exit 1; }
-[ -d "$TMP/live/claude/enforce/node_modules/eslint" ] || { echo "FAIL: first sync did not install the locked enforce dependencies"; exit 1; }
-grep -q -- "ci --prefix $TMP/live/claude/enforce" "$NPM_LOG" || { echo "FAIL: install was not a locked npm ci against the live enforce dir"; exit 1; }
-
-calls=$(npmCallCount)
-SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1
-[ "$(npmCallCount)" = "$calls" ] || { echo "FAIL: an unchanged, complete install ran npm again"; exit 1; }
-
-# The regression itself: the source lock adds a dependency the live tree lacks.
-writeEnforceLock eslint vue-eslint-parser
-SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync after a lockfile change failed"; exit 1; }
-[ -d "$TMP/live/claude/enforce/node_modules/vue-eslint-parser" ] || { echo "FAIL: a dependency added to the synced lockfile never reached the live node_modules"; exit 1; }
-
-# Same lockfile, but a locked package vanished from the live node_modules.
-rm -rf "$TMP/live/claude/enforce/node_modules/vue-eslint-parser"
-SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync repairing a missing package failed"; exit 1; }
-[ -d "$TMP/live/claude/enforce/node_modules/vue-eslint-parser" ] || { echo "FAIL: a locked package missing from the live node_modules was not reinstalled"; exit 1; }
-
-# npm unavailable: the files still sync, but the run fails loudly and names the fix.
-writeEnforceLock eslint vue-eslint-parser eslint-plugin-vue
-if SYNC_NPM="$TMP/no-such-npm" run_sync >/dev/null 2>"$TMP/nonpm.err"; then echo "FAIL: sync succeeded although npm is unavailable and the lockfile changed"; exit 1; fi
-grep -q "npm ci --prefix $TMP/live/claude/enforce" "$TMP/nonpm.err" || { echo "FAIL: missing-npm failure does not name the npm ci command"; cat "$TMP/nonpm.err"; exit 1; }
-cmp -s "$TMP/repo/claude/enforce/package-lock.json" "$TMP/live/claude/enforce/package-lock.json" || { echo "FAIL: missing npm blocked the file sync itself"; exit 1; }
-
-# npm present but failing: loud, nonzero, and retried on the next sync.
-if STUB_NPM_FAIL=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/npmfail.err"; then echo "FAIL: sync succeeded although npm ci failed"; exit 1; fi
-grep -q "FAILED" "$TMP/npmfail.err" || { echo "FAIL: npm ci failure was not reported"; cat "$TMP/npmfail.err"; exit 1; }
-SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync did not recover once npm worked"; exit 1; }
-[ -d "$TMP/live/claude/enforce/node_modules/eslint-plugin-vue" ] || { echo "FAIL: a failed install was not retried on the next sync"; exit 1; }
-
-# Copilot review on #55: the stamp copy is the installer's last step, and a
-# helper without set -e used to report "installed" even when it failed, so the
-# sync claimed success with no stamp written.
-writeEnforceLock eslint vue-eslint-parser eslint-plugin-vue typescript
-if STUB_NPM_READONLY=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/stamp.err"; then
-  chmod u+w "$TMP/live/claude/enforce/node_modules"; echo "FAIL: sync succeeded although the install stamp could not be written"; exit 1
-fi
-chmod u+w "$TMP/live/claude/enforce/node_modules"
-grep -q "FAILED" "$TMP/stamp.err" || { echo "FAIL: a stamp write failure was not reported"; cat "$TMP/stamp.err"; exit 1; }
-
-# Copilot review on #55: sync.sh and a parallel session's SessionStart can both
-# find the install stale, and npm ci rebuilds the shared node_modules, so the
-# install is serialized by a lock. A lock held by someone else is waited on and
-# then reported, never run through.
-mkdir "$TMP/live/claude/enforce/.enforce-install-lock"
-calls=$(npmCallCount)
-if ENFORCE_INSTALL_LOCK_WAIT=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/lock.err"; then echo "FAIL: sync installed through a lock held by another install"; exit 1; fi
-[ "$(npmCallCount)" = "$calls" ] || { echo "FAIL: npm ran while another install held the lock"; exit 1; }
-grep -q "enforce-install-lock" "$TMP/lock.err" || { echo "FAIL: a held install lock was not named"; cat "$TMP/lock.err"; exit 1; }
-rmdir "$TMP/live/claude/enforce/.enforce-install-lock"
-SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1 || { echo "FAIL: sync did not install once the lock was released"; exit 1; }
-[ ! -e "$TMP/live/claude/enforce/.enforce-install-lock" ] || { echo "FAIL: the install left its lock behind"; exit 1; }
-[ -d "$TMP/live/claude/enforce/node_modules/typescript" ] || { echo "FAIL: install after the lock release did not complete"; exit 1; }
-
-# Copilot review on #60: an age-based expiry let a second caller clear the lock
-# under a slow but live npm ci. The lock now records its holder's PID and is
-# reclaimed only when that process is gone, never because it is old. A live
-# holder (this shell) is waited on; a dead one is reclaimed at once.
-writeEnforceLock eslint vue-eslint-parser eslint-plugin-vue typescript zod
-LIVE_LOCK="$TMP/live/claude/enforce/.enforce-install-lock"
-mkdir "$LIVE_LOCK"; echo "$$" > "$LIVE_LOCK/pid"; touch -t 200001010000 "$LIVE_LOCK"
-if ENFORCE_INSTALL_LOCK_WAIT=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>&1; then echo "FAIL: an old lock held by a live process was reclaimed"; exit 1; fi
-sleep 0 & dead_pid=$!; wait "$dead_pid"
-echo "$dead_pid" > "$LIVE_LOCK/pid"
-ENFORCE_INSTALL_LOCK_WAIT=1 SYNC_NPM="$STUB_NPM" run_sync >/dev/null 2>"$TMP/dead.err" || { echo "FAIL: a lock left by a dead process was not reclaimed"; cat "$TMP/dead.err"; exit 1; }
-[ -d "$TMP/live/claude/enforce/node_modules/zod" ] || { echo "FAIL: install after reclaiming a dead lock did not complete"; exit 1; }
-[ ! -e "$LIVE_LOCK" ] || { echo "FAIL: the install left its lock behind"; exit 1; }
 
 rm -rf "$TMP"
 echo "sync.test.sh PASS"
