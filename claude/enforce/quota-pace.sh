@@ -215,13 +215,18 @@ lockOwner() {
 # procHidesPids: succeeds when /proc is mounted with hidepid (or a value
 # other than 0), which hides other users' live processes, so a missing
 # /proc/<pid> proves nothing there (R-109 r6). An unreadable mounts file
-# counts as hiding. QUOTA_PROC_MOUNTS names another mounts file for tests;
-# any value it can take only moves the check toward ps or "alive".
+# counts as hiding, and so does one that is not a regular file or names no
+# /proc proc mount, since it proves nothing. QUOTA_PROC_MOUNTS names another
+# mounts file for tests; only a file that positively shows an un-hidden /proc
+# selects the /proc check, so no value of it can read a live pid as dead.
 procHidesPids() {
   local mounts="${QUOTA_PROC_MOUNTS:-/proc/mounts}"
   [ -r "$mounts" ] || return 0
-  awk '$2 == "/proc" && $3 == "proc" { print $4 }' "$mounts" 2>/dev/null |
-    grep -Eq '(^|,)hidepid=([1-9]|invisible|noaccess|ptraceable)'
+  [ -f "$mounts" ] || return 0
+  local options
+  options=$(awk '$2 == "/proc" && $3 == "proc" { print $4 }' "$mounts" 2>/dev/null)
+  [ -n "$options" ] || return 0
+  printf '%s\n' "$options" | grep -Eq '(^|,)hidepid=([1-9]|invisible|noaccess|ptraceable)'
 }
 
 # isDeadPid <pid>: succeeds only when no process with that pid exists. A
@@ -408,7 +413,7 @@ reportJson() {
        buckets: $buckets,
        providers: ($buckets | group_by(.provider) | map({
          provider: .[0].provider,
-         ratioComplete: all(.[] | select(.status == "ok"); .paceRatio != null),
+         ratioComplete: (any(.[]; .status == "ok") and all(.[] | select(.status == "ok"); .paceRatio != null)),
          paceRatio: (if all(.[] | select(.status == "ok"); .paceRatio != null)
                      then ([.[] | select(.status == "ok") | .paceRatio] | max)
                      else null end),

@@ -100,6 +100,11 @@ bash "$SCRIPT" record claude-fable 10 --provider claude --resets-at 2026-10-06T2
 rm -f "$CLAUDE_QUOTA_FILE"
 cp "$CLAUDE_HARNESS_ROOT/quota.template.json" "$CLAUDE_QUOTA_FILE"
 [ "$(field '.providers[] | select(.provider=="claude") | .ratioComplete')" = "true" ] || failCase "a provider with every current bucket rated must read ratioComplete true"
+# A provider with no current bucket (only stale ones) has no ratio at all,
+# so ratioComplete must be false, never vacuously true.
+rm -f "$CLAUDE_QUOTA_FILE"
+bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00 --at "$NOW_OWNER"
+[ "$(QUOTA_NOW=$((NOW_OWNER + 25 * HOUR)) field '.providers[0].ratioComplete')" = "false" ] || failCase "a provider with only stale buckets must read ratioComplete false"
 
 # --- 3. Exhaustion: under one day left at burn, or 90% used. ---
 rm -f "$CLAUDE_QUOTA_FILE"
@@ -301,6 +306,15 @@ printf 'proc /proc proc rw,relatime,hidepid=2 0 0\n' >"$WORK/mounts-hidepid"
 msg=$({ timeout 20 env QUOTA_PROC_MOUNTS="$WORK/mounts-hidepid" PATH="$WORK/nops" bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
 case "$msg" in *EXIT0*) failCase "under hidepid with no ps, an owner must count as alive" ;; esac
 [ -L "$LOCK" ] || failCase "under hidepid with no ps, the owner's lock must be kept"
+# A mounts file naming no /proc proc mount proves nothing about hidepid, so
+# it must count as hiding: with no ps, the owner stays alive.
+for mounts in /dev/null "$WORK" "$WORK/mounts-empty" "$WORK/mounts-elsewhere"; do
+  : >"$WORK/mounts-empty"
+  printf 'proc /mnt/proc proc rw,relatime 0 0\n' >"$WORK/mounts-elsewhere"
+  msg=$({ timeout 20 env QUOTA_PROC_MOUNTS="$mounts" PATH="$WORK/nops" bash "$SCRIPT" record codex 2 2>&1 && echo EXIT0; } || true)
+  case "$msg" in *EXIT0*) failCase "a mounts file with no /proc line ($mounts) must not prove a pid dead" ;; esac
+  [ -L "$LOCK" ] || failCase "a mounts file with no /proc line ($mounts) must keep the lock"
+done
 # The same mounts file with ps available still finds the dead owner.
 timeout 20 env QUOTA_PROC_MOUNTS="$WORK/mounts-hidepid" bash "$SCRIPT" record codex 2 || failCase "under hidepid, ps must still identify a dead owner"
 rm -rf "$LOCK"
