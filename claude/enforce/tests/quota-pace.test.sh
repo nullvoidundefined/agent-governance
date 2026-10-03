@@ -176,6 +176,23 @@ touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
 timeout 10 bash "$SCRIPT" record codex 14 || failCase "a stale non-empty lock must be broken, not spun on"
 [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "2" ] || failCase "both records past stale locks must land"
 [ ! -e "$CLAUDE_QUOTA_FILE.lock" ] || failCase "the lock must be released after a stale break"
+# Many recorders against one stale lock (R-109 r2): the break must hand the
+# lock to exactly one writer at a time, or a snapshot is lost while every
+# writer exits 0. The race is probabilistic, so it runs three times.
+for round in 1 2 3; do
+  rm -rf "$CLAUDE_QUOTA_FILE" "$CLAUDE_QUOTA_FILE".lock*
+  bash "$SCRIPT" record codex 1 --resets-at 2026-10-08T10:57:00+07:00 --at $((NOW_OWNER - 20 * HOUR))
+  mkdir "$CLAUDE_QUOTA_FILE.lock" && touch -d '2 minutes ago' "$CLAUDE_QUOTA_FILE.lock"
+  pids=""
+  for i in 2 3 4 5 6 7 8 9 10 11 12 13; do
+    timeout 30 bash "$SCRIPT" record codex "$i" --at $((NOW_OWNER - (20 - i) * HOUR)) &
+    pids="$pids $!"
+  done
+  for p in $pids; do wait "$p" || failCase "a recorder racing a stale lock failed (round $round)"; done
+  [ "$(jq '.buckets.codex.snapshots | length' "$CLAUDE_QUOTA_FILE")" = "13" ] ||
+    failCase "recorders racing one stale lock lost a snapshot (round $round)"
+  [ -z "$(ls -d "$CLAUDE_QUOTA_FILE".lock* 2>/dev/null)" ] || failCase "a lock or break marker was left behind (round $round)"
+done
 # A failure inside the locked region still releases the lock.
 echo 'not json' >"$CLAUDE_QUOTA_FILE"
 expectFail "a malformed file under the lock" bash "$SCRIPT" record codex 15
@@ -204,6 +221,22 @@ expectFail "QUOTA_NOW=-5" env QUOTA_NOW=-5 bash "$SCRIPT" report
 expectFail "QUOTA_STALE_HOURS=abc" env QUOTA_STALE_HOURS=abc bash "$SCRIPT" report
 expectFail "QUOTA_STALE_HOURS=-1" env QUOTA_STALE_HOURS=-1 bash "$SCRIPT" report
 [ "$(QUOTA_NOW=$((NOW_OWNER + 60)) QUOTA_STALE_HOURS=0 field '.buckets[0].status')" = "stale" ] || failCase "QUOTA_STALE_HOURS=0 must read a minute-old snapshot stale"
+# Round 2 (R-109): an absurd window, an unset HOME, a symlinked file, and a
+# mistyped report flag all fail loudly instead of reading as healthy.
+expectFail "--window-days past 366" bash "$SCRIPT" record codex 13 --window-days 99999999999999999999
+expectFail "--window-days 367" bash "$SCRIPT" record codex 13 --window-days 367
+writeBucket "$(jq -c '.windowDays = 99999999999999999999' <<<"$GOOD")"
+expectFail "file windowDays past 366" bash "$SCRIPT" report
+writeBucket "$GOOD"
+expectFail "report with an unknown option" bash "$SCRIPT" report --jsno
+mkdir -p "$WORK/cwd"
+expectFail "HOME unset with no CLAUDE_QUOTA_FILE" sh -c "cd '$WORK/cwd' && env -u HOME -u CLAUDE_QUOTA_FILE bash '$SCRIPT' record codex 13 --resets-at 2026-10-08T10:57:00+07:00"
+[ -z "$(ls -A "$WORK/cwd")" ] || failCase "an unset HOME must not create a quota file under the cwd"
+cp "$CLAUDE_QUOTA_FILE" "$WORK/real.json"
+ln -s "$WORK/real.json" "$WORK/link.json"
+expectFail "a symlinked quota file (record)" env CLAUDE_QUOTA_FILE="$WORK/link.json" bash "$SCRIPT" record codex 14
+expectFail "a symlinked quota file (report)" env CLAUDE_QUOTA_FILE="$WORK/link.json" bash "$SCRIPT" report
+[ -L "$WORK/link.json" ] || failCase "a refused record must leave the symlink in place"
 mkdir -p "$WORK/adir"
 expectFail "a quota path naming a directory (record)" env CLAUDE_QUOTA_FILE="$WORK/adir" bash "$SCRIPT" record codex 13 --resets-at 2026-10-08T10:57:00+07:00
 expectFail "a quota path naming a directory (report)" env CLAUDE_QUOTA_FILE="$WORK/adir" bash "$SCRIPT" report

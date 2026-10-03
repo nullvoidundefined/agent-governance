@@ -31,7 +31,14 @@
 # Bash 3.2 safe: no mapfile, no associative arrays.
 set -uo pipefail
 
-QUOTA_FILE="${CLAUDE_QUOTA_FILE:-${HOME:-~}/.claude/quota.json}"
+if [ -n "${CLAUDE_QUOTA_FILE:-}" ]; then
+  QUOTA_FILE="$CLAUDE_QUOTA_FILE"
+elif [ -n "${HOME:-}" ]; then
+  QUOTA_FILE="$HOME/.claude/quota.json"
+else
+  echo "quota-pace: HOME is unset; set CLAUDE_QUOTA_FILE" >&2
+  exit 1
+fi
 STALE_HOURS="${QUOTA_STALE_HOURS:-24}"
 MAX_SNAPSHOTS=50
 
@@ -77,6 +84,7 @@ nowEpoch() {
 # missing or does not carry a buckets object, never reading as zero usage.
 readQuotaFile() {
   [ ! -d "$QUOTA_FILE" ] || fail "$QUOTA_FILE is a directory, not a quota file"
+  [ ! -L "$QUOTA_FILE" ] || fail "$QUOTA_FILE is a symlink; point CLAUDE_QUOTA_FILE at the real file"
   [ -f "$QUOTA_FILE" ] || fail "no quota file at $QUOTA_FILE; copy ~/.claude/quota.template.json there or run 'quota-pace.sh record'"
   jq -e '.buckets | type == "object"' "$QUOTA_FILE" >/dev/null 2>&1 ||
     fail "$QUOTA_FILE is not valid JSON with a \"buckets\" object"
@@ -90,6 +98,7 @@ readQuotaFile() {
 writeQuotaFile() {
   local dir tmp
   [ ! -d "$QUOTA_FILE" ] || fail "$QUOTA_FILE is a directory, not a quota file"
+  [ ! -L "$QUOTA_FILE" ] || fail "$QUOTA_FILE is a symlink; point CLAUDE_QUOTA_FILE at the real file"
   dir=$(dirname "$QUOTA_FILE")
   mkdir -p "$dir" || fail "cannot create $dir"
   tmp=$(mktemp "$dir/.quota.json.XXXXXX") || fail "cannot create a temp file in $dir"
@@ -102,25 +111,37 @@ writeQuotaFile() {
 # lockQuotaFile: takes the writer lock, a directory next to the quota file
 # (mkdir is atomic everywhere, flock is not on macOS), so two recorders,
 # such as the status line and the owner, never lose each other's snapshot.
-# Waits up to about five seconds. A lock older than a minute is from a dead
-# writer and is broken by renaming it to a name only this process uses: the
-# rename is atomic, so of two waiters that both see it stale only one wins,
-# and the loser can never remove the winner's fresh lock. Every pass counts
-# toward the bound, a broken lock included, so no lock state can spin forever.
+# Waits up to about five seconds; every pass counts toward that bound, so no
+# lock state can spin forever. A lock older than a minute is from a dead
+# writer (a live one holds it for milliseconds). Breaking it takes a second
+# lock, `.lock.break`, and re-checks the age inside it: a waiter that saw
+# the old lock stale but lost the break to another waiter finds, once it
+# holds the break lock, either no lock or a fresh one, and removes neither
+# (R-109 r2). A break lock older than a minute is from a dead breaker and is
+# removed the same way, by whoever then holds no other claim on it.
 lockQuotaFile() {
-  local lock="$QUOTA_FILE.lock" tries=0
+  local lock="$QUOTA_FILE.lock" brk="$QUOTA_FILE.lock.break" tries=0
   mkdir -p "$(dirname "$QUOTA_FILE")" || fail "cannot create $(dirname "$QUOTA_FILE")"
   until mkdir "$lock" 2>/dev/null; do
     tries=$((tries + 1))
     [ "$tries" -le 50 ] || fail "the quota file is locked by another writer ($lock)"
-    if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] &&
-      mv "$lock" "$lock.stale.$$" 2>/dev/null; then
-      rm -rf "$lock.stale.$$"
-      continue
+    if isStaleLock "$lock"; then
+      if mkdir "$brk" 2>/dev/null; then
+        isStaleLock "$lock" && rm -rf "$lock"
+        rmdir "$brk"
+        continue
+      fi
+      isStaleLock "$brk" && rmdir "$brk" 2>/dev/null
     fi
     sleep 0.1
   done
   trap 'rmdir "$QUOTA_FILE.lock" 2>/dev/null' EXIT
+}
+
+# isStaleLock <path>: succeeds when the path exists and was last modified
+# more than a minute ago.
+isStaleLock() {
+  [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]
 }
 
 # recordSnapshot <args...>: appends one snapshot to a bucket, creating the
@@ -150,7 +171,8 @@ recordSnapshot() {
   [[ "$source" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "source '$source' must be lowercase letters, digits, - or _"
   [[ "$used" =~ ^[0-9]+([.][0-9]+)?$ ]] && jq -en --argjson u "$used" '$u <= 100' >/dev/null ||
     fail "usedPct '$used' must be a number from 0 to 100"
-  [ -z "$window" ] || [[ "$window" =~ ^[1-9][0-9]*$ ]] || fail "--window-days '$window' must be a positive integer"
+  [ -z "$window" ] || { [[ "$window" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$window" -le 366 ]; } ||
+    fail "--window-days '$window' must be a whole number of days from 1 to 366"
 
   local current now
   now=$(nowEpoch) || exit 1
@@ -204,8 +226,8 @@ reportJson() {
       def checkBucket($name):
         ($name | checkName("bucket name")) as $_
         | ((.provider // $name) | checkName("provider")) as $_
-        | if ((.windowDays // 7) | type) == "number" and (.windowDays // 7) > 0 then .
-          else error("bucket \($name): windowDays must be a positive number") end
+        | if ((.windowDays // 7) | type) == "number" and (.windowDays // 7) > 0 and (.windowDays // 7) <= 366 then .
+          else error("bucket \($name): windowDays must be a number of days from 1 to 366") end
         | if all((.snapshots // [])[]; (.usedPct | type) == "number" and .usedPct >= 0 and .usedPct <= 100) then .
           else error("bucket \($name): every usedPct must be a number from 0 to 100") end;
       def bucketReport($name):
@@ -302,7 +324,11 @@ case "${1:-}" in
     [[ "$STALE_HOURS" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "QUOTA_STALE_HOURS '$STALE_HOURS' must be a non-negative number of hours"
     quota=$(readQuotaFile) || exit 1
     report=$(reportJson <<<"$quota" 2>&1) || fail "cannot compute the report: $report"
-    if [ "${1:-}" = "--json" ]; then printf '%s\n' "$report"; else reportText "$report"; fi
+    case "${1:-}" in
+      "") reportText "$report" ;;
+      --json) printf '%s\n' "$report" ;;
+      *) fail "unknown report option '$1'" ;;
+    esac
     ;;
   *)
     fail "usage: quota-pace.sh record <bucket> <usedPct> [options] | report [--json]"
