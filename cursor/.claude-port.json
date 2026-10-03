@@ -47,7 +47,7 @@
     "rules/backend.mdc": "sha256:d024da1e7a7c6f5ae26a503db43008c60380251dc22de1c20481adeacf8aed15",
     "rules/cloud-deployment.mdc": "sha256:97eca1b8ad282cf32b62445b94f4222f0f38d2f8f6d3c4af6daf2a62a338fd4b",
     "rules/database.mdc": "sha256:28be46da9cacad15a09c8b3448f7a99e84f9484c50f38831800074c9e1528a38",
-    "rules/frontend-next.mdc": "sha256:b96af1a03e158988bf91cef8e3bb88c7671f319d4fc3097efee009e59ee9797f",
+    "rules/frontend-next.mdc": "sha256:7c3f10e6f768be42d0f2d44c35b86e8a24f23a8a8988f6cf38303f0593ecae3b",
     "rules/frontend-nuxt.mdc": "sha256:e18653b82a9eaabbfef2899c9902bbadf963a4371457277bc5bb097b2bc23d6f",
     "rules/frontend-react.mdc": "sha256:6432b6fce0de81e457af3ea48d65786d09910d39bf8a94fb47032f113f14220d",
     "rules/frontend-vite.mdc": "sha256:2d6b66ce136df8625aeeb549f59e04f75063a1387ee9bb52cc5632e7ef806bfb",
@@ -57,7 +57,7 @@
     "rules/observability.mdc": "sha256:ff6e759e192ad4c4523331f465eb9b527262680b5862f38c01efc103acf01e6f",
     "rules/python.mdc": "sha256:1c65439fca13b1c2737ff0606389aa63a10ed9c68e4e49a0e12dcfb6b114a0c1",
     "rules/ruby.mdc": "sha256:b8501ee2a1ec283ccb2dc4109a83f87968cd3be5c60d76d781ce1e267b65319c",
-    "rules/structure-conventions.mdc": "sha256:2edb79435e715e579b5b6f8edda18689902926bd92d71c494bc21c3e1c8c57f9",
+    "rules/structure-conventions.mdc": "sha256:cec9239bcd081e7672c6a1f60f0cb17491b64ca15bdd0f140640f285acc00388",
     "rules/styling.mdc": "sha256:7a91ee0246eb8c0fca30b6ee819fc17eb5be7bd29b8ddc36247795db8f5c94be",
     "skills/bug-hunt/SKILL.md": "sha256:03816cf46d7d2fb3567c6ac200b345adc9af0b4fc3b632ff80c1cbd9fcfcb42b",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
@@ -67,7 +67,7 @@
     "skills/gof/SKILL.md": "sha256:572a15ca62c7b54f5bc8f45d059ecb3c8edc3115f60342f954930828d4f587a5",
     "skills/spec-grounding/SKILL.md": "sha256:25fefd11af25cb0564e4726c4ce46225d7cede1f0692e7d3a6b9c0bfe5363941",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
-    "skills/structure-conventions/SKILL.md": "sha256:4506e6add7509da00b042e7f68cdc8b864f3d178993be9012fbf236a44aac373",
+    "skills/structure-conventions/SKILL.md": "sha256:d245561b0481b7f02654a90f29a957c510e7afa0cb6f2bb7222b591eaf8140b4",
     "skills/tdd-gated-dispatch/SKILL.md": "sha256:16175542f596867c8ef4a9ccd86feb779d09b0021985b2138e5bd71d55d398c2"
   },
   "classes": {

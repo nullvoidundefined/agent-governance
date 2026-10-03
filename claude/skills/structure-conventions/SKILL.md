@@ -1,6 +1,6 @@
 ---
 name: structure-conventions
-description: The stack-specific layout conventions. Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a server or web client (TypeScript, Python, Vue, or Nuxt), before writing a pg migration or Alembic default, and when planning a package layout.
+description: The stack-specific layout conventions. Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a server or web client (TypeScript, Python, Vue, or Nuxt), before writing a pg migration default, and when planning a package layout.
 ---
 
 # Structure Conventions

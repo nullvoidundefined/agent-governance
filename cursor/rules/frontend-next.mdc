@@ -19,7 +19,7 @@ Read with `CLAUDE-FRONTEND.md` and `CLAUDE-FRONTEND-REACT.md`.
 ## Known traps (Vercel and pnpm)
 
 - In a pnpm monorepo, set `outputFileTracingRoot: path.resolve(__dirname, '..')` in `next.config.ts`. Without it, dynamic routes work locally and return 500 on Vercel because the bundler cannot find the hoisted `node_modules`.
-- `pnpm.autoInstallPeers: true` installs optional peers too; suppress an unwanted one with a `pnpm.overrides` entry of `"pkg": "never"`.
+- `pnpm.autoInstallPeers: true` installs optional peers too; suppress an unwanted one with a `pnpm.overrides` entry of `"pkg": "-"` (removes the dependency).
 - `@playwright/test` anywhere in a Next.js app's dependency tree causes `Cannot find module 'next/dist/compiled/source-map'` on Vercel. Keep Playwright in the monorepo root `devDependencies` only.
-- Delete passthrough `middleware.ts` files. Any middleware runs every request through the Edge runtime, even one that only calls `NextResponse.next()`.
+- Delete passthrough `middleware.ts` (or `proxy.ts`) files: one that only calls `NextResponse.next()` still adds a hop to every request.
 - Add an `error.tsx` boundary to a route that returns unexplained 500s; it surfaces the real error instead of leaving the route to be debugged blind.
