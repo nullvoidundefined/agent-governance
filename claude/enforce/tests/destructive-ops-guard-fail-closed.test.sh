@@ -3,12 +3,12 @@
 # row when slice B-1 closes (IAN-606), since the closure check needs the hook.
 # Verifies that destructive-ops-guard.sh fails closed when its command parser
 # (python3 running hooks/shell-command-segments.py) is unavailable or fails:
-# any command that names a guarded program as a word is denied with a reason
-# naming the parser failure, while a command naming none of them, or naming
-# one only inside a longer word, stays silent. It also verifies that, with the
-# parser working, ordinary non-destructive commands get no decision, and that
-# empty, malformed, or non-Bash input gets no decision. The hook must exit 0
-# in every case, since an erroring PreToolUse hook is a non-decision.
+# every Bash call is denied with a reason naming the parser failure, whether
+# it names a guarded program as a word, names none, or names one only inside
+# a longer word (owner decision 2026-10-03, slice B-2). It also verifies that,
+# with the parser working, ordinary non-destructive commands get no decision,
+# and that empty, malformed, or non-Bash input gets no decision. The hook
+# must exit 0 in every case, since an erroring PreToolUse hook is a non-decision.
 #
 # Two broken-parser setups are exercised: a stub python3 first on PATH that
 # exits 1, and a PATH that carries no python3 at all but still has jq, bash,
@@ -126,7 +126,7 @@ bash -c "docker rm -f web"
 echo start; rm -rf build
 cd /tmp && kubectl delete pod x'
 
-SILENT_WHEN_BROKEN='ls -la
+UNGUARDED_COMMANDS='ls -la
 echo hello
 cat README.md
 cat dockerfile.md
@@ -144,8 +144,8 @@ for label in failing-python no-python; do
   done <<< "$GUARDED_COMMANDS"
   while IFS= read -r command_text; do
     [ -n "$command_text" ] || continue
-    expect none "$label" "$path" "$command_text"
-  done <<< "$SILENT_WHEN_BROKEN"
+    expect_parser_deny "$label" "$path" "$command_text"
+  done <<< "$UNGUARDED_COMMANDS"
   # A non-Bash tool stays silent even with the parser broken.
   expect_raw_none "$label" "$path" '{"tool_name":"Write","tool_input":{"file_path":"x","content":"rm -rf /"}}' "a Write call"
 done
