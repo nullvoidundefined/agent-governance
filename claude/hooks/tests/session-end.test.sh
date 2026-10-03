@@ -242,8 +242,23 @@ append_task_line "$UNWRITABLE_LOG" "2026-09-17T01:05:00Z" "9" "" "completed" "$U
 chmod 500 "$UNWRITABLE_HANDOFF_DIR"
 UNWRITABLE_PAYLOAD=$(jq -n --arg t "$TS_TRANSCRIPT" --arg c "$UNWRITABLE_REPO" \
   '{transcript_path:$t, cwd:$c}')
-printf '%s' "$UNWRITABLE_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" >/dev/null 2>&1
-UNWRITABLE_EXIT=$?
+# Root ignores directory permissions, so under a root runner (a cloud
+# container) chmod 500 would not stop the render and the case would test
+# nothing. Run this one hook call as an unprivileged user there, with the
+# sandbox handed to that user for the call (2026-10-03, IAN-606).
+if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null 2>&1 && id nobody >/dev/null 2>&1; then
+  chown -R nobody "$SANDBOX"
+  printf '%s' "$UNWRITABLE_PAYLOAD" | HOME="$SANDBOX" setpriv --reuid=nobody --regid="$(id -g nobody)" --clear-groups bash "$HOOK" >/dev/null 2>&1
+  UNWRITABLE_EXIT=$?
+  chown -R 0:0 "$SANDBOX"
+elif [ "$(id -u)" = 0 ]; then
+  echo "FAIL: running as root without setpriv, so the unwritable-handoff case cannot make the directory unwritable"
+  fail=1
+  UNWRITABLE_EXIT=0
+else
+  printf '%s' "$UNWRITABLE_PAYLOAD" | HOME="$SANDBOX" bash "$HOOK" >/dev/null 2>&1
+  UNWRITABLE_EXIT=$?
+fi
 chmod 700 "$UNWRITABLE_HANDOFF_DIR"
 check "hook still exits 0 when the render cannot land" test "$UNWRITABLE_EXIT" -eq 0
 check "a failed render never prunes the all-completed log" file_exists "$UNWRITABLE_LOG"
