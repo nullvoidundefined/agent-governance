@@ -39,7 +39,7 @@ Each line names an area's default rules, then where their text lives.
 - Testing: R-404, R-406; R-410, R-411, R-412 (mandatory on high-risk slices): `/tdd-gated-dispatch`.
 - Git and PRs: R-501, R-504, R-505, R-508, R-509, R-512, R-513, R-515, R-516, R-518: their hooks, `/task-cleanup`.
 - Lifecycle and memory: R-601, R-602, R-603, R-604, R-605, R-606, R-607, R-608: `/task-cleanup`, `/ticket-lifecycle`.
-- Agents, audits, cost: R-701 to R-707, R-801 to R-805, R-901 to R-905: `rulebook/agents.md`, `audits.md`, `cost.md`.
+- Agents, audits, cost: R-701 to R-708, R-801 to R-805, R-901 to R-905: `rulebook/agents.md`, `audits.md`, `cost.md`.
 - Merged (IAN-568): R-103, R-108, R-202 into R-102; R-405 into R-204.
 - Deleted (IAN-568), tombstoned: R-206, R-213, R-215, R-322, R-408, R-409, R-502, R-503, R-506, R-510, R-511, R-906, R-907.
 

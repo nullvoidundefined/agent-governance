@@ -1,7 +1,7 @@
 {
   "builder": "translate/cursor.mjs",
   "builder_files": {
-    "translate/apply-profile.mjs": "sha256:25bf4feaf8b8ec91765eb2fb37079831d7d6420e62f2116d45c69ec5703716ef",
+    "translate/apply-profile.mjs": "sha256:87f6185cadd9e8a4590106c7fa9463d82c283a8f7e552a5883cec1b10c0de03c",
     "translate/build-manifest.mjs": "sha256:177d5a56a7c35991eb0291408269a01e10e88b3a9839aaa6d1f163501421a442",
     "translate/codex.mjs": "sha256:768dd6ebeceb4cd07a1fe3472e4b12853066677c566d72f1584c47f79c9811e3",
     "translate/cursor.mjs": "sha256:1beaf0f60c77b4b8e008ce188fc2818fed85697a51aa16fc0a4fc7f391cd1c75",
@@ -21,7 +21,7 @@
   },
   "files": {
     ".gitignore": "sha256:0f9546195482ce101eb8d439192748fff34f3fde47455a17935ee20be654997e",
-    "PORT-STATUS.md": "sha256:51607c54c4e124e1d67077b4cb05a78d48eb76bd3384ec9fd43879643299549e",
+    "PORT-STATUS.md": "sha256:8ca52adf03f80b486ec0cfe319ea5211c766eb32ccac2647fb562c26072b713d",
     "agents/audit-criticism.md": "sha256:c0b658996c8d634a170d1501d11e35c6c11f5e32382ab66ba1420640c09923dd",
     "agents/audit-customer.md": "sha256:396bcff4be04a9ae4fc89b0544e9f182c35c2a6b6b908e213d9c8134f8d9f6f3",
     "agents/audit-design.md": "sha256:86f8aa6d608e6f7cecada777dca12fd35ba751e57875d8f30e80685c22d1673b",
@@ -43,7 +43,7 @@
     "commands/audit-ux.md": "sha256:8a131255913384b5184c22b447da75792555bf84eafcac7961162e545012fbaa",
     "commands/spec-conformance-review.md": "sha256:292c3d0e222778fac5340b0f15c1e4b3239ae44c6f8902b4d05ad1e25b8ae1f0",
     "hooks.json": "sha256:e78ff43023217f905ac5a0ea4e545db61d41b44ca03f62e5b24863498cbcfc08",
-    "rules/000-global-rules.mdc": "sha256:8a21c7a2e36a7dc14e97dbf7341246b70cf6c574419d461fe2e9e753a522a887",
+    "rules/000-global-rules.mdc": "sha256:62f9bbecc303b5c7bd2469bdd2fb23991034b00d7fa286686e301928e706ea0f",
     "rules/001-session-types.mdc": "sha256:8e02989602f533fac43e59905ff640851306f25586a2cde992d1204f265f839e",
     "rules/002-global-memory-index.mdc": "sha256:68fe437ccd83d70564be3eb3807220e64b88fd0751065e3f8a32ae8dbc4e060c",
     "rules/backend.mdc": "sha256:78a45377f462f0e3c4ba889e9ccb857f75883ad6315f48f4a38b3d616e8aedcf",
@@ -59,7 +59,7 @@
     "rules/observability.mdc": "sha256:873cd32c1cd9d41e2d49516ea9439408db5a9cafa57eb580aab0351e53c7a334",
     "rules/python.mdc": "sha256:1240506583177ab57fb6369c40f052a4b995dd91542a4d244ec74de2fdab4d31",
     "rules/ruby.mdc": "sha256:bd1fc65fe5c380166a64909f7d06a92be5cda890536affb1c921b6dbbb481782",
-    "rules/rulebook-agents.mdc": "sha256:6de067320fcea8e86ba572a3a7774b1ad9ad885b2f8fd40a2e8eda5ef8899f29",
+    "rules/rulebook-agents.mdc": "sha256:04e902583ed854e9140d44fec4905f9cf2fadc8f30c322872fbe5ad0136ccccc",
     "rules/rulebook-audits.mdc": "sha256:ae068902e49a2beecea6f8333eed9487ccc1f146e1fa815ffec0608e213405b1",
     "rules/rulebook-cost.mdc": "sha256:ee5dcac0f2fc7faf4f8b03eff0721f6771394e8e0306bf636ee8f3f427f60518",
     "rules/rulebook-reference-convention-files.mdc": "sha256:911a87593a128510b560f2ad04a94a780cb22d5a4a5de675979b6ba112cae6ec",

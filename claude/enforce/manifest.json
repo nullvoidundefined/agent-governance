@@ -833,6 +833,22 @@
             "note": "phase from .claude/tdd-lock.json written by enforce/tdd.sh: open denies production writes, red and green deny test writes, amending allows only the amended test; tdd.sh abandon closes a stale lock whose tests are committed and passing; opening the slice is the manual step"
         },
         {
+            "id": "R-708",
+            "tier": "regex",
+            "enforcer": "hook:agent-dispatch-guard",
+            "severity": "error",
+            "autofix": false,
+            "note": "denies a foreground Agent or Task dispatch of a long-running type; hook:agent-watchdog-instruction then names enforce/agent-watchdog.sh for each background launch, and starting it and the TaskStop decision stay with the model"
+        },
+        {
+            "id": "R-708",
+            "tier": "advisory",
+            "enforcer": "hook:agent-watchdog-instruction",
+            "severity": "warn",
+            "autofix": false,
+            "note": "PostToolUse additionalContext after a background Agent or Task launch naming the exact enforce/agent-watchdog.sh command for its output file; silent for a foreground return"
+        },
+        {
             "id": "R-705",
             "tier": "regex",
             "enforcer": "hook:protected-path-guard",

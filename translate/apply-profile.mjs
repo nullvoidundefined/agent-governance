@@ -30,7 +30,7 @@ const RULE_LINE = /^(R-\d{3})( \[[a-z]+\])?:/;
 // rulebook/reference.md.
 export const PROTECTED_HOOKS = new Set([
   "harness-sync",
-  "codex-billing-guard", "commit-message-guard", "conflict-markers",
+  "agent-dispatch-guard", "agent-watchdog-instruction", "codex-billing-guard", "commit-message-guard", "conflict-markers",
   "constant-change-guard", "content-gate", "dependency-add-guard", "destructive-command-guard",
   "destructive-db-guard", "fix-commit-requires-test", "git-workflow-guard", "global-repo-push-guard",
   "linear-todo-label-gate", "mcp-action-guard", "migration-defaults-guard", "no-em-dash",
