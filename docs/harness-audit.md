@@ -175,6 +175,8 @@ IAN-568 removed task-provenance-gate, codex-test-author-guard, push-golangci-gat
 | commit-message-guard | PreToolUse Bash | ENFORCE | denies on R-505 (the R-506 ask and R-214 refusal were removed in IAN-568) | | |
 | conflict-markers | PreToolUse Bash | ENFORCE | denies | | |
 | constant-change-guard | PreToolUse Bash | ENFORCE | asks | | |
+| agent-dispatch-guard | PreToolUse Agent/Task | ENFORCE | denies a foreground long-running subagent (R-708, IAN-605) | | |
+| agent-watchdog-instruction | PostToolUse Agent/Task | ORCHESTRATION | additionalContext naming the watchdog command after a background launch | R-708; manifest; ports; fixture | about 90 per background launch |
 | content-gate | PreToolUse Write/Edit | ENFORCE | denies | | |
 | dependency-add-guard | PreToolUse Write/Edit | ENFORCE | asks | | |
 | destructive-command-guard | PreToolUse Bash | ENFORCE | denies | | |
