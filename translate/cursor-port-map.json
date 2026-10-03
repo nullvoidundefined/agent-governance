@@ -53,7 +53,7 @@
   "rule_descriptions": {
     "000-global-rules.mdc": "Global rules - the canonical rule file for every session. Always on.",
     "002-global-memory-index.mdc": "Global memory index - cross-project feedback and efficiency lessons. Always on.",
-    "backend.mdc": "Express 5 and TypeScript API conventions - layers, handlers, services, repositories, clients, logging, containers. Auto-attached to server source trees.",
+    "backend.mdc": "Express 5 and TypeScript API conventions - layers, startup and middleware order, handlers, envelope, sessions, workers. Auto-attached to server source trees.",
     "cloud-deployment.mdc": "Cloud deployment - Railway, Cloudflare, environment variables, deploy commands, and deploy-time checks. Fetch for deploy sessions or when touching environment configuration.",
     "database.mdc": "PostgreSQL conventions - migrations, raw SQL, repositories, schema rules. Auto-attached to migrations, .sql files, database and repository trees.",
     "frontend-next.mdc": "Next.js App Router conventions. Auto-attached to app/ routes and next.config.",
@@ -63,7 +63,7 @@
     "frontend.mdc": "Framework-agnostic frontend core - directory vocabulary, api wrappers, error handling, Prettier, ESLint shared rules, E2E layout. Auto-attached to client source trees for React and Vue alike; read with the framework file its dispatch table names.",
     "frontend-react.mdc": "React-specific frontend conventions: hooks, component and provider patterns, state management. Auto-attached to .tsx and .jsx files and to src/state and src/hooks trees; read together with frontend.mdc, the framework-agnostic core.",
     "go.mdc": "Go net/http and chi track - layout, pgx, golangci-lint, analogs of the [ts] rules. Auto-attached to .go files and go.mod.",
-    "python.mdc": "Python and FastAPI track - layout, SQLAlchemy, Alembic, pytest, ruff and mypy, analogs of the [ts] rules. Auto-attached to .py files.",
+    "python.mdc": "Python and FastAPI track - layout, middleware order, errors, SQLAlchemy Core data access, Alembic, security, pytest. Auto-attached to .py files.",
     "observability.mdc": "Logging and observability for every backend stack - request IDs, structured logging, analytics, error handling, health endpoints, outbound-call instrumentation. Auto-attached to backend files in Python, Express, Go, and Ruby.",
     "ruby.mdc": "Ruby on Rails API track - layout, RSpec, RuboCop, analogs of the [ts] rules. Auto-attached to .rb files and the Gemfile.",
     "structure-conventions.mdc": "Stack-specific structural and syntax conventions. Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a TypeScript server or web client, before writing a pg migration default, and when planning a package layout.",
