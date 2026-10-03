@@ -214,7 +214,9 @@ expand_variables() {
             EXPANDED_WORD="$word"
             return
         fi
-        word="${word/"$matched"/"$value"}"
+        # Split on the first match instead of ${word/"$matched"/"$value"}:
+        # bash 3.2 keeps the quotes of a quoted replacement as literal text.
+        word="${word%%"$matched"*}$value${word#*"$matched"}"
         passes=$((passes + 1))
         [ "$passes" -lt 16 ] || break
     done
