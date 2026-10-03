@@ -61,6 +61,7 @@ The quota file is `~/.claude/quota.json`, which `CLAUDE_QUOTA_FILE` can override
 - **Tests:** status-line fixtures for a write, a throttled skip, a malformed field, and an unwritable file.
 - **Review focus:** the status line must never block or fail, and the throttle needs to be right.
 - **Size:** about 4 files and 150 lines.
+- **Owner decisions (2026-10-03):** (a) security-surface detector hits caused only by the word `rate_limits` are waived for PRs 2 to 5. (b) Review loops on review-added code are capped by the 1:1 budget, and the session asks the owner rather than starting another round.
 
 ### PR 3: Router and decision log
 
