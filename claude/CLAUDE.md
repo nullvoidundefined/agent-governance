@@ -109,6 +109,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 ## Models and cost
 
 - Use the cheapest model that can do the job: Haiku for simple lookups, Sonnet for routine implementation and review, Opus for hard design and debugging. The security review uses the strongest model.
+- Which provider, Claude or Codex, takes a step comes from `~/.claude/enforce/route.sh`, which reads the weekly quota pace. It changes who does a step, never whether it happens; the security review, a high-risk implementer, and merges are pinned.
 - Prefer a subagent for wide searches across many files. Dispatch long-running subagents in the background.
 - Avoid giant tool outputs; narrow searches before running them.
 

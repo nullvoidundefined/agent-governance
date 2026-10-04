@@ -85,10 +85,7 @@ The quota file is `~/.claude/quota.json`, which `CLAUDE_QUOTA_FILE` can override
 
 ### PR 5: Wire the router into the skills
 
-- **Context:** the router and the summary exist but nothing calls them.
-- **Problem:** the routing tables in the skills are still static.
-- **Approach:** the Model Routing table in `task-start`, the test-author step in `tdd-gated-dispatch` (Codex by default under the router, with the same HEAD and lock-hash checks and `tdd.sh validate`), and the R-517 dispatch in `task-cleanup` and `codex-pr-review-prompt.md` all call `route.sh`, and hand-offs use `handoff-summary.sh`. Then `node translate/codex.mjs --write` and `node translate/cursor.mjs --write`. Rule text changes only to name who runs a step: no gate, review, or approval is removed.
-- **Contents:** the skills, the prompts, `rulebook/cost.md` (R-903 points at the router), and the regenerated `codex/` and `cursor/`.
-- **Tests:** the port `--check` runs, and a rule-text fixture asserts that every gate step still names a reviewer and that none says "skip".
-- **Review focus:** a reviewer comparing the rule-text diff against the "routing changes who, never whether" invariant.
-- **Size:** about 10 files and 200 lines, plus the generated output.
+- **Context:** the router and the summary exist but nothing calls them. The 2026-10-03 recovery retired `task-start`, `task-cleanup`, `codex-pr-review-prompt.md`, and `rulebook/`, so the wiring targets what replaced them.
+- **Approach:** `tdd-gated-dispatch` gains a step 0 that asks `route.sh implement` who implements; the test author is always the other provider, which keeps the owner's cross-model rule (2026-10-03) whatever the router picks. The review step asks `route.sh review --author <implementer>` and falls back to `pr-reviewer` when Codex is unavailable. Hand-offs between providers use `handoff-summary.sh`. `CLAUDE.md` "Models and cost" names the router. Then `node translate/codex.mjs --write` and `node translate/cursor.mjs --write`. No gate, review, or approval is removed.
+- **Tests:** the port `--check` runs. The rule-text fixture the first plan named is dropped: `PROTOCOL.md` records prose-grep fixtures as cost without catches, and the router's own tests (PR 3) already assert that no input yields "skip" or moves a pinned step.
+- **Size:** 3 files and about 20 lines, plus the generated output.

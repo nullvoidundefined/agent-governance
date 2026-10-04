@@ -16,6 +16,16 @@ The practice is fixed: a failing test that demonstrates the missing behavior exi
 
 ## Standard risk
 
+### 0. Route
+
+Ask the router who implements, before any test is written:
+
+```bash
+bash ~/.claude/enforce/route.sh implement --risk <standard|high>
+```
+
+Line 1 is the provider; line 2 is why. It reads the quota pace (`quota-pace.sh`) and moves routable work off a provider that is over pace or near exhaustion; a high-risk implementer is pinned to Claude. The test author is always the other provider, so the cross-model rule below holds whatever the router picks. Routing changes who does a step, never whether it happens.
+
 ### 1. RED, written by the other model
 
 The test author is the model that will not write the implementation: Codex writes tests for Claude's code, and Claude writes tests for Codex's code. The author gets the acceptance criteria, the files in scope, and the test conventions. It does not get the implementation plan's code.
@@ -33,6 +43,8 @@ codex exec -s workspace-write -C <repo root> --skip-git-repo-check \
 - **Fallback:** when Codex is missing (cloud containers do not have it), unauthenticated, rate-limited, or would bill the API, dispatch the `test-author` agent in a fresh context (Agent tool, background) with the same prompt. Name the fallback in the PR.
 - **Codex as implementer:** when Codex is the implementer, Claude (the main session or `test-author`) writes the tests.
 
+- **Hand-offs:** when work passes between providers (test author to implementer, implementer to reviewer), send the block from `bash ~/.claude/enforce/handoff-summary.sh --test-log <log>` instead of raw logs or diffs. It carries the failing test names, branch, head, and diff totals only. The RED commit body still quotes the raw failing line.
+
 Then observe RED yourself:
 
 1. Run the new tests against the unchanged code.
@@ -49,7 +61,7 @@ One test-writing pass per behavior. Do not ask for more tests than the criteria 
 
 ### 3. Review, fix, verify, stop
 
-1. Dispatch one `pr-reviewer` in a fresh context with `prompts/review-prompt.md` filled in. Give it the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
+1. Route the review: `bash ~/.claude/enforce/route.sh review --risk <risk> --author <implementer>` always prints the other provider. When it prints `codex` and Codex is available, run Codex with `prompts/review-prompt.md`; otherwise dispatch one `pr-reviewer` in a fresh context with the same prompt and name the fallback in the PR. Give the reviewer the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
 2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Fix a LOW if it takes under five minutes, otherwise note it.
 3. Rerun only the checks the fixes affect.
 4. A second review happens only under the CLAUDE.md conditions, and covers only the fix diff.
