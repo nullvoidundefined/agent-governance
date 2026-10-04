@@ -45,3 +45,329 @@ allow kubectl get pods
 allow dig TXT example.com
 allow aws route53 list-resource-record-sets --hosted-zone-id Z1
 allow npm test
+
+# ---- PR 2: cloud, DNS, infra and production-target gating (B-1..B-20) ----
+# Fake hosts and ids only (acme, example). .enforce.json in the scratch repo
+# (see ../guard-corpus.test.sh) marks db.internal.acme.net and gke_acme_main
+# production, *.preview.acme.dev preview, and ci-db.acme.net plus
+# prod-mirror.testing.acme.net testing.
+
+# B-1: read-only cloud CLI verbs pass
+allow aws s3 ls
+allow aws --region us-east-1 ec2 describe-instances
+allow aws sts get-caller-identity
+allow aws --version
+allow AWS_PROFILE=prod aws s3 ls
+allow bash -c 'aws s3 ls'
+allow gcloud config list
+allow gcloud auth list
+allow az account show
+allow doctl compute droplet list
+allow echo aws ec2 terminate-instances
+allow grep -rn "aws s3 rm" docs/
+
+# B-2: every other cloud CLI verb is denied
+deny aws rds delete-db-instance --db-instance-identifier acme-db --skip-final-snapshot
+deny aws --region us-east-1 rds delete-db-instance --db-instance-identifier acme-db
+deny aws s3 rm s3://acme-bucket --recursive
+deny aws ec2 terminate-instances --instance-ids i-0example
+deny FOO=1 aws s3 rm s3://acme-bucket/x
+deny bash -c 'aws s3 rm s3://acme-bucket --recursive'
+deny gcloud sql instances delete acme-db
+deny az group delete --name acme --yes
+deny doctl compute droplet delete 123456
+deny aws frobnicate widgets
+deny gcloud frobnicate widgets
+
+# B-3: DNS record and zone changes are denied
+deny aws route53 change-resource-record-sets --hosted-zone-id ZEXAMPLE --change-batch file://change.json
+deny aws route53 delete-hosted-zone --id ZEXAMPLE
+deny gcloud dns record-sets create www.example.com. --zone=acme --type=A --rrdatas=192.0.2.1
+deny gcloud dns record-sets transaction start --zone=acme
+deny az network dns record-set txt delete --resource-group acme --zone-name example.com --name _dmarc --yes
+deny doctl compute domain records create example.com --record-type TXT --record-name _dmarc --record-data v=DMARC1
+deny doctl compute domain delete example.com
+deny flarectl dns delete --zone example.com --id abc
+deny wrangler dns create example.com
+allow gcloud dns record-sets list --zone acme
+allow doctl compute domain records list example.com
+allow flarectl dns list --zone example.com
+allow host -t TXT _dmarc.example.com
+
+# B-4: non-GET calls to provider API hosts are denied, GET passes
+deny curl -X POST https://api.cloudflare.com/client/v4/zones/abc/dns_records
+deny curl -XDELETE https://api.cloudflare.com/client/v4/zones/abc/dns_records/def
+deny curl -X delete https://api.cloudflare.com/client/v4/zones/abc/dns_records/def
+deny curl --request=DELETE https://api.cloudflare.com/client/v4/zones/abc/dns_records/def
+deny curl --request put api.cloudflare.com/client/v4/zones/abc/dns_records/def
+deny curl https://api.gandi.net/v5/domain/domains/example.com -X DELETE
+deny curl -d '{"a":1}' https://api.digitalocean.com/v2/domains
+deny curl --data-binary @body.json https://api.vercel.com/v9/projects
+deny curl -F file=@x.zip https://api.fly.io/v1/apps
+deny curl -X POST https://ec2.us-east-1.amazonaws.com/
+deny curl -X POST https://storage.googleapis.com/acme-bucket/x
+deny curl -X DELETE https://management.azure.com/subscriptions/0000/resourceGroups/acme
+deny curl -X PATCH https://api.heroku.com/apps/acme
+deny curl -X POST https://backboard.railway.app/graphql/v2
+deny curl -X PUT https://api.netlify.com/api/v1/sites/abc
+deny curl -X POST https://api.namecheap.com/xml.response
+deny curl -X PUT https://api.godaddy.com/v1/domains/example.com/records
+deny curl -X POST api.porkbun.com/api/json/v3/dns/delete/example.com
+deny FOO=1 curl -X POST https://api.cloudflare.com/client/v4/zones
+deny bash -c 'curl -X DELETE https://api.cloudflare.com/client/v4/zones/abc'
+deny wget --method=DELETE https://management.azure.com/subscriptions/0000/resourceGroups/acme
+deny http POST https://api.cloudflare.com/client/v4/zones name=example.com
+deny https PUT api.godaddy.com/v1/domains/example.com/records
+deny xh DELETE https://backboard.railway.app/graphql/v2
+allow curl https://api.cloudflare.com/client/v4/zones
+allow curl -X GET https://api.cloudflare.com/client/v4/zones
+allow curl -XGET https://api.cloudflare.com/client/v4/zones
+allow curl --request GET https://api.cloudflare.com/client/v4/zones
+allow http GET https://api.vercel.com/v9/projects
+allow xh https://api.digitalocean.com/v2/domains
+allow wget https://storage.googleapis.com/acme-bucket/x.txt
+allow curl -X POST https://example.com/api/items
+allow curl -d 'a=1' http://localhost:3000/items
+allow curl -X POST https://api.cloudflare.com.example.org/zones
+allow curl -X POST http://localhost:8080/proxy/api.cloudflare.com/zones
+
+# B-5: terraform and tofu
+allow terraform -chdir=infra plan
+allow terraform validate
+allow terraform fmt -check
+allow terraform output
+allow terraform state list
+allow terraform workspace show
+allow tofu plan
+allow grep -rn "terraform destroy" docs/
+allow echo terraform apply
+deny terraform apply
+deny terraform apply -auto-approve
+deny terraform -chdir=infra apply
+deny TF_VAR_region=us-east-1 terraform apply
+deny terraform destroy
+deny terraform import aws_instance.web i-0example
+deny terraform taint aws_instance.web
+deny terraform untaint aws_instance.web
+deny terraform state rm aws_instance.web
+deny terraform state mv aws_instance.a aws_instance.b
+deny terraform workspace delete old
+deny terraform force-unlock abc123
+deny tofu apply -auto-approve
+deny tofu destroy
+deny bash -c 'terraform destroy -auto-approve'
+
+# B-6: pulumi
+allow pulumi preview
+allow pulumi stack ls
+allow pulumi whoami
+deny pulumi up --yes
+deny pulumi --cwd infra up
+deny pulumi destroy
+deny pulumi refresh
+deny pulumi stack rm dev
+deny pulumi state delete urn:pulumi:dev::acme::aws:s3/bucket:Bucket::b
+
+# B-7: kubectl
+allow kubectl get pods -n acme --context gke_acme_main
+allow kubectl --context prod-cluster get pods
+allow kubectl describe deploy/web
+allow kubectl logs deploy/web
+allow kubectl config current-context
+allow kubectl auth can-i delete pods
+allow kubectl diff -f web.yaml
+allow kubectl --context kind-dev delete pod web-1
+allow kubectl delete pod web-1 --context kind-dev
+allow kubectl --context=minikube apply -f web.yaml
+allow kubectl --context docker-desktop scale deploy/web --replicas=2
+allow kubectl --context k3d-acme patch deploy/web -p '{}'
+allow kubectl --context rancher-desktop exec -it web-1 -- sh
+ask kubectl delete pod web-1
+ask kubectl apply -f web.yaml
+ask kubectl --context staging-cluster delete pod web-1
+ask kubectl --context=staging-cluster scale deploy/web --replicas=0
+ask kubectl rollout restart deploy/web
+ask kubectl rollout undo deploy/web
+ask kubectl exec -it web-1 -- sh
+ask kubectl drain node1
+ask kubectl cp web-1:/tmp/x ./x
+ask kubectl --context product-staging delete pod web-1
+ask kubectl --context reproduction delete pod web-1
+ask kubectl --context x.preview.acme.dev delete pod web-1
+ask kubectl --context prod-mirror.testing.acme.net delete pod web-1
+deny kubectl --context prod-cluster delete pod web-1
+deny kubectl --context=prod-eu scale deploy/web --replicas=0
+deny kubectl --context production apply -f web.yaml
+deny kubectl --context acme-production exec -it web-1 -- sh
+deny kubectl --context live-east drain node1
+deny kubectl delete ns web --context prod-cluster
+deny kubectl --context gke_acme_main delete pod web-1
+deny FOO=1 kubectl --context prod-cluster delete pod web-1
+deny bash -c 'kubectl --context prod-cluster delete pod web-1'
+
+# B-8: helm
+allow helm list
+allow helm template ./chart
+allow helm --kube-context prod-cluster list
+allow helm install web ./chart --kube-context kind-dev
+allow helm upgrade web ./chart --kube-context=minikube
+ask helm upgrade web ./chart
+ask helm install web ./chart --kube-context staging-cluster
+ask helm rollback web 1
+deny helm upgrade web ./chart --kube-context prod-cluster
+deny helm --kube-context production uninstall web
+deny helm rollback web 2 --kube-context=gke_acme_main
+
+# B-9: PaaS destroy-class commands are denied
+deny fly apps destroy acme-app
+deny flyctl volumes destroy vol_example
+deny fly postgres destroy acme-db
+deny heroku apps:destroy --app acme --confirm acme
+deny heroku pg:reset DATABASE --app acme
+deny heroku addons:destroy acme-addon
+deny railway down
+deny railway delete
+deny vercel remove acme-app
+deny vercel rm acme-app --yes
+deny netlify sites:delete abc123
+deny wrangler delete
+deny wrangler d1 delete acme-db
+deny wrangler kv namespace delete --namespace-id abc
+deny wrangler r2 bucket delete acme-bucket
+deny FOO=1 fly apps destroy acme-app
+allow fly status
+allow heroku logs --tail --app acme-staging
+allow railway status
+allow vercel ls
+allow netlify sites:list
+allow wrangler whoami
+allow wrangler d1 list
+
+# B-10: production deploys are denied
+deny vercel --prod
+deny vercel deploy --yes --prod
+deny railway up -e production
+deny railway up --environment production
+deny wrangler deploy --env production
+deny wrangler deploy --env=production
+deny fly deploy --app acme-prod
+deny fly deploy --config fly.production.toml
+deny fly deploy -c fly.prod.toml
+deny heroku logs --app acme-prod
+deny heroku releases --app=acme-production
+allow vercel deploy
+allow vercel dev
+allow railway up -e staging
+allow wrangler deploy --env staging
+allow fly deploy --app acme-staging
+allow fly deploy --app acme-product-catalog
+allow heroku logs --app reproduction-app
+
+# B-11: production-targeted detection (deny when destructive SQL meets it)
+deny RAILS_ENV=production psql "$DATABASE_URL" -c "DROP TABLE users"
+deny NODE_ENV=prod psql "$DATABASE_URL" -c "DROP TABLE users"
+deny APP_ENV=production psql "$DATABASE_URL" -c "DROP TABLE users"
+deny ENVIRONMENT=prod-eu psql "$DATABASE_URL" -c "DROP TABLE users"
+deny STAGE=production psql "$DATABASE_URL" -c "DROP TABLE users"
+deny MIX_ENV=prod psql "$DATABASE_URL" -c "DROP TABLE users"
+deny DJANGO_SETTINGS_MODULE=app.settings.production psql "$DATABASE_URL" -c "DROP TABLE users"
+deny railway run --environment production psql -c "DROP TABLE users"
+deny psql -h db.production.acme.com -c "DROP TABLE users"
+deny psql --host=db.prod.acme.com -c "TRUNCATE users"
+deny psql postgres://db.live.acme.com/app -c "DROP TABLE users"
+deny psql -h db.internal.acme.net -c "DROP TABLE users"
+deny psql postgres://db.internal.acme.net/app -c "TRUNCATE users"
+allow psql -h db.prod.acme.com -c "SELECT 1"
+allow NODE_ENV=production node server.js
+allow RAILS_ENV=production rails runner 'puts 1'
+ask psql -h db.product.acme.com -c "DROP TABLE users"
+ask psql -h db.delivery.acme.com -c "DROP TABLE users"
+
+# B-12: preview and testing lists beat a "prod" substring
+ask psql -h prod-mirror.testing.acme.net -c "DROP TABLE users"
+ask psql postgres://prod-mirror.testing.acme.net/app -c "DROP TABLE users"
+ask psql -h ci-db.acme.net -c "DROP TABLE users"
+ask psql -h prod.preview.acme.dev -c "DROP TABLE users"
+
+# B-13: destructive SQL against a production target is denied, not asked
+deny psql postgres://db.prod.acme.com/app -c "DROP DATABASE app"
+deny RAILS_ENV=production rails dbconsole <<< "TRUNCATE x"
+deny psql postgres://db.prod.acme.com/app -c "TRUNCATE users"
+deny bash -c 'psql -h db.prod.acme.com -c "DROP TABLE users"'
+
+# B-14: ORM data-loss commands ask, deny against production
+ask prisma migrate reset
+ask prisma db push --accept-data-loss
+ask prisma db push --force-reset
+ask rails db:drop
+ask rake db:reset
+ask rails db:purge
+ask rails db:schema:load
+ask python manage.py flush
+ask python manage.py reset_db
+ask alembic downgrade base
+ask npx knex migrate:rollback --all
+ask npx sequelize db:migrate:undo:all
+ask typeorm schema:drop
+ask npx drizzle-kit drop
+deny NODE_ENV=production prisma migrate reset
+deny NODE_ENV=production prisma db push --force-reset
+deny RAILS_ENV=production rails db:drop
+deny rails db:drop -e production
+deny APP_ENV=production python manage.py flush
+deny ENVIRONMENT=prod alembic downgrade base
+deny NODE_ENV=production knex migrate:rollback --all
+deny bash -c 'RAILS_ENV=production rails db:drop'
+allow prisma migrate status
+allow prisma generate
+allow rails db:migrate:status
+allow alembic downgrade -1
+allow knex migrate:rollback
+allow python manage.py showmigrations
+
+# B-15: UPDATE without WHERE asks, deny against production
+ask psql "$DATABASE_URL" -c "UPDATE users SET active = false"
+ask psql -h db.staging.acme.com -c "UPDATE users SET role = 'x'"
+ask sqlite3 app.db "update users set name = 'x'"
+deny psql postgres://db.prod.acme.com/app -c "UPDATE users SET active = false"
+deny NODE_ENV=production psql "$DATABASE_URL" -c "update users set x = 1"
+allow psql -h localhost -c "UPDATE users SET x = 1 WHERE id = 1"
+allow sqlite3 app.db "update users set x = 1 where id = 2"
+allow psql -h localhost -c "SELECT * FROM updates"
+
+# B-16: DELETE FROM ... WHERE against a local target passes
+allow psql -h localhost -c "DELETE FROM users WHERE id = 1"
+allow psql -h 127.0.0.1 -c "DELETE FROM sessions WHERE expired = true"
+allow psql -c "DELETE FROM t WHERE id = 3"
+allow psql -h /var/run/postgresql -c "DELETE FROM t WHERE id = 1"
+allow sqlite3 app.db "delete from t where id = 1"
+ask psql -h localhost -c "DELETE FROM users"
+ask psql -h db.staging.acme.com -c "DELETE FROM users WHERE id = 1"
+
+# B-17: migrations are denied against production
+deny RAILS_ENV=production rails db:migrate
+deny NODE_ENV=production prisma migrate deploy
+deny APP_ENV=production python manage.py migrate
+deny ENVIRONMENT=prod alembic upgrade head
+deny NODE_ENV=production knex migrate:latest
+deny railway run -e production rails db:migrate
+deny bash -c 'NODE_ENV=production prisma migrate deploy'
+allow prisma migrate deploy
+allow rails db:migrate
+allow RAILS_ENV=development rails db:migrate
+allow NODE_ENV=staging prisma migrate deploy
+allow python manage.py migrate
+allow RAILS_ENV=production rails routes
+
+# B-18: a command word that is a command substitution asks
+ask $(which ls) -la
+ask `which ls` -la
+ask $(git rev-parse --show-toplevel)/scripts/run.sh
+ask FOO=1 $(which ls)
+ask echo hi && $(which ls)
+allow echo $(date)
+allow echo `date`
+allow ls $(pwd)
+allow cat "$(git rev-parse --show-toplevel)/README.md"
+allow x=$(date)
+allow cd $(mktemp -d)
