@@ -94,7 +94,6 @@
       "Bash(git filter-repo*)",
       "Bash(git filter-branch*)",
       "Bash(uvx git-filter-repo*)",
-      "Bash(gh pr merge*)",
       "Bash(gh pr review --approve*)",
       "Bash(gh secret set*)",
       "Bash(gh variable set*)",

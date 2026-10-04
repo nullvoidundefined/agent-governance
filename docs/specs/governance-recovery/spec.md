@@ -177,7 +177,7 @@ The per-slice critic and the spec-conformance review are retired (folded into R-
 
 - One PR per slice.
 - After opening a PR, stop. The owner approves or merges it before the next slice starts.
-- Every `gh pr merge` asks.
+- `gh pr merge` no longer asks (owner, 2026-10-04: Claude merges without a prompt). The guard still denies a merge whose PR body has no `## Review` section, and the `gh api` merge endpoints still ask.
 
 ## 6. Review
 
