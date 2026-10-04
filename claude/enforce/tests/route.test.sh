@@ -240,11 +240,23 @@ for state in missing garbage empty-buckets; do
   expectRoute codex implement --risk standard
   expectRoute codex review --risk standard --author claude
   expectRoute claude review --risk standard --author codex
+  case "$REASON" in *"quota unavailable"*) ;; *) failCase "$state: a review reason must also say 'quota unavailable' (got: $REASON)" ;; esac
+  expectRoute claude security-review --risk high
+  case "$REASON" in *"quota unavailable"*) ;; *) failCase "$state: a pinned reason must also say 'quota unavailable' (got: $REASON)" ;; esac
+  rm -f "$ROUTING_LOG"; expectRoute claude spec --risk standard; expectRoute claude architecture --risk standard
+  expectRoute codex test-author --risk standard; expectRoute codex implement --risk standard
+  expectRoute codex review --risk standard --author claude; expectRoute claude review --risk standard --author codex
   [ "$(logCount)" = "6" ] || failCase "$state: want 6 log lines after 6 calls, got $(logCount)"
   jq -e . "$ROUTING_LOG" >/dev/null || failCase "$state: every log line must parse"
   [ "$(jq -s '[.[] | select((.ratios | type) == "object" and (.ratios | has("claude")) and (.ratios | has("codex")))] | length' "$ROUTING_LOG")" = "6" ] ||
     failCase "$state: the log must carry a ratios object with claude and codex even without quota data"
 done
+
+# An exhausted default with no data at all for the other provider stays put:
+# moving work to a provider the report knows nothing about is a guess (PR 3 review).
+jq -n --argjson now "$NOW" '{buckets: {claude: {provider: "claude", resetsAt: (($now + 86400) | todate), windowDays: 366,
+  snapshots: [{at: ($now | todate), usedPct: 90, source: "owner"}]}}}' >"$CLAUDE_QUOTA_FILE"
+expectRoute claude spec --risk standard
 
 # --- 7. The log: one JSON line per successful call. ---
 rm -f "$ROUTING_LOG"
