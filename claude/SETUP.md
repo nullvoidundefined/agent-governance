@@ -59,32 +59,25 @@ Universal rules in `CLAUDE.md` (untagged) apply to every stack; each track docum
 
 ## Verify the install
 
-Run `bash claude/enforce/doctor.sh --full` (wraps both fixture suites plus the install checks); it should exit 0:
+Three commands check a checkout. Run them from the repository root; each should exit 0.
 
 ```
-bash ~/.claude/enforce/doctor.sh --full
+bash claude/enforce/tests/run-tests.sh
 ```
 
-`--full` runs the settings-parse, settings-schema-keys, hook-registration, hook-integrity, hook-executability, deps, sandbox-availability, statusline, and port-freshness checks, then both fixture suites (`enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh`) as one `fixture-suites` check. See `enforce/README.md` for the full check list, the exit contract, and the `--release` gate. The same two fixture suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
+This runs the hook tests in `claude/enforce/tests` and `claude/hooks/tests`. The `tdd.sh` tests drive pytest and vitest, so install both first; CI shows the exact install step.
 
-The ESLint-backed tests the fixture suites drive need `enforce/node_modules`, which is
-gitignored and therefore absent from a fresh clone. `./sync.sh` installs them into
-`~/.claude/enforce` with a locked `npm ci`; to install by hand, run
-`npm ci --prefix ~/.claude/enforce` (never `npm install`, which can resolve
-differently from the committed lockfile), or six tests fail on a missing ESLint.
+```
+bash sync-tests/sync.test.sh
+```
 
-## The turn-level verification gate (R-509)
+This runs the sync test. It checks that `sync.sh` copies each folder into its target, deletes only files it installed, refuses invalid JSON, and is idempotent, all against temp directories, so it never touches a real `~/.claude`.
 
-`hooks/verification-gate.sh` runs on `Stop` and blocks the turn from ending on a
-red suite. It discovers this project's own checks rather than hardcoding any,
-first match wins: `.claude/verify.sh`, then the `~/.claude` repo's two fixture
-suites, then `package.json` `test` plus `typecheck`/`type-check`, then
-`pytest`/`mypy`, then `go test`/`go vet`, then `bundle exec rspec`.
+```
+node translate/codex.mjs --check
+node translate/cursor.mjs --check
+```
 
-- It runs only when the working tree is dirty or the branch carries unpushed
-  commits, so read-only turns cost nothing.
-- A repo with no discoverable check command is never blocked.
-- To give a project its own command, write `.claude/verify.sh` in its root. That
-  wins over all discovery, so per-project commands never belong in the hook.
-- `CLAUDE_SKIP_VERIFY=1` bypasses for one turn. `CLAUDE_VERIFY_TIMEOUT` (default
-  600s) caps each command.
+These check that the generated Codex and Cursor ports match their sources.
+
+CI runs the same commands in `.github/workflows/enforce.yml`, job `fixtures`. Name that job as a required status check under Settings > Branches so the checks run where they cannot be skipped: a local pre-push hook can be bypassed with `--no-verify`, so it is advisory only.

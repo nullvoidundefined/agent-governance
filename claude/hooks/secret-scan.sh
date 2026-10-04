@@ -54,8 +54,7 @@ SCAN_TEXT=$(printf '%s' "$INPUT" | jq -r '(.tool_input.command // "") + "\n" + (
 # and discussion references like "sk-ant-api03-..." or "whsec_REDACTED".
 #
 # The pattern set lives in enforce/secret-patterns.txt (one alternative per
-# line, `#` comments) so doctor.sh --release can reuse the same list for its
-# tracked-file scan. A guard fails closed, never open: if the shared data
+# line, `#` comments). A guard fails closed, never open: if the shared data
 # file is missing or unreadable, fall back to this hardcoded minimal set
 # rather than scanning nothing (2026-09-17, B-4 pattern extraction).
 PATTERNS_FILE="$(dirname "${BASH_SOURCE[0]}")/../enforce/secret-patterns.txt"
