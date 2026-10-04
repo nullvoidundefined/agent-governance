@@ -107,5 +107,15 @@ check "an exact tilde Read rule matches that one file" read_denied "$HOME/.$(pri
 check "a file no Read rule covers is not denied" not read_denied "$SANDBOX/project/README.md"
 check "an unreadable settings file makes a read undecidable, not allowed" read_cannot_tell "$SANDBOX/project/README.md"
 
+# The owner removed non-destructive asks on 2026-10-04: opening a PR and
+# re-running CI change nothing that cannot be undone, and merging stays asked.
+REAL_SETTINGS="$(dirname "${BASH_SOURCE[0]}")/../../settings.json"
+not_asked() { ! jq -e --arg r "$1" '.permissions.ask | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+asked() { jq -e --arg r "$1" '.permissions.ask | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+check "opening a PR is not asked" not_asked 'Bash(gh pr create*)'
+check "re-running CI is not asked" not_asked 'Bash(gh run rerun*)'
+check "dispatching a workflow is not asked" not_asked 'Bash(gh workflow run*)'
+check "merging a PR is still asked" asked 'Bash(gh pr merge*)'
+
 [ "$fail" -eq 0 ] && echo "settings-permission-rules.test.sh PASS"
 exit "$fail"

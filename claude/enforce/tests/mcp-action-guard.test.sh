@@ -30,7 +30,17 @@ ask  mcp__claude_ai_Notion__notion-update-page    # verb behind a server prefix
 ask  mcp__claude_ai_Google_Calendar__delete_event # destroys
 ask  mcp__claude_ai_Figma__create_new_file        # writes
 ask  mcp__github__createIssue                     # camelCase name
-ask  mcp__github__createPullRequest               # camelCase, multi-word
+pass mcp__github__createPullRequest               # camelCase, multi-word; opening a PR is exempt (owner, 2026-10-04)
+pass mcp__github__create_pull_request             # opening a PR is reversible; merging is the gate
+pass mcp__github__update_pull_request             # editing a PR's title or body
+pass mcp__github__add_issue_comment               # a PR or issue comment
+pass mcp__github__add_reply_to_pull_request_comment
+pass mcp__github__update_issue_comment
+pass mcp__github__create_branch
+ask  mcp__github__merge_pull_request              # merging stays the owner's gate
+ask  mcp__github__pull_request_review_write       # a review can approve, so it still asks
+ask  mcp__github__create_or_update_file           # commits straight to a branch, possibly main
+ask  mcp__claude_ai_Notion__notion-update-page    # the exemption is GitHub's PR verbs only
 ask  mcp__slack__chat_postMessage                 # camelCase behind a prefix
 ask  mcp__neon__run_sql                           # statements against a database
 ask  mcp__supabase__execute_sql                   # statements against a database
@@ -82,7 +92,6 @@ passNamed mcp__Linear__save_issue             # the same server without the clau
 # would widen far past what the operator wrote.
 askNamed mcp__github__save_issue              # same suffix, different server, still asks
 rm -rf "$NAMED_HOME"
-ask  mcp__github__create_pull_request             # a public repo is publishing, never exempt
 ask  mcp__claude_ai_Notion__notion-create-pages   # only the tracker is exempt, not every writer
 pass mcp__plugin_context7_context7__query-docs    # a docs lookup is not a database write
 pass Write                                        # non-MCP tool
