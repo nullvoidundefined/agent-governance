@@ -227,4 +227,35 @@ no_sentinel oversized
 case "$OUT" in *padding*) fail "oversized: raw line text leaked" ;; esac
 assert_structure oversized
 
+# ---- 9. PR 4 review cases ----------------------------------------------------
+# Console noise shaped like a vitest line must not pass through as a name.
+printf '  FAIL  retry a > b: token=SENTINEL_RAW_7f3a_console\n' >"$WORK/console.log"
+run --test-log "$WORK/console.log"
+assert_ok console
+no_sentinel console
+# A pytest collection error is a failure, not a green run.
+printf 'ERROR tests/test_e.py - ImportError: SENTINEL_RAW_7f3a_collect\n=== 1 error in 0.10s ===\n' >"$WORK/collect.log"
+run --test-log "$WORK/collect.log"
+assert_ok collect
+[ "$(line_of status)" = "status: red" ] || fail "collect: a pytest ERROR must read red"
+expect_names collect "tests/test_e.py"
+no_sentinel collect
+# A parametrized pytest id with a space keeps its whole id.
+printf 'FAILED tests/t.py::test_x[a b] - AssertionError: SENTINEL_RAW_7f3a_space\n' >"$WORK/space.log"
+run --test-log "$WORK/space.log"
+assert_ok space
+expect_names space "tests/t.py::test_x[a b]"
+no_sentinel space
+# CRLF logs parse, and no carriage return reaches the output.
+printf ' FAIL  src/r.test.ts > s > crlf case\r\nFAIL crlf.test.sh\r\n' >"$WORK/crlf.log"
+run --test-log "$WORK/crlf.log"
+assert_ok crlf
+expect_names crlf "src/r.test.ts > s > crlf case" "crlf.test.sh"
+case "$OUT" in *$'\r'*) fail "crlf: carriage return in output" ;; esac
+# A private-mode ANSI sequence is stripped too.
+printf '%s[?25l FAIL  src/p.test.ts > s > private%s[?25h\n' "$ESC" "$ESC" >"$WORK/private.log"
+run --test-log "$WORK/private.log"
+assert_ok private
+expect_names private "src/p.test.ts > s > private"
+
 echo "PASS: handoff-summary"
