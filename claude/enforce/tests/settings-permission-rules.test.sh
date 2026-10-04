@@ -117,5 +117,17 @@ check "re-running CI is not asked" not_asked 'Bash(gh run rerun*)'
 check "dispatching a workflow is not asked" not_asked 'Bash(gh workflow run*)'
 check "merging a PR is still asked" asked 'Bash(gh pr merge*)'
 
+# Owner, 2026-10-04: optimize for allowing non-destructive commands. Read,
+# build, test, and lint tools are allowed outright, so auto mode never stops to
+# classify them; ask rules and the guard hooks still take precedence over allow.
+allowed() { jq -e --arg r "$1" '.permissions.allow | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+for rule in 'Bash(pytest *)' 'Bash(ruff *)' 'Bash(make test*)' 'Bash(go test *)' 'Bash(cargo test*)' \
+  'Bash(docker ps*)' 'Bash(docker logs *)' 'Bash(sort *)' 'Bash(pwd)' 'Bash(readlink *)' 'Bash(uv run *)'; do
+  check "non-destructive $rule is allowed" allowed "$rule"
+done
+# The shell-wrapper asks stay: inside bash -c, a prefix-only ask such as
+# git reset --hard or npm publish is invisible to every guard.
+check "bash -c is still asked" asked 'Bash(bash -c *)'
+
 [ "$fail" -eq 0 ] && echo "settings-permission-rules.test.sh PASS"
 exit "$fail"
