@@ -25,7 +25,7 @@
 #       (describe titles and the test title joined by spaces, the name their
 #       -t filter matches). The file's other tests must keep passing and the
 #       file must still load, so a new test imports an unwritten unit inside
-#       its body. Bash fixtures stay file-level: a fixture is one test, so a
+#       its body. Bash tests stay file-level: a test is one test, so a
 #       test id on a *.test.sh path is refused. Records the pass count outside
 #       the named tests as the baseline (the unnamed tests of an id-named file
 #       count toward it), the sha256 of every containing file with its ids,
@@ -69,11 +69,11 @@
 #       untracked path inside the role's role-policy.json boundary (R-411);
 #       the implementer's GREEN re-run rather than trusted.
 #
-# Runner: chosen from the test paths. A `*.test.sh` path is a bash fixture:
-# the suite is the `*.test.sh` fixtures of the named files' directories that
-# the runner's affected mode selects, plus the named tests and every fixture
+# Runner: chosen from the test paths. A `*.test.sh` path is a bash test:
+# the suite is the `*.test.sh` tests of the named files' directories that
+# the runner's affected mode selects, plus the named tests and every test
 # the RED run passed (IAN-510), run through
-# run-fixture-shards.sh beside this script with that runner's verdict (exit 0,
+# run-test-shards.sh beside this script with that runner's verdict (exit 0,
 # a PASS line, no FAIL line), and converted to the JSON report shape below.
 # A `*.py` path (test_*.py or *_test.py in practice) is a pytest test: the
 # suite is the whole pytest run of the Python project that owns the named
@@ -89,7 +89,7 @@
 # no tests carrying the error text, so a SyntaxError is refused as a parse
 # failure and an ImportError or ModuleNotFoundError is the missing-module RED.
 # A pytest test that runs and raises any other exception, in its body or its
-# fixtures' setup, is a RED recorded by exception class; infrastructure
+# tests' setup, is a RED recorded by exception class; infrastructure
 # failures and teardown errors are refused (pytest_exception_class).
 # Any other path, or no path, uses Vitest or Jest resolved from the project's
 # node_modules/.bin, then the copy bundled under ~/.claude/enforce/node_modules
@@ -100,10 +100,10 @@
 set -uo pipefail
 
 CLAUDE_DIR="${CLAUDE_TDD_HOME:-$HOME/.claude}"
-SHARD_RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-fixture-shards.sh"
+SHARD_RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-test-shards.sh"
 POLICY="$CLAUDE_DIR/enforce/role-policy.json"
 LOCK_RELATIVE=".claude/tdd-lock.json"
-# The uv binary the pytest runner prefers; the fixture points it at a name that
+# The uv binary the pytest runner prefers; the test points it at a name that
 # does not exist to exercise the python -m pytest fallback.
 UV_BIN="${CLAUDE_TDD_UV:-uv}"
 # How the pytest runner starts pytest: `<python> -c "$PYTEST_BOOTSTRAP"
@@ -166,7 +166,7 @@ resolve_runner() {
     RUNNER="$CLAUDE_DIR/enforce/node_modules/.bin/vitest"; RUNNER_KIND=vitest
     say "warning: no vitest or jest in this project's node_modules; using the harness-bundled vitest" >&2
   else
-    die "no supported test runner: Vitest or Jest under node_modules/.bin, *.test.sh fixtures, or *.py pytest tests (go test and RSpec are not wired yet)"
+    die "no supported test runner: Vitest or Jest under node_modules/.bin, *.test.sh tests, or *.py pytest tests (go test and RSpec are not wired yet)"
   fi
 }
 
@@ -218,7 +218,7 @@ resolve_package_runner() {
   fi
 }
 
-# select_runner <test rel>...: shell when every path is a *.test.sh fixture,
+# select_runner <test rel>...: shell when every path is a *.test.sh test,
 # pytest when every path is a *.py file, the JavaScript runner when neither is
 # (or none is named), a refusal when mixed.
 select_runner() {
@@ -231,10 +231,10 @@ select_runner() {
     esac
   done
   if [ $(( (shell > 0) + (python > 0) + (other > 0) )) -gt 1 ]; then
-    die "a slice runs one runner: $shell *.test.sh fixture(s), $python *.py pytest file(s), and $other other test file(s) were named; split them into separate slices"
+    die "a slice runs one runner: $shell *.test.sh test(s), $python *.py pytest file(s), and $other other test file(s) were named; split them into separate slices"
   fi
   if [ "$shell" -gt 0 ]; then
-    [ -f "$SHARD_RUNNER" ] || die "shell fixtures need $SHARD_RUNNER, which is missing"
+    [ -f "$SHARD_RUNNER" ] || die "shell tests need $SHARD_RUNNER, which is missing"
     RUNNER="$SHARD_RUNNER"; RUNNER_KIND=shell
     MISSING_MODULE="$SHELL_MISSING"; ASSERTION="$SHELL_ASSERTION"
   elif [ "$python" -gt 0 ]; then
@@ -303,19 +303,19 @@ run_suite() {
   jq -e '.testResults' "$REPORT" >/dev/null 2>&1 || die "the $RUNNER_KIND run produced no JSON report; run '$RUNNER' by hand to see why"
 }
 
-# run_shell_suite <test rel>...: runs the *.test.sh fixtures of the named
+# run_shell_suite <test rel>...: runs the *.test.sh tests of the named
 # files' directories that the shard runner's affected mode selects, and prints
-# the Vitest-shaped report (IAN-510). Running every fixture on each red and
+# the Vitest-shaped report (IAN-510). Running every test on each red and
 # green made one fix round pay several full suites; CI still runs them all.
 # --also adds the named tests, which git may no longer list as changed once
-# pushed, and every fixture the lock's RED run passed (baseline.fixtures), so
-# green compares its count against the same fixtures. Only fixtures that ran
+# pushed, and every test the lock's RED run passed (baseline.fixtures), so
+# green compares its count against the same tests. Only tests that ran
 # get a record; a named test that did not run is a failed record. The runner
 # starts in a scratch directory, not the repository root, so a
-# fixture that writes a relative path cannot leave files in the slice's tree
-# (PR #49 review); fixture paths are absolute, so nothing else changes.
+# test that writes a relative path cannot leave files in the slice's tree
+# (PR #49 review); test paths are absolute, so nothing else changes.
 run_shell_suite() {
-  local dirs rel dir results scratch fixture records="" also=()
+  local dirs rel dir results scratch test_file records="" also=()
   for rel in "$@"; do also+=(--also "$rel"); done
   if [ -f "$LOCK" ]; then
     while IFS= read -r rel; do
@@ -328,41 +328,41 @@ run_shell_suite() {
     (cd "$scratch" && bash "$SHARD_RUNNER" "$ROOT_PHYSICAL/$dir" --affected "${also[@]}" --results-dir "$results" >"$scratch/runner.out" 2>&1)
     # The runner's own summary (selection, run slot, and the IAN-566 timing
     # line) goes to stderr, so a slow red or green shows where its time went.
-    grep '^fixture-shards: ' "$scratch/runner.out" >&2
-    for fixture in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
-      [ -f "$fixture" ] || continue
-      [ -f "$results/$(basename "$fixture").status" ] || is_named_fixture "$fixture" "$@" || continue
-      records+=$(shell_record "$fixture" "$results")$'\n'
+    grep '^test-shards: ' "$scratch/runner.out" >&2
+    for test_file in "$ROOT_PHYSICAL/$dir"/*.test.sh; do
+      [ -f "$test_file" ] || continue
+      [ -f "$results/$(basename "$test_file").status" ] || is_named_test "$test_file" "$@" || continue
+      records+=$(shell_record "$test_file" "$results")$'\n'
     done
     rm -rf "$results" "$scratch"
   done <<< "$dirs"
   printf '%s' "$records" | jq -s '{testResults: .}'
 }
 
-# is_named_fixture <fixture> <test rel>...: true when the absolute fixture
+# is_named_test <test> <test rel>...: true when the absolute test
 # path is one of the named root-relative tests.
-is_named_fixture() {
-  local fixture="$1" rel; shift
-  for rel in "$@"; do [ "$fixture" = "$ROOT_PHYSICAL/$rel" ] && return 0; done
+is_named_test() {
+  local test_file="$1" rel; shift
+  for rel in "$@"; do [ "$test_file" = "$ROOT_PHYSICAL/$rel" ] && return 0; done
   return 1
 }
 
-# missing_baseline_fixtures: refuses green when a fixture the RED run passed
+# missing_baseline_tests: refuses green when a test the RED run passed
 # (baseline.fixtures, shell runner only) is absent from this run's passes. The
-# count alone is not enough under affected selection: a deleted fixture's path
-# maps to no fixture, the runner falls back to every fixture, and the passes of
-# fixtures RED never ran would cover the missing one (IAN-510).
-missing_baseline_fixtures() {
+# count alone is not enough under affected selection: a deleted test's path
+# maps to no test, the runner falls back to every test, and the passes of
+# tests RED never ran would cover the missing one (IAN-510).
+missing_baseline_tests() {
   local missing
   missing=$(jq -r --slurpfile report "$REPORT" --arg root "$ROOT_PHYSICAL/" \
     '(.baseline.fixtures // []) - [$report[0].testResults[] | select(.status == "passed") | .name | ltrimstr($root)] | .[]' "$LOCK")
-  [ -z "$missing" ] || die "a fixture in the RED baseline did not pass now: $(printf '%s' "$missing" | tr '\n' ' '); it was deleted, skipped, or broken (R-401)"
+  [ -z "$missing" ] || die "a test in the RED baseline did not pass now: $(printf '%s' "$missing" | tr '\n' ' '); it was deleted, skipped, or broken (R-401)"
 }
 
-# passing_fixtures_json <named json>: the root-relative fixtures the shell
+# passing_tests_json <named json>: the root-relative tests the shell
 # report passed outside the named tests, as a JSON array, for the lock's
 # baseline.fixtures; an empty array under every other runner.
-passing_fixtures_json() {
+passing_tests_json() {
   [ "$RUNNER_KIND" = shell ] || { echo '[]'; return; }
   jq -c --argjson named "$1" --arg root "$ROOT_PHYSICAL/" \
     '[.testResults[] | select(.status == "passed") | .name | select(. as $n | ($named | map(.name) | index($n)) | not) | ltrimstr($root)]' "$REPORT"
@@ -455,27 +455,27 @@ print(json.dumps({"testResults": list(records.values())}))
 ' "$@"
 }
 
-# shell_record <fixture> <results dir>: one report record. A fixture that does
+# shell_record <test> <results dir>: one report record. A test that does
 # not parse has no tests and a syntax message; one that passed has one passing
 # test; one that exited 0 saying neither PASS nor FAIL has no tests and no
 # message; any other outcome is one failed test carrying its FAIL lines, or
 # its last lines and exit code when it printed none.
 shell_record() {
-  local fixture="$1" results="$2" name syntax status output failures
-  name=$(basename "$fixture")
-  if ! syntax=$(bash -n "$fixture" 2>&1); then
-    jq -n --arg n "$fixture" --arg m "syntax error: $syntax" '{name:$n, status:"failed", message:$m, assertionResults:[]}'
+  local test_file="$1" results="$2" name syntax status output failures
+  name=$(basename "$test_file")
+  if ! syntax=$(bash -n "$test_file" 2>&1); then
+    jq -n --arg n "$test_file" --arg m "syntax error: $syntax" '{name:$n, status:"failed", message:$m, assertionResults:[]}'
     return
   fi
   status=$(cat "$results/$name.status" 2>/dev/null || echo 1)
   output=$(cat "$results/$name.out" 2>/dev/null || true)
   if [ "$(cat "$results/$name.verdict" 2>/dev/null)" = ok ]; then
-    jq -n --arg n "$fixture" --arg t "$name" '{name:$n, status:"passed", message:"", assertionResults:[{title:$t, status:"passed", failureMessages:[]}]}'
+    jq -n --arg n "$test_file" --arg t "$name" '{name:$n, status:"passed", message:"", assertionResults:[{title:$t, status:"passed", failureMessages:[]}]}'
   elif [ "$status" -eq 0 ] && ! grep -q PASS <<< "$output" && ! grep -q FAIL <<< "$output"; then
-    jq -n --arg n "$fixture" '{name:$n, status:"failed", message:"", assertionResults:[]}'
+    jq -n --arg n "$test_file" '{name:$n, status:"failed", message:"", assertionResults:[]}'
   else
     failures=$(grep FAIL <<< "$output" || { tail -5 <<< "$output"; echo "exit $status"; })
-    jq -n --arg n "$fixture" --arg t "$name" --arg f "$failures" '{name:$n, status:"failed", message:"", assertionResults:[{title:$t, status:"failed", failureMessages:[$f]}]}'
+    jq -n --arg n "$test_file" --arg t "$name" --arg f "$failures" '{name:$n, status:"failed", message:"", assertionResults:[{title:$t, status:"failed", failureMessages:[$f]}]}'
   fi
 }
 
@@ -501,12 +501,12 @@ PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse e
 # an `Object.toX` frame, which a plain Error thrown by a helper method of that
 # name carries too. Colour is stripped before matching (JQ_FAILURE_RESULT).
 ASSERTION='AssertionError|__VITEST_(RESOLVES|REJECTS|POLL_CHAIN|EXTEND_ASSERTION)__|Snapshot `.*` mismatched|expected number of assertions to be|expected any number of assertion|expect\(.*\)(\.(not|resolves|rejects))*\.[^[:space:].()]+\(|expect\.(assertions|hasAssertions)\(|^assert(\.[A-Za-z]+)?\('
-# Shell fixtures: bash's own message for a script or command that does not
+# Shell tests: bash's own message for a script or command that does not
 # exist yet is the missing-module RED; a FAIL line is the assertion RED.
 SHELL_MISSING='(: No such file or directory|: command not found)$'
 SHELL_ASSERTION='FAIL'
 # pytest: an import that cannot resolve (a module or a name not written yet),
-# or a fixture not written yet, is the missing-module RED, a failed assert or
+# or a test not written yet, is the missing-module RED, a failed assert or
 # an unmet pytest.raises is the assertion RED, and any SyntaxError subclass is
 # a test that does not parse. Any other exception the test body or its setup
 # raises is a RED too, recorded by its class (I3, IAN-568): a new keyword
@@ -685,7 +685,7 @@ named_count() {
   file_record "$1" | jq --argjson ids "$2" --arg kind "$RUNNER_KIND" "$JQ_TEST_IDS"'[.assertionResults[] | select(in_scope($ids; $kind))] | length'
 }
 
-# CLOSURE_FIXTURE is the one fixture whose failure a red may tolerate, and
+# CLOSURE_FIXTURE is the one test whose failure a red may tolerate, and
 # CLOSURE_REVERSE_PATTERN is the wording it uses to name a drifting path. The
 # content-drift line it prints alongside names hooks/hook-integrity-check.sh as
 # the command to run, which is path-shaped but is not a drifting path, so only
@@ -694,15 +694,15 @@ CLOSURE_FIXTURE='hook-hashes-closure.test.sh'
 CLOSURE_REVERSE_PATTERN='^FAIL: (.+) is covered by the R-203 guard but absent from the manifest'
 
 # drift_is_confined <report entry json> <named json>: true when the entry is
-# the manifest-closure fixture and every path it names as drifting is one of
+# the manifest-closure test and every path it names as drifting is one of
 # the test files this red command named.
 #
-# Writing a slice's own fixture is what puts an unhashed file under
-# enforce/tests/, so the closure fixture goes red as a consequence of the test
+# Writing a slice's own test is what puts an unhashed file under
+# enforce/tests/, so the closure test goes red as a consequence of the test
 # the author was asked to write, and outside_pass_count would refuse every RED
 # a test author could ever reach in this repository (IAN-156, owner decision
 # 2026-09-20). Drift naming any other path still refuses, and so does any other
-# failing fixture, including this one failing for a different reason: a run
+# failing test, including this one failing for a different reason: a run
 # with no reverse-closure line at all is content drift this function cannot
 # bound to the slice, and is not tolerated.
 drift_is_confined() {
@@ -719,7 +719,7 @@ drift_is_confined() {
     while IFS= read -r rel; do
       [ -n "$rel" ] || continue
       # Exactly two spellings name the same file: the repository-root one
-      # tdd.sh uses, and the harness-relative one the closure fixture prints,
+      # tdd.sh uses, and the harness-relative one the closure test prints,
       # which differs by the single directory the harness tree sits in below
       # the repository root. Any shorter trailing run of components is a
       # different file: a bare score.test.sh, or tests/score.test.sh, does not
@@ -743,7 +743,7 @@ drift_is_confined() {
 # Only a caller judging a RED may: `red` and `expected-red` ask for it, while
 # `green` and a refactor slice's opening suite must not, because by then the
 # drift comes from the production file the implementer edited rather than from
-# the slice's own fixture, and tolerating that is the integrity drift on hooks
+# the slice's own test, and tolerating that is the integrity drift on hooks
 # that decision 2 of 2026-09-20 refused (R-517 review of PR #91, finding 1).
 outside_pass_count() {
   local named="$1" tolerate="${2:-}" failing kept="" report_name
@@ -842,10 +842,10 @@ open_refactor() {
     entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" \
       --argjson n "$(file_record "$rel" | jq '.assertionResults | length')" '. + [{path:$p, sha256:$h, failureClass:"refactor", tests:$n}]')
   done
-  local baseline fixtures
+  local baseline test_files
   baseline=$(outside_pass_count "$(names_json "${rels[@]}")") || exit 1
-  fixtures=$(passing_fixtures_json "$(names_json "${rels[@]}")")
-  jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --argjson t "$entries" --argjson b "$baseline" --argjson f "$fixtures" --arg k "$RUNNER_KIND" --arg at "$(now)" \
+  test_files=$(passing_tests_json "$(names_json "${rels[@]}")")
+  jq -n --arg s "$slice" --arg spec "$spec" --argjson l "$locked" --argjson t "$entries" --argjson b "$baseline" --argjson f "$test_files" --arg k "$RUNNER_KIND" --arg at "$(now)" \
     '{slice:$s, phase:"refactor", spec:(if $spec=="" then null else $spec end), locked:$l, tests:$t, baseline:({passed:$b, runner:$k} + (if $k == "shell" then {fixtures:$f} else {} end)), openedAt:$at}' > "$LOCK"
   rm -f "$REPORT"
   say "REFACTOR: ${#rels[@]} test file(s) locked, $baseline passing outside. Restructure, then 'tdd.sh green'; the same tests must pass unchanged."
@@ -861,7 +861,7 @@ cmd_red() {
   for f in "$@"; do
     file="$f"; id=""
     case "$f" in *::*) file="${f%%::*}"; id="${f#*::}"; [ -n "$id" ] || die "$f names an empty test id" ;; esac
-    case "$file" in *.test.sh) [ -z "$id" ] || die "$file is a bash fixture, which is one test: name the fixture file, not a test inside it (test ids apply to pytest, Vitest, and Jest)" ;; esac
+    case "$file" in *.test.sh) [ -z "$id" ] || die "$file is a bash test, which is one test: name the test file, not a test inside it (test ids apply to pytest, Vitest, and Jest)" ;; esac
     rel=$(relative "$file")
     grep -qE "$tests_pattern" <<< "$rel" || die "$rel is not under a test tree (enforce/role-policy.json patterns.tests)"
     spec=$(add_named "$spec" "$rel" "$id") || exit 1
@@ -878,10 +878,10 @@ cmd_red() {
     entries=$(printf '%s' "$entries" | jq -c --arg p "$rel" --arg h "$(sha "$rel")" --arg c "$class" --argjson ids "$ids" \
       --argjson n "$(named_count "$rel" "$ids")" '. + [{path:$p, sha256:$h, failureClass:$c, tests:$n} + (if $ids == null then {} else {ids:$ids} end)]')
   done
-  local baseline fixtures
+  local baseline test_files
   baseline=$(outside_pass_count "$(spec_named "$spec")" tolerate) || exit 1
-  fixtures=$(passing_fixtures_json "$(spec_named "$spec")")
-  jq --argjson t "$entries" --argjson b "$baseline" --argjson f "$fixtures" --arg k "$RUNNER_KIND" --arg at "$(now)" \
+  test_files=$(passing_tests_json "$(spec_named "$spec")")
+  jq --argjson t "$entries" --argjson b "$baseline" --argjson f "$test_files" --arg k "$RUNNER_KIND" --arg at "$(now)" \
     '.phase = "red" | .tests = $t | .baseline = ({passed: $b, runner: $k} + (if $k == "shell" then {fixtures: $f} else {} end)) | .redAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
   local summary
@@ -1164,7 +1164,7 @@ cmd_green() {
   baseline=$(jq -r '.baseline.passed // 0' "$LOCK")
   passed=$(outside_pass_count "$names") || exit 1
   [ "$passed" -ge "$baseline" ] || die "the suite outside the RED files dropped below the baseline ($passed < $baseline): a test was deleted or skipped (R-401)"
-  missing_baseline_fixtures
+  missing_baseline_tests
   jq --arg at "$(now)" '.phase = "green" | .greenAt = $at' "$LOCK" > "$LOCK.tmp" && mv "$LOCK.tmp" "$LOCK"
   rm -f "$REPORT"
   say "GREEN: $(printf '%s' "$rels" | tr '\n' ' ')pass; $passed passing outside (baseline $baseline). Refactor under the lock, re-run green, commit, then 'tdd.sh close'."

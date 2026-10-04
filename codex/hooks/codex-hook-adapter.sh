@@ -74,7 +74,7 @@ HOOK_NAMES=("$@")
 # marker a Claude Code session could inherit.
 export CLAUDE_HOOK_RUNTIME="codex"
 # The Claude Code configuration this port was generated from. Overridable so
-# the fixture tests can run against a checkout that is not at ~/.claude.
+# the tests can run against a checkout that is not at ~/.claude.
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$CLAUDE_HOME/hooks}"
 STATE_DIR="${CLAUDE_CODEX_STATE_DIR:-$CLAUDE_HOME/.codex-hook-state}"
@@ -86,11 +86,11 @@ PERMISSION_RULES_FILE="${CLAUDE_PERMISSION_RULES_FILE:-$CLAUDE_ENFORCE_DIR/setti
 # The gates Codex registers on the Write|Edit matcher, which is why a file
 # written by a shell command reaches none of them on its own. A synthetic write
 # event goes to exactly this list. It is written out here rather than derived,
-# because the adapter is handed only its own matcher's hook names; the fixture
+# because the adapter is handed only its own matcher's hook names; the test
 # codex-adapter-contract.test.sh compares this list against the Write|Edit
 # registration in codex/hooks.json, so a settings.json change that moves a gate
 # in or out of that group fails a test instead of silently narrowing the port.
-# Overridable so the fixtures can observe what is dispatched; setting it empty
+# Overridable so the tests can observe what is dispatched; setting it empty
 # turns the synthetic dispatch off.
 read -r -a CODEX_WRITE_TARGET_HOOKS <<<"${CLAUDE_CODEX_WRITE_TARGET_HOOKS-secret-scan no-em-dash protected-path-guard dependency-add-guard}"
 

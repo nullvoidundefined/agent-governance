@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# harness-root.sh: gives every fixture in enforce/tests/ and hooks/tests/ one
+# harness-root.sh: gives every test in enforce/tests/ and hooks/tests/ one
 # explicit, shared answer to the question "which copy of the harness am I
 # actually testing?".
 #
-# Until 2026-09-18 the great majority of fixtures opened their subject as
+# Until 2026-09-18 the great majority of tests opened their subject as
 # "$HOME/.claude/hooks/<name>.sh", which is the INSTALLED copy that the last
-# ./sync.sh happened to write, not the checkout that the fixture file itself
-# was read from. Neither fixture runner bound that location to the checkout,
+# ./sync.sh happened to write, not the checkout that the test file itself
+# was read from. Neither test runner bound that location to the checkout,
 # so a local pre-push run verified whichever branch was synced most recently
-# while git went on to push something else entirely, and the same fixture
+# while git went on to push something else entirely, and the same test
 # passed or failed depending on that unrelated history. Continuous integration
 # symlinks the checkout into the home directory, which made the drift
 # invisible there and left it to bite only on a developer's machine.
@@ -20,38 +20,38 @@
 #      that a caller can deliberately point one run at an installed tree, at a
 #      sandbox copy, or at a second checkout;
 #   2. otherwise the harness tree that this helper file itself lives in,
-#      derived from BASH_SOURCE. Because a fixture reaches this helper through
+#      derived from BASH_SOURCE. Because a test reaches this helper through
 #      a path relative to its own BASH_SOURCE, that tree is by construction
-#      the checkout the fixture was read from.
+#      the checkout the test was read from.
 #
 # The single deliberate exception in the suite is enforce/tests/hook-latency.test.sh,
 # which measures the installed hooks on purpose and records why in its own
-# header. Every other fixture resolves through this helper.
+# header. Every other test resolves through this helper.
 #
-# Usage, from a fixture in either enforce/tests/ or hooks/tests/ (both sit two
+# Usage, from a test in either enforce/tests/ or hooks/tests/ (both sit two
 # directories below the harness root, so one spelling serves both):
 #
 #   . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 #   HOOK="$CLAUDE_HARNESS_ROOT/hooks/secret-scan.sh"
 #
-# CLAUDE_HARNESS_ROOT is set but deliberately not exported: a fixture that
-# spawns another fixture (the implementation-root prover does exactly that)
+# CLAUDE_HARNESS_ROOT is set but deliberately not exported: a test that
+# spawns another test (the implementation-root prover does exactly that)
 # must be able to let the child resolve its own root rather than inherit one.
 #
 # Sourcing this file ALSO exports the data overrides that the hooks read at
 # runtime, each defaulted to the checkout's own copy. Binding the code alone
 # left half the defect standing: eleven hooks resolve a data file as
-# "${SOME_OVERRIDE:-$HOME/.claude/<path>}", only a handful of fixtures ever
-# set one of those variables, and so a fixture could run the checkout's
+# "${SOME_OVERRIDE:-$HOME/.claude/<path>}", only a handful of tests ever
+# set one of those variables, and so a test could run the checkout's
 # enforcement-guard-check.sh against whatever manifest.json the last ./sync.sh
 # had written. The verdict then depended on unrelated history exactly as the
 # code binding did (2026-09-18, the data half of verification-integrity
-# defect 3). Exporting them here means a fixture inherits both bindings from
+# defect 3). Exporting them here means a test inherits both bindings from
 # one source line rather than remembering eleven variable names.
 #
 # Two rules govern the bindings below, and both matter:
 #
-#   1. A value the caller already set always wins. A fixture that deliberately
+#   1. A value the caller already set always wins. A test that deliberately
 #      points CLAUDE_MANIFEST_FILE at a sabotaged sandbox manifest is stating
 #      the condition it wants to test, and this helper must not overwrite it.
 #   2. A path the checkout does not actually carry is never exported. Several
@@ -59,15 +59,15 @@
 #      pinning those at the checkout would be worse than leaving them alone:
 #      CLAUDE_FIRE_LOG and CLAUDE_SESSION_LOCK_DIR are a telemetry log and a
 #      lock directory that their readers WRITE, so binding them would have the
-#      fixture suites writing into the working tree; CLAUDE_MCP_DB_TARGETS and
+#      test suites writing into the working tree; CLAUDE_MCP_DB_TARGETS and
 #      CLAUDE_COLOCATED_ALLOWLIST_FILE name gitignored client-identifying
 #      lists (R-106) that no checkout tracks, so binding them would swap one
 #      piece of machine-specific state for another; and
 #      CLAUDE_JUDGE_ACCEPT_FILE is a presence marker written when a human
 #      accepts the honor-system tier, which no checkout carries either. Each
-#      of those is set by the individual fixtures that care about it.
+#      of those is set by the individual tests that care about it.
 
-# Resolves the harness tree a fixture should test against and prints it as an
+# Resolves the harness tree a test should test against and prints it as an
 # absolute path. Honors an explicit CLAUDE_HARNESS_ROOT override first; falls
 # back to the directory above the one holding this helper, which is the
 # checkout's claude/ root. Runs the directory change inside a subshell so the

@@ -4,12 +4,12 @@ This file is history, not instructions. It is not loaded automatically. Read it 
 
 ## 2026-05 to 2026-09: a rules file became a compliance system
 
-The harness started as one global rules file. Over the summer it added numbered rules, hooks to enforce them, and fixtures to test the hooks. It then added manifests and closure tests to prove that every rule had an enforcer, which brought integrity hashes, harness profiles, ports to Codex and Cursor, and a TDD state machine (`tdd.sh`) with a separate test author, implementer, and critic for each slice.
+The harness started as one global rules file. Over the summer it added numbered rules, hooks to enforce them, and tests for the hooks. It then added manifests and closure tests to prove that every rule had an enforcer, which brought integrity hashes, harness profiles, ports to Codex and Cursor, and a TDD state machine (`tdd.sh`) with a separate test author, implementer, and critic for each slice.
 
 Each step answered a real incident. Together they took over the work:
 
 - 73% of `main` commits touched hooks or enforce code; 83% touched some plumbing.
-- 35,900 lines of fixtures existed to test 17,200 lines of hooks. Nine fixtures only checked that rule prose contained certain words.
+- 35,900 lines of hook tests existed to test 17,200 lines of hooks. Nine of them only checked that rule prose contained certain words.
 - About 64% of fixes in one audit window were harness plumbing. The harness was 75 to 85% of the owner's merged PRs across four repositories.
 - On product work the process cost ran at 7 to 15 times the implementation time. Voyager PR 2 took about 6 hours for about 250 lines, including 2 hours of test disputes and a lock deleted by hand three times.
 

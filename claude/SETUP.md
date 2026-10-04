@@ -9,7 +9,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 - **node** is required by the ESLint push gate (`enforce/lint.mjs`).
 - **python3** is needed by the manifest closure test and the latency test's clock.
 - Optional, failing open when absent at runtime: **ruff** (or uv) for the Python push gate. The Go and Ruby push gates were removed on 2026-10-02 (IAN-568).
-- **ruff is not optional to run the fixture suite**, however. `push-ruff-gate.test.sh` drives the real binary, so without ruff on PATH that one test fails on a missing tool rather than on a defect, which is what the first CI runs did. Install it (`pipx install ruff`) or expect that single failure.
+- **ruff is not optional to run the test suite**, however. `push-ruff-gate.test.sh` drives the real binary, so without ruff on PATH that one test fails on a missing tool rather than on a defect, which is what the first CI runs did. Install it (`pipx install ruff`) or expect that single failure.
 - **Claude Code** itself.
 
 ## Install
@@ -59,15 +59,15 @@ Universal rules in `CLAUDE.md` (untagged) apply to every stack; each track docum
 
 ## Verify the install
 
-Run `bash claude/enforce/doctor.sh --full` (wraps both fixture suites plus the install checks); it should exit 0:
+Run `bash claude/enforce/doctor.sh --full` (wraps both test suites plus the install checks); it should exit 0:
 
 ```
 bash ~/.claude/enforce/doctor.sh --full
 ```
 
-`--full` runs the settings-parse, settings-schema-keys, hook-registration, hook-integrity, hook-executability, deps, sandbox-availability, statusline, and port-freshness checks, then both fixture suites (`enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh`) as one `fixture-suites` check. See `enforce/README.md` for the full check list, the exit contract, and the `--release` gate. The same two fixture suites run in CI (`.github/workflows/enforce.yml`, job `fixtures`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
+`--full` runs the settings-parse, settings-schema-keys, hook-registration, hook-integrity, hook-executability, deps, sandbox-availability, statusline, and port-freshness checks, then both test suites (`enforce/tests/run-tests.sh` and `hooks/tests/run-tests.sh`) as one `fixture-suites` check. See `enforce/README.md` for the full check list, the exit contract, and the `--release` gate. The same two test suites run in CI (`.github/workflows/enforce.yml`, job `hook-tests`). Name that job as a required status check under Settings > Branches so the gate runs where it cannot be skipped: the local pre-push hook is `--no-verify`-able and is therefore advisory however it is written.
 
-The ESLint-backed tests the fixture suites drive need `enforce/node_modules`, which is
+The ESLint-backed tests the test suites drive need `enforce/node_modules`, which is
 gitignored and therefore absent from a fresh clone. `./sync.sh` installs them into
 `~/.claude/enforce` with a locked `npm ci`; to install by hand, run
 `npm ci --prefix ~/.claude/enforce` (never `npm install`, which can resolve
@@ -77,7 +77,7 @@ differently from the committed lockfile), or six tests fail on a missing ESLint.
 
 `hooks/verification-gate.sh` runs on `Stop` and blocks the turn from ending on a
 red suite. It discovers this project's own checks rather than hardcoding any,
-first match wins: `.claude/verify.sh`, then the `~/.claude` repo's two fixture
+first match wins: `.claude/verify.sh`, then the `~/.claude` repo's two test
 suites, then `package.json` `test` plus `typecheck`/`type-check`, then
 `pytest`/`mypy`, then `go test`/`go vet`, then `bundle exec rspec`.
 

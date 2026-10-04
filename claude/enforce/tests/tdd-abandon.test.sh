@@ -6,7 +6,7 @@
 # (`close` handles that), for a lock touched within the stale window, while
 # another live process holds the working tree, while a locked test differs
 # from HEAD, and while the locked tests or the rest of the suite fail. Drives
-# the bash *.test.sh runner through the real run-fixture-shards.sh.
+# the bash *.test.sh runner through the real run-test-shards.sh.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"

@@ -12,7 +12,7 @@
 # .enforce.json's testFormatCommand set, red and amend format the test before
 # hashing it, green is byte-exact, and a test a differing pre-commit formatter
 # rewrote is re-hashed with amend (I2, R-109 r5). Drives the
-# bash *.test.sh runner through the real run-fixture-shards.sh and the real
+# bash *.test.sh runner through the real run-test-shards.sh and the real
 # protected-path-guard.sh.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -30,7 +30,7 @@ printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$P/tests/baseline.test.s
 git -C "$P" add -A && git -C "$P" commit -qm "chore: init"
 cd "$P"
 
-# A RED fixture calling scripts/score.sh, which does not exist yet, expecting $1.
+# A RED test calling scripts/score.sh, which does not exist yet, expecting $1.
 score_test() {
   printf '#!/usr/bin/env bash\nset -euo pipefail\nout=$(bash "$(dirname "$0")/../scripts/score.sh")\n[ "$out" = %s ] || { echo "FAIL: expected %s, got $out"; exit 1; }\necho "score.test.sh PASS"\n' "$1" "$1" > tests/score.test.sh
 }
