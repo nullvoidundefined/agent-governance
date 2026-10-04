@@ -50,6 +50,8 @@ NO_REVIEW=$'## Summary\nnone'
 GH_BODY="$NO_REVIEW" GH_EXPECT_REPO=o/r expect deny "gh pr merge --repo o/r 5 --squash"
 GH_BODY="$NO_REVIEW" GH_EXPECT_REPO=o/r expect deny "gh pr merge -R o/r 5 -t title --squash"
 GH_EXPECT_REPO=o/r expect none "gh pr merge --repo o/r 5 --squash"
+# --admin skips branch protection, including required CI, so it still asks.
+expect ask "gh pr merge 5 --squash --admin"
 git -C "$REPO" checkout -q -b main
 expect ask "git push"
 expect ask "git push origin HEAD"
