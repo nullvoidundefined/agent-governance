@@ -1,0 +1,8 @@
+ RUN  v1.6.0 /work/app
+
+ ✓ src/x.test.ts  (3 tests) 5ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+PASS: handoff-summary
+============================== 4 passed in 0.10s ===============================

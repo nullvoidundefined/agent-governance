@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+collected 4 items
+
+tests/test_x.py F.F.                                                     [100%]
+
+=================================== FAILURES ===================================
+_________________________________ test_name ____________________________________
+    def test_name():
+>       assert add(1, 2) == 4, "SENTINEL_RAW_7f3a_pytest_a"
+E       AssertionError: SENTINEL_RAW_7f3a_pytest_a
+=========================== short test summary info ============================
+FAILED tests/test_x.py::test_name - AssertionError: SENTINEL_RAW_7f3a_pytest_b
+FAILED tests/test_x.py::TestMath::test_other[case-1] - ValueError: SENTINEL_RAW_7f3a_pytest_c
+FAILED tests/test_x.py::test_name - AssertionError: SENTINEL_RAW_7f3a_pytest_d
+========================= 3 failed, 1 passed in 0.12s ==========================
