@@ -524,6 +524,10 @@ out=$(bash "$SCRIPT" record claude 21 --resets-at 2026-10-06T23:59:00+07:00 --so
 # The same record without --resets-at is judged the same way.
 bash "$SCRIPT" record claude 21 --source statusline
 [ "$(snapCount)" = "1" ] || failCase "a statusline record without --resets-at must also yield to a fresh owner snapshot"
+# The owner types --resets-at by hand, so it can differ from the API's epoch by
+# seconds; that is still the same window and the owner still wins (PR 185 review).
+bash "$SCRIPT" record claude 21 --resets-at 2026-10-06T23:59:42+07:00 --source statusline
+[ "$(snapCount)" = "1" ] || failCase "a statusline record whose reset differs by seconds must yield to a fresh owner snapshot"
 # A new window (different reset) is not blocked by the owner's snapshot.
 bash "$SCRIPT" record claude 1 --resets-at 2026-10-13T23:59:00+07:00 --source statusline
 [ "$(jq -r '.buckets.claude.snapshots[-1].source' "$CLAUDE_QUOTA_FILE")" = "statusline" ] || failCase "a statusline record for a new window must write"

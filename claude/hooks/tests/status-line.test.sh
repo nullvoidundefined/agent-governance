@@ -166,4 +166,19 @@ sleep 1
 check "corrupt quota file: line prints, exit 0" test "$rc" -eq 0 -a -n "$out"
 check "corrupt quota file is left untouched" test "$(cat "$QDIR/garbage.json")" = "not json"
 
+# A quota file the recorder cannot use starts no recorder. Without this check
+# every render would start one doomed process, since an unreadable file has no
+# snapshot to throttle on (PR 185 review). A stub recorder counts the starts;
+# the first case is the control: a missing file in a writable directory starts one.
+STUB="$QDIR/stub"; mkdir -p "$STUB/enforce"; cp "$SL" "$STUB/status-line.sh"
+printf '#!/usr/bin/env bash\necho started >>"%s/starts"\n' "$STUB" >"$STUB/enforce/quota-pace.sh"; chmod +x "$STUB/enforce/quota-pace.sh"
+recorderStarts() { # quota-file ; renders twice, prints how many recorders started
+  rm -f "$STUB/starts"
+  for _ in 1 2; do printf '%s' "$(sevenNum 40 "$RESET_EPOCH")" | CLAUDE_QUOTA_FILE="$1" QUOTA_NOW="$NOW" bash "$STUB/status-line.sh" >/dev/null 2>&1; done
+  sleep 1; if [ -f "$STUB/starts" ]; then wc -l <"$STUB/starts" | tr -d ' '; else echo 0; fi
+}
+check "missing quota file in a writable dir: the recorder starts" test "$(recorderStarts "$QDIR/fresh/quota.json")" = "2"
+check "corrupt quota file: no recorder starts" test "$(recorderStarts "$QDIR/garbage.json")" = "0"
+check "quota file under a regular file: no recorder starts" test "$(recorderStarts "$QDIR/afile/quota.json")" = "0"
+
 [ "$fail" -eq 0 ] && echo "status-line.test.sh PASS" || exit 1
