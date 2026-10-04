@@ -53,21 +53,26 @@ if [ -n "$log" ]; then
   # One pass: strip ANSI, print "NAME<TAB>name" for each failing test once, and
   # a final "MARK<TAB>n" with the count of failure marker lines.
   parsed=$(awk '
-    { gsub(/\033\[[0-9;]*[A-Za-z]/, "") }
-    /^[ \t]*FAIL[ \t]+.+ > .+$/ {
+    { gsub(/\033\[[0-9;?]*[A-Za-z]/, ""); gsub(/\r/, "") }
+    # vitest: the first segment must be a test file path, so console noise
+    # shaped like "FAIL  a > b" cannot pass through as a name.
+    /^[ \t]*FAIL[ \t]+[^ \t>]+\.(test|spec)\.[cm]?[jt]sx?[ \t]+>[ \t].+$/ {
       n = $0; sub(/^[ \t]*FAIL[ \t]+/, "", n); sub(/[ \t]+$/, "", n); emit(n); marks++; next
     }
     /^[ \t]*●[ \t]+.+ › .+$/ {
       n = $0; sub(/^[ \t]*●[ \t]+/, "", n); sub(/[ \t]+$/, "", n); emit(n); marks++; next
     }
-    /^FAILED [^ ]+::/ {
-      n = $2; emit(n); marks++; next
+    # pytest: the node id is everything before " - <reason>"; a collection
+    # ERROR line names the file that failed to import.
+    /^(FAILED|ERROR) [^ ]+(::| - |$)/ {
+      n = $0; sub(/^(FAILED|ERROR) /, "", n); sub(/ - .*$/, "", n); sub(/[ \t]+$/, "", n)
+      emit(n); marks++; next
     }
     /^[ \t]*FAIL[ \t]+[^ \t]+\.test\.sh[ \t]*$/ {
       n = $2; emit(n); marks++; next
     }
-    /^[ \t]*(FAIL|FAILED)([: \t]|$)/ || /^[ \t]*×/ { marks++ }
-    function emit(n) { if (!(n in seen)) { seen[n] = 1; print "NAME\t" n } }
+    /^[ \t]*(FAIL|FAILED|ERROR)([: \t]|$)/ || /^[ \t]*×/ || / [0-9]+ errors? in / { marks++ }
+    function emit(n) { if (length(n) <= 300 && !(n in seen)) { seen[n] = 1; print "NAME\t" n } }
     END { print "MARK\t" (marks + 0) }
   ' "$log")
   names=$(printf '%s\n' "$parsed" | sed -n 's/^NAME	//p')
