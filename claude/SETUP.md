@@ -9,7 +9,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 - **node** is required by the ESLint push gate (`enforce/lint.mjs`).
 - **python3** is needed by the manifest closure test and the latency test's clock.
 - Optional, failing open when absent at runtime: **ruff** (or uv) for the Python push gate. The Go and Ruby push gates were removed on 2026-10-02 (IAN-568).
-- **ruff is not optional to run the fixture suite**, however. `push-ruff-gate.test.sh` drives the real binary, so without ruff on PATH that one test fails on a missing tool rather than on a defect, which is what the first CI runs did. Install it (`pipx install ruff`) or expect that single failure.
+- **ruff is not optional to run the test suite**, however. `push-ruff-gate.test.sh` drives the real binary, so without ruff on PATH that one test fails on a missing tool rather than on a defect, which is what the first CI runs did. Install it (`pipx install ruff`) or expect that single failure.
 - **Claude Code** itself.
 
 ## Install
@@ -80,4 +80,4 @@ node translate/cursor.mjs --check
 
 These check that the generated Codex and Cursor ports match their sources.
 
-CI runs the same commands in `.github/workflows/enforce.yml`, job `fixtures`. Name that job as a required status check under Settings > Branches so the checks run where they cannot be skipped: a local pre-push hook can be bypassed with `--no-verify`, so it is advisory only.
+CI runs the same commands in `.github/workflows/enforce.yml`, job `hook-tests`. Name that job as a required status check under Settings > Branches so the checks run where they cannot be skipped: a local pre-push hook can be bypassed with `--no-verify`, so it is advisory only.

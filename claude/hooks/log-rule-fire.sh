@@ -15,7 +15,7 @@
 # explicit CLAUDE_FIRE_LOG file still records every fire, so fixtures can
 # assert on their own log.
 # Never fails or slows the caller; set CLAUDE_FIRE_LOG=/dev/null to disable
-# (the fixture-test runners do, so test fires never pollute the telemetry).
+# (the test runners do, so test fires never pollute the telemetry).
 # With neither CLAUDE_FIRE_LOG nor HOME set there is nowhere to log, so the
 # fire is skipped: a bare $HOME under a caller's set -u would abort the hook
 # before it prints its decision, and an empty PreToolUse output is an allow

@@ -74,7 +74,7 @@ fi
 [ -z "$REASON" ] && exit 0
 
 # The operator narrowed R-105 for the Linear server on 2026-09-17: the
-# ticket-lifecycle skill writes at every state change, so a confirmation
+# Linear ticket updates written at every state change, so a confirmation
 # landed every few minutes, and each one bought little, because the tracker is
 # private to the operator and a wrong field is editable in place. The narrowing
 # stops at the write class and at writes that stay inside the tracker. A
@@ -128,7 +128,7 @@ isActiveTrackerTool() {
 }
 
 # The operator narrowed R-105 for their own tracker on 2026-09-17: the
-# ticket-lifecycle skill writes at every state change, so a confirmation landed
+# Linear ticket updates written at every state change, so a confirmation landed
 # every few minutes, and each bought little because the tracker is private and
 # a wrong field is editable in place. The narrowing stops at the write class
 # and at writes that stay inside the tracker. A tracker call that lands code,

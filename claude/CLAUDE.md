@@ -68,14 +68,14 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 - **Bounded review:** general review stops after two rounds at most, security review after three. Each round looks only at what changed.
 - **Proportional verification:** depth follows product risk and changed behavior.
 - **Process budget:** process time does not exceed implementation time.
-  - It includes harness maintenance: hooks, fixtures, adapters, translation, review machinery, governance CI, and debugging them.
+  - It includes harness maintenance: hooks, hook tests, adapters, translation, review machinery, governance CI, and debugging them.
   - If a useful practice costs too much, simplify how it is enforced before dropping the practice.
 - **Prefer simple enforcement:** compiler, formatter, or linter, then an ordinary test, then CI, then a simple hook, then a stateful subsystem.
   - Before adding a hook or gate, answer five questions:
     1. What real, cited failure does it prevent?
     2. Could a cheaper tier catch it?
     3. What false positives will it produce?
-    4. How much test infrastructure does it need? Fixtures no larger than the guard itself.
+    4. How much test infrastructure does it need? Tests no larger than the guard itself.
     5. Is it simpler than the failure it prevents?
   - A stateful subsystem needs the owner's approval.
 - **Gates do not guard gates:** no manifest, closure test, or registration check exists only to protect other harness files.

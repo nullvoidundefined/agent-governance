@@ -74,7 +74,7 @@ is_governance_repo "$ROOT" || exit 0
 # Fail CLOSED when no base resolves: this is the publish guard for a public
 # remote, and "cannot compute the outgoing diff" must not mean "publish
 # unreviewed" (2026-07-31 security audit P2; siblings use the same resolver).
-# Anchored to this script's real location, not $HOME: the fixture test runs
+# Anchored to this script's real location, not $HOME: the test runs
 # the guard under a sandboxed HOME where no enforce/ tree exists.
 # shellcheck source=../enforce/resolve-outgoing-base.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../enforce" && pwd)/resolve-outgoing-base.sh"

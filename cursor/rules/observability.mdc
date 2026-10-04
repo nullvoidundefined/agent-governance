@@ -7,266 +7,81 @@ alwaysApply: false
 
 # Observability Conventions
 
-Logging and observability for every backend stack in one file (IAN-381). The rules are the same in every language and live in `CLAUDE.md` as R-341 to R-346: one request ID per request, one structured logger, analytics only through the event registry, no swallowed errors, health endpoints, and instrumented outbound calls. Each section below gives one stack's form of those rules. The stack track files (`CLAUDE-PYTHON.md`, `CLAUDE-BACKEND.md`, `CLAUDE-GO.md`, `CLAUDE-RUBY.md`) keep their section headings and point here, so this file loads on the same paths they do.
+Rules shared by every backend stack, then each stack's form of them.
 
----
+## Shared rules
 
-## Python (FastAPI)
+- **Request ID.** Accept an inbound `X-Request-Id` only when it matches `^[A-Za-z0-9._-]{1,64}$`; otherwise mint a UUID. Echo it on the response and bind it to the request's log context, so services and repositories log it without receiving it as a parameter. Echoing any inbound value let a client inject newlines or megabytes into every log line and response header.
+- **One structured logger** per process. The event or message is a fixed string; values go in fields, never interpolated. Pretty output in development, JSON everywhere else. Workers bind the job ID in the request ID's role.
+- **No secrets or PII** (tokens, passwords, emails, cookies) in any log field. Log IDs instead.
+- **Errors.** Every catch names what it catches, binds it and uses it. The 500 handler logs and reports to the error tracker before it responds, and returns a generic message in production. An expected failure (cache, analytics) is logged at warn and falls back to a defined value; it never fails the request and is never silent.
+- **Analytics** go through one client module, the only one that imports the provider SDK, and one event registry. Event names are `object_action` in the past tense (`trip_created`), and no call site passes a literal.
+- **Outbound calls** go through a client wrapper that logs provider, operation, duration and outcome (warn on failure, debug on success, then re-raise). Every client sets an explicit timeout; a client without one is a defect. Outbound HTTP forwards `X-Request-Id`.
 
-### Logging (structlog)
+## Health and readiness
 
-```python
-"""Configures structlog once per process; standard-library records share the renderer."""
+- `GET /health` is liveness: 200 `{"status": "ok"}` with no dependency check. The platform healthcheck and the container `HEALTHCHECK` target it.
+- `GET /health/ready` is readiness: `SELECT 1` (and a Redis `PING` for workers) inside a short timeout (2 seconds), so a hanging connect cannot stall the probe. Failure answers 503 `{"status": "degraded", "db": "disconnected"}`. Smoke tests after a deploy use it.
+- Both are registered before every application route and the not-found handler, outside any `/v1` prefix, and the rate limiter and CSRF guard skip them.
+- Workers serve the same two paths on their own port (`PORT` in TypeScript, `WORKER_PORT` in Python). A cron job exits, so it has no healthcheck.
 
-import logging
-import sys
+## Python (structlog, asgi-correlation-id)
 
-import structlog
-from structlog.tracebacks import ExceptionDictTransformer
+- One processor chain shared by structlog and the standard library: `merge_contextvars`, `add_log_level`, `TimeStamper(fmt="iso", utc=True)`, `ExceptionRenderer(ExceptionDictTransformer(show_locals=False))`, then the renderer.
+- `show_locals=False` is mandatory. `dict_tracebacks` renders frame locals by default, and a probe showed it writing the database password from asyncpg's connect frame into a readiness log line.
+- Standard-library records (uvicorn, asgi-correlation-id, SQLAlchemy) go through `structlog.stdlib.ProcessorFormatter` on the root handler. uvicorn installs its own handlers before it calls the factory, so `configure_logging` clears the handlers of `uvicorn`, `uvicorn.access`, `uvicorn.error` and `asgi_correlation_id` and sets them to propagate. Without that, those lines print as plain text in production.
+- `logger = structlog.get_logger()` per module. Event name first in `snake_case`, values as keywords: `logger.info("trip_created", trip_id=trip.id)`. Errors pass as `exc_info=err`.
+- Use asgi-correlation-id for the request ID, with the shared pattern as its `validator`; do not hand-write request-ID middleware.
+- `RequestContextMiddleware` binds `correlation_id.get()` with `structlog.contextvars.bound_contextvars(...)`, which restores the previous context when the request ends. Never `clear_contextvars()`: it wipes an outer caller's binding, and the library never resets its own context variable.
+- The body limit covers streamed bodies, not only `Content-Length`: the middleware reads the body up to 100 KB before calling the app and replays it, and sends a larger body's 413 itself as raw ASGI messages so the app never runs. Raising from `receive` turns into a 400, because FastAPI converts an exception raised while it reads a Pydantic body, and counting bytes as the app reads them misses a route that never reads its body.
+- `with_client_telemetry(provider, operation, call)` in `clients/telemetry.py` is the one broad `except Exception` in the codebase, and it re-raises. Timeouts: `httpx.AsyncClient(timeout=10.0)`, `AsyncAnthropic(timeout=60.0, max_retries=2)`. An httpx event hook adds `X-Request-Id` from `structlog.contextvars.get_contextvars()`.
+- Analytics: `AnalyticsEvent(StrEnum)` in `analytics/events.py`; `track_event` in `clients/analytics.py` runs the SDK call in `asyncio.to_thread` and logs a provider failure at warning.
 
-from app.core.settings import Settings
+## TypeScript (Pino)
 
-SHARED_PROCESSORS: list[structlog.typing.Processor] = [
-    structlog.contextvars.merge_contextvars,
-    structlog.processors.add_log_level,
-    structlog.processors.TimeStamper(fmt="iso", utc=True),
-    structlog.processors.ExceptionRenderer(ExceptionDictTransformer(show_locals=False)),
-]
-
-
-def configure_logging(settings: Settings) -> None:
-    """Install the structlog chain, then route standard-library records through it."""
-    renderer = (
-        structlog.dev.ConsoleRenderer()
-        if settings.environment == "development"
-        else structlog.processors.JSONRenderer()
-    )
-    structlog.configure(
-        processors=[*SHARED_PROCESSORS, renderer],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-    )
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(structlog.stdlib.ProcessorFormatter(
-        foreign_pre_chain=SHARED_PROCESSORS,
-        processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
-    ))
-    logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
-    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "asgi_correlation_id"):
-        logging.getLogger(logger_name).handlers.clear()
-        logging.getLogger(logger_name).propagate = True
-```
-
-- Every module gets its logger with `logger = structlog.get_logger()` at module level
-- Event name first as a `snake_case` string, values as keyword fields: `logger.info("trip_created", trip_id=trip.id)` (R-342); never an f-string with values in the event
-- Errors pass as `exc_info=err`, rendered as a structured field (the Python form of `{ err }`) by `ExceptionRenderer(ExceptionDictTransformer(show_locals=False))` (corrected 2026-09-19: the earlier `dict_tracebacks` renders frame locals by default, and a probe showed it writing the database password from asyncpg's connect frame into a readiness log line)
-- Standard-library records (uvicorn, asgi-correlation-id, SQLAlchemy) reach the same renderer through `ProcessorFormatter` on the root handler; uvicorn installs its own handlers before it calls the factory, so the loop clears them and lets the records propagate, so every production line is JSON (corrected 2026-09-19: the track claimed this routing without showing it, and those records printed as plain text). No secrets, tokens, passwords, emails, or other PII in any field (R-104); log IDs instead
-
-### Observability (R-341 to R-346)
-
-**Request ID (R-341).** One ID per request, honored from the caller only when it is safe, echoed back, and bound to the context so nothing passes it by hand. asgi-correlation-id does the honoring, minting, and echoing (owner decision, 2026-09-19 stack audit: a maintained package replaces about 40 hand-written lines):
-
-```python
-import re
-
-REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-
-
-def is_valid_request_id(candidate: str) -> bool:
-    """Accept an inbound request ID only when it is 1 to 64 safe characters."""
-    return REQUEST_ID_PATTERN.fullmatch(candidate) is not None
-```
-
-- The validator rejects an inbound ID outside the pattern and a fresh UUID takes its place (corrected 2026-09-19: the hand-written middleware echoed any inbound value, so a client could inject newlines or megabytes into every log line and response header)
-- `RequestContextMiddleware` binds `correlation_id.get()` with `structlog.contextvars.bound_contextvars(...)`, which restores the previous context when the request ends; the library never resets its own context variable, and `clear_contextvars()` would also wipe an outer caller's binding
-- The body limit covers a streamed body as well as `Content-Length`: the middleware reads the body up to 100 KB before calling the app and replays it, and anything larger gets a 413 it sends itself as raw ASGI messages, so the app never runs (corrected 2026-09-19: raising from `receive` becomes a 400, because FastAPI converts an exception raised while it reads a Pydantic body, and counting bytes only as the app reads them misses a route that never reads its body)
-- Services and repositories log through their module logger and inherit `request_id` from the context automatically; workers bind `job_id` the same way
-
-**Analytics (R-343).** One client, one registry, no literals at the call site:
-
-```python
-# analytics/events.py: the registry, object_action, past tense
-class AnalyticsEvent(StrEnum):
-    TRIP_CREATED = "trip_created"
-    SIGNUP_COMPLETED = "signup_completed"
-
-
-# clients/analytics.py: the only module that imports the PostHog SDK
-async def track_event(distinct_id: str, event: AnalyticsEvent, properties: dict[str, object]) -> None:
-    """Send one event; a provider failure is logged and never fails the request."""
-    try:
-        await asyncio.to_thread(_posthog.capture, distinct_id, event.value, properties)
-    except (OSError, PostHogError) as err:
-        logger.warning("analytics_capture_failed", analytics_event=event.value, exc_info=err)
-```
-
-**Error reporting (R-344).** Every `except` names the exception class, binds it, and uses it. The 500 handler logs and reports before it responds. Bare `except:` and `except Exception: pass` never appear; ruff `E722`, `S110`, and `BLE001` catch the syntactic cases.
-
-**Outbound instrumentation (R-346).** Wrap every provider call once:
-
-```python
-# clients/telemetry.py
-async def with_client_telemetry[T](provider: str, operation: str, call: Callable[[], Awaitable[T]]) -> T:
-    """Time one provider call and log its outcome with the provider and operation."""
-    started_at = time.perf_counter()
-    try:
-        result = await call()
-    except Exception as err:
-        logger.warning("client_call_failed", provider=provider, operation=operation,
-                       duration_ms=_elapsed_ms(started_at), exc_info=err)
-        raise
-    logger.debug("client_call_succeeded", provider=provider, operation=operation,
-                 duration_ms=_elapsed_ms(started_at))
-    return result
-```
-
-- The one broad `except Exception` in the codebase is here, and it re-raises. Every client sets an explicit timeout (`httpx.AsyncClient(timeout=10.0)`, `AsyncAnthropic(timeout=60.0, max_retries=2)`); a client without one is a defect
-- Outbound HTTP forwards the request ID: an `httpx` event hook adds `X-Request-Id` from `structlog.contextvars.get_contextvars()`
-- Health endpoints (R-345) are the two under Health Endpoints in `CLAUDE-PYTHON.md`; workers answer on `WORKER_PORT` (Worker Pattern in `CLAUDE-PYTHON.md`)
-
----
-
-## TypeScript (Express)
-
-### Logging (Pino)
+- Context object first, message second: `logger.info({ event: "register_success", userId }, "User registered")`. Errors always go under `err` (`logger.error({ err, linkId }, "Failed to fetch content")`), the key Pino's serializer expects.
+- Request ID through `pino-http`, validated like every other stack:
 
 ```typescript
-// Structured context objects first, message string second
-logger.info({ event: "register_success", userId: user.id }, "User registered");
-logger.warn({ event: "login_failure", reason: "user_not_found" }, "Login failed");
-logger.error({ err, linkId }, "Failed to fetch content");
-logger.debug({ hash }, "Cache hit");
-```
-
-- Pretty printing in development, JSON in production
-- Request IDs via `pino-http` middleware (R-341, below)
-- Always pass error objects as `{ err }`; Pino serializes them properly
-- Never `console.*` in server code; values go in the context object, never the message string (R-342, ESLint-enforced)
-
-### Observability (R-341 to R-346)
-
-**Request ID (R-341).** One ID per request, honored from the caller, echoed back, and bound to the request context so nothing passes it by hand:
-
-```typescript
-// middleware/requestLogger.ts
-import { randomUUID } from "node:crypto";
-import pinoHttp from "pino-http";
-import { logger } from "app/utils/logs/logger.js";
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 export const requestLogger = pinoHttp({
     logger,
     genReqId: (req, res) => {
-        const requestId = (req.headers["x-request-id"] as string | undefined) ?? randomUUID();
+        const inbound = req.headers["x-request-id"];
+        const requestId = typeof inbound === "string" && REQUEST_ID_PATTERN.test(inbound) ? inbound : randomUUID();
         res.setHeader("X-Request-Id", requestId);
         return requestId;
     },
 });
-
-// middleware/requestContext.ts: AsyncLocalStorage so services and repositories
-// log with the request ID without receiving it as a parameter.
-export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
-export function bindRequestContext(req: Request, _res: Response, next: NextFunction) {
-    requestContext.run({ requestId: req.id as string }, next);
-}
 ```
 
-- Register `requestLogger` then `bindRequestContext` before every route; `req.log` is the request-scoped child logger.
-- Services and repositories log through `logger.child(requestContext.getStore() ?? {})` or a `getRequestLogger()` helper in `utils/logs/`; never through a logger that lacks the ID.
-- Workers use the job ID in the same role (`{ jobId }` on every line, forwarded to any HTTP call the job makes).
-
-**Analytics (R-343).** One client, one registry, no literals at the call site:
-
-```typescript
-// analytics/events.ts: the registry. object_action, past tense.
-export const EVENTS = {
-    noteCreated: "note_created",
-    signupCompleted: "signup_completed",
-} as const;
-
-// clients/analytics/trackEvent.ts: the only file that imports the provider SDK.
-export async function trackEvent(distinctId: string, event: EventName, properties: Record<string, unknown>) {
-    try {
-        await posthog.capture({ distinctId, event, properties });
-    } catch (err) {
-        logger.warn({ err, event }, "Analytics capture failed"); // never fails the request (R-344)
-    }
-}
-
-// a handler
-await trackEvent(user.id, EVENTS.signupCompleted, { plan: user.plan });
-```
-
-**Error reporting (R-344).** Every `catch` binds and uses the error; the global handler reports before it responds:
+- `bindRequestContext` runs `requestContext.run({ requestId: req.id }, next)` on an `AsyncLocalStorage`. Register `requestLogger`, then `bindRequestContext`, before every route; `req.log` is the request-scoped logger.
+- Services and repositories log through `logger.child(requestContext.getStore() ?? {})` (a `getRequestLogger()` helper in `clients/logger.ts`), never through a logger that lacks the ID. Workers put `{ jobId }` on every line and forward it on any HTTP call.
+- The global error handler, the only one:
 
 ```typescript
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
     logger.error({ err, requestId: req.id }, "Unhandled error");
-    reportError(err, { requestId: req.id as string }); // clients/errorTracker
-    res.status(500).json({ error: { message: isProduction() ? "Internal server error" : String(err) } });
-}
-
-// expected failure: still bound, still logged, defined fallback
-try {
-    return await cache.get(key);
-} catch (err) {
-    logger.warn({ err, key }, "Cache read failed; continuing without it");
-    return null;
+    reportError(err, { requestId: req.id as string });
+    res.status(500).json({ error: { code: "SERVER_INTERNAL_ERROR", message: isProduction() ? "Internal server error" : String(err) } });
 }
 ```
 
-**Outbound instrumentation (R-346).** Wrap the provider once so call sites stay thin (R-307):
-
-```typescript
-// clients/withClientTelemetry.ts
-export async function withClientTelemetry<T>(provider: string, operation: string, call: () => Promise<T>): Promise<T> {
-    const startedAt = performance.now();
-    try {
-        const result = await call();
-        logger.debug({ provider, operation, durationMs: Math.round(performance.now() - startedAt) }, "Client call succeeded");
-        return result;
-    } catch (err) {
-        logger.warn({ err, provider, operation, durationMs: Math.round(performance.now() - startedAt) }, "Client call failed");
-        throw err;
-    }
-}
-
-// clients/stripe/createCheckoutSession.ts
-export function createCheckoutSession(input: CheckoutInput) {
-    return withClientTelemetry("stripe", "createCheckoutSession", () =>
-        stripe.checkout.sessions.create(input, { timeout: 10_000, idempotencyKey: input.idempotencyKey }),
-    );
-}
-```
-
-- Outbound HTTP forwards the request ID: `headers: { "X-Request-Id": requestContext.getStore()?.requestId ?? "" }`.
-- Every client call sets a timeout; a client without one is a defect.
-- Health endpoints (R-345) are the two under "Health Endpoints" in `CLAUDE-BACKEND.md`; workers run the same two paths on their health server.
-
----
+- Wrap every provider call once in `withClientTelemetry(provider, operation, call)` so call sites stay thin; pass the provider's own timeout and idempotency key (Stripe: `{ timeout: 10_000, idempotencyKey }`).
 
 ## Go
 
-### Observability (R-341 to R-346 in Go form)
-
-- R-341: middleware reads `X-Request-Id` or mints one, writes it to the response, and stores it in `context.Context`; handlers and services log through `slog` with the ID taken from the context (`slog.With("request_id", id)`), never as a parameter threaded by hand.
-- R-342: `slog` with structured attributes (`slog.Info("note loaded", "note_id", id)`), never `fmt.Println` or `log.Printf` with formatted values in service code; manual, no golangci linter is bundled for it.
-- R-343: one `clients/analytics` package wraps the provider; event names are constants in `analytics/events.go`, never a literal at the call site.
-- R-344: every error return is handled or wrapped with `%w`; `_ = err` and an empty `if err != nil {}` are defects; `errcheck` and `errorlint` in a repository's own golangci-lint config cover the unhandled-return and wrapping halves.
-- R-345: `/health` and `/health/ready` on every service and worker, registered first.
-- R-346: every client call uses a `context.WithTimeout`, logs provider, operation, duration, and outcome, and forwards the request ID on outbound HTTP.
-
----
+- Middleware reads a valid `X-Request-Id` or mints one, writes it to the response, and stores it in `context.Context`; code logs through `slog.With("request_id", id)` taken from the context.
+- `slog` with structured attributes (`slog.Info("note loaded", "note_id", id)`); no printf-style logging in service code.
+- One `clients/analytics` package wraps the provider; event names are constants in `analytics/events.go`.
+- Every error is handled or wrapped with `%w`; `_ = err` is a defect.
+- Every client call uses `context.WithTimeout`, logs provider, operation, duration and outcome, and forwards the request ID.
 
 ## Ruby (Rails)
 
-### Logging
-
-Structured logs via lograge (JSON). No secrets or PII (R-102, R-104). Tag request IDs; one log line per request in production.
-
-### Observability (R-341 to R-346 in Rails form)
-
-- R-341: `ActionDispatch::RequestId` honors `X-Request-Id` and sets it on the response; `config.log_tags = [:request_id]` puts it on every line; jobs log with the job ID in the same role.
-- R-342: `Rails.logger.info(event: "note_loaded", note_id: note.id)` through lograge's custom payload, never string interpolation of values into the message and never `puts` in app code; manual, since `Rails/Output` needs the rubocop-rails extension the gate does not bundle.
-- R-343: one `app/clients/analytics.rb` wraps the provider; event names are constants in `app/analytics/events.rb`, never a literal at the call site.
-- R-344: every `rescue` names the exception and logs or re-raises it; an empty `rescue` body is a defect (`Lint/SuppressedException` in a repository's own RuboCop config); a bound-but-unused exception stays manual.
-- R-345: `/health` and `/health/ready` routes registered before application routes.
-- R-346: every client call sets a timeout, logs provider, operation, duration, and outcome, and forwards the request ID.
+- lograge renders one JSON line per request; `ActionDispatch::RequestId` honors and echoes `X-Request-Id`, and `config.log_tags = [:request_id]` puts it on every line. Jobs log the job ID in its place.
+- Values go in lograge's custom payload (`Rails.logger.info(event: "note_loaded", note_id: note.id)`), never interpolated into the message, and never `puts`.
+- One `app/clients/analytics.rb` wraps the provider; event names are constants in `app/analytics/events.rb`.
+- Every `rescue` names the exception and logs or re-raises it.
+- Every client call sets a timeout, logs provider, operation, duration and outcome, and forwards the request ID.

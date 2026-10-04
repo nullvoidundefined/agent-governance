@@ -158,7 +158,7 @@ PROT+="|(^|[[:space:]\"'=/])\.env(\.[A-Za-z0-9_-]+)?([[:space:]\"';|&]|$)"
 
 # In-place editors are spelled several ways and the pattern used to match only
 # one of them: `sed -i` as a bare token. That missed `sed -i.bak` (the portable
-# spelling this repo's own fixtures use, which is how the gap stayed invisible),
+# spelling this repo's own tests use, which is how the gap stayed invisible),
 # `sed --in-place`, and perl's `-i`/`-pi` entirely (2026-09-17 audit P2-6).
 # `-[a-zA-Z]*i[a-zA-Z.]*` now also admits a suffix, `--in-place` is named, and
 # perl is only a mutation when an in-place flag is present, so `perl -ne` stays

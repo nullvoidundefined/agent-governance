@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies `enforce/tdd.sh expected-red`, the read-only question
-# hooks/verification-gate.sh will ask before it blocks a turn on a red suite
+# A turn-end verification gate will ask before it blocks a turn on a red suite
 # (R-509, IAN-156, owner decision 2026-09-20): it exits 0 when a slice lock is
 # open in phase "red" and every failure in the suite is one of the test files
 # that lock records, and exits non-zero in every other situation.
@@ -14,7 +14,7 @@
 # instead of learning the runners. This slice builds the question only; wiring
 # the gate to it is a later slice.
 #
-# The situations this fixture drives, each through the real tdd.sh in throwaway
+# The situations this test drives, each through the real tdd.sh in throwaway
 # repositories laid out the way this one is (a repository root holding
 # claude/enforce/tests/), never in the checkout:
 #
@@ -22,13 +22,13 @@
 #      was expected;
 #   2. phase open: non-zero, because the failing test has not been proven to
 #      fail for the right reason yet;
-#   3. phase red with the locked fixture as the suite's only failure: 0;
-#   4. phase red with an unrelated sibling fixture failing beside it:
+#   3. phase red with the locked test as the suite's only failure: 0;
+#   4. phase red with an unrelated sibling test failing beside it:
 #      non-zero, and the reason names that sibling so a human reading the
 #      gate's output can see which file has to be fixed;
 #   5. phase red where the only other failure is hook-hashes-closure.test.sh
 #      reporting integrity-manifest drift confined to the locked test file: 0,
-#      because writing the slice's own fixture is what put an unhashed file
+#      because writing the slice's own test is what put an unhashed file
 #      under enforce/tests/ in the first place (slice B-1, commit bcf40a1),
 #      while drift naming any other path stays non-zero;
 #   6. phase refactor and phase green: non-zero even though every failure in
@@ -60,13 +60,13 @@ CLOSURE_CONTENT_LINE='FAIL: the guard reports content drift between the installe
 fail() { echo "FAIL: $*"; exit 1; }
 
 # Lays out a throwaway repository mirroring this checkout, and prints its path.
-# It always carries a passing baseline fixture, a sibling that fails only in
-# the sibling-red mode, and a stand-in closure fixture that reports manifest
+# It always carries a passing baseline test, a sibling that fails only in
+# the sibling-red mode, and a stand-in closure test that reports manifest
 # drift only in the two drift modes; with "with-red" it also carries the
-# slice's RED fixture, whose script is never written, so that fixture fails for
+# slice's RED test, whose script is never written, so that test fails for
 # the whole run. A single mode file, written beside the repository so git never
 # sees it, selects the situation. The drift paths the stand-in prints are
-# spelled relative to claude/, as the real fixture spells them, while tdd.sh
+# spelled relative to claude/, as the real test spells them, while tdd.sh
 # names its test files relative to the repository root one level above.
 new_suite_project() {
   local variant="$1" dir tests mode
@@ -79,7 +79,7 @@ new_suite_project() {
   git -C "$dir" config user.name t
   printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$tests/baseline.test.sh"
   if [ "$variant" = with-red ]; then
-    # The locked RED fixture: the script it calls is never written, so bash's
+    # The locked RED test: the script it calls is never written, so bash's
     # own "No such file or directory" keeps it failing for the whole run, and
     # it is the one failure a phase-red lock expects.
     printf '#!/usr/bin/env bash\nset -euo pipefail\nout=$(bash "$(dirname "$0")/../scripts/score.sh")\n[ "$out" = 2 ] || { echo "FAIL: expected 2, got $out"; exit 1; }\necho "score.test.sh PASS"\n' > "$tests/score.test.sh"
@@ -133,10 +133,10 @@ run_expected_red_in_mode() {
 }
 
 # Phase refactor and phase green are driven first, in a repository of their
-# own: a refactor slice opens on a green suite with all three fixtures locked,
+# own: a refactor slice opens on a green suite with all three tests locked,
 # and `tdd.sh green` moves it on from there, so both phases are reached by
 # running tdd.sh rather than by editing a lock behind its back. In both phases
-# the fixture that then fails is one of the locked files, so an implementation
+# the test that then fails is one of the locked files, so an implementation
 # that checked the file list and skipped the phase would wrongly exit 0.
 PROJECT=$(new_suite_project all-green); cd "$PROJECT"
 bash "$TDD" open --refactor "B-2 phases other than red are never an expected RED" \
@@ -147,7 +147,7 @@ bash "$TDD" open --refactor "B-2 phases other than red are never an expected RED
 [ "$(lock_field .phase)" = refactor ] || fail "the setup left phase $(lock_field .phase), not refactor"
 
 run_expected_red_in_mode sibling-red
-[ "$EXPECTED_STATUS" -ne 0 ] || fail "a refactor slice has no RED to expect, so a failing locked fixture must still refuse; expected-red exited 0: $EXPECTED_OUTPUT"
+[ "$EXPECTED_STATUS" -ne 0 ] || fail "a refactor slice has no RED to expect, so a failing locked test must still refuse; expected-red exited 0: $EXPECTED_OUTPUT"
 grep -q 'refactor' <<< "$EXPECTED_OUTPUT" || fail "the refusal must name the phase it found (refactor); got: $EXPECTED_OUTPUT"
 
 printf 'clean\n' > "$PROJECT.mode"
@@ -155,13 +155,13 @@ bash "$TDD" green >/dev/null 2>&1 || fail "the setup green must be recorded befo
 [ "$(lock_field .phase)" = green ] || fail "the setup left phase $(lock_field .phase), not green"
 
 run_expected_red_in_mode sibling-red
-[ "$EXPECTED_STATUS" -ne 0 ] || fail "phase green is past the RED, so a failing locked fixture must refuse; expected-red exited 0: $EXPECTED_OUTPUT"
+[ "$EXPECTED_STATUS" -ne 0 ] || fail "phase green is past the RED, so a failing locked test must refuse; expected-red exited 0: $EXPECTED_OUTPUT"
 grep -q 'green' <<< "$EXPECTED_OUTPUT" || fail "the refusal must name the phase it found (green); got: $EXPECTED_OUTPUT"
 
 cd / && rm -rf "$(dirname "$PROJECT")" "$PROJECT.mode"
 
-# The rest of the fixture works in a repository that carries a genuinely
-# failing locked fixture, which is the situation the gate meets on a test
+# The rest of the test works in a repository that carries a genuinely
+# failing locked test, which is the situation the gate meets on a test
 # author's return.
 PROJECT=$(new_suite_project with-red); cd "$PROJECT"
 
@@ -183,17 +183,17 @@ printf 'clean\n' > "$PROJECT.mode"
 bash "$TDD" red claude/enforce/tests/score.test.sh >/dev/null \
   || fail "the setup red must be recorded before expected-red can be exercised in phase red"
 
-# Phase red with the locked fixture as the suite's only failure: this red is
+# Phase red with the locked test as the suite's only failure: this red is
 # exactly the one the slice asked for, so the gate may release the turn.
 run_expected_red_in_mode clean
 [ "$EXPECTED_STATUS" -eq 0 ] || fail "phase red whose only failing file is the locked one is the expected RED; expected-red exited $EXPECTED_STATUS: $EXPECTED_OUTPUT"
 [ "$(lock_field .phase)" = red ] || fail "expected-red must leave the phase at red, got $(lock_field .phase)"
 
-# A second, unrelated fixture failing beside it: the suite is red for a reason
+# A second, unrelated test failing beside it: the suite is red for a reason
 # this slice never claimed, and the refusal names the file to fix.
 run_expected_red_in_mode sibling-red
-[ "$EXPECTED_STATUS" -ne 0 ] || fail "a failing fixture outside the locked files makes the suite red for an unexpected reason; expected-red exited 0: $EXPECTED_OUTPUT"
-grep -q 'other.test.sh' <<< "$EXPECTED_OUTPUT" || fail "the refusal must name the unexpected failing fixture other.test.sh; got: $EXPECTED_OUTPUT"
+[ "$EXPECTED_STATUS" -ne 0 ] || fail "a failing test outside the locked files makes the suite red for an unexpected reason; expected-red exited 0: $EXPECTED_OUTPUT"
+grep -q 'other.test.sh' <<< "$EXPECTED_OUTPUT" || fail "the refusal must name the unexpected failing test other.test.sh; got: $EXPECTED_OUTPUT"
 
 # Integrity-manifest drift confined to the locked test file is the expected
 # consequence of having written that test, so it does not make the suite
@@ -202,10 +202,10 @@ run_expected_red_in_mode drift-named
 [ "$EXPECTED_STATUS" -eq 0 ] || fail "manifest drift confined to the locked test file must not make the RED unexpected; expected-red exited $EXPECTED_STATUS: $EXPECTED_OUTPUT"
 
 # Drift naming a path the lock does not record is drift this slice cannot
-# account for, so it refuses and names the fixture that is red.
+# account for, so it refuses and names the test that is red.
 run_expected_red_in_mode drift-foreign
 [ "$EXPECTED_STATUS" -ne 0 ] || fail "drift naming enforce/tests/other.test.sh, which the lock does not record, must refuse; expected-red exited 0: $EXPECTED_OUTPUT"
-grep -q 'hook-hashes-closure.test.sh' <<< "$EXPECTED_OUTPUT" || fail "the refusal must name hook-hashes-closure.test.sh as the fixture that is red; got: $EXPECTED_OUTPUT"
+grep -q 'hook-hashes-closure.test.sh' <<< "$EXPECTED_OUTPUT" || fail "the refusal must name hook-hashes-closure.test.sh as the test that is red; got: $EXPECTED_OUTPUT"
 
 cd / && rm -rf "$(dirname "$PROJECT")" "$PROJECT.mode"
 echo "tdd-expected-red.test.sh PASS"
