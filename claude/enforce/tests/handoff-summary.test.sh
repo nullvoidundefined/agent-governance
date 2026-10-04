@@ -220,7 +220,7 @@ expect_usage_error "unknown option with log" --test-log "$SAMPLES/green.txt" --f
 BIG="$WORK/big.log"
 awk 'BEGIN{while(n<5242880){print "FAIL: SENTINEL_RAW_7f3a_oversized padding padding padding padding padding"; n+=76}}' >"$BIG"
 RC=0
-OUT=$(cd "$REPO" && cleanenv timeout 60 bash "$SCRIPT" --test-log "$BIG" 2>"$WORK/err") || RC=$?
+OUT=$(cd "$REPO" && timeout 60 env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE bash "$SCRIPT" --test-log "$BIG" 2>"$WORK/err") || RC=$?
 ERR=$(cat "$WORK/err")
 [ "$RC" -eq 0 ] || fail "oversized: expected exit 0 within 60s, got $RC"
 no_sentinel oversized
