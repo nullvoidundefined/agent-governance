@@ -69,7 +69,7 @@ if report=$(bash "$PACE" report --json 2>/dev/null) &&
 fi
 providerField() { # <provider> <field>: prints the value, or null
   if [ "$available" = true ]; then
-    jq -c --arg p "$1" --arg f "$2" '([.providers[]? | select(.provider == $p)][0] // {})[$f] // null' <<<"$report"
+    jq -c --arg p "$1" --arg f "$2" '([.providers[]? | select(.provider == $p)][0] // {}) | if has($f) then .[$f] else null end' <<<"$report"
   else
     echo null
   fi
