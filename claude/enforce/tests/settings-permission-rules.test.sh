@@ -108,14 +108,15 @@ check "a file no Read rule covers is not denied" not read_denied "$SANDBOX/proje
 check "an unreadable settings file makes a read undecidable, not allowed" read_cannot_tell "$SANDBOX/project/README.md"
 
 # The owner removed non-destructive asks on 2026-10-04: opening a PR and
-# re-running CI change nothing that cannot be undone, and merging stays asked.
+# re-running CI change nothing that cannot be undone. Merging is not asked
+# either (owner, 2026-10-04, #201); git-workflow-guard still gates it.
 REAL_SETTINGS="$(dirname "${BASH_SOURCE[0]}")/../../settings.json"
 not_asked() { ! jq -e --arg r "$1" '.permissions.ask | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
 asked() { jq -e --arg r "$1" '.permissions.ask | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
 check "opening a PR is not asked" not_asked 'Bash(gh pr create*)'
 check "re-running CI is not asked" not_asked 'Bash(gh run rerun*)'
 check "dispatching a workflow is not asked" not_asked 'Bash(gh workflow run*)'
-check "merging a PR is still asked" asked 'Bash(gh pr merge*)'
+check "merging a PR is not asked" not_asked 'Bash(gh pr merge*)'
 
 # Owner, 2026-10-04: optimize for allowing non-destructive commands. Read,
 # build, test, and lint tools are allowed outright, so auto mode never stops to
