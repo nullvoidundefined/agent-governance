@@ -33,6 +33,7 @@ Details: `CLAUDE-STYLING.md`.
 - Source root holds `components/` (one folder per component: `Header/Header.tsx` plus `Header.module.scss`), `features/`, `api/`, `clients/`, `services/`, `state/` (Vue: `composables/`, `stores/`), `config/`, `constants/`, `data/`, `styles/`, `types/`. Directories appear only when occupied.
 - No `lib/`, `utils/` or `helpers/` catch-alls; classify into `api/`, `clients/`, `services/` or the state directory. No `index.ts` barrel files.
 - Use the repo's source-root alias (`@/`) over deep relative paths.
+- No import cycles: enable `import-x/no-cycle` with the settings in `CLAUDE-BACKEND.md` "Layers"; without them the rule silently reports nothing.
 - Derive types shared with the backend from the schema (`z.infer`, generated OpenAPI types) instead of duplicating them.
 
 ## Components

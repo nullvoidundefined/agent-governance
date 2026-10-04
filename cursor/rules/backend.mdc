@@ -18,6 +18,20 @@ Stack: Express 5 and TypeScript, PostgreSQL through `pg` (raw parameterized SQL,
 - **Middleware** carries cross-cutting concerns (auth, logging, CORS, rate limits) and no business logic.
 - The pool lives in `database/` (never `db/`), below repositories; it is neither a service nor a client.
 - Never skip a layer and never call upward: repositories never call services or handlers.
+- No import cycles. A cycle hands one module an `undefined` binding at load time and couples layers that should be independent. Enforce it in the project's own ESLint config with `eslint-plugin-import-x`; the rule reports nothing unless the plugin can parse and resolve TypeScript, so keep the settings:
+
+  ```js
+  import { createNodeResolver } from "eslint-plugin-import-x";
+  // inside the flat-config entry that registers the import-x plugin:
+  settings: {
+    "import-x/extensions": [".ts", ".tsx", ".cts", ".mts", ".js", ".jsx", ".cjs", ".mjs"],
+    "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".tsx", ".cts", ".mts"] },
+    "import-x/resolver-next": [createNodeResolver({ extensions: [".ts", ".tsx", ".js", ".jsx", ".cjs", ".mjs"] })],
+  },
+  rules: { "import-x/no-cycle": ["error", { maxDepth: 8 }] },
+  ```
+
+  `maxDepth` bounds the graph walk so lint stays fast on a large tree.
 - File names are camelCase and named for the responsibility; the directory states the layer, so there is no layer suffix (`services/analyzer.ts`, never `analyzer.service.ts`). Agent tool definitions keep `.tool.ts`. Layout and naming detail belongs to the `structure-conventions` skill.
 
 ## Startup

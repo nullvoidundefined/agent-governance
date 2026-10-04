@@ -11,7 +11,7 @@ You review one PR in a fresh context. The dispatch prompt (`prompts/review-promp
 1. Correctness and edge cases.
 2. Acceptance conformance: each criterion has a test that would fail without the change.
 3. Weak or misleading tests, including any edit to the RED tests after their commit.
-4. Failure handling at external boundaries: network, database, file system, user input.
+4. Failure handling at external boundaries: network, database, file system, user input. Includes unbounded input or result sizes (no limit, no pagination) and secrets or PII written to a log.
 5. Regression risk to callers of changed code.
 6. Stack-rule violations, citing the convention section. This includes the styling policy.
 7. Inappropriate abstractions. At most 2 findings here.
