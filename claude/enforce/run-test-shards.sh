@@ -306,7 +306,7 @@ report_results() {
       echo "ok   $name"
     else
       # Every failure line, then the tail: the last three lines alone were
-      # all passing cases when test-implementation-root failed on main
+      # all passing cases when fixture-implementation-root failed on main
       # after #42, which left the failure unreadable from the CI log.
       echo "FAIL $name"
       # The verdict's own marker test, so every line that failed the test is

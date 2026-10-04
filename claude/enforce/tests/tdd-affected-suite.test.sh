@@ -5,7 +5,7 @@
 # tier, each slow test a changed file names, the locked tests even when git
 # no longer lists them as changed, and every test the RED run passed, so the
 # baseline count compares like with like. CI still runs every test.
-# Separate from tdd-red-green.test.sh because test-implementation-root runs
+# Separate from tdd-red-green.test.sh because fixture-implementation-root runs
 # that file and needs it to pass, which a RED case there can never satisfy.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -23,7 +23,7 @@ shell_red_test() {
 shell_impl() { printf '#!/usr/bin/env bash\necho %s\n' "$1" > scripts/score.sh; }
 
 # The project sits alone under a private parent: the runner maps changed
-# paths against the tests two levels above the tests directory, so a shared
+# paths against the project layout two levels above the tests directory, so a shared
 # TMPDIR would let unrelated sibling directories decide what counts as mapped
 # (CI and a developer machine then disagreed, IAN-510).
 MARKS=$(cd "$(mktemp -d)" && pwd -P)

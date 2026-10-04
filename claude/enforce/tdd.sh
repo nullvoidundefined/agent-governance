@@ -511,7 +511,7 @@ SHELL_ASSERTION='FAIL'
 # a test that does not parse. Any other exception the test body or its setup
 # raises is a RED too, recorded by its class (I3, IAN-568): a new keyword
 # argument (TypeError), an unwritten method, a column a migration has not
-# added yet, a test insert failing on setup. Refused: a failure whose first
+# added yet, a fixture insert failing on setup. Refused: a failure whose first
 # line is infrastructure (PYTEST_INFRASTRUCTURE), a teardown error (the test
 # body passed), and anything that names no exception class. A collection error
 # never reaches this point: classify_red refuses it as a file with no tests.

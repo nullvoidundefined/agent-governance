@@ -36,7 +36,7 @@ new_project() {
   mkdir -p "$dir/src/__tests__" "$dir/node_modules" "$dir/docs/specs"
   ln -s "$VITEST_PKG" "$dir/node_modules/vitest"
   mkdir -p "$dir/node_modules/.bin" && ln -s "$VITEST_PKG/vitest.mjs" "$dir/node_modules/.bin/vitest"
-  printf '{ "name": "test", "private": true, "type": "module", "scripts": { "test": "vitest run" } }\n' > "$dir/package.json"
+  printf '{ "name": "fixture", "private": true, "type": "module", "scripts": { "test": "vitest run" } }\n' > "$dir/package.json"
   printf 'node_modules\n' > "$dir/.gitignore"
   printf 'import { it, expect } from "vitest";\nit("baseline passes", () => { expect(1).toBe(1); });\n' > "$dir/src/__tests__/baseline.test.ts"
   printf '# score\n' > "$dir/docs/specs/score.md"
