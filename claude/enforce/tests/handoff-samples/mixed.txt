@@ -1,0 +1,10 @@
+FAIL gamma.test.sh
+FAIL: SENTINEL_RAW_7f3a_mixed_bash
+ FAIL  src/m.test.ts > mixed suite > vitest case
+AssertionError: SENTINEL_RAW_7f3a_mixed_vitest
+FAIL src/n.test.js
+  ● mixed jest › jest case
+
+    SENTINEL_RAW_7f3a_mixed_jest
+=========================== short test summary info ============================
+FAILED tests/test_m.py::test_mixed - AssertionError: SENTINEL_RAW_7f3a_mixed_pytest

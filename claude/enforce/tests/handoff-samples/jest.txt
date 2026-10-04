@@ -1,0 +1,23 @@
+FAIL src/y.test.js
+  ● math › adds numbers
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 4
+    Received: 3 SENTINEL_RAW_7f3a_jest_a
+
+      10 |   expect(add(1, 2)).toBe(4);
+
+  ● math › handles negatives
+
+    SENTINEL_RAW_7f3a_jest_b
+
+Summary of all failing tests
+FAIL src/y.test.js
+  ● math › adds numbers
+
+    expect(received).toBe(expected) // Object.is equality
+    SENTINEL_RAW_7f3a_jest_c
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 1 passed, 3 total

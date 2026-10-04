@@ -1,0 +1,25 @@
+
+ RUN  v1.6.0 /work/app
+
+ ❯ src/x.test.ts  (3 tests | 2 failed) 7ms
+   ✓ suite > passes fine
+   × suite > adds numbers 3ms
+     → expected 3 to be 4 SENTINEL_RAW_7f3a_vitest_a
+   × suite > nested > rejects bad input 2ms
+     → SENTINEL_RAW_7f3a_vitest_b
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/x.test.ts > suite > adds numbers
+AssertionError: expected 3 to be 4 // SENTINEL_RAW_7f3a_vitest_c
+ ❯ src/x.test.ts:12:20
+
+ FAIL  src/x.test.ts > suite > nested > rejects bad input
+Error: SENTINEL_RAW_7f3a_vitest_d
+ ❯ src/x.test.ts:20:11
+
+ FAIL  src/x.test.ts > suite > adds numbers
+AssertionError: repeated SENTINEL_RAW_7f3a_vitest_e
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)

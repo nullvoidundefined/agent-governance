@@ -1,0 +1,7 @@
+FAIL: SENTINEL_RAW_7f3a_bash_a expected 3 got 4
+FAIL alpha-guard.test.sh
+FAIL: SENTINEL_RAW_7f3a_bash_b missing output
+FAIL beta-guard.test.sh
+FAIL: SENTINEL_RAW_7f3a_bash_c
+FAIL alpha-guard.test.sh
+FAIL: SENTINEL_RAW_7f3a_bash_d
