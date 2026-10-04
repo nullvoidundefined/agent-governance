@@ -22,7 +22,7 @@ trap emit_fallback ERR
 # unless the newest claude snapshot, from any source, is younger than the
 # throttle. Never waits and never fails the line.
 record_weekly() {
-  local min="${QUOTA_RECORD_MIN_MINUTES:-30}" now qfile latest qp
+  local min="${QUOTA_RECORD_MIN_MINUTES:-30}" now qfile latest qp dir
   [[ "$min" =~ ^[0-9]+([.][0-9]+)?$ ]] || min=30
   now="${QUOTA_NOW:-}"
   [[ "$now" =~ ^[0-9]+$ ]] || now=$(date +%s)
@@ -30,6 +30,15 @@ record_weekly() {
   latest=$(jq -r '[(.buckets.claude.snapshots // [])[] | (.at | try fromdateiso8601 catch empty)] | max // empty' "$qfile" 2>/dev/null) || latest=""
   if [[ "$latest" =~ ^[0-9]+$ ]] && jq -en --argjson n "$now" --argjson l "$latest" --argjson m "$min" '($n - $l) < ($m * 60)' >/dev/null 2>&1; then
     return 0
+  fi
+  # A quota file the recorder cannot use fails every record, and with no
+  # snapshot to throttle on, every render would start another doomed recorder.
+  if [ -e "$qfile" ]; then
+    [ -f "$qfile" ] && [ -w "$qfile" ] && jq -e . "$qfile" >/dev/null 2>&1 || return 0
+  else
+    dir=$(dirname "$qfile")
+    while [ ! -e "$dir" ]; do dir=$(dirname "$dir"); done
+    [ -d "$dir" ] && [ -w "$dir" ] || return 0
   fi
   qp="$(dirname "$0")/enforce/quota-pace.sh"
   ( "$qp" record claude "$1" --resets-at "$2" --source statusline </dev/null >/dev/null 2>&1 & ) 2>/dev/null

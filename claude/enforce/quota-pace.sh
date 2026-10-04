@@ -79,6 +79,11 @@ def toEpoch:
         | $local - $off
       end
   end;
+# sameReset(a; b): true when two reset times name the same window. The owner
+# types --resets-at by hand, so it may differ from the API epoch by seconds or
+# minutes; windows are days apart, so an hour of tolerance cannot merge two.
+def sameReset($a; $b):
+  ((($a | toEpoch) - ($b | toEpoch)) | if . < 0 then -. else . end) <= 3600;
 '
 
 # fail <message>: prints the message to stderr and exits 1.
@@ -330,7 +335,7 @@ recordSnapshot() {
       (.buckets[$b] // null) as $o
       | ($resets | if . == "" then null else (toEpoch | todate) end) as $newReset
       | ($o != null and ($o.snapshots // []) != []
-         and ($newReset == null or ($o.resetsAt | toEpoch) == ($newReset | toEpoch))
+         and ($newReset == null or sameReset($o.resetsAt; $newReset))
          and (($o.snapshots | max_by(.at | toEpoch)) as $l
               | (($l.source // "owner") != "statusline")
                 and (($l.at | toEpoch) > (($now | tonumber) - ($min | tonumber) * 60))))
@@ -347,7 +352,7 @@ recordSnapshot() {
     | ($newReset // $o.resetsAt) as $reset
     | ((if $window == "" then null else ($window | tonumber) end) // $o.windowDays // 7) as $wd
     | (($reset | toEpoch) - $wd * 86400) as $start
-    | (if $o.resetsAt != null and $newReset != null and (($o.resetsAt | toEpoch) != ($newReset | toEpoch))
+    | (if $o.resetsAt != null and $newReset != null and (sameReset($o.resetsAt; $newReset) | not)
        then [($o.snapshots // [])[] | select((.at | toEpoch) >= $start)]
        else ($o.snapshots // []) end) as $kept
     | .buckets[$b] = ($o + {
