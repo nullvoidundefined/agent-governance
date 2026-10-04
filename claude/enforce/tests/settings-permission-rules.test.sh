@@ -107,5 +107,34 @@ check "an exact tilde Read rule matches that one file" read_denied "$HOME/.$(pri
 check "a file no Read rule covers is not denied" not read_denied "$SANDBOX/project/README.md"
 check "an unreadable settings file makes a read undecidable, not allowed" read_cannot_tell "$SANDBOX/project/README.md"
 
+# The owner removed non-destructive asks on 2026-10-04: opening a PR and
+# re-running CI change nothing that cannot be undone, and merging stays asked.
+REAL_SETTINGS="$(dirname "${BASH_SOURCE[0]}")/../../settings.json"
+not_asked() { ! jq -e --arg r "$1" '.permissions.ask | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+asked() { jq -e --arg r "$1" '.permissions.ask | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+check "opening a PR is not asked" not_asked 'Bash(gh pr create*)'
+check "re-running CI is not asked" not_asked 'Bash(gh run rerun*)'
+check "dispatching a workflow is not asked" not_asked 'Bash(gh workflow run*)'
+check "merging a PR is still asked" asked 'Bash(gh pr merge*)'
+
+# Owner, 2026-10-04: optimize for allowing non-destructive commands. Read,
+# build, test, and lint tools are allowed outright, so auto mode never stops to
+# classify them; ask rules and the guard hooks still take precedence over allow.
+allowed() { jq -e --arg r "$1" '.permissions.allow | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+for rule in 'Bash(pytest *)' 'Bash(ruff *)' 'Bash(make test)' 'Bash(go test *)' 'Bash(cargo test*)' \
+  'Bash(docker ps*)' 'Bash(docker logs *)' 'Bash(sort *)' 'Bash(pwd)' 'Bash(readlink *)'; do
+  check "non-destructive $rule is allowed" allowed "$rule"
+done
+# PR 199 review: interpreters that run arbitrary code stay with the classifier,
+# make takes exact targets only, and a docker build that pushes still asks.
+not_allowed() { ! jq -e --arg r "$1" '.permissions.allow | index($r) != null' "$REAL_SETTINGS" >/dev/null; }
+for rule in 'Bash(node *)' 'Bash(python3 *)' 'Bash(uv run *)' 'Bash(make build*)' 'Bash(tree*)' 'Bash(pytest*)' 'Bash(uname*)'; do
+  check "$rule is not allowed" not_allowed "$rule"
+done
+check "docker build --push is asked" asked 'Bash(docker build *--push*)'
+# The shell-wrapper asks stay: inside bash -c, a prefix-only ask such as
+# git reset --hard or npm publish is invisible to every guard.
+check "bash -c is still asked" asked 'Bash(bash -c *)'
+
 [ "$fail" -eq 0 ] && echo "settings-permission-rules.test.sh PASS"
 exit "$fail"

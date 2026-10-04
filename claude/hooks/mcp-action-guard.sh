@@ -142,6 +142,20 @@ if isActiveTrackerTool && [ "$REASON" = "writes to an external system of record"
   esac
 fi
 
+# The owner narrowed R-105 for GitHub on 2026-10-04: opening or editing a PR,
+# commenting, and creating a branch are reversible, and the owner's gate is the
+# merge. The list is exact actions, not the write class: merging, reviews
+# (which can approve), and file commits (which can land on main) still ask.
+case "$SERVER" in
+  github | *_github | *_GitHub | GitHub)
+    case "$ACTION" in
+      create_pull_request | update_pull_request | add_issue_comment | \
+        add_reply_to_pull_request_comment | update_issue_comment | create_branch)
+        exit 0 ;;
+    esac
+    ;;
+esac
+
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
