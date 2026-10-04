@@ -37,7 +37,12 @@ emit() {
 # Normalized form: newlines become `;` so they survive as command separators,
 # attached shorthand (-XDELETE) splits, flag `=` becomes a space, whitespace
 # collapses. Every spelling of a flag reduces to `-X DELETE`.
+# An `env [-opts]` wrapper and leading VAR=value assignments do not change
+# which command runs, so they are stripped first, before `=` is rewritten
+# (PR 199 review: `env X=1 gh api -X DELETE ...` and `GH_HOST=... gh api ...`
+# skipped every check below).
 norm="$(printf '%s' "$cmd" | tr '\n' ';' \
+    | sed -E 's/(^|[;&|(])[[:space:]]*(env([[:space:]]+-[^[:space:]]+)*[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*/\1/g' \
     | sed -e 's/-X\([A-Za-z]\)/-X \1/g' -e 's/=/ /g' -e 's/[[:space:]][[:space:]]*/ /g')"
 
 # Command position: start of string, or just past a separator. Anchoring here is
