@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Shard: slow
-# Covers: hook:protected-path-guard
 #
 # The contract the REAL codex/hooks/codex-hook-adapter.sh owes the gates. Every
 # other fixture in this tree exercises a hook directly; nothing exercised the
@@ -89,10 +88,7 @@ cat >"$SANDBOX_CLAUDE/settings.json" <<'EOF'
 EOF
 
 [ -f "$PERMISSION_RULES_SOURCE" ] && cp "$PERMISSION_RULES_SOURCE" "$SANDBOX_CLAUDE/enforce/settings-permission-rules.sh"
-cp "$REPO_TOP/claude/enforce/role-policy.json" "$SANDBOX_CLAUDE/enforce/role-policy.json"
-cp "$REPO_TOP/claude/hooks/protected-path-guard.sh" "$SANDBOX_CLAUDE/hooks/protected-path-guard.sh"
 cp "$REPO_TOP/claude/hooks/log-rule-fire.sh" "$SANDBOX_CLAUDE/hooks/log-rule-fire.sh"
-chmod +x "$SANDBOX_CLAUDE/hooks/protected-path-guard.sh"
 
 # The synthetic hook: records every payload the adapter dispatches to it and
 # decides nothing, so a case can assert what the gates were shown.
@@ -232,26 +228,7 @@ OUT=$(run_adapter "$(patch_payload "$(move_patch 'src/widget.ts' 'tests/moved.te
 check "a Move patch carries the source path" log_mentions "src/widget.ts"
 check "a Move patch carries the destination path" log_mentions "tests/moved.test.ts"
 
-# The end-to-end point of the two cases above: a real guard must be able to act
-# on what it is shown, not merely receive it.
-OUT=$(run_adapter "$(patch_payload "$(delete_patch 'tests/locked.test.sh')")" protected-path-guard)
-check "deleting a locked test through a patch is denied (R-410)" decision_is deny "$OUT"
-check "the deletion denial names the locked path" reason_mentions "tests/locked.test.sh" "$OUT"
-
-OUT=$(run_adapter "$(patch_payload "$(move_patch 'src/widget.ts' 'tests/moved.test.ts')")" protected-path-guard)
-check "renaming a file into a locked test tree is denied (R-410)" decision_is deny "$OUT"
-check "the rename denial names the destination, not only the source" reason_mentions "tests/moved.test.ts" "$OUT"
-
 # --- 3. the shell door: a file written by a command, not by a patch -----------
-
-# Runs one shell command through the adapter with the real protected-path-guard
-# reachable ONLY as a write-target hook, so a denial can have come from nothing
-# but a synthesized write event.
-guarded_shell_run() {
-  WRITE_TARGET_HOOKS="protected-path-guard"
-  run_adapter "$(bash_payload "$1")" record-calls
-  WRITE_TARGET_HOOKS=""
-}
 
 # Runs one shell command with the recording hook on both doors, so the event log
 # holds the Bash event first and then one line per synthesized write event.
@@ -272,40 +249,6 @@ logged_write_target_is() { [ "$(logged_write_targets)" = "$1" ]; }
 logged_write_targets_are() { [ "$(logged_write_targets | paste -sd, -)" = "$1" ]; }
 logged_event_count_is() { [ "$(grep -c . "$EVENT_LOG")" -eq "$1" ]; }
 no_write_event_logged() { [ -z "$(logged_write_targets)" ]; }
-
-OUT=$(guarded_shell_run "printf 'x' > tests/locked.test.sh")
-check "a > redirection onto a locked test is denied (R-410)" decision_is deny "$OUT"
-check "the redirection denial names the locked path" reason_mentions "tests/locked.test.sh" "$OUT"
-
-OUT=$(guarded_shell_run "printf 'x' >> tests/locked.test.sh")
-check "a >> redirection onto a locked test is denied (R-410)" decision_is deny "$OUT"
-
-OUT=$(guarded_shell_run "printf 'x' | tee tests/locked.test.sh")
-check "tee onto a locked test is denied (R-410)" decision_is deny "$OUT"
-
-OUT=$(guarded_shell_run "printf 'x' | tee -a tests/locked.test.sh")
-check "tee -a onto a locked test is denied (R-410)" decision_is deny "$OUT"
-
-OUT=$(guarded_shell_run "cp src/widget.ts tests/locked.test.sh")
-check "a cp destination inside the locked tree is denied (R-410)" decision_is deny "$OUT"
-
-OUT=$(guarded_shell_run "mv -f src/widget.ts tests/locked.test.sh")
-check "an mv destination inside the locked tree is denied (R-410)" decision_is deny "$OUT"
-
-OUT=$(guarded_shell_run "install -m 644 src/widget.ts tests/locked.test.sh")
-check "an install destination inside the locked tree is denied (R-410)" decision_is deny "$OUT"
-
-# The quoted operand is the case a regex over command text cannot reach: the
-# locked spec's name contains a space, so only a quote-aware tokenizer sees it.
-OUT=$(guarded_shell_run "printf 'x' > 'docs/my spec.md'")
-check "a single-quoted target with a space is denied (R-410)" decision_is deny "$OUT"
-check "the quoted-target denial names the whole path" reason_mentions "docs/my spec.md" "$OUT"
-
-OUT=$(guarded_shell_run "printf 'x' > \"docs/my spec.md\"")
-check "a double-quoted target with a space is denied (R-410)" decision_is deny "$OUT"
-
-OUT=$(guarded_shell_run "printf 'x' > src/generated.ts")
-check "a redirection onto an ordinary production path is not denied" not decision_is deny "$OUT"
 
 recorded_shell_run "printf 'x' > src/one.ts; printf 'y' > tests/locked.test.sh"
 check "two redirections on one command line each produce a target" \

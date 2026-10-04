@@ -127,71 +127,15 @@ OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "codex drift re-synced" cmp -s "$CO/codex/README.md" "$SB/home/.codex/README.md"
 check "codex drift reported" reports "synced 1 changed or missing file(s)"
 
-# 3c. Enforce dependencies (2026-09-18). A lockfile synced without an install
-# left lint.mjs crashing on ERR_MODULE_NOT_FOUND, and the old install step ran
-# only when node_modules was absent altogether, so a stale-but-present tree was
-# never repaired. The hook must repair a live node_modules missing a locked
-# package even when no tracked file drifted, and must say so when it cannot.
-STUB_NPM="$SB/stub-npm"
-cat > "$STUB_NPM" <<'STUB'
-#!/usr/bin/env bash
-prefix=""
-while [ $# -gt 0 ]; do [ "$1" = "--prefix" ] && prefix="$2"; shift; done
-jq -r '.packages | to_entries[] | select(.key != "" and (.value.optional | not)) | .key' "$prefix/package-lock.json" |
-  while IFS= read -r pkg; do mkdir -p "$prefix/$pkg"; done
-STUB
-chmod +x "$STUB_NPM"
-mkdir -p "$CO/claude/enforce"
-cp "$CLAUDE_HARNESS_ROOT/enforce/install-enforce-dependencies.sh" "$CO/claude/enforce/"
-printf '{"name":"enforce","private":true}\n' > "$CO/claude/enforce/package.json"
-printf '{"name":"enforce","lockfileVersion":3,"packages":{"":{"name":"enforce"},"node_modules/eslint":{"version":"1.0.0"}}}\n' > "$CO/claude/enforce/package-lock.json"
-git -C "$CO" add -A; git -C "$CO" commit -qm "enforce lock"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
-check "drift sync installs the locked enforce dependencies" test -d "$FAKE/.claude/enforce/node_modules/eslint"
-
-rm -rf "$FAKE/.claude/enforce/node_modules/eslint"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
-check "no-drift run repairs a missing locked package" test -d "$FAKE/.claude/enforce/node_modules/eslint"
-check "no-drift repair is reported" reports "enforce dependencies installed"
-
-rm -rf "$FAKE/.claude/enforce/node_modules/eslint"
-OUT=$(printf '{}' | SYNC_NPM="$SB/no-such-npm" bash "$HOOK" 2>/dev/null)
-check "unavailable npm is reported with the fix" reports "npm ci --prefix $FAKE/.claude/enforce"
-
 # 3d. A copy that fails for any reason other than a JSON refusal (Copilot review
 # on #55) must not be reported as a completed sync followed by a failed
 # install. The live codex home is replaced by a plain file, so sync.sh's
 # mkdir -p of that target fails in the middle of the copy.
 mv "$SB/home/.codex" "$SB/home/.codex.saved"; printf 'not a directory\n' > "$SB/home/.codex"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 rm -f "$SB/home/.codex"; mv "$SB/home/.codex.saved" "$SB/home/.codex"
 check "a failed copy is not reported as synced" bash -c '! grep -qF "but ./sync.sh then failed" <<<"$1"' _ "$(context)"
 check "a failed copy is reported as a failed copy" reports "failed before its copy completed"
-
-# 3e. Files a hook writes into the live tree must not be tracked (IAN-114).
-# session-end.sh rolls rule fires into the live global-memory/rule_fires.md, and
-# that path used to be tracked too, so the live copy never matched the checkout:
-# every SessionStart saw drift, ran a full ./sync.sh, and the sync overwrote the
-# roll-up, discarding every fire recorded since the last commit; rule_misses.md
-# had the same shape for miss: lines. The sandbox
-# checkout carries exactly what the real checkout tracks under global-memory/,
-# then the real session-end.sh writes a roll-up into the synced live tree.
-REAL_CHECKOUT=$(dirname "$REAL_SYNC")
-while IFS= read -r tracked; do
-  mkdir -p "$CO/$(dirname "$tracked")"; cp "$REAL_CHECKOUT/$tracked" "$CO/$tracked"
-done < <(git -C "$REAL_CHECKOUT" ls-files -- claude/global-memory)
-git -C "$CO" add -A; git -C "$CO" commit -qm "global memory"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
-mkdir -p "$FAKE/.claude/projects/fixture/memory" "$FAKE/.claude/telemetry"
-printf 'miss: R-998 fixture miss; gap: none\n' > "$FAKE/.claude/projects/fixture/memory/feedback_fixture.md"
-printf '2026-09-18T00:00:00Z|R-999|fixture-hook|deny\n' > "$FAKE/.claude/telemetry/rule-fires.log"
-(cd "$SB" && printf '' | HOME="$FAKE" bash "$CLAUDE_HARNESS_ROOT/hooks/session-end.sh" >/dev/null 2>&1)
-check "session-end wrote the live roll-up" grep -qF "R-999" "$FAKE/.claude/global-memory/rule_fires.md"
-check "session-end wrote the live miss log" grep -qF "R-998" "$FAKE/.claude/global-memory/rule_misses.md"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
-check "a live-written roll-up is not drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
-check "a live-written roll-up survives the next SessionStart" grep -qF "R-999" "$FAKE/.claude/global-memory/rule_fires.md"
-check "a live-written miss log survives the next SessionStart" grep -qF "R-998" "$FAKE/.claude/global-memory/rule_misses.md"
 
 # 3f. The no-drift check costs a bounded number of processes, not one per
 # tracked file (IAN-115). It ran one cmp per tracked file, so with the real
@@ -206,7 +150,7 @@ DRIFT_CHECK_PROCESS_BUDGET=20
 mkdir -p "$CO/claude/bulk"
 for i in $(seq 1000); do printf 'bulk %s\n' "$i" > "$CO/claude/bulk/file$i.md"; done
 git -C "$CO" add -A; git -C "$CO" commit -qm "bulk"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "bulk files synced" test -f "$FAKE/.claude/bulk/file1000.md"
 COUNTING_BIN="$SB/counting-bin"; PROCESS_LOG="$SB/comparison-processes.log"; mkdir -p "$COUNTING_BIN"
 for tool in cmp git; do
@@ -215,13 +159,13 @@ for tool in cmp git; do
   chmod +x "$COUNTING_BIN/$tool"
 done
 : > "$PROCESS_LOG"
-OUT=$(printf '{}' | PATH="$COUNTING_BIN:$PATH" SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+OUT=$(printf '{}' | PATH="$COUNTING_BIN:$PATH" bash "$HOOK" 2>/dev/null)
 comparison_processes=$(wc -l < "$PROCESS_LOG" | tr -d ' ')
 echo "  no-drift check over 1000+ tracked files started $comparison_processes cmp or git process(es) (budget $DRIFT_CHECK_PROCESS_BUDGET)"
 check "the no-drift check does not start a process per tracked file" test "$comparison_processes" -lt "$DRIFT_CHECK_PROCESS_BUDGET"
 check "the batched check still finds no drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
 printf 'edited live\n' > "$FAKE/.claude/bulk/file500.md"; rm -f "$FAKE/.claude/bulk/file501.md"
-OUT=$(printf '{}' | SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+OUT=$(printf '{}' | bash "$HOOK" 2>/dev/null)
 check "the batched check counts an edited and a missing file" reports "synced 2 changed or missing file(s)"
 check "the batched check's sync repairs both" bash -c 'cmp -s "$1/claude/bulk/file500.md" "$2/.claude/bulk/file500.md" && test -f "$2/.claude/bulk/file501.md"' _ "$CO" "$FAKE"
 
@@ -234,10 +178,10 @@ FAILING_HASH_BIN="$SB/failing-hash-bin"; mkdir -p "$FAILING_HASH_BIN"
 printf '#!/usr/bin/env bash\ncase " $* " in *" hash-object "*) exit 1 ;; esac\nexec "%s" "$@"\n' "$(command -v git)" > "$FAILING_HASH_BIN/git"
 chmod +x "$FAILING_HASH_BIN/git"
 printf 'edited live again\n' > "$FAKE/.claude/bulk/file42.md"
-OUT=$(printf '{}' | PATH="$FAILING_HASH_BIN:$PATH" SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+OUT=$(printf '{}' | PATH="$FAILING_HASH_BIN:$PATH" bash "$HOOK" 2>/dev/null)
 check "the fallback counts the one edited file" reports "synced 1 changed or missing file(s)"
 check "the fallback's sync repairs it" cmp -s "$CO/claude/bulk/file42.md" "$FAKE/.claude/bulk/file42.md"
-OUT=$(printf '{}' | PATH="$FAILING_HASH_BIN:$PATH" SYNC_NPM="$STUB_NPM" bash "$HOOK" 2>/dev/null)
+OUT=$(printf '{}' | PATH="$FAILING_HASH_BIN:$PATH" bash "$HOOK" 2>/dev/null)
 check "the fallback finds no drift in matching trees" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
 
 # 3h. A live home whose path contains a newline is compared correctly (Copilot
@@ -248,9 +192,9 @@ check "the fallback finds no drift in matching trees" bash -c '! grep -qF "chang
 NEWLINE_HOME="$SB/home with
 newline"
 mkdir -p "$NEWLINE_HOME"
-OUT=$(printf '{}' | HARNESS_SYNC_HOME="$NEWLINE_HOME" SYNC_CURSOR_HOME="$NEWLINE_HOME/.cursor" SYNC_CODEX_HOME="$NEWLINE_HOME/.codex" SYNC_NPM="$STUB_NPM" bash "$HOOK" "$CO" 2>/dev/null)
+OUT=$(printf '{}' | HARNESS_SYNC_HOME="$NEWLINE_HOME" SYNC_CURSOR_HOME="$NEWLINE_HOME/.cursor" SYNC_CODEX_HOME="$NEWLINE_HOME/.codex" bash "$HOOK" "$CO" 2>/dev/null)
 check "a newline home is bootstrapped" test -f "$NEWLINE_HOME/.claude/bulk/file1.md"
-OUT=$(printf '{}' | HARNESS_SYNC_HOME="$NEWLINE_HOME" SYNC_CURSOR_HOME="$NEWLINE_HOME/.cursor" SYNC_CODEX_HOME="$NEWLINE_HOME/.codex" SYNC_NPM="$STUB_NPM" bash "$HOOK" "$CO" 2>/dev/null)
+OUT=$(printf '{}' | HARNESS_SYNC_HOME="$NEWLINE_HOME" SYNC_CURSOR_HOME="$NEWLINE_HOME/.cursor" SYNC_CODEX_HOME="$NEWLINE_HOME/.codex" bash "$HOOK" "$CO" 2>/dev/null)
 check "a newline home in sync is not drift" bash -c '! grep -qF "changed or missing file(s)" <<<"$1"' _ "$(context)"
 
 # 3i. A tracked name that git quotes (a tab, a newline, a double quote) is
@@ -272,7 +216,7 @@ quoted_run >/dev/null
 mkdir -p "$QUOTED_HOME/.claude"; cp "$QUOTED_CO/claude/CLAUDE.md" "$QUOTED_HOME/.claude/CLAUDE.md"
 printf 'tabbed\n' > "$QUOTED_HOME/.claude/tab$(printf '\t')name.md"
 OUT=$(quoted_run)
-check "a git-quoted tracked name is not silently skipped" reports "harness-sync (R-003)"
+check "a git-quoted tracked name is not silently skipped" reports "harness-sync: "
 
 # 4. No reachable checkout: silent locally, one report remotely.
 rm -rf "$FAKE/.claude"

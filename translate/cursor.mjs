@@ -3,8 +3,8 @@
 // --check exits 1 when the tree is behind. Both modes share the same
 // source-loading, validation, and render pass. renderPlannedTree covers
 // every class of generated content: the Class B stack rules and the Class D
-// structure-conventions skill rule, the three Class A always-on rules, the
-// Class C rulebook fan-out, the agents_to_subagents agents/commands plus
+// structure-conventions skill rule, the two Class A always-on rules, the
+// agents_to_subagents agents/commands plus
 // the full skills/ copy, hooks.json plus PORT-STATUS.md's many-to-many
 // fan-out, the derived .gitignore, and the B-9-classed manifest with its
 // own --check parity checks.
@@ -21,7 +21,7 @@ import {
   unportedReasonFor,
 } from "./parse-sources.mjs";
 import { renderStackRule, renderSkillRule } from "./render-cursor-stack-rules.mjs";
-import { renderGlobalRules, renderSessionTypes, renderMemoryIndex, renderRulebookFiles } from "./render-cursor-rules.mjs";
+import { renderGlobalRules, renderMemoryIndex } from "./render-cursor-rules.mjs";
 import { renderCursorAgent, renderCursorCommand, matchesAgentSubagentList } from "./render-cursor-agents.mjs";
 import { renderCursorSkillCopy } from "./render-cursor-skills.mjs";
 import { renderCursorHooksConfig, renderCursorPortStatus } from "./render-cursor-hooks.mjs";
@@ -34,17 +34,14 @@ import {
   listFilesWithExtension,
   listSkillDirs,
   makeSkillSourceLoader,
-  makeProfiledSkillLoader,
-  loadTextUnlessOmitted,
   renderSkillSupportFileFor,
   makeMarkdownSourceLoader,
   runExporterCli,
 } from "./exporter-core.mjs";
-import { stageProfiledClaudeDir } from "./apply-profile.mjs";
 
 const TARGET_SUBDIR = "cursor";
 const BUILDER_NAME = "translate/cursor.mjs";
-const USAGE = "usage: node translate/cursor.mjs --write|--check [--root <repo-dir>] [--profile <name>]";
+const USAGE = "usage: node translate/cursor.mjs --write|--check [--root <repo-dir>]";
 
 // listStackFiles(dir): every CLAUDE-*.md stack convention file under dir,
 // sorted. CLAUDE.md itself is loaded separately (it is the always-on rule
@@ -71,50 +68,29 @@ const loadMarkdownSource = makeMarkdownSourceLoader(loadTextFile, splitFrontmatt
 // (exporter-core.mjs); support files port byte for byte with their modes.
 const loadSkillSource = makeSkillSourceLoader(loadTextFile, splitFrontmatter);
 
-// loadSources(rootDir): loads and validates every translator input this
-// exporter needs, in both --write and --check: settings hooks, the cursor
-// port map, the full rule corpus (CLAUDE.md, session-types.md, the global
-// memory index, every CLAUDE-*.md stack file, CLOUD-DEPLOYMENT.md, and the
-// four rulebook files), every agent, and every skill. Stack and rulebook
-// files are loaded as raw text only; splitting their frontmatter into a
-// structured paths: list (CLAUDE-*.md) or slicing reference.md into its
-// eight top-level sections (Class C) is a render concern, handled by the
-// renderers this function's caller passes the result to, not a loading
-// concern. Every failure surfaces as a SourceError naming the offending
-// file. With a harness profile (IAN-518) the claude/ sources are read from
-// the set apply-profile.mjs filtered, and only a path that profile removed
-// may be missing (it loads as null, and its render is skipped); with none
-// they are read from <rootDir>/claude unchanged.
-function loadSources(rootDir, profileName) {
-  const { claudeDir, omitted } = stageProfiledClaudeDir(rootDir, profileName);
-  const loadUnlessOmitted = (rel) => loadTextUnlessOmitted(loadTextFile, claudeDir, rel, omitted);
+// loadSources(rootDir): loads and validates every translator input: settings
+// hooks, the cursor port map, CLAUDE.md, the global memory index, every
+// CLAUDE-*.md stack file, CLOUD-DEPLOYMENT.md, every agent, and every skill.
+// Stack files are loaded as raw text; splitting their frontmatter is a render
+// concern. Every failure surfaces as a SourceError naming the offending file.
+function loadSources(rootDir) {
+  const claudeDir = path.join(rootDir, "claude");
   const settingsHooks = loadSettingsHooks(path.join(claudeDir, "settings.json"));
   const portMap = loadCursorPortMap(path.join(rootDir, "translate/cursor-port-map.json"));
   const claudeMdText = loadTextFile(path.join(claudeDir, "CLAUDE.md"));
-  const sessionTypesText = loadUnlessOmitted("rules/session-types.md");
   const globalMemoryIndexText = loadTextFile(path.join(claudeDir, "global-memory/INDEX.md"));
   const stackFiles = listStackFiles(claudeDir)
     .map((file) => ({ file, text: loadTextFile(file) }));
   const cloudDeploymentText = loadTextFile(path.join(claudeDir, "CLOUD-DEPLOYMENT.md"));
-  const rulebookAgentsText = loadUnlessOmitted("rulebook/agents.md");
-  const rulebookAuditsText = loadUnlessOmitted("rulebook/audits.md");
-  const rulebookCostText = loadUnlessOmitted("rulebook/cost.md");
-  const rulebookReferenceText = loadTextFile(path.join(claudeDir, "rulebook/reference.md"));
   const agents = listFilesWithExtension(path.join(claudeDir, "agents"), ".md").map(loadMarkdownSource);
-  const skills = listSkillDirs(path.join(claudeDir, "skills")).map(makeProfiledSkillLoader(loadSkillSource, omitted));
+  const skills = listSkillDirs(path.join(claudeDir, "skills")).map(loadSkillSource);
   return {
-    omitted,
     settingsHooks,
     portMap,
     claudeMdText,
-    sessionTypesText,
     globalMemoryIndexText,
     stackFiles,
     cloudDeploymentText,
-    rulebookAgentsText,
-    rulebookAuditsText,
-    rulebookCostText,
-    rulebookReferenceText,
     agents,
     skills,
   };
@@ -158,8 +134,7 @@ function buildManifestClassifications(planned, handAuthored) {
 // cursor/ output, paths cursor-relative (the caller prefixes cursor/).
 // Covers Class B (every CLAUDE-*.md stack file plus the CLOUD-DEPLOYMENT.md
 // no-paths outlier), Class D (the structure-conventions skill's rule),
-// Class A (000-global-rules.mdc, 001-session-types.mdc,
-// 002-global-memory-index.mdc), the Class C rulebook fan-out, the
+// Class A (000-global-rules.mdc, 002-global-memory-index.mdc), the
 // agents_to_subagents agents/commands plus the full skills/ copy,
 // hooks.json plus PORT-STATUS.md's many-to-many fan-out, the derived
 // .gitignore, and last the B-9-classed manifest, which hashes every other
@@ -171,23 +146,13 @@ function buildManifestClassifications(planned, handAuthored) {
 function renderPlannedTree(sources) {
   const planned = sources.stackFiles.map((stackFile) => renderStackRule(stackFile, sources.portMap));
   planned.push(renderStackRule({ file: "CLOUD-DEPLOYMENT.md", text: sources.cloudDeploymentText }, sources.portMap));
-  // A harness profile (IAN-518) may hide the skill's SKILL.md on purpose;
-  // only then is the rule left out rather than a SourceError.
-  const isStructureConventionsHidden = sources.omitted.has("skills/structure-conventions/SKILL.md");
-  const structureConventionsSkill = sources.skills.find((skill) => skill.frontmatter.name === "structure-conventions" && !skill.hidden);
-  if (!structureConventionsSkill && !isStructureConventionsHidden) {
+  const structureConventionsSkill = sources.skills.find((skill) => skill.frontmatter.name === "structure-conventions");
+  if (!structureConventionsSkill) {
     throw new SourceError("claude/skills/structure-conventions/SKILL.md", "missing or renamed (structure-conventions rule has no source)");
   }
-  if (structureConventionsSkill) planned.push(renderSkillRule(structureConventionsSkill));
-  planned.push(renderGlobalRules(sources.claudeMdText, sources.settingsHooks, sources.portMap));
-  if (sources.sessionTypesText !== null) planned.push(renderSessionTypes(sources.sessionTypesText, sources.portMap));
+  planned.push(renderSkillRule(structureConventionsSkill));
+  planned.push(renderGlobalRules(sources.claudeMdText, sources.portMap));
   planned.push(renderMemoryIndex(sources.globalMemoryIndexText, sources.portMap));
-  const rulebookTexts = [
-    { file: "rulebook/agents.md", text: sources.rulebookAgentsText },
-    { file: "rulebook/audits.md", text: sources.rulebookAuditsText },
-    { file: "rulebook/cost.md", text: sources.rulebookCostText },
-  ].filter(({ text }) => text !== null);
-  planned.push(...renderRulebookFiles(rulebookTexts, sources.rulebookReferenceText, sources.portMap));
   planned.push(renderCursorHooksConfig(sources.settingsHooks, sources.portMap));
   planned.push(renderCursorPortStatus(sources.settingsHooks, sources.portMap));
   // Every path planned above is fixed by this exporter's own rule-class
@@ -207,7 +172,7 @@ function renderPlannedTree(sources) {
     planned.push(claimPlannedPath(seenPaths, agent.file, renderCursorCommand(agent)));
   }
   for (const skill of sources.skills) {
-    if (!skill.hidden) planned.push(claimPlannedPath(seenPaths, skill.file, renderCursorSkillCopy(skill)));
+    planned.push(claimPlannedPath(seenPaths, skill.file, renderCursorSkillCopy(skill)));
     for (const supportFile of skill.supportFiles) {
       planned.push(claimPlannedPath(seenPaths, skill.file, renderSkillSupportFileFor(skill, supportFile)));
     }
