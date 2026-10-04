@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies `enforce/tdd.sh expected-red`, the read-only question
-# A turn-end verification gate will ask before it blocks a turn on a red suite
+# a turn-end gate asks before it blocks a turn on a red suite
 # (R-509, IAN-156, owner decision 2026-09-20): it exits 0 when a slice lock is
 # open in phase "red" and every failure in the suite is one of the test files
 # that lock records, and exits non-zero in every other situation.

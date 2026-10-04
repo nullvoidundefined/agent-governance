@@ -1183,8 +1183,8 @@ cmd_close() {
 # cmd_expected_red: answers, without writing anything, whether the suite's
 # current failures are exactly the RED this slice already recorded.
 #
-# A turn-end verification gate, where one is installed, refuses to let a turn or a subagent end on a red
-# suite (R-509), which blocks a test author on the one outcome its role exists
+# A turn-end gate that refuses to let a turn or a subagent end on a red suite
+# (R-509) blocks a test author on the one outcome its role exists
 # to produce. The gate cannot judge that for itself without parsing four test
 # runners, and this file already normalizes all four into one report, so the
 # gate asks here instead (IAN-156, owner decision 2026-09-20). Only a slice
