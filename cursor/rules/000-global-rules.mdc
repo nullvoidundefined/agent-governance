@@ -111,7 +111,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 ## Git and PRs
 
 - Work on a feature branch. Push to `main` only when the owner asks.
-- One PR per slice of work. After opening it, stop: the owner approves or merges each PR before the next slice starts.
+- One PR per slice of work. Once CI is green and the review has no open HIGH, squash-merge it, verify it landed on `main`, then start the next slice. The owner merges security-touching PRs.
 - Squash-merge. Hold deploys until the owner asks.
 - When a constant's value changes, grep the tests for the old value before pushing.
 

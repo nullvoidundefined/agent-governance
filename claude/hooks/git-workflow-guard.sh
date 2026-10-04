@@ -2,10 +2,11 @@
 # git-workflow-guard.sh: PreToolUse(Bash). Keeps the owner in charge of what
 # reaches the trunk:
 #   - a push to main or master, or a force push, asks first
-#   - every `gh pr merge` asks first: the owner approves each PR
 #   - `gh pr merge` is denied when the PR body has no `## Review` heading, the
-#     record of the one fresh-context review every PR gets (when gh cannot
-#     read the body, the merge still asks)
+#     record of the one fresh-context review every PR gets; with one it passes
+#     without a prompt (owner, 2026-10-04); when gh cannot read the body the
+#     merge asks
+#   - `gh pr merge --admin` asks: it skips branch protection, including CI
 #   - `gh pr merge --merge` is denied; feature branches squash-merge
 # Commands are split with shell-command-segments.py, so quoting, wrappers
 # (env, sudo, command, bash -c, eval) and absolute paths do not hide a push.
@@ -83,7 +84,7 @@ check_git() {
 
 check_gh() {
     [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ] || return 0
-    local word pr="" body pending=""
+    local word pr="" body pending="" admin=0
     local -a repo_args=()
     for word in "${@:3}"; do
         case "$pending" in
@@ -91,6 +92,7 @@ check_gh() {
             value) pending=""; continue ;;
         esac
         case "$word" in
+            --admin) admin=1 ;;
             --merge | -m) emit deny "Feature branches squash-merge so each PR is one commit on main. Re-run with --squash." ;;
             -R | --repo) pending=repo ;;
             --repo=*) repo_args=("$word") ;;
@@ -99,11 +101,12 @@ check_gh() {
             *) [ -n "$pr" ] || pr="$word" ;;
         esac
     done
-    if body="$(cd "${cwd:-.}" 2>/dev/null && gh pr view ${pr:+"$pr"} ${repo_args[@]+"${repo_args[@]}"} --json body --jq .body 2>/dev/null)"; then
-        printf '%s\n' "$body" | grep -Eq '^##[[:space:]]+Review[[:space:]]*$' ||
-            emit deny "This PR body has no '## Review' section. Every PR gets one fresh-context review before it merges: run the pr-reviewer agent on the diff, fix or answer its findings, and record the reviewer, the range, and the findings with their dispositions under '## Review'."
-    fi
-    emit ask "Merging a PR needs the owner's approval of that PR. Confirm this merge, or wait for the owner to approve it."
+    body="$(cd "${cwd:-.}" 2>/dev/null && gh pr view ${pr:+"$pr"} ${repo_args[@]+"${repo_args[@]}"} --json body --jq .body 2>/dev/null)" ||
+        emit ask "git-workflow-guard could not read this PR's body to check for its '## Review' section. Confirm this merge."
+    printf '%s\n' "$body" | grep -Eq '^##[[:space:]]+Review[[:space:]]*$' ||
+        emit deny "This PR body has no '## Review' section. Every PR gets one fresh-context review before it merges: run the pr-reviewer agent on the diff, fix or answer its findings, and record the reviewer, the range, and the findings with their dispositions under '## Review'."
+    [ "$admin" -eq 1 ] && emit ask "--admin skips branch protection, including required CI. Confirm this merge."
+    return 0
 }
 
 while IFS= read -r line; do
