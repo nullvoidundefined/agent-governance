@@ -61,7 +61,7 @@
     "rules/styling.mdc": "sha256:7a91ee0246eb8c0fca30b6ee819fc17eb5be7bd29b8ddc36247795db8f5c94be",
     "skills/bug-hunt/SKILL.md": "sha256:03816cf46d7d2fb3567c6ac200b345adc9af0b4fc3b632ff80c1cbd9fcfcb42b",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:6f68937dc8f5e89fc5a6d1844dc44f65bc74e96c63523fb12043e37af3fafbab",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:66592107f9195333a4788cc67b17b8e7e2f6096065688909ff73aeb97860fe9d",
     "skills/documentation-create/SKILL.md": "sha256:84a345b309cef2e5a155a74c0513a38f494117f6675a6d5c8f0d5855b43984b5",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:572a15ca62c7b54f5bc8f45d059ecb3c8edc3115f60342f954930828d4f587a5",

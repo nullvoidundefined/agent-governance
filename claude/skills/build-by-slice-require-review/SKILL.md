@@ -1,11 +1,11 @@
 ---
 name: build-by-slice-require-review
-description: Use when building a feature as a series of PRs ("build this slice by slice", "start the slice", "next slice"). Plan the slices once, build each with the test-first loop, one PR per slice, and stop after each PR until the owner approves or merges it.
+description: Use when building a feature as a series of PRs ("build this slice by slice", "start the slice", "next slice"). Plan the slices once, build each with the test-first loop, one PR per slice, and merge each PR on green CI and a clean review before starting the next.
 ---
 
 # Build by slice, require review
 
-A feature ships as a short sequence of small PRs. The owner's approval of each PR is the gate between slices.
+A feature ships as a short sequence of small PRs. Green CI and a review with no open HIGH are the gate between slices (owner decision 2026-10-04).
 
 ## 1. Plan once
 
@@ -28,14 +28,14 @@ A feature ships as a short sequence of small PRs. The owner's approval of each P
   - `## Review`, with the reviewer, the range, and the findings with their dispositions
   - `## Security review`, for high risk
 
-## 3. Stop for the owner
+## 3. Merge on green
 
-- Tell the owner the PR is ready, with its link, and stop. Do not start the next slice.
-- Red CI on your own PR is yours to fix before you ask for approval.
-- When the owner requests changes, make them on the same PR, rerun the affected checks, and stop again. Their feedback does not restart the slice.
-- When they approve or merge, start the next slice from step 2.
+- Red CI on your own PR is yours to fix.
+- Once CI is green and the review has no open HIGH, squash-merge the PR, delete the branch, and verify the commit landed on `main` (`git log origin/main`, not the PR badge). Then start the next slice from step 2.
+- A security-touching PR is the owner's to read and merge: tell the owner it is ready, with its link, and stop.
+- When the owner requests changes, make them on a follow-up PR (or on the same PR if it is still open) and rerun the affected checks. Their feedback does not restart the slice.
 
 ## Notes
 
-- **If the owner asks you to keep going without stopping,** build the remaining slices as a stack (each branched from the previous). Each one still gets its full loop. Leave the merges to the owner.
+- **If the owner asks you to hold merges,** stop after each PR with its link and leave the merge to them.
 - **If a slice grows past its plan,** split it and tell the owner.

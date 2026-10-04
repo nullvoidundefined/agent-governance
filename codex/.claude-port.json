@@ -38,7 +38,7 @@
     "hooks.json": "sha256:ed8a36a2b534e4f984eb0312270cf67fd37e1357e2fcc0b46c41d34df2aee87c",
     "skills/bug-hunt/SKILL.md": "sha256:c5343bf65a321327f5ccccd251d2ced11941813085e23aa098825d04e7d4b06a",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:f49d604e8333defbb584752dcf4a9b29b73912591725d04da34b06625e504798",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:b493b775c892b97c841293db9d96d8019e8cf3cde8b7097ba3e6aaf5de36aa57",
     "skills/documentation-create/SKILL.md": "sha256:cb3a01623b84ee603bcdb7ffa86a48994fc93b6a002d8241630ac11d1817677b",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:8e8cf6c41ab91752482c53866bc8d0ed484c426c9ba78501b7761714669805bf",
