@@ -565,7 +565,7 @@ segment_targets() {
   verb="${words[index]##*/}"
   local operands=("${words[@]:index+1}")
   case "$verb" in
-    rm | rmdir | shred | truncate | unlink | mv | cp | rsync | install | ln | dd | sed | gsed | git | find | perl)
+    rm | rmdir | shred | truncate | unlink | mv | cp | rsync | install | ln | dd | sed | gsed | git | find)
       drop_redirects "${operands[@]+"${operands[@]}"}"
       operands=("${FILE_OPERANDS[@]+"${FILE_OPERANDS[@]}"}") ;;
   esac
@@ -598,7 +598,11 @@ segment_targets() {
     *)
       if [[ "$verb" =~ $INTERPRETERS ]]; then
         # perl -i edits its operands in place; any other flag set runs a script.
-        if [ "$verb" = perl ] && [[ " ${operands[*]:-} " =~ \ -[a-zA-Z]*i[a-zA-Z]*\  ]]; then add_operands "${operands[@]}"; return 0; fi
+        # Only that branch drops redirect words: the script branch below needs the
+        # raw words, or `perl <<< '<script>'` loses its script (PR #198 review).
+        if [ "$verb" = perl ] && [[ " ${operands[*]:-} " =~ \ -[a-zA-Z]*i[a-zA-Z]*\  ]]; then
+          drop_redirects "${operands[@]}"; add_operands "${FILE_OPERANDS[@]+"${FILE_OPERANDS[@]}"}"; return 0
+        fi
         for word in "${operands[@]+"${operands[@]}"}"; do
           if [[ "$word" =~ ^__Q[0-9]+__$ ]]; then
             while IFS= read -r target; do [ -n "$target" ] && add_target "$target"; done < <(script_targets "$(resolve_word "$word")")

@@ -62,6 +62,10 @@ bash_call "node -e \"require('fs').writeFileSync('src/__tests__/score.test.ts', 
 bash_call 'cp /tmp/other.ts src/__tests__/score.test.ts 2>/dev/null' | expect deny "cp onto the locked test with a trailing 2>/dev/null"
 bash_call 'cp /tmp/other.ts src/__tests__/score.test.ts >/dev/null 2>&1' | expect deny "cp onto the locked test with >/dev/null 2>&1"
 bash_call 'install -m 644 /tmp/other.ts src/__tests__/score.test.ts > /dev/null' | expect deny "install onto the locked test with a spaced redirect"
+# An interpreter fed by a here-string keeps its script: filtering redirect
+# words must not drop the quoted word after `<<<` (PR #198 review).
+bash_call "perl <<< 'open(my \$f, \">\", \"src/__tests__/score.test.ts\")'" | expect deny "perl here-string opening the locked test for writing"
+bash_call "perl -pi -e 's/scores/scored/' src/__tests__/score.test.ts 2>/dev/null" | expect deny "perl -pi on the locked test with a trailing 2>/dev/null"
 reviewer_call() { jq -nc --arg c "$1" --arg d "$REPO" '{tool_name:"Bash",cwd:$d,agent_type:"pr-reviewer",tool_input:{command:$c}}'; }
 reviewer_call 'git stash list >/dev/null' | expect allow "read-only role: git stash list >/dev/null"
 reviewer_call 'rm -f /tmp/scratch.txt 2>/dev/null' | expect allow "read-only role: 2>/dev/null after an rm outside the repo"
