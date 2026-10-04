@@ -7,7 +7,7 @@
 #       every test: the parallel batch first, then each `# Shard: serial`
 #       test alone, because a timing-sensitive test measured under the
 #       load of its neighbours fails for reasons that are not its subject's.
-#       CI and doctor.sh use this mode through run-tests.sh.
+#       CI uses this mode through run-tests.sh.
 #   run-test-shards.sh <tests-dir> --affected
 #       the Stop gate's mode. The fast tier (every test with no
 #       `# Shard: slow` or `# Shard: serial` header) always runs, so the
