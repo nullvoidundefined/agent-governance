@@ -1,0 +1,12 @@
+{
+  "_comment": "Step table for enforce/route.sh (IAN-603, slice 04 PR 3). default: the provider that owns the step on role grounds. pinned: the step never moves for pace or exhaustion. high: overrides for --risk high. crossModel: the provider is always the other one from --author. model: named in the reason.",
+  "steps": {
+    "spec": { "default": "claude" },
+    "architecture": { "default": "claude" },
+    "test-author": { "default": "codex" },
+    "implement": { "default": "codex", "high": { "default": "claude", "pinned": true } },
+    "review": { "crossModel": true },
+    "security-review": { "default": "claude", "pinned": true, "model": "fable" },
+    "merge": { "default": "owner", "pinned": true }
+  }
+}
