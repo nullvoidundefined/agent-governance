@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# run-fixture-shards.sh: the one runner behind both fixture suites (R-509,
-# IAN-94). It runs the *.test.sh fixtures of one directory in parallel and
+# run-test-shards.sh: the one runner behind both test suites (R-509,
+# IAN-94). It runs the *.test.sh tests of one directory in parallel and
 # decides which of them a run needs.
 #
-#   run-fixture-shards.sh <tests-dir> --all
-#       every fixture: the parallel batch first, then each `# Shard: serial`
-#       fixture alone, because a timing-sensitive fixture measured under the
+#   run-test-shards.sh <tests-dir> --all
+#       every test: the parallel batch first, then each `# Shard: serial`
+#       test alone, because a timing-sensitive test measured under the
 #       load of its neighbours fails for reasons that are not its subject's.
 #       CI and doctor.sh use this mode through run-tests.sh.
-#   run-fixture-shards.sh <tests-dir> --affected
-#       the Stop gate's mode. The fast tier (every fixture with no
+#   run-test-shards.sh <tests-dir> --affected
+#       the Stop gate's mode. The fast tier (every test with no
 #       `# Shard: slow` or `# Shard: serial` header) always runs, so the
 #       closure and tree-scanning checks, which are nearly all fast, never
-#       wait for CI. A slow or serial fixture runs when its text names a changed
+#       wait for CI. A slow or serial test runs when its text names a changed
 #       file (the path under claude/, or the basename), when a changed path
-#       matches a glob on its `# Watches:` line, or when the fixture itself
+#       matches a glob on its `# Watches:` line, or when the test itself
 #       changed. Everything runs when a changed file is named by no
-#       fixture in any tree, is one of the shared files every fixture depends
+#       test in any tree, is one of the shared files every test depends
 #       on, or cannot be known because there is no git repository, so a change
 #       the selector cannot place is never skipped.
 #
@@ -30,19 +30,19 @@
 # steer a real run (PR #42 review): run-tests.sh forwards only the mode.
 #   --changed-from <file>  read the changed paths (repo relative, one per
 #                          line) from a file instead of from git.
-#   --list                 print the chosen fixtures' names and run nothing.
+#   --list                 print the chosen tests' names and run nothing.
 # --also <path>, repeatable, adds a repo-relative path to the changed set in
 # affected mode and never removes one: tdd.sh names its locked tests and the
-# fixtures its RED run passed, so they run even when git no longer lists them
+# tests its RED run passed, so they run even when git no longer lists them
 # as changed (IAN-510).
-# One option exists for callers that need each fixture's own result:
+# One option exists for callers that need each test's own result:
 #   --results-dir <dir>    keep <name>.out, <name>.verdict, and <name>.status
-#                          (the exit code) for every fixture in an existing
+#                          (the exit code) for every test in an existing
 #                          directory instead of a temporary one deleted at
 #                          the end. enforce/tdd.sh builds its shell report
 #                          from these.
-# A tree with no fixtures fails, as the sequential runners did.
-# --settle-seconds <n> sets the minimum pause before the serial fixtures
+# A tree with no tests fails, as the sequential runners did.
+# --settle-seconds <n> sets the minimum pause before the serial tests
 # (default 5), after which the runner also waits for the one-minute load to
 # fall below the CPU count, for at most --settle-max-seconds <n> (default 60).
 # --jobs <n> sets the parallelism; without it the runner uses the idle CPUs
@@ -56,33 +56,33 @@
 # Runs queue per worktree and are capped machine-wide (IAN-348, IAN-359,
 # IAN-441). Before running anything a run takes two kernel flocks, both on
 # file descriptors its workers inherit, so each lasts until the last process
-# running a fixture for that run has exited, whatever happens to the runner
+# running a test for that run has exited, whatever happens to the runner
 # itself. Both live in the private directory
-# ${TMPDIR:-/tmp}/claude-fixture-shards.<uid>/: its worktree's lock,
-# claude-fixture-shards.worktree.<cksum of the checkout root>.flock on fd 9,
+# ${TMPDIR:-/tmp}/claude-test-shards.<uid>/: its worktree's lock,
+# claude-test-shards.worktree.<cksum of the checkout root>.flock on fd 9,
 # so two runs from one checkout never overlap; then one of
-# FIXTURE_SHARDS_MAX_RUNS machine-wide run slots (default half the CPUs),
-# claude-fixture-shards.slot.<n>.flock on fd 8, so at most that many worktrees
-# run fixtures at once, as long as every caller uses the same cap. A waiting run
+# TEST_SHARDS_MAX_RUNS machine-wide run slots (default half the CPUs),
+# claude-test-shards.slot.<n>.flock on fd 8, so at most that many worktrees
+# run tests at once, as long as every caller uses the same cap. A waiting run
 # prints one line per holder or one line for full slots, polls, and exits 75
-# after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. The
-# runner exports its PID as FIXTURE_SHARDS_LOCK_HELD and its worktree lock's
-# path as FIXTURE_SHARDS_LOCK_HELD_FILE, so a fixture that calls the runner
+# after TEST_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. The
+# runner exports its PID as TEST_SHARDS_LOCK_HELD and its worktree lock's
+# path as TEST_SHARDS_LOCK_HELD_FILE, so a test that calls the runner
 # again takes neither lock and does not wait on its own parent. --list takes
 # no lock.
 #
-# A fixture passes on exit 0 with a PASS line and no FAIL line, the verdict
+# A test passes on exit 0 with a PASS line and no FAIL line, the verdict
 # the sequential runners applied; output is printed in name order once the
 # run finishes, so a parallel run reads the same as a sequential one. Exit 0
-# when every chosen fixture passed, 1 when one failed, 2 on a usage error,
+# when every chosen test passed, 1 when one failed, 2 on a usage error,
 # and 75 when the wait for the run lock reached its cap.
 set -uo pipefail
 
-# Files every fixture of a kind depends on without naming them: the harness
+# Files every test of a kind depends on without naming them: the harness
 # plumbing, and the ESLint bundle's manifest, lockfile, and config, which
-# every lint-driven fixture loads (PR #42 late review: a lockfile change was
-# mapped to the one fast fixture that names it and skipped the slow ones).
-SHARED_FILES="enforce/harness-root.sh enforce/run-fixture-shards.sh enforce/tests/run-tests.sh hooks/tests/run-tests.sh enforce/package.json enforce/package-lock.json enforce/eslint.config.mjs enforce/eslint-options.mjs enforce/lint.mjs"
+# every lint-driven test loads (PR #42 late review: a lockfile change was
+# mapped to the one fast test that names it and skipped the slow ones).
+SHARED_FILES="enforce/harness-root.sh enforce/run-test-shards.sh enforce/tests/run-tests.sh hooks/tests/run-tests.sh enforce/package.json enforce/package-lock.json enforce/eslint.config.mjs enforce/eslint-options.mjs enforce/lint.mjs"
 MAX_DEFAULT_JOBS=8
 SERIAL_SETTLE_DEFAULT_SECONDS=5
 SERIAL_SETTLE_MAX_DEFAULT_SECONDS=60
@@ -90,9 +90,9 @@ LOAD_FROM=""
 # The run locks (IAN-359, IAN-441): kernel flocks taken through perl, because
 # macOS ships perl but no flock(1). They replaced an mkdir lock with a
 # recorded PID (IAN-348), which a TERM to the runner released while its
-# fixtures still ran, and whose dead-holder takeover could admit two runs.
+# tests still ran, and whose dead-holder takeover could admit two runs.
 # The worktree lock replaced one machine-wide lock file
-# (claude-fixture-shards.flock), which made every worktree wait for every
+# (claude-test-shards.flock), which made every worktree wait for every
 # other; neither old name is ever mistaken for these locks. They live in a
 # directory private to the user, created mode 700 and refused when it is a
 # symlink, another user's, or open to others, because their names are fixed
@@ -101,8 +101,8 @@ LOAD_FROM=""
 # so the worktree, is known; require_lock_parent_dir then rebuilds the
 # directory and prefix on TMPDIR's resolved path and sets RUN_LOCK_FILE.
 RUN_LOCK_PARENT_DIR="${TMPDIR:-/tmp}"
-RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-fixture-shards.$(id -u)"
-RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-fixture-shards"
+RUN_LOCK_DIR="${RUN_LOCK_PARENT_DIR%/}/claude-test-shards.$(id -u)"
+RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-test-shards"
 RUN_LOCK_FILE=""
 RUN_LOCK_KEY=""
 RUN_SLOT=""
@@ -110,16 +110,16 @@ RUN_LOCK_POLL_SECONDS=2
 RUN_LOCK_WAIT_DEFAULT_SECONDS=1200
 RUN_LOCK_GAVE_UP_STATUS=75
 
-# run_one_fixture <result dir> <fixture>: runs one fixture with stdin closed
+# run_one_test <result dir> <test>: runs one test with stdin closed
 # and records its verdict and output. Invoked through xargs as a subcommand,
-# which appends the fixture last, hence the argument order.
-run_one_fixture() {
-  local result_dir="$1" fixture="$2" name output status
-  name=$(basename "$fixture")
-  # fds 8 and 9 closed: a background process a fixture leaks must not hold
+# which appends the test last, hence the argument order.
+run_one_test() {
+  local result_dir="$1" test_file="$2" name output status
+  name=$(basename "$test_file")
+  # fds 8 and 9 closed: a background process a test leaks must not hold
   # the run slot or the worktree lock after the run ends; this process keeps
-  # both while the fixture runs.
-  output=$(bash "$fixture" </dev/null 8>&- 9>&- 2>&1); status=$?
+  # both while the test runs.
+  output=$(bash "$test_file" </dev/null 8>&- 9>&- 2>&1); status=$?
   printf '%s\n' "$output" > "$result_dir/$name.out"
   echo "$status" > "$result_dir/$name.status"
   # Here-strings, not pipes: under pipefail, `printf | grep -q` fails when grep
@@ -132,11 +132,11 @@ run_one_fixture() {
   fi
 }
 if [ "${1:-}" = "--run-one" ]; then
-  run_one_fixture "$2" "$3"
+  run_one_test "$2" "$3"
   exit 0
 fi
 
-# shard_of <fixture>: prints serial, slow, or fast from the fixture's header.
+# shard_of <test>: prints serial, slow, or fast from the test's header.
 shard_of() {
   if grep -qE '^# Shard: serial$' "$1"; then echo serial
   elif grep -qE '^# Shard: slow$' "$1"; then echo slow
@@ -163,7 +163,7 @@ current_load() {
 # default_job_count: the idle CPUs (CPU count minus the current load), from a
 # quarter of the CPUs to MAX_DEFAULT_JOBS. A fixed 8 let several sessions
 # sharding at once drive the load to 124 on a 14-CPU machine; a floor of 1
-# then ran a full suite one fixture at a time past the Stop gate's 600-second
+# then ran a full suite one test at a time past the Stop gate's 600-second
 # timeout (2026-09-18).
 default_job_count() {
   local jobs cpus floor
@@ -178,7 +178,7 @@ default_job_count() {
 # settle_before_serial <min seconds> <max seconds>: waits at least the minimum,
 # then until the load falls below the CPU count or the maximum is reached. A
 # fixed pause was not enough once other sessions kept the machine loaded: the
-# timing fixture then measured their load, not the chain it guards.
+# timing test then measured their load, not the chain it guards.
 settle_before_serial() {
   local min_seconds="$1" max_seconds="$2" waited cpus
   sleep "$min_seconds"; waited="$min_seconds"; cpus=$(cpu_count)
@@ -186,7 +186,7 @@ settle_before_serial() {
     sleep 1; waited=$(( waited + 1 ))
   done
   if [ "$(current_load)" -ge "$cpus" ]; then
-    echo "fixture-shards: load still $(current_load) on $cpus CPUs after ${waited}s; running the serial fixtures anyway"
+    echo "test-shards: load still $(current_load) on $cpus CPUs after ${waited}s; running the serial tests anyway"
   fi
 }
 
@@ -208,20 +208,20 @@ changed_files_from_git() {
   printf '%s\n' "$diff_lines"
 }
 
-# names_file <fixture> <repo-relative path>: true when the fixture is that
+# names_file <test> <repo-relative path>: true when the test is that
 # path, its text names the path under claude/ or the file's basename, or the
 # path matches one of the globs on its `# Watches:` line. A whole-tree scanner
 # declares what it reads there, because it never names those files itself
 # (PR #42 review: hook-latency times every registered hook without naming one).
 names_file() {
-  local fixture="$1" path="$2" relative glob
+  local test_file="$1" path="$2" relative glob
   relative="${path#claude/}"
-  case "$fixture" in *"/$relative") return 0 ;; esac
-  grep -qF -- "$relative" "$fixture" || grep -qF -- "$(basename "$path")" "$fixture" && return 0
+  case "$test_file" in *"/$relative") return 0 ;; esac
+  grep -qF -- "$relative" "$test_file" || grep -qF -- "$(basename "$path")" "$test_file" && return 0
   # Word-split the globs with filename expansion off, or `hooks/*.sh` would
   # expand against the current directory before it is ever matched.
   local globs matched=1
-  globs=$(sed -n 's/^# Watches: //p' "$fixture")
+  globs=$(sed -n 's/^# Watches: //p' "$test_file")
   set -f
   for glob in $globs; do
     # shellcheck disable=SC2053  # the right side is a glob on purpose
@@ -231,99 +231,99 @@ names_file() {
   return "$matched"
 }
 
-# fallback_reason <changed files> <mapping corpus>: prints why every fixture
+# fallback_reason <changed files> <mapping corpus>: prints why every test
 # must run, or nothing when each changed file is placed.
 fallback_reason() {
-  local changed="$1" corpus="$2" path relative fixture placed
+  local changed="$1" corpus="$2" path relative test_file placed
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     relative="${path#claude/}"
     case " $SHARED_FILES " in *" $relative "*) echo "shared: $path"; return ;; esac
     # The repository's own docs/ tree (specs, handoffs, PR notes, security
-    # reviews) is read by no fixture; fixtures build sandbox docs. Placing it
-    # keeps a spec or handoff on the branch from forcing every fixture on each
+    # reviews) is read by no test; tests build sandbox docs. Placing it
+    # keeps a spec or handoff on the branch from forcing every test on each
     # Stop and tdd.sh run (IAN-510). docs/ under claude/ is not this tree.
     case "$path" in docs/*) continue ;; esac
     placed=no
-    while IFS= read -r fixture; do
-      [ -n "$fixture" ] && names_file "$fixture" "$path" && { placed=yes; break; }
+    while IFS= read -r test_file; do
+      [ -n "$test_file" ] && names_file "$test_file" "$path" && { placed=yes; break; }
     done <<< "$corpus"
     [ "$placed" = yes ] || { echo "unmapped: $path"; return; }
   done <<< "$changed"
 }
 
-# select_affected <fixtures> <changed files>: the fast tier plus each slow or
-# serial fixture that names a changed file.
+# select_affected <tests> <changed files>: the fast tier plus each slow or
+# serial test that names a changed file.
 select_affected() {
-  local fixtures="$1" changed="$2" fixture path
-  while IFS= read -r fixture; do
-    [ -n "$fixture" ] || continue
-    if [ "$(shard_of "$fixture")" = fast ]; then echo "$fixture"; continue; fi
+  local test_files="$1" changed="$2" test_file path
+  while IFS= read -r test_file; do
+    [ -n "$test_file" ] || continue
+    if [ "$(shard_of "$test_file")" = fast ]; then echo "$test_file"; continue; fi
     while IFS= read -r path; do
-      [ -n "$path" ] && names_file "$fixture" "$path" && { echo "$fixture"; break; }
+      [ -n "$path" ] && names_file "$test_file" "$path" && { echo "$test_file"; break; }
     done <<< "$changed"
-  done <<< "$fixtures"
+  done <<< "$test_files"
 }
 
-# run_selected <fixtures> <jobs> <result dir> <settle seconds> <settle max>: the parallel batch, then a
-# settle pause, then each serial fixture alone. The pause exists because a
-# timing fixture started the instant the batch ends measures the batch's
+# run_selected <tests> <jobs> <result dir> <settle seconds> <settle max>: the parallel batch, then a
+# settle pause, then each serial test alone. The pause exists because a
+# timing test started the instant the batch ends measures the batch's
 # leftover load: on 2026-09-18 hook-latency failed by 2ms straight after the
 # batch and passed three times out of three when run alone. The pause changes
 # when the measurement is taken, not what it must meet.
 #
-# Fixture paths travel one per line and reach xargs NUL-delimited, so a space
-# in the checkout path never splits one fixture into several arguments (PR #42
+# Test paths travel one per line and reach xargs NUL-delimited, so a space
+# in the checkout path never splits one test into several arguments (PR #42
 # review round 4).
 run_selected() {
-  local fixtures="$1" jobs="$2" result_dir="$3" settle_seconds="$4" settle_max_seconds="$5" fixture serial="" batch=""
-  while IFS= read -r fixture; do
-    [ -n "$fixture" ] || continue
-    if [ "$(shard_of "$fixture")" = serial ]; then serial+="$fixture"$'\n'; else batch+="$fixture"$'\n'; fi
-  done <<< "$fixtures"
+  local test_files="$1" jobs="$2" result_dir="$3" settle_seconds="$4" settle_max_seconds="$5" test_file serial="" batch=""
+  while IFS= read -r test_file; do
+    [ -n "$test_file" ] || continue
+    if [ "$(shard_of "$test_file")" = serial ]; then serial+="$test_file"$'\n'; else batch+="$test_file"$'\n'; fi
+  done <<< "$test_files"
   # Guarded because GNU xargs starts the child once even on empty input, with
-  # no fixture argument, which a serial-only tree would report as a failure.
+  # no test argument, which a serial-only tree would report as a failure.
   if [ -n "$batch" ]; then
     printf '%s' "$batch" | tr '\n' '\0' \
       | xargs -0 -P "$jobs" -n 1 bash "$0" --run-one "$result_dir" 2>/dev/null
   fi
   [ -n "$batch" ] && [ -n "$serial" ] && settle_before_serial "$settle_seconds" "$settle_max_seconds"
-  while IFS= read -r fixture; do
-    [ -n "$fixture" ] && bash "$0" --run-one "$result_dir" "$fixture"
+  while IFS= read -r test_file; do
+    [ -n "$test_file" ] && bash "$0" --run-one "$result_dir" "$test_file"
   done <<< "$serial"
 }
 
-# report_results <fixtures> <result dir>: ok/FAIL lines in name order, each
-# failing fixture followed by every line carrying the failure marker and its
+# report_results <tests> <result dir>: ok/FAIL lines in name order, each
+# failing test followed by every line carrying the failure marker and its
 # last three lines; true
 # when all passed.
 report_results() {
-  local fixtures="$1" result_dir="$2" fixture name all_passed=0
-  while IFS= read -r fixture; do
-    [ -n "$fixture" ] || continue
-    name=$(basename "$fixture")
+  local test_files="$1" result_dir="$2" test_file name all_passed=0
+  while IFS= read -r test_file; do
+    [ -n "$test_file" ] || continue
+    name=$(basename "$test_file")
     if [ "$(cat "$result_dir/$name.verdict" 2>/dev/null)" = ok ]; then
       echo "ok   $name"
     else
       # Every failure line, then the tail: the last three lines alone were
-      # all passing cases when fixture-implementation-root failed on main
+      # all passing cases when test-implementation-root failed on main
       # after #42, which left the failure unreadable from the CI log.
       echo "FAIL $name"
-      # The verdict's own marker test, so every line that failed the fixture is
+      # The verdict's own marker test, so every line that failed the test is
       # shown, including ones with the marker mid-line (PR #59 review).
       grep -F 'FAIL' "$result_dir/$name.out" 2>/dev/null
       tail -3 "$result_dir/$name.out" 2>/dev/null
       all_passed=1
     fi
-  done <<< "$fixtures"
+  done <<< "$test_files"
   return "$all_passed"
 }
 
-# affected_selection <tests dir> <fixtures> <changed-from file or "">: sets
+# affected_selection <tests dir> <tests> <changed-from file or "">: sets
 # SELECTED and REASON for --affected. REASON non-empty means everything runs.
 affected_selection() {
-  local tests_dir="$1" fixtures="$2" changed_from="$3" also="$4" changed root corpus
-  SELECTED="$fixtures"; REASON=""
+  local tests_dir="$1" test_files="$2" changed_from="$3" also="$4" changed root corpus
+  SELECTED="$test_files"; REASON=""
   if [ -n "$changed_from" ]; then
     changed=$(cat "$changed_from")
   else
@@ -333,7 +333,7 @@ affected_selection() {
   changed=$(printf '%s\n%s\n' "$changed" "$also" | sed '/^$/d' | sort -u)
   corpus=$(ls "$tests_dir"/../../*/tests/*.test.sh "$tests_dir"/*.test.sh 2>/dev/null | sort -u)
   REASON=$(fallback_reason "$changed" "$corpus")
-  [ -n "$REASON" ] || SELECTED=$(select_affected "$fixtures" "$changed")
+  [ -n "$REASON" ] || SELECTED=$(select_affected "$test_files" "$changed")
 }
 
 # worktree_root <tests dir>: the top of the checkout holding the tests
@@ -352,7 +352,7 @@ worktree_root() {
 # or the resolved directory itself when there is none. Reads the filesystem
 # only, never a repository's configuration. A directory that can no longer be
 # entered is returned as given, since walking an empty path would reach "."
-# and never end; the run then finds no fixtures there and exits 1 (PR #154
+# and never end; the run then finds no tests there and exits 1 (PR #154
 # review round 11). The walk also stops at any path that is not absolute.
 nearest_git_root() {
   local resolved_dir candidate_dir
@@ -380,16 +380,16 @@ run_slot_path() {
   echo "$RUN_LOCK_PREFIX.slot.$1.flock"
 }
 
-# max_concurrent_runs: how many worktrees may run fixtures at once machine-wide:
-# FIXTURE_SHARDS_MAX_RUNS when set, else half the CPUs, at least 1. Exits 2
+# max_concurrent_runs: how many worktrees may run tests at once machine-wide:
+# TEST_SHARDS_MAX_RUNS when set, else half the CPUs, at least 1. Exits 2
 # on a value that is not a whole number from 1 to 9999; a longer one would
 # wrap in bash arithmetic and stall every run until the wait cap (PR #154
 # review round 2). An environment variable by the owner's decision (IAN-441),
-# because raising it adds load but can never skip or shorten a fixture.
+# because raising it adds load but can never skip or shorten a test.
 max_concurrent_runs() {
-  local configured="${FIXTURE_SHARDS_MAX_RUNS:-}" half_cpus
+  local configured="${TEST_SHARDS_MAX_RUNS:-}" half_cpus
   if [ -n "$configured" ]; then
-    [[ "$configured" =~ ^[1-9][0-9]{0,3}$ ]] || usage_error "FIXTURE_SHARDS_MAX_RUNS needs a whole number from 1 to 9999, not '$configured'"
+    [[ "$configured" =~ ^[1-9][0-9]{0,3}$ ]] || usage_error "TEST_SHARDS_MAX_RUNS needs a whole number from 1 to 9999, not '$configured'"
     echo "$configured"; return
   fi
   half_cpus=$(( $(cpu_count) / 2 )); [ "$half_cpus" -lt 1 ] && half_cpus=1
@@ -445,19 +445,19 @@ is_ancestor_process() {
 # TMPDIR, such as /var and /private/var on macOS, names the same directory).
 is_lock_dir_file() {
   local held_dir own_dir
-  [[ "$(basename "$1")" =~ ^claude-fixture-shards\.worktree\.[0-9]+\.flock$ ]] || return 1
+  [[ "$(basename "$1")" =~ ^claude-test-shards\.worktree\.[0-9]+\.flock$ ]] || return 1
   held_dir=$(cd "$(dirname "$1")" 2>/dev/null && pwd -P) || return 1
   own_dir=$(cd "$RUN_LOCK_DIR" 2>/dev/null && pwd -P) || return 1
   [ "$held_dir" = "$own_dir" ]
 }
 
 # is_nested_run: true when this runner was started by one of another run's
-# fixtures and so must not wait on that run's worktree lock or run slot:
-# FIXTURE_SHARDS_LOCK_HELD_FILE names a worktree lock in this run's lock
-# directory, FIXTURE_SHARDS_LOCK_HELD names the run that file records as
+# tests and so must not wait on that run's worktree lock or run slot:
+# TEST_SHARDS_LOCK_HELD_FILE names a worktree lock in this run's lock
+# directory, TEST_SHARDS_LOCK_HELD names the run that file records as
 # holder, that lock is held right now, and the holder is this runner's
 # ancestor or no longer exists (a killed runner, whose orphaned workers still
-# hold its locks and whose fixtures' nested runs must not queue behind them).
+# hold its locks and whose tests' nested runs must not queue behind them).
 # A marker naming another PID, a holder whose run has finished, a file
 # outside the lock directory, or a live runner that is not an ancestor, such
 # as another worktree's, is stray or foreign and is ignored, so none can
@@ -465,7 +465,7 @@ is_lock_dir_file() {
 # proof against a same-user process that fabricates a held lock file and
 # kills its own holder; nothing under one user's TMPDIR can be.
 is_nested_run() {
-  local marker="${FIXTURE_SHARDS_LOCK_HELD:-}" held_file="${FIXTURE_SHARDS_LOCK_HELD_FILE:-}"
+  local marker="${TEST_SHARDS_LOCK_HELD:-}" held_file="${TEST_SHARDS_LOCK_HELD_FILE:-}"
   [[ "$marker" =~ ^[0-9]+$ ]] && [ -n "$held_file" ] || return 1
   is_lock_dir_file "$held_file" || return 1
   [ "$marker" = "$(lock_holder_pid "$held_file")" ] && is_file_locked "$held_file" || return 1
@@ -475,10 +475,10 @@ is_nested_run() {
 
 # open_run_lock_file: opens the worktree lock file on fd 9 for the rest of
 # the run. The xargs workers inherit it, which is what keeps the lock held
-# while any of them is still running a fixture.
+# while any of them is still running a test.
 open_run_lock_file() {
   { exec 9>>"$RUN_LOCK_FILE"; } 2>/dev/null && return 0
-  echo "fixture-shards: cannot open the run lock $RUN_LOCK_FILE; point TMPDIR at a writable directory" >&2
+  echo "test-shards: cannot open the run lock $RUN_LOCK_FILE; point TMPDIR at a writable directory" >&2
   exit 1
 }
 
@@ -500,7 +500,7 @@ try_run_slot() {
   for (( slot = 1; slot <= $1; slot++ )); do
     slot_file=$(run_slot_path "$slot")
     if ! { exec 8>>"$slot_file"; } 2>/dev/null; then
-      echo "fixture-shards: cannot open the run slot $slot_file; remove it or point TMPDIR at a writable directory" >&2
+      echo "test-shards: cannot open the run slot $slot_file; remove it or point TMPDIR at a writable directory" >&2
       exit 1
     fi
     if try_lock_fd 8; then
@@ -515,18 +515,18 @@ try_run_slot() {
 # give_up_waiting <wait cap> <holder pid>: the wait cap's clean failure, so a
 # queued run ends the turn with a reason instead of hanging it. Exits 75
 # (EX_TEMPFAIL) rather than 1, so verification-gate.sh can tell a queue that
-# never cleared from a failing fixture and skip its retry, which would wait a
+# never cleared from a failing test and skip its retry, which would wait a
 # second full cap past the Stop hook's budget (IAN-351).
 give_up_waiting() {
-  echo "fixture-shards: gave up after ${1}s waiting for PID ${2:-unknown} (or the fixtures it started) to release $RUN_LOCK_FILE; rerun once that run finishes" >&2
+  echo "test-shards: gave up after ${1}s waiting for PID ${2:-unknown} (or the tests it started) to release $RUN_LOCK_FILE; rerun once that run finishes" >&2
   exit "$RUN_LOCK_GAVE_UP_STATUS"
 }
 
 # give_up_waiting_for_slot <wait cap> <run cap>: the same failure when every
 # machine-wide run slot stayed busy. Exiting releases the worktree lock, since
-# no fixture has started to inherit it.
+# no test has started to inherit it.
 give_up_waiting_for_slot() {
-  echo "fixture-shards: gave up after ${1}s waiting for one of the $2 run slots under $RUN_LOCK_PARENT_DIR (FIXTURE_SHARDS_MAX_RUNS); rerun once another worktree's run finishes" >&2
+  echo "test-shards: gave up after ${1}s waiting for one of the $2 run slots under $RUN_LOCK_PARENT_DIR (TEST_SHARDS_MAX_RUNS); rerun once another worktree's run finishes" >&2
   exit "$RUN_LOCK_GAVE_UP_STATUS"
 }
 
@@ -541,20 +541,20 @@ give_up_waiting_for_slot() {
 require_lock_parent_dir() {
   local resolved_parent
   if [ ! -d "$RUN_LOCK_PARENT_DIR" ]; then
-    echo "fixture-shards: the run lock parent $RUN_LOCK_PARENT_DIR does not exist; create it or point TMPDIR at an existing directory" >&2
+    echo "test-shards: the run lock parent $RUN_LOCK_PARENT_DIR does not exist; create it or point TMPDIR at an existing directory" >&2
     exit 1
   fi
   if [ ! -w "$RUN_LOCK_PARENT_DIR" ]; then
-    echo "fixture-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is not writable; point TMPDIR at a writable directory" >&2
+    echo "test-shards: cannot create the run lock under $RUN_LOCK_PARENT_DIR, which is not writable; point TMPDIR at a writable directory" >&2
     exit 1
   fi
   resolved_parent=$(cd "$RUN_LOCK_PARENT_DIR" 2>/dev/null && pwd -P) || {
-    echo "fixture-shards: cannot resolve the run lock parent $RUN_LOCK_PARENT_DIR; point TMPDIR at a writable directory" >&2
+    echo "test-shards: cannot resolve the run lock parent $RUN_LOCK_PARENT_DIR; point TMPDIR at a writable directory" >&2
     exit 1
   }
   require_safe_directory_chain "$resolved_parent"
-  RUN_LOCK_DIR="${resolved_parent%/}/claude-fixture-shards.$(id -u)"
-  RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-fixture-shards"
+  RUN_LOCK_DIR="${resolved_parent%/}/claude-test-shards.$(id -u)"
+  RUN_LOCK_PREFIX="$RUN_LOCK_DIR/claude-test-shards"
   RUN_LOCK_FILE="$RUN_LOCK_PREFIX.worktree.$RUN_LOCK_KEY.flock"
 }
 
@@ -585,11 +585,11 @@ require_safe_directory_chain() {
 # prints nothing and the directory is refused (PR #154 review round 6).
 is_safe_chain_directory() {
   if [ ! -O "$1" ] && [ -z "$(find "$1" -maxdepth 0 -user 0 2>/dev/null)" ]; then
-    echo "fixture-shards: $1 belongs to another user, who could replace the run lock directory below it; point TMPDIR at a directory whose every ancestor is yours or root's" >&2
+    echo "test-shards: $1 belongs to another user, who could replace the run lock directory below it; point TMPDIR at a directory whose every ancestor is yours or root's" >&2
     return 1
   fi
   if [ -z "$(find "$1" -maxdepth 0 ! -perm -020 ! -perm -002 2>/dev/null)" ] && [ ! -k "$1" ]; then
-    echo "fixture-shards: $1 can be written by others and lacks the sticky bit, so the run lock cannot be kept safely below it; point TMPDIR at a directory whose every ancestor is private or sticky" >&2
+    echo "test-shards: $1 can be written by others and lacks the sticky bit, so the run lock cannot be kept safely below it; point TMPDIR at a directory whose every ancestor is private or sticky" >&2
     return 1
   fi
 }
@@ -611,7 +611,7 @@ is_group_or_other_accessible() {
 require_private_lock_dir() {
   mkdir -m 700 "$RUN_LOCK_DIR" 2>/dev/null
   if [ -L "$RUN_LOCK_DIR" ] || [ ! -d "$RUN_LOCK_DIR" ] || [ ! -O "$RUN_LOCK_DIR" ] || is_group_or_other_accessible "$RUN_LOCK_DIR"; then
-    echo "fixture-shards: $RUN_LOCK_DIR is not a private directory owned by you (it is a symlink, another user's, or open to others); remove it or point TMPDIR elsewhere" >&2
+    echo "test-shards: $RUN_LOCK_DIR is not a private directory owned by you (it is a symlink, another user's, or open to others); remove it or point TMPDIR elsewhere" >&2
     exit 1
   fi
 }
@@ -626,14 +626,14 @@ wait_for_worktree_lock() {
   until try_lock_fd 9; do
     holder=$(lock_holder_pid "$RUN_LOCK_FILE")
     if [ -n "$holder" ] && [ "$holder" != "$announced" ]; then
-      echo "fixture-shards: another fixture run from this worktree holds $RUN_LOCK_FILE; waiting for PID $holder (or the fixtures it started, up to ${wait_cap}s)"
+      echo "test-shards: another test run from this worktree holds $RUN_LOCK_FILE; waiting for PID $holder (or the tests it started, up to ${wait_cap}s)"
       announced="$holder"
     fi
     [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting "$wait_cap" "$holder"
     sleep "$RUN_LOCK_POLL_SECONDS"
   done
   echo "$$" > "$RUN_LOCK_FILE"
-  export FIXTURE_SHARDS_LOCK_HELD="$$" FIXTURE_SHARDS_LOCK_HELD_FILE="$RUN_LOCK_FILE"
+  export TEST_SHARDS_LOCK_HELD="$$" TEST_SHARDS_LOCK_HELD_FILE="$RUN_LOCK_FILE"
 }
 
 # wait_for_run_slot <wait cap> <started> <run cap>: takes a machine-wide run
@@ -643,7 +643,7 @@ wait_for_run_slot() {
   local wait_cap="$1" started="$2" run_cap="$3" announced=""
   until try_run_slot "$run_cap"; do
     if [ -z "$announced" ]; then
-      echo "fixture-shards: all $run_cap run slots are busy (FIXTURE_SHARDS_MAX_RUNS, default half the CPUs); waiting for another worktree's run to finish (up to ${wait_cap}s)"
+      echo "test-shards: all $run_cap run slots are busy (TEST_SHARDS_MAX_RUNS, default half the CPUs); waiting for another worktree's run to finish (up to ${wait_cap}s)"
       announced=1
     fi
     [ $(( SECONDS - started )) -ge "$wait_cap" ] && give_up_waiting_for_slot "$wait_cap" "$run_cap"
@@ -657,21 +657,21 @@ wait_for_run_slot() {
 # checkout at once starved each other past the 600-second tool timeout
 # (2026-09-24), and one machine-wide lock made every worktree wait for every
 # other, so runs queue per worktree and the slots cap the load. Gives up
-# after FIXTURE_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. A
+# after TEST_SHARDS_LOCK_WAIT_SECONDS (default 1200) across both waits. A
 # nested run returns at once and takes neither. The wait and the markers are
 # environment variables, unlike the other controls, because none can make a
 # run shorter: the markers count only while the run they name holds its lock,
 # and the wait only decides how long to queue. Without a working perl the run
 # goes ahead unqueued, with a warning, as it did before IAN-348.
 acquire_run_lock() {
-  local run_cap="$1" wait_cap="${FIXTURE_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS"
+  local run_cap="$1" wait_cap="${TEST_SHARDS_LOCK_WAIT_SECONDS:-$RUN_LOCK_WAIT_DEFAULT_SECONDS}" started="$SECONDS"
   # Bounded at five digits: a longer value made the give-up comparison error
   # out, so a queued run polled forever (PR #154 review round 3).
-  [[ "$wait_cap" =~ ^[0-9]{1,5}$ ]] || usage_error "FIXTURE_SHARDS_LOCK_WAIT_SECONDS needs a whole number of seconds up to 99999"
-  command -v perl >/dev/null 2>&1 || { echo "fixture-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
+  [[ "$wait_cap" =~ ^[0-9]{1,5}$ ]] || usage_error "TEST_SHARDS_LOCK_WAIT_SECONDS needs a whole number of seconds up to 99999"
+  command -v perl >/dev/null 2>&1 || { echo "test-shards: perl not found, so this run is not queued behind other runs" >&2; return 0; }
   # A perl that cannot load Fcntl (a bad PERL5OPT or PERL5LIB) would make every
   # try below fail and read as a busy lock until the cap (PR #136 review).
-  perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "fixture-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
+  perl -MFcntl=:flock -e 1 >/dev/null 2>&1 || { echo "test-shards: perl cannot take the run lock (it fails to load Fcntl), so this run is not queued behind other runs" >&2; return 0; }
   # The directory is checked before the markers, which open files in it
   # (PR #154 review round 2).
   require_lock_parent_dir
@@ -684,14 +684,14 @@ acquire_run_lock() {
 # report_run_timing <mode> <lock wait s> <count> <total> <run s> <tests dir>:
 # prints one timing line and appends it, stamped with the time and the tests
 # directory, to timings.log in the private lock directory when that exists
-# (IAN-566). It separates queueing from selection from fixture time, which
+# (IAN-566). It separates queueing from selection from test time, which
 # earlier speed passes had to guess at. A log that cannot be written is
 # skipped; timing never changes a run's verdict.
 report_run_timing() {
   local mode="$1" lock_wait="$2" count="$3" total="$4" run_time="$5" tests_dir="$6" selection timing_line
   selection="${mode#--}"
   [ -z "$REASON" ] || selection="everything: $REASON"
-  timing_line="fixture-shards: timing: waited ${lock_wait}s for the run lock, ran $count of $total fixtures in ${run_time}s ($selection)"
+  timing_line="test-shards: timing: waited ${lock_wait}s for the run lock, ran $count of $total tests in ${run_time}s ($selection)"
   echo "$timing_line"
   # The lock checks are skipped when perl is missing, so the directory and the
   # log are re-checked here: neither may be a symlink (PR #181 review).
@@ -701,13 +701,13 @@ report_run_timing() {
 
 # usage_error <message>: exits 2 with the message and the usage line.
 usage_error() {
-  echo "run-fixture-shards.sh: $1" >&2
-  echo "usage: run-fixture-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>] [--also <path>]... [--results-dir <dir>] [--jobs <n>] [--settle-seconds <n>] [--settle-max-seconds <n>] [--load-from <file>]" >&2
+  echo "run-test-shards.sh: $1" >&2
+  echo "usage: run-test-shards.sh <tests-dir> --all|--affected [--list] [--changed-from <file>] [--also <path>]... [--results-dir <dir>] [--jobs <n>] [--settle-seconds <n>] [--settle-max-seconds <n>] [--load-from <file>]" >&2
   exit 2
 }
 
 main() {
-  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" also="" kept_dir="" fixtures jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap lock_started lock_wait run_started
+  local tests_dir="${1:-}" mode="${2:-}" list_only="" changed_from="" also="" kept_dir="" test_files jobs="" settle_seconds="$SERIAL_SETTLE_DEFAULT_SECONDS" settle_max_seconds="$SERIAL_SETTLE_MAX_DEFAULT_SECONDS" result_dir total count status run_cap lock_started lock_wait run_started
   [ -d "$tests_dir" ] || usage_error "no tests directory '$tests_dir'"
   case "$mode" in --all | --affected) ;; *) usage_error "unknown mode '$mode'" ;; esac
   shift 2
@@ -724,7 +724,7 @@ main() {
       *) usage_error "unknown option '$1'" ;;
     esac
   done
-  # Cleared before any git query, not only before the fixtures run: an
+  # Cleared before any git query, not only before the tests run: an
   # inherited GIT_DIR (a linked-worktree hook exports one) would otherwise
   # make change detection read another repository (PR #42 review round 4).
   # GIT_CEILING_DIRECTORIES could stop git short of the checkout and split its
@@ -734,13 +734,13 @@ main() {
   [ "$settle_max_seconds" -ge "$settle_seconds" ] || usage_error "--settle-max-seconds ($settle_max_seconds) is below --settle-seconds ($settle_seconds)"
   tests_dir=$(cd "$tests_dir" && pwd)
   RUN_LOCK_KEY=$(worktree_lock_key "$tests_dir")
-  fixtures=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
-  [ -n "$fixtures" ] || { echo "fixture-shards: no fixtures in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
-  total=$(grep -c . <<< "$fixtures")
-  SELECTED="$fixtures"; REASON=""
-  [ "$mode" = --affected ] && affected_selection "$tests_dir" "$fixtures" "$changed_from" "$also"
+  test_files=$(ls "$tests_dir"/*.test.sh 2>/dev/null | sort)
+  [ -n "$test_files" ] || { echo "test-shards: no tests in $tests_dir, which is a broken checkout, not a pass"; exit 1; }
+  total=$(grep -c . <<< "$test_files")
+  SELECTED="$test_files"; REASON=""
+  [ "$mode" = --affected ] && affected_selection "$tests_dir" "$test_files" "$changed_from" "$also"
   if [ -n "$list_only" ]; then
-    while IFS= read -r fixture; do [ -n "$fixture" ] && basename "$fixture"; done <<< "$SELECTED"
+    while IFS= read -r test_file; do [ -n "$test_file" ] && basename "$test_file"; done <<< "$SELECTED"
     exit 0
   fi
   count=$(grep -c . <<< "$SELECTED")
@@ -751,9 +751,9 @@ main() {
   acquire_run_lock "$run_cap"
   lock_wait=$(( SECONDS - lock_started ))
   [ -n "$jobs" ] || jobs=$(default_job_count)
-  echo "fixture-shards: ${mode#--} ran $count of $total fixtures with $jobs jobs${REASON:+ (everything: $REASON)}"
-  [ -z "$RUN_SLOT" ] || echo "fixture-shards: run slot $RUN_SLOT of $run_cap (FIXTURE_SHARDS_MAX_RUNS, default half the CPUs)"
-  result_dir="${kept_dir:-$(mktemp -d "${TMPDIR:-/tmp}/fixture-shards.XXXXXX")}"
+  echo "test-shards: ${mode#--} ran $count of $total tests with $jobs jobs${REASON:+ (everything: $REASON)}"
+  [ -z "$RUN_SLOT" ] || echo "test-shards: run slot $RUN_SLOT of $run_cap (TEST_SHARDS_MAX_RUNS, default half the CPUs)"
+  result_dir="${kept_dir:-$(mktemp -d "${TMPDIR:-/tmp}/test-shards.XXXXXX")}"
   export CLAUDE_FIRE_LOG=/dev/null
   run_started="$SECONDS"
   run_selected "$SELECTED" "$jobs" "$result_dir" "$settle_seconds" "$settle_max_seconds"

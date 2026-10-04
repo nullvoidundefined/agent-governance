@@ -13,7 +13,7 @@
 # (R-109 r1 #4, r2 #1, r4 #1 #2, r5 #3), as is an entry that resolves
 # through a link into the repository outside node_modules/ and .venv/ or onto
 # a launcher (R-109 r3 #2). Drives the bash *.test.sh runner through the real
-# run-fixture-shards.sh in a throwaway repository.
+# run-test-shards.sh in a throwaway repository.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 TDD="$CLAUDE_HARNESS_ROOT/enforce/tdd.sh"
@@ -40,7 +40,7 @@ cd "$P"
 lock_field() { jq -r "$1" .claude/tdd-lock.json; }
 # file_sha <path>: the sha256 of a file.
 file_sha() { shasum -a 256 "$1" | awk '{print $1}'; }
-# expect_fail <label> <command...>: runs the command, fails the fixture when it
+# expect_fail <label> <command...>: runs the command, fails the test when it
 # exits zero, and prints its output.
 expect_fail() {
   local label="$1" out; shift
@@ -204,7 +204,7 @@ echo "PASS: an allowlisted formatter in node_modules/.bin/, a bin link into node
 # --- a symlink cycle is refused promptly (R-109 r4 #3) -----------------------
 # node_modules/.bin/black -> black2 -> black never resolves; red must warn and
 # hash the file as it stands instead of looping. A watchdog kills red after 20 seconds so
-# a loop fails the fixture instead of hanging it.
+# a loop fails the test instead of hanging it.
 ln -s black2 node_modules/.bin/black
 ln -s black node_modules/.bin/black2
 jq -n '{testFormatCommand: "node_modules/.bin/black -q"}' > .enforce.json

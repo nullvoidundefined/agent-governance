@@ -24,7 +24,7 @@
 # never blocks, exits 0 on every path (no set -e; enforce/README hook set
 # convention).
 #
-# HARNESS_SYNC_HOME overrides the live directory's parent (fixtures).
+# HARNESS_SYNC_HOME overrides the live directory's parent (tests).
 set -uo pipefail
 
 # A session can start with HOME unset; under set -u the default below would
@@ -43,7 +43,7 @@ say_context() {
 # every gate as an allow (IAN-436). A remote container installs it the way it
 # installs rsync below; when it is still missing, the warning is written as
 # fixed JSON, because say_context itself needs jq. HARNESS_SYNC_JQ names the
-# binary so the fixture can simulate its absence.
+# binary so the test can simulate its absence.
 JQ_BIN="${HARNESS_SYNC_JQ:-jq}"
 if ! command -v "$JQ_BIN" >/dev/null 2>&1; then
   if [ "$REMOTE" = "true" ] && [ -z "${HARNESS_SYNC_JQ:-}" ] && command -v apt-get >/dev/null 2>&1; then
@@ -79,7 +79,7 @@ fi
 # week's adapter and rules while a Claude session on the same machine was
 # current (2026-09-18, found while adding the project-local Cursor bootstrap).
 # Each payload's live home honors the same override variables sync.sh reads,
-# so a fixture can point all three at a sandbox.
+# so a test can point all three at a sandbox.
 CURSOR_LIVE="${SYNC_CURSOR_HOME:-$HOME_DIR/.cursor}"
 CODEX_LIVE="${SYNC_CODEX_HOME:-$HOME_DIR/.codex}"
 

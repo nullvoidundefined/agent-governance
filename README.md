@@ -32,7 +32,7 @@ cd agent-governance
 ## Changing it
 
 - Edit the sources under `claude/`. After a change that the ports carry, run `node translate/codex.mjs --write` and `node translate/cursor.mjs --write`. CI fails if `--check` finds the ports stale.
-- Every hook has a fixture under `claude/enforce/tests/` or `claude/hooks/tests/`. Run them all with `bash claude/enforce/tests/run-tests.sh`.
+- Every hook has a test under `claude/enforce/tests/` or `claude/hooks/tests/`. Run them all with `bash claude/enforce/tests/run-tests.sh`.
 - Keep it small. A new rule or hook needs a reason the owner agreed to; prefer a sentence in `CLAUDE.md` over a gate.
 
 The design behind this layout is `docs/specs/governance-recovery/spec.md`.

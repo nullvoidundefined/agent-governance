@@ -20,8 +20,8 @@ if [ -f Dockerfile ]; then
   read_only_root=$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$(docker compose ps -q site)")
   [ "$read_only_root" = "true" ] || { echo "FAIL: the site container's root filesystem is writable"; exit 1; }
 fi
-# The fixture runner reads a FAIL line as a failed assertion and needs a PASS
-# line, besides exit 0, to count the fixture as passing.
+# The test runner reads a FAIL line as a failed assertion and needs a PASS
+# line, besides exit 0, to count the test as passing.
 if ! npx playwright test --reporter=list > playwright.log 2>&1; then
   cat playwright.log
   grep -E '✘|failed' playwright.log | sed 's/^/FAIL: /'

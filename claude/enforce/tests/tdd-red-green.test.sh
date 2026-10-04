@@ -11,7 +11,7 @@
 # new test in a file that already holds a passing one; no Jest is bundled, so
 # a stub writing Jest's report shape drives the same id path under Jest. A second throwaway
 # project drives the bash *.test.sh runner through the real
-# run-fixture-shards.sh, where a test id is refused because a fixture file is
+# run-test-shards.sh, where a test id is refused because a test file is
 # one test, and close from open before any test is locked.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
@@ -36,7 +36,7 @@ new_project() {
   mkdir -p "$dir/src/__tests__" "$dir/node_modules" "$dir/docs/specs"
   ln -s "$VITEST_PKG" "$dir/node_modules/vitest"
   mkdir -p "$dir/node_modules/.bin" && ln -s "$VITEST_PKG/vitest.mjs" "$dir/node_modules/.bin/vitest"
-  printf '{ "name": "fixture", "private": true, "type": "module", "scripts": { "test": "vitest run" } }\n' > "$dir/package.json"
+  printf '{ "name": "test", "private": true, "type": "module", "scripts": { "test": "vitest run" } }\n' > "$dir/package.json"
   printf 'node_modules\n' > "$dir/.gitignore"
   printf 'import { it, expect } from "vitest";\nit("baseline passes", () => { expect(1).toBe(1); });\n' > "$dir/src/__tests__/baseline.test.ts"
   printf '# score\n' > "$dir/docs/specs/score.md"
@@ -408,10 +408,10 @@ echo green > .stub-mode
 bash "$TDD" green >/dev/null 2>&1 || { echo "FAIL: jest node green must accept once the named test passes"; exit 1; }
 cd / && rm -rf "$J"
 
-# --- shell fixtures: a *.test.sh path runs with bash --------------------------
-# The verdict is the fixture suite's own (enforce/run-fixture-shards.sh): exit
+# --- shell tests: a *.test.sh path runs with bash --------------------------
+# The verdict is the test suite's own (enforce/run-test-shards.sh): exit
 # 0 with a PASS line and no FAIL line passes. The suite is every *.test.sh in
-# the named files' directories; fixtures elsewhere are not counted. The
+# the named files' directories; tests elsewhere are not counted. The
 # project has no node_modules, so nothing here can fall back to Vitest.
 new_shell_project() {
   local dir
@@ -420,11 +420,11 @@ new_shell_project() {
   git -C "$dir" config user.email t@t; git -C "$dir" config user.name t
   mkdir -p "$dir/tests" "$dir/other/tests" "$dir/scripts"
   printf '#!/usr/bin/env bash\necho "baseline PASS"\n' > "$dir/tests/baseline.test.sh"
-  printf '#!/usr/bin/env bash\necho "FAIL: a fixture in another directory"\n' > "$dir/other/tests/unrelated.test.sh"
+  printf '#!/usr/bin/env bash\necho "FAIL: a test in another directory"\n' > "$dir/other/tests/unrelated.test.sh"
   git -C "$dir" add -A && git -C "$dir" commit -qm "chore: init"
   echo "$dir"
 }
-# The RED fixture calls scripts/score.sh, which does not exist yet.
+# The RED test calls scripts/score.sh, which does not exist yet.
 shell_red_test() {
   printf '#!/usr/bin/env bash\nset -euo pipefail\nout=$(bash "$(dirname "$0")/../scripts/score.sh")\n[ "$out" = 2 ] || { echo "FAIL: expected 2, got $out"; exit 1; }\necho "score.test.sh PASS"\n' > "$1"
 }
@@ -433,20 +433,20 @@ shell_impl() { printf '#!/usr/bin/env bash\necho %s\n' "$1" > scripts/score.sh; 
 S=$(new_shell_project); cd "$S"
 bash "$TDD" open "S-1 score.sh prints 2" >/dev/null
 
-# red: a fixture that already passes, one that says nothing, and one that does
+# red: a test that already passes, one that says nothing, and one that does
 # not parse are each refused, and the phase stays open.
 printf '#!/usr/bin/env bash\necho "early PASS"\n' > tests/score.test.sh
-expect_fail "shell red on a passing fixture" bash "$TDD" red tests/score.test.sh | grep -qi 'already passes' || { echo "FAIL: a passing shell fixture must be refused as passing"; exit 1; }
+expect_fail "shell red on a passing test" bash "$TDD" red tests/score.test.sh | grep -qi 'already passes' || { echo "FAIL: a passing shell test must be refused as passing"; exit 1; }
 printf '#!/usr/bin/env bash\necho "quiet"\n' > tests/score.test.sh
-expect_fail "shell red on a silent fixture" bash "$TDD" red tests/score.test.sh | grep -qi 'no test' || { echo "FAIL: a fixture with no PASS or FAIL must be refused as containing no tests"; exit 1; }
+expect_fail "shell red on a silent test" bash "$TDD" red tests/score.test.sh | grep -qi 'no test' || { echo "FAIL: a test with no PASS or FAIL must be refused as containing no tests"; exit 1; }
 printf '#!/usr/bin/env bash\nif then\n' > tests/score.test.sh
 expect_fail "shell red on a syntax error" bash "$TDD" red tests/score.test.sh | grep -qi 'parse' || { echo "FAIL: a shell syntax error must be refused as not parsing"; exit 1; }
 [ "$(lock_field . .phase)" = "open" ] || { echo "FAIL: refused shell reds must leave the phase open"; exit 1; }
 
-# red: a failing sibling fixture in the same directory is refused by name.
+# red: a failing sibling test in the same directory is refused by name.
 shell_red_test tests/score.test.sh
 printf '#!/usr/bin/env bash\necho "FAIL: sibling broke"\n' > tests/baseline.test.sh
-expect_fail "shell red with a red sibling" bash "$TDD" red tests/score.test.sh | grep -q 'tests/baseline.test.sh' || { echo "FAIL: a red sibling fixture must be named"; exit 1; }
+expect_fail "shell red with a red sibling" bash "$TDD" red tests/score.test.sh | grep -q 'tests/baseline.test.sh' || { echo "FAIL: a red sibling test must be named"; exit 1; }
 git checkout -q -- tests/baseline.test.sh
 
 # red: a named .test.sh beside a JavaScript test is refused; one runner per slice.
@@ -454,11 +454,11 @@ printf 'it("x", () => {});\n' > tests/mixed.test.ts
 expect_fail "red mixing runners" bash "$TDD" red tests/score.test.sh tests/mixed.test.ts | grep -q 'test.sh' || { echo "FAIL: mixing shell and JavaScript tests must be refused naming the shell kind"; exit 1; }
 rm tests/mixed.test.ts
 
-# red: a bash fixture is one test, so a test id after the path is refused;
-# the fixture file itself is the unit.
-expect_fail "shell red with a test id" bash "$TDD" red "tests/score.test.sh::expected 2" | grep -q 'name the fixture file' || { echo "FAIL: a test id on a bash fixture must be refused, saying the file is the unit"; exit 1; }
+# red: a bash test is one test, so a test id after the path is refused;
+# the test file itself is the unit.
+expect_fail "shell red with a test id" bash "$TDD" red "tests/score.test.sh::expected 2" | grep -q 'name the test file' || { echo "FAIL: a test id on a bash test must be refused, saying the file is the unit"; exit 1; }
 
-# red: a missing script is the missing-module RED; the failing fixture in
+# red: a missing script is the missing-module RED; the failing test in
 # other/tests is outside the suite, so the baseline counts tests/ alone.
 bash "$TDD" red tests/score.test.sh >/dev/null || { echo "FAIL: shell red on a missing script must succeed"; exit 1; }
 [ "$(lock_field . .phase)" = "red" ] || { echo "FAIL: shell red must move the phase to red"; exit 1; }
@@ -472,35 +472,35 @@ bash "$TDD" red tests/score.test.sh >/dev/null
 [ "$(lock_field . '.tests[0].failureClass')" = "assertion" ] || { echo "FAIL: expected assertion for a FAIL line, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
 
 # green: still wrong is refused; right is green; a dropped sibling is refused.
-expect_fail "shell green while failing" bash "$TDD" green | grep -q 'expected 2, got 1' || { echo "FAIL: a still-failing shell green must carry the fixture's FAIL line"; exit 1; }
+expect_fail "shell green while failing" bash "$TDD" green | grep -q 'expected 2, got 1' || { echo "FAIL: a still-failing shell green must carry the test's FAIL line"; exit 1; }
 git add -A && git commit -qm "test(score): S-1 score.sh prints 2"
 shell_impl 2
 bash "$TDD" green >/dev/null || { echo "FAIL: shell green must pass once score.sh prints 2"; exit 1; }
 [ "$(lock_field . .phase)" = "green" ] || { echo "FAIL: shell green must move the phase to green"; exit 1; }
 rm tests/baseline.test.sh
-expect_fail "shell green with a deleted sibling" bash "$TDD" green | grep -q 'baseline' || { echo "FAIL: deleting a sibling fixture must drop below the baseline"; exit 1; }
+expect_fail "shell green with a deleted sibling" bash "$TDD" green | grep -q 'baseline' || { echo "FAIL: deleting a sibling test must drop below the baseline"; exit 1; }
 git checkout -q -- tests/baseline.test.sh
-# A fixture that exits non-zero after printing PASS fails, as in the suite.
+# A test that exits non-zero after printing PASS fails, as in the suite.
 printf '#!/usr/bin/env bash\necho "baseline PASS"\nexit 1\n' > tests/baseline.test.sh
 expect_fail "shell green with a sibling exiting non-zero" bash "$TDD" green | grep -q 'tests/baseline.test.sh' || { echo "FAIL: a sibling exiting non-zero must be named"; exit 1; }
 git checkout -q -- tests/baseline.test.sh
 bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
 [ ! -f .claude/tdd-lock.json ] || { echo "FAIL: close after shell green must remove the lock"; exit 1; }
 
-# refactor: --lock on a shell fixture runs the shell suite.
-bash "$TDD" open --refactor "S-2 tidy score.sh" --lock tests/score.test.sh >/dev/null || { echo "FAIL: open --refactor on a shell fixture must succeed"; exit 1; }
+# refactor: --lock on a shell test runs the shell suite.
+bash "$TDD" open --refactor "S-2 tidy score.sh" --lock tests/score.test.sh >/dev/null || { echo "FAIL: open --refactor on a shell test must succeed"; exit 1; }
 [ "$(lock_field . '.baseline.runner')" = "shell" ] || { echo "FAIL: a shell refactor must record the shell runner"; exit 1; }
 bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
 
-# A fixture that writes a relative path writes it outside the project: the
+# A test that writes a relative path writes it outside the project: the
 # suite runs from a scratch directory, so nothing lands in the slice's tree
 # (PR #49 review).
-printf '#!/usr/bin/env bash\ntouch leaked-by-fixture.txt\necho "writer PASS"\n' > tests/writer.test.sh
-git add tests/writer.test.sh && git commit -qm "test: a fixture that writes a relative path"
+printf '#!/usr/bin/env bash\ntouch leaked-by-test.txt\necho "writer PASS"\n' > tests/writer.test.sh
+git add tests/writer.test.sh && git commit -qm "test: a test that writes a relative path"
 bash "$TDD" open --refactor "S-4 containment" --lock tests/score.test.sh >/dev/null || { echo "FAIL: open --refactor with a writing sibling must succeed"; exit 1; }
-[ ! -e leaked-by-fixture.txt ] || { echo "FAIL: a fixture's relative write must not land in the project root"; exit 1; }
+[ ! -e leaked-by-test.txt ] || { echo "FAIL: a test's relative write must not land in the project root"; exit 1; }
 bash "$TDD" green >/dev/null && bash "$TDD" close >/dev/null
-[ ! -e leaked-by-fixture.txt ] || { echo "FAIL: a fixture's relative write must not land in the project root during green"; exit 1; }
+[ ! -e leaked-by-test.txt ] || { echo "FAIL: a test's relative write must not land in the project root during green"; exit 1; }
 
 # close from open: with no test ever locked nothing was written under the
 # lock, so an abandoned slice can close; once a test is locked it cannot.
