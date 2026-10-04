@@ -4,7 +4,7 @@
 # Runs the Claude Code hooks under Cursor. Cursor's hook protocol and Claude
 # Code's differ in event names, payload shape, and response shape, but the
 # gates themselves (secret scan, em-dash block, destructive-command guards,
-# push-time linters, the turn-end verification gate) are plain scripts that
+# push-time linters) are plain scripts that
 # read JSON on stdin and write JSON on stdout. This adapter is the only
 # Cursor-specific code: it translates one Cursor event into the Claude Code
 # payload the hooks expect, runs each hook named on its command line, and

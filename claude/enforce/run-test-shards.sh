@@ -9,7 +9,7 @@
 #       load of its neighbours fails for reasons that are not its subject's.
 #       CI uses this mode through run-tests.sh.
 #   run-test-shards.sh <tests-dir> --affected
-#       the Stop gate's mode. The fast tier (every test with no
+#       the mode tdd.sh uses. The fast tier (every test with no
 #       `# Shard: slow` or `# Shard: serial` header) always runs, so the
 #       closure and tree-scanning checks, which are nearly all fast, never
 #       wait for CI. A slow or serial test runs when its text names a changed
@@ -163,8 +163,8 @@ current_load() {
 # default_job_count: the idle CPUs (CPU count minus the current load), from a
 # quarter of the CPUs to MAX_DEFAULT_JOBS. A fixed 8 let several sessions
 # sharding at once drive the load to 124 on a 14-CPU machine; a floor of 1
-# then ran a full suite one test at a time past the Stop gate's 600-second
-# timeout (2026-09-18).
+# then ran a full suite one test at a time past the 600-second timeout of
+# the Stop hook that ran the suites then (2026-09-18).
 default_job_count() {
   local jobs cpus floor
   cpus=$(cpu_count)
@@ -514,9 +514,9 @@ try_run_slot() {
 
 # give_up_waiting <wait cap> <holder pid>: the wait cap's clean failure, so a
 # queued run ends the turn with a reason instead of hanging it. Exits 75
-# (EX_TEMPFAIL) rather than 1, so verification-gate.sh can tell a queue that
-# never cleared from a failing test and skip its retry, which would wait a
-# second full cap past the Stop hook's budget (IAN-351).
+# (EX_TEMPFAIL) rather than 1, so a caller can tell a queue that never
+# cleared from a failing test and skip a retry, which would wait a second
+# full cap (IAN-351).
 give_up_waiting() {
   echo "test-shards: gave up after ${1}s waiting for PID ${2:-unknown} (or the tests it started) to release $RUN_LOCK_FILE; rerun once that run finishes" >&2
   exit "$RUN_LOCK_GAVE_UP_STATUS"
