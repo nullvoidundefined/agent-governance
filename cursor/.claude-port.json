@@ -68,7 +68,7 @@
     "skills/spec-grounding/SKILL.md": "sha256:25fefd11af25cb0564e4726c4ce46225d7cede1f0692e7d3a6b9c0bfe5363941",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:d245561b0481b7f02654a90f29a957c510e7afa0cb6f2bb7222b591eaf8140b4",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:d2e295a2c6886b0d38cb05556175c31376e037fe8fb2000b7649e6d4155b33c4"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:f7168851af389bbaff19b1737029ee4066946ad8454f0f5b90e33db945854909"
   },
   "classes": {
     ".gitignore": "generated",
