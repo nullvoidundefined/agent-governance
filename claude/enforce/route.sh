@@ -95,7 +95,7 @@ else
   else
     alt=$(other "$default")
     rd=$(ratioOf "$default"); ro=$(ratioOf "$alt")
-    if [ "$(exhaustedOf "$default")" = true ] && [ "$(exhaustedOf "$alt")" != true ]; then
+    if [ "$(exhaustedOf "$default")" = true ] && [ "$(exhaustedOf "$alt")" = false ]; then
       provider="$alt"
       reason="$default is near exhaustion, so $step moves to $alt"
     elif jq -en --argjson d "$rd" --argjson o "$ro" --argjson t "$SHIFT_ABOVE" \
@@ -107,6 +107,8 @@ else
     fi
   fi
 fi
+
+[ "$available" = true ] || case "$reason" in *"quota unavailable"*) ;; *) reason="$reason (quota unavailable)" ;; esac
 
 log="${ROUTING_LOG:-${HOME:-}/.claude/routing-log.jsonl}"
 mkdir -p "$(dirname "$log")" 2>/dev/null
