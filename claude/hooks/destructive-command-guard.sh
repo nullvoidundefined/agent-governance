@@ -56,6 +56,14 @@ if grep -Eqi "${AT}gh api([[:space:]]|$)" <<< "$norm"; then
     if [ "$method" = "DELETE" ]; then
         emit deny "destructive-command-guard hook BLOCKED this call: 'gh api' with method DELETE bypasses the Bash(gh repo delete*) and Bash(gh release delete*) deny rules, which match on command text only. Deleting a repo, release, or branch through the raw API is irreversible. A human runs this manually if it is genuinely required."
     fi
+    # Posting or editing a PR or issue comment is exempt (owner, 2026-10-04),
+    # but only when this is the command's one gh api call, so a comment post
+    # cannot carry a second mutating call past the ask.
+    if [ "$(grep -Eoi "${AT}gh api([[:space:]]|$)" <<< "$norm" | wc -l)" -eq 1 ] &&
+        { [ "$method" = POST ] || [ "$method" = PATCH ]; } &&
+        grep -Eq '(^|[[:space:]/])repos/[^[:space:]/]+/[^[:space:]/]+/(issues|pulls)/([0-9]+/comments|comments/[0-9]+)([[:space:]]|$)' <<< "$norm"; then
+        method=""
+    fi
     case "$method" in
         PUT | PATCH | POST)
             emit ask "'gh api' with method $method mutates GitHub state through the raw API, bypassing the per-verb gh rules. Confirm the endpoint and payload before running."
