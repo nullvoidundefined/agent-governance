@@ -25,5 +25,7 @@ rules:
       specific case it guards.
     # A regex, so the finding sits on the `except` line: Semgrep cannot match
     # an except clause on its own, only the whole try statement. Comment and
-    # blank lines between the except and its body are allowed.
-    pattern-regex: (?m)^[ \t]*except\b[^:\n]*:[ \t]*(\#[^\n]*)?(\n[ \t]*(\#[^\n]*)?)*\n?[ \t]*(pass|\.\.\.)[ \t]*(\#[^\n]*)?$
+    # blank lines between the except and its body are allowed; a `pass` followed
+    # by more statements in the same block is not empty. Known limit: an
+    # `except` written inside a string literal is matched as text.
+    pattern-regex: (?m)^[ \t]*except\b[^:\n]*:(?:[ \t]*(?:pass|\.\.\.)[ \t]*(?:\#[^\n]*)?$|[ \t]*(?:\#[^\n]*)?(?:\n[ \t]*(?:\#[^\n]*)?(?=\n))*\n([ \t]*)(?:pass|\.\.\.)[ \t]*(?:\#[^\n]*)?$(?!\n\1[^\s#]))

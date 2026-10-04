@@ -6,8 +6,9 @@
 # printed an advisory on each edit.
 #
 # Known limits: an image named through an ARG (`FROM ${BASE}`) is not judged;
-# a USER set in an earlier build stage counts for a later stage; `USER root`
-# followed by any later USER counts as switched away from root.
+# a USER set in an earlier build stage counts for a later stage; a lowercase
+# `from` is not matched; a stage alias reused in different case (`AS Build`,
+# then `FROM build`) is reported as an unpinned image.
 rules:
   - id: dockerfile.unpinned-base-image
     languages: [dockerfile]
@@ -46,6 +47,7 @@ rules:
       - pattern-either:
           - pattern: CMD ...
           - pattern: ENTRYPOINT ...
+      - pattern-not-inside: HEALTHCHECK CMD ...
       - pattern-not-inside: |
           USER $U
           ...
@@ -54,19 +56,12 @@ rules:
     severity: ERROR
     message: >-
       The container starts as root: the last USER before this CMD/ENTRYPOINT
-      is $ROOT. Switch back to a non-root user after the steps that need root.
+      is root or 0. Switch back to a non-root user after the steps that need
+      root.
+    # Judged on the text, since a metavariable cannot say "no later USER": a
+    # root USER line, then no other USER line, then a line that starts with
+    # CMD or ENTRYPOINT (so `HEALTHCHECK CMD` is not one). The finding sits on
+    # the CMD/ENTRYPOINT line.
     patterns:
-      - pattern-either:
-          - pattern: CMD ...
-          - pattern: ENTRYPOINT ...
-      - pattern-inside: |
-          USER $ROOT
-          ...
-      - pattern-not-inside: |
-          USER $ROOT
-          ...
-          USER $OTHER
-          ...
-      - metavariable-regex:
-          metavariable: $ROOT
-          regex: ^(root|0)(:.*)?$
+      - pattern-regex: (?msi)^[ \t]*USER[ \t]+(root|0)(:\S*)?[ \t]*$(?:(?!^[ \t]*USER\b).)*?^[ \t]*(?P<RUN>(CMD|ENTRYPOINT)\b[^\n]*)
+      - focus-metavariable: $RUN

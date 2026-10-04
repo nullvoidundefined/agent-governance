@@ -143,4 +143,68 @@ CMD ["node"]
 D
 df_expect "B7 USER node not flagged" b7 ""
 
+# Review round 1 edge cases (added after RED, with the fix commit).
+fx empty-py-edges case.py <<'PY'
+try:
+    f()
+except (A, B):  # why
+
+    # still nothing
+    pass
+try:
+    f()
+except A:
+    pass
+    cleanup()
+try:
+    f()
+except B: pass
+PY
+expect "R1 except edges: comment+blank body, pass then statement, inline" empty-catch.yml "$WORK/empty-py-edges" case.py "empty-except:3 empty-except:14"
+
+df r1a <<'D'
+FROM --platform=$BUILDPLATFORM node
+USER node
+CMD ["node"]
+D
+df_expect "R1 --platform untagged flagged" r1a "unpinned-base-image:1"
+
+df r1b <<'D'
+FROM node:latest AS x
+USER node
+CMD ["node"]
+D
+df_expect "R1 :latest with alias flagged" r1b "unpinned-base-image:1"
+
+df r1c <<'D'
+FROM node:22 AS build
+FROM build AS final
+USER node
+CMD ["node"]
+D
+df_expect "R1 alias reused with new alias not flagged" r1c ""
+
+df r1d <<'D'
+FROM node:22
+CMD node app.js
+D
+df_expect "R1 shell-form CMD without USER flagged" r1d "runs-as-root:2"
+
+df r1e <<'D'
+FROM node:22
+USER root
+USER node
+USER root
+CMD ["node"]
+D
+df_expect "R1 root, node, root then CMD flagged" r1e "runs-as-root:5"
+
+df r1f <<'D'
+FROM node:22
+HEALTHCHECK CMD curl -f http://localhost/ || exit 1
+USER node
+CMD ["node"]
+D
+df_expect "R1 HEALTHCHECK CMD before USER not flagged" r1f ""
+
 exit "$fail"
