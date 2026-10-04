@@ -56,6 +56,17 @@ bash_call "perl -pi -e 's/scores/scored/' src/__tests__/score.test.ts" | expect 
 bash_call "bash -c 'echo x > src/__tests__/score.test.ts'" | expect deny "nested shell redirect onto the locked test"
 bash_call "python3 -c \"open('src/__tests__/score.test.ts', 'w').write('x')\"" | expect deny "python -c opening the locked test for writing"
 bash_call "node -e \"require('fs').writeFileSync('src/__tests__/score.test.ts', 'x')\"" | expect deny "node -e writeFileSync onto the locked test"
+
+# A redirect word is never a file operand (IAN-631). `2>/dev/null` once read as
+# cp's destination, hiding the real one, and as a path a read-only role wrote.
+bash_call 'cp /tmp/other.ts src/__tests__/score.test.ts 2>/dev/null' | expect deny "cp onto the locked test with a trailing 2>/dev/null"
+bash_call 'cp /tmp/other.ts src/__tests__/score.test.ts >/dev/null 2>&1' | expect deny "cp onto the locked test with >/dev/null 2>&1"
+bash_call 'install -m 644 /tmp/other.ts src/__tests__/score.test.ts > /dev/null' | expect deny "install onto the locked test with a spaced redirect"
+reviewer_call() { jq -nc --arg c "$1" --arg d "$REPO" '{tool_name:"Bash",cwd:$d,agent_type:"pr-reviewer",tool_input:{command:$c}}'; }
+reviewer_call 'git stash list >/dev/null' | expect allow "read-only role: git stash list >/dev/null"
+reviewer_call 'rm -f /tmp/scratch.txt 2>/dev/null' | expect allow "read-only role: 2>/dev/null after an rm outside the repo"
+reviewer_call 'rm -f notes.txt 2>/dev/null' | expect deny "read-only role: rm inside the repo is still denied"
+reviewer_call 'git diff >notes.txt' | expect deny "read-only role: redirect into a repo file is still denied"
 bash_call "python3 - <<'EOF'
 from pathlib import Path
 Path('src/__tests__/score.test.ts').write_text('x')

@@ -515,6 +515,25 @@ script_targets() {
   done
 }
 
+# drop_redirects <word>...: sets FILE_OPERANDS to the words that are not a
+# redirection or a redirection's separate target. Redirection targets are
+# collected on their own in collect_shell_targets, so a command that takes
+# paths sees only its real operands: `2>/dev/null` once read as cp's
+# destination, hiding the real one, and as a path a read-only role wrote
+# (IAN-631).
+drop_redirects() {
+  local word skip_next=0
+  FILE_OPERANDS=()
+  for word in "$@"; do
+    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
+    if [[ "$word" =~ ^[0-9]*(\&\>\>|\&\>|\>\>|\>\||\>\&|\>|\<\<\<|\<\>|\<\&|\<)(.*)$ ]]; then
+      [ -z "${BASH_REMATCH[2]}" ] && skip_next=1
+      continue
+    fi
+    FILE_OPERANDS+=("$word")
+  done
+}
+
 # segment_targets <segment> <depth>: the targets of one simple command.
 segment_targets() {
   local segment="$1" depth="$2" words=() index=0 word verb skip_options=0 launched=0
@@ -545,6 +564,11 @@ segment_targets() {
   [ "$index" -lt ${#words[@]} ] || return 0
   verb="${words[index]##*/}"
   local operands=("${words[@]:index+1}")
+  case "$verb" in
+    rm | rmdir | shred | truncate | unlink | mv | cp | rsync | install | ln | dd | sed | gsed | git | find | perl)
+      drop_redirects "${operands[@]+"${operands[@]}"}"
+      operands=("${FILE_OPERANDS[@]+"${FILE_OPERANDS[@]}"}") ;;
+  esac
   case "$verb" in
     export | local | declare | readonly | typeset)
       for word in "${operands[@]+"${operands[@]}"}"; do record_assignment "$word"; done ;;
