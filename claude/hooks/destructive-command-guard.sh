@@ -48,10 +48,13 @@ AT="(^|[;&|(])[[:space:]]*"
 # --- gh api: mutating HTTP methods ----------------------------------------
 
 if grep -Eqi "${AT}gh api([[:space:]]|$)" <<< "$norm"; then
-    method="$(printf '%s' "$norm" \
+    # gh honours the last -X, so every one counts: any DELETE is denied, and
+    # the last one is the method (PR 199 review, round 2).
+    methods="$(printf '%s' "$norm" \
         | grep -Eoi '(-X|--method) [A-Za-z]+' \
-        | head -1 \
         | awk '{print toupper($2)}')"
+    method="$(printf '%s\n' "$methods" | tail -1)"
+    printf '%s\n' "$methods" | grep -qx DELETE && method="DELETE"
     # gh api sends a POST whenever it carries a field or an --input body and
     # no -X, so a field with no method is a POST here too (PR 199 review).
     if [ -z "$method" ] && grep -Eq '(^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|$)' <<< "$norm"; then
@@ -78,16 +81,21 @@ endpoint, i = None, 2
 while i < len(t):
     a = t[i]
     if a in ("-X", "--method"):
+        if i + 1 >= len(t) or t[i + 1].upper() not in ("POST", "PATCH"):
+            sys.exit(1)
         i += 2
         continue
     if a.startswith("--method=") or (a.startswith("-X") and len(a) > 2):
+        value = a.split("=", 1)[1] if a.startswith("--method=") else a[2:]
+        if value.upper() not in ("POST", "PATCH"):
+            sys.exit(1)
         i += 1
         continue
     if a in ("-f", "--raw-field", "-F", "--field"):
         if i + 1 >= len(t):
             sys.exit(1)
         v = t[i + 1]
-        if "$(" in v or "`" in v or "<(" in v or (a in ("-F", "--field") and "=@" in v):
+        if "$" in v or "`" in v or "<(" in v or (a in ("-F", "--field") and "=@" in v):
             sys.exit(1)
         i += 2
         continue
