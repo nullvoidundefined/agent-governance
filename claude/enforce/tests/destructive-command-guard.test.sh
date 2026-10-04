@@ -46,6 +46,12 @@ expect none "gh api -X POST repos/o/r/issues/5/comments -f body='hello there, wo
 expect ask 'gh api repos/o/r/dispatches -f event_type=x'
 expect ask 'gh api repos/o/r/releases --raw-field tag_name=v1'
 expect none 'gh api repos/o/r/pulls/7'
+# An env or VAR= prefix still puts gh in command position (PR 199 review).
+expect deny 'env X=1 gh api -X DELETE repos/o/r'
+expect deny 'GH_HOST=example.com gh api -X DELETE repos/o/r'
+expect ask 'env -i PATH=/usr/bin gh api -X POST repos/o/r/releases -f tag_name=v1'
+expect ask 'GH_TOKEN=x gh api repos/o/r/dispatches -f event_type=x'
+expect ask 'cd /tmp && FOO=1 BAR=2 gh api -X PATCH repos/o/r -f name=new'
 # PR 199 review round 2: gh uses the last -X, so every -X counts, and a
 # shell variable in a field value is expanded before gh sees it.
 expect deny 'gh api -X PATCH -X DELETE repos/o/r/issues/1/comments'
