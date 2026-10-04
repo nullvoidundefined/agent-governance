@@ -42,12 +42,15 @@ expect_reason() {
 }
 
 # --- Always-protected gate inputs (R-410), no lock present -------------------
-write "$REPO/.claude/verify.sh" 'exit 0' | expect deny "Write to .claude/verify.sh"
-write "$REPO/.claude/verify.sh" 'exit 0' | expect_reason 'R-410' "verify.sh reason cites R-410"
+write "$REPO/.enforce.json" '{}' | expect_reason 'R-410' "gate-input reason cites R-410"
+# .claude/verify.sh has had no reader since the verification gate was retired
+# (#188), so it is an ordinary file (IAN-630).
+write "$REPO/.claude/verify.sh" 'exit 0' | expect allow "Write to .claude/verify.sh is ungated"
 edit "$REPO/.enforce-baseline.json" '"total": 4' '"total": 9' | expect deny "Edit to the ratchet baseline"
 write "$REPO/.enforce.json" '{}' | expect deny "Write to .enforce.json"
-bash_call 'echo "exit 0" > .claude/verify.sh' | expect deny "Bash redirect into verify.sh"
-bash_call 'cat .claude/verify.sh' | expect allow "Bash read of verify.sh"
+bash_call 'echo "{}" > .enforce.json' | expect deny "Bash redirect into .enforce.json"
+bash_call 'cat .enforce.json' | expect allow "Bash read of .enforce.json"
+bash_call 'echo "exit 0" > .claude/verify.sh' | expect allow "Bash redirect into verify.sh is ungated"
 bash_call 'rm -f .enforce-baseline.json' | expect deny "Bash rm of the baseline"
 write "$REPO/vitest.config.ts" 'export default {}' | expect ask "Write to a test-runner config asks"
 write "$REPO/package.json" '{ "name": "fixture", "scripts": { "test": "echo ok", "build": "tsc" }, "dependencies": {} }' | expect ask "package.json test script change asks"
@@ -62,7 +65,7 @@ jq -nc --arg f "$REPO/package.json" --arg d "$REPO" \
   | expect ask "package.json Edit over 64KB touching the test script asks"
 write "$REPO/src/services/score.ts" 'export function score() { return 2; }' | expect allow "production write with no lock"
 write "$REPO/src/__tests__/score.test.ts" 'it("x", () => {});' | expect allow "test write with no lock"
-jq -nc '{tool_name:"Read",tool_input:{file_path:"/x/.claude/verify.sh"}}' | expect allow "Read is never gated"
+jq -nc '{tool_name:"Read",tool_input:{file_path:"/x/.enforce.json"}}' | expect allow "Read is never gated"
 jq -nc '{tool_name:"Write",tool_input:{}}' | expect allow "empty file_path is silent"
 
 # --- Slice lock, phase open: tests may be written, production may not (R-412) -

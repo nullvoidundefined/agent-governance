@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # protected-path-guard.sh: PreToolUse guard (Write, Edit, Bash) for the TDD
 # slice loop. Three rules, one hook, jq only, no Node:
-#   R-410  the gate inputs (.claude/verify.sh, .enforce.json,
-#          .enforce-baseline.json, the slice lock itself, and the shared
+#   R-410  the gate inputs (.enforce.json, .enforce-baseline.json,
+#          the slice lock itself, and the shared
 #          Security review ledger directory
 #          $HOME/.claude/security-review-ledger/, which only
 #          enforce/security-review-record.sh writes, B-10e) are never written,
@@ -119,7 +119,7 @@ matches() { [ -n "$2" ] && grep -qE "$2" <<< "$1"; }
 
 TESTS_PATTERN=$(pattern tests)
 SPECS_PATTERN=$(pattern specs)
-ALWAYS_PROTECTED='^(\.claude/verify\.sh|\.claude/tdd-lock\.json|\.enforce\.json|\.enforce-baseline\.json)$'
+ALWAYS_PROTECTED='^(\.claude/tdd-lock\.json|\.enforce\.json|\.enforce-baseline\.json)$'
 RUNNER_CONFIG='(^|/)(vitest|jest|playwright)\.(config|workspace)\.[cm]?[jt]s$|(^|/)pytest\.ini$|(^|/)\.rspec$'
 # The shared Security review ledger directory's name under $HOME/.claude
 # (R-109, B-10e). Twin of print_security_review_ledger_dir in
@@ -250,7 +250,7 @@ is_locked() {
 verdict_for() {
   local rel="$1"
   if matches "$rel" "$ALWAYS_PROTECTED"; then
-    printf 'deny|%s' "This write targets '$rel', a gate input the session never edits (R-410): .claude/verify.sh decides what the verification gate runs, .enforce.json and .enforce-baseline.json decide what the linters and the ratchet enforce, and .claude/tdd-lock.json is the slice lock. Change it outside the session, or tell the user what must change and why."
+    printf 'deny|%s' "This write targets '$rel', a gate input the session never edits (R-410): .enforce.json and .enforce-baseline.json decide what the linters and the ratchet enforce, and .claude/tdd-lock.json is the slice lock. Change it outside the session, or tell the user what must change and why."
     return
   fi
   if [ "$LOCK_STATE" = "unreadable" ]; then
@@ -297,7 +297,7 @@ verdict_for() {
     esac
   fi
   if matches "$rel" "$RUNNER_CONFIG"; then
-    printf 'ask|%s' "This changes the test-runner configuration ('$rel'), which decides what the verification gate and tdd.sh consider a passing run (R-410). Confirm the change is deliberate and not a way to make a failing run pass."
+    printf 'ask|%s' "This changes the test-runner configuration ('$rel'), which decides what tdd.sh considers a passing run (R-410). Confirm the change is deliberate and not a way to make a failing run pass."
     return
   fi
 }
@@ -334,7 +334,7 @@ apply_verdict() {
     ask\|*) [ -n "$PENDING_ASK" ] || PENDING_ASK="${verdict#*|}" ;;
   esac
   if package_scripts_change "$rel" && [ -z "$PENDING_ASK" ]; then
-    PENDING_ASK="This changes the package.json test or typecheck script, which is what the verification gate and tdd.sh run (R-410). Confirm the change is deliberate and not a way to make a failing run pass."
+    PENDING_ASK="This changes the package.json test or typecheck script, which is what tdd.sh runs (R-410). Confirm the change is deliberate and not a way to make a failing run pass."
   fi
 }
 
