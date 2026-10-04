@@ -218,7 +218,7 @@ expect_usage_error "unknown option with log" --test-log "$SAMPLES/green.txt" --f
 # Oversized log (5 MB of failure-looking lines): still exits 0 within the
 # time limit, and no raw line reaches the output.
 BIG="$WORK/big.log"
-yes 'FAIL: SENTINEL_RAW_7f3a_oversized padding padding padding padding padding' | head -c 5242880 >"$BIG"
+awk 'BEGIN{while(n<5242880){print "FAIL: SENTINEL_RAW_7f3a_oversized padding padding padding padding padding"; n+=76}}' >"$BIG"
 RC=0
 OUT=$(cd "$REPO" && cleanenv timeout 60 bash "$SCRIPT" --test-log "$BIG" 2>"$WORK/err") || RC=$?
 ERR=$(cat "$WORK/err")
