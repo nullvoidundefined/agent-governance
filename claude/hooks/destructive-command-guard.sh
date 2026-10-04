@@ -52,16 +52,53 @@ if grep -Eqi "${AT}gh api([[:space:]]|$)" <<< "$norm"; then
         | grep -Eoi '(-X|--method) [A-Za-z]+' \
         | head -1 \
         | awk '{print toupper($2)}')"
+    # gh api sends a POST whenever it carries a field or an --input body and
+    # no -X, so a field with no method is a POST here too (PR 199 review).
+    if [ -z "$method" ] && grep -Eq '(^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|$)' <<< "$norm"; then
+        method="POST"
+    fi
 
     if [ "$method" = "DELETE" ]; then
         emit deny "destructive-command-guard hook BLOCKED this call: 'gh api' with method DELETE bypasses the Bash(gh repo delete*) and Bash(gh release delete*) deny rules, which match on command text only. Deleting a repo, release, or branch through the raw API is irreversible. A human runs this manually if it is genuinely required."
     fi
-    # Posting or editing a PR or issue comment is exempt (owner, 2026-10-04),
-    # but only when this is the command's one gh api call, so a comment post
-    # cannot carry a second mutating call past the ask.
-    if [ "$(grep -Eoi "${AT}gh api([[:space:]]|$)" <<< "$norm" | wc -l)" -eq 1 ] &&
-        { [ "$method" = POST ] || [ "$method" = PATCH ]; } &&
-        grep -Eq '(^|[[:space:]/])repos/[^[:space:]/]+/[^[:space:]/]+/(issues|pulls)/([0-9]+/comments|comments/[0-9]+)([[:space:]]|$)' <<< "$norm"; then
+    # Posting or editing a PR or issue comment is exempt (owner, 2026-10-04).
+    # The whole command must be one `gh api` call whose only positional
+    # argument is a comment endpoint and whose other arguments are -X and plain
+    # fields: no command substitution, no -F @file upload, no --input (PR 199
+    # review). Anything the parser cannot read keeps the ask.
+    if { [ "$method" = POST ] || [ "$method" = PATCH ]; } && python3 - "$cmd" <<'PY' 2>/dev/null
+import re, shlex, sys
+try:
+    t = shlex.split(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+if t[:2] != ["gh", "api"]:
+    sys.exit(1)
+endpoint, i = None, 2
+while i < len(t):
+    a = t[i]
+    if a in ("-X", "--method"):
+        i += 2
+        continue
+    if a.startswith("--method=") or (a.startswith("-X") and len(a) > 2):
+        i += 1
+        continue
+    if a in ("-f", "--raw-field", "-F", "--field"):
+        if i + 1 >= len(t):
+            sys.exit(1)
+        v = t[i + 1]
+        if "$(" in v or "`" in v or "<(" in v or (a in ("-F", "--field") and "=@" in v):
+            sys.exit(1)
+        i += 2
+        continue
+    if a.startswith("-") or endpoint is not None:
+        sys.exit(1)
+    endpoint = a
+    i += 1
+ok = endpoint and re.fullmatch(r"/?repos/[^/\s]+/[^/\s]+/(issues|pulls)/(\d+/comments|comments/\d+)", endpoint)
+sys.exit(0 if ok else 1)
+PY
+    then
         method=""
     fi
     case "$method" in
