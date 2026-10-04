@@ -135,9 +135,9 @@ printf '// touched\n' >> src/__tests__/baseline.test.ts
 expect_fail "validate implementer after a test write" bash "$TDD" validate implementer | grep -q 'R-411' || { echo "FAIL: a test write by the implementer must cite R-411"; exit 1; }
 git checkout -q -- src/__tests__/baseline.test.ts
 git add src/services/score.ts && git commit -qm "feat(score): B-1 score returns 2"
-bash "$TDD" validate slice-critic | grep -q 'VALID: slice-critic' || { echo "FAIL: validate slice-critic must accept a clean tree"; exit 1; }
+bash "$TDD" validate pr-reviewer | grep -q 'VALID: pr-reviewer' || { echo "FAIL: validate pr-reviewer must accept a clean tree"; exit 1; }
 printf 'note\n' > docs/notes.md
-expect_fail "validate slice-critic after any write" bash "$TDD" validate slice-critic | grep -q 'docs/notes.md' || { echo "FAIL: a critic write must be named"; exit 1; }
+expect_fail "validate pr-reviewer after any write" bash "$TDD" validate pr-reviewer | grep -q 'docs/notes.md' || { echo "FAIL: a critic write must be named"; exit 1; }
 rm docs/notes.md
 
 # green: a tampered RED test is refused by the hash against the lock and the RED commit.

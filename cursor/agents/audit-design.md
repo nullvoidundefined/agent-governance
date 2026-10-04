@@ -12,7 +12,7 @@ readonly: false
 
 **Preferred model: Sonnet.** Style drift, brand erosion, design-system violations, and visual inconsistency are pattern-matching tasks against a clear rubric. Sonnet handles them well. Do not default to Opus.
 
-## Finding and fix discipline (R-804)
+## Finding and fix discipline
 
 Findings are the deliverable; proposed fixes are unverified hypotheses the user verifies before applying.
 

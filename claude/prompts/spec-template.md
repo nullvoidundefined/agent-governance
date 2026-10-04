@@ -1,8 +1,8 @@
 # Spec template
 
-**Purpose:** the fixed headings a behavioral spec carries so the test author (R-705, R-707) and `agents/spec-conformance-review.md` have explicit requirements to work from. Copy the headings below into `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` (the `brainstorming` skill's path) or into an externally written spec during `spec-grounding`. `hooks/spec-glossary-check.sh` reminds when a design doc lacks `## Acceptance criteria`, `## Non-goals`, or the `## Domain vocabulary` glossary (R-330). Delete a heading only with a one-line reason under it; an absent heading reads as "not considered".
+**Purpose:** the fixed headings a behavioral spec carries so the test author and the reviewer have explicit requirements to work from. Copy the headings below into `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` (the `brainstorming` skill's path) or into an externally written spec during `spec-grounding`. Delete a heading only with a one-line reason under it; an absent heading reads as "not considered".
 
-**How to use:** keep prose short under each heading. The load-bearing section is `## Acceptance criteria`: one numbered behavior per line, each one a slice the harness runs as RED then GREEN (R-412). A criterion a test cannot fail is not a criterion; move it to `## Non-goals` or rewrite it.
+**How to use:** keep prose short under each heading. The load-bearing section is `## Acceptance criteria`: one numbered behavior per line, each one a behavior that gets a failing test before it is built. A criterion a test cannot fail is not a criterion; move it to `## Non-goals` or rewrite it.
 
 ---
 
@@ -33,7 +33,7 @@ Properties that hold before and after every behavior above (a total never goes n
 
 ## Failure modes
 
-For each: the trigger, the visible outcome, and whether the caller can retry. Cover invalid input (R-406), the dependency being down or slow (timeout, R-346), partial failure mid-operation, and a concurrent second call.
+For each: the trigger, the visible outcome, and whether the caller can retry. Cover invalid input, the dependency being down or slow (timeout), partial failure mid-operation, and a concurrent second call.
 
 ## State transitions
 
@@ -45,15 +45,15 @@ What this spec deliberately does not do, so the critic does not report it and th
 
 ## Dependencies
 
-Existing modules this reuses (R-308, with paths), third-party packages it needs (each one justified), and migrations it requires.
+Existing modules this reuses (with paths), third-party packages it needs (each one justified), and migrations it requires.
 
 ## Observability
 
-The log lines, request-ID propagation (R-341), analytics events from the registry (R-343), and health-check changes (R-345) the behavior adds.
+The log lines, request-ID propagation, analytics events from the registry, and health-check changes the behavior adds.
 
 ## Security
 
-Who may call it, what is validated at the boundary, what is never logged (R-104).
+Who may call it, what is validated at the boundary, what is never logged.
 
 ## Assumption ledger (optional)
 
