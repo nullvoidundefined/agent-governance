@@ -1,0 +1,29 @@
+# Reports an error handler that discards the error without a trace: an empty
+# `catch` block in TypeScript or JavaScript (a comment alone still counts as
+# empty), and a Python `except` whose whole body is `pass` or `...`. A
+# swallowed error around a token check, a permission lookup or a payment call
+# fails open with no log line. Ported from claude-global-rules R-344
+# (enforce/rules/no-swallowed-catch.mjs, ruff S110). A handler that does
+# anything, even `return null`, is left to review.
+rules:
+  - id: typescript.empty-catch
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Empty catch block: the error is discarded with no log and no rethrow, so
+      a failure here is invisible. Log it with context (`logger.warn({ err },
+      ...)`), rethrow it, or handle the specific case it guards.
+    pattern-either:
+      - pattern: try { ... } catch { }
+      - pattern: try { ... } catch ($E) { }
+  - id: python.empty-except
+    languages: [python]
+    severity: ERROR
+    message: >-
+      An except whose only body is `pass` or `...` discards the error with no
+      trace. Log it (`log.exception(...)`), re-raise it, or handle the
+      specific case it guards.
+    # A regex, so the finding sits on the `except` line: Semgrep cannot match
+    # an except clause on its own, only the whole try statement. Comment and
+    # blank lines between the except and its body are allowed.
+    pattern-regex: (?m)^[ \t]*except\b[^:\n]*:[ \t]*(\#[^\n]*)?(\n[ \t]*(\#[^\n]*)?)*\n?[ \t]*(pass|\.\.\.)[ \t]*(\#[^\n]*)?$
