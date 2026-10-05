@@ -528,3 +528,53 @@ deny railway up -eproduction
 deny stdbuf -oL aws s3 rm s3://b --recursive
 deny setsid terraform destroy
 deny doas terraform destroy
+# security round 2: variable as program word
+ask c="gcloud compute instances delete x"; $c
+ask g=gcl; $g""oud compute instances delete x
+deny declare H=api.cloudflare.com; curl -X DELETE https://$H/client/v4/zones/1
+ask read H <<< api.cloudflare.com; curl -X DELETE https://$H/client/v4/zones/1
+# security round 2: curl brace and variable expansion
+deny curl -X DELETE api.cloudflare.c{o}m/client/v4/zones/1
+deny curl -g -X DELETE --variable h=api.cloudflare.com --expand-url "https://{{h}}/client/v4/zones/1"
+# security round 2: httpie/xh stdin body is a POST
+deny http api.cloudflare.com/client/v4/zones/1/dns_records < body.json
+deny cat body.json | http api.cloudflare.com/client/v4/zones/1/dns_records
+deny xh api.cloudflare.com/client/v4/zones/1/dns_records < body.json
+allow http --ignore-stdin api.cloudflare.com/client/v4/zones < body.json
+# security round 2: SQL evasions against production
+deny psql -h db.internal.acme.net -c "DROP/**/TABLE users"
+deny psql -h db.internal.acme.net -c "TRUNCATE/**/users"
+deny printf "DROP %s users" TABLE | psql -h db.internal.acme.net
+deny psql -h db.internal.acme.net -c "ALTER TABLE users DROP email"
+ask psql -h db.example.org -c "DROP/**/TABLE users"
+# security round 2: CLI aliases
+deny vc --prod
+deny vc rm my-project
+deny ntl deploy --prod
+deny npx netlify-cli deploy --prod
+# security round 2: pulumi state and watch
+deny pulumi watch
+deny pulumi state move urn:a urn:b
+deny pulumi state unprotect urn:x
+# security round 2: wrappers
+deny flock /tmp/l -c "gcloud compute instances delete x"
+deny fish -C "gcloud compute instances delete x"
+deny fish --command "gcloud compute instances delete x"
+ask script -qc "gcloud compute instances delete x" /dev/null
+ask taskset 1 gcloud compute instances delete x
+ask su -c "gcloud compute instances delete x"
+ask watch -n 60 gcloud compute instances delete x
+ask unbuffer gcloud compute instances delete x
+allow taskset 1 make test
+allow watch -n 5 git status
+# security round 2: postgres URI with host query parameter
+deny psql "postgresql:///app?host=db.internal.acme.net" -c "DROP TABLE users"
+# security round 2: kubectl context and cluster flag
+deny kubectx gke_acme_main && kubectl delete ns x
+deny kubectl --cluster gke_acme_main delete ns x
+allow kubectl --cluster dev-cluster get pods
+# security round 2: vercel alias
+deny vercel alias set dpl_123 www.acme.com
+deny vercel alias rm www.acme.com
+# security round 2: heroku run:detached
+ask heroku run:detached -a staging-api rails db:drop
