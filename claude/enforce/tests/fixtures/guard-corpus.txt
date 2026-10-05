@@ -597,3 +597,10 @@ deny mysql -h db.internal.acme.net -e $'DROP # x\nTABLE users'
 deny psql -h db.internal.acme.net -c $'TRUNCATE -- x\nusers'
 ask psql -h db.example.org -c $'DROP -- x\nTABLE users'
 allow psql -h db.internal.acme.net -c "SELECT count(*) FROM users"
+
+# PR 6 review r1
+deny bash ~/.claude/enforce/db-migrate-safe.sh --provider pg --target production --url-env DATABASE_URL -- npx prisma migrate deploy
+allow DATABASE_URL=postgres://app.preview.acme.dev/db bash ~/.claude/enforce/db-migrate-safe.sh --provider neon --target preview --project-id p --parent main -- rails db:migrate
+allow DATABASE_URL=postgres://app.preview.acme.dev/db bash ~/.claude/enforce/db-migrate-safe.sh --provider pg --target preview --url-env DATABASE_URL -- npx prisma migrate deploy
+# B-18 judges the command word only; a substitution as an argument of the wrapped command is not one
+allow DATABASE_URL=postgres://app.preview.acme.dev/db bash ~/.claude/enforce/db-migrate-safe.sh --provider neon --target preview --project-id p --parent main -- rails db:migrate --version $(cat x)

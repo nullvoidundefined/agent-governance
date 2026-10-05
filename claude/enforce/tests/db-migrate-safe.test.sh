@@ -51,10 +51,11 @@ for a in "$@"; do
   case "$a" in --file=*) f="${a#--file=}" ;; esac
   prev="$a"
 done
-[ "${STUB_PG_DUMP_RC:-0}" -eq 0 ] && [ -n "$f" ] && echo dummy-dump >"$f"
+{ [ "${STUB_PG_DUMP_RC:-0}" -eq 0 ] || [ -n "${STUB_PG_DUMP_PARTIAL:-}" ]; } && [ -n "$f" ] && echo dummy-dump >"$f"
 exit "${STUB_PG_DUMP_RC:-0}"'
 mkstub pg_restore 'exit "${STUB_PG_RESTORE_RC:-0}"'
-mkstub neonctl 'echo "{\"branch\":{\"id\":\"br-stub-1\"}}"; exit "${STUB_NEON_RC:-0}"'
+mkstub neonctl 'if [ -n "${STUB_NEON_EMPTY:-}" ]; then echo "{}"; else echo "{\"branch\":{\"id\":\"br-stub-1\"}}"; fi; exit "${STUB_NEON_RC:-0}"'
+mkstub migrate-slow 'touch "$STUB_MARKER"; sleep 30; exit 0'
 mkstub aws 'case "$*" in
   *wait*) exit "${STUB_AWS_WAIT_RC:-0}" ;;
   *) echo "{\"DBSnapshot\":{}}"; exit "${STUB_AWS_CREATE_RC:-0}" ;;
@@ -203,6 +204,60 @@ bad no-dashdash --provider neon --target preview --project-id p --parent main "$
 bad no-command --provider neon --target preview --project-id p --parent main --
 bad unset-url-env --provider pg --target preview --url-env TEST_DB_URL_NOT_SET_ANYWHERE -- "$MCMD"
 bad no-provider --target preview -- "$MCMD"
+
+# ---- review r1 ----
+# 1. a failed pg snapshot leaves no dump file behind
+STUB_PG_DUMP_RC=1 STUB_PG_DUMP_PARTIAL=1 run_case pg-dump-fail-clean --provider pg --target preview --url-env TEST_DB_URL -- "$MCMD"
+[ "$RC" -ne 0 ]; check "nonzero exit" $?
+[ -z "$(ls "$BKDIR"/*.dump 2>/dev/null)" ]; check "pg_dump failure leaves no *.dump in backup dir" $?
+STUB_PG_RESTORE_RC=1 run_case pg-restore-fail-clean --provider pg --target preview --url-env TEST_DB_URL -- "$MCMD"
+[ "$RC" -ne 0 ]; check "nonzero exit" $?
+[ -z "$(ls "$BKDIR"/*.dump 2>/dev/null)" ]; check "pg_restore --list failure leaves no *.dump in backup dir" $?
+
+# 2. migration failure: exit 1, migration_status failed, snapshot_status ok
+STUB_MIGRATE_RC=1 run_case migrate-fail --provider pg --target preview --url-env TEST_DB_URL -- "$MCMD" up
+[ "$RC" -eq 1 ]; check "wrapper exits 1 when the migration exits 1 (got $RC)" $?
+ran_migration; check "migration ran" $?
+check_log_keys
+[ "$(logf .migration_status)" = failed ] && [ "$(logf .snapshot_status)" = ok ]; check "log migration_status failed, snapshot_status ok" $?
+
+# 3. neon returns no branch id: snapshot failed, migration blocked
+STUB_NEON_EMPTY=1 run_case neon-no-id --provider neon --target preview --project-id proj-1 --parent main -- "$MCMD"
+[ "$RC" -ne 0 ]; check "nonzero exit" $?
+! ran_migration; check "migration never ran" $?
+check_log_keys
+[ "$(logf .snapshot_status)" = failed ]; check "log shows failed snapshot" $?
+
+# 4. SIGTERM during the migration logs "interrupted", one line
+CASE=interrupted; CDIR="$WORK/$CASE"; mkdir -p "$CDIR/log" "$CDIR/backup"
+CALLS="$CDIR/calls"; : >"$CALLS"; LOGF="$CDIR/log/migrations.jsonl"; BKDIR="$CDIR/backup"
+MARK="$CDIR/started"
+env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+  PATH="$BIN:$PATH" STUB_CALLS="$CALLS" STUB_MARKER="$MARK" \
+  MIGRATE_LOG_DIR="$CDIR/log" MIGRATE_BACKUP_DIR="$BKDIR" HOME="$CDIR/home" \
+  bash "$SCRIPT" --provider pg --target preview --url-env TEST_DB_URL -- "$BIN/migrate-slow" >"$CDIR/out" 2>"$CDIR/err" &
+WPID=$!
+for _ in $(seq 1 100); do [ -f "$MARK" ] && break; sleep 0.1; done
+[ -f "$MARK" ]; check "migration stub started" $?
+kill -TERM "$WPID" 2>/dev/null
+for _ in $(seq 1 50); do kill -0 "$WPID" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$WPID" 2>/dev/null; then kill -KILL "$WPID" 2>/dev/null; fail "$CASE: wrapper did not exit after SIGTERM"; fi
+wait "$WPID" 2>/dev/null
+pkill -f "$BIN/migrate-slow" 2>/dev/null
+[ "$(wc -l <"$LOGF" 2>/dev/null | tr -d ' ')" = "1" ]; check "exactly one log line" $?
+[ "$(logf .migration_status)" = interrupted ]; check "log migration_status interrupted (got $(logf .migration_status))" $?
+
+# 5. two pg runs for one target in the same second keep both dumps
+CASE=pg-twice; CDIR="$WORK/$CASE"; mkdir -p "$CDIR/log" "$CDIR/backup"
+CALLS="$CDIR/calls"; : >"$CALLS"; LOGF="$CDIR/log/migrations.jsonl"; BKDIR="$CDIR/backup"
+for i in 1 2; do
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    PATH="$BIN:$PATH" STUB_CALLS="$CALLS" \
+    MIGRATE_LOG_DIR="$CDIR/log" MIGRATE_BACKUP_DIR="$BKDIR" HOME="$CDIR/home" \
+    bash "$SCRIPT" --provider pg --target preview --url-env TEST_DB_URL -- "$MCMD" up >"$CDIR/out$i" 2>"$CDIR/err$i"
+done
+n=$(ls "$BKDIR"/preview-*.dump 2>/dev/null | wc -l | tr -d ' ')
+[ "$n" = 2 ]; check "two runs produce two distinct dump files (got $n)" $?
 
 [ "$fails" -eq 0 ] && { echo "PASS: db-migrate-safe"; exit 0; }
 echo "FAIL: db-migrate-safe ($fails failures)"

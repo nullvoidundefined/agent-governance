@@ -71,6 +71,12 @@ for f in "$ROOT/rules/CLOUD-DEPLOYMENT.md" "$ROOT/rules/stacks/DATABASE.md"; do
   grep -qi 'restore-drill' "$f" && pass "$n names restore-drill" || fail "$n does not mention restore-drill"
 done
 
+# Review r1: backup retention and who uploads the dumps are documented
+CD="$ROOT/rules/CLOUD-DEPLOYMENT.md"
+near=$(awk 'tolower($0) ~ /db-migrate-safe/{m[NR]=1} tolower($0) ~ /retention|prune/{p[NR]=1} END{for(a in m)for(b in p)if(a-b<=12&&b-a<=12){print "y";exit}}' "$CD" 2>/dev/null)
+[ "$near" = y ] && pass "CLOUD-DEPLOYMENT.md mentions backup retention/prune near db-migrate-safe" || fail "CLOUD-DEPLOYMENT.md has no retention/prune line near db-migrate-safe"
+grep -qi 'upload' "$CD" && pass "CLOUD-DEPLOYMENT.md says the product repo uploads the dumps" || fail "CLOUD-DEPLOYMENT.md has no line about uploading the dumps"
+
 [ "$fails" -eq 0 ] && { echo "PASS: restore-drill-template"; exit 0; }
 echo "FAIL: restore-drill-template ($fails failures)"
 exit 1
