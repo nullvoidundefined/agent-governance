@@ -422,3 +422,42 @@ allow terraform apply -help
 allow pulumi up --help
 deny AWS rds delete-db-instance --db-instance-identifier x
 deny curl -X DELETE https://api.cloudflare.com./client/v4/zones/abc
+
+# Review round 2 (PR #206)
+# 1. verbs that are neither read nor mutation, with a read-headed resource name
+deny gcloud compute ssh get-worker --zone z --command "sudo systemctl stop app"
+deny gcloud compute images deprecate get-api-image --state DELETED
+deny gcloud sql instances clone show-db show-db-2
+deny gcloud compute scp ./file list-vm:/tmp
+deny gcloud functions call get-user --data '{}'
+deny doctl compute ssh get-worker --ssh-command "rm -rf /data"
+allow gcloud projects get-iam-policy p
+allow gcloud container clusters get-credentials c --zone z
+allow gcloud config get-value project
+allow gcloud iam list-grantable-roles //x
+# 2. B-16 remote targets that name no -h host. The ssh host, PGSERVICE and
+# service= names are not B-11 signals (B-11 lists URL hosts and -h/--host), so
+# a prod-named variant is not asserted as deny; these stay on staging.
+ask ssh db.staging.acme.com psql -c "DELETE FROM t WHERE id=1"
+ask psql service=staging -c "DELETE FROM t WHERE id=1"
+ask PGSERVICE=staging psql -c "DELETE FROM t WHERE id=1"
+allow psql -h localhost -c "DELETE FROM t WHERE id = 1"
+# 3. mutation words inside read operation names
+allow aws ecr get-login-password
+allow aws iam get-login-profile --user-name u
+allow aws cloudformation describe-change-set --change-set-name c
+allow aws cloudformation describe-stack-set --stack-set-name s
+allow aws ec2 describe-snapshot-attribute --snapshot-id s --attribute createVolumePermission
+allow aws rds describe-db-snapshot-attributes --db-snapshot-identifier s
+allow aws backup describe-restore-job --restore-job-id r
+allow doctl compute snapshot list
+allow gcloud beta run services list
+deny aws ec2 delete-snapshot --snapshot-id s
+deny doctl compute snapshot delete 1
+deny gcloud beta run services delete svc
+# 4. a version suffix on a launched package (@cloudflare/wrangler is not mapped
+# to wrangler by the judge, so it is left out)
+deny npx wrangler@latest deploy --env production
+deny npx vercel@latest --prod
+deny npx wrangler@3 delete
+allow npx wrangler@latest dev
