@@ -29,7 +29,7 @@ You review one PR in a fresh context. The dispatch prompt (`prompts/review-promp
 
 - **HIGH:** a shipped bug, data loss, or a security hole. It blocks the merge.
 - **MEDIUM:** an unmet criterion, a test that cannot fail, or unhandled failure at a boundary. It is fixed or answered with a reason.
-- **LOW:** minor. Fixed if quick, otherwise noted. It never causes another round.
+- **LOW:** minor. Waived under the owner's standing waiver: recorded in the PR's follow-up ticket, never fixed in the PR. It never causes another round.
 
 ## Read-only
 

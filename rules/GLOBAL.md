@@ -14,8 +14,8 @@ Build what the owner asks for: correct, tested, reviewed, maintainable software.
 
 Every PR states `**Risk:** standard` or `**Risk:** high`.
 
-- **High:** authentication, sessions, or cookies; secrets or PII handling; payments; validation of network-facing input at a trust boundary; SQL built from input; destructive data operations or migrations; locks, queues, or retries in production services; CORS, CSP, or security headers.
-- **Standard:** everything else, including most product UI, internal tooling, docs, and local CLIs whose only input is the owner.
+- **High:** authentication, sessions, or cookies; secrets or PII handling; payments, billing, or quota; SQL built from input; validation of network-facing input at a trust boundary; destructive data operations, and migrations that drop or rewrite data; CORS, CSP, or security headers.
+- **Standard:** everything else, including most product UI, internal tooling, docs, local CLIs whose only input is the owner, and production-reliability work: locks, queues, retries, failover, circuit breakers, and background jobs. Reliability work keeps an integration test against the real dependency, but gets no TDD lock, threat model, or security review.
 - The owner can override the classification either way.
 
 ## How a change is built
@@ -36,6 +36,9 @@ Tests must fail when the code is wrong. Assert behavior, not mock call counts.
 
 High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and failure boundaries, integration verification against real dependencies, and the security review.
 
+- **Time box:** a high-risk task gets about 90 minutes from its RED commit. At the limit, finish the current step, write in the PR what is left, stop, and hand it to the owner.
+- **Fixed scope:** nothing is added to a PR after it starts. A new idea goes to a follow-up PR.
+
 ## Verification before "done"
 
 - **Evidence:** never say done, works, or fixed without it: the command run and its passing result.
@@ -45,8 +48,9 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 ## Review
 
 - **Who:** every PR gets one review by the `pr-reviewer` agent in a fresh context. It gets the diff, the acceptance criteria, and the risk line, never the implementer's transcript.
-- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is fixed if it takes under five minutes, otherwise noted. LOW never triggers another review.
-- **Second round:** only when round one found a HIGH, the fixes add new production code larger than both 100 lines and 25% of the diff, or the fixes change the design. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
+- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is waived (below).
+- **Second round:** only when round one found a HIGH, or a MEDIUM fixed in code. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
+- **LOW waiver:** a standing owner waiver covers every LOW finding, general and security. LOW findings are never fixed in the PR. They go into one follow-up ticket per PR, linked from the PR body.
 - **Record:** in the PR body under `## Review`.
 
 ## Security review
@@ -55,9 +59,11 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 - **Rounds:**
   - Round one fixes the list of controls in scope.
   - Round two happens only for a HIGH, or a MEDIUM fixed in code, and covers the fix diff and those controls.
-  - Round three happens only for an open HIGH.
-  - Stop after three. The owner decides what remains.
-- **Severity:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. LOW findings are fixed or noted and never start a round.
+  - There is no third round. The owner decides what remains.
+- **Severity caps:**
+  - A finding whose only input source is the owner's own config, environment, or CLI is at most LOW.
+  - A finding whose only precondition is an outage or stall of a dependency the project owns (Redis, Postgres) is at most LOW, unless an attacker can cause that outage.
+  - LOW findings fall under the LOW waiver and never start a round.
 - **Scope:** a security round never reopens tests, CI, planning, or the general review.
 - **Record:** in the PR body under `## Security review`, written once at the end.
 
@@ -65,7 +71,8 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
 - **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, or for deferred work the owner should see.
-- **Bounded review:** general review stops after two rounds at most, security review after three. Each round looks only at what changed.
+- **Bounded review:** general review and security review each stop after two rounds at most, and the second happens only for a HIGH or a MEDIUM fixed in code. Each round looks only at what changed.
+- **Time box and fixed scope:** a high-risk task stops at about 90 minutes from RED and hands over what is left; no PR gains scope after it starts.
 - **Proportional verification:** depth follows product risk and changed behavior.
 - **Process budget:** process time does not exceed implementation time.
   - It includes harness maintenance: hooks, hook tests, adapters, translation, review machinery, governance CI, and debugging them.
