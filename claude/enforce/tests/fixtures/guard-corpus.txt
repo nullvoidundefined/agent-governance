@@ -359,6 +359,16 @@ allow NODE_ENV=staging prisma migrate deploy
 allow python manage.py migrate
 allow RAILS_ENV=production rails routes
 
+# PR 6 M-5/M-6: preview and testing migrations go through db-migrate-safe.sh
+deny DATABASE_URL=postgres://app.preview.acme.dev/db npx prisma migrate deploy
+deny DATABASE_URL=postgres://ci-db.acme.net/db npx prisma migrate deploy
+deny DATABASE_URL=postgres://ci-db.acme.net/db rails db:migrate
+allow DATABASE_URL=postgres://app.preview.acme.dev/db ~/.claude/enforce/db-migrate-safe.sh --provider neon --target preview --project-id p --parent main -- npx prisma migrate deploy
+allow DATABASE_URL=postgres://ci-db.acme.net/db ~/.claude/enforce/db-migrate-safe.sh --provider neon --target testing --project-id p --parent main -- rails db:migrate
+deny DATABASE_URL=postgres://db.internal.acme.net/db ~/.claude/enforce/db-migrate-safe.sh --provider neon --target production --project-id p --parent main -- npx prisma migrate deploy
+allow DATABASE_URL=postgres://localhost/db npx prisma migrate deploy
+allow DATABASE_URL=postgres://localhost/db rails db:migrate
+
 # B-18: a command word that is a command substitution asks
 ask $(which ls) -la
 ask `which ls` -la
