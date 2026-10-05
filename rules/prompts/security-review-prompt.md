@@ -1,6 +1,6 @@
 # Security review prompt
 
-Fill the placeholders and paste the result as the `security-reviewer` dispatch prompt (Agent tool, `subagent_type: "security-reviewer"`, `model: "fable"`, in the background). Run it after the general review, on high-risk PRs that touch a security control: authentication, sessions, cookies, secrets, PII, payments, billing, quota, SQL built from input, trust-boundary input validation, destructive data operations, or CORS, CSP, and security headers. Reliability work (locks, queues, retries, failover, circuit breakers) is standard risk and gets no security review.
+Fill the placeholders and paste the result as the `security-reviewer` dispatch prompt (Agent tool, `subagent_type: "security-reviewer"`, `model: "fable"`, in the background). Run it only when the owner asks for a security review of one PR (security is otherwise audited separately by `audit-security`; see CLAUDE.md, Security audits). One round; a second needs the owner.
 
 - **Rounds:** round 1 lists the controls in scope, and that list is frozen. Round 2 runs only for a HIGH or CRITICAL, or a MEDIUM fixed in code, and gets the fix diff. There is no round 3; the owner decides what remains.
 - **Record:** in the PR body under `## Security review`, written once at the end: the reviewer, the model, the range, the rounds, the controls, and each finding with severity and disposition (`fixed <sha>`, `waived: <ticket>` for LOW, or `waived by owner <date>`). LOW findings are never fixed in the PR; they join the PR's one follow-up ticket.
