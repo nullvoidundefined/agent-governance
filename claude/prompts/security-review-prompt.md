@@ -35,6 +35,7 @@ Rules:
   - CRITICAL or HIGH: exploitable.
   - MEDIUM: exploitable under a stated, realistic precondition, or a missing insecure-input test.
   - LOW: hardening.
+  - Agent guards (hooks that judge commands an agent issues): a bypass is HIGH only when a non-adversarial agent could plausibly type it while doing normal work (an ordinary option, alias, env var, wrapper, or tool). A bypass that needs deliberate obfuscation (keywords split by comments, a variable or empty quotes as the program word, option spellings chosen to dodge parsing, glob or brace tricks in a host name, nested comment syntax) is at most LOW: list it under known limits; it never starts a round. A guard's threat model is a mistaken agent; a deliberately evasive one can already write and run a script (owner decision, 2026-10-05).
 - Out of scope:
   - controls outside the frozen list
   - general correctness, tests, CI, or planning
