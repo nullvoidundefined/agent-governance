@@ -296,10 +296,21 @@ MUTATION_VERBS = {
 # Global options of gcloud and doctl that take a separate value.
 GROUP_CLI_VALUE_OPTIONS = {"--project", "--account", "--configuration", "--verbosity", "--format",
                            "--impersonate-service-account", "--billing-project", "--flags-file",
-                           "--filter", "--zone", "--region", "--context", "-t", "--access-token",
+                           "--filter", "--sort-by", "--limit", "--page-size", "--zone", "--region", "--context", "-t", "--access-token",
                            "-o", "--output", "--config", "-u", "--api-url"}
-# Top-level groups whose names are also verbs: `gcloud run services list`.
+# Top-level gcloud groups whose names are also verbs: `gcloud run services list`.
 GCLOUD_VERB_NAMED_GROUPS = {"run", "deploy"}
+# doctl groups whose names are also verbs: `doctl compute snapshot list`.
+DOCTL_VERB_NAMED_GROUPS = {"snapshot"}
+# gcloud and doctl read operations with hyphenated names. Any other hyphenated
+# command word is not a read, so an unknown verb is denied.
+GROUP_CLI_READ_OPERATIONS = {"get-iam-policy", "get-credentials", "get-value", "list-grantable-roles",
+                             "list-testable-permissions", "get-server-config", "get-ancestors"}
+# Command words that act without being in MUTATION_VERBS: a resource named
+# like a read verb after one of these (gcloud compute ssh list) is not a read.
+ACTING_VERBS = {"ssh", "scp", "clone", "deprecate", "call", "export", "connect", "console", "kill",
+                "power-off", "power-on", "power-cycle", "shutdown", "add-iam-policy-binding",
+                "remove-iam-policy-binding", "set-iam-policy"}
 AWS_VALUE_OPTIONS = {"--region", "--profile", "--output", "--endpoint-url", "--query", "--color",
                      "--ca-bundle", "--cli-read-timeout", "--cli-connect-timeout",
                      "--cli-binary-format"}
@@ -307,67 +318,76 @@ AWS_DNS_SERVICES = {"route53", "route53domains", "route53resolver"}
 DNS_WORDS = {"dns", "domain", "domains", "records", "record-set", "record-sets"}
 
 
-def is_read_verb(word):
-    """True when a hyphenated verb starts with a read word (list, describe,
-    get, show, ls, help, version) and none of its parts is a mutation verb:
-    list-keys reads, listener and get-and-delete do not."""
-    parts = word.lower().split("-")
-    return parts[0] in READ_VERB_HEADS and not set(parts[1:]) & MUTATION_VERBS
+def is_read_head(word):
+    """aws and az name an operation fully by position, so the first part of a
+    hyphenated name decides: get-login-password reads, delete-snapshot does not."""
+    return word.lower().split("-")[0] in READ_VERB_HEADS
 
 
-def is_mutation_verb(word):
-    return bool(set(word.lower().split("-")) & MUTATION_VERBS)
+def is_group_cli_read(word):
+    """gcloud and doctl: an exact read word, or a known hyphenated read operation."""
+    return word in READ_VERB_HEADS or word in GROUP_CLI_READ_OPERATIONS
 
 
 def judge_aws(command):
     if "--version" in command.args:
         return None
     positionals = command.positionals(AWS_VALUE_OPTIONS)
-    if not positionals or positionals[-1] == "help" or len(positionals) < 2:
+    if not positionals or (positionals[-1] == "help" and len(positionals) <= 3) or len(positionals) < 2:
         return None if positionals[:1] != ["configure"] else cloud_mutation(command, positionals)
     service, operation = positionals[0], positionals[1]
     if service == "configure":
         return None if operation in ("list", "get", "list-profiles") else cloud_mutation(command, positionals)
-    if is_read_verb(operation):
+    if is_read_head(operation):
         return None
     return cloud_mutation(command, positionals)
 
 
 def judge_cloud_cli(command):
-    """gcloud, az, doctl: allowed only when the command's verb is a read verb;
-    every other command, unknown verbs included, is denied (B-1, B-2)."""
+    """gcloud, az, doctl: allowed only when the command is a read; every other
+    command, unknown verbs included, is denied (B-1, B-2)."""
     positionals = command.positionals(() if command.program == "az" else GROUP_CLI_VALUE_OPTIONS)
     if not positionals:
         return None
-    verb = az_verb(command) if command.program == "az" else group_cli_verb(command.program, positionals)
-    after = positionals[positionals.index(verb) + 1:] if verb in positionals else []
-    if verb and is_read_verb(verb) and not any(word in MUTATION_VERBS for word in after):
-        return None
-    return cloud_mutation(command, positionals)
+    if command.program == "az":
+        verb = az_verb(command)
+        return None if verb and is_read_head(verb) else cloud_mutation(command, positionals)
+    return None if is_group_cli_read_command(command.program, positionals) else cloud_mutation(command, positionals)
 
 
 def az_verb(command):
     """az names its command entirely before the first option: the verb is the
-    last word before it (az vm deallocate -g rg -n x)."""
+    last word before it (az vm deallocate -g rg -n x). Boolean global options
+    in front of the command (az --only-show-errors vm list) are skipped."""
     words = []
     for word in command.args:
         if word.startswith("-"):
-            break
+            if words:
+                break
+            continue
         words.append(word)
     return words[-1] if words else None
 
 
-def group_cli_verb(program, positionals):
-    """gcloud, doctl: the verb is the first positional that reads or mutates;
-    the groups before it are nouns. Returns None when no positional is a verb."""
-    for index, word in enumerate(positionals):
-        if index == 0 and program == "gcloud" and word in GCLOUD_VERB_NAMED_GROUPS:
+def is_group_cli_read_command(program, positionals):
+    """gcloud, doctl: the verb is the first read word, and every word before it
+    is a group noun. The command reads only when such a verb exists, no word
+    before it is a known verb (except groups named like one: gcloud run,
+    doctl compute snapshot), and no mutation verb follows it."""
+    words = list(positionals)
+    while program == "gcloud" and words[:1] and words[0] in ("alpha", "beta"):
+        words = words[1:]
+    read_index = next((i for i, word in enumerate(words) if is_group_cli_read(word)), None)
+    if read_index is None:
+        return False
+    for index, word in enumerate(words[:read_index]):
+        if program == "gcloud" and index == 0 and word in GCLOUD_VERB_NAMED_GROUPS:
             continue
-        if word == "transaction":
+        if program == "doctl" and word in DOCTL_VERB_NAMED_GROUPS:
             continue
-        if is_read_verb(word) or is_mutation_verb(word):
-            return word
-    return None
+        if word in MUTATION_VERBS or word in ACTING_VERBS:
+            return False
+    return not any(word in MUTATION_VERBS for word in words[read_index + 1:])
 
 
 def cloud_mutation(command, positionals):
@@ -598,7 +618,7 @@ def judge_fly(command, environments):
 
 def judge_heroku(command, environments):
     positionals = command.positionals(("-a", "--app", "-r", "--remote"))
-    if positionals[:1] and positionals[0] in ("apps:destroy", "pg:reset", "addons:destroy"):
+    if positionals[:1] and positionals[0] in ("apps:destroy", "destroy", "pg:reset", "addons:destroy"):
         return ("deny", "B-9", "heroku %s destroys a Heroku resource" % positionals[0])
     for value in option_values(command.args, ("-a", "--app")):
         if is_production(value, environments, "word"):
@@ -630,7 +650,9 @@ def judge_vercel(command, environments):
     if positionals[:1] and positionals[0] in ("remove", "rm"):
         return ("deny", "B-9", "vercel %s removes a Vercel deployment or project" % positionals[0])
     targets = option_values(command.args, ("--target",))
-    if "--prod" in command.args or any(is_production(value, environments, "exact") for value in targets):
+    prod_flag = any(word == "--prod" or (word.startswith("--prod=") and word[7:].lower() not in ("false", "0"))
+                    for word in command.args)
+    if prod_flag or any(is_production(value, environments, "exact") for value in targets):
         return ("deny", "B-10", "vercel production deploy")
     return None
 
@@ -662,6 +684,15 @@ LAUNCHER_VALUE_OPTIONS = {"-p", "--package", "-e", "--environment", "-s", "--ser
 PYTHONS = re.compile(r"^python(\d+(\.\d+)?)?$")
 
 
+def launched_program_name(word):
+    """Returns the program a launcher runs: a package spec loses its @version
+    (wrangler@3 is wrangler) but keeps its @scope/ prefix; a path is reduced
+    to its basename."""
+    if word.startswith("@"):
+        return "@" + word[1:].split("@", 1)[0]
+    return os.path.basename(word).split("@", 1)[0]
+
+
 def launched_command(program, args):
     """Returns the program and arguments a launcher (npx, bundle exec, railway
     run, python manage.py) actually runs, unwrapping up to three levels."""
@@ -673,6 +704,8 @@ def launched_command(program, args):
             rest = args[1:]
         elif program in ("pnpm", "yarn") and args[:1] and not args[0].startswith("-"):
             rest = args
+        elif PYTHONS.match(program) and args[:1] == ["-m"] and len(args) > 1:
+            rest = args[1:]
         elif PYTHONS.match(program):
             scripts = [word for word in args if not word.startswith("-")]
             if scripts and os.path.basename(scripts[0]) == "manage.py":
@@ -684,7 +717,7 @@ def launched_command(program, args):
             index += 2 if rest[index] in LAUNCHER_VALUE_OPTIONS else 1
         if index >= len(rest):
             break
-        program, args = os.path.basename(rest[index]), rest[index + 1:]
+        program, args = launched_program_name(rest[index]), rest[index + 1:]
     return program, args
 
 
@@ -704,7 +737,7 @@ def classify_database_command(program, args):
             return "data-loss"
         if "db:migrate" in flags:
             return "migration"
-    elif program == "manage.py":
+    elif program in ("manage.py", "django-admin", "django"):
         if first in ("flush", "reset_db"):
             return "data-loss"
         if first == "migrate":

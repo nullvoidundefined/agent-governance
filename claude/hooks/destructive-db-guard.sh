@@ -123,14 +123,15 @@ deletes_are_bounded() {
 # True when the command names no database host other than a local one: every
 # -h/--host value and URL host is localhost, 127.0.0.1, ::1, or a unix socket
 # path. Anything that can carry a target this cannot read fails it: a shell
-# variable ($PROD_DB), a *HOST= assignment or host= conninfo, a glued -hHOST,
-# or a launcher that runs the command on a remote platform.
+# variable ($PROD_DB), a *HOST= or *SERVICE= assignment (PGSERVICE=), a host=
+# or service= conninfo, a glued -hHOST, or a launcher that runs the command on
+# a remote machine or platform (ssh, heroku, railway, wrangler, fly, kubectl).
 names_only_local_target() {
     local host
     grep -Eq '\$\{?[A-Za-z_]' <<< "$cmd" && return 1
-    grep -Eqi '(^|[^-A-Za-z0-9_])[A-Za-z_]*host=' <<< "$cmd" && return 1
+    grep -Eqi '(^|[^-A-Za-z0-9_])[A-Za-z_]*(host|service)=' <<< "$cmd" && return 1
     grep -Eq '(^|[[:space:]])-h[^[:space:]]' <<< "$cmd" && return 1
-    grep -Eq '(^|[^A-Za-z0-9_-])(heroku|railway|wrangler|fly|flyctl|kubectl)([^A-Za-z0-9_-]|$)' <<< "$cmd" && return 1
+    grep -Eq '(^|[^A-Za-z0-9_-])(heroku|railway|wrangler|fly|flyctl|kubectl|ssh)([^A-Za-z0-9_-]|$)' <<< "$cmd" && return 1
     while IFS= read -r host; do
         host="${host##*@}"
         case "$host" in
