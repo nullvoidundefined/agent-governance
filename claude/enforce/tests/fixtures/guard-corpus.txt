@@ -392,7 +392,8 @@ deny bunx wrangler dns create example.com
 allow npx wrangler deploy --env staging
 allow npx terraform plan
 # 3. B-16 regression: only a local target skips the remote-DELETE ask
-ask PGHOST=db.prod.acme.com psql -c "DELETE FROM users WHERE id = 1"
+# Security review round 1: PGHOST is a production signal now, so B-13 denies.
+deny PGHOST=db.prod.acme.com psql -c "DELETE FROM users WHERE id = 1"
 deny psql -hdb.prod.acme.com -c "DELETE FROM users WHERE id = 1"
 ask psql -hdb.staging.acme.com -c "DELETE FROM users WHERE id = 1"
 ask psql "host=db.staging.acme.com dbname=app" -c "DELETE FROM users WHERE id = 1"
@@ -461,3 +462,69 @@ deny npx wrangler@latest deploy --env production
 deny npx vercel@latest --prod
 deny npx wrangler@3 delete
 allow npx wrangler@latest dev
+
+# Security review round 1 (PR #206)
+# 1. production DB target forms (db.prod.acme.com has prod as a word)
+deny PGHOST=db.prod.acme.com psql -c "DROP TABLE users"
+deny psql "host=db.prod.acme.com dbname=app" -c "DROP TABLE users"
+deny echo "DROP TABLE users" | psql -h db.prod.acme.com
+deny SQL="DROP TABLE users"; psql -h db.prod.acme.com -c "$SQL"
+deny MYSQL_HOST=db.prod.acme.com mysql -e "DROP TABLE users"
+allow PGHOST=localhost psql -c "SELECT 1"
+# 2. more destructive SQL and tools
+deny dropdb -h db.prod.acme.com app
+deny psql -h db.prod.acme.com -c "DROP SCHEMA public CASCADE"
+deny psql -h db.prod.acme.com -c "ALTER TABLE users DROP COLUMN email"
+deny mysqladmin -h db.prod.acme.com drop app
+ask dropdb -h db.staging.acme.com app
+ask psql -h db.staging.acme.com -c "DROP SCHEMA s CASCADE"
+# 3. PaaS
+deny netlify deploy --prod
+deny netlify deploy -p
+deny fly machines destroy 1234 --force
+deny fly machine destroy 1234
+deny vercel project rm acme
+deny vercel projects rm acme
+deny vercel promote dpl_x
+deny vercel rollback dpl_x
+allow netlify deploy
+allow fly machines list
+allow vercel project ls
+# 4. HTTP clients
+deny http --raw '{"type":"TXT"}' POST https://api.cloudflare.com/client/v4/zones/z/dns_records
+deny http --max-redirects 3 DELETE https://api.cloudflare.com/client/v4/zones/z
+deny curl -X DELETE 'https://api.cloudflare.{com}/client/v4/zones/z'
+deny H=api.cloudflare.com; curl -X DELETE https://$H/client/v4/zones/z
+allow curl -g 'https://example.com/{a}'
+# 5. DNS CLIs with a global flag before the subcommand
+deny flarectl --account-id abc dns delete --zone example.com --id 1
+allow flarectl --account-id abc dns list --zone example.com
+# 6. pulumi with a global flag, an abbreviation, import
+deny pulumi -v 1 destroy --yes
+deny pulumi dn --yes
+deny pulumi import aws:s3/bucket:Bucket b b
+allow pulumi -v 1 preview
+# 7. gcloud flag values that read as verbs
+deny gcloud compute instances add-tags vm1 --tags list
+deny gcloud compute instances set-machine-type vm1 --machine-type get
+allow gcloud compute instances list --format json
+# 8. ORM and migrations
+deny python manage.py migrate --settings=config.settings.production
+deny sequelize db:drop --env production
+deny rails db:migrate:reset RAILS_ENV=production
+ask heroku run rails db:drop -a acme-staging
+ask sequelize db:drop
+ask mix ecto.drop
+deny MIX_ENV=prod mix ecto.drop
+# 9. kubectl by server or switched context
+deny kubectl --server https://k8s.prod.acme.com delete pod web
+deny kubectl config use-context prod-cluster && kubectl delete ns web
+ask kubectl --server https://k8s.staging.acme.com delete pod web
+# 10. launcher command string
+deny npx -c 'wrangler delete'
+# 11. glued short env option
+deny railway up -eproduction
+# 14. command wrappers
+deny stdbuf -oL aws s3 rm s3://b --recursive
+deny setsid terraform destroy
+deny doas terraform destroy
