@@ -88,9 +88,16 @@ alter_drops_column() {
         | grep -Eqv 'DROP[[:space:]]+(CONSTRAINT|INDEX|KEY|PRIMARY|FOREIGN|CHECK|DEFAULT|NOT|IDENTITY|EXPRESSION|PARTITIONING)$'
 }
 
+# A SQL client whose text carries DROP or TRUNCATE as a bare word counts as
+# destructive whatever separates the keyword from its object: comment syntax
+# (--, #, nested /* */) varies by dialect, so matching it is a losing race.
+SQL_CLIENT='(^|[^A-Za-z0-9_-])(psql|mysql|mariadb|sqlcmd|pgcli|mycli)([^A-Za-z0-9_-]|$)'
+DESTRUCTIVE_KEYWORD='(^|[^A-Z0-9_])(DROP|TRUNCATE)([^A-Z0-9_]|$)'
+
 # True when the command carries a destructive verb other than DELETE FROM.
 has_destructive_verb() {
-    grep -Eq "$DESTRUCTIVE_SQL_VERBS" <<< "$upper" || alter_drops_column
+    grep -Eq "$DESTRUCTIVE_SQL_VERBS" <<< "$upper" || alter_drops_column \
+        || { grep -Eq "$SQL_CLIENT" <<< "$cmd" && grep -Eq "$DESTRUCTIVE_KEYWORD" <<< "$upper"; }
 }
 
 if has_destructive_verb || grep -Eq "DELETE[[:space:]]+FROM" <<< "$upper" \

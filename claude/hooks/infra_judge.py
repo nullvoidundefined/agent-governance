@@ -965,6 +965,11 @@ DESTRUCTIVE_SQL = re.compile(r"DROP\s+(DATABASE|SCHEMA|TABLE|OWNED|COLUMN)|TRUNC
 SQL_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 SQL_LINE_COMMENT = re.compile(r"--[^\n]*")
 DESTRUCTIVE_TOOL = re.compile(r"pg_restore|migrate:down", re.I)
+# A SQL client whose text carries DROP or TRUNCATE as a bare word is treated as
+# destructive whatever separates the keyword from its object: comment syntax
+# (--, #, nested /* */) varies by dialect, so matching it is a losing race.
+SQL_CLIENTS = {"psql", "mysql", "mariadb", "sqlcmd", "pgcli", "mycli"}
+DESTRUCTIVE_KEYWORD = re.compile(r"\b(DROP|TRUNCATE)\b")
 UNBOUNDED_UPDATE = re.compile(r"\bUPDATE\s+(ONLY\s+)?\S+(\s+(AS\s+)?\w+)?\s+SET\b")
 UNBOUNDED_DELETE = re.compile(r"\bDELETE\s+FROM\b")
 WHERE = re.compile(r"\bWHERE\b")
@@ -1015,7 +1020,8 @@ def judge_sql(command, raw_text, environments):
     texts = [reading for text in texts for reading in sql_readings(text)]
     joined = " ".join(texts)
     destructive = bool(DESTRUCTIVE_SQL.search(joined.upper()) or DESTRUCTIVE_TOOL.search(joined)
-                       or is_destructive_database_tool(command))
+                       or is_destructive_database_tool(command)
+                       or (command.program in SQL_CLIENTS and DESTRUCTIVE_KEYWORD.search(joined.upper())))
     unbounded_update = unbounded_statement(texts, UNBOUNDED_UPDATE)
     unbounded_delete = unbounded_statement(texts, UNBOUNDED_DELETE)
     if not (destructive or unbounded_update or unbounded_delete):
