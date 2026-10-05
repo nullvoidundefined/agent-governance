@@ -799,3 +799,19 @@ deny  dnscontrol create-domains
 allow serverless --aws-profile dev print
 allow cdk --proxy http://proxy.local:3128 synth
 allow terragrunt --terragrunt-download-dir /tmp/tg plan
+
+# PR 2c security r1
+deny  bq query <<< 'DROP TABLE ds.t'
+deny  bq query --nouse_legacy_sql <<< "DELETE FROM ds.t WHERE true"
+deny  dnscontrol ppush
+deny  terragrunt exec -- aws route53 change-resource-record-sets --hosted-zone-id Z --change-batch file://c.json
+ask   gsutil cp f "$DEST"
+deny  cdk gc --unstable=gc
+deny  cdk refactor --unstable=refactor
+deny  sam package --s3-bucket b --output-template-file out.yaml
+deny  sam remote test-event put fn --name e --file f.json
+deny  oc login https://api.prod.example.com:6443 --token t
+deny  oc login https://api.prod.example.com:6443 --token t && oc delete pod x
+allow s3cmd ls s3://b/
+allow sam package --output-template-file out.yaml
+allow oc login https://api.dev.example.com:6443 --token t
