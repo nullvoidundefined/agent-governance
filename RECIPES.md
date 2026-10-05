@@ -46,11 +46,11 @@ Invoke the installed script as `bash "$HOME/.claude/enforce/tdd.sh"` followed by
 **Trigger:** Reviewed configuration should be installed. Follow the [setup preview](claude/SETUP.md#preview-in-isolated-directories), then run from this repository's root:
 
 ```sh
-node translate/codex.mjs --check
+node translate/all.mjs --check
 ./sync.sh
 ```
 
-**Success:** Port verification succeeds and all surfaces report a sync result. If the port is stale, update its sources and run `node translate/codex.mjs --write`, review the diff, then repeat verification. A sync error names the surface requiring investigation; earlier surfaces may already have been copied.
+**Success:** Port verification succeeds and all surfaces report a sync result. If a tree is stale, update its sources and run `node translate/all.mjs --write`, review the diff, then repeat verification. A sync error names the surface requiring investigation; earlier surfaces may already have been copied.
 
 ## Prepare a public push
 

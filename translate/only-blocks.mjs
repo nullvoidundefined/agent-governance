@@ -14,7 +14,7 @@ const CLOSE = /^<!-- \/only -->\r?$/;
 // unchanged. Throws a SourceError naming file and line for an unclosed,
 // nested, or stray block and for an unknown target name.
 export function selectForTarget(text, target, file) {
-  if (!text.includes("<!-- only:") && !text.includes("<!-- /only")) return text;
+  if (!/<!--\s*\/?\s*only\b/i.test(text)) return text;
   const lines = text.split(/(?<=\n)/);
   let out = "";
   let open = null;
@@ -35,6 +35,9 @@ export function selectForTarget(text, target, file) {
       if (!open) throw new SourceError(file, `line ${lineNumber}: /only with no open block`);
       open = null;
       return;
+    }
+    if (/^\s*<!--\s*\/?\s*only\b/i.test(bare)) {
+      throw new SourceError(file, `line ${lineNumber}: malformed only: tag (expected "<!-- only: a,b -->" or "<!-- /only -->", lowercase targets, single spaces)`);
     }
     if (!open || open.keep) out += line;
   });

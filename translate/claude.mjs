@@ -5,7 +5,9 @@
 // Everything else under claude/ (hooks, enforce, settings.json, global-memory,
 // README.md, SETUP.md) is hand-authored and never touched: orphan sweeping is
 // limited to claude/agents, claude/skills, claude/prompts, and root-level
-// claude/*.md files that carry this builder's GENERATED header.
+// claude/*.md files that carry this builder's GENERATED header; a file under
+// the swept subdirectories is removed only when it carries that header or
+// sits in a skill directory this builder generates.
 import fs from "node:fs";
 import path from "node:path";
 import { loadJsonFile, SourceError } from "./parse-sources.mjs";
@@ -82,23 +84,38 @@ function listFilesRecursive(dir) {
   return found.sort();
 }
 
-function firstLine(file) {
-  try { return fs.readFileSync(file, "utf8").split("\n", 1)[0]; } catch { return ""; }
+// carriesHeader(file): true when one of the file's first lines is this
+// builder's GENERATED header (line 1, or the first line after a frontmatter
+// block, so a long frontmatter is allowed for).
+function carriesHeader(file) {
+  let text;
+  try { text = fs.readFileSync(file, "utf8"); } catch { return false; }
+  return text.split("\n", 80).some((line) => line.startsWith(HEADER_PREFIX));
 }
 
 // findOrphans(rootDir, planned, handAuthored): claude/-relative paths this
-// builder owns but no longer plans: anything under the swept subdirectories,
-// plus root-level *.md files that start with this builder's header.
+// builder owns but no longer plans. It owns a file only when it can prove it
+// wrote it: a file under claude/ (root level or the swept subdirectories)
+// that carries its GENERATED header, or any file inside a skill directory it
+// still generates (support files carry no header). A hand-authored file
+// without the header, anywhere, is never swept.
 function findOrphans(rootDir, planned, handAuthored) {
   const claudeDir = path.join(rootDir, TARGET_SUBDIR);
   const plannedPaths = new Set(planned.map((file) => file.path));
+  const generatedSkillDirs = new Set(
+    planned.filter((file) => file.path.startsWith("skills/")).map((file) => file.path.split("/")[1]),
+  );
   const owned = [];
   for (const sub of SWEPT_SUBDIRS) {
-    for (const rel of listFilesRecursive(path.join(claudeDir, sub))) owned.push(`${sub}/${rel}`);
+    for (const rel of listFilesRecursive(path.join(claudeDir, sub))) {
+      const relPath = `${sub}/${rel}`;
+      const inGeneratedSkill = sub === "skills" && generatedSkillDirs.has(rel.split("/")[0]);
+      if (inGeneratedSkill || carriesHeader(path.join(claudeDir, relPath))) owned.push(relPath);
+    }
   }
   if (fs.existsSync(claudeDir)) {
     for (const name of fs.readdirSync(claudeDir).sort()) {
-      if (name.endsWith(".md") && firstLine(path.join(claudeDir, name)).startsWith(HEADER_PREFIX)) owned.push(name);
+      if (name.endsWith(".md") && carriesHeader(path.join(claudeDir, name))) owned.push(name);
     }
   }
   return owned.filter((rel) => !plannedPaths.has(rel) && !handAuthored.includes(rel));
