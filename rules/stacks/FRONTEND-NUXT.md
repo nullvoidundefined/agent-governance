@@ -1,0 +1,50 @@
+---
+paths:
+  - "**/app/pages/**"
+  - "**/app/layouts/**"
+  - "**/app/middleware/**"
+  - "**/app/plugins/**"
+  - "**/app/app.vue"
+  - "**/server/api/**"
+  - "**/server/middleware/**"
+  - "**/server/routes/**"
+  - "**/server/plugins/**"
+  - "**/nuxt.config.*"
+---
+
+# Nuxt Conventions
+
+Read with `CLAUDE-FRONTEND.md` and `CLAUDE-FRONTEND-VUE.md`.
+
+## Framework and boundaries
+
+- New Nuxt apps keep SSR on. Do not turn it off globally without the owner's decision.
+- Pin `compatibilityDate` in `nuxt.config.ts` and bump it in its own commit.
+- Nitro code in `server/` never imports from `app/`. Code both sides must apply identically, such as the client-address trust rule (`resolveClientAddress`), lives once in `shared/`; two copies of a security rule drift.
+- Pages stay thin; no business logic in `pages/`. `app/utils/` and `server/utils/` are banned even though Nuxt auto-imports them; use `services/` and `clients/`.
+
+## Auth gating
+
+- Nitro middleware is not edge middleware: it runs in the Node process on every request. Keep it a cheap cookie-presence redirect for protected page paths; it never calls the backend or parses the cookie.
+- Real session verification is a named route middleware that asks the backend and redirects on 401. It also covers client-side navigation, which never reaches Nitro middleware.
+- The session cookie is `httpOnly`; no client code reads `document.cookie`.
+
+## API client
+
+- `createApiClient()` builds a client per request; never a module-level client (see the SSR rules in the Vue file).
+- Every client sends `X-Requested-With: XMLHttpRequest`; the backend CSRF guard rejects state-changing requests without it.
+- In the browser the base URL is `/api` (the proxy). On the server it is `runtimeConfig.apiBaseUrl`, because a relative base cannot resolve under `fetch` on the server.
+- The server-side client forwards the `cookie`, the `x-request-id`, and one `X-Forwarded-For` value from `resolveClientAddress`. Without them the backend call loses the session, the correlation ID, and the user's rate-limit bucket.
+- `useRequestFetch()` returns Nuxt's `$fetch`, whose shapes differ from standard `fetch`; do not pass it as openapi-fetch's `fetch` option.
+
+## Proxies
+
+- The `/api/[...path]` catch-all forwards the query string (`getRequestURL(event).search`); `proxyRequest` uses the target verbatim and drops it otherwise.
+- Before proxying, rewrite `X-Forwarded-For` to the last, edge-appended entry; every earlier entry is client-supplied.
+- The health route answers without touching the backend.
+
+## Config and theme
+
+- `runtimeConfig` declares every variable with an empty default; `NUXT_*` values are server-only, `NUXT_PUBLIC_*` reach the browser, both at run time, so one image serves every environment and needs no env build arguments.
+- Read config through `useRuntimeConfig()`; components never read `process.env` or `import.meta.env`. The backend URL is server-only.
+- Set `data-theme` before first paint with an inline head script so SSR output does not flash the wrong theme.

@@ -1,0 +1,51 @@
+---
+paths:
+  - "**/*.go"
+  - "**/go.mod"
+---
+
+# Go Backend Conventions
+
+Default stack for a new Go service: stdlib `net/http` with chi routing, pgx for PostgreSQL, golang-migrate, stdlib `testing` with go-cmp. An existing repo keeps its own choices.
+
+## Layout and layers
+
+All application code lives under `internal/` (binaries under `cmd/<name>/`); no `pkg/` unless the code is published for external import, no `src/`.
+
+| Layer | Does | Does NOT |
+|---|---|---|
+| **Handlers** | Decode, validate, call services, write status and JSON | Contain business logic, run SQL |
+| **Services** | Business logic; orchestrate repositories and clients | Import `net/http` |
+| **Repositories** | Parameterized SQL via pgx; return domain types | Know about HTTP, validate input |
+| **Clients** | Wrap one external provider | Hold domain logic |
+| **Domain** | Types, sentinel errors | Import any other internal package |
+
+- Dependencies flow one direction: handlers to services to repositories, services to clients; everything may import `domain`.
+- Packages are short, lowercase, and named for what they provide; never `util`, `common`, `helpers` or `base`. `db` is fine for the connection package.
+- Handlers are thin: decode, validate, delegate, encode. Guard clauses return early; the happy path stays left-aligned.
+
+## Errors
+
+- Wrap with context (`fmt.Errorf("scoring job %d: %w", id, err)`) and check with `errors.Is`/`errors.As`.
+- Sentinel errors live in `domain`; repositories translate driver errors into them.
+- No `panic` outside `main` startup. No swallowed errors; `_ = err` needs a comment saying why.
+- Handlers map domain errors to status codes; internals never reach a response body.
+
+## Config, CORS and sessions
+
+- `config.Load()` reads env into a typed `Config`, validates every required field, and `main` treats its error as fatal. Business code receives config by injection and never calls `os.Getenv`.
+- `CORS_ORIGIN` goes through its own parser in `Load()`, in every environment. The API sends credentials, so a wildcard, `null`, a list, or anything other than one exact `scheme://host[:port]` origin is refused at startup, and a blank value is refused in production.
+- go-chi/cors treats an empty `AllowedOrigins` as allow-all. When the parsed origin is blank, install no CORS middleware at all.
+- The session cookie's `Secure` flag is off only in development (`cfg.Environment != "development"`). Tying it to a production check sent the cookie over plain HTTP in staging.
+
+## Tests
+
+- Tests are co-located `*_test.go` files in the package directory; the toolchain needs package-internal access.
+- Integration tests hit a real database (dockerized or testcontainers); never mock the repository under test.
+- LLM consumers include one fixture test against a captured real response in `testdata/`.
+- Mark independent tests `t.Parallel()` and keep them free of shared globals.
+
+## Containers
+
+- Build with `CGO_ENABLED=0` and run on `gcr.io/distroless/static:nonroot`, copying only the binary.
+- Distroless cannot run a `HEALTHCHECK` command; the platform healthcheck on `/health` is the probe.

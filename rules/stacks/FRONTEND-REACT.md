@@ -1,0 +1,22 @@
+---
+paths:
+  - "**/*.tsx"
+  - "**/*.jsx"
+  - "**/src/state/**"
+  - "**/src/hooks/**"
+---
+
+# React Conventions
+
+Read with `CLAUDE-FRONTEND.md` and the framework file it names (`CLAUDE-FRONTEND-NEXT.md` or `CLAUDE-FRONTEND-VITE.md`).
+
+- Function components. Do not introduce class components in new code. Follow the repo's React version.
+- Server state goes through the repo's query layer (`useQuery`, `useMutation` over the `api/` functions), never `useEffect` plus `fetch`.
+- Do not add a state library. App-wide state uses the repo's existing context or store. In new frontends hooks and providers live in `state/`; in an existing repo follow its layout.
+- Components are PascalCase; hooks carry the `use` prefix.
+- Pages and route files use default exports where the framework requires them; elsewhere follow the repo.
+- Styling follows the Styling policy in CLAUDE-FRONTEND.md.
+- No inline `style` except a runtime-computed CSS custom property (`style={{ '--progress': ratio }}`).
+- Interactive controls are native elements (`<button>`, `<a>`, `<input>`) or the repo's existing headless primitive library (Radix in the standard stack). Never `role="button"` on a `<div>`, and never hand-roll a focus trap.
+- `'use client'` boundaries follow `CLAUDE-FRONTEND-NEXT.md`; a Vite SPA has none.
+- Tests query the DOM by role and accessible name. Add a `data-test-id` only where an E2E test cannot select by role or name.

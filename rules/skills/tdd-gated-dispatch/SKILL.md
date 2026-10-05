@@ -1,0 +1,93 @@
+---
+name: tdd-gated-dispatch
+description: Use for every behavioral change once its acceptance criteria exist, to run the test-first loop. Standard risk runs the lightweight loop (a cross-model test author, RED observed and committed, then GREEN, one review, stop). High risk adds the TDD lock (enforce/tdd.sh), a threat model, and the security review. Triggers on implementing a feature, a slice, or a bug fix.
+---
+
+# Test-first loop
+
+The practice is fixed: a failing test that demonstrates the missing behavior exists before the implementation, and it fails for the expected reason. How strongly that is enforced depends on risk. Every step has a stopping point.
+
+## Before you start
+
+- **Risk:** write `**Risk:** standard|high` in the plan or PR (the list is in CLAUDE.md).
+- **Acceptance criteria:** one observable behavior per line, numbered. Each one becomes at least one test.
+- **Skip tests-first only for:** an exploratory spike, non-behavioral config, scaffolding a behavior needs before it can run, or a change that cannot be tested first. Write the one-line reason in the PR. Bug fixes never skip: the reproduction is the first test.
+
+## Standard risk
+
+### 0. Route
+
+Ask the router who implements, before any test is written:
+
+```bash
+bash ~/.claude/enforce/route.sh implement --risk <standard|high>
+```
+
+Line 1 is the provider; line 2 is why. It reads the quota pace (`quota-pace.sh`) and moves routable work off a provider that is over pace or near exhaustion; a high-risk implementer is pinned to Claude, and a standard-risk implementer defaults to Codex. The test author is always the other provider, so the cross-model rule below holds whatever the router picks. When the router picks `codex` and Codex is unavailable (cloud containers do not have it), Claude implements and a fresh-context `test-author` writes the tests; name both fallbacks in the PR. Routing changes who does a step, never whether it happens.
+
+### 1. RED, written by the other model
+
+The test author is the model that will not write the implementation: Codex writes tests for Claude's code, and Claude writes tests for Codex's code. The author gets the acceptance criteria, the files in scope, and the test conventions. It does not get the implementation plan's code.
+
+When Claude is the implementer, run Codex as the test author, in the background with stdin closed:
+
+```bash
+codex exec -s workspace-write -C <repo root> --skip-git-repo-check \
+  -o <scratch>/codex-tests-final.md "$(cat <scratch>/codex-tests-prompt.md)" \
+  </dev/null > <scratch>/codex-tests.log 2>&1
+```
+
+- **Prompt:** the criteria, the test file locations, the runner command, and the instruction "write failing tests only; do not implement; do not commit".
+- **Billing:** omit `-m`. `codex-billing-guard` asks before anything that would bill the API.
+- **Fallback:** when Codex is missing (cloud containers do not have it), unauthenticated, rate-limited, or would bill the API, dispatch the `test-author` agent in a fresh context (Agent tool, background) with the same prompt. Name the fallback in the PR.
+- **Codex as implementer:** when Codex is the implementer, Claude (the main session or `test-author`) writes the tests.
+
+- **Hand-off to the implementer:** when the test author and implementer are different providers, give the implementer the block from `bash ~/.claude/enforce/handoff-summary.sh --test-log <RED run output>` instead of the raw test log. It carries the failing test names, branch, head, and diff totals only. The RED commit body still quotes the raw failing line, and the reviewer still gets the full diff.
+
+Then observe RED yourself:
+
+1. Run the new tests against the unchanged code.
+2. Every new test must fail, and fail for the behavior it names. An import error for a module that does not exist yet is a valid RED. A typo, a syntax error, or a broken fixture is not: the author fixes it once.
+3. Commit the tests alone: `test(<scope>): <behavior>`, with the failing command and its failure line in the commit body. This commit is the RED record.
+
+One test-writing pass per behavior. Do not ask for more tests than the criteria need.
+
+### 2. GREEN
+
+- Write the smallest coherent change that makes the RED tests pass. Reuse existing services and clients before adding new ones.
+- **The RED tests are the contract.** Do not edit them. If one is wrong, unreachable, or contradicts the criteria, write one line, `DISPUTE: <test>: <why>`. The test author amends it once, or the owner decides. There is no second dispute round.
+- Run the affected tests, the linter, and the type checker.
+
+### 3. Review, fix, verify, stop
+
+1. Route the review: `bash ~/.claude/enforce/route.sh review --risk <risk> --author <implementer>` always prints the other provider. Add `--security` when the PR touches a security control. When it prints `codex` and Codex is available, run Codex read-only with the filled prompt (`codex exec -s read-only -C <repo root> --skip-git-repo-check -o <scratch>/codex-review-final.md "$(cat <scratch>/review-prompt.md)" </dev/null > <scratch>/codex-review.log 2>&1`); otherwise dispatch one `pr-reviewer` in a fresh context with the same prompt and name the fallback in the PR. Give the reviewer the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
+2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Fix a LOW if it takes under five minutes, otherwise note it.
+3. Rerun only the checks the fixes affect.
+4. A second review happens only under the CLAUDE.md conditions, and covers only the fix diff.
+5. Write `## Verification` and `## Review` in the PR body. Stop.
+
+A fix never restarts this loop. It does not mean new criteria, a new test author, a new full review, or a new ticket. A finding that invalidates the design goes to the owner.
+
+## High risk
+
+Same as standard, plus:
+
+1. **Threat model:** before any test, ask the owner one question per control with no natural endpoint (rate limits, redaction, allow and deny lists). Settle the attack it must stop, the acceptance boundary, and the severity ceiling. Write the answers into the plan.
+2. **Lock:** open it with `bash ~/.claude/enforce/tdd.sh open "<behavior>" [--spec <path>]`. The test author proves RED with `tdd.sh red <test file>` (or `<file>::<test id>` for a new test in an existing file). When Codex wrote the tests, the main session runs `tdd.sh red` on them, because Codex does not run the harness. From RED to close, production paths stay writable only for the implementer and the locked tests stay read-only (`protected-path-guard`). The implementer, which may be the `implementer` agent, makes it pass with `tdd.sh green`. Close with `tdd.sh close`.
+   - A collateral test outside the lock asks rather than blocks.
+   - A test author's own mistake before green is fixed with `tdd.sh amend <file>`, run once to open the window and once to close it.
+   - A lock left by a dead session closes with `tdd.sh abandon`, never by deleting the file.
+3. **Integration:** verify against the real dependency where the behavior depends on it, for example real PostgreSQL for transactions and constraints.
+4. **Security review:** after the general review, dispatch `security-reviewer` with `model: "fable"` (the strongest model) and `prompts/security-review-prompt.md`. The round rules in CLAUDE.md apply: controls are frozen in round one, rounds 2 and 3 are scoped to fixes, and the review stops after three.
+5. Stop.
+
+## Common mistakes
+
+| Mistake | Instead |
+|---|---|
+| Writing the implementation first, then a test that passes | RED first; the commit order shows it |
+| The implementer editing a RED test to make it pass | `DISPUTE`, then one amendment by the test author |
+| Tests that assert mock calls or "no error thrown" | Assert the visible behavior: return value, response, row, event |
+| Re-running the whole loop after a review finding | Fix in an ordinary commit and rerun only the affected checks |
+| Adding tests because the process seems to want more | One test per criterion and per edge the criterion names |
+| Using the lock on standard work | The lock is for high risk only |
