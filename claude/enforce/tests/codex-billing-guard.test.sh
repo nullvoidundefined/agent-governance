@@ -81,6 +81,27 @@ expect ask 'env FOO=1 codex exec x'
 expect ask '/usr/local/bin/codex exec x'
 expect ask 'npx codex exec x'
 
+# Package-runner launches of the codex CLI -> ask.
+expect ask 'npx @openai/codex exec x'
+expect ask 'npx -y @openai/codex'
+expect ask 'npx --yes @openai/codex exec'
+expect ask 'pnpm dlx @openai/codex'
+expect ask 'yarn dlx @openai/codex'
+expect ask 'npm exec @openai/codex'
+expect ask 'npx @openai/codex@latest exec'
+expect ask 'npx -p @openai/codex codex exec'
+expect ask 'yarn dlx -p @openai/codex codex'
+expect ask 'npm exec --package @openai/codex -- codex'
+expect ask 'pnpm exec codex'
+expect ask 'npm --prefix x exec codex'
+expect ask 'pnpm --silent dlx @openai/codex'
+expect ask 'node ./node_modules/.bin/codex exec'
+
+# Other tools and read-only mentions stay silent.
+expect none 'npx @openai/other-tool'
+expect none 'git diff -- codex'
+expect none 'npm exec eslint'
+
 [ "$NEWFAILS" -eq 0 ] || { echo "codex-billing-guard.test.sh: $NEWFAILS case(s) failed"; exit 1; }
 
 echo "codex-billing-guard.test.sh PASS"
