@@ -3,7 +3,7 @@
   "builder_files": {
     "translate/build-manifest.mjs": "sha256:177d5a56a7c35991eb0291408269a01e10e88b3a9839aaa6d1f163501421a442",
     "translate/claude.mjs": "sha256:f25fc1effcad4f85d5ea4a0384937b1865db3d2ab9e2a43a657a75b4c324cdc7",
-    "translate/codex.mjs": "sha256:a3c8c04f043fcdf9fdc55a9b53a06bc425b4cd30da379c6b2daed8be4dccf2f0",
+    "translate/codex.mjs": "sha256:0e2df213737a5c1b5ed9fe8fba7058c2d6ce8463b29a0f38fa1d143066fb7fe9",
     "translate/cursor.mjs": "sha256:de1f738f684c3aae9c1bdfcf25c74ed8c7f9b6b034d7a0692554b3604b891470",
     "translate/exporter-core.mjs": "sha256:e9c3eaf0498e4d325377677996b043b933b08a03027157a111b075615ea9272c",
     "translate/only-blocks.mjs": "sha256:4eaeb0284af221a1c2fc3ad3962db0cc8c44de24605b05482b512cd4be1fbaff",
