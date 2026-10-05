@@ -1,4 +1,4 @@
-// render-cursor-stack-rules.mjs: renders claude/CLAUDE-*.md stack convention
+// render-cursor-stack-rules.mjs: renders rules/stacks/*.md stack convention
 // files (plus the CLOUD-DEPLOYMENT.md no-paths outlier) to cursor/rules/
 // <kebab>.mdc, and the structure-conventions skill to
 // cursor/rules/structure-conventions.mdc. Cursor-shapes-study Class B
@@ -57,7 +57,7 @@ export function renderStackRule(stackFile, portMap) {
   const { paths, body } = splitStackFrontmatter(stackFile.text);
   const globs = paths.join(",");
   const frontmatter = `---\ndescription: ${description}\nglobs:${globs ? ` ${globs}` : ""}\nalwaysApply: false\n---\n`;
-  const content = `${frontmatter}${renderGeneratedHeaderFor(BUILDER_NAME, sourceBasename)}\n\n${body.trimStart()}`;
+  const content = `${frontmatter}${renderGeneratedHeaderFor(BUILDER_NAME, stackFile.source)}\n\n${body.trimStart()}`;
   return { path: `rules/${mdcName}`, content };
 }
 
@@ -69,6 +69,6 @@ export function renderStackRule(stackFile, portMap) {
 export function renderSkillRule(skill) {
   const { name, description } = skill.frontmatter;
   const frontmatter = `---\ndescription: ${description}\nglobs:\nalwaysApply: false\n---\n`;
-  const content = `${frontmatter}${renderGeneratedHeaderFor(BUILDER_NAME, `skills/${name}/SKILL.md`)}\n\n${skill.body.trimStart()}`;
+  const content = `${frontmatter}${renderGeneratedHeaderFor(BUILDER_NAME, skill.source)}\n\n${skill.body.trimStart()}`;
   return { path: "rules/structure-conventions.mdc", content };
 }

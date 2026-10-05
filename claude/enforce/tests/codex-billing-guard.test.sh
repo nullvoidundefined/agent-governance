@@ -50,4 +50,58 @@ GOT=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision // "non
 # Live login status is not ChatGPT -> ask, naming what codex reported.
 [ "$(decision 'codex exec "hi"' "$APIKEY_STUB")" = "ask" ] || { echo "FAIL: expected ask when codex login status is not ChatGPT"; exit 1; }
 
+# Judge per simple command by parsed program, not by the word "codex" in the
+# raw text. With a stub that reports NOT logged in to ChatGPT, any real codex
+# invocation asks, so "none" proves the guard did not treat the command as one.
+NOTLOGGED_STUB=$(mkstub "Not logged in")
+NEWFAILS=0
+expect() {
+  local want="$1" cmd="$2" got
+  got=$(decision "$cmd" "$NOTLOGGED_STUB")
+  if [ "$got" != "$want" ]; then
+    echo "FAIL: expected $want, got $got, for: $cmd"
+    NEWFAILS=$((NEWFAILS + 1))
+  fi
+}
+
+# Commands that only mention codex as an argument, path, or text -> none.
+expect none 'git diff --numstat origin/main...HEAD -- codex cursor'
+expect none 'ls codex/'
+expect none 'node translate/codex.mjs --check'
+expect none 'cat codex/AGENTS.md'
+expect none 'grep -rn codex docs/'
+expect none 'git log --oneline -- codex'
+expect none 'echo codex'
+
+# Real codex invocations, however launched -> still ask.
+expect ask 'codex exec "write tests"'
+expect ask "bash -c 'codex exec x'"
+expect ask 'cd /tmp && codex exec x'
+expect ask 'env FOO=1 codex exec x'
+expect ask '/usr/local/bin/codex exec x'
+expect ask 'npx codex exec x'
+
+# Package-runner launches of the codex CLI -> ask.
+expect ask 'npx @openai/codex exec x'
+expect ask 'npx -y @openai/codex'
+expect ask 'npx --yes @openai/codex exec'
+expect ask 'pnpm dlx @openai/codex'
+expect ask 'yarn dlx @openai/codex'
+expect ask 'npm exec @openai/codex'
+expect ask 'npx @openai/codex@latest exec'
+expect ask 'npx -p @openai/codex codex exec'
+expect ask 'yarn dlx -p @openai/codex codex'
+expect ask 'npm exec --package @openai/codex -- codex'
+expect ask 'pnpm exec codex'
+expect ask 'npm --prefix x exec codex'
+expect ask 'pnpm --silent dlx @openai/codex'
+expect ask 'node ./node_modules/.bin/codex exec'
+
+# Other tools and read-only mentions stay silent.
+expect none 'npx @openai/other-tool'
+expect none 'git diff -- codex'
+expect none 'npm exec eslint'
+
+[ "$NEWFAILS" -eq 0 ] || { echo "codex-billing-guard.test.sh: $NEWFAILS case(s) failed"; exit 1; }
+
 echo "codex-billing-guard.test.sh PASS"

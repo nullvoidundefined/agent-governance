@@ -1,0 +1,41 @@
+---
+name: build-by-slice-require-review
+description: Use when building a feature as a series of PRs ("build this slice by slice", "start the slice", "next slice"). Plan the slices once, build each with the test-first loop, one PR per slice, and merge each PR on green CI and a clean review before starting the next.
+---
+
+# Build by slice, require review
+
+A feature ships as a short sequence of small PRs. Green CI and a review with no open HIGH are the gate between slices (owner decision 2026-10-04).
+
+## 1. Plan once
+
+- Split the feature into slices. Each slice delivers one working, testable piece, in the order the code needs them.
+- For each slice, write a few lines:
+  - what it does, as numbered acceptance criteria
+  - the files it touches
+  - its risk (`standard` or `high`)
+  - how you will know it works
+- Show the plan to the owner once. Start when they approve it. An approved plan settles its decisions; do not re-ask them per slice.
+
+## 2. Build one slice
+
+- Branch from the latest `main`, or from the previous slice's branch when this slice needs unmerged work.
+- Run the `tdd-gated-dispatch` loop: RED by the other model, GREEN, one review, targeted verification.
+- Open the PR. The body has:
+  - the slice's criteria
+  - `**Risk:**`
+  - `## Verification`, with the RED commit, the GREEN commands, and anything checked by hand
+  - `## Review`, with the reviewer, the range, and the findings with their dispositions
+  - `## Security review`, for high risk
+
+## 3. Merge on green
+
+- Red CI on your own PR is yours to fix.
+- Once CI is green and the review has no open HIGH, squash-merge the PR, delete the branch, and verify the commit landed on `main` (`git log origin/main`, not the PR badge). Then start the next slice from step 2.
+- A security-touching PR is the owner's to read and merge: tell the owner it is ready, with its link, and stop.
+- When the owner requests changes, make them on a follow-up PR (or on the same PR if it is still open) and rerun the affected checks. Their feedback does not restart the slice.
+
+## Notes
+
+- **If the owner asks you to hold merges,** stop after each PR with its link and leave the merge to them.
+- **If a slice grows past its plan,** split it and tell the owner.

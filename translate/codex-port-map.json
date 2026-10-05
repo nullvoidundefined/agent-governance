@@ -4,7 +4,9 @@
         "PostToolUse": "PostToolUse",
         "SessionStart": "SessionStart"
     },
-    "unported_reasons": {},
+    "unported_reasons": {
+        "turn-summary-guard": "Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex."
+    },
     "hook_overrides": {},
     "hand_authored": [
         "hooks/codex-hook-adapter.sh",

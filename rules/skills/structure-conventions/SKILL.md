@@ -1,0 +1,30 @@
+---
+name: structure-conventions
+description: The stack-specific layout conventions. Use before creating, moving, splitting, or renaming a directory, module, migration, or test tree in a server or web client (TypeScript, Python, Vue, or Nuxt), before writing a pg migration default, and when planning a package layout.
+---
+
+# Structure Conventions
+
+These layouts are defaults for new code. An existing repository keeps its own structure unless the owner asks for a migration.
+
+## Directories
+
+- Express server `src/`: `config`, `constants`, `types`, `schemas`, `middleware`, `routes`, `handlers`, `services`, `repositories`, `clients`, `database`, `dependencyInjection`, `prompts`, `workers`. Add a directory only for a real domain responsibility; the root holds directories, not loose modules (entry point and `.d.ts` excepted).
+- FastAPI `app/`: `core`, `db`, `middleware`, `dependencies`, `routers`, `schemas`, `services`, `repositories`, `clients`, `constants`, `analytics`, `prompts`, `tools`, `workers`, as `snake_case` packages.
+- Web client `src/`: `app`, `components`, `features`, `services`, `api`, `clients`, `state`, `config`, `constants`, `data`, `styles`, `types`. Context providers live in `state/`; one component per folder (`components/Header/Header.tsx`).
+- Nuxt: `app/` (`pages`, `layouts`, `middleware`, `plugins`, `components`, `features`, `composables`, `stores`, `api`, `clients`, `services`, `config`, `constants`, `data`, `styles`, `types`) and `server/` (`api`, `routes`, `middleware`, `plugins`). `composables/` and `stores/` replace `state/`; `.vue` components pair in folders the same way.
+- Directory names follow the language's convention; URL route segments are kebab-case.
+
+## Tests
+
+- New code keeps tests in a sibling test directory (`__tests__/` in TypeScript, `tests/` in Python, `spec/` in Ruby), not beside the source. Go co-locates `*_test.go` because the toolchain needs it. An existing repo keeps its test layout.
+- A built TypeScript package has a build-smoke test: every runtime-loaded non-code asset exists under `dist/`, and `dist/` holds no `.env*` file or secret.
+
+## Modules
+
+- TypeScript server file names are camelCase, named for their responsibility, and match the directory tree. No layer suffix (`fetchUser.ts` in `services/`, not `user.service.ts`); `.tool.ts` is the one exception.
+- `services/`, `api/` and `clients/` export one public function per module; shared helpers and shared state get their own modules.
+
+## Migrations
+
+- node-pg-migrate defaults: bare strings for constants, `pgm.func()` for SQL expressions, never nested quotes.

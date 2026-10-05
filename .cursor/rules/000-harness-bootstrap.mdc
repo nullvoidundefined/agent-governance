@@ -34,7 +34,7 @@ rule file reads exactly like a current one.
 
 ## Verifying rather than assuming
 
-- `node translate/cursor.mjs --check` exits 0 when `cursor/` matches its `claude/`
+- `node translate/all.mjs --check` exits 0 when `cursor/` (and `claude/`, `codex/`) match their `rules/`
   sources, 1 when a source edit has not been regenerated, and 2 on a source error.
   A nonzero exit means the payload itself is stale, and syncing would only install
   the staleness; run `node translate/cursor.mjs --write` first.
@@ -48,4 +48,4 @@ Everything under `cursor/` is generated except `cursor/hooks/claude-hook-adapter
 `cursor/README.md`, and the two `cursor/commands/session-*.md` files, which the port
 map classifies hand-authored. Editing any other file under `cursor/` is lost at the
 next `--write`, and `--check` fails in CI and at push until it is reverted. Change
-the `claude/` source or `translate/cursor-port-map.json` instead, then regenerate.
+the `rules/` source or `translate/cursor-port-map.json` instead, then regenerate with `node translate/all.mjs --write`.

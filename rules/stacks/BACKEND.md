@@ -1,0 +1,100 @@
+---
+paths:
+  - "**/src/handlers/**"
+  - "**/src/repositories/**"
+  - "**/src/middleware/**"
+  - "**/src/routes/**"
+  - "**/src/workers/**"
+  - "**/src/dependencyInjection/**"
+  - "**/src/schemas/**"
+  - "**/src/prompts/**"
+  - "**/src/services/**"
+  - "**/src/clients/**"
+---
+
+# Backend Conventions (Express and TypeScript)
+
+Stack: Express 5 and TypeScript, PostgreSQL through `pg` (raw parameterized SQL, no ORM), Zod, Pino, ioredis, BullMQ. These are defaults for new code; an existing repository keeps its own choices. Database rules are in `CLAUDE-DATABASE.md`; logging, request IDs, error reporting and health endpoints are in `CLAUDE-OBSERVABILITY.md`; the container contract is in `CLOUD-DEPLOYMENT.md`.
+
+## Layers
+
+- **Handlers** validate input with Zod, call services or repositories, and write the HTTP response. No business logic, no SQL.
+- **Services** hold business logic on plain inputs and call repositories and clients. They never see `req` or `res` and never hold an SDK or connection singleton.
+- **Clients** wrap one third-party SDK or external service each, as a singleton in `clients/` (the Pino logger is one). No business logic.
+- **Repositories** run parameterized SQL and return typed rows. They know nothing about HTTP or input validation.
+- **Middleware** carries cross-cutting concerns (auth, logging, CORS, rate limits) and no business logic.
+- The pool lives in `database/` (never `db/`), below repositories; it is neither a service nor a client.
+- Never skip a layer and never call upward: repositories never call services or handlers.
+- No import cycles. A cycle hands one module an `undefined` binding at load time and couples layers that should be independent. Enforce it in the project's own ESLint config with `eslint-plugin-import-x`; the rule reports nothing unless the plugin can parse and resolve TypeScript, so keep the settings:
+
+  ```js
+  import { createNodeResolver } from "eslint-plugin-import-x";
+  // inside the flat-config entry that registers the import-x plugin:
+  settings: {
+    "import-x/extensions": [".ts", ".tsx", ".cts", ".mts", ".js", ".jsx", ".cjs", ".mjs"],
+    "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".tsx", ".cts", ".mts"] },
+    "import-x/resolver-next": [createNodeResolver({ extensions: [".ts", ".tsx", ".js", ".jsx", ".cjs", ".mjs"] })],
+  },
+  rules: { "import-x/no-cycle": ["error", { maxDepth: 8 }] },
+  ```
+
+  `maxDepth` bounds the graph walk so lint stays fast on a large tree.
+- File names are camelCase and named for the responsibility; the directory states the layer, so there is no layer suffix (`services/analyzer.ts`, never `analyzer.service.ts`). Agent tool definitions keep `.tool.ts`. Layout and naming detail belongs to the `structure-conventions` skill.
+
+## Startup
+
+- `index.ts` loads secrets, then dynamically imports `app.ts` (`await import("app/app.js")`). A static import would initialize SDK clients before `process.env` is complete.
+- `validateEnv()` runs first in `app.ts`, before any middleware: required variables (`DATABASE_URL`, `SESSION_SECRET`, and `CORS_ORIGIN` in production) throw at startup instead of failing on the first request.
+- Parse `CORS_ORIGIN` in every environment, not only production. With `credentials: true` the CORS middleware echoes the configured origin, so `*` or `null` hands the session cookie to any site that asks (2026-09 stack audit). Accept exactly one `scheme://host[:port]` origin (`new URL(value).origin === value` is the check); reject `*`, `null`, comma lists, paths and userinfo. A blank value means no cross-origin caller. Test that each unsafe value throws.
+- Build with `tsc && tsc-alias` (it rewrites the `app/*` path alias); never tsup. Imports use the `app/*` alias, never `../../`.
+- Middleware order, which is load-bearing:
+  1. `app.set("trust proxy", 1)`
+  2. `helmet()`
+  3. CORS from the parsed origin
+  4. request logger, then request context (`CLAUDE-OBSERVABILITY.md`)
+  5. rate limiter
+  6. `express.json({ limit: "10kb" })` (Python's default is 100 KB; size each service to its largest real body)
+  7. `cookieParser()`
+  8. CSRF guard
+  9. session
+  10. health routes, then application routes
+  11. `notFoundHandler`, then `errorHandler`, always last
+- Database pool: a bounded `max` (10), `connectionTimeoutMillis`, `idleTimeoutMillis`, a `statement_timeout`, and TLS verification on (`rejectUnauthorized: true`) in every deployed environment. Never turn verification off to get a connection working.
+
+## Routes and handlers
+
+- Apply `requireAuth` at the router level (`jobsRouter.use(requireAuth)`), not per route, so a new route cannot ship without it.
+- Validate with `safeParse`, never `parse`; a failed parse returns 400 and the handler returns early. Unexpected errors propagate to the global error handler.
+- Input schemas are separate from data-model schemas, and validation happens in the handler, never in the repository.
+- The envelope is the same in every stack, so one frontend fetch helper handles all of them:
+  - success: `{ data }`, plus `meta: { total, limit, offset }` for a page
+  - error: `{ error: { code, message } }`, where `code` is a `DOMAIN_REASON` constant (`AUTH_REQUIRED`, `JOBS_NOT_FOUND`). Clients switch on `code`, never on `message`.
+- There is one global error handler, the one in `CLAUDE-OBSERVABILITY.md`: it logs, reports, then responds, with no stack trace in production.
+- Catch a unique violation (`23505`) in the handler that can give a useful answer (409 `AUTH_EMAIL_ALREADY_REGISTERED`), never globally.
+- Cache failures degrade: catch, log at warn, continue without the cache. Never rethrow.
+- Repositories return `null` for a missing single row, use `RETURNING` on inserts and updates, and throw when an insert returns no row.
+- Routes use plural nouns and nested sub-resources (`/links/:id/tags`); PUT replaces, PATCH changes part.
+
+## Sessions
+
+- Sessions live in PostgreSQL (`connect-pg-simple`), never in `MemoryStore`.
+- The cookie is `httpOnly`, `sameSite: "lax"`, and `secure: environment !== "development"`. A check tied to `isProduction()` sent the session cookie over plain HTTP in staging (2026-09 stack audit), so the check names development and nothing else.
+- Build the middleware through `createSessionMiddleware(environment)` so a test can pass `"staging"`. The test sets `trust proxy` and sends `X-Forwarded-Proto: https`, because express-session withholds a Secure cookie from a plain-HTTP request, then asserts `Secure` and `HttpOnly` on `Set-Cookie`.
+
+## Tests
+
+- Run tests in parallel and isolate state per worker (a database or schema per worker); never disable parallelism to hide shared state.
+
+## Workers (BullMQ)
+
+- The ioredis connection sets `maxRetriesPerRequest: null`; BullMQ refuses to run without it.
+- Log the `completed`, `failed` and `error` events, with `{ err }` on the failure lines.
+- Every worker serves a minimal HTTP health server on `PORT`, because the platform healthcheck needs a port, and handles `SIGTERM` and `SIGINT` by closing the worker, quitting Redis, closing the health server, then exiting 0.
+
+## Billing apps
+
+These apply only to an application that charges for usage.
+
+- An action that debits credits, deletes data, or calls a paid API shows a confirm step with a cost or impact preview first. Never charge on a first click.
+- A system that bills on AI or API usage keeps a jobs table (`ai_jobs` or similar) with estimated cost, actual cost, their differential, and input and output tokens, written on every call and aggregated in SQL for margin reporting.
+- Comment every pricing formula with the business rule, not just the math: "uploads at cost plus a 15% minimum profit" is a decision, while `const TARGET_MARGIN = 0.96` alone is not.

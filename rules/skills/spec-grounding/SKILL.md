@@ -1,0 +1,141 @@
+---
+name: spec-grounding
+description: Use when handed a spec, plan, or design document written outside this repo that describes intent but names no real files, interfaces, or existing code. Grounds it against the actual codebase and outputs an updated spec. Triggers on "ground this spec", "check this spec against the codebase", "does this spec match the repo", or handing over a spec file before implementation starts. Not for writing a spec from scratch (use brainstorming and writing-plans) and not for implementing one.
+---
+
+# Spec Grounding
+
+Take a spec that describes intent and give it the repo's real vocabulary:
+actual file paths, actual exported names, what already exists, and where the
+described approach fights the patterns already in the codebase.
+
+**Announce at start:** "I'm using the spec-grounding skill to ground this spec against the codebase."
+
+**This skill implements nothing.** The only file it writes is the spec.
+
+## Why this exists
+
+Specs developed conversationally outside Claude Code are strong on intent and
+empty on the repo. They say "the notification service" when the code has
+`src/services/notifications/sendUserNotification.ts`, and they describe
+behavior that already shipped three weeks ago. Implementing directly from an
+ungrounded spec produces duplicated logic, invented file layouts,
+and naming that does not match anything.
+
+The exploration needed to fix that reads a lot of files. Those reads belong in
+subagent context, not yours: you need the conclusions, not the file dumps
+(`global-memory/lesson_subagent_first_for_multi_file.md`).
+
+## Procedure
+
+### 1. Read the spec
+
+Read the spec file in full, in your own context. It is the deliverable, so
+you hold it. Extract:
+- **Concepts**: the entities, records, and domain nouns it names.
+- **Operations**: the behaviors and verbs it describes.
+- **Surfaces**: the layers it implies (endpoint, handler, service, client,
+  component, migration, worker).
+
+Write this list down before dispatching. It is the input to every subagent.
+
+### 2. Dispatch exploration subagents
+
+Three concerns, one subagent each. Send the first alone as a canary
+and fan out the remaining two only after it returns clean.
+
+Every dispatch prompt carries: the task, the file paths in scope,
+the concept list, and the cap. Cap each at 50 tool calls and have
+it stop and report on reaching the cap. Give each read-only tools; none of
+them writes anything.
+
+**Subagent A, paths and names.** "For each concept and operation in this list,
+find the real file path and the real exported identifier in this repo. Report
+a table of concept, path, exported name. Report `not found` for a concept with
+no match rather than guessing at a plausible path. Do not paste file
+contents; report paths and names only."
+
+**Subagent B, what already exists.** "For each behavior in this list, decide
+whether this repo already implements it. Report implemented, partially
+implemented, or absent, each with the `file:line` that settles it and one
+sentence of evidence. Search `services/`, `clients/`, `api/`, and the hook
+trees before concluding absent."
+
+**Subagent C, pattern conflicts.** "The attached spec describes an approach.
+Report where it conflicts with the patterns this repo already uses: dependency
+direction, the fixed directory vocabulary, catch-all
+directories, test file placement, naming conventions,
+one public export per module. Report the conflict, the
+`file:line` showing the current pattern, and the spec line that conflicts.
+Report nothing where the spec and the repo agree."
+
+Verify each returned claim against the code before writing it into the spec.
+Subagent output is data, not truth.
+
+### 3. Write the updated spec
+
+Edit the spec file in place. Git holds the original, so no `-grounded.md`
+sibling and no second file to keep in sync.
+
+Add three sections, and only these three, using the spec's existing heading
+level:
+
+```markdown
+## Codebase grounding
+
+| Concept in this spec | Real path | Exported name |
+|---|---|---|
+| ... | `src/services/...` | `sendUserNotification` |
+
+Concepts with no match in the repo, which this spec therefore creates: ...
+
+## Already exists
+
+- <behavior>: implemented at `file:line`. This spec should reference it, not respecify it.
+- <behavior>: partially implemented at `file:line`. Gap: ...
+
+## Conflicts with current patterns
+
+- Spec says <X>; the repo does <Y> at `file:line` (R-3NN). Resolve before implementing.
+```
+
+Then **populate the spec's existing `## Domain vocabulary` glossary** from the real exported names
+Subagent A found. Do not create a competing vocabulary section; the glossary
+already has a home. If the spec has no glossary section yet, add one.
+
+Add any heading from `~/.claude/prompts/spec-template.md` the spec lacks, at minimum `## Acceptance criteria` (one numbered behavior per line) and `## Non-goals`; an external spec usually carries its criteria as prose, and the test author needs them as a list.
+
+Rewrite the spec's prose to use the real names in place of the vague ones. A
+spec that says "the notification service" after grounding has failed to be
+grounded.
+
+### 4. Check, report, and stop
+
+Run the definition of done rather than recalling it:
+
+```bash
+bash ~/.claude/skills/spec-grounding/scripts/check.sh <spec path>
+```
+
+It exits 0 only when every condition below holds and otherwise names each
+unmet one; fix the spec and run it again before reporting.
+
+Report to the user:
+- How many concepts resolved to real paths and how many did not.
+- What already exists (the most valuable output: it is scope the spec can drop).
+- The conflicts, which need a decision before implementation starts.
+
+Then stop. Do not implement, do not scaffold, do not create a branch. Handing
+the grounded spec back is the whole job. Implementation is a separate turn,
+and it starts with failing tests.
+
+## Definition of done
+
+Each line is one condition `scripts/check.sh` decides.
+
+- Every concept in the spec either maps to a real path or is explicitly listed as new; every path in the `## Codebase grounding` table exists.
+- Every already-shipped behavior is named with the `file:line` that proves it, and the file has at least that many lines.
+- Every conflict names both sides and the governing rule, with a `file:line` that resolves.
+- The `## Domain vocabulary` glossary is populated from real exported names, with at least one `chosen over:` entry.
+- `## Acceptance criteria` carries at least `B-1` and `## Non-goals` exists.
+- No file other than the spec was modified.

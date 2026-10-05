@@ -25,7 +25,7 @@ function renderClassAFrontmatter(mdcName, portMap) {
 // the Cursor gap explicitly.
 export function renderGlobalRules(claudeMdText, portMap) {
   const frontmatter = renderClassAFrontmatter("000-global-rules.mdc", portMap);
-  const header = renderGeneratedHeaderFor(BUILDER_NAME, "CLAUDE.md");
+  const header = renderGeneratedHeaderFor(BUILDER_NAME, "rules/GLOBAL.md");
   const content = `${frontmatter}${header}\n\n${portMap.cursor_preamble}\n\n${claudeMdText}`;
   return { path: "rules/000-global-rules.mdc", content };
 }
@@ -38,7 +38,7 @@ export function renderGlobalRules(claudeMdText, portMap) {
 // memory under Cursor) that the source itself has no way to describe.
 export function renderMemoryIndex(indexText, portMap) {
   const frontmatter = renderClassAFrontmatter("002-global-memory-index.mdc", portMap);
-  const header = renderGeneratedHeaderFor(BUILDER_NAME, "global-memory/INDEX.md");
+  const header = renderGeneratedHeaderFor(BUILDER_NAME, "claude/global-memory/INDEX.md");
   const content = `${frontmatter}${header}\n\n${indexText.trimEnd()}\n\n${portMap.index_trailing_paragraph}\n`;
   return { path: "rules/002-global-memory-index.mdc", content };
 }

@@ -1,4 +1,4 @@
-// render-codex-agents.mjs: renders claude/agents/*.md to codex/agents/*.toml.
+// render-codex-agents.mjs: renders rules/agents/*.md to codex/agents/*.toml.
 import { renderGeneratedHeaderFor } from "./exporter-core.mjs";
 
 const BUILDER_NAME = "translate/codex.mjs";
@@ -19,7 +19,7 @@ function escapeTomlBasicString(value) {
 export function renderAgentToml(agent) {
   const { name, description } = agent.frontmatter;
   const content = [
-    `# ${renderGeneratedHeaderFor(BUILDER_NAME, `agents/${name}.md`)}`,
+    `# ${renderGeneratedHeaderFor(BUILDER_NAME, agent.source)}`,
     `name = "${escapeTomlBasicString(name)}"`,
     `description = "${escapeTomlBasicString(description)}"`,
     `developer_instructions = """`,

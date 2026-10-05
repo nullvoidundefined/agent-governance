@@ -1,0 +1,39 @@
+---
+paths:
+  - "**/*.vue"
+  - "**/app/components/**"
+  - "**/app/composables/**"
+  - "**/app/stores/**"
+---
+
+# Vue Conventions
+
+Read with `CLAUDE-FRONTEND.md` and, in a Nuxt project, `CLAUDE-FRONTEND-NUXT.md`. Nothing in `CLAUDE-FRONTEND-REACT.md` applies to Vue.
+
+## Components
+
+- New components use `<script setup lang="ts">`. Do not rewrite existing Options API components unless asked.
+- Type-check `.vue` files with `vue-tsc --noEmit`; plain `tsc` does not check them.
+- Component folders repeat the name (`components/ChatBox/ChatBox.vue`); Nuxt auto-registration collapses the duplicate, so the tag is `<ChatBox>`, not `<ChatBoxChatBox>`.
+- Styling follows the Styling policy in CLAUDE-FRONTEND.md. Styles live in the sibling `.module.scss` imported in `<script setup>`; no `<style>` block in the SFC.
+- No inline styles or `:style` bindings except a runtime-computed CSS custom property (`:style="{ '--progress': progressRatio }"`).
+- `v-html` is banned unless the input passes a sanitizer in `services/`, named at the call site.
+- `provide`/`inject` only through a typed `InjectionKey` exported by the providing composable, never string keys.
+- Interactive controls are native elements or the repo's existing headless primitive library (Reka UI in the standard stack). Never `role="button"` on a non-interactive element.
+
+## State
+
+- Server state goes through `@tanstack/vue-query`, never `fetch` in `onMounted` or a `watch`. Each query lives in a composable that owns its query key; components never build keys inline.
+- The query cache is the only copy of server state. Never copy query data into app state.
+- App state that outlives a component uses the repo's existing store (Nuxt `useState` composables or Pinia). Do not add Pinia for a theme or modal flag. Destructure Pinia state through `storeToRefs` so it stays reactive.
+- If the backend publishes an OpenAPI document, generate the client types from it instead of hand-writing them.
+
+## SSR safety
+
+- No module-level API client and no module-level mutable state in code that runs on the server: a module-scope client captures the first request's cookie and sends it on every later user's SSR calls.
+- Create the client per Nuxt app (`useApiClient()` memoized on `useNuxtApp()`) and call it in setup only, never inside an `api/` function or after an `await`; `useNuxtApp()` throws once an `await` has dropped the Nuxt context.
+
+## Tests
+
+- Query the DOM by role and accessible name.
+- A component that needs the Nuxt runtime (auto-imports, `useRuntimeConfig`, the route) mounts with `mountSuspended` from `@nuxt/test-utils`.
