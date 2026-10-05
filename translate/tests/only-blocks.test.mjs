@@ -81,3 +81,24 @@ test("a tag line inside a code fence is still a directive (no fence awareness)",
     (e) => e instanceof SourceError && /line 2/.test(e.message),
   );
 });
+
+for (const [label, tag] of [
+  ["uppercase target", "<!-- only: Claude -->"],
+  ["no spaces", "<!--only: codex-->"],
+  ["trailing space", "<!-- only: codex --> "],
+  ["padded close tag", "<!-- /only  -->"],
+]) {
+  test(`a malformed tag (${label}) throws a SourceError naming file and line`, () => {
+    assert.throws(
+      () => selectForTarget(`ok\n${tag}\nbody\n`, "codex", "rules/bad.md"),
+      (e) => e instanceof SourceError && /rules\/bad\.md/.test(e.message) && /line 2/.test(e.message),
+    );
+  });
+}
+
+test("a line that only mentions only: is plain text and kept", () => {
+  const text = "Use only: blocks for tool text\n";
+  for (const target of ["claude", "codex", "cursor"]) {
+    assert.equal(selectForTarget(text, target, "f.md"), text);
+  }
+});

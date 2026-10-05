@@ -152,3 +152,24 @@ test("a stack source with frontmatter keeps --- on line 1 and puts the header af
   const header = renderGeneratedHeaderFor(BUILDER, "rules/stacks/X.md");
   assert.equal(out, `${fm}${header}\nbody\n`);
 });
+
+test("orphan sweep keeps hand-authored files and removes only generated ones", () => {
+  const root = makeFixture();
+  const hdr = renderGeneratedHeaderFor(BUILDER, "rules/agents/old.md");
+  put(root, "claude/agents/mine.md", `---\nname: mine\ndescription: m\n---\nhand written\n`);
+  put(root, "claude/prompts/notes.md", "my prompt notes\n");
+  put(root, "claude/skills/handmade/SKILL.md", "---\nname: handmade\ndescription: h\n---\nmine\n");
+  put(root, "claude/skills/handmade/run.sh", "#!/bin/sh\necho mine\n", 0o755);
+  put(root, "claude/agents/old.md", `---\nname: old\ndescription: o\n---\n${hdr}\nold\n`);
+  put(root, "claude/skills/s1/scripts/old.sh", "#!/bin/sh\necho stale\n", 0o755);
+  const chk = run(root, "--check");
+  assert.doesNotMatch(chk.stdout, /mine\.md|notes\.md|handmade/, `${chk.stdout}${chk.stderr}`);
+  const r = run(root, "--write");
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  for (const f of ["claude/agents/mine.md", "claude/prompts/notes.md",
+    "claude/skills/handmade/SKILL.md", "claude/skills/handmade/run.sh"]) {
+    assert.ok(fs.existsSync(path.join(root, f)), `${f} was deleted`);
+  }
+  assert.ok(!fs.existsSync(path.join(root, "claude/agents/old.md")), "old.md survived");
+  assert.ok(!fs.existsSync(path.join(root, "claude/skills/s1/scripts/old.sh")), "old.sh survived");
+});
