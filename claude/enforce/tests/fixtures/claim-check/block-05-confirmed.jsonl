@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"check it"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I confirmed the config is correct."}]}}

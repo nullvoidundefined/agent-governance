@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"is the limit used anywhere"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Grep","input":{"pattern":"retryLimitExceeded","path":"/repo/src"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"no matches"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Confirmed: no match for `retryLimitExceeded` under src."}]}}
