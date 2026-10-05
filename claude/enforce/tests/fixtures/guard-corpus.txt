@@ -587,3 +587,193 @@ deny mysql -h db.internal.acme.net -e $'DROP # x\nTABLE users'
 deny psql -h db.internal.acme.net -c $'TRUNCATE -- x\nusers'
 ask psql -h db.example.org -c $'DROP -- x\nTABLE users'
 allow psql -h db.internal.acme.net -c "SELECT count(*) FROM users"
+
+# PR 2c B-21: cli53
+deny cli53 rrcreate example.com 'www A 192.0.2.10'
+deny cli53 rrdelete example.com www A
+deny cli53 rrpurge example.com --confirm
+deny cli53 create example.org --comment new
+deny cli53 delete example.org
+deny cli53 import example.com --file zone.txt
+allow cli53 list
+allow cli53 export example.com
+allow cli53 rrlist example.com
+
+# PR 2c B-22: dnscontrol
+deny dnscontrol push
+deny dnscontrol push --config dnsconfig.js --creds creds.json
+allow dnscontrol preview
+allow dnscontrol check
+allow dnscontrol print-ir --config dnsconfig.js
+
+# PR 2c B-23: nsupdate
+deny nsupdate -k /etc/bind/ddns.key update.txt
+deny nsupdate update.txt
+deny printf 'server ns1.example.com\nupdate delete www.example.com A\nsend\n' | nsupdate -l
+
+# PR 2c B-24: gsutil
+deny gsutil rm gs://acme-assets/old.txt
+deny gsutil -m rm -r gs://acme-assets/logs/
+deny gsutil rb gs://acme-scratch
+deny gsutil mv gs://acme-assets/a.txt gs://acme-assets/b.txt
+deny gsutil rsync -d ./site gs://acme-site
+deny gsutil setmeta -h "Cache-Control:no-cache" gs://acme-assets/a.txt
+deny gsutil acl ch -u AllUsers:R gs://acme-assets/a.txt
+deny gsutil acl set private gs://acme-assets/a.txt
+deny gsutil iam ch allUsers:objectViewer gs://acme-assets
+deny gsutil iam set policy.json gs://acme-assets
+deny gsutil defacl set public-read gs://acme-assets
+deny gsutil lifecycle set lifecycle.json gs://acme-assets
+deny gsutil mb gs://acme-new-bucket
+deny gsutil cp ./build.tar.gz gs://acme-assets/build.tar.gz
+deny gsutil cp gs://acme-a/x gs://acme-b/x
+allow gsutil ls gs://acme-assets
+allow gsutil cat gs://acme-assets/a.txt
+allow gsutil du -s gs://acme-assets
+allow gsutil stat gs://acme-assets/a.txt
+allow gsutil cp gs://acme-assets/a.txt ./a.txt
+allow gsutil -m cp -r gs://acme-assets/logs ./logs
+
+# PR 2c B-25: bq
+deny bq rm -f -t acme:ds.table
+deny bq mk --dataset acme:newds
+deny bq load --source_format=CSV ds.table gs://acme-assets/x.csv
+deny bq cp ds.src ds.dst
+deny bq update --description x ds.table
+deny bq insert ds.table rows.json
+deny bq truncate ds.table
+deny bq set-iam-policy ds.table policy.json
+deny bq query --use_legacy_sql=false 'DELETE FROM ds.users WHERE true'
+deny bq query --use_legacy_sql=false 'DROP TABLE ds.users'
+deny bq query 'INSERT INTO ds.users (id) VALUES (1)'
+deny bq query 'TRUNCATE TABLE ds.users'
+deny bq query 'CREATE OR REPLACE TABLE ds.t AS SELECT 1'
+deny bq query 'UPDATE ds.users SET name = "x" WHERE id = 1'
+allow bq ls
+allow bq ls acme:ds
+allow bq show acme:ds.table
+allow bq head -n 10 ds.table
+allow bq query --use_legacy_sql=false 'SELECT count(*) FROM ds.users'
+allow bq query --use_legacy_sql=false 'SELECT deleted_at, updated FROM ds.users'
+
+# PR 2c B-26: s3cmd
+deny s3cmd del s3://acme-assets/a.txt
+deny s3cmd rm s3://acme-assets/a.txt
+deny s3cmd rb s3://acme-scratch
+deny s3cmd mb s3://acme-new
+deny s3cmd put build.tar.gz s3://acme-assets/
+deny s3cmd mv s3://acme-assets/a s3://acme-assets/b
+deny s3cmd sync ./site/ s3://acme-site/
+deny s3cmd setacl --acl-public s3://acme-assets/a.txt
+deny s3cmd setpolicy policy.json s3://acme-assets
+deny s3cmd delpolicy s3://acme-assets
+deny s3cmd expire s3://acme-assets --expiry-days=1
+allow s3cmd ls s3://acme-assets
+allow s3cmd la
+allow s3cmd get s3://acme-assets/a.txt ./a.txt
+allow s3cmd info s3://acme-assets
+allow s3cmd du s3://acme-assets
+
+# PR 2c B-27: azd
+deny azd up
+deny azd down --force --purge
+deny azd deploy
+deny azd provision
+deny azd up --environment acme-prod
+allow azd show
+allow azd env list
+allow azd auth login
+
+# PR 2c B-28: terragrunt
+deny terragrunt apply
+deny terragrunt destroy
+deny terragrunt import aws_s3_bucket.a acme-a
+deny terragrunt state rm aws_s3_bucket.a
+deny terragrunt state mv aws_s3_bucket.a aws_s3_bucket.b
+deny terragrunt state push terraform.tfstate
+deny terragrunt taint aws_instance.web
+deny terragrunt run-all apply
+deny terragrunt run-all destroy --terragrunt-non-interactive
+deny terragrunt run --all apply
+deny terragrunt run --all -- destroy
+allow terragrunt plan
+allow terragrunt validate
+allow terragrunt output
+allow terragrunt init
+allow terragrunt run-all plan
+allow terragrunt run --all plan
+allow terragrunt run-all validate
+
+# PR 2c B-29: cdk, sam, serverless
+deny cdk deploy --all
+deny cdk deploy AcmeStack --require-approval never
+deny cdk destroy AcmeStack --force
+deny sam deploy --guided
+deny sam deploy --stack-name acme
+deny sam delete --stack-name acme
+deny serverless deploy --stage prod
+deny serverless remove
+deny sls deploy
+deny sls remove --stage dev
+allow cdk synth
+allow cdk diff AcmeStack
+allow cdk ls
+allow sam build
+allow sam validate
+allow sam local invoke Fn
+allow sam local start-api
+allow serverless print
+allow serverless info --stage prod
+allow serverless package
+allow sls print
+allow sls info
+allow sls package
+
+# PR 2c B-30: eksctl
+deny eksctl create cluster --name acme
+deny eksctl delete cluster --name acme
+deny eksctl upgrade cluster --name acme
+deny eksctl scale nodegroup --cluster acme --name ng1 --nodes 5
+deny eksctl drain nodegroup --cluster acme --name ng1
+deny eksctl set labels --cluster acme --nodegroup ng1 a=b
+deny eksctl unset labels --cluster acme --nodegroup ng1 a
+deny eksctl update addon --cluster acme --name vpc-cni
+deny eksctl enable flux --cluster acme
+deny eksctl disable gitops --cluster acme
+deny eksctl register cluster --name ext
+deny eksctl deregister cluster --name ext
+allow eksctl get cluster
+allow eksctl get nodegroup --cluster acme
+allow eksctl info
+allow eksctl version
+
+# PR 2c B-31: oc (mirrors the kubectl rows)
+allow oc get pods -n acme --context gke_acme_main
+allow oc --context prod-cluster get pods
+allow oc describe deploy/web
+allow oc logs deploy/web
+allow oc whoami
+allow oc auth can-i delete pods
+allow oc --context kind-dev delete pod web-1
+allow oc delete pod web-1 --context kind-dev
+allow oc --context=minikube apply -f web.yaml
+ask oc delete pod web-1
+ask oc apply -f web.yaml
+ask oc --context staging-cluster delete pod web-1
+ask oc rollout restart deploy/web
+ask oc exec -it web-1 -- sh
+ask oc adm drain node1
+deny oc --context prod-cluster delete pod web-1
+deny oc --context=prod-eu scale deploy/web --replicas=0
+deny oc --context production apply -f web.yaml
+deny oc --context gke_acme_main delete pod web-1
+deny oc delete ns web --context prod-cluster
+deny oc --server https://api.prod.acme.com:6443 delete pod web
+deny FOO=1 oc --context prod-cluster delete pod web-1
+deny bash -c 'oc --context prod-cluster delete pod web-1'
+
+# PR 2c B-32: provider_hosts from .enforce.json
+deny curl -X DELETE https://api.dns.acme.net/zones/1
+deny curl -X POST https://ns1.registrar.example/records -d x
+allow curl https://api.dns.acme.net/zones
+allow curl https://ns1.registrar.example/records

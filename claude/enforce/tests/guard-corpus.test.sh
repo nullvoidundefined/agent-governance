@@ -49,7 +49,8 @@ cat >"$REPO/.enforce.json" <<'EOF'
   "production": ["db.internal.acme.net", "gke_acme_main"],
   "preview": ["*.preview.acme.dev"],
   "testing": ["ci-db.acme.net", "prod-mirror.testing.acme.net"]
-}}
+},
+"provider_hosts": ["api.dns.acme.net", "*.registrar.example"]}
 EOF
 CODEX_ADAPTER="$CLAUDE_HARNESS_ROOT/../codex/hooks/codex-hook-adapter.sh"
 CURSOR_ADAPTER="$CLAUDE_HARNESS_ROOT/../cursor/hooks/claude-hook-adapter.sh"
