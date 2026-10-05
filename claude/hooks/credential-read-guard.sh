@@ -10,8 +10,10 @@
 # credential_judge.py, which decides per simple command using
 # shell-command-segments.py. While the judge is unusable (python3 missing, the
 # judge file absent, a non-zero exit, or no finish within
-# JUDGE_TIMEOUT_SECONDS) every Bash, Read and Grep call is denied. The judge
-# runs in the background with a watchdog because macOS has no GNU timeout.
+# JUDGE_TIMEOUT_SECONDS) every Bash call is denied, and a Read or Grep is
+# denied only when its path is a credential path by a plain name check (C-15).
+# The judge runs in the background with a watchdog because macOS has no GNU
+# timeout.
 #
 # Stateless, and never echoes a value: reasons name a path's credential entry
 # or a variable's name. Always exits 0; it reports through its output.
@@ -21,11 +23,48 @@ set -uo pipefail
 JUDGE_TIMEOUT_SECONDS=10
 
 CREDENTIAL_JUDGE="$(dirname "${BASH_SOURCE[0]}")/credential_judge.py"
-JUDGE_DOWN_REASON="credential-read-guard hook BLOCKED this call: its judge (python3 running hooks/credential_judge.py) is unavailable, failed, or timed out, so no command or file read can be checked for credentials. Restore the harness with sync.sh, or install the developer tools that provide python3."
+JUDGE_DOWN_REASON="credential-read-guard hook BLOCKED this call: its judge (python3 running hooks/credential_judge.py) is unavailable, failed, or timed out, so commands cannot be checked for credentials and a Read or Grep is checked only by its path name. Restore the harness with sync.sh, or install the developer tools that provide python3."
 
 # Prints a deny decision with the judge-down reason and exits.
 deny_judge_down() {
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$JUDGE_DOWN_REASON"
+    exit 0
+}
+
+# True when a path is a credential path by its name or its ~/ entry alone; the
+# judge's look-alike and symlink resolution are not available here.
+is_credential_path() {
+    local path="$1" name="${1##*/}" home="${HOME:-/nonexistent}"
+    case "$path" in "~/"*) path="$home/${path#\~/}" ;; esac
+    case "$name" in
+        *.pub | known_hosts | .env.example | .env.sample | .env.template | .env.dist) return 1 ;;
+        .env | .env.* | .envrc | .npmrc | id_rsa* | id_ed25519* | ?*.tfvars | ?*.tfstate | ?*.tfstate.backup \
+            | ?*.pem | ?*.key | ?*.p12 | ?*.pfx | environ) return 0 ;;
+    esac
+    case "$path" in
+        "$home"/.aws | "$home"/.aws/* | "$home"/.ssh | "$home"/.ssh/* | "$home"/.gnupg | "$home"/.gnupg/* \
+            | "$home"/.kube | "$home"/.kube/* | "$home"/.azure | "$home"/.azure/* \
+            | "$home"/.config/gcloud | "$home"/.config/gcloud/* | "$home"/.config/doctl | "$home"/.config/doctl/* \
+            | "$home"/.wrangler | "$home"/.wrangler/* | "$home"/.config/.wrangler | "$home"/.config/.wrangler/* \
+            | "$home"/.cloudflared | "$home"/.cloudflared/* | "$home"/.fly | "$home"/.fly/* \
+            | "$home"/.docker/config.json | "$home"/.config/gh/hosts.yml | "$home"/.netrc | "$home"/.pgpass \
+            | "$home"/.my.cnf | "$home"/.pypirc | "$home"/.terraform.d/credentials.tfrc.json) return 0 ;;
+    esac
+    return 1
+}
+
+# Called when the judge is unusable: a Bash call is denied; a Read or Grep is
+# denied only when its path is a credential path by is_credential_path (C-15).
+judge_down() {
+    local tool path
+    command -v jq >/dev/null 2>&1 || deny_judge_down
+    tool="$(printf '%s' "$input" | jq -r '.tool_name // "Bash"' 2>/dev/null)" || deny_judge_down
+    case "$tool" in
+        Read) path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""' 2>/dev/null)" || deny_judge_down ;;
+        Grep) path="$(printf '%s' "$input" | jq -r '.tool_input.path // ""' 2>/dev/null)" || deny_judge_down ;;
+        *) deny_judge_down ;;
+    esac
+    [ -n "$path" ] && is_credential_path "$path" && deny_judge_down
     exit 0
 }
 
@@ -44,9 +83,9 @@ is_judged_call() {
 
 input="$(cat)"
 is_judged_call "$input" || exit 0
-command -v python3 >/dev/null 2>&1 && [ -f "$CREDENTIAL_JUDGE" ] || deny_judge_down
+command -v python3 >/dev/null 2>&1 && [ -f "$CREDENTIAL_JUDGE" ] || judge_down
 
-out_file="$(mktemp 2>/dev/null)" || deny_judge_down
+out_file="$(mktemp 2>/dev/null)" || judge_down
 python3 "$CREDENTIAL_JUDGE" <<< "$input" >"$out_file" 2>/dev/null &
 pid=$!
 ticks=0
@@ -56,7 +95,7 @@ while kill -0 "$pid" 2>/dev/null; do
         kill -9 "$pid" 2>/dev/null
         wait "$pid" 2>/dev/null
         rm -f "$out_file"
-        deny_judge_down
+        judge_down
     fi
     sleep 0.01
     ticks=$((ticks + 1))

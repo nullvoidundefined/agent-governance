@@ -4,16 +4,20 @@ and prints a deny decision as JSON, or nothing for allow. Rules
 (docs/specs/2026-10-05-credential-reads.md):
 
   C-1  a Bash command that names a credential path as an operand or input
-       redirect is denied, whatever the program
+       redirect is denied, whatever the program, and so is a redirect with
+       no program ($(< .env), C-11)
   C-2  metadata-only programs (ls, stat, test, [, [[, file, du, git
        check-ignore/ls-files/status, find without an action) pass
   C-3  look-alikes (.env.example, *.pub, known_hosts, my.env.ts) pass
   C-4  dumping the environment (env or printenv alone, export -p, declare -p,
        declare -x, typeset -p, set alone, /proc/<pid>/environ) is denied
   C-5  printenv NAME, and echo, printf or a here-string expanding a
-       credential variable, are denied
+       credential variable, are denied, unless the output goes to a file or
+       into a pipe to a program that does not print its input (C-13)
   C-6  passing a credential variable to any other program passes
   C-7  a Read of a credential path, or a Grep whose path is one, is denied
+  C-12 use-only operands pass: ssh/scp/sftp -i KEY, chmod, chown, touch,
+       rm, mv, cp's destination, docker/podman --env-file FILE
 
 With --list-env-names it prints instead the credential variable names present
 in its own environment, one per line (credential-env-warning.sh, C-8).
@@ -220,7 +224,8 @@ def find_brace_group(word):
 
 # --- Credential variable names ------------------------------------------------
 
-CREDENTIAL_VARIABLE_PATTERNS = ("*_TOKEN", "*TOKEN_*", "*_SECRET*", "*_KEY", "*_KEY_ID", "*PASSWORD*",
+CREDENTIAL_VARIABLE_PATTERNS = ("TOKEN", "*_TOKEN", "*TOKEN_*", "*SECRET", "*_SECRET*", "*_KEY", "*_KEY_ID",
+                                "*PASSWORD*",
                                 "*PASSWD*", "*_DSN", "DATABASE_URL", "*_DATABASE_URL", "*_DB_URL",
                                 "CLOUDFLARE_*", "AWS_*", "GH_TOKEN", "GITHUB_TOKEN")
 AWS_NON_CREDENTIALS = {"AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE"}
@@ -251,7 +256,17 @@ PRINTERS = {"echo", "printf"}
 DECLARATION_DUMPERS = {"export", "declare", "typeset", "readonly"}
 INTERPRETERS = re.compile(r"^(python[0-9.]*|node|nodejs|deno|bun|ruby|perl|php|[gmn]?awk|lua|Rscript)$")
 OUTPUT_REDIRECTS = {OPERATOR_MARK + op for op in (">", ">>", ">|", "&>", "&>>", ">&")}
+FILE_OUTPUT_REDIRECTS = OUTPUT_REDIRECTS - {OPERATOR_MARK + ">&"}
+# An fd other than 1 glued to an output redirect (2> f), which the parser drops.
+OTHER_FD_REDIRECT = re.compile(r"(?<![\w$])(?:[02-9]|[0-9]{2,})>")
 HERESTRING = OPERATOR_MARK + "<<<"
+# Programs that print what they read on stdin (C-13): a credential piped or
+# fed into one reaches the transcript.
+ECHOING_CONSUMERS = PRINTERS | {"cat", "tee", "less", "more", "head", "tail", "xxd", "base64", "od", "hexdump",
+                                "sed", "awk", "tr", "cut", "grep", "rev", "strings", "sort", "uniq"}
+USE_ONLY_PROGRAMS = {"chmod", "chown", "touch", "rm", "mv"}
+IDENTITY_FILE_PROGRAMS = {"ssh", "scp", "sftp"}
+ENV_FILE_PROGRAMS = {"docker", "podman"}
 CODE_STRING_LITERAL = re.compile(r"'([^']*)'|\"([^\"]*)\"")
 CODE_TOKEN_SPLIT = re.compile(r"[\s'\"()\[\],;:=<>|&`+]+")
 OPERAND_SPLIT = re.compile(r"[=:,]")
@@ -275,13 +290,38 @@ def is_metadata_only(program, args):
     return False
 
 
-def operand_words(program, rest):
-    """Returns (word, is_code) for each word that can name a file the command
-    reads: arguments and input redirect targets.
+def used_positions(program, rest):
+    """Returns the positions in rest of operands a use-only form hands to its
+    program without printing the file (C-12): the key of ssh, scp or sftp -i,
+    every operand of chmod, chown, touch, rm and mv, cp's destination (when
+    it has no -t), and the file of docker or podman --env-file."""
+    positions = [index for index in range(1, len(rest)) if not rest[index].startswith(OPERATOR_MARK)
+                 and not rest[index - 1].startswith(OPERATOR_MARK)]
+    if program in USE_ONLY_PROGRAMS:
+        return set(positions)
+    used = set()
+    for number, position in enumerate(positions):
+        word, before = rest[position], rest[positions[number - 1]] if number else ""
+        if program in IDENTITY_FILE_PROGRAMS and before == "-i":
+            used.add(position)
+        if program in ENV_FILE_PROGRAMS and (before == "--env-file" or word.startswith("--env-file=")):
+            used.add(position)
+    if program == "cp":
+        operands = [p for p in positions if not rest[p].startswith("-")]
+        targets_directory = any(rest[p] == "-t" or rest[p].startswith("--target-directory") for p in positions)
+        if operands and not targets_directory:
+            used.add(operands[-1])
+    return used
+
+
+def operand_words(program, rest, start=1):
+    """Returns (word, is_code) for each word from rest[start] on that can name
+    a file the command reads: arguments and input redirect targets.
     Output redirect targets are writes (secret-scan R-103 owns them); echo and
-    printf arguments are text, not files."""
-    words, index = [], 1
+    printf arguments are text, not files; use-only operands are not reads."""
+    words, index = [], start
     is_code = bool(INTERPRETERS.match(program))
+    used = used_positions(program, rest)
     while index < len(rest):
         word = rest[index]
         if word.startswith(OPERATOR_MARK):
@@ -289,10 +329,31 @@ def operand_words(program, rest):
                 words.append((rest[index + 1], False))
             index += 2
             continue
-        if program not in PRINTERS:
+        if program not in PRINTERS and index not in used:
             words.append((word, is_code or "$(" in word or "`" in word))
         index += 1
     return words
+
+
+def output_leaves_terminal(segment, redirects_other_fd):
+    """True when the segment's standard output goes to a file (> f, >> f,
+    &> f) or into a pipe to a program that does not print its input (C-13).
+    The parser drops an fd number (2> f reads as > f), so while the command
+    holds one, an output redirect does not count."""
+    target = None
+    for index, word in enumerate(segment[:-1]):
+        if word in OUTPUT_REDIRECTS:
+            target = (word, segment[index + 1])
+    if target:
+        operator, path = target
+        return (operator in FILE_OUTPUT_REDIRECTS and not redirects_other_fd
+                and (path == "/dev/null" or not path.startswith(("/dev/", "/proc/"))))
+    consumer = PARSER.plain_words(getattr(segment, "piped_to", None) or [])
+    program_index = PARSER.find_program_index(consumer)
+    if program_index >= len(consumer):
+        return False
+    program = consumer[program_index]
+    return not (program in ECHOING_CONSUMERS or program in PARSER.SHELLS or INTERPRETERS.match(program))
 
 
 def candidate_paths(word, is_code):
@@ -309,14 +370,15 @@ def candidate_paths(word, is_code):
     return [part for part in dict.fromkeys(parts) if part]
 
 
-def is_environment_dump_launcher(segment, raw):
+def is_environment_dump_launcher(segment):
     """True when env ran with no command (env, env -u X, env FOO=1), which
     prints the environment; the parser drops env as a wrapper, so this reads
     the raw words."""
     plain = PARSER.plain_words(segment)
     if PARSER.find_program_index(plain) < len(plain):
         return False
-    return any(PARSER.program_name(word) == "env" for word in PARSER.plain_words(raw or [])
+    raw = getattr(segment, "raw", None) or []
+    return any(PARSER.program_name(word) == "env" for word in PARSER.plain_words(raw)
                if not PARSER.is_assignment(word))
 
 
@@ -336,13 +398,21 @@ def declaration_finding(program, args, derived):
     return None
 
 
-def judge_segment(segment, raw, context, derived):
+def judge_segment(segment, context, derived, redirects_other_fd):
     """Returns (rule, what) for the first finding in one simple command, or None."""
-    if is_environment_dump_launcher(segment, raw):
+    if is_environment_dump_launcher(segment):
         return "C-4", "`env` with no command prints every environment variable and its value"
     program_index = PARSER.find_program_index(segment)
     rest = segment[program_index:]
-    if not rest or rest[0].startswith(OPERATOR_MARK):
+    if not rest:
+        return None
+    if rest[0].startswith(OPERATOR_MARK):
+        # A redirect with no program ($(< .env), < .env) still reads (C-11).
+        for word, is_code in operand_words("", rest, start=0):
+            for part in candidate_paths(word, is_code):
+                label = context.credential_label(part)
+                if label:
+                    return "C-1", "an input redirect reads the credential path %s" % label
         return None
     program, args = rest[0], PARSER.plain_words(rest[1:])
     if program == "printenv":
@@ -358,13 +428,16 @@ def judge_segment(segment, raw, context, derived):
         finding = declaration_finding(program, args, derived)
         if finding:
             return finding
-    if program in PRINTERS:
+    output_hidden = output_leaves_terminal(segment, redirects_other_fd)
+    if program in PRINTERS and not output_hidden:
         for word in args:
             names = referenced_credentials(word, derived)
             if names:
                 return "C-5", "`%s` prints the value of the credential variable %s" % (program, names[0])
+    herestring_shown = not output_hidden and (program in ECHOING_CONSUMERS or program in PARSER.SHELLS
+                                              or INTERPRETERS.match(program))
     for index, word in enumerate(rest[:-1]):
-        if word == HERESTRING:
+        if word == HERESTRING and herestring_shown:
             names = referenced_credentials(rest[index + 1], derived)
             if names:
                 return "C-5", "a here-string feeds the value of the credential variable %s to `%s`" % (
@@ -402,30 +475,11 @@ def record_session_state(segment, context, derived):
             context.cwd = context.absolute(target)
 
 
-def split_segments_with_raw(text):
-    """Returns (segment, raw words) pairs: the parser's normalized segments,
-    each with the words it was normalized from, so a dropped wrapper (env)
-    is still visible."""
-    raw_by_segment = {}
-    original = PARSER.normalize_segment
-
-    def recording_normalize(words, piped_words):
-        normalized = original(words, piped_words)
-        raw_by_segment[id(normalized)] = list(words)
-        return normalized
-
-    PARSER.normalize_segment = recording_normalize
-    try:
-        segments = PARSER.split_segments(text)
-    finally:
-        PARSER.normalize_segment = original
-    return [(segment, raw_by_segment.get(id(segment))) for segment in segments]
-
-
 def judge_bash(text, context):
     derived = set()
-    for segment, raw in split_segments_with_raw(text):
-        finding = judge_segment(segment, raw, context, derived)
+    redirects_other_fd = bool(OTHER_FD_REDIRECT.search(text))
+    for segment in PARSER.split_segments(text):
+        finding = judge_segment(segment, context, derived, redirects_other_fd)
         if finding:
             return finding
         record_session_state(segment, context, derived)

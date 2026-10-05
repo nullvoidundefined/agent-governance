@@ -355,9 +355,18 @@ def skip_wrapper_options(words, index, wrapper):
     return index + WRAPPER_POSITIONALS.get(wrapper, 0)
 
 
+class Segment(list):
+    """A normalized segment's words. raw holds the words it was normalized
+    from, so a dropped wrapper (env) stays visible; piped_to is the segment a
+    pipe sends its output to, or None."""
+    raw = None
+    piped_to = None
+
+
 def normalize_segment(words, piped_words):
     """Returns assignments, then the program and its arguments, with keywords
     and wrappers removed and redirects in front of the program moved behind it."""
+    raw = list(words)
     assignments, redirects, index, runs_xargs = [], [], 0, False
     while index < len(words):
         word = words[index]
@@ -382,7 +391,9 @@ def normalize_segment(words, piped_words):
         command[0] = program_name(command[0])
     if runs_xargs:
         command += piped_words
-    return assignments + command + redirects
+    segment = Segment(assignments + command + redirects)
+    segment.raw = raw
+    return segment
 
 
 def fish_strings(arguments):
@@ -513,7 +524,7 @@ def is_function_definition(tokens, index, current):
 
 def split_segments(text):
     """Returns the command's segments as normalized lists of printable words."""
-    segments, current, previous = [], [], []
+    segments, current, previous, producer = [], [], [], None
     separator_before = None
     tokens = Tokenizer(text).run() + [("separator", None)]
     for index, (kind, value) in enumerate(tokens):
@@ -525,8 +536,11 @@ def split_segments(text):
                 is_piped = separator_before in ("|", "|&")
                 piped = plain_words(previous[1:]) if is_piped else []
                 piped_text = printed_text(normalize_segment(previous, [])) if is_piped else None
-                segments.extend(expand_segment(normalize_segment(current, piped), piped_text, is_piped))
-                previous = current
+                segment = normalize_segment(current, piped)
+                if is_piped and producer is not None:
+                    producer.piped_to = segment
+                segments.extend(expand_segment(segment, piped_text, is_piped))
+                previous, producer = current, segment
             current, separator_before = [], value
         elif kind == "substitution":
             segments.extend(split_segments(value))
