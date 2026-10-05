@@ -168,6 +168,45 @@ CASES=$((CASES + 1))
 run_hook "$(event "$WORK/joined3.jsonl")"
 if [ "$RC" -ne 0 ] || [ -n "$OUT" ]; then fail "t6 three text items as three lines: got rc=$RC out=$OUT"; fi
 
+# ---- Review round: label style, markdown wrapping, tighter pointers, payload field
+# Colon outside the bold.
+expect_allow r-colon-outside $'**Done**: fixed it (`a.md`)\n**Decide**: none\n**Next**: go'
+expect_block r-colon-outside-missing-next $'**Done**: fixed it (`a.md`)\n**Decide**: none'
+
+# Markdown wrapping of the three lines.
+expect_allow r-bullet-dash $'- **Done:** fixed it (`a.md`)\n- **Decide:** none\n- **Next:** go'
+expect_allow r-bullet-star $'* **Done:** fixed it (`a.md`)\n* **Decide:** none\n* **Next:** go'
+expect_allow r-blockquote $'> **Done:** fixed it (`a.md`)\n> **Decide:** none\n> **Next:** go'
+expect_allow r-closing-fence $'Result below.\n\n**Done:** fixed it (`a.md`)\n**Decide:** none\n**Next:** go\n```'
+expect_block r-bullet-missing-next $'- **Done:** fixed it (`a.md`)\n- **Decide:** none'
+
+# Done texts with no pointer must block.
+expect_block r-nopointer-dot-then $'**Done:** fixed it.Then moved on\n**Decide:** none\n**Next:** go'
+expect_block r-nopointer-eg $'**Done:** see e.g. the notes\n**Decide:** none\n**Next:** go'
+expect_block r-nopointer-decimal $'**Done:** cost 3.5x less\n**Decide:** none\n**Next:** go'
+expect_block r-nopointer-version $'**Done:** upgraded node v1.2 to v1.3\n**Decide:** none\n**Next:** go'
+expect_block r-nopointer-and-or $'**Done:** handled and/or skipped\n**Decide:** none\n**Next:** go'
+
+# Real pointers still pass.
+expect_allow r-ptr-readme $'**Done:** updated README.md\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-path $'**Done:** edited src/app/main.js\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-hook $'**Done:** added claude/hooks/x.sh\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-spec $'**Done:** wrote docs/specs/a.md\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-issue $'**Done:** closed the bug #206\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-url $'**Done:** opened https://example.com/pr/9\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-backtick $'**Done:** ran `make test`\n**Decide:** none\n**Next:** go'
+expect_allow r-ptr-sha $'**Done:** committed 3f2a9bc\n**Decide:** none\n**Next:** go'
+
+# last_assistant_message in the event wins over the transcript.
+GOOD=$'**Done:** did it (`a.js`)\n**Decide:** none\n**Next:** go'
+CASES=$((CASES + 1))
+run_hook "$(event "$(transcript_with lam-pass 'chatty non-compliant text')" | jq -c --arg m "$GOOD" '. + {last_assistant_message:$m}')"
+if [ "$RC" -ne 0 ] || [ -n "$OUT" ]; then fail "lam compliant payload over bad transcript: got rc=$RC out=$OUT"; fi
+
+CASES=$((CASES + 1))
+run_hook "$(event "$(transcript_with lam-block "$GOOD")" | jq -c '. + {last_assistant_message:"chatty non-compliant text"}')"
+check_block lam-block-payload-over-good-transcript
+
 # ---- T-7: settings registration
 CASES=$((CASES + 1))
 STOP_HITS=$(jq '[.hooks.Stop // [] | .[] | select(.matcher == null or .matcher == "") | .hooks[]? | select((.command // "") | contains("turn-summary-guard.sh"))] | length' "$SETTINGS" 2>/dev/null || echo 0)
