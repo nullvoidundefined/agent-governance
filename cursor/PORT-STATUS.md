@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-19 of 23 hook registrations port, across 7 Cursor events.
+19 of 25 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -29,6 +29,8 @@
 | `audit-log` | PostToolUse (.*) | ported: `afterShellExecution`, `afterFileEdit` |
 | `harness-sync` | SessionStart | ported: `sessionStart` |
 | `turn-summary-guard` | Stop | not ported: Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor. |
+| `claim-check-guard` | Stop | not ported: Cursor's adapter has no Stop or SubagentStop event carrying the final message, so the completion-claim check cannot run; citing a command run or saying 'assumed, not run' is a written rule under Cursor. |
+| `claim-check-guard` | SubagentStop | not ported: Cursor's adapter has no Stop or SubagentStop event carrying the final message, so the completion-claim check cannot run; citing a command run or saying 'assumed, not run' is a written rule under Cursor. |
 
 ## Permission rules
 

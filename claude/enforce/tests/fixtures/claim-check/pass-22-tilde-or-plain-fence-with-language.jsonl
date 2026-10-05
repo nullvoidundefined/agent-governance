@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"go"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The expected log looks like:\n```text\nverified: fixed, deployed, all good\n```\nThat is the format only."}]}}

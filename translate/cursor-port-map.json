@@ -54,7 +54,8 @@
     "beforeReadFile"
   ],
   "unported_reasons": {
-    "turn-summary-guard": "Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor."
+    "turn-summary-guard": "Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor.",
+    "claim-check-guard": "Cursor's adapter has no Stop or SubagentStop event carrying the final message, so the completion-claim check cannot run; citing a command run or saying 'assumed, not run' is a written rule under Cursor."
   },
   "rule_descriptions": {
     "000-global-rules.mdc": "Global rules - the canonical rule file for every session. Always on.",
