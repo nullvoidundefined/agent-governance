@@ -47,6 +47,7 @@ not() { ! "$@"; }
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/cursor-adapter-contract.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT
+export AGENT_AUDIT_DIR="$SANDBOX/audit"   # A-13: never the owner's real log
 SANDBOX_HOME="$SANDBOX/home"
 SANDBOX_CLAUDE="$SANDBOX/claude"
 WORK="$SANDBOX/work"

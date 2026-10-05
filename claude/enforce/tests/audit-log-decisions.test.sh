@@ -38,6 +38,7 @@ SECRET="ghp_$(repeat a 36)"
 # drive <hook basename> <label> <payload-json>: runs the hook with a fresh
 # audit dir, asserts it denied, then asserts a matching decision line.
 n=0
+WANT=deny
 drive() {
   local hook="$1" label="$2" payload="$3" dir out d line
   n=$((n + 1))
@@ -46,13 +47,13 @@ drive() {
     HOME="$HOME_DIR" AGENT_AUDIT_DIR="$dir" CLAUDE_FIRE_LOG=/dev/null \
     bash "$CLAUDE_HARNESS_ROOT/hooks/$hook.sh" 2>/dev/null)
   d=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "none"' 2>/dev/null || echo none)
-  [ "$d" = deny ] || { fail "$label: precondition: $hook no longer denies this payload (got $d)"; return; }
+  [ "$d" = "$WANT" ] || { fail "$label: precondition: $hook no longer returns $WANT for this payload (got $d)"; return; }
   line=$(cat "$dir"/*.jsonl 2>/dev/null | jq -c 'select(.event == "decision")' 2>/dev/null | head -1)
   if [ -z "$line" ]; then
     fail "$label: $hook denied but wrote no decision line (dir holds: $(ls "$dir" 2>/dev/null | tr '\n' ' '))"
     return
   fi
-  printf '%s' "$line" | jq -e --arg h "$hook" '(.hook | tostring | contains($h)) and .decision == "deny"' >/dev/null \
+  printf '%s' "$line" | jq -e --arg h "$hook" '(.hook | tostring | contains($h)) and .decision == $w' --arg w "$WANT" >/dev/null \
     || fail "$label: decision line has wrong hook/decision: $line"
   printf '%s' "$line" | jq -e '(keys_unsorted | join(",")) == "ts,session,event,tool,repo,cwd,input,hook,rule,decision"' >/dev/null \
     || fail "$label: decision line keys/order wrong: $line"
@@ -68,6 +69,16 @@ drive secret-scan "secret" "$(bash_payload "export GITHUB_TOKEN=$SECRET")"
 drive destructive-ops-guard "ops" "$(bash_payload 'rm -rf /srv/data')"
 drive protected-path-guard "protected" "$(jq -nc --arg f "$HOME_DIR/.claude/security-review-ledger/x.json" --arg d "$REPO" \
   '{session_id:"sess-d",cwd:$d,tool_name:"Write",tool_input:{file_path:$f,content:"{}"}}')"
+
+# A-3 extension (review r1): a deny through destructive-command-guard, an ask
+# line (destructive-ops-guard asks for rm -rf ./build, a corpus row), and a
+# NotebookEdit into the security-review ledger denied by protected-path-guard.
+drive destructive-command-guard "cmd-guard" "$(bash_payload 'rm ~/.claude/hooks/secret-scan.sh')"
+WANT=ask
+drive destructive-ops-guard "ops-ask" "$(bash_payload 'rm -rf ./build')"
+WANT=deny
+drive protected-path-guard "protected-notebook" "$(jq -nc --arg f "$HOME_DIR/.claude/security-review-ledger/x.ipynb" --arg d "$REPO" \
+  '{session_id:"sess-d",cwd:$d,tool_name:"NotebookEdit",tool_input:{notebook_path:$f,new_source:"x"}}')"
 
 # A deny must still be a deny when the audit directory is unwritable: logging
 # never changes the decision (A-4 spirit, checked on one guard).

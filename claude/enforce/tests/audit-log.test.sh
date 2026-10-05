@@ -133,6 +133,83 @@ else
   fail "A-2: no file for the secret command"
 fi
 
+# ---- A-10: keyed redaction covers quoted values and the colon separator ----
+KV="kv$(printf 'Wx')$(repeat 5 8)Zd"   # run-time value, no secret-pattern shape
+n10=0
+check_redacted() { # label command-text value
+  local d f
+  n10=$((n10 + 1)); d="$WORK/audit10_$n10"
+  run_hook "$d" "$(payload Bash "$(jq -nc --arg c "$2" '{command:$c}')")"
+  f=$(TODAY_FILE "$d")
+  [ -f "$f" ] || { fail "$1: no file written"; return; }
+  grep -qF "$3" "$f" && fail "$1: the value reached the file"
+  head -1 "$f" | jq -r .input | grep -qF '***' || fail "$1: *** marker missing: $(head -1 "$f" | jq -r .input)"
+}
+for key in password passwd secret token api_key api-key access_token auth_token PASSWORD Api_Key; do
+  check_redacted "A-10 $key=\"v\"" "run --$key=\"$KV\" x" "$KV"
+  check_redacted "A-10 $key='v'" "run $key='$KV' x" "$KV"
+  check_redacted "A-10 $key: v" "run $key: $KV x" "$KV"
+  check_redacted "A-10 $key: 'v'" "run $key: '$KV' x" "$KV"
+  check_redacted "A-10 \"$key\": \"v\"" "echo '{\"$key\": \"$KV\"}'" "$KV"
+  check_redacted "A-10 $key=v" "run $key=$KV x" "$KV"
+done
+
+# ---- A-11: mysql -p<value> and credential-bearing headers ----
+check_redacted "A-11 mysql -pVALUE" "mysql -u root -p$KV db" "$KV"
+check_redacted "A-11 X-Api-Key header" "curl -H 'X-Api-Key: $KV' https://example.org" "$KV"
+check_redacted "A-11 Cookie header" "curl -H 'Cookie: sid=$KV' https://example.org" "$KV"
+check_redacted "A-11 Set-Cookie header" "curl -H \"Cookie: $KV\" https://example.org" "$KV"
+check_redacted "A-11 X-Auth-Token header" "curl -H 'X-Auth-Token: $KV' https://example.org" "$KV"
+check_redacted "A-11 X-Secret header" "curl -H 'X-Secret: $KV' https://example.org" "$KV"
+# Negative: a harmless header and a plain -p option are left alone.
+D11="$WORK/audit11n"
+run_hook "$D11" "$(payload Bash '{"command":"curl -H '"'"'Accept: text/html'"'"' https://example.org"}')"
+F11=$(TODAY_FILE "$D11")
+[ -f "$F11" ] && head -1 "$F11" | jq -r .input | grep -qF 'Accept: text/html' || fail "A-11: a harmless Accept header was redacted"
+
+# ---- A-12: degraded redaction when secret-patterns.txt is missing or broken ----
+# The helper finds the patterns at <its dir>/../enforce/secret-patterns.txt, so
+# a copy of hooks/ in a temp root with no enforce/ has no patterns file.
+check_degraded() { # label root
+  local d f line inp
+  d="$WORK/audit12_$1"
+  printf '%s' "$(payload Bash "$(jq -nc --arg c "echo hello password=$KV; curl -H 'X-Api-Key: $KV' https://example.org; mysql -p$KV db" '{command:$c}')")" \
+    | env -u GIT_DIR AGENT_AUDIT_DIR="$d" bash "$2/hooks/audit-log.sh" >"$OUT_FILE" 2>/dev/null
+  f=$(TODAY_FILE "$d")
+  [ -f "$f" ] || { fail "A-12 $1: no line written when patterns are unavailable"; return; }
+  line=$(head -1 "$f")
+  inp=$(printf '%s' "$line" | jq -r .input)
+  [ "$inp" != '***' ] || fail "A-12 $1: the whole field was blanked to ***"
+  case "$inp" in *"echo hello"*) : ;; *) fail "A-12 $1: the non-secret text was lost: $inp" ;; esac
+  grep -qF "$KV" "$f" && fail "A-12 $1: a keyed value reached the file"
+  printf '%s' "$inp" | grep -qF '***' || fail "A-12 $1: keyed values were not redacted"
+  [ "$(printf '%s' "$line" | jq -r .redaction)" = degraded ] || fail "A-12 $1: line lacks \"redaction\":\"degraded\": $line"
+}
+R12="$WORK/root12"; mkdir -p "$R12"; cp -R "$CLAUDE_HARNESS_ROOT/hooks" "$R12/hooks"
+check_degraded missing "$R12"
+R12B="$WORK/root12b"; mkdir -p "$R12B/enforce"; cp -R "$CLAUDE_HARNESS_ROOT/hooks" "$R12B/hooks"
+printf '%s\n' 'ghp_[A-Za-z0-9]{36}' '(unclosed[' > "$R12B/enforce/secret-patterns.txt"
+check_degraded broken-pattern "$R12B"
+# A healthy run carries no degraded marker.
+if [ -f "$F3" ]; then
+  head -1 "$F3" | jq -e 'has("redaction") | not' >/dev/null 2>&1 || fail "A-12: a healthy line carries a redaction marker"
+fi
+
+# ---- A-13: every test that runs a guard hook sets AGENT_AUDIT_DIR ----
+TESTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
+# Only hooks that source audit-log-append.sh write decision lines; a test that
+# names one of them (or drives every registered hook through an adapter or the
+# settings.json hook list) must point AGENT_AUDIT_DIR at a scratch directory.
+LOGGING=$(grep -l 'audit_log_' "$CLAUDE_HARNESS_ROOT"/hooks/*.sh 2>/dev/null | xargs -n1 basename 2>/dev/null | grep -v '^audit-log' | sed 's/\.sh$//' | paste -sd'|' -)
+[ -n "$LOGGING" ] || fail "A-13: no guard sources audit-log-append.sh"
+for t in "$TESTS_DIR"/*.test.sh; do
+  case "$(basename "$t")" in audit-log.test.sh | audit-log-decisions.test.sh | audit-dir-protection.test.sh) continue ;; esac
+  grep -qE "hooks/($LOGGING)\.sh|HOOKS\[|-hook-adapter\.sh" "$t" || continue
+  grep -q 'AGENT_AUDIT_DIR\|harness-root\.sh' "$t" || fail "A-13: $(basename "$t") runs a logging guard but neither sets AGENT_AUDIT_DIR nor sources harness-root.sh"
+done
+grep -q 'AGENT_AUDIT_DIR' "$CLAUDE_HARNESS_ROOT/enforce/harness-root.sh" \
+  || fail "A-13: enforce/harness-root.sh does not export AGENT_AUDIT_DIR to a scratch dir when unset"
+
 # ---- A-4: never blocks ----
 echo plain > "$WORK/afile"
 run_hook "$WORK/afile/sub" "$(payload Bash '{"command":"ls"}')"; expect_quiet "unwritable dir"

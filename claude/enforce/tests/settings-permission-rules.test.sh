@@ -27,6 +27,7 @@ not() { ! "$@"; }
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/settings-permission-rules.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT
+export AGENT_AUDIT_DIR="$SANDBOX/audit"   # A-13: never the owner's real log
 export HOME="$SANDBOX/home"
 mkdir -p "$HOME"
 

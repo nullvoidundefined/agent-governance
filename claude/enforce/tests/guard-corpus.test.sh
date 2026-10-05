@@ -39,6 +39,8 @@ for h in "${HOOKS[@]}"; do [ -f "$h" ] || { echo "FAIL: registered hook missing:
 
 WORK=$(mktemp -d) || { echo "FAIL: mktemp failed"; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
+# A-13: guard decisions write audit lines; keep them out of the owner's real log.
+export AGENT_AUDIT_DIR="$WORK/audit"
 # Physical path: macOS mktemp returns /var/..., a symlink to /private/var/...,
 # and the delete guard resolves targets physically.
 WORK=$(cd "$WORK" && pwd -P)
