@@ -29,15 +29,22 @@ input="$(cat)"
 command -v jq >/dev/null 2>&1 || exit 0
 [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" = "true" ] && exit 0
 transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)" || exit 0
-[ -n "$transcript" ] && [ -r "$transcript" ] || exit 0
 
-final_text="$(jq -rs '
-  map(select(.type == "assistant"
-             and (.message.content | type) == "array"
-             and any(.message.content[]; .type == "text")))
-  | last // empty
-  | .message.content | map(select(.type == "text") | .text) | join("\n")
-' "$transcript" 2>/dev/null)" || exit 0
+# Prefer the final message the Stop payload carries; fall back to the
+# transcript, reading only its tail so a long session stays cheap (a partial
+# first line is dropped by the fromjson? guard).
+final_text="$(printf '%s' "$input" | jq -r '.last_assistant_message // empty | strings' 2>/dev/null)"
+if [ -z "$final_text" ]; then
+    [ -n "$transcript" ] && [ -r "$transcript" ] || exit 0
+    final_text="$(tail -n 400 "$transcript" | jq -Rrs '
+      split("\n") | map(fromjson? // empty)
+      | map(select(.type == "assistant"
+                   and (.message.content | type) == "array"
+                   and any(.message.content[]; .type == "text")))
+      | last // empty
+      | .message.content | map(select(.type == "text") | .text) | join("\n")
+    ' 2>/dev/null)" || exit 0
+fi
 [ -n "$final_text" ] || exit 0
 
 block() {
@@ -48,18 +55,27 @@ $TEMPLATE" '{decision: "block", reason: $r}'
 
 # has_pointer <text>: true when text names somewhere to read more.
 has_pointer() {
-    printf '%s' "$1" | grep -Eq '`[^`]+`|https?://|#[0-9]+|(^|[^0-9A-Za-z])[0-9a-f]{7,40}([^0-9A-Za-z]|$)|[^[:space:]]/[^[:space:]]|[A-Za-z0-9_-]+\.[A-Za-z0-9]+'
+    # A backtick span, a URL, #<digits>, a 7 to 40 character hex sha word, a
+    # path with two or more slashes or ending in name.ext, or a bare name.ext
+    # (name of 2+ characters starting with a letter, lowercase extension of 1
+    # to 5 letters, ending the word). Excludes prose like it.Then, e.g., 3.5x,
+    # v1.2 and and/or.
+    printf '%s' "$1" | grep -Eq \
+        -e '`[^`]+`' -e 'https?://' -e '#[0-9]+' \
+        -e '(^|[^0-9A-Za-z])[0-9a-f]{7,40}([^0-9A-Za-z]|$)' \
+        -e '(^|[[:space:](])[^[:space:]/]+/[^[:space:]/]+/[^[:space:]]+' \
+        -e '(^|[[:space:](])([^[:space:]]+/)?[A-Za-z][A-Za-z0-9_-]+\.[a-z]{1,5}([[:space:]),;:!?]|[.]?$|[.][[:space:]])'
 }
 
 # label_text <label> <line>: prints the text after the label, or fails.
 label_text() {
     local text
-    text="$(printf '%s' "$2" | sed -nE "s/^[[:space:]]*(\*\*)?$1:(\*\*)?[[:space:]]*(.*)$/\3/p")"
+    text="$(printf '%s' "$2" | sed -nE "s/^[[:space:]]*([-*>][[:space:]]+)?(\*\*$1:\*\*|\*\*$1\*\*:|$1:)[[:space:]]*(.*)$/\3/p")"
     [ -n "$text" ] || return 1
     printf '%s' "$text"
 }
 
-last_three="$(printf '%s\n' "$final_text" | tr -d '\r' | grep -v '^[[:space:]]*$' | tail -n 3)"
+last_three="$(printf '%s\n' "$final_text" | tr -d '\r' | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*```[[:space:]]*$' | tail -n 3)"
 [ "$(printf '%s\n' "$last_three" | wc -l | tr -d ' ')" -eq 3 ] || block "fewer than three lines."
 line_done="$(printf '%s\n' "$last_three" | sed -n 1p)"
 line_decide="$(printf '%s\n' "$last_three" | sed -n 2p)"
