@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"go"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I used a fixed-width layout and fixed the overflow bug."}]}}
