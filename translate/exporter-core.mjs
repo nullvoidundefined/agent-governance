@@ -333,7 +333,7 @@ export function checkPlannedTree(rootDir, targetSubdir, planned, handAuthoredLis
 export function renderSkillCopyFor(builderPath, skill) {
   const { name } = skill.frontmatter;
   const content =
-    `---\n${skill.rawFrontmatter}\n---\n${renderGeneratedHeaderFor(builderPath, `skills/${name}/SKILL.md`)}\n${skill.body}`;
+    `---\n${skill.rawFrontmatter}\n---\n${renderGeneratedHeaderFor(builderPath, skill.source)}\n${skill.body}`;
   return { path: `skills/${name}/SKILL.md`, content };
 }
 

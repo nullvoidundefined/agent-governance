@@ -43,7 +43,7 @@ export function renderCursorAgent(agent) {
   const { name, description, tools } = agent.frontmatter;
   const readonly = !hasWriteOrEditTool(tools);
   const frontmatter = `---\nname: ${name}\ndescription: ${description}\nmodel: inherit\nreadonly: ${readonly}\n---\n`;
-  const header = renderGeneratedHeaderFor(BUILDER_NAME, `agents/${name}.md`);
+  const header = renderGeneratedHeaderFor(BUILDER_NAME, agent.source);
   const content = `${frontmatter}${header}\n${agent.body}`;
   return { path: `agents/${name}.md`, content };
 }
@@ -54,7 +54,7 @@ export function renderCursorAgent(agent) {
 // delegate boilerplate.
 export function renderCursorCommand(agent) {
   const { name, description } = agent.frontmatter;
-  const header = renderGeneratedHeaderFor(BUILDER_NAME, `agents/${name}.md`);
+  const header = renderGeneratedHeaderFor(BUILDER_NAME, agent.source);
   const boilerplate = `Delegate this to the \`${name}\` subagent. If subagents are unavailable in this build, read \`~/.claude/agents/${name}.md\` and carry out that role definition in this conversation, honoring its model-routing and output-discipline sections.`;
   const content = `${header}\n\n${description}\n\n${boilerplate}\n`;
   return { path: `commands/${name}.md`, content };

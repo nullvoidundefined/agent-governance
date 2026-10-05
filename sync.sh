@@ -334,6 +334,24 @@ case "$SOURCE_MODE" in
   *) echo "REFUSED: $REPO_ROOT is neither a git checkout nor a release archive (no RELEASE-FILES); nothing synced" >&2; exit 1 ;;
 esac
 
+# A checkout regenerates claude/, codex/ and cursor/ from rules/ first, so a
+# rule edited in any tool reaches all three at the next sync (the neutral
+# rules source; a release archive ships already generated). A source error
+# stops here, before anything is installed. Without node the committed trees
+# are installed as they are, since CI keeps them current.
+if [ "$SOURCE_MODE" = git ] && [ -f "$REPO_ROOT/translate/all.mjs" ]; then
+  if command -v node >/dev/null 2>&1; then
+    if ! regen_out="$(node "$REPO_ROOT/translate/all.mjs" --write 2>&1)"; then
+      printf '%s\n' "$regen_out" >&2
+      echo "REFUSED: rules/ has a source error (above); nothing synced" >&2
+      exit 1
+    fi
+    printf '%s\n' "$regen_out" | grep -E '^regenerated [1-9][0-9]* files' || true
+  else
+    echo "node not found; installing the committed trees without regenerating from rules/" >&2
+  fi
+fi
+
 sync_one claude "$TARGET_CLAUDE"
 sync_one cursor "$TARGET_CURSOR"
 sync_one codex "$TARGET_CODEX"

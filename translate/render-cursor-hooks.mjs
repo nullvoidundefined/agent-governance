@@ -210,7 +210,7 @@ export function renderCursorPortStatus(settingsHooks, portMap) {
   for (const row of portedRows) for (const cursorEvent of row.cursorEvents) cursorEventSet.add(cursorEvent);
   const summaryLine = `${portedRows.length} of ${rows.length} hook registrations port, across ${cursorEventSet.size} Cursor events.`;
   const appendix = portMap.port_status_appendix ? `\n\n${portMap.port_status_appendix}` : "";
-  const header = renderGeneratedHeaderFor(BUILDER_NAME, "settings.json");
+  const header = renderGeneratedHeaderFor(BUILDER_NAME, "claude/settings.json");
   const content = `${header}\n\n# Cursor port status\n\n${summaryLine}\n\n${renderPortStatusTable(rows, portMap)}${appendix}\n`;
   return { path: "PORT-STATUS.md", content };
 }
