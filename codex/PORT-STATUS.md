@@ -2,7 +2,7 @@
 
 # Codex port status
 
-19 of 19 hook registrations port, across 3 Codex events.
+19 of 20 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -25,6 +25,7 @@
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | ported: `PostToolUse` (matcher `Agent|Task`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `harness-sync` | SessionStart | ported: `SessionStart` |
+| `turn-summary-guard` | Stop | not ported: Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex. |
 
 ## Permission rules
 
