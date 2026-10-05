@@ -1,5 +1,5 @@
-// render-codex-rules.mjs: renders claude/CLAUDE.md as codex/AGENTS.md: the
-// generated header, a short preamble, then the CLAUDE.md body unchanged.
+// render-codex-rules.mjs: renders rules/GLOBAL.md (filtered for codex) as
+// codex/AGENTS.md: the generated header, a short preamble, then the body unchanged.
 import { renderGeneratedHeader } from "./parse-sources.mjs";
 
 const PREAMBLE =

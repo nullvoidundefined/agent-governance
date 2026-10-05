@@ -6,9 +6,12 @@
      counterpart of .claude/settings.json and .cursor/rules/000-harness-bootstrap.mdc,
      and no exporter writes it. Codex merges this file with ~/.codex/AGENTS.md. -->
 
-This checkout is the source of the governance harness, not a consumer of it. The rules
-that should govern this session live in `claude/`, are projected into `codex/` by
-`translate/codex.mjs`, and are installed into `~/.codex` by `./sync.sh`.
+This checkout is the source of the governance harness, not a consumer of it. The prose
+rules live in the tool-neutral `rules/` tree; `node translate/all.mjs --write` generates
+`claude/`, `codex/` and `cursor/` from it (hooks, `enforce/` and `settings.json` stay
+hand-authored in `claude/`), and `./sync.sh` installs `codex/` into `~/.codex`. No tool
+is primary: edit `rules/` from any of them. Text meant for one tool only goes in an
+`<!-- only: codex -->` ... `<!-- /only -->` block (targets: claude, codex, cursor).
 
 ## Do this first
 
@@ -26,10 +29,10 @@ reads exactly like a current one.
 
 ## Verify rather than assume
 
-- `node translate/codex.mjs --check` exits 0 when `codex/` matches its `claude/`
-  sources, 1 when a source edit was never regenerated, 2 on a source error. A nonzero
-  exit means the payload itself is stale and syncing would install the staleness; run
-  `node translate/codex.mjs --write` first.
+- `node translate/all.mjs --check` exits 0 when `claude/`, `codex/` and `cursor/` match
+  their `rules/` sources, 1 when a source edit was never regenerated, 2 on a source
+  error. A nonzero exit means the payload itself is stale and syncing would install the
+  staleness; run `node translate/all.mjs --write` first.
 - `diff -r codex ~/.codex` names the specific files that differ.
 
 ## What not to edit
@@ -37,8 +40,10 @@ reads exactly like a current one.
 Everything under `codex/` is generated except `codex/hooks/codex-hook-adapter.sh` and
 `codex/README.md`, which the port map classifies hand-authored. Editing any other file
 under `codex/` is lost at the next `--write`, and `--check` fails in CI and at push
-until it is reverted. Change the `claude/` source or `translate/codex-port-map.json`
-instead, then regenerate.
+until it is reverted. Change the `rules/` source (or, for hooks, the `claude/` hook) or
+`translate/codex-port-map.json` instead, then regenerate with
+`node translate/all.mjs --write`. The same holds for the prose files in `claude/`,
+which are now generated from `rules/` too.
 
 ## What is weaker under Codex than under Claude Code
 

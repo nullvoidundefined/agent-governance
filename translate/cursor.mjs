@@ -12,7 +12,6 @@ import path from "node:path";
 import fs from "node:fs";
 import {
   SourceError,
-  splitFrontmatter,
   loadTextFile,
   loadSettingsHooks,
   loadCursorPortMap,
@@ -26,47 +25,19 @@ import { renderCursorAgent, renderCursorCommand, matchesAgentSubagentList } from
 import { renderCursorSkillCopy } from "./render-cursor-skills.mjs";
 import { renderCursorHooksConfig, renderCursorPortStatus } from "./render-cursor-hooks.mjs";
 import { renderCursorGitignore } from "./render-cursor-gitignore.mjs";
+import { loadRuleSources } from "./rule-sources.mjs";
 import {
   writePlannedTree as writePlannedTreeCore,
   checkPlannedTree as checkPlannedTreeCore,
   claimPlannedPath,
   buildManifest,
-  listFilesWithExtension,
-  listSkillDirs,
-  makeSkillSourceLoader,
   renderSkillSupportFileFor,
-  makeMarkdownSourceLoader,
   runExporterCli,
 } from "./exporter-core.mjs";
 
 const TARGET_SUBDIR = "cursor";
 const BUILDER_NAME = "translate/cursor.mjs";
 const USAGE = "usage: node translate/cursor.mjs --write|--check [--root <repo-dir>]";
-
-// listStackFiles(dir): every CLAUDE-*.md stack convention file under dir,
-// sorted. CLAUDE.md itself is loaded separately (it is the always-on rule
-// file, not a glob-attached stack track); CLOUD-DEPLOYMENT.md is loaded
-// separately too since it does not carry the CLAUDE- prefix (the study's
-// Class B "no-paths outlier"). Cursor-specific (codex has no equivalent
-// stack-rule class), so it stays local rather than moving to exporter-core.
-function listStackFiles(dir) {
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter((name) => name.startsWith("CLAUDE-") && name.endsWith(".md"))
-    .sort()
-    .map((name) => path.join(dir, name));
-}
-
-// loadMarkdownSource(file): cursor's claude/agents/*.md and
-// claude/skills/*/SKILL.md loader, built from the shared factory
-// (exporter-core.mjs, review I-3a) closing over this file's own
-// splitFrontmatter/loadTextFile imports.
-const loadMarkdownSource = makeMarkdownSourceLoader(loadTextFile, splitFrontmatter);
-
-// loadSkillSource(skillDir): the skill's SKILL.md plus its bundled support
-// files (scripts, reference material), from the shared factory
-// (exporter-core.mjs); support files port byte for byte with their modes.
-const loadSkillSource = makeSkillSourceLoader(loadTextFile, splitFrontmatter);
 
 // loadSources(rootDir): loads and validates every translator input: settings
 // hooks, the cursor port map, CLAUDE.md, the global memory index, every
@@ -77,13 +48,17 @@ function loadSources(rootDir) {
   const claudeDir = path.join(rootDir, "claude");
   const settingsHooks = loadSettingsHooks(path.join(claudeDir, "settings.json"));
   const portMap = loadCursorPortMap(path.join(rootDir, "translate/cursor-port-map.json"));
-  const claudeMdText = loadTextFile(path.join(claudeDir, "CLAUDE.md"));
+  // The prose comes from rules/ (rule-sources.mjs), filtered for cursor; the
+  // global memory index and hook registrations still come from claude/. Stack
+  // files keep their claude/ names (CLAUDE-<NAME>.md), which the .mdc names
+  // are derived from.
+  const rules = loadRuleSources(rootDir, "cursor");
+  const claudeMdText = rules.global.text;
   const globalMemoryIndexText = loadTextFile(path.join(claudeDir, "global-memory/INDEX.md"));
-  const stackFiles = listStackFiles(claudeDir)
-    .map((file) => ({ file, text: loadTextFile(file) }));
-  const cloudDeploymentText = loadTextFile(path.join(claudeDir, "CLOUD-DEPLOYMENT.md"));
-  const agents = listFilesWithExtension(path.join(claudeDir, "agents"), ".md").map(loadMarkdownSource);
-  const skills = listSkillDirs(path.join(claudeDir, "skills")).map(loadSkillSource);
+  const stackFiles = rules.stacks.map((stack) => ({ file: stack.legacyName, text: stack.text }));
+  const cloudDeploymentText = rules.cloudDeployment.text;
+  const agents = rules.agents;
+  const skills = rules.skills;
   return {
     settingsHooks,
     portMap,

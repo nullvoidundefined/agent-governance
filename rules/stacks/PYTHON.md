@@ -1,0 +1,112 @@
+---
+paths:
+  - "**/*.py"
+---
+
+# Python Backend Conventions
+
+Python API services, workers and scheduled jobs. One choice per concern. This file covers what ruff, the formatter and mypy cannot check; the PostgreSQL schema, query and migration rules in `CLAUDE-DATABASE.md` apply unchanged, and logging and health are in `CLAUDE-OBSERVABILITY.md`.
+
+## Stack
+
+Python 3.13 pinned in `pyproject.toml` and `.python-version`; uv for environments and the lockfile (no `requirements.txt`, no poetry). FastAPI on uvicorn in factory mode, Pydantic v2, pydantic-settings. PostgreSQL through SQLAlchemy 2 Core on asyncpg: `Table` objects on one `MetaData`, no ORM models; Alembic migrations. redis.asyncio for rate limits and the queue, arq for background and scheduled jobs. structlog and asgi-correlation-id. `AsyncAnthropic` for LLM calls and `httpx.AsyncClient` for every other outbound call, both wrapped in `clients/`. pytest with pytest-asyncio. Deployed as Docker images on Railway. These are defaults for new code; an existing repository keeps its own choices.
+
+## Layout and layers
+
+The package is always `app`: `main.py` (factory), `core/` (settings, logging, security primitives only), `db/` (engine, `get_connection`, tables), `middleware/`, `dependencies/`, `routers/`, `schemas/`, `services/<domain>/`, `repositories/`, `clients/`, `constants/`, `analytics/`, `workers/`; `migrations/` and `tests/` beside it.
+
+- **Middleware**: cross-cutting request concerns (request ID, CSRF, timeout, idempotency, rate limit). Never touches domain data or calls services.
+- **Dependencies**: per-request values through `Depends` (connection, current user, settings). No business rules.
+- **Routers**: declare the route, receive validated input, make one service or repository call, return one response model.
+- **Services**: business logic on inputs; never see `Request`, `Response` or status codes.
+- **Repositories**: SQLAlchemy Core statements, typed rows out. **Clients**: one provider each, with telemetry and timeouts. **Workers**: receive a job, call services, record the outcome.
+- Direction: `routers -> services -> repositories -> db`, and `services -> clients`. Middleware and dependencies may call repositories only for session and idempotency lookups. Nothing imports from `routers/`.
+- Modules are `snake_case.py`, named for one responsibility, with no layer suffix (`repositories/trips.py`, never `trips_repository.py`); repositories take the table name, services a verb plus noun in a domain folder (`services/trips/price_trip.py`). Call through the imported module (`trips.list_for_user(...)`) so each call site shows the layer it crosses.
+- Functions for logic, Pydantic models at boundaries, `@dataclass(slots=True, frozen=True)` for internal values. A class only for mutable state, a lifecycle, or interchangeable implementations; never a `FooService` class grouping functions.
+
+## App factory and middleware
+
+- `create_app()` assembles settings, logging, middleware, exception handlers and routers, in that order; run it with `uvicorn app.main:create_app --factory`.
+- Nothing runs at import time. Settings, the engine, Redis and every SDK client are built in `create_app()`, the lifespan, or a cached dependency, so tests import any module without environment variables.
+- The `lifespan` context manager opens the engine and Redis onto `app.state` and disposes them on shutdown; never `@app.on_event`.
+- Every middleware is a pure ASGI class (`async def __call__(self, scope, receive, send)`), never `BaseHTTPMiddleware`, which breaks streaming responses and context propagation.
+- `app.add_middleware` wraps outside-in, so the class added last runs first: register in reverse of the request order. The request order is:
+  1. asgi-correlation-id, outermost, so every response carries the ID, 413s included
+  2. security headers, so every response carries them, 413s included
+  3. CORS, so preflights answer before anything can reject them and a cross-origin client can read a 413
+  4. `RequestContextMiddleware`: binds the ID and rejects a body over 100 KB with 413 `INPUT_PAYLOAD_TOO_LARGE` unless the route is on the upload allowlist
+  5. rate limit
+  6. request timeout (default 30 seconds, 408 `SERVER_REQUEST_TIMEOUT`; SSE routes enforce their own idle timeout)
+  7. CSRF guard
+  8. idempotency, innermost, because it needs the resolved user and the final response
+- Session resolution is a dependency, not middleware, so each route declares whether it needs a user. Exception handlers register after middleware; the health router is included before every application router.
+
+## Routers, validation and errors
+
+- One router per resource, prefixed `/v1/<resource>`, with the auth dependency on the router (`APIRouter(prefix="/v1/trips", dependencies=[Depends(get_current_user)])`). A breaking change adds `/v2` beside it.
+- `response_model` on every route, `status_code` for anything but 200. `get_current_user` returns a typed `CurrentUser`, received as `Annotated[CurrentUser, Depends(get_current_user)]`, never read from `request.state`.
+- Request schemas set `ConfigDict(extra="forbid", str_strip_whitespace=True)` and bound every string and list. Response schemas never include secrets or hashes.
+- Envelope, the same as every stack: success `{"data": ...}` (plus `"meta": {total, limit, offset}` for a page); error `{"error": {"code": "...", "message": "..."}}`.
+- Codes are a `StrEnum` in `constants/error_codes.py`, namespaced `DOMAIN_REASON` (`AUTH_REQUIRED`, `TRIPS_NOT_FOUND`). Clients switch on the code, never the message.
+- Domain errors raise `AppError(status_code, code, message)` subclasses, never `HTTPException` with a free-form `detail`. Five handlers cover everything, so no response ever uses FastAPI's default `{"detail": ...}`: `AppError` to its own status; Starlette's `HTTPException` to `ROUTING_NOT_FOUND` or `ROUTING_METHOD_NOT_ALLOWED`; `RequestValidationError` to 400 `INPUT_VALIDATION_ERROR`; connection-class database errors to 503 `SERVER_DATABASE_UNAVAILABLE`; anything else to 500 `SERVER_INTERNAL_ERROR`.
+- The 500 handler logs with `exc_info`, reports to Sentry with the request ID, and returns `"Internal server error"` in production; never a traceback.
+- Catch a unique violation where it has a useful answer (`IntegrityError` with `orig.sqlstate == "23505"` on register becomes 409 `AUTH_EMAIL_ALREADY_REGISTERED`), never globally. Cache and analytics failures catch the specific exception, log, and continue.
+
+## Settings
+
+- One pydantic-settings `Settings`, built once by an `lru_cache`d `get_settings()`, with `hide_input_in_errors=True`. Business code receives it through `Depends(get_settings)` or a parameter; nothing reads `os.environ`.
+- Secrets are `SecretStr`, never logged or echoed in an error.
+- `CORS_ORIGIN` is validated in every environment: exactly one `scheme://host[:port]` origin; reject `*`, `null`, comma lists, paths and userinfo. With `allow_credentials=True`, Starlette reads `*` as allow-all and echoes each caller's `Origin`, and `null` is what every sandboxed iframe sends, so either hands the session cookie to any site. A negative test feeds each unsafe value.
+- Production refuses to start without `CORS_ORIGIN`, `REDIS_URL`, `FORWARDED_ALLOW_IPS` and `RESEND_API_KEY`.
+
+## Database
+
+- One engine per process, created in the lifespan on `postgresql+asyncpg`, with a bounded pool (`pool_size=10`, `max_overflow=5`, `pool_timeout=5`, `pool_recycle=1800`, `pool_pre_ping=True`).
+- One connection and one transaction per request through `get_connection` (`engine.begin()`), always declared `Depends(get_connection, scope="function")`. The default request scope runs exit code after the response is sent, so a failed commit would follow a 201 the client already received. A nested boundary uses `connection.begin_nested()`.
+- A connection is never shared across asyncio tasks; `asyncio.gather` over repository calls needs one connection per task. Workers open connections from the engine in `ctx`, one transaction per job.
+- Repositories never commit; the transaction belongs to whoever opened the connection. They use Core expressions, or `text()` with bound parameters when Core cannot say it; never string formatting into SQL. Every query on a user-owned table carries `user_id`. Writes use `.returning(...)`; not found is `None` (`False` for a delete), never an exception.
+- Connect args always set the connect `timeout` and `statement_timeout` (10 seconds). Staging and production pass `ssl.create_default_context(cafile=settings.database_ca_cert)`, which verifies chain and hostname; `sslmode=require` encrypts without verifying, so a man in the middle passes.
+- Alembic: working `upgrade()` and `downgrade()`, a linear chain, one logical change per revision, and `--autogenerate` output is a draft to read and edit. `MetaData(naming_convention=...)` names every constraint and index. Enums are explicit: `postgresql.ENUM(..., create_type=False)` on the column, `.create()` in `upgrade()`, `.drop()` after the table in `downgrade()`. Defaults: `server_default="draft"` for a constant, `sa.text("now()")` for an expression, never nested quotes.
+- Migrations run as a release step (`alembic upgrade head`) before the new image takes traffic, never at app startup. Risky changes follow the staged process and the locking rules in `CLAUDE-DATABASE.md`: `CREATE INDEX CONCURRENTLY` runs inside `op.get_context().autocommit_block()`, and `upgrade()` sets `SET lock_timeout` before DDL on a busy table.
+
+## Data-access discipline
+
+The rules in `CLAUDE-DATABASE.md` part 2, in SQLAlchemy Core form.
+
+- **No query per element.** No repository call, `execute`, `scalar(s)` or `stream` inside a loop, a comprehension, or `asyncio.gather(*[... for x in xs])`. Load sets with `column.in_(ids)` or `= ANY(:ids)`, a JOIN, or a lateral `json_agg`; write sets with a multi-row `insert().values([...])` or `unnest`. Add a plural repository function the first time a caller needs more than one row. A deliberate loop states its bound in a comment.
+- **One transaction for writes that belong together.** Inside `engine.begin()` or the request's `get_connection`, every statement uses that connection, awaited in sequence. No `httpx` or client call inside the block: send after the commit, and use an outbox row for an effect tied to the commit.
+- **No unguarded read-modify-write.** Compute in SQL with a guard (`update(accounts).where(accounts.c.credits >= 1).values(credits=accounts.c.credits - 1).returning(...)`; zero rows means failure), or `select(...).with_for_update()`, or a version column. "Select then insert" becomes a unique constraint plus `on_conflict_do_nothing` or `on_conflict_do_update`.
+- **Every read bounded.** A capped `limit`, `order_by` ending in `id`, keyset pagination on unbounded tables, aggregation in SQL.
+- **Query-count test** for every collection read: count statements with a SQLAlchemy `before_cursor_execute` event listener, run at two data sizes against real Postgres, and assert the counts are equal.
+
+## Auth and security
+
+- Session cookie: a random `secrets.token_urlsafe(32)` token with a 7-day TTL; the database stores only its SHA-256 hash. Cookie flags: `httponly`, `samesite="lax"`, `path="/"`, and `secure` on every environment except development, because a staging cookie without it travelled over plain HTTP (2026-09 stack audit). Test that a staging login sets `Secure` and `HttpOnly`.
+- Passwords: bcrypt (12 rounds) inside `asyncio.to_thread`, so hashing never blocks the event loop. Login verifies against a precomputed dummy hash when the user is unknown and answers `AUTH_INVALID_CREDENTIALS` either way, so timing does not reveal which emails exist.
+- Email is trimmed and lowercased before every insert and lookup, with a unique index on `lower(email)`; otherwise `A@x.com` and `a@x.com` register twice.
+- Password reset: the token is stored hashed, expires in an hour, and issuing one deletes earlier unused ones. Consume it with one `UPDATE ... SET used_at = now() WHERE token_hash = :hash AND used_at IS NULL AND expires_at > now() RETURNING user_id`, because select-then-update lets two concurrent submissions both succeed. Success deletes all the user's sessions; a password change deletes the other sessions; logout deletes the row and clears the cookie. `get_current_user` binds `user_id` into the log context.
+- CSRF: `POST`, `PUT`, `PATCH` and `DELETE` without `X-Requested-With: XMLHttpRequest` get 403 `CSRF_HEADER_MISSING`; the Stripe webhook and health routes are exempt. CORS allows only `settings.cors_origin`, so a foreign origin cannot pass the preflight the header forces. No token endpoint, no double-submit cookie.
+- Rate limiting: a Redis fixed window keyed on `request.client.host`, the address uvicorn resolved through the trusted proxies. Never parse `X-Forwarded-For` yourself: every entry but the last is client-supplied, so keying on the first lets one client rotate buckets. Auth routes are listed by full `/v1` path (`/v1/auth/login`); a pattern without the mount prefix never matches and leaves the route on the global limit. Over the limit: 429 `RATE_LIMIT_EXCEEDED` with `Retry-After`. Limits live in settings. Without `REDIS_URL`, an in-process counter with one warning in development and test only, because per-process counters let an attacker rotate across instances.
+- uvicorn runs with `--proxy-headers` and `FORWARDED_ALLOW_IPS` set to the proxy's private network as a CIDR. Never `*`, which makes uvicorn take the first, client-forgeable entry; a missing value keys every request on the proxy's address. The right-to-left walk needs uvicorn 0.53 or later.
+- Idempotency keys: a new key claims its row atomically under a unique `(key, user_id)`; a completed key replays only for an identical method, path and body hash (otherwise 422 `IDEMPOTENCY_KEY_REUSED`); an expired lease is taken over by one guarded `UPDATE ... RETURNING`, and completion and release both match the claimant's token.
+
+## Workers, providers and operations
+
+- `workers/settings.py` holds `WorkerSettings`, the one allowed module-level settings read; `on_startup` configures logging and opens one engine into `ctx`. One job per function in `workers/jobs/`; a job takes `ctx` (a `TypedDict`) first, receives only IDs and small values, loads the rest, and binds `job_id` on entry. Jobs are idempotent through their own completion marker. The API enqueues through `clients/queue.py`, the only place job names live, derived from `__name__`.
+- The worker image is the API image with the arq `CMD`, and serves health on `WORKER_PORT`. Railway's drain window is at least `job_timeout`.
+- Stripe webhook: read `await request.body()` as raw bytes before anything parses it and verify with `stripe.Webhook.construct_event`; a missing signature or secret is 400 `BILLING_WEBHOOK_MISCONFIGURED`, a bad one 400 `BILLING_WEBHOOK_INVALID_SIGNATURE`. Claim the event in a ledger (`stripe_event_id` unique) with `INSERT ... ON CONFLICT DO UPDATE ... WHERE status = 'failed' OR (status = 'claimed' AND attempted_at < now() - interval '10 minutes') RETURNING id`, skip when no row returns, and mark `processed` or `failed` in the side effect's transaction. `ON CONFLICT DO NOTHING` never reclaims a failed event, so Stripe's redelivery would be skipped and the event lost. A failed handler answers 500 so Stripe retries.
+- Email (Resend): the client is built lazily, and request handlers send through an arq job. Without the key, a send is a logged no-op (`email_disabled`) outside production; production refuses to start without it, because a silent no-op loses mail.
+- Object storage (R2): boto3 in `asyncio.to_thread` with timeouts; keys are server-generated (`{user_id}/{uuid4()}.{extension}`) and validated, never client-supplied; 15-minute presigned URLs, and the API never proxies file bytes.
+- Sentry initializes only when a DSN is set; `set_user` carries the ID only; `before_send` scrubs cookies, `Authorization` and secret-named fields.
+- No circuit breaker by default; add one only when a provider's failures are shown to cascade.
+- One hourly arq cron deletes expired sessions, idempotency keys older than 24 hours and webhook events older than 30 days, in batches of 1000; no pg_cron.
+- `docs/openapi.yaml` is exported from the app and committed; CI fails when regenerating it differs, and frontend API types come from that file.
+- Container: multi-stage on a pinned `python:3.13-slim`, `uv sync --frozen --no-dev` with `pyproject.toml` and `uv.lock` copied first. Runtime-loaded assets (SQL, prompt markdown, JSON) ship as package data, and a smoke test resolving each through `importlib.resources.files("app")` runs in the builder stage, so a missing asset fails the build rather than the first request. The shared image contract is in `CLOUD-DEPLOYMENT.md`.
+
+## Typing and testing
+
+- Pydantic `BaseModel` at every boundary: request bodies, responses, job payloads, parsed provider responses. Money is `Decimal`, never `float`; datetimes are aware UTC (`AwareDatetime`, `DateTime(timezone=True)`).
+- A failing test is fixed, never skipped or deleted to get green.
+- Integration tests run on real Postgres (compose locally, a service container in CI): schema built once per session with `alembic upgrade head`, each test in a rolled-back transaction (or truncating the tables a committing test touched). One database per xdist worker, named from `worker_id`.
+- API tests use `httpx.AsyncClient(transport=ASGITransport(app=create_app()))` with `asyncio_mode = "auto"`. `ASGITransport` does not run lifespan events, so wrap the app in `asgi_lifespan.LifespanManager` (or open the engine in a fixture); otherwise `app.state` has no engine.
+- Negative-input tests assert the envelope `code`. Provider clients are replaced at the client boundary with recorded responses, and an LLM consumer has one fixture test against a real captured response.

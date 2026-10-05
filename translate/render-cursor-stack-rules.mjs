@@ -1,4 +1,4 @@
-// render-cursor-stack-rules.mjs: renders claude/CLAUDE-*.md stack convention
+// render-cursor-stack-rules.mjs: renders rules/stacks/*.md stack convention
 // files (plus the CLOUD-DEPLOYMENT.md no-paths outlier) to cursor/rules/
 // <kebab>.mdc, and the structure-conventions skill to
 // cursor/rules/structure-conventions.mdc. Cursor-shapes-study Class B

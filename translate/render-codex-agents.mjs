@@ -1,4 +1,4 @@
-// render-codex-agents.mjs: renders claude/agents/*.md to codex/agents/*.toml.
+// render-codex-agents.mjs: renders rules/agents/*.md to codex/agents/*.toml.
 import { renderGeneratedHeaderFor } from "./exporter-core.mjs";
 
 const BUILDER_NAME = "translate/codex.mjs";

@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-// codex.mjs: renders codex/'s generated files from their claude/ sources.
+// codex.mjs: renders codex/'s generated files from rules/ (prose, via
+// rule-sources.mjs) and claude/settings.json (hooks).
 // --write regenerates in place; --check exits 1 when the tree is behind.
 // Spec: claude/docs/superpowers/specs/2026-09-17-codex-translator-design.md
 import path from "node:path";
 import {
-  splitFrontmatter,
-  loadTextFile,
   loadSettingsHooks,
   loadPortMap,
   hookNameFromCommand,
@@ -17,29 +16,17 @@ import { renderRulesDoc } from "./render-codex-rules.mjs";
 import { renderHooksConfig, renderPortStatus } from "./render-codex-hooks.mjs";
 import { renderGitignore } from "./render-codex-gitignore.mjs";
 import { buildManifest } from "./build-manifest.mjs";
+import { loadRuleSources } from "./rule-sources.mjs";
 import {
   writePlannedTree as writePlannedTreeCore,
   checkPlannedTree as checkPlannedTreeCore,
   claimPlannedPath,
   MANIFEST_PATH,
-  listFilesWithExtension,
-  listSkillDirs,
-  makeMarkdownSourceLoader,
-  makeSkillSourceLoader,
   runExporterCli,
 } from "./exporter-core.mjs";
 
 const TARGET_SUBDIR = "codex";
 const USAGE = "usage: node translate/codex.mjs --write|--check [--root <repo-dir>]";
-
-// loadMarkdownSource(file): codex's claude/agents/*.md loader, built from
-// the shared factory (exporter-core.mjs) closing over this file's own
-// splitFrontmatter/loadTextFile imports.
-const loadMarkdownSource = makeMarkdownSourceLoader(loadTextFile, splitFrontmatter);
-
-// loadSkillSource(skillDir): the skill's SKILL.md plus its bundled support
-// files, from the shared factory (exporter-core.mjs).
-const loadSkillSource = makeSkillSourceLoader(loadTextFile, splitFrontmatter);
 
 // Loads and validates every translator input under the given root: settings
 // hooks, the port map, CLAUDE.md, every agent, and every skill. Every failure
@@ -48,10 +35,10 @@ function loadSources(rootDir) {
   const claudeDir = path.join(rootDir, "claude");
   const settingsHooks = loadSettingsHooks(path.join(claudeDir, "settings.json"));
   const portMap = loadPortMap(path.join(rootDir, "translate/codex-port-map.json"));
-  const claudeMdText = loadTextFile(path.join(claudeDir, "CLAUDE.md"));
-  const agents = listFilesWithExtension(path.join(claudeDir, "agents"), ".md").map(loadMarkdownSource);
-  const skills = listSkillDirs(path.join(claudeDir, "skills")).map(loadSkillSource);
-  return { settingsHooks, portMap, claudeMdText, agents, skills };
+  // The prose comes from rules/ (rule-sources.mjs), filtered for codex; the
+  // hook registrations still come from claude/settings.json.
+  const rules = loadRuleSources(rootDir, "codex");
+  return { settingsHooks, portMap, claudeMdText: rules.global.text, agents: rules.agents, skills: rules.skills };
 }
 
 // Builds the full planned codex/ output as { path, content } pairs, paths

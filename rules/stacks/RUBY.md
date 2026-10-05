@@ -1,0 +1,48 @@
+---
+paths:
+  - "**/*.rb"
+  - "**/Gemfile"
+---
+
+# Ruby on Rails Backend Conventions
+
+Default stack for a new service: Rails in API-only mode, ActiveRecord on PostgreSQL, RSpec with FactoryBot. An existing repo keeps its own choices.
+
+## Layout and layers
+
+Never rename or relocate the Rails framework directories. `lib/` is fine here for tasks and generators; domain logic still goes to `app/services/`.
+
+| Layer | Does | Does NOT |
+|---|---|---|
+| **Controllers** | Strong params, call a service or model, render | Business logic, SQL, multi-step orchestration |
+| **Services** | Business logic; orchestrate models, queries, clients | Know about request or response objects |
+| **Models** | Persistence, validations, scopes, associations | Call services, talk HTTP |
+| **Queries** | Complex or multi-model reads | Mutate state |
+| **Clients** | Wrap one external provider | Hold domain logic |
+
+- Dependencies flow one direction: controllers to services to models and queries, services to clients. There is no repository layer; a read that outgrows a scope becomes a query object, not a fatter model.
+- A service object is a `Verb + Noun` class with a single public `call` (`Jobs::ScoreMatch.call(job:)`).
+
+## Controllers and errors
+
+- Strong parameters always; never pass raw `params` down. Strong params check shape, model validations check domain invariants.
+- `rescue_from` on `ApplicationController` maps domain errors to status codes centrally (`RecordNotFound` to 404, `RecordInvalid` to 422). Rescue locally only to add a useful message.
+- Never `rescue Exception`; rescue the narrowest class that can occur. No internals in response bodies.
+
+## Migrations
+
+- Constant default: a bare literal (`default: "active"`). SQL expression default: a lambda (`default: -> { "now()" }`).
+- Never nested quotes (`"'active'"`) and never a SQL call as a bare string (`default: "now()"`), which stores the literal text.
+
+## Config, CORS and sessions
+
+- An initializer asserts required ENV at boot and fails fast. Never log a credential or an `ENV` dump.
+- `CORS_ORIGIN` gets its own parser in that initializer, in every environment. `rack-cors` runs with `credentials: true`, so a wildcard, `null`, a list, or anything other than one exact `scheme://host[:port]` origin is refused at boot, and a blank value is refused in production. A blank value installs no CORS middleware.
+- Anchor the origin regex with `\A` and `\z`. Ruby's `^` and `$` match at every line break, so a value with an embedded newline would pass.
+- The session cookie sets `secure: !Rails.env.development?`. Tying it to `production?` sent the cookie over plain HTTP in staging.
+
+## Tests
+
+- Request specs over controller specs; assert status, body and database effects.
+- Use the real test database; never mock ActiveRecord in a model or query spec.
+- LLM consumers include one fixture spec against a captured real response.

@@ -1,0 +1,87 @@
+---
+name: bug-hunt
+description: Use when the user asks to find bugs, audit code quality, or hunt for issues in recent changes. Also use proactively after shipping 5+ commits on a feature branch before merge.
+---
+
+# Bug Hunt
+
+Autonomous audit of recent changes for bugs, race conditions, security issues, and code quality problems.
+
+## Precedence
+
+Prefer the native commands for diff-level review: `/code-review` for correctness and quality on a working diff or a PR, `/security-review` for diff-level security. Use this skill when you want a deeper pass than those give.
+
+Use this skill when the target is not a single diff:
+
+- a commit range spanning several merges, where no one PR contains the change
+- cross-file integrity after deletes or renames (imports still pointing at files that no longer exist)
+- a branch with no PR open yet
+
+If the target is the working diff or an open PR, run `/code-review` instead of this skill.
+
+## Process
+
+1. **Scope the hunt.** Default: the commits this branch adds over its base. On a branch, the range is `$(git merge-base <base> HEAD)..HEAD`, with `<base>` resolved the way `~/.claude/enforce/resolve-outgoing-base.sh` resolves it (`origin/main`, `main`, `origin/master`, `master`, first that exists). On the default branch, the last five commits, capped at what the repo has (`git rev-list --count HEAD`); a bare `HEAD~5` errors on a young repo and walks the first parent across a merge. The user can override with a file path, directory, or commit range.
+
+2. **Identify changed files.**
+```bash
+git log --oneline -10               # recent context
+git diff <range> --stat             # what changed
+git diff <range> --diff-filter=DR --name-only   # deleted and renamed files, for step 4
+```
+
+Run the project's own linter on the changed files first, so the read below can skip what it already catches.
+
+3. **Read and audit each changed file.** For each file, check:
+   - Logic bugs, off-by-one errors, wrong comparisons
+   - Race conditions in async code (missing await, unhandled promises, shared mutable state)
+   - SQL injection or missing parameterization
+   - Missing error handling (uncaught throws, ignored rejections)
+   - Unvalidated user input at API boundaries
+   - Credential leakage (hardcoded keys, tokens, secrets in code)
+   - Missing null/undefined checks
+   - Broken imports or references to deleted/renamed files
+   - Type safety gaps (unsafe casts, `any` usage)
+   - Test coverage gaps (new code paths without tests)
+
+4. **Cross-reference.** Run the deterministic half first; it resolves the range the same way step 1 does and greps the tree for every import specifier that still names a file the range deleted or renamed:
+
+```bash
+bash ~/.claude/skills/bug-hunt/scripts/dangling-refs.sh [<range>]
+```
+
+Each `DANGLING:` line is a finding with its `file:line` already attached. Then check by hand what the grep cannot decide: whether new exports are consumed correctly.
+
+5. **Report findings.** The report goes to the conversation, not to `docs/audits/`; this is a diff-level tool, not a full audit role. Use this format:
+
+```markdown
+## Bug Audit Report
+
+### P0 (Critical - breaks production)
+- [file:line] Description
+
+### P1 (High - causes data loss or security risk)
+- [file:line] Description
+
+### P2 (Medium - incorrect behavior users will notice)
+- [file:line] Description
+
+### P3 (Low - code quality, edge cases, minor issues)
+- [file:line] Description
+
+### Clean
+Files reviewed with no issues.
+```
+
+6. **Fix or file.** For each finding, either fix it inline (with a test that reproduces it) or add it to `ISSUES.md` with the priority tag.
+
+## Dispatch Pattern
+
+For large diffs (20+ files), dispatch a Sonnet subagent per directory to parallelize the read-and-audit pass. Each subagent returns its findings table. The primary agent deduplicates and presents the consolidated report.
+
+## What NOT to Flag
+
+- Pre-existing lint warnings (those are the linter's job)
+- Style preferences already covered by prettier/eslint
+- Missing documentation on internal functions
+- Hypothetical performance issues without evidence

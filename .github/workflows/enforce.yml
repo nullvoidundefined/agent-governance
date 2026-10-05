@@ -45,7 +45,7 @@ jobs:
         run: bash claude/enforce/tests/run-tests.sh
       - name: Sync test
         run: bash sync-tests/sync.test.sh
-      - name: Translator port checks
-        run: |
-          node translate/codex.mjs --check
-          node translate/cursor.mjs --check
+      - name: Translator tests
+        run: node --test translate/tests/*.test.mjs
+      - name: Translator port checks (claude/, codex/ and cursor/ match rules/)
+        run: node translate/all.mjs --check
