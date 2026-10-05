@@ -24,6 +24,14 @@ way destructive-ops-guard.sh sees them, and a word that is only an argument
   B-18      a command word that is a command substitution, or a variable whose
             value is unknown or splits into words, asks; so does a program
             this guard does not unwrap whose arguments run an in-scope CLI
+  B-21..B-23 cli53, dnscontrol push and nsupdate DNS changes are denied
+  B-24..B-27 gsutil, bq (including a writing bq query), s3cmd writes and
+            azd up/down/deploy/provision are denied
+  B-28      terragrunt is judged like terraform, through run-all and run --all
+  B-29, B-30 cdk, sam, serverless deploys and removals, and eksctl
+            mutations, are denied
+  B-31      oc is judged like kubectl
+  B-32      .enforce.json provider_hosts adds hosts to B-4; malformed fails closed
 
 Stateless: reads the event and the repo's .enforce.json, writes nothing. Any
 exception exits non-zero, which the wrapper turns into a deny."""
@@ -52,7 +60,8 @@ OPERATOR_MARK = PARSER.OPERATOR_MARK
 
 
 class EnforceConfigError(Exception):
-    """The repo's .enforce.json exists but its environments cannot be read."""
+    """The repo's .enforce.json exists but its environments or provider_hosts
+    cannot be read."""
 
 
 # --- Production classification (B-11, B-12) -------------------------------
@@ -71,7 +80,8 @@ URL_HOST = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://([^/\s?#]*)")
 
 
 class Environments:
-    """The repo's .enforce.json environments lists, read on first use."""
+    """The repo's .enforce.json environments lists and provider_hosts list,
+    read together on first use."""
 
     def __init__(self, cwd):
         self.cwd = cwd
@@ -79,7 +89,7 @@ class Environments:
 
     def patterns(self, name):
         if self.lists is None:
-            self.lists = read_environments(find_repo_root(self.cwd))
+            self.lists = read_enforce_lists(find_repo_root(self.cwd))
         return self.lists.get(name, [])
 
     def matches(self, name, value):
@@ -98,32 +108,34 @@ def find_repo_root(cwd):
         directory = parent
 
 
-def read_environments(repo_root):
-    """Returns {list name: [compiled pattern]} from .enforce.json, where * is
-    the only wildcard and matching ignores case."""
+def read_enforce_lists(repo_root):
+    """Returns {list name: [compiled pattern]} from .enforce.json: the
+    production, preview and testing environments, and the top-level
+    provider_hosts (B-32). * is the only wildcard and matching ignores case."""
     path = os.path.join(repo_root, ".enforce.json") if repo_root else None
     if not path or not os.path.exists(path):
         return {}
     try:
         with open(path, encoding="utf-8") as handle:
-            environments = json.load(handle).get("environments") or {}
+            config = json.load(handle)
+        environments = config.get("environments") or {}
         if not isinstance(environments, dict):
             raise TypeError("environments must be an object")
         lists = {}
         for name in ("production", "preview", "testing"):
-            entries = environments.get(name) or []
-            if not isinstance(entries, list):
-                raise TypeError("environments.%s must be a list" % name)
-            lists[name] = [wildcard_pattern(entry) for entry in entries]
+            lists[name] = wildcard_patterns(environments.get(name) or [], "environments.%s" % name)
+        lists["provider_hosts"] = wildcard_patterns(config.get("provider_hosts") or [], "provider_hosts")
         return lists
     except (OSError, ValueError, AttributeError, TypeError) as error:
         raise EnforceConfigError(str(error))
 
 
-def wildcard_pattern(entry):
-    if not isinstance(entry, str):
-        raise TypeError("environments entries must be strings")
-    return re.compile("^" + re.escape(entry.lower()).replace(r"\*", ".*") + "$")
+def wildcard_patterns(entries, name):
+    if not isinstance(entries, list):
+        raise TypeError("%s must be a list" % name)
+    if not all(isinstance(entry, str) for entry in entries):
+        raise TypeError("%s entries must be strings" % name)
+    return [re.compile("^" + re.escape(entry.lower()).replace(r"\*", ".*") + "$") for entry in entries]
 
 
 def has_production_word(value):
@@ -459,6 +471,101 @@ def judge_flarectl(command):
     return None
 
 
+# cli53 commands that change records or zones, with their short aliases.
+CLI53_DENIED = {"rrcreate", "rc", "rrdelete", "rd", "rrpurge", "rp", "create", "c", "delete", "d", "import", "i",
+                "instances"}
+
+
+def judge_cli53(command):
+    positionals = command.positionals(("--profile", "--endpoint-url", "--role-arn"))
+    if positionals[:1] and positionals[0] in CLI53_DENIED:
+        return ("deny", "B-21", "cli53 %s changes DNS records or zones" % positionals[0])
+    return None
+
+
+def judge_dnscontrol(command):
+    if any(reading[:1] == ["push"] for reading in command.positional_readings()):
+        return ("deny", "B-22", "dnscontrol push changes DNS records at the providers")
+    return None
+
+
+def judge_nsupdate(command):
+    if {"-V", "--help", "-h"} & set(command.args):
+        return None
+    return ("deny", "B-23", "nsupdate sends dynamic DNS updates")
+
+
+# gsutil global options, and cp/rsync options, that take a separate value.
+GSUTIL_VALUE_OPTIONS = {"-o", "-h", "-u", "-i", "-a", "-j", "-z", "-L", "-s", "-x"}
+GSUTIL_READ = {"ls", "cat", "du", "stat", "hash", "help", "version", "signurl"}
+# gsutil groups whose get or list subcommand reads and whose other subcommands write.
+GSUTIL_SETTING_GROUPS = {"acl", "iam", "defacl", "lifecycle", "cors", "versioning", "web", "label", "logging",
+                         "notification", "requesterpays", "ubla", "pap", "autoclass", "rpo", "defstorageclass",
+                         "retention", "kms", "hmac", "bucketpolicyonly"}
+
+
+def judge_gsutil(command):
+    """B-24: reads pass, a cp whose destination is a bucket and every other
+    command, unknown ones included, is denied."""
+    positionals = command.positionals(GSUTIL_VALUE_OPTIONS)
+    verb, sub = (positionals + ["", ""])[:2]
+    if not verb or verb in GSUTIL_READ:
+        return None
+    if verb in GSUTIL_SETTING_GROUPS and sub in ("get", "list", "ls"):
+        return None
+    if verb == "cp" and len(positionals) > 2 and "://" not in positionals[-1]:
+        return None
+    return ("deny", "B-24", "gsutil %s writes to Cloud Storage" % " ".join(positionals[:2]))
+
+
+BQ_VALUE_OPTIONS = {"--project_id", "--location", "--format", "--dataset_id", "--api", "--apilog",
+                    "--bigqueryrc", "--credential_file", "--service_account", "--job_id", "-n", "--max_rows"}
+BQ_READ = {"ls", "show", "head", "help", "version", "wait", "get-iam-policy", "mkdef", "info"}
+BQ_WRITE_SQL = re.compile(r"\b(DROP|TRUNCATE|DELETE|INSERT|UPDATE|MERGE|CREATE|ALTER)\b", re.I)
+
+
+def judge_bq(command, raw_text):
+    """B-25: reads pass; a query passes unless its SQL holds a write keyword
+    or it writes its result to a table; every other command is denied."""
+    readings = command.positional_readings(BQ_VALUE_OPTIONS)
+    verbs = {(reading + [""])[0] for reading in readings}
+    if verbs <= BQ_READ | {""}:
+        return None
+    if verbs == {"query"}:
+        texts = command.args + ([raw_text] if command.has_heredoc else [])
+        texts += [command.stdin_text] if command.stdin_text else []
+        match = next((m for m in map(BQ_WRITE_SQL.search, texts) if m), None)
+        if match:
+            return ("deny", "B-25", "bq query runs %s, which writes to BigQuery" % match.group(1).upper())
+        if option_values(command.args, ("--destination_table",)):
+            return ("deny", "B-25", "bq query --destination_table writes its result to a table")
+        return None
+    return ("deny", "B-25", "bq %s writes to BigQuery" % " ".join(sorted(verbs - {""})))
+
+
+S3CMD_VALUE_OPTIONS = {"-c", "--config", "--access_key", "--secret_key", "--access_token", "--region", "--host",
+                       "--host-bucket", "--bucket-location"}
+S3CMD_READ = {"ls", "la", "get", "info", "du", "help", "cfinfo", "cflist"}
+
+
+def judge_s3cmd(command):
+    """B-26: reads pass; every other command, unknown ones included, is denied."""
+    positionals = command.positionals(S3CMD_VALUE_OPTIONS)
+    if not positionals or positionals[0] in S3CMD_READ:
+        return None
+    return ("deny", "B-26", "s3cmd %s writes to object storage" % positionals[0])
+
+
+AZD_DENIED = {"up", "down", "deploy", "provision"}
+
+
+def judge_azd(command):
+    positionals = command.positionals(("-e", "--environment", "-C", "--cwd"))
+    if positionals[:1] and positionals[0] in AZD_DENIED:
+        return ("deny", "B-27", "azd %s changes Azure resources" % positionals[0])
+    return None
+
+
 # --- Provider API calls (B-4) ---------------------------------------------
 
 PROVIDER_HOSTS = {"api.cloudflare.com", "management.azure.com", "api.digitalocean.com",
@@ -491,8 +598,12 @@ def word_host(word):
     return authority.split(":", 1)[0].lower().rstrip(".")
 
 
-def is_provider_host(host):
-    return host in PROVIDER_HOSTS or host.endswith(PROVIDER_HOST_SUFFIXES)
+def is_provider_host(host, environments):
+    """True for a built-in provider API host or one the repo's .enforce.json
+    provider_hosts lists (B-32)."""
+    if host in PROVIDER_HOSTS or host.endswith(PROVIDER_HOST_SUFFIXES):
+        return True
+    return environments.matches("provider_hosts", host)
 
 
 def curl_method(args):
@@ -605,7 +716,7 @@ def httpie_method(command):
     return "POST" if has_data or has_raw_body or body_flags else "GET"
 
 
-def judge_http_client(command):
+def judge_http_client(command, environments):
     program = command.program
     if program == "curl":
         method = curl_method(command.args)
@@ -617,7 +728,7 @@ def judge_http_client(command):
         return None
     urls = [word for word in command.args if not word.startswith("-")]
     urls += option_values(command.args, ("--url",))
-    target = next((word_host(url) for url in urls if is_provider_host(word_host(url))), None)
+    target = next((word_host(url) for url in urls if is_provider_host(word_host(url), environments)), None)
     if target is None and program == "curl" and not {"-g", "--globoff"} & set(command.args):
         # curl expands {a,b} and [1-3] in a URL, so a globbed host can be any host.
         target = next((url for url in curl_urls(command.args)
@@ -648,12 +759,79 @@ HELP_FLAGS = {"-help", "--help", "-h"}
 def judge_terraform(command):
     if HELP_FLAGS & set(command.args):
         return None
-    positionals = command.positionals()
+    return terraform_verdict(command.program, command.positionals(), "B-5")
+
+
+def terraform_verdict(program, positionals, rule):
     verb, sub = (positionals + ["", ""])[:2]
     if (verb in TERRAFORM_DENIED or (verb == "state" and sub in TERRAFORM_STATE_DENIED)
             or (verb == "workspace" and sub == "delete")):
-        return ("deny", "B-5", "%s %s changes real infrastructure or its state" % (command.program, " ".join(positionals[:2])))
+        return ("deny", rule, "%s %s changes real infrastructure or its state" % (program, " ".join(positionals[:2])))
     return None
+
+
+TERRAGRUNT_VALUE_OPTIONS = {
+    "--terragrunt-working-dir", "--working-dir", "--terragrunt-config", "--config", "--terragrunt-tfpath",
+    "--tf-path", "--terragrunt-iam-role", "--iam-assume-role", "--terragrunt-source", "--source",
+    "--terragrunt-log-level", "--log-level", "--terragrunt-parallelism", "--parallelism",
+    "--terragrunt-include-dir", "--queue-include-dir", "--terragrunt-exclude-dir", "--queue-exclude-dir"}
+# Words that run a terraform command across units: run-all apply, run --all
+# -- apply, stack run apply.
+TERRAGRUNT_RUNNERS = {"run-all", "run", "stack"}
+TERRAGRUNT_DENIED = {"apply-all", "destroy-all"}
+
+
+def judge_terragrunt(command):
+    """B-28: the terraform command terragrunt runs, directly or through
+    run-all, run [--all] [--] or stack run, is judged like terraform."""
+    if HELP_FLAGS & set(command.args):
+        return None
+    inner = copy.copy(command)
+    inner.args = [word for word in command.args if word != "--"]
+    positionals = inner.positionals(TERRAGRUNT_VALUE_OPTIONS)
+    while positionals[:1] and positionals[0] in TERRAGRUNT_RUNNERS:
+        positionals = positionals[1:]
+    if positionals[:1] and positionals[0] in TERRAGRUNT_DENIED:
+        return ("deny", "B-28", "terragrunt %s changes real infrastructure" % positionals[0])
+    return terraform_verdict("terragrunt", positionals, "B-28")
+
+
+CDK_DENIED = {"deploy", "destroy", "watch", "bootstrap", "import", "rollback"}
+SAM_DENIED = {"deploy", "delete", "sync", "publish"}
+SAM_DENIED_PAIRS = {("pipeline", "bootstrap"), ("remote", "invoke")}
+SERVERLESS_DENIED = {"deploy", "remove", "rollback"}
+DEPLOY_TOOL_VALUE_OPTIONS = {"-a", "--app", "-c", "--context", "--profile", "-o", "--output", "--role-arn",
+                             "-t", "--template", "--template-file", "--stack-name", "--region", "--config-file",
+                             "--config-env", "-s", "--stage", "-r", "--config", "-f", "--function"}
+
+
+def judge_deploy_tool(command):
+    """B-29: cdk, sam and serverless commands that deploy or remove stacks
+    are denied; synth, diff, build, validate, local and package pass."""
+    positionals = command.positionals(DEPLOY_TOOL_VALUE_OPTIONS)
+    verb, sub = (positionals + ["", ""])[:2]
+    program = command.program
+    denied = ((program == "cdk" and verb in CDK_DENIED)
+              or (program == "sam" and (verb in SAM_DENIED or (verb, sub) in SAM_DENIED_PAIRS))
+              or (program == "serverless" and (verb in SERVERLESS_DENIED or (verb == "invoke" and sub != "local"))))
+    if denied:
+        return ("deny", "B-29", "%s %s deploys or removes a cloud stack" % (program, verb))
+    return None
+
+
+EKSCTL_READ = {"get", "info", "version", "help", "completion"}
+EKSCTL_READ_UTILS = {"write-kubeconfig", "schema", "nodegroup-health"}
+
+
+def judge_eksctl(command):
+    """B-30: reads pass; every other command, unknown ones included, is denied."""
+    positionals = command.positionals(("--name", "--cluster", "--region", "--profile", "-f", "--config-file"))
+    verb, sub = (positionals + ["", ""])[:2]
+    if not verb or verb in EKSCTL_READ:
+        return None
+    if verb == "utils" and (sub.startswith("describe-") or sub in EKSCTL_READ_UTILS):
+        return None
+    return ("deny", "B-30", "eksctl %s changes an EKS cluster" % " ".join(positionals[:2]))
 
 
 PULUMI_VALUE_OPTIONS = {"--cwd", "-C", "--stack", "-s", "--color", "--config-file", "--tracing", "--profiling",
@@ -684,6 +862,8 @@ KUBECTL_READ = {"get", "describe", "logs", "top", "explain", "version", "api-res
                 "cluster-info", "diff"}
 KUBECTL_READ_PAIRS = {("config", "view"), ("config", "get-contexts"), ("config", "current-context"),
                       ("auth", "can-i"), ("rollout", "status"), ("rollout", "history")}
+# OpenShift's oc reads on top of the kubectl ones (B-31).
+OC_READ = {"whoami", "status", "projects"}
 HELM_VALUE_OPTIONS = {"--kube-context", "--kubeconfig", "-n", "--namespace"}
 HELM_CONTEXT_VERBS = {"install", "upgrade", "uninstall", "rollback", "delete", "del", "un"}
 
@@ -712,11 +892,12 @@ def judge_cluster_mutation(command, context_option, rule, environments):
 
 
 def judge_kubectl(command, environments):
+    """B-7 for kubectl, and for oc, which takes the same verbs and contexts (B-31)."""
     positionals = command.positionals(KUBECTL_VALUE_OPTIONS)
     if not positionals:
         return None
     verb, sub = (positionals + [""])[:2]
-    if verb in KUBECTL_READ or (verb, sub) in KUBECTL_READ_PAIRS:
+    if verb in KUBECTL_READ or (verb, sub) in KUBECTL_READ_PAIRS or (command.program == "oc" and verb in OC_READ):
         return None
     return judge_cluster_mutation(command, "--context", "B-7", environments)
 
@@ -829,11 +1010,13 @@ PYTHONS = re.compile(r"^python(\d+(\.\d+)?)?$")
 
 
 # Other names the same CLIs install under.
-PROGRAM_ALIASES = {"vc": "vercel", "ntl": "netlify", "netlify-cli": "netlify"}
+PROGRAM_ALIASES = {"vc": "vercel", "ntl": "netlify", "netlify-cli": "netlify", "sls": "serverless",
+                   "aws-cdk": "cdk"}
 
 
 def canonical_program(name):
-    """Returns the CLI a program name runs: vc is vercel, ntl is netlify."""
+    """Returns the CLI a program name runs: vc is vercel, ntl is netlify, sls
+    is serverless, the aws-cdk package is cdk."""
     return PROGRAM_ALIASES.get(name, name)
 
 
@@ -1040,6 +1223,14 @@ def judge_sql(command, raw_text, environments):
 
 # --- Dispatch ---------------------------------------------------------------
 
+# Judges that need only the command.
+STATELESS_JUDGES = {
+    "flarectl": judge_flarectl, "cli53": judge_cli53, "dnscontrol": judge_dnscontrol, "nsupdate": judge_nsupdate,
+    "gsutil": judge_gsutil, "s3cmd": judge_s3cmd, "azd": judge_azd, "terraform": judge_terraform,
+    "tofu": judge_terraform, "terragrunt": judge_terragrunt, "pulumi": judge_pulumi, "cdk": judge_deploy_tool,
+    "sam": judge_deploy_tool, "serverless": judge_deploy_tool, "eksctl": judge_eksctl}
+
+
 def strongest(verdicts):
     verdicts = [v for v in verdicts if v]
     return max(verdicts, key=lambda v: Verdict.RANK[v[0]]) if verdicts else None
@@ -1061,15 +1252,13 @@ def judge_program(command, raw_text, environments):
         return judge_aws(command)
     if program in ("gcloud", "az", "doctl"):
         return judge_cloud_cli(command)
-    if program == "flarectl":
-        return judge_flarectl(command)
+    if program in STATELESS_JUDGES:
+        return STATELESS_JUDGES[program](command)
+    if program == "bq":
+        return judge_bq(command, raw_text)
     if program in ("curl", "wget", "http", "https", "xh", "xhs"):
-        return judge_http_client(command)
-    if program in ("terraform", "tofu"):
-        return judge_terraform(command)
-    if program == "pulumi":
-        return judge_pulumi(command)
-    if program == "kubectl":
+        return judge_http_client(command, environments)
+    if program in ("kubectl", "oc"):
         return judge_kubectl(command, environments)
     if program == "helm":
         return judge_helm(command, environments)
@@ -1166,7 +1355,8 @@ def names_set_at_run_time(command):
 # Programs judged on their own, and the in-scope CLIs an unknown wrapper may run.
 IN_SCOPE_PROGRAMS = {"aws", "gcloud", "az", "doctl", "flarectl", "curl", "wget", "http", "https", "xh", "xhs",
                      "terraform", "tofu", "pulumi", "kubectl", "helm", "fly", "flyctl", "heroku", "railway",
-                     "vercel", "netlify", "wrangler"}
+                     "vercel", "netlify", "wrangler", "cli53", "dnscontrol", "nsupdate", "gsutil", "bq", "s3cmd",
+                     "azd", "terragrunt", "cdk", "sam", "serverless", "eksctl", "oc"}
 # Programs whose arguments name a CLI without running it: package managers,
 # lookups, launchers (unwrapped by launched()) and shells (whose command
 # strings are parsed as segments).
@@ -1234,7 +1424,7 @@ def switched_kube_context(command):
     """Returns X for `kubectl config use-context X`, `kubectl ctx X`,
     `kubectx X` or `kubie ctx X`, else None."""
     positionals = command.positionals(KUBECTL_VALUE_OPTIONS)
-    if command.program == "kubectl" and positionals[:2] == ["config", "use-context"] and len(positionals) > 2:
+    if command.program in ("kubectl", "oc") and positionals[:2] == ["config", "use-context"] and len(positionals) > 2:
         return positionals[2]
     if command.program == "kubectl" and positionals[:1] == ["ctx"] and len(positionals) > 1:
         return positionals[1]
@@ -1298,8 +1488,9 @@ def main():
         verdict = decide(text, event.get("cwd") or "")
     except EnforceConfigError as error:
         verdict = Verdict()
-        verdict.add("deny", "%s BLOCKED this call: the environments in .enforce.json cannot be read (%s), "
-                            "so production targets cannot be told apart. Fix .enforce.json outside the session."
+        verdict.add("deny", "%s BLOCKED this call: the environments or provider_hosts in .enforce.json cannot be "
+                            "read (%s), so production targets and provider API hosts cannot be told apart. Fix "
+                            ".enforce.json outside the session."
                     % (HOOK_NAME, error))
     if verdict.decision == "allow":
         return
