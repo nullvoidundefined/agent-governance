@@ -4,7 +4,7 @@ Fill the placeholders and paste the result as the `pr-reviewer` dispatch prompt 
 
 Round 2 runs only when round 1 found a HIGH, or a MEDIUM was fixed in code. In round 2, paste only the fix diff. There is no round 3.
 
-Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, or `noted`).
+Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, `noted` for an out-of-scope MEDIUM, or `waived` for a LOW, which goes in the PR's follow-up ticket).
 
 ---
 
@@ -42,7 +42,7 @@ Rules:
 
 - Every finding cites evidence: a file and line in the diff, a criterion, or a convention section.
 - At most 10 findings.
-- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW (disposition `noted`), except a HIGH, which stays HIGH and is flagged for the owner.
+- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW (disposition `waived`, listed in the PR's follow-up ticket), except a HIGH, which stays HIGH and is flagged for the owner.
 - No style or wording comments, no scope additions, no speculative hardening, nothing outside the diff.
 - Do not re-grade a disposition the PR already answered.
 - Do not harden inputs only the owner controls (their own config, environment, or CLI).
