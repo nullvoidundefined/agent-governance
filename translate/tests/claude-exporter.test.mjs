@@ -137,3 +137,18 @@ test("an unclosed only: block makes --check and --write exit 2 naming file and l
     assert.match(r.stderr, /line/);
   }
 });
+
+// Regression guard (passes on current code): Claude Code path-scoped rules need
+// the frontmatter fence on line 1, so the GENERATED header goes after it.
+test("a stack source with frontmatter keeps --- on line 1 and puts the header after the block", () => {
+  const root = makeFixture();
+  const fm = '---\npaths:\n  - "**/*.go"\n---\n';
+  put(root, "rules/stacks/X.md", `${fm}body\n`);
+  const r = run(root, "--write");
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  const out = read(root, "claude/CLAUDE-X.md");
+  assert.equal(out.split("\n")[0], "---");
+  assert.ok(out.startsWith(fm), out);
+  const header = renderGeneratedHeaderFor(BUILDER, "rules/stacks/X.md");
+  assert.equal(out, `${fm}${header}\nbody\n`);
+});
