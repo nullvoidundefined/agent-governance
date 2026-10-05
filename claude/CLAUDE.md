@@ -70,6 +70,9 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 
 ## Stopping and anti-recursion
 
+- **Stay on the task:** a finding is fixed in a PR only when it breaks one of that PR's acceptance criteria or is a realistic failure: reachable by the change's real callers or inputs without deliberate evasion (for a high-risk PR, under its threat model). Everything else (adjacent gaps, other files, hardening) is recorded under the PR's `## Review` or `## Security review` (a LOW joins the PR's LOW-waiver ticket): no code, no new test, and no other ticket unless the owner asks. A HIGH is never dropped for scope alone; an out-of-scope HIGH goes to the owner.
+- **No spiral:** each review round gets at most one fix cycle (failing test, fix, re-check); the next allowed round is that re-check. A finding still open after its cycle goes to the owner with a recommendation, and no further cycle starts without them. An open HIGH keeps blocking the merge until the owner decides; escalating does not clear it. When the Process budget is spent, stop and ask the owner the same way.
+- **Subagents stay in scope:** a dispatched agent does the task it was given. Anything it notices outside that task goes in its report as a note; it never fixes it.
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
 - **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, for deferred work the owner should see, or as a PR's one LOW-waiver ticket.
 - **Bounded review:** general review and security review each stop after two rounds at most, and the second happens only for a HIGH or a MEDIUM fixed in code. Each round looks only at what changed.
