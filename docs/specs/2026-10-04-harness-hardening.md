@@ -138,6 +138,50 @@ Non-regression:
   and `cursor/hooks/claude-hook-adapter.sh`, and reaches the same decision
   for every row.
 
+## Acceptance criteria (PR 2c: extra CLIs)
+
+Approved 2026-10-05 as the follow-up to PR 2. Same hook, same decisions:
+"deny" is a mutation of cloud, DNS or production state; reads stay allowed.
+
+DNS:
+- B-21: `cli53` record or zone changes (`rrcreate`, `rrdelete`, `rrpurge`,
+  `create`, `delete`, `import`) deny; `list`, `export` allow.
+- B-22: `dnscontrol push` denies; `preview`, `check`, `print-ir` allow.
+- B-23: `nsupdate` denies (it exists to send dynamic DNS updates).
+
+Cloud and storage:
+- B-24: `gsutil` writes (`rm`, `rb`, `mv`, `rsync`, `setmeta`, `acl ch|set`,
+  `iam ch|set`, `defacl`, `lifecycle set`, `mb`, and `cp` whose destination is
+  `gs://`) deny; `ls`, `cat`, `du`, `stat`, and `cp` from `gs://` to a local
+  path allow.
+- B-25: `bq` writes (`rm`, `mk`, `load`, `cp`, `update`, `insert`,
+  `truncate`, `set-iam-policy`) deny; `bq query` whose SQL holds `DROP`,
+  `TRUNCATE`, `DELETE`, `INSERT`, `UPDATE`, `MERGE`, `CREATE`, `ALTER` as a
+  word denies; `ls`, `show`, `head` and a read-only `bq query` allow.
+- B-26: `s3cmd` writes (`del`, `rm`, `rb`, `mb`, `put`, `mv`, `sync`,
+  `setacl`, `setpolicy`, `delpolicy`, `expire`) deny; `ls`, `la`, `get`,
+  `info`, `du` allow.
+- B-27: `azd up|down|deploy|provision` deny; `show`, `env list`,
+  `auth login` allow.
+
+Infrastructure as code and clusters:
+- B-28: `terragrunt` is judged like `terraform`, including `run-all` and
+  `run --all` forms: `apply`, `destroy`, `import`, `state rm|mv|push`,
+  `taint` deny; `plan`, `validate`, `output`, `init` allow.
+- B-29: `cdk deploy|destroy`, `sam deploy|delete`, and
+  `serverless|sls deploy|remove` deny; `cdk synth|diff|ls`,
+  `sam build|validate|local ...`, `serverless|sls print|info|package` allow.
+- B-30: `eksctl create|delete|upgrade|scale|drain|set|unset|update|enable|
+  disable|register|deregister` deny; `get`, `info`, `version` allow.
+- B-31: `oc` is judged like `kubectl` (same verbs, context and production
+  rules).
+
+Configuration:
+- B-32: a top-level `provider_hosts` list in `.enforce.json` (host names,
+  `*` wildcard) adds to the built-in provider API hosts, so a non-read HTTP
+  call to one denies under B-4. A malformed list fails closed like a
+  malformed `environments`.
+
 ## Invariants
 
 - The guard is stateless: one event in, one decision out, no files written.
