@@ -587,3 +587,15 @@ deny mysql -h db.internal.acme.net -e $'DROP # x\nTABLE users'
 deny psql -h db.internal.acme.net -c $'TRUNCATE -- x\nusers'
 ask psql -h db.example.org -c $'DROP -- x\nTABLE users'
 allow psql -h db.internal.acme.net -c "SELECT count(*) FROM users"
+
+# PR 4 A-6: audit directory is protected
+deny echo x > ~/.local/state/agent-audit/2026-10-05.jsonl
+deny rm -f ~/.local/state/agent-audit/2026-10-05.jsonl
+deny rm -rf ~/.local/state/agent-audit
+deny mv ~/.local/state/agent-audit /tmp/x
+deny truncate -s 0 $HOME/.local/state/agent-audit/2026-10-05.jsonl
+deny sed -i d ~/.local/state/agent-audit/2026-10-05.jsonl
+deny tee ~/.local/state/agent-audit/x.jsonl
+allow cat ~/.local/state/agent-audit/2026-10-05.jsonl
+allow jq . ~/.local/state/agent-audit/2026-10-05.jsonl
+allow ls ~/.local/state/agent-audit
