@@ -303,6 +303,15 @@
             "command": "~/.claude/hooks/destructive-db-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/protected-path-guard.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -322,6 +331,15 @@
             "type": "command",
             "command": "~/.claude/hooks/redact-output.sh",
             "statusMessage": "Scanning output for secrets..."
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/audit-log.sh"
           }
         ]
       }

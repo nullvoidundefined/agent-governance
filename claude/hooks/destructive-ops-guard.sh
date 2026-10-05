@@ -59,6 +59,9 @@ PARSER_DOWN_REASON="destructive-ops-guard hook BLOCKED this call: its command pa
 # $2 = reason. Without jq the JSON is built by hand; callers pass reasons with
 # no quote or backslash characters.
 emit() {
+    # The audit log gets a decision line first; the helper never fails or prints.
+    AUDIT_LOG_APPEND_HELPER="$(dirname "${BASH_SOURCE[0]}")/audit-log-append.sh"
+    [ -f "$AUDIT_LOG_APPEND_HELPER" ] && . "$AUDIT_LOG_APPEND_HELPER" && audit_log_decision "${input:-}" destructive-ops-guard "$1" "$2"
     if command -v jq >/dev/null 2>&1; then
         jq -n --arg d "$1" --arg r "$2" '{
             hookSpecificOutput: {

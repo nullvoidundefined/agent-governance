@@ -15,7 +15,7 @@
     ],
     "afterShellExecution": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterShellExecution redact-output",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterShellExecution redact-output audit-log",
         "timeout": 30
       }
     ],
@@ -33,7 +33,7 @@
     ],
     "afterFileEdit": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash protected-path-guard dependency-add-guard",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh afterFileEdit secret-scan no-em-dash protected-path-guard dependency-add-guard audit-log",
         "timeout": 60
       }
     ],

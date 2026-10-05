@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-18 of 21 hook registrations port, across 7 Cursor events.
+19 of 23 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -23,8 +23,10 @@
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `beforeMCPExecution` |
+| `protected-path-guard` | PreToolUse (NotebookEdit) | not ported: the PreToolUse event has no Cursor equivalent. |
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |
+| `audit-log` | PostToolUse (.*) | ported: `afterShellExecution`, `afterFileEdit` |
 | `harness-sync` | SessionStart | ported: `sessionStart` |
 | `turn-summary-guard` | Stop | not ported: Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor. |
 

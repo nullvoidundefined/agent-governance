@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# protected-path-guard.sh: PreToolUse guard (Write, Edit, Bash) for the TDD
+# protected-path-guard.sh: PreToolUse guard (Write, Edit, NotebookEdit, Bash) for the TDD
 # slice loop. Three rules, one hook, jq only, no Node:
 #   R-410  the gate inputs (.enforce.json, .enforce-baseline.json,
 #          the slice lock itself, and the shared
@@ -42,16 +42,18 @@
 # amendment is writable.
 # A leading `~`, `$HOME`, or `${HOME}` on a Bash target, quoted or not, is read
 # as $HOME. Paths outside the
-# repository root are not governed, with one exception: the shared Security
-# review ledger directory is denied from any working directory, inside a
-# repository or not. Silent on allow.
+# repository root are not governed, with two exceptions: the shared Security
+# review ledger directory and the tool-call audit log directory
+# (${AGENT_AUDIT_DIR:-$HOME/.local/state/agent-audit}) are denied from any
+# working directory, inside a repository or not. NotebookEdit is checked
+# against those two directories only. Silent on allow.
 set -uo pipefail
 # A session can start this hook with HOME unset; under set -u every $HOME
 # expansion below would abort before a decision, which is an allow (IAN-436).
 : "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
 INPUT=$(cat)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
-case "$TOOL" in Write | Edit | Bash) ;; *) exit 0 ;; esac
+case "$TOOL" in Write | Edit | NotebookEdit | Bash) ;; *) exit 0 ;; esac
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""')
 [ -n "$CWD" ] || CWD="$PWD"
 AGENT=$(printf '%s' "$INPUT" | jq -r '.agent_type // ""')
@@ -62,6 +64,8 @@ emit() {
   [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
   type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
   log_rule_fire "$(printf '%s' "$2" | grep -oE 'R-[0-9]{3}' | head -1)" "protected-path-guard" "$1"
+  AUDIT_LOG_APPEND_HELPER="$(dirname "${BASH_SOURCE[0]}")/audit-log-append.sh"
+  [ -f "$AUDIT_LOG_APPEND_HELPER" ] && . "$AUDIT_LOG_APPEND_HELPER" && audit_log_decision "$INPUT" protected-path-guard "$1" "$2"
   jq -n --arg d "$1" --arg r "$2" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
   exit 0
 }
@@ -173,6 +177,42 @@ deny_ledger_target() {
   emit deny "This call writes, deletes, or moves '$1', inside the shared Security review ledger \$HOME/.claude/$LEDGER_DIR_NAME/, a gate input the session never edits (R-410, R-109): the merge gate reads it to prove which artefact a Security review recorded, and only enforce/security-review-record.sh, run through Bash, writes it. Record a review with that script, or tell the user what must change in the ledger and why."
 }
 
+# The tool-call audit log directory (spec 2026-10-05-audit-log.md, A-6): the
+# default under $HOME, and ${AGENT_AUDIT_DIR} as well when it is set. Twin of
+# the directory audit-log-append.sh writes; change both together.
+AUDIT_DIR_DEFAULT_SUFFIX=".local/state/agent-audit"
+
+# is_audit_target <physical path>: true when the path is the audit directory
+# or anything under it, compared like the ledger (case folded, physical). The
+# default directory is resolved only when the path names `/agent-audit` at all,
+# so an ordinary write pays nothing; an AGENT_AUDIT_DIR override is always
+# resolved, since its name, or a symlink in it, can be anything. A sibling that
+# only shares the name prefix (agent-audit-notes) fails the exact comparison.
+is_audit_target() {
+  local audit_dir audit_dir_physical is_match=1
+  shopt -s nocasematch
+  for audit_dir in "${HOME:+$HOME/$AUDIT_DIR_DEFAULT_SUFFIX}" "${AGENT_AUDIT_DIR:-}"; do
+    [ -n "$audit_dir" ] || continue
+    if [ "$audit_dir" != "${AGENT_AUDIT_DIR:-}" ]; then
+      case "$1" in *"/${AUDIT_DIR_DEFAULT_SUFFIX##*/}"*) ;; *) continue ;; esac
+    fi
+    audit_dir_physical=$(physical_path "$audit_dir")
+    [ -n "$audit_dir_physical" ] || continue
+    case "$1" in "$audit_dir_physical" | "$audit_dir_physical"/*) is_match=0; break ;; esac
+  done
+  shopt -u nocasematch
+  return "$is_match"
+}
+
+# deny_audit_target <physical path>: denies the call when the path is in the
+# audit directory; returns quietly otherwise. Like the ledger check it runs
+# before the repository root is resolved, from any working directory. Reading
+# the log is untouched: only write targets reach this check.
+deny_audit_target() {
+  is_audit_target "$1" || return 0
+  emit deny "This call writes, deletes, or moves '$1', inside the tool-call audit log directory (\${AGENT_AUDIT_DIR:-\$HOME/$AUDIT_DIR_DEFAULT_SUFFIX}), the record of what the session ran and what the guards stopped, which the session never edits (R-410). Only hooks/audit-log.sh and the guards append to it. Read it with jq or cat if you need it, or tell the user what must change in it and why."
+}
+
 # Root and lock state are resolved once per call, from the file for Write/Edit
 # and from cwd for Bash. A Write or Edit into the ledger directory is denied
 # first, since the directory lies outside every repository; a Bash call keeps
@@ -180,7 +220,7 @@ deny_ledger_target() {
 if [ "$TOOL" = "Bash" ]; then
   ROOT=$(repo_root_for "$CWD")
 else
-  FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
+  FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""')
   [ -n "$FILE" ] || exit 0
   expand_home_prefix "$FILE"
   FILE="$EXPANDED_PATH"
@@ -188,6 +228,10 @@ else
   # its parent is one expansion rather than a `dirname` process.
   FILE_PHYSICAL=$(physical_path "$FILE")
   deny_ledger_target "$FILE_PHYSICAL"
+  deny_audit_target "$FILE_PHYSICAL"
+  # NotebookEdit is checked against the ledger and the audit directory only;
+  # the repository rules below are written for Write and Edit.
+  [ "$TOOL" != "NotebookEdit" ] || exit 0
   FILE_PHYSICAL_PARENT="${FILE_PHYSICAL%/*}"
   [ -n "$FILE_PHYSICAL_PARENT" ] || FILE_PHYSICAL_PARENT="/"
   ROOT=$(repo_root_for "$FILE_PHYSICAL_PARENT")
@@ -671,6 +715,7 @@ while IFS= read -r target; do
   expand_home_prefix "$target"
   target_physical=$(physical_path "$EXPANDED_PATH")
   deny_ledger_target "$target_physical"
+  deny_audit_target "$target_physical"
   apply_verdict "$(relative_path "$target_physical")"
 done <<< "$TARGETS"
 emit_pending_ask

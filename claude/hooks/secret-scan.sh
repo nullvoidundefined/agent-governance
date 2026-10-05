@@ -86,7 +86,18 @@ if [ -z "${PATTERN:-}" ]; then
   PATTERN+='|\bAIza[0-9A-Za-z_-]{35}'
 fi
 
+# log_audit_deny <rule>: appends a deny decision line to the tool-call audit
+# log through hooks/audit-log-append.sh, which redacts the payload; never
+# fails, prints, or changes the decision.
+log_audit_deny() {
+  local helper
+  helper="$(dirname "${BASH_SOURCE[0]}")/audit-log-append.sh"
+  [ -f "$helper" ] && . "$helper" && audit_log_decision "$INPUT" secret-scan deny "$1"
+  return 0
+}
+
 if grep -qE "$PATTERN" <<< "$SCAN_TEXT"; then
+  log_audit_deny "secret pattern"
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -133,6 +144,7 @@ credential_shape_hit() {
   return 1
 }
 if HIT=$(credential_shape_hit "$SCAN_TEXT"); then
+  log_audit_deny "R-108"
   jq -n --arg hit "$HIT" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -177,6 +189,7 @@ MUTATION="(^|[;&|][[:space:]]*|[[:space:]])(sudo[[:space:]]+)?$MUTATE_VERBS([[:s
 REDIRECT=">>?[[:space:]]*[^[:space:]>;|&]*($PROT)"
 
 if grep -qE "$MUTATION" <<< "$SAFE_CMD" || grep -qE "$REDIRECT" <<< "$SAFE_CMD"; then
+  log_audit_deny "R-103"
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -198,6 +211,7 @@ if [ "$TOOL" = "Write" ] || [ "$TOOL" = "Edit" ]; then
       PROT_BASENAME='(^|/)\.env(\.[A-Za-z0-9_-]+)?$'
       PROT_DIR='/\.(aws|ssh|gnupg)(/|$)|/\.config/gh/hosts\.yml$'
       if grep -qE "$PROT_BASENAME" <<< "$FILE" || grep -qE "$PROT_DIR" <<< "$FILE"; then
+        log_audit_deny "R-103"
         jq -n '{
           hookSpecificOutput: {
             hookEventName: "PreToolUse",

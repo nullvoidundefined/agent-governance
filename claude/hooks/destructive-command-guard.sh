@@ -24,6 +24,9 @@ cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 
 emit() {
     # $1 = permissionDecision (deny|ask), $2 = reason
+    # The audit log gets a decision line first; the helper never fails or prints.
+    AUDIT_LOG_APPEND_HELPER="$(dirname "${BASH_SOURCE[0]}")/audit-log-append.sh"
+    [ -f "$AUDIT_LOG_APPEND_HELPER" ] && . "$AUDIT_LOG_APPEND_HELPER" && audit_log_decision "$input" destructive-command-guard "$1" "$2"
     jq -n --arg d "$1" --arg r "$2" '{
         hookSpecificOutput: {
             hookEventName: "PreToolUse",

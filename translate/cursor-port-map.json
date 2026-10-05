@@ -38,6 +38,10 @@
       ],
       "Write|Edit": [
         "afterFileEdit"
+      ],
+      ".*": [
+        "afterShellExecution",
+        "afterFileEdit"
       ]
     },
     "SessionStart": {

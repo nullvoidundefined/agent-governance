@@ -24,8 +24,18 @@ JUDGE_TIMEOUT_SECONDS=10
 INFRA_JUDGE="$(dirname "${BASH_SOURCE[0]}")/infra_judge.py"
 JUDGE_DOWN_REASON="infra-mutation-guard hook BLOCKED this call: its judge (python3 running hooks/infra_judge.py) is unavailable, failed, or timed out, so no cloud, DNS, infrastructure or production command can be checked. Restore the harness with sync.sh, or install the developer tools that provide python3."
 
+# log_audit_output <decision JSON>: appends the decision to the tool-call audit
+# log through hooks/audit-log-append.sh; never fails, prints, or changes it.
+log_audit_output() {
+    local helper
+    helper="$(dirname "${BASH_SOURCE[0]}")/audit-log-append.sh"
+    [ -f "$helper" ] && . "$helper" && audit_log_hook_output "${input:-}" infra-mutation-guard "$1"
+    return 0
+}
+
 # Prints a deny decision with the judge-down reason and exits.
 deny_judge_down() {
+    log_audit_output "{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"judge unavailable\"}}"
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$JUDGE_DOWN_REASON"
     exit 0
 }
@@ -64,5 +74,5 @@ wait "$pid" 2>/dev/null || status=$?
 decision="$(cat "$out_file")"
 rm -f "$out_file"
 [ "$status" -eq 0 ] || deny_judge_down
-[ -z "$decision" ] || printf '%s\n' "$decision"
+[ -z "$decision" ] || { log_audit_output "$decision"; printf '%s\n' "$decision"; }
 exit 0

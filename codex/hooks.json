@@ -41,6 +41,16 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh protected-path-guard",
+            "timeout": 60
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -62,6 +72,16 @@
             "command": "~/.codex/hooks/codex-hook-adapter.sh redact-output",
             "timeout": 60,
             "statusMessage": "Scanning output for secrets..."
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.codex/hooks/codex-hook-adapter.sh audit-log",
+            "timeout": 60
           }
         ]
       }

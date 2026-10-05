@@ -2,7 +2,7 @@
 
 # Codex port status
 
-20 of 21 hook registrations port, across 3 Codex events.
+22 of 23 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -23,8 +23,10 @@
 | `dependency-add-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `mcp-action-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
 | `destructive-db-guard` | PreToolUse (mcp__.*) | ported: `PreToolUse` (matcher `mcp__.*`) |
+| `protected-path-guard` | PreToolUse (NotebookEdit) | ported: `PreToolUse` (matcher `NotebookEdit`) |
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | ported: `PostToolUse` (matcher `Agent|Task`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
+| `audit-log` | PostToolUse (.*) | ported: `PostToolUse` (matcher `.*`) |
 | `harness-sync` | SessionStart | ported: `SessionStart` |
 | `turn-summary-guard` | Stop | not ported: Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex. |
 
