@@ -114,10 +114,10 @@ take_snapshot() {
   case "$provider" in
     pg)
       mkdir -p "$backup_dir" || { failed_step="mkdir $backup_dir"; return 1; }
-      snapshot="$backup_dir/$target-$stamp.dump"
-      run_step pg_dump pg_dump --format=custom --file="$snapshot" --dbname="$url" || return 1
+      snapshot="$backup_dir/$target-$stamp-$$.dump"
+      run_step pg_dump pg_dump --format=custom --file="$snapshot" --dbname="$url" || { rm -f "$snapshot"; return 1; }
       chmod 600 "$snapshot" 2>/dev/null
-      run_step "pg_restore --list" pg_restore --list "$snapshot" || return 1
+      run_step "pg_restore --list" pg_restore --list "$snapshot" || { rm -f "$snapshot"; return 1; }
       ;;
     neon)
       run_step "neonctl branches create" neonctl branches create --project-id "$project_id" \
@@ -126,7 +126,9 @@ take_snapshot() {
       [ -n "$snapshot" ] || { failed_step="neonctl branches create printed no branch id"; return 1; }
       ;;
     rds)
-      snapshot="pre-migrate-$target-$rds_stamp"
+      # RDS identifiers allow letters, digits and single hyphens only.
+      rds_target=$(printf '%s' "$target" | tr '._' '--' | sed -E 's/-+/-/g')
+      snapshot="pre-migrate-$rds_target-$rds_stamp-$$"
       run_step "aws rds create-db-snapshot" aws rds create-db-snapshot --db-instance-identifier "$instance_id" \
         --db-snapshot-identifier "$snapshot" || return 1
       run_step "aws rds wait db-snapshot-available" aws rds wait db-snapshot-available \
@@ -170,8 +172,24 @@ else
 fi
 echo "db-migrate-safe: snapshot ok ($provider: $snapshot)" >&2
 
-"$@"
+interrupted=0
+"$@" <&0 &
+child=$!
+trap 'interrupted=1; kill -TERM "$child" 2>/dev/null' TERM INT HUP
+wait "$child"
 rc=$?
-[ "$rc" -eq 0 ] && migration_status="ok" || migration_status="failed"
+if [ "$interrupted" -eq 1 ]; then
+  wait "$child" 2>/dev/null
+  rc=$?
+fi
+trap - TERM INT HUP
+if [ "$interrupted" -eq 1 ]; then
+  migration_status="interrupted"
+  [ "$rc" -eq 0 ] && rc=143
+elif [ "$rc" -eq 0 ]; then
+  migration_status="ok"
+else
+  migration_status="failed"
+fi
 write_log "$@" || { echo "db-migrate-safe: could not write $log_dir/migrations.jsonl" >&2; [ "$rc" -eq 0 ] && rc=1; }
 exit "$rc"
