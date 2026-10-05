@@ -24,9 +24,11 @@ way destructive-ops-guard.sh sees them, and a word that is only an argument
   B-18      a command word that is a command substitution, or a variable whose
             value is unknown or splits into words, asks; so does a program
             this guard does not unwrap whose arguments run an in-scope CLI
-  B-21..B-23 cli53, dnscontrol push and nsupdate DNS changes are denied
-  B-24..B-27 gsutil, bq (including a writing bq query), s3cmd writes and
-            azd up/down/deploy/provision are denied
+  B-21..B-23 cli53, dnscontrol push/create-domains and nsupdate DNS changes
+            are denied
+  B-24..B-27 gsutil, bq (including a writing or scheduled bq query), s3cmd
+            writes and azd up/down/deploy/provision/infra create|delete are
+            denied
   B-28      terragrunt is judged like terraform, through run-all and run --all
   B-29, B-30 cdk, sam, serverless deploys and removals, and eksctl
             mutations, are denied
@@ -477,15 +479,19 @@ CLI53_DENIED = {"rrcreate", "rc", "rrdelete", "rd", "rrpurge", "rp", "create", "
 
 
 def judge_cli53(command):
-    positionals = command.positionals(("--profile", "--endpoint-url", "--role-arn"))
-    if positionals[:1] and positionals[0] in CLI53_DENIED:
-        return ("deny", "B-21", "cli53 %s changes DNS records or zones" % positionals[0])
+    for positionals in command.positional_readings(("--profile", "--endpoint-url", "--role-arn")):
+        if positionals[:1] and positionals[0] in CLI53_DENIED:
+            return ("deny", "B-21", "cli53 %s changes DNS records or zones" % positionals[0])
     return None
 
 
+DNSCONTROL_DENIED = {"push", "create-domains"}
+
+
 def judge_dnscontrol(command):
-    if any(reading[:1] == ["push"] for reading in command.positional_readings()):
-        return ("deny", "B-22", "dnscontrol push changes DNS records at the providers")
+    for reading in command.positional_readings():
+        if reading[:1] and reading[0] in DNSCONTROL_DENIED:
+            return ("deny", "B-22", "dnscontrol %s changes DNS at the providers" % reading[0])
     return None
 
 
@@ -521,12 +527,14 @@ def judge_gsutil(command):
 BQ_VALUE_OPTIONS = {"--project_id", "--location", "--format", "--dataset_id", "--api", "--apilog",
                     "--bigqueryrc", "--credential_file", "--service_account", "--job_id", "-n", "--max_rows"}
 BQ_READ = {"ls", "show", "head", "help", "version", "wait", "get-iam-policy", "mkdef", "info"}
-BQ_WRITE_SQL = re.compile(r"\b(DROP|TRUNCATE|DELETE|INSERT|UPDATE|MERGE|CREATE|ALTER)\b", re.I)
+BQ_WRITE_SQL = re.compile(
+    r"\b(DROP|TRUNCATE|DELETE|INSERT|UPDATE|MERGE|CREATE|ALTER|EXPORT|LOAD|GRANT|REVOKE|UNDROP|CALL)\b", re.I)
 
 
 def judge_bq(command, raw_text):
-    """B-25: reads pass; a query passes unless its SQL holds a write keyword
-    or it writes its result to a table; every other command is denied."""
+    """B-25: reads pass; a query passes unless its SQL holds a write keyword,
+    it writes its result to a table or it is scheduled; every other command
+    is denied."""
     readings = command.positional_readings(BQ_VALUE_OPTIONS)
     verbs = {(reading + [""])[0] for reading in readings}
     if verbs <= BQ_READ | {""}:
@@ -539,6 +547,8 @@ def judge_bq(command, raw_text):
             return ("deny", "B-25", "bq query runs %s, which writes to BigQuery" % match.group(1).upper())
         if option_values(command.args, ("--destination_table",)):
             return ("deny", "B-25", "bq query --destination_table writes its result to a table")
+        if option_values(command.args, ("--schedule",)):
+            return ("deny", "B-25", "bq query --schedule creates a scheduled query")
         return None
     return ("deny", "B-25", "bq %s writes to BigQuery" % " ".join(sorted(verbs - {""})))
 
@@ -557,12 +567,15 @@ def judge_s3cmd(command):
 
 
 AZD_DENIED = {"up", "down", "deploy", "provision"}
+AZD_DENIED_PAIRS = {("infra", "create"), ("infra", "delete")}
 
 
 def judge_azd(command):
-    positionals = command.positionals(("-e", "--environment", "-C", "--cwd"))
-    if positionals[:1] and positionals[0] in AZD_DENIED:
-        return ("deny", "B-27", "azd %s changes Azure resources" % positionals[0])
+    for positionals in command.positional_readings(("-e", "--environment", "-C", "--cwd")):
+        verb, sub = (positionals + ["", ""])[:2]
+        if verb in AZD_DENIED or (verb, sub) in AZD_DENIED_PAIRS:
+            what = " ".join(positionals[:2] if verb == "infra" else positionals[:1])
+            return ("deny", "B-27", "azd %s changes Azure resources" % what)
     return None
 
 
@@ -779,6 +792,7 @@ TERRAGRUNT_VALUE_OPTIONS = {
 # -- apply, stack run apply.
 TERRAGRUNT_RUNNERS = {"run-all", "run", "stack"}
 TERRAGRUNT_DENIED = {"apply-all", "destroy-all"}
+TERRAGRUNT_BOOLEANS = {"--all", "--non-interactive", "--terragrunt-non-interactive"}
 
 
 def judge_terragrunt(command):
@@ -788,19 +802,22 @@ def judge_terragrunt(command):
         return None
     inner = copy.copy(command)
     inner.args = [word for word in command.args if word != "--"]
-    positionals = inner.positionals(TERRAGRUNT_VALUE_OPTIONS)
-    while positionals[:1] and positionals[0] in TERRAGRUNT_RUNNERS:
-        positionals = positionals[1:]
-    if positionals[:1] and positionals[0] in TERRAGRUNT_DENIED:
-        return ("deny", "B-28", "terragrunt %s changes real infrastructure" % positionals[0])
-    return terraform_verdict("terragrunt", positionals, "B-28")
+    for positionals in inner.positional_readings(TERRAGRUNT_VALUE_OPTIONS, TERRAGRUNT_BOOLEANS):
+        while positionals[:1] and positionals[0] in TERRAGRUNT_RUNNERS:
+            positionals = positionals[1:]
+        if positionals[:1] and positionals[0] in TERRAGRUNT_DENIED:
+            return ("deny", "B-28", "terragrunt %s changes real infrastructure" % positionals[0])
+        verdict = terraform_verdict("terragrunt", positionals, "B-28")
+        if verdict:
+            return verdict
+    return None
 
 
 CDK_DENIED = {"deploy", "destroy", "watch", "bootstrap", "import", "rollback"}
 SAM_DENIED = {"deploy", "delete", "sync", "publish"}
 SAM_DENIED_PAIRS = {("pipeline", "bootstrap"), ("remote", "invoke")}
 SERVERLESS_DENIED = {"deploy", "remove", "rollback"}
-DEPLOY_TOOL_VALUE_OPTIONS = {"-a", "--app", "-c", "--context", "--profile", "-o", "--output", "--role-arn",
+DEPLOY_TOOL_VALUE_OPTIONS = {"-a", "--app", "-c", "--context", "-p", "--plugin", "--profile", "-o", "--output", "--role-arn",
                              "-t", "--template", "--template-file", "--stack-name", "--region", "--config-file",
                              "--config-env", "-s", "--stage", "-r", "--config", "-f", "--function"}
 
@@ -808,14 +825,15 @@ DEPLOY_TOOL_VALUE_OPTIONS = {"-a", "--app", "-c", "--context", "--profile", "-o"
 def judge_deploy_tool(command):
     """B-29: cdk, sam and serverless commands that deploy or remove stacks
     are denied; synth, diff, build, validate, local and package pass."""
-    positionals = command.positionals(DEPLOY_TOOL_VALUE_OPTIONS)
-    verb, sub = (positionals + ["", ""])[:2]
     program = command.program
-    denied = ((program == "cdk" and verb in CDK_DENIED)
-              or (program == "sam" and (verb in SAM_DENIED or (verb, sub) in SAM_DENIED_PAIRS))
-              or (program == "serverless" and (verb in SERVERLESS_DENIED or (verb == "invoke" and sub != "local"))))
-    if denied:
-        return ("deny", "B-29", "%s %s deploys or removes a cloud stack" % (program, verb))
+    for positionals in command.positional_readings(DEPLOY_TOOL_VALUE_OPTIONS):
+        verb, sub = (positionals + ["", ""])[:2]
+        denied = ((program == "cdk" and verb in CDK_DENIED)
+                  or (program == "sam" and (verb in SAM_DENIED or (verb, sub) in SAM_DENIED_PAIRS))
+                  or (program == "serverless"
+                      and (verb in SERVERLESS_DENIED or (verb == "invoke" and sub != "local"))))
+        if denied:
+            return ("deny", "B-29", "%s %s deploys or removes a cloud stack" % (program, verb))
     return None
 
 
