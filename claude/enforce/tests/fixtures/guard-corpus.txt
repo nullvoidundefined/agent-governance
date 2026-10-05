@@ -587,3 +587,42 @@ deny mysql -h db.internal.acme.net -e $'DROP # x\nTABLE users'
 deny psql -h db.internal.acme.net -c $'TRUNCATE -- x\nusers'
 ask psql -h db.example.org -c $'DROP -- x\nTABLE users'
 allow psql -h db.internal.acme.net -c "SELECT count(*) FROM users"
+
+# PR 2d B-33..B-36
+# B-33: a target assignment prefixing a shell applies to the shell's string
+deny DATABASE_URL=postgres://db.internal.acme.net/app bash -c 'npx prisma migrate deploy'
+deny DATABASE_URL=postgres://db.internal.acme.net/app sh -c 'npx prisma migrate deploy'
+deny DATABASE_URL=postgres://db.internal.acme.net/app zsh -c 'rails db:migrate'
+deny env DATABASE_URL=postgres://db.internal.acme.net/app sh -c 'npx prisma migrate deploy'
+deny DATABASE_URL=postgres://db.internal.acme.net/app eval 'rails db:migrate'
+deny PGHOST=db.internal.acme.net bash -c 'psql -c "DROP TABLE users"'
+deny MAIN_DATABASE_URL=postgres://db.internal.acme.net/app bash -c 'rails db:migrate'
+deny RAILS_ENV=production sh -c 'rails db:migrate'
+allow bash -c 'rails db:migrate'
+allow DATABASE_URL=postgres://localhost/app bash -c 'npx prisma migrate deploy'
+# B-34: export, declare -x, set -a and a plain assignment reach later commands
+deny export DATABASE_URL=postgres://db.internal.acme.net/app; rails db:migrate
+deny export PGHOST=db.internal.acme.net && psql -c "DROP TABLE t"
+deny declare -x DATABASE_URL=postgres://db.internal.acme.net/app; npx prisma migrate deploy
+deny typeset -x DATABASE_URL=postgres://db.internal.acme.net/app; rails db:migrate
+deny set -a; DATABASE_URL=postgres://db.internal.acme.net/app; set +a; rails db:migrate
+deny DATABASE_URL=postgres://db.internal.acme.net/app; npx prisma migrate deploy
+deny export RAILS_ENV=production; rails db:migrate
+deny export DATABASE_URL=postgres://db.internal.acme.net/app; echo ok; rails db:migrate
+allow export DATABASE_URL=postgres://db.internal.acme.net/app; unset DATABASE_URL; rails db:migrate
+allow export PGHOST=db.internal.acme.net; unset PGHOST; psql -c "SELECT 1"
+# B-35: propagated preview/testing targets ask like a prefixed one, local changes nothing
+ask export PGHOST=ci-db.acme.net; psql -c "DROP TABLE users"
+ask export PGHOST=x.preview.acme.dev; psql -c "DROP TABLE users"
+ask export DATABASE_URL=postgres://ci-db.acme.net/app; psql "$DATABASE_URL" -c "DROP TABLE users"
+ask PGHOST=ci-db.acme.net bash -c 'psql -c "DROP TABLE users"'
+ask export PGHOST=db.staging.acme.com; psql -c "DELETE FROM users WHERE id = 1"
+allow export PGHOST=localhost; psql -c "SELECT 1"
+allow export PGHOST=localhost; psql -c "DELETE FROM users WHERE id = 1"
+allow export DATABASE_URL=postgres://localhost/app; rails db:migrate
+# B-36: an assignment inside a subshell or function body stays inside it
+allow (export DATABASE_URL=postgres://db.internal.acme.net/app); rails db:migrate
+allow (export PGHOST=db.internal.acme.net); psql -c "SELECT 1"
+allow (DATABASE_URL=postgres://db.internal.acme.net/app; true); rails db:migrate
+allow f() { export DATABASE_URL=postgres://db.internal.acme.net/app; }; rails db:migrate
+deny (export DATABASE_URL=postgres://db.internal.acme.net/app; rails db:migrate)
