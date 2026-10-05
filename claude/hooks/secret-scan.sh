@@ -121,16 +121,15 @@ credential_shape_hit() {
     value=${match#*://}; value=${value#*:}; value=${value%@}
     grep -qiE "$PLACEHOLDER_VALUE" <<< "$value" || { printf 'a URI carrying a password (%s)' "${match%%:*}://user:...@"; return 0; }
   done < <(printf '%s' "$text" | grep -oE "$URI_WITH_PASSWORD" || true)
-  # password/secret/token assignments with a literal value of six or more
-  # characters: quoted, or a bare token of literal-looking characters that
-  # ends at a delimiter (so `os.environ["DB_PASSWORD"]`, `getToken()`, and
-  # `process.env.SESSION_SECRET!`, which continue into `[`, `(`, or `.`, are
-  # code, not literals).
+  # password/secret/token assignments with a quoted literal value of six or
+  # more characters. A bare word after the colon or equals sign is code, not
+  # a literal: a TypeScript type annotation or a variable name (owner decision
+  # 2026-10-05; GitGuardian in CI still scans every PR).
   while IFS= read -r match; do
     [ -n "$match" ] || continue
     value=$(printf '%s' "$match" | sed -E 's/^[^=:]*[=:][[:space:]]*//; s/[[:space:],;)}]$//; s/^["'"'"']//; s/["'"'"']$//')
     grep -qiE "$PLACEHOLDER_VALUE" <<< "$value" || { printf 'a %s assignment with a literal value' "$(printf '%s' "$match" | grep -oiE '^[a-z_-]+')"; return 0; }
-  done < <(printf '%s' "$text" | grep -oiE '(^|[^a-z_])(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)[[:space:]]*[=:][[:space:]]*("[^"[:space:]]{6,}"|'"'"'[^'"'"'[:space:]]{6,}'"'"'|[A-Za-z0-9_+/=!#-]{6,})([[:space:],;)}]|$)' | sed -E 's/^[^a-zA-Z_]//' || true)
+  done < <(printf '%s' "$text" | grep -oiE '(^|[^a-z_])(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)[[:space:]]*[=:][[:space:]]*("[^"[:space:]]{6,}"|'"'"'[^'"'"'[:space:]]{6,}'"'"')([[:space:],;)}]|$)' | sed -E 's/^[^a-zA-Z_]//' || true)
   return 1
 }
 if HIT=$(credential_shape_hit "$SCAN_TEXT"); then

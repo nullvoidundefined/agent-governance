@@ -52,5 +52,15 @@ FAKE_PW="$(printf '%s%s' hunter 22x)"
 [ "$(jq -n '{tool_name:"Edit",tool_input:{file_path:"/repo/app.ts",new_string:"  secret: process.env.SESSION_SECRET!,"}}' | decision)" = "none" ] || { echo "FAIL: a member-access expression must pass"; exit 1; }
 [ "$(jq -n '{tool_name:"Write",tool_input:{file_path:"/repo/docs/setup.md",content:"api_key: <your key>\ntoken: changeme"}}' | decision)" = "none" ] || { echo "FAIL: placeholder words must pass"; exit 1; }
 [ "$(jq -n '{tool_name:"Write",tool_input:{file_path:"/repo/docs/setup.md",content:"The token: field takes the value the dashboard shows."}}' | decision)" = "none" ] || { echo "FAIL: prose with a colon after token must pass"; exit 1; }
+# Bare words after the colon or equals sign are code. The fixtures are assembled
+# at run time so this file itself never carries the assignment shape.
+TYPED_PARAM="$(printf 'export function signIn(email: string, %s: %s) {}' password string)"
+[ "$(jq -n --arg c "$TYPED_PARAM" '{tool_name:"Write",tool_input:{file_path:"/repo/auth.ts",content:$c}}' | decision)" = "none" ] || { echo "FAIL: a TypeScript type annotation must pass"; exit 1; }
+BARE_VARIABLE="$(printf '  const body = { email, %s: %s };' password normalized)"
+[ "$(jq -n --arg c "$BARE_VARIABLE" '{tool_name:"Edit",tool_input:{file_path:"/repo/auth.ts",new_string:$c}}' | decision)" = "none" ] || { echo "FAIL: a bare variable value must pass"; exit 1; }
+TOKEN_TYPE="$(printf 'type Session = { %s: %s; userId: string };' token string)"
+[ "$(jq -n --arg c "$TOKEN_TYPE" '{tool_name:"Write",tool_input:{file_path:"/repo/types.ts",content:$c}}' | decision)" = "none" ] || { echo "FAIL: a token type annotation must pass"; exit 1; }
+SINGLE_QUOTED="$(printf "%s = '%s'" password "$FAKE_PW")"
+[ "$(jq -n --arg c "$SINGLE_QUOTED" '{tool_name:"Edit",tool_input:{file_path:"/repo/config.py",new_string:$c}}' | decision)" = "deny" ] || { echo "FAIL: a single-quoted password literal must deny (R-108)"; exit 1; }
 
 echo "secret-scan.test.sh PASS"
