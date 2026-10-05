@@ -578,3 +578,12 @@ deny vercel alias set dpl_123 www.acme.com
 deny vercel alias rm www.acme.com
 # security round 2: heroku run:detached
 ask heroku run:detached -a staging-api rails db:drop
+
+# security round 3: F-1 SQL comments hide the destructive keyword
+deny psql -h db.internal.acme.net -c $'DROP -- x\nTABLE users'
+deny psql -h db.internal.acme.net -c "DROP/*a/*b*/c*/TABLE users"
+deny psql -h db.internal.acme.net -c "DROP/*/**/*/TABLE users"
+deny mysql -h db.internal.acme.net -e $'DROP # x\nTABLE users'
+deny psql -h db.internal.acme.net -c $'TRUNCATE -- x\nusers'
+ask psql -h db.example.org -c $'DROP -- x\nTABLE users'
+allow psql -h db.internal.acme.net -c "SELECT count(*) FROM users"
