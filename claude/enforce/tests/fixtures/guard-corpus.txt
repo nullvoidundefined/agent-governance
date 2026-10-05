@@ -371,3 +371,54 @@ allow ls $(pwd)
 allow cat "$(git rev-parse --show-toplevel)/README.md"
 allow x=$(date)
 allow cd $(mktemp -d)
+
+# Review round 1 (PR #206)
+# 1. cloud verb by position: a read word elsewhere in the command is not the verb
+deny az vm deallocate -g rg -n listener-vm
+deny az storage blob delete-batch --source getting-started
+deny gcloud projects add-iam-policy-binding listmania --member user:a@b.c --role roles/owner
+deny doctl compute droplet-action power-off listener
+deny az network dns record-set txt add-record -g rg -z example.com -n get -v x
+allow gcloud run services list
+allow gcloud run services describe svc
+allow gcloud deploy releases list --delivery-pipeline=p
+allow az tag list
+# 2. package-runner wrappers
+deny npx wrangler deploy --env production
+deny pnpm dlx wrangler delete
+deny npx vercel --prod
+deny npx terraform apply
+deny bunx wrangler dns create example.com
+allow npx wrangler deploy --env staging
+allow npx terraform plan
+# 3. B-16 regression: only a local target skips the remote-DELETE ask
+ask PGHOST=db.prod.acme.com psql -c "DELETE FROM users WHERE id = 1"
+deny psql -hdb.prod.acme.com -c "DELETE FROM users WHERE id = 1"
+ask psql -hdb.staging.acme.com -c "DELETE FROM users WHERE id = 1"
+ask psql "host=db.staging.acme.com dbname=app" -c "DELETE FROM users WHERE id = 1"
+ask psql "$PROD_DB" -c "DELETE FROM users WHERE id = 1"
+ask heroku pg:psql -a acme -c "DELETE FROM users WHERE id = 1"
+ask railway run psql -c "DELETE FROM users WHERE id = 1"
+ask wrangler d1 execute db --remote --command "DELETE FROM u WHERE id=1"
+allow psql -h localhost -c "DELETE FROM users WHERE id = 1"
+# 4. UPDATE without a top-level WHERE (a WHERE inside a subquery does not count)
+ask psql -c "UPDATE t SET a=(SELECT x FROM s WHERE s.id=1)"
+ask psql -c "UPDATE ONLY t SET a=1"
+ask psql -c "UPDATE t AS x SET a=1"
+allow psql -c "UPDATE t SET a=1 WHERE id=2"
+# 5. rails/rake take the environment as an argument
+deny rake db:migrate RAILS_ENV=production
+deny rails db:drop RAILS_ENV=production
+ask rails db:drop RAILS_ENV=development
+allow rake db:migrate RAILS_ENV=development
+# 7. Vercel DNS and domains (B-3)
+deny vercel dns add example.com @ TXT v=spf1
+deny vercel dns rm rec_123
+deny vercel domains rm example.com
+allow vercel dns ls
+allow vercel domains ls
+# 10. help flags, uppercase program, trailing-dot host
+allow terraform apply -help
+allow pulumi up --help
+deny AWS rds delete-db-instance --db-instance-identifier x
+deny curl -X DELETE https://api.cloudflare.com./client/v4/zones/abc
