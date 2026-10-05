@@ -144,7 +144,10 @@ A Railway cron is an ordinary service that shares the app image but overrides th
 ### Database Migrations
 
 - Run migrations **before** the new API code goes live.
-- Use a Railway one-off job or a `prestart` script: `npm run migrate && node dist/index.js`. From a workstation, `railway run npm run migrate:up` injects the linked service's `DATABASE_URL`.
+- The only production migration command is `~/.claude/enforce/db-migrate-safe.sh`, run by a human: it takes a snapshot first (`--provider pg` writes a `pg_dump` file and checks it with `pg_restore --list`, `neon` creates a `pre-migrate-` branch, `rds` creates a DB snapshot and waits for it) and starts the migration only when the snapshot succeeded, logging each run to `~/.local/state/agent-migrations/migrations.jsonl`. For example, from a workstation: `railway run ~/.claude/enforce/db-migrate-safe.sh --provider pg --target production --url-env DATABASE_MIGRATION_URL -- npm run migrate:up`. Do not migrate production from a `prestart` script or a one-off job that skips the wrapper.
+- Agents never migrate production (the infra guard denies it). Against a target listed under `preview` or `testing` in `.enforce.json`, the guard denies a bare migration and allows it as the wrapper's command after `--`.
+- The wrapper only covers commands run through it: a human running a raw migration command gets no snapshot. That part of the control is procedural.
+- Prove the snapshots restore: copy `claude/templates/restore-drill.yml` (the restore-drill template) into the product repo's `.github/workflows/`. Weekly and on demand it restores the newest snapshot into a throwaway Postgres container and runs a row-count smoke query.
 - Never run migrations from the worker service; API service owns schema changes.
 - Keep `DATABASE_URL` (pooled) and `DATABASE_MIGRATION_URL` (direct) as separate vars.
 

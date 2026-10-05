@@ -21,6 +21,9 @@ way destructive-ops-guard.sh sees them, and a word that is only an argument
   B-16      DELETE FROM with no WHERE asks (destructive-db-guard.sh allows a
             bounded DELETE against a local target)
   B-17      migrations against production are denied
+  M-5, M-6  migrations against a preview or testing target are denied unless
+            db-migrate-safe.sh runs them; the wrapper's command after `--` is
+            judged as if run directly (docs/specs/2026-10-05-migrate-backup.md)
   B-18      a command word that is a command substitution, or a variable whose
             value is unknown or splits into words, asks; so does a program
             this guard does not unwrap whose arguments run an in-scope CLI
@@ -32,6 +35,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import sys
 
 HOOK_NAME = "infra-mutation-guard"
@@ -183,11 +187,12 @@ def option_values(args, names):
     return values
 
 
-def production_signal(command, environments):
-    """Returns a short description of what marks the command production-targeted
-    (B-11), or None. Options are read from every argument of the command as
-    typed, including those of a launcher (railway run -e production ...);
-    rails and rake also take NAME=value arguments as environment."""
+def target_candidates(command):
+    """Yields (description, value, name rule) for every value that may name
+    the command's target, in the order production_signal checks them.
+    Options are read from every argument of the command as typed, including
+    those of a launcher (railway run -e production ...); rails and rake also
+    take NAME=value arguments as environment."""
     env = dict(command.environment)
     if command.program in ("rails", "rake"):
         env.update(word.split("=", 1) for word in command.args if PARSER.is_assignment(word))
@@ -195,25 +200,40 @@ def production_signal(command, environments):
         for value in option_values(command.args, ("--settings",)):
             env["DJANGO_SETTINGS_MODULE"] = value
     for name in PRODUCTION_ENV_VARS:
-        if name in env and is_production(env[name], environments, "substring"):
-            return "%s=%s" % (name, env[name])
+        if name in env:
+            yield "%s=%s" % (name, env[name]), env[name], "substring"
     for name in NAMED_TARGET_ENV_VARS:
-        if name in env and is_production(env[name], environments, "word"):
-            return "%s=%s" % (name, env[name])
+        if name in env:
+            yield "%s=%s" % (name, env[name]), env[name], "word"
     for value in environment_values(command.typed_args):
-        if is_production(value, environments, "exact"):
-            return "environment %s" % value
+        yield "environment %s" % value, value, "exact"
     targets = option_values(command.typed_args, NAMED_TARGET_OPTIONS) + glued_values(command.typed_args, "-h")
     targets += [match for word in command.words for match in CONNINFO_TARGET.findall(word)]
     targets += [host for word in command.words for match in URI_QUERY_TARGET.findall(word)
                 for host in match.split(",")]
     for value in targets:
-        if is_production(value, environments, "word"):
-            return "target %s" % value
+        yield "target %s" % value, value, "word"
     for word in command.words:
         for host in url_hosts(word):
-            if is_production(host, environments, "word"):
-                return "host %s" % host
+            yield "host %s" % host, host, "word"
+
+
+def production_signal(command, environments):
+    """Returns a short description of what marks the command production-targeted
+    (B-11), or None."""
+    for description, value, name_rule in target_candidates(command):
+        if is_production(value, environments, name_rule):
+            return description
+    return None
+
+
+def shared_target_signal(command, environments):
+    """Returns a short description of the first target value listed under
+    preview or testing in .enforce.json (M-5), or None."""
+    for description, value, _ in target_candidates(command):
+        value = value.strip().strip("'\"").lower()
+        if value and (environments.matches("preview", value) or environments.matches("testing", value)):
+            return description
     return None
 
 
@@ -227,7 +247,8 @@ class SimpleCommand:
     assignments), program, plain arguments, and every word including redirect
     targets such as a herestring."""
 
-    def __init__(self, segment, session_env, stdin_text=None, kube_context="", is_piped=False, unknown_names=None):
+    def __init__(self, segment, session_env, stdin_text=None, kube_context="", is_piped=False, unknown_names=None,
+                 migration_wrapped=False):
         program_index = PARSER.find_program_index(segment)
         own = dict(word.split("=", 1) for word in segment[:program_index])
         self.environment = dict(session_env, **own)
@@ -243,6 +264,8 @@ class SimpleCommand:
         self.kube_context = kube_context
         self.stdin_fed = is_piped or any(word in STDIN_REDIRECTS for word in rest)
         self.unknown_names = unknown_names or set()
+        # True when db-migrate-safe.sh runs this command after its snapshot (M-5).
+        self.migration_wrapped = migration_wrapped
 
     def launched(self):
         """Returns the command a launcher (npx, pnpm dlx, bunx, bundle exec,
@@ -292,7 +315,15 @@ class Verdict:
             self.decision, self.reason = decision, reason
 
 
+MIGRATION_WRAPPER = "db-migrate-safe.sh"
+MIGRATION_WRAPPER_FORM = ("~/.claude/enforce/db-migrate-safe.sh --provider pg|neon|rds --target NAME "
+                          "[provider options] -- <the migration command>")
+
+
 def deny_reason(rule, what, command_text):
+    if rule == "M-5":
+        return redact("%s BLOCKED this call (M-5): %s. Run it through the snapshot wrapper, which takes a "
+                      "snapshot and migrates only when it succeeds: %s" % (HOOK_NAME, what, MIGRATION_WRAPPER_FORM))
     return redact("%s BLOCKED this call (%s): %s. Agents cannot run this; if it is intended, a human "
                   "runs it by hand in a terminal: %s" % (HOOK_NAME, rule, what, command_text))
 
@@ -952,6 +983,10 @@ def judge_database_command(command, environments):
         return ("ask", "B-14", "%s destroys database data" % action)
     if signal:
         return ("deny", "B-17", "%s runs a migration against a production target (%s)" % (action, signal))
+    shared = None if command.migration_wrapped else shared_target_signal(command, environments)
+    if shared:
+        return ("deny", "M-5", "%s runs a migration against a preview or testing target (%s) without a "
+                "snapshot first" % (action, shared))
     return None
 
 
@@ -1183,12 +1218,50 @@ def runs_in_scope_cli(word):
     return bool(tokens) and canonical_program(os.path.basename(tokens[0]).lower()) in IN_SCOPE_PROGRAMS
 
 
+MIGRATION_WRAPPER_VALUE_OPTIONS = {"--provider", "--target", "--url-env", "--backup-dir", "--project-id",
+                                   "--parent", "--db-instance-identifier"}
+
+
+def migration_wrapper_parts(command):
+    """Returns (target, command words) when the command runs db-migrate-safe.sh,
+    directly or as a shell script (bash db-migrate-safe.sh ...), with a
+    command after its `--`; else None. The options are read the way the
+    wrapper reads them: each value option takes the next word."""
+    args = command.args
+    if command.program in PARSER.SHELLS:
+        if not args or os.path.basename(args[0]) != MIGRATION_WRAPPER:
+            return None
+        args = args[1:]
+    elif command.program != MIGRATION_WRAPPER:
+        return None
+    target, index = "", 0
+    while index < len(args):
+        word = args[index]
+        if word == "--":
+            return (target, args[index + 1:]) if index + 1 < len(args) else None
+        if word == "--target" and index + 1 < len(args):
+            target = args[index + 1]
+        index += 2 if word in MIGRATION_WRAPPER_VALUE_OPTIONS else 1
+    return None
+
+
+def judge_migration_wrapper(target, environments):
+    """The wrapper's own --target naming production is a production migration
+    (B-17), whatever the migration command's connection says."""
+    if target and is_production(target, environments, "word"):
+        return ("deny", "B-17", "db-migrate-safe.sh runs a migration against the production target %s" % target)
+    return None
+
+
 def judge_unknown_wrapper(command):
     """B-18 class rule: a program this guard does not know as a wrapper whose
     arguments run an in-scope CLI (taskset 1 gcloud ..., watch gcloud ...,
     su -c "gcloud ...") may run it, so it asks. The CLI must be followed by
-    more words, so `brew install terraform`-like naming passes."""
+    more words, so `brew install terraform`-like naming passes. The migration
+    wrapper is known: decide() judges its command as its own segment (M-6)."""
     if command.program in IN_SCOPE_PROGRAMS or command.program in NAMING_PROGRAMS:
+        return None
+    if command.program == MIGRATION_WRAPPER:
         return None
     args = command.args
     for index, word in enumerate(args):
@@ -1250,9 +1323,10 @@ def decide(text, cwd):
     verdict = Verdict()
     environments = Environments(cwd)
     session_env, kube_context, unknown_names = {}, "", set()
-    queue = split_segments_with_input(text)
+    # Each entry also carries whether db-migrate-safe.sh runs the segment.
+    queue = [entry + (False,) for entry in split_segments_with_input(text)]
     while queue:
-        segment, stdin_text, is_piped = queue.pop(0)
+        segment, stdin_text, is_piped, wrapped = queue.pop(0)
         expanded = expand_variables(segment, session_env)
         written_program = program_word(segment)
         if VARIABLE_PROGRAM.search(written_program):
@@ -1262,7 +1336,7 @@ def decide(text, cwd):
                 verdict.add("ask", ask_reason("B-18", "the command word %s comes from a variable, so the program "
                                                       "that runs is unknown until it runs" % written_program))
                 continue
-        command = SimpleCommand(expanded, session_env, stdin_text, kube_context, is_piped, unknown_names)
+        command = SimpleCommand(expanded, session_env, stdin_text, kube_context, is_piped, unknown_names, wrapped)
         if not command.program or command.program in DECLARATION_PROGRAMS:
             assignments = dict(command.assignments) if not command.program else dict(
                 w.split("=", 1) for w in command.args if PARSER.is_assignment(w))
@@ -1274,7 +1348,18 @@ def decide(text, cwd):
             unknown_names.add(name)
         inner_text = launcher_command_string(command)
         if inner_text:
-            queue = split_segments_with_input(inner_text) + queue
+            queue = [entry + (wrapped,) for entry in split_segments_with_input(inner_text)] + queue
+        migration = migration_wrapper_parts(command)
+        if migration:
+            # M-6: the wrapper's command is judged as its own segment, with the
+            # wrapper's assignments in front, as if it ran directly.
+            target, words = migration
+            prefix = ["%s=%s" % (name, shlex.quote(value)) for name, value in command.assignments.items()]
+            wrapped_text = " ".join(prefix + [shlex.join(words)])
+            queue = [entry + (True,) for entry in split_segments_with_input(wrapped_text)] + queue
+            result = judge_migration_wrapper(target, environments)
+            if result:
+                verdict.add("deny", deny_reason(result[1], result[2], text))
         kube_context = switched_kube_context(command) or kube_context
         result = judge_command(command, text, environments)
         if result:

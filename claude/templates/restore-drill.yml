@@ -1,0 +1,98 @@
+# restore-drill.yml: a GitHub Actions workflow template for product repos
+# (docs/specs/2026-10-05-migrate-backup.md, M-7). Copy it to
+# .github/workflows/restore-drill.yml. Once a week, and on demand, it restores
+# the newest pre-migration snapshot into a throwaway Postgres service container
+# and runs a row-count smoke query, so a snapshot that does not restore is
+# found before a migration needs it.
+#
+# Snapshot source: the newest *.dump (pg_dump --format=custom, the format
+# db-migrate-safe.sh --provider pg writes) under an S3 prefix the repo's
+# backup job uploads to. For neon or rds snapshots, replace the "Fetch the
+# newest snapshot" step with one that produces latest.dump from that provider.
+#
+# Repository settings it reads:
+#   secrets.DRILL_AWS_ACCESS_KEY_ID, secrets.DRILL_AWS_SECRET_ACCESS_KEY
+#                              read-only credentials for the backup bucket
+#   vars.DRILL_BACKUP_S3_PREFIX  for example s3://acme-backups/app/
+#   vars.DRILL_AWS_REGION        for example us-east-1
+#   vars.DRILL_SMOKE_TABLE       a table that must hold rows after a restore
+# Every action is pinned to a full commit SHA; update the SHA, not a tag.
+name: restore-drill
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-drill
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        # Match the major version of the database the snapshots come from.
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: drill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PG_IMAGE: postgres:16
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGDATABASE: drill
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch the newest snapshot
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DRILL_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DRILL_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.DRILL_AWS_REGION }}
+          BACKUP_PREFIX: ${{ vars.DRILL_BACKUP_S3_PREFIX }}
+        run: |
+          set -euo pipefail
+          [ -n "$BACKUP_PREFIX" ] || { echo "::error::set vars.DRILL_BACKUP_S3_PREFIX"; exit 1; }
+          # Object keys end in <target>-<UTC timestamp>.dump, so the newest
+          # upload is the last line when sorted by date and time.
+          newest=$(aws s3 ls "$BACKUP_PREFIX" | awk '$4 ~ /\.dump$/' | sort -k1,2 | tail -1 | awk '{print $4}')
+          [ -n "$newest" ] || { echo "::error::no .dump snapshot under $BACKUP_PREFIX"; exit 1; }
+          echo "restoring $newest"
+          aws s3 cp --only-show-errors "${BACKUP_PREFIX%/}/$newest" latest.dump
+
+      - name: Restore into the throwaway database
+        run: |
+          set -euo pipefail
+          # pg_restore from the same image as the service, so client and
+          # server versions match.
+          docker run --rm --network host -v "$PWD:/drill" -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE \
+            "$PG_IMAGE" pg_restore --no-owner --no-privileges --exit-on-error --dbname=drill /drill/latest.dump
+
+      - name: Smoke query (row counts)
+        env:
+          SMOKE_TABLE: ${{ vars.DRILL_SMOKE_TABLE }}
+        run: |
+          set -euo pipefail
+          psql_drill() { docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE "$PG_IMAGE" psql -X -v ON_ERROR_STOP=1 -At "$@"; }
+          tables=$(echo "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema');" | psql_drill)
+          echo "restored tables: $tables"
+          [ "$tables" -gt 0 ] || { echo "::error::the restore holds no tables"; exit 1; }
+          if [ -n "$SMOKE_TABLE" ]; then
+            rows=$(echo 'SELECT count(*) FROM :"smoke_table";' | psql_drill -v smoke_table="$SMOKE_TABLE")
+            echo "rows in $SMOKE_TABLE: $rows"
+            [ "$rows" -gt 0 ] || { echo "::error::$SMOKE_TABLE is empty after the restore"; exit 1; }
+          fi

@@ -101,6 +101,8 @@ Every function and endpoint that returns a collection has a test, against the re
 - A risky change ships in stages, each its own migration and deploy: expand (add nullable or defaulted), backfill (a data migration, or a job for a large table), switch the code, contract (drop the old shape).
 - Rehearse each risky stage on a Neon branch off staging, then staging, then production after staging is green for a full cycle. On the branch, verify row counts (nothing lost or duplicated), that every foreign key resolves, that CHECK constraints pass for every migrated row, and that the full test suite passes against the branch. If the branch fails, delete it and iterate.
 - Never run a one-shot destructive change against production.
+- Run every production migration through `~/.claude/enforce/db-migrate-safe.sh --provider pg|neon|rds --target NAME [provider options] -- <migration command>`, the only production migration command: it snapshots first and migrates only when the snapshot succeeded. Agents use the same wrapper for preview and testing targets; the infra guard denies the bare command there. See `CLOUD-DEPLOYMENT.md` for the providers.
+- Keep the snapshots restorable: the restore-drill template (`claude/templates/restore-drill.yml`) restores the newest one into a throwaway Postgres container weekly and runs a row-count smoke query.
 
 ### Locking on populated tables
 
