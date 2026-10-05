@@ -63,8 +63,13 @@ emit() {
 # Destructive = irreversible data loss. Benign writes (UPDATE/INSERT) are NOT
 # destructive, so admin updates against prod are not hard-denied (they still ask).
 destructive=0
-if grep -Eq 'DROP[[:space:]]+(DATABASE|TABLE)|TRUNCATE([[:space:]]|$)|DELETE[[:space:]]+FROM' <<< "$upper" \
-    || grep -Eqi 'pg_restore|migrate:down' <<< "$cmd"; then
+# Destructive verbs other than DELETE FROM: dropping a database, schema,
+# table, owned objects or column, truncating, and the tools that do the same
+# (pg_restore, migrate:down, dropdb, mysqladmin drop).
+DESTRUCTIVE_SQL_VERBS='DROP[[:space:]]+(DATABASE|SCHEMA|TABLE|OWNED|COLUMN)|TRUNCATE([[:space:]]|$)'
+DESTRUCTIVE_TOOLS='pg_restore|migrate:down|(^|[^A-Za-z0-9_-])dropdb([^A-Za-z0-9_-]|$)|mysqladmin[[:space:]].*[[:space:]]drop([[:space:]]|$)'
+if grep -Eq "$DESTRUCTIVE_SQL_VERBS|DELETE[[:space:]]+FROM" <<< "$upper" \
+    || grep -Eqi "$DESTRUCTIVE_TOOLS" <<< "$cmd"; then
     destructive=1
 fi
 
@@ -148,8 +153,8 @@ names_only_local_target() {
 # against a local target is routine work on the developer's own data. It
 # applies only when DELETE FROM is the sole destructive verb in the command.
 if [ "$destructive" -eq 1 ] && [ "$is_mcp" -eq 0 ] && [ "$remote" -eq 0 ] && [ "$prod" -eq 0 ] \
-    && ! grep -Eq 'DROP[[:space:]]+(DATABASE|TABLE)|TRUNCATE([[:space:]]|$)' <<< "$upper" \
-    && ! grep -Eqi 'pg_restore|migrate:down' <<< "$cmd" \
+    && ! grep -Eq "$DESTRUCTIVE_SQL_VERBS" <<< "$upper" \
+    && ! grep -Eqi "$DESTRUCTIVE_TOOLS" <<< "$cmd" \
     && deletes_are_bounded && names_only_local_target; then
     destructive=0
 fi
@@ -186,7 +191,7 @@ fi
 
 # ASK: destructive verbs against any other target (staging / remote / unknown).
 if [ "$destructive" -eq 1 ]; then
-    emit ask "Destructive SQL (DROP / TRUNCATE / DELETE FROM / pg_restore / migrate:down) detected. Confirm the target database before running."
+    emit ask "Destructive SQL (DROP / TRUNCATE / DELETE FROM / pg_restore / migrate:down / dropdb) detected. Confirm the target database before running."
 fi
 
 # ASK: non-destructive writes against a managed/remote database.

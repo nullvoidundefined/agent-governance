@@ -13,7 +13,8 @@ segment.
 
 Each segment is then normalized to what actually runs: leading VAR=value
 assignments are kept first, compound-command keywords ({, !, if, then, do) and
-wrappers (env, sudo, command, exec, nohup, time, nice, timeout, xargs) are
+wrappers (env, sudo, doas, command, exec, nohup, time, nice, timeout, xargs,
+stdbuf, setsid, ionice, chrt, flock and its lock file) are
 dropped along with their own options, and the program name is reduced to its
 basename, with any capitalization of git printed as `git` (macOS resolves
 commands case-insensitively). The words piped into xargs become arguments of
@@ -29,7 +30,7 @@ import sys
 
 WORD_SEPARATOR = "\x1f"
 OPERATOR_MARK = "\x1e"
-SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
 KEYWORDS = {"{", "}", "!", "if", "then", "do", "else", "elif", "while", "until"}
 WRAPPER_VALUE_OPTIONS = {
     "env": {"-u", "-S", "-C", "-P", "--unset", "--split-string", "--chdir"},
@@ -42,8 +43,14 @@ WRAPPER_VALUE_OPTIONS = {
     "timeout": {"-s", "-k", "--signal", "--kill-after"},
     "xargs": {"-I", "-L", "-n", "-P", "-s", "-E", "-d", "-a", "--max-args", "--max-procs",
               "--delimiter", "--arg-file", "--replace"},
+    "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"},
+    "setsid": set(),
+    "ionice": {"-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid"},
+    "chrt": set(),
+    "doas": {"-u", "-C"},
+    "flock": {"-w", "-E", "--timeout", "--conflict-exit-code"},
 }
-WRAPPER_POSITIONALS = {"timeout": 1}
+WRAPPER_POSITIONALS = {"timeout": 1, "chrt": 1, "flock": 1}
 SHELL_VALUE_OPTIONS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 STDIN_PRINTERS = {"echo", "printf"}
 SUBSTITUTED_PROGRAM = re.compile(r"^(\$\(|`)\s*(?:which|command\s+-v|type\s+-p)\s+(\S+)\s*(\)|`)$")

@@ -58,7 +58,9 @@ class EnforceConfigError(Exception):
 PRODUCTION_WORDS = {"prod", "production", "live"}
 PRODUCTION_ENV_VARS = ("RAILS_ENV", "NODE_ENV", "APP_ENV", "ENVIRONMENT", "STAGE", "MIX_ENV",
                        "DJANGO_SETTINGS_MODULE")
-NAMED_TARGET_ENV_VARS = ("AWS_PROFILE", "TF_WORKSPACE")
+NAMED_TARGET_ENV_VARS = ("AWS_PROFILE", "TF_WORKSPACE", "PGHOST", "PGHOSTADDR", "MYSQL_HOST", "PGSERVICE")
+CONNINFO_TARGET = re.compile(r"(?:^|\s)(?:host|hostaddr|service)\s*=\s*([^\s'\"]+)", re.I)
+DJANGO_PROGRAMS = ("manage.py", "django-admin", "django")
 ENVIRONMENT_OPTIONS = ("-e", "--env", "--environment")
 NAMED_TARGET_OPTIONS = ("--context", "--kube-context", "--profile", "-h", "--host")
 URL_HOST = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://([^/\s?#]*)")
@@ -153,9 +155,14 @@ def url_hosts(word):
     return hosts
 
 
-def glued_host_values(args):
-    """Returns the host of each -hHOST option written as one word."""
-    return [word[2:] for word in args if word.startswith("-h") and len(word) > 2 and word != "-help"]
+def glued_values(args, flag):
+    """Returns the value of each short option written glued to it (-hHOST,
+    -eproduction). -help is a flag, not -h elp."""
+    return [word[2:] for word in args if word.startswith(flag) and len(word) > 2 and word != "-help"]
+
+
+def environment_values(args):
+    return option_values(args, ENVIRONMENT_OPTIONS) + glued_values(args, "-e")
 
 
 def option_values(args, names):
@@ -180,16 +187,21 @@ def production_signal(command, environments):
     env = dict(command.environment)
     if command.program in ("rails", "rake"):
         env.update(word.split("=", 1) for word in command.args if PARSER.is_assignment(word))
+    if command.program in DJANGO_PROGRAMS:
+        for value in option_values(command.args, ("--settings",)):
+            env["DJANGO_SETTINGS_MODULE"] = value
     for name in PRODUCTION_ENV_VARS:
         if name in env and is_production(env[name], environments, "substring"):
             return "%s=%s" % (name, env[name])
     for name in NAMED_TARGET_ENV_VARS:
         if name in env and is_production(env[name], environments, "word"):
             return "%s=%s" % (name, env[name])
-    for value in option_values(command.typed_args, ENVIRONMENT_OPTIONS):
+    for value in environment_values(command.typed_args):
         if is_production(value, environments, "exact"):
             return "environment %s" % value
-    for value in option_values(command.typed_args, NAMED_TARGET_OPTIONS) + glued_host_values(command.typed_args):
+    targets = option_values(command.typed_args, NAMED_TARGET_OPTIONS) + glued_values(command.typed_args, "-h")
+    targets += [match for word in command.words for match in CONNINFO_TARGET.findall(word)]
+    for value in targets:
         if is_production(value, environments, "word"):
             return "target %s" % value
     for word in command.words:
@@ -206,7 +218,7 @@ class SimpleCommand:
     assignments), program, plain arguments, and every word including redirect
     targets such as a herestring."""
 
-    def __init__(self, segment, session_env):
+    def __init__(self, segment, session_env, stdin_text=None, kube_context=""):
         program_index = PARSER.find_program_index(segment)
         own = dict(word.split("=", 1) for word in segment[:program_index])
         self.environment = dict(session_env, **own)
@@ -218,6 +230,8 @@ class SimpleCommand:
         self.typed_args = self.args
         self.words = [word for word in segment if not word.startswith(OPERATOR_MARK)]
         self.has_heredoc = any(word in (OPERATOR_MARK + "<<", OPERATOR_MARK + "<<-") for word in rest)
+        self.stdin_text = stdin_text
+        self.kube_context = kube_context
 
     def launched(self):
         """Returns the command a launcher (npx, pnpm dlx, bunx, bundle exec,
@@ -230,9 +244,11 @@ class SimpleCommand:
         inner.program, inner.args = program.lower(), args
         return inner
 
-    def positionals(self, value_options=()):
+    def positionals(self, value_options=(), booleans=None):
         """Returns the arguments that are not options, skipping the value of
-        each option in value_options. Stops at a bare `--`."""
+        each option in value_options. With booleans given, any other --long
+        option written without = also takes the next word as its value, the
+        way most CLIs parse an unknown flag. Stops at a bare `--`."""
         result, skip = [], False
         for word in self.args:
             if skip:
@@ -240,10 +256,17 @@ class SimpleCommand:
             elif word == "--":
                 break
             elif word.startswith("-") and len(word) > 1:
-                skip = word in value_options
+                skip = word in value_options or (
+                    booleans is not None and word.startswith("--") and "=" not in word and word not in booleans)
             else:
                 result.append(word)
         return result
+
+    def positional_readings(self, value_options=(), booleans=()):
+        """Returns both readings of the positionals: unknown --flags as
+        booleans, and as taking a value. A rule that must be sure of the verb
+        checks both."""
+        return [self.positionals(value_options), self.positionals(value_options, booleans)]
 
 
 class Verdict:
@@ -259,12 +282,12 @@ class Verdict:
 
 
 def deny_reason(rule, what, command_text):
-    return ("%s BLOCKED this call (%s): %s. Agents cannot run this; if it is intended, a human "
-            "runs it by hand in a terminal: %s" % (HOOK_NAME, rule, what, redact(command_text)))
+    return redact("%s BLOCKED this call (%s): %s. Agents cannot run this; if it is intended, a human "
+                  "runs it by hand in a terminal: %s" % (HOOK_NAME, rule, what, command_text))
 
 
 def ask_reason(rule, what):
-    return "%s (%s): %s. Confirm the target with the user before running." % (HOOK_NAME, rule, what)
+    return redact("%s (%s): %s. Confirm the target with the user before running." % (HOOK_NAME, rule, what))
 
 
 SECRET_ASSIGNMENT = re.compile(r"\b([A-Za-z_]*(?:PASS|PASSWORD|TOKEN|SECRET|KEY)[A-Za-z_]*)=\S+", re.I)
@@ -273,11 +296,16 @@ SECRET_ASSIGNMENT = re.compile(r"\b([A-Za-z_]*(?:PASS|PASSWORD|TOKEN|SECRET|KEY)
 def redact(text):
     """Replaces with *** every secret a command line commonly carries: URL
     passwords, -u/--user credentials, Authorization, X-Auth-Key and other
-    *-Key or *-Token header values, and secret-named assignments."""
+    *-Key or *-Token header values, --token/--password/--secret/--auth style
+    option values, httpie's -a, mysql's glued -pSECRET, and secret-named
+    assignments."""
     text = re.sub(r"(://[^/\s:@]*:)[^@/\s]*@", r"\1***@", text)
     text = re.sub(r"(?i)(authorization:\s*(?:bearer|basic|token)?\s*)[^\s'\"]+", r"\1***", text)
     text = re.sub(r"(?i)([\w-]*-(?:key|token):\s*)[^\s'\"]+", r"\1***", text)
     text = re.sub(r"((?:^|\s)(?:-u|--user)(?:=|\s+)['\"]?)[^\s'\"]+", r"\1***", text)
+    text = re.sub(r"(?i)((?:^|\s)(?:--?(?:token|password|passwd|secret|api-key|oauth2-bearer|access-token|auth)"
+                  r"|-a)(?:=|\s+)['\"]?)[^\s'\"]+", r"\1***", text)
+    text = re.sub(r"((?:^|\s)-p)[^\s'\"]+", r"\1***", text)
     return SECRET_ASSIGNMENT.sub(r"\1=***", text)
 
 
@@ -298,6 +326,10 @@ GROUP_CLI_VALUE_OPTIONS = {"--project", "--account", "--configuration", "--verbo
                            "--impersonate-service-account", "--billing-project", "--flags-file",
                            "--filter", "--sort-by", "--limit", "--page-size", "--zone", "--region", "--context", "-t", "--access-token",
                            "-o", "--output", "--config", "-u", "--api-url"}
+# gcloud and doctl --flags that take no value; any other --flag written
+# without = may take the next word as its value (--tags list).
+GROUP_CLI_BOOLEANS = {"--quiet", "--async", "--force", "--yes", "--help", "--wait", "--no-header",
+                      "--all", "--interactive", "--dangerous", "--trace", "--verbose"}
 # Top-level gcloud groups whose names are also verbs: `gcloud run services list`.
 GCLOUD_VERB_NAMED_GROUPS = {"run", "deploy"}
 # doctl groups whose names are also verbs: `doctl compute snapshot list`.
@@ -352,7 +384,10 @@ def judge_cloud_cli(command):
     if command.program == "az":
         verb = az_verb(command)
         return None if verb and is_read_head(verb) else cloud_mutation(command, positionals)
-    return None if is_group_cli_read_command(command.program, positionals) else cloud_mutation(command, positionals)
+    readings = command.positional_readings(GROUP_CLI_VALUE_OPTIONS, GROUP_CLI_BOOLEANS)
+    if all(is_group_cli_read_command(command.program, reading) for reading in readings):
+        return None
+    return cloud_mutation(command, positionals)
 
 
 def az_verb(command):
@@ -400,7 +435,7 @@ def cloud_mutation(command, positionals):
 
 
 def judge_flarectl(command):
-    positionals = command.positionals()
+    positionals = command.positionals(("--account-id",))
     group, verb = (positionals + ["", ""])[:2]
     if group in ("dns", "d") and verb not in ("", "list", "l", "help", "h"):
         return ("deny", "B-3", "flarectl dns %s changes DNS records" % verb)
@@ -491,18 +526,23 @@ def wget_method(args):
 
 HTTPIE_VALUE_OPTIONS = {"-a", "--auth", "-A", "--auth-type", "--session", "--session-read-only",
                         "-o", "--output", "--verify", "--cert", "--cert-key", "--timeout", "-p",
-                        "--print", "--pretty", "-s", "--style", "--proxy", "--default-scheme"}
+                        "--print", "--pretty", "-s", "--style", "--proxy", "--default-scheme",
+                        "--raw", "--max-redirects", "--response-charset", "--response-mime", "--boundary"}
 
 
 def httpie_method(command):
     """Returns the method httpie or xh sends: an explicit METHOD before the URL,
-    else POST when a data item (a=b, a:=b, a@file) or --form is given, else GET."""
+    else POST when a data item (a=b, a:=b, a@file), --form or a --raw body is
+    given, else GET."""
     positionals = command.positionals(HTTPIE_VALUE_OPTIONS)
-    if len(positionals) >= 2 and re.match(r"^[A-Za-z]+$", positionals[0]):
-        return positionals[0].upper()
+    for index, word in enumerate(positionals[:-1]):
+        if re.match(r"^[A-Za-z]+$", word):
+            return word.upper()
     items = positionals[1:]
     has_data = any(re.search(r":=|(?<![=])=(?!=)|@", item) and "==" not in item for item in items)
-    return "POST" if has_data or {"-f", "--form", "--multipart"} & set(command.args) else "GET"
+    has_raw_body = any(word == "--raw" or word.startswith("--raw=") for word in command.args)
+    body_flags = {"-f", "--form", "--multipart"} & set(command.args)
+    return "POST" if has_data or has_raw_body or body_flags else "GET"
 
 
 def judge_http_client(command):
@@ -515,9 +555,12 @@ def judge_http_client(command):
         method = httpie_method(command)
     if method in READ_METHODS:
         return None
-    hosts = [word_host(word) for word in command.args if not word.startswith("-")]
-    hosts += [word_host(value) for value in option_values(command.args, ("--url",))]
-    target = next((host for host in hosts if is_provider_host(host)), None)
+    urls = [word for word in command.args if not word.startswith("-")]
+    urls += option_values(command.args, ("--url",))
+    target = next((word_host(url) for url in urls if is_provider_host(word_host(url))), None)
+    if target is None and program == "curl" and not {"-g", "--globoff"} & set(command.args):
+        # curl expands {a,b} and [1-3] in a URL, so a globbed host can be any host.
+        target = next((url for url in urls if "://" in url and re.search(r"[{\[]", word_host(url))), None)
     if target is None:
         return None
     return ("deny", "B-4", "%s %s to the provider API %s changes cloud or DNS state" % (program, method, target))
@@ -543,18 +586,23 @@ def judge_terraform(command):
     return None
 
 
-PULUMI_VALUE_OPTIONS = {"--cwd", "-C", "--stack", "-s", "--color", "--config-file", "--tracing", "--profiling"}
-PULUMI_DENIED = {"up", "update", "destroy", "down", "refresh", "cancel"}
+PULUMI_VALUE_OPTIONS = {"--cwd", "-C", "--stack", "-s", "--color", "--config-file", "--tracing", "--profiling",
+                        "-v", "--verbose"}
+PULUMI_BOOLEANS = {"--yes", "--skip-preview", "--diff", "--refresh", "--non-interactive", "--emoji",
+                   "--logtostderr", "--debug", "--json", "--show-secrets", "--expect-no-changes",
+                   "--suppress-outputs", "--force", "--help", "--disable-integrity-checking"}
+PULUMI_DENIED = {"up", "update", "destroy", "down", "dn", "refresh", "cancel", "import"}
+PULUMI_DENIED_PAIRS = {("stack", "rm"), ("stack", "remove"), ("stack", "import"), ("state", "delete"),
+                       ("state", "unprotect")}
 
 
 def judge_pulumi(command):
     if HELP_FLAGS & set(command.args):
         return None
-    positionals = command.positionals(PULUMI_VALUE_OPTIONS)
-    verb, sub = (positionals + ["", ""])[:2]
-    if (verb in PULUMI_DENIED or (verb == "stack" and sub in ("rm", "remove"))
-            or (verb == "state" and sub == "delete")):
-        return ("deny", "B-6", "pulumi %s changes real infrastructure or its state" % " ".join(positionals[:2]))
+    for positionals in command.positional_readings(PULUMI_VALUE_OPTIONS, PULUMI_BOOLEANS):
+        verb, sub = (positionals + ["", ""])[:2]
+        if verb in PULUMI_DENIED or (verb, sub) in PULUMI_DENIED_PAIRS:
+            return ("deny", "B-6", "pulumi %s changes real infrastructure or its state" % " ".join(positionals[:2]))
     return None
 
 
@@ -574,8 +622,11 @@ def judge_cluster_mutation(command, context_option, rule, environments):
     """B-7 context rule: a local context passes, a production one is denied,
     any other context, or none, asks."""
     contexts = option_values(command.args, (context_option,))
-    context = contexts[-1] if contexts else ""
+    context = contexts[-1] if contexts else command.kube_context
     action = "%s %s" % (command.program, " ".join(command.positionals(KUBECTL_VALUE_OPTIONS | HELM_VALUE_OPTIONS)[:2]))
+    for server in option_values(command.args, ("--server", "-s", "--kube-apiserver")):
+        if is_production(word_host(server), environments, "word"):
+            return ("deny", rule, "%s against the production API server %s" % (action, server))
     if context and LOCAL_CONTEXT.match(context):
         return None
     if context and is_production(context, environments, "word"):
@@ -606,9 +657,11 @@ def judge_helm(command, environments):
 def judge_fly(command, environments):
     positionals = command.positionals(("-a", "--app", "-c", "--config", "-r", "--region"))
     verb, sub = (positionals + ["", ""])[:2]
-    if verb == "destroy" or (verb in ("apps", "app", "volumes", "volume", "vol", "postgres", "pg")
-                             and sub == "destroy"):
-        return ("deny", "B-9", "%s %s destroys a Fly resource" % (command.program, " ".join(positionals[:2])))
+    if {"destroy", "remove", "rm"} & set(positionals[:3]):
+        return ("deny", "B-9", "%s %s destroys a Fly resource" % (command.program, " ".join(positionals[:3])))
+    for value in option_values(command.args, ("-a", "--app")):
+        if is_production(value, environments, "word"):
+            return ("deny", "B-10", "fly against the production app %s" % value)
     if verb == "deploy":
         for value in option_values(command.args, ("-a", "--app", "-c", "--config")):
             if is_production(os.path.basename(value), environments, "word"):
@@ -627,8 +680,7 @@ def judge_heroku(command, environments):
 
 
 def environment_is_production(command, environments):
-    return any(is_production(value, environments, "exact")
-               for value in option_values(command.args, ENVIRONMENT_OPTIONS))
+    return any(is_production(value, environments, "exact") for value in environment_values(command.args))
 
 
 def judge_railway(command, environments):
@@ -647,8 +699,10 @@ def judge_vercel(command, environments):
     if ((group == "dns" and verb in ("add", "rm", "remove", "import"))
             or (group in ("domains", "domain") and verb in ("rm", "remove", "move"))):
         return ("deny", "B-3", "vercel %s %s changes DNS records or domains" % (group, verb))
-    if positionals[:1] and positionals[0] in ("remove", "rm"):
-        return ("deny", "B-9", "vercel %s removes a Vercel deployment or project" % positionals[0])
+    if {"remove", "rm"} & set(positionals[:2]):
+        return ("deny", "B-9", "vercel %s removes a Vercel deployment or project" % " ".join(positionals[:2]))
+    if group in ("promote", "rollback"):
+        return ("deny", "B-10", "vercel %s changes the production deployment" % group)
     targets = option_values(command.args, ("--target",))
     prod_flag = any(word == "--prod" or (word.startswith("--prod=") and word[7:].lower() not in ("false", "0"))
                     for word in command.args)
@@ -658,8 +712,15 @@ def judge_vercel(command, environments):
 
 
 def judge_netlify(command, environments):
-    if command.positionals()[:1] == ["sites:delete"]:
+    positionals = command.positionals(("--dir", "-d", "--site", "-s", "--auth", "--alias", "--message", "-m",
+                                       "--functions", "-f", "--data"))
+    verb, sub = (positionals + ["", ""])[:2]
+    if verb == "sites:delete":
         return ("deny", "B-9", "netlify sites:delete removes a Netlify site")
+    if verb == "deploy" and {"--prod", "-p", "--prod-if-unlocked"} & set(command.args):
+        return ("deny", "B-10", "netlify production deploy")
+    if verb == "api" and sub and not re.match(r"^(get|list)", sub):
+        return ("deny", "B-9", "netlify api %s changes Netlify resources" % sub)
     return None
 
 
@@ -679,8 +740,9 @@ def judge_wrangler(command, environments):
 
 LAUNCHER_SUBCOMMANDS = {"bundle": ("exec",), "poetry": ("run",), "uv": ("run",), "pipenv": ("run",),
                         "railway": ("run",), "npm": ("exec", "x"), "pnpm": ("exec", "dlx"),
-                        "yarn": ("exec", "dlx"), "bun": ("x", "run")}
-LAUNCHER_VALUE_OPTIONS = {"-p", "--package", "-e", "--environment", "-s", "--service", "-c"}
+                        "yarn": ("exec", "dlx"), "bun": ("x", "run"), "heroku": ("run",)}
+LAUNCHER_VALUE_OPTIONS = {"-p", "--package", "-e", "--environment", "-s", "--service", "-c", "-a", "--app",
+                          "-r", "--remote", "--call"}
 PYTHONS = re.compile(r"^python(\d+(\.\d+)?)?$")
 
 
@@ -733,11 +795,12 @@ def classify_database_command(program, args):
         if (first, second) == ("migrate", "deploy"):
             return "migration"
     elif program in ("rails", "rake"):
-        if flags & {"db:drop", "db:reset", "db:purge", "db:schema:load"}:
+        if flags & {"db:drop", "db:reset", "db:purge", "db:schema:load", "db:migrate:reset", "db:truncate_all",
+                    "db:seed:replant", "db:setup"}:
             return "data-loss"
         if "db:migrate" in flags:
             return "migration"
-    elif program in ("manage.py", "django-admin", "django"):
+    elif program in DJANGO_PROGRAMS:
         if first in ("flush", "reset_db"):
             return "data-loss"
         if first == "migrate":
@@ -753,11 +816,31 @@ def classify_database_command(program, args):
             return "data-loss"
         if first == "migrate:latest":
             return "migration"
-    elif program in ("sequelize", "sequelize-cli") and first == "db:migrate:undo:all":
+    elif program in ("sequelize", "sequelize-cli"):
+        if first in ("db:migrate:undo:all", "db:drop"):
+            return "data-loss"
+        if first == "db:migrate":
+            return "migration"
+    elif program.startswith("typeorm"):
+        if first == "schema:drop":
+            return "data-loss"
+        if first == "migration:run":
+            return "migration"
+    elif program == "drizzle-kit":
+        if first == "drop":
+            return "data-loss"
+        if first == "migrate":
+            return "migration"
+    elif program == "mix":
+        if first == "ecto.drop":
+            return "data-loss"
+        if first == "ecto.migrate":
+            return "migration"
+    elif program == "dbmate" and "drop" in flags:
         return "data-loss"
-    elif program.startswith("typeorm") and first == "schema:drop":
+    elif program == "flyway" and "clean" in flags:
         return "data-loss"
-    elif program == "drizzle-kit" and first == "drop":
+    elif program == "migrate" and "down" in flags:
         return "data-loss"
     return None
 
@@ -780,7 +863,7 @@ def judge_database_command(command, environments):
 
 TEXT_PROGRAMS = {"echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "git", "gh", "cat", "sed",
                  "awk", "jq", "man", "less", "head", "tail"}
-DESTRUCTIVE_SQL = re.compile(r"DROP\s+(DATABASE|TABLE)|TRUNCATE(\s|$)|DELETE\s+FROM")
+DESTRUCTIVE_SQL = re.compile(r"DROP\s+(DATABASE|SCHEMA|TABLE|OWNED|COLUMN)|TRUNCATE(\s|$)|DELETE\s+FROM")
 DESTRUCTIVE_TOOL = re.compile(r"pg_restore|migrate:down", re.I)
 UNBOUNDED_UPDATE = re.compile(r"\bUPDATE\s+(ONLY\s+)?\S+(\s+(AS\s+)?\w+)?\s+SET\b")
 UNBOUNDED_DELETE = re.compile(r"\bDELETE\s+FROM\b")
@@ -808,12 +891,20 @@ def unbounded_statement(texts, statement):
     return False
 
 
+def is_destructive_database_tool(command):
+    """dropdb, and mysqladmin drop, delete a whole database."""
+    return command.program == "dropdb" or (command.program == "mysqladmin" and "drop" in command.positionals(
+        ("-h", "--host", "-u", "--user", "-P", "--port", "-S", "--socket")))
+
+
 def judge_sql(command, raw_text, environments):
     if command.program in TEXT_PROGRAMS or not command.program:
         return None
     texts = command.words + ([raw_text] if command.has_heredoc else [])
+    texts += [command.stdin_text] if command.stdin_text else []
     joined = " ".join(texts)
-    destructive = bool(DESTRUCTIVE_SQL.search(joined.upper()) or DESTRUCTIVE_TOOL.search(joined))
+    destructive = bool(DESTRUCTIVE_SQL.search(joined.upper()) or DESTRUCTIVE_TOOL.search(joined)
+                       or is_destructive_database_tool(command))
     unbounded_update = unbounded_statement(texts, UNBOUNDED_UPDATE)
     unbounded_delete = unbounded_statement(texts, UNBOUNDED_DELETE)
     if not (destructive or unbounded_update or unbounded_delete):
@@ -898,19 +989,76 @@ def substitution_program_segments(text):
     return found
 
 
+VARIABLE_REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def expand_variables(segment, session_env):
+    """Expands $NAME and ${NAME} from assignments made earlier in the same
+    command (H=api.cloudflare.com; curl https://$H/...); other references
+    are left as written."""
+    def value_of(match):
+        name = match.group(1) or match.group(2)
+        return session_env.get(name, match.group(0))
+    return [word if word.startswith(OPERATOR_MARK) else VARIABLE_REFERENCE.sub(value_of, word)
+            for word in segment]
+
+
+def split_segments_with_input(text):
+    """Returns (segment, piped_text) pairs, where piped_text is what an echo or
+    printf before a pipe feeds the segment (echo "DROP TABLE x" | psql), as
+    the parser computes it for shells; None otherwise."""
+    piped_by_segment = {}
+    original = PARSER.expand_segment
+
+    def recording_expand(segment, piped_text):
+        piped_by_segment[id(segment)] = piped_text
+        return original(segment, piped_text)
+
+    PARSER.expand_segment = recording_expand
+    try:
+        segments = PARSER.split_segments(text)
+    finally:
+        PARSER.expand_segment = original
+    return [(segment, piped_by_segment.get(id(segment))) for segment in segments]
+
+
+def launcher_command_string(command):
+    """Returns the command string npx -c or npm exec --call runs, or None."""
+    runs_package = command.program in ("npx", "pnpx") or (
+        command.program in ("npm", "pnpm") and command.args[:1] and command.args[0] in ("exec", "x"))
+    if not runs_package:
+        return None
+    strings = option_values(command.args, ("-c", "--call"))
+    return strings[-1] if strings else None
+
+
+def switched_kube_context(command):
+    """Returns X for `kubectl config use-context X`, else None."""
+    positionals = command.positionals(KUBECTL_VALUE_OPTIONS)
+    if command.program == "kubectl" and positionals[:2] == ["config", "use-context"] and len(positionals) > 2:
+        return positionals[2]
+    return None
+
+
 def decide(text, cwd):
     """Returns a Verdict for the whole command text."""
     verdict = Verdict()
     environments = Environments(cwd)
-    session_env = {}
-    for segment in PARSER.split_segments(text):
-        command = SimpleCommand(segment, session_env)
+    session_env, kube_context = {}, ""
+    queue = split_segments_with_input(text)
+    while queue:
+        segment, stdin_text = queue.pop(0)
+        command = SimpleCommand(expand_variables(segment, session_env), session_env, stdin_text, kube_context)
         if not command.program:
             session_env.update(command.assignments)
             continue
         if command.program == "export":
             session_env.update(dict(w.split("=", 1) for w in command.args if PARSER.is_assignment(w)))
             continue
+        inner_text = launcher_command_string(command)
+        if inner_text:
+            queue = split_segments_with_input(inner_text) + queue
+        kube_context = switched_kube_context(command) or kube_context
         result = judge_command(command, text, environments)
         if result:
             decision, rule, what = result
@@ -918,7 +1066,7 @@ def decide(text, cwd):
             verdict.add(decision, reason)
     for word in substitution_program_segments(text):
         verdict.add("ask", ask_reason("B-18", "the command word %s is a command substitution, so the "
-                                              "program that runs is unknown until it runs" % redact(word)))
+                                              "program that runs is unknown until it runs" % word))
     return verdict
 
 
