@@ -10,7 +10,8 @@ The practice is fixed: a failing test that demonstrates the missing behavior exi
 
 ## Before you start
 
-- **Risk:** write `**Risk:** standard|high` in the plan or PR (the list is in CLAUDE.md).
+- **Risk:** write `**Risk:** standard|high` in the plan or PR (the list is in CLAUDE.md). Locks, queues, retries, failover, circuit breakers, and background jobs are standard: they keep an integration test against the real dependency, and get no lock, threat model, or security review.
+- **Scope:** fixed when the PR starts. A new idea goes to a follow-up PR.
 - **Acceptance criteria:** one observable behavior per line, numbered. Each one becomes at least one test.
 - **Skip tests-first only for:** an exploratory spike, non-behavioral config, scaffolding a behavior needs before it can run, or a change that cannot be tested first. Write the one-line reason in the PR. Bug fixes never skip: the reproduction is the first test.
 
@@ -62,9 +63,9 @@ One test-writing pass per behavior. Do not ask for more tests than the criteria 
 ### 3. Review, fix, verify, stop
 
 1. Route the review: `bash ~/.claude/enforce/route.sh review --risk <risk> --author <implementer>` always prints the other provider. Add `--security` when the PR touches a security control. When it prints `codex` and Codex is available, run Codex read-only with the filled prompt (`codex exec -s read-only -C <repo root> --skip-git-repo-check -o <scratch>/codex-review-final.md "$(cat <scratch>/review-prompt.md)" </dev/null > <scratch>/codex-review.log 2>&1`); otherwise dispatch one `pr-reviewer` in a fresh context with the same prompt and name the fallback in the PR. Give the reviewer the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
-2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Fix a LOW if it takes under five minutes, otherwise note it.
+2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Never fix a LOW in the PR: LOW findings are waived and, when there are any, go into one follow-up ticket for the PR, linked from the PR body.
 3. Rerun only the checks the fixes affect.
-4. A second review happens only under the CLAUDE.md conditions, and covers only the fix diff.
+4. A second review happens only for a HIGH, or a MEDIUM fixed in code, and covers only the fix diff. There is no third.
 5. Write `## Verification` and `## Review` in the PR body. Stop.
 
 A fix never restarts this loop. It does not mean new criteria, a new test author, a new full review, or a new ticket. A finding that invalidates the design goes to the owner.
@@ -79,8 +80,9 @@ Same as standard, plus:
    - A test author's own mistake before green is fixed with `tdd.sh amend <file>`, run once to open the window and once to close it.
    - A lock left by a dead session closes with `tdd.sh abandon`, never by deleting the file.
 3. **Integration:** verify against the real dependency where the behavior depends on it, for example real PostgreSQL for transactions and constraints.
-4. **Security review:** after the general review, dispatch `security-reviewer` with `model: "fable"` (the strongest model) and `prompts/security-review-prompt.md`. The round rules in CLAUDE.md apply: controls are frozen in round one, rounds 2 and 3 are scoped to fixes, and the review stops after three.
-5. Stop.
+4. **Security review:** after the general review, dispatch `security-reviewer` with `model: "fable"` (the strongest model) and `prompts/security-review-prompt.md`. Controls are frozen in round one. Round 2 runs only for a HIGH, or a MEDIUM fixed in code, and covers only the fixes. There is no round 3. LOW findings join the PR's follow-up ticket.
+5. **Time box:** about 90 minutes from the RED commit. At the limit, finish the current step, write in the PR what is left, stop, and hand it to the owner.
+6. Stop.
 
 ## Common mistakes
 
@@ -92,3 +94,5 @@ Same as standard, plus:
 | Re-running the whole loop after a review finding | Fix in an ordinary commit and rerun only the affected checks |
 | Adding tests because the process seems to want more | One test per criterion and per edge the criterion names |
 | Using the lock on standard work | The lock is for high risk only |
+| Classifying a lock, queue, retry, or failover change as high risk | Standard risk, plus an integration test against the real dependency |
+| Fixing a LOW finding in the PR | Waived; add it to the PR's one follow-up ticket |

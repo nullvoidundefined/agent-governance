@@ -40,10 +40,14 @@ So the recovery kept the practices and changed how they are enforced:
 
 - Standard work went back to test-first, which IAN-568 had dropped. A different model writes the failing test, and RED is observed and committed. There is no lock.
 - One fresh-context review per PR, with explicit stopping rules.
-- A security review capped at three rounds, with a frozen list of controls and a severity ceiling for inputs only the owner controls.
+- A security review capped at three rounds, with a frozen list of controls and a severity ceiling for inputs only the owner controls. Cut to two rounds on 2026-10-05 (below).
 - Evidence before "done": the PR records its verification, and CI is the backstop.
 - The lock, role boundaries, and threat models remain, for high-risk work only.
 - Manifests, integrity hashes, profiles, the verification gate, ticket and provenance bookkeeping, and the rule IDs were retired.
+
+## The security review leash (2026-10-05)
+
+A doppelscript quality program ran high-risk slices for 3 to 5 hours each. The security review paid for itself once: on the billing slice it found a free rewrite usable as an unlimited general generator. On the LLM failover slice the general review found the HIGH and five MEDIUMs, and the security review found only LOWs. Background jobs and retries were high risk only because the list named "locks, queues, or retries". The owner narrowed high risk to security controls (auth, secrets and PII, payments and quota, SQL from input, trust-boundary input, destructive data operations, CORS and headers), moved reliability work to standard risk with an integration test against the real dependency, cut both reviews to one round plus one more for a HIGH or a MEDIUM fixed in code, waived LOW findings into one follow-up ticket per PR, capped owned-dependency-outage findings at LOW, froze PR scope, and time-boxed high-risk tasks at about 90 minutes from RED.
 
 ## The lesson
 
