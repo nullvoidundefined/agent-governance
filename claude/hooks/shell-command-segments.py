@@ -511,28 +511,54 @@ def is_function_definition(tokens, index, current):
             and index + 1 < len(tokens) and tokens[index + 1] == ("separator", ")"))
 
 
-def split_segments(text):
-    """Returns the command's segments as normalized lists of printable words."""
+def no_scope_change(_event):
+    """Default on_scope callback of split_segments: scopes are not reported."""
+
+
+def split_segments(text, on_scope=no_scope_change):
+    """Returns the command's segments as normalized lists of printable words.
+    on_scope("enter") and on_scope("leave") are called, in order with the
+    expand_segment calls, where a subshell `( ... )`, a command substitution
+    or a function body `name() { ... }` opens and closes, so a caller can
+    keep the variables assigned inside one from reaching the commands after
+    it. A brace group that is not a function body runs in the current shell
+    and is not a scope."""
     segments, current, previous = [], [], []
     separator_before = None
+    braces, function_pending, skip_close = [], False, False
     tokens = Tokenizer(text).run() + [("separator", None)]
     for index, (kind, value) in enumerate(tokens):
         if is_function_definition(tokens, index, current):
             segments.append(["function", current[0]])
-            current = []
-        elif kind == "separator":
+            current, function_pending, skip_close = [], True, True
+            continue
+        if kind == "separator":
             if current:
                 is_piped = separator_before in ("|", "|&")
                 piped = plain_words(previous[1:]) if is_piped else []
                 piped_text = printed_text(normalize_segment(previous, [])) if is_piped else None
                 segments.extend(expand_segment(normalize_segment(current, piped), piped_text, is_piped))
                 previous = current
+            if value == ")" and skip_close:
+                skip_close = False
+            elif value in ("(", ")"):
+                function_pending = False
+                on_scope("enter" if value == "(" else "leave")
             current, separator_before = [], value
         elif kind == "substitution":
-            segments.extend(split_segments(value))
+            on_scope("enter")
+            segments.extend(split_segments(value, on_scope))
+            on_scope("leave")
         elif kind == "redirect":
             current.append(OPERATOR_MARK + value)
         else:
+            if not current and value == "{":
+                braces.append(function_pending)
+                if function_pending:
+                    on_scope("enter")
+            elif not current and value == "}" and braces and braces.pop():
+                on_scope("leave")
+            function_pending = False
             current.append(value.replace("\n", " "))
     return segments
 

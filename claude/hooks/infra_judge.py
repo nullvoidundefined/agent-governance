@@ -24,6 +24,10 @@ way destructive-ops-guard.sh sees them, and a word that is only an argument
   B-18      a command word that is a command substitution, or a variable whose
             value is unknown or splits into words, asks; so does a program
             this guard does not unwrap whose arguments run an in-scope CLI
+  B-33..B-36 a target set by a prefix, export, declare -x, typeset -x or a
+            plain assignment reaches the later commands of the same string and
+            the strings of bash -c, eval and npx -c; unset ends it; a
+            subshell, substitution or function body keeps its own copy
 
 Stateless: reads the event and the repo's .enforce.json, writes nothing. Any
 exception exits non-zero, which the wrapper turns into a deny."""
@@ -183,6 +187,26 @@ def option_values(args, names):
     return values
 
 
+def is_target_variable(name):
+    """True for a variable that names a deploy or database target wherever it
+    is set (B-33, B-34): DATABASE_URL and *_DATABASE_URL, *_ENV, KUBECONFIG
+    and CLOUDSDK_ACTIVE_CONFIG_NAME. PGHOST and the other host variables are
+    NAMED_TARGET_ENV_VARS."""
+    return (name == "DATABASE_URL" or name.endswith("_DATABASE_URL") or name.endswith("_ENV")
+            or name in ("KUBECONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"))
+
+
+def target_value_is_production(value, environments):
+    """True when a target variable's value marks production: a URL whose host
+    does, a conninfo or URI query host that does, or, for a value that is not
+    a URL, the value itself as a word (production, prod-config)."""
+    hosts = url_hosts(value) + CONNINFO_TARGET.findall(value)
+    hosts += [host for match in URI_QUERY_TARGET.findall(value) for host in match.split(",")]
+    if hosts or "://" in value:
+        return any(is_production(host, environments, "word") for host in hosts)
+    return is_production(value, environments, "word")
+
+
 def production_signal(command, environments):
     """Returns a short description of what marks the command production-targeted
     (B-11), or None. Options are read from every argument of the command as
@@ -200,6 +224,9 @@ def production_signal(command, environments):
     for name in NAMED_TARGET_ENV_VARS:
         if name in env and is_production(env[name], environments, "word"):
             return "%s=%s" % (name, env[name])
+    for name, value in env.items():
+        if is_target_variable(name) and target_value_is_production(value, environments):
+            return "%s=%s" % (name, value)
     for value in environment_values(command.typed_args):
         if is_production(value, environments, "exact"):
             return "environment %s" % value
@@ -1200,24 +1227,29 @@ def judge_unknown_wrapper(command):
     return None
 
 
-def split_segments_with_input(text):
-    """Returns (segment, piped_text, is_piped) triples, where piped_text is
-    what an echo or printf before a pipe feeds the segment (echo "DROP TABLE
-    x" | psql), as the parser computes it for shells, else None, and is_piped
-    tells whether any command pipes into the segment."""
-    input_by_segment = {}
+def split_scoped_segments(text):
+    """Returns the top-level items of one command string, in order: "enter"
+    and "leave" where a subshell, command substitution or function body opens
+    and closes, and (segment, piped_text, is_piped, inner_text) tuples.
+    piped_text is what an echo or printf before a pipe feeds the segment (echo
+    "DROP TABLE x" | psql), as the parser computes it for shells, else None;
+    is_piped tells whether any command pipes into the segment; inner_text is
+    the command string the segment hands to a shell or eval, else None. The
+    inner string is not split here, so the caller can judge it with the
+    environment the shell inherits."""
+    items = []
     original = PARSER.expand_segment
 
     def recording_expand(segment, piped_text, is_piped=False):
-        input_by_segment[id(segment)] = (piped_text, is_piped)
-        return original(segment, piped_text, is_piped)
+        items.append((segment, piped_text, is_piped, PARSER.find_command_string(segment, piped_text)))
+        return [segment]
 
     PARSER.expand_segment = recording_expand
     try:
-        segments = PARSER.split_segments(text)
+        PARSER.split_segments(text, items.append)
     finally:
         PARSER.expand_segment = original
-    return [(segment,) + input_by_segment.get(id(segment), (None, False)) for segment in segments]
+    return items
 
 
 def launcher_command_string(command):
@@ -1245,42 +1277,85 @@ def switched_kube_context(command):
     return None
 
 
-def decide(text, cwd):
-    """Returns a Verdict for the whole command text."""
-    verdict = Verdict()
-    environments = Environments(cwd)
-    session_env, kube_context, unknown_names = {}, "", set()
-    queue = split_segments_with_input(text)
-    while queue:
-        segment, stdin_text, is_piped = queue.pop(0)
+class Judgement:
+    """What one decide() call shares across the command strings it judges:
+    the verdict, the .enforce.json environments, the full text for reasons,
+    the kubectl context (a context switch persists outside any shell), and
+    the variables set from values this guard cannot see."""
+
+    def __init__(self, text, cwd):
+        self.text = text
+        self.verdict = Verdict()
+        self.environments = Environments(cwd)
+        self.kube_context = ""
+        self.unknown_names = set()
+
+
+def unset_names(command):
+    """Returns the variables `unset NAME...` removes; unset -f removes functions."""
+    if command.program != "unset" or "-f" in command.args:
+        return []
+    return [word for word in command.args if not word.startswith("-")]
+
+
+def judge_command_string(text, inherited_env, judgement):
+    """Judges every simple command of one command string. inherited_env is
+    the environment the string starts with: empty for the event's command,
+    the shell's environment for a `bash -c` or eval string. Assignments,
+    export, declare -x, typeset -x and unset apply to the commands after them
+    in the same string (B-34); a subshell, command substitution or function
+    body keeps its own copy (B-36); a shell string inherits the environment
+    of the command that runs it, its prefix assignments included (B-33)."""
+    scopes = [dict(inherited_env)]
+    for item in split_scoped_segments(text):
+        if item == "enter":
+            scopes.append(dict(scopes[-1]))
+            continue
+        if item == "leave":
+            if len(scopes) > 1:
+                scopes.pop()
+            continue
+        segment, stdin_text, is_piped, shell_text = item
+        session_env = scopes[-1]
         expanded = expand_variables(segment, session_env)
         written_program = program_word(segment)
         if VARIABLE_PROGRAM.search(written_program):
             # The value may itself be a wrapper (c=sudo; $c gcloud ...).
             expanded = PARSER.normalize_segment(expanded, [])
             if re.search(r"[\s$]", program_word(expanded)):
-                verdict.add("ask", ask_reason("B-18", "the command word %s comes from a variable, so the program "
-                                                      "that runs is unknown until it runs" % written_program))
+                judgement.verdict.add("ask", ask_reason("B-18", "the command word %s comes from a variable, so "
+                                                                "the program that runs is unknown until it runs"
+                                                        % written_program))
                 continue
-        command = SimpleCommand(expanded, session_env, stdin_text, kube_context, is_piped, unknown_names)
+        command = SimpleCommand(expanded, session_env, stdin_text, judgement.kube_context, is_piped,
+                                judgement.unknown_names)
         if not command.program or command.program in DECLARATION_PROGRAMS:
             assignments = dict(command.assignments) if not command.program else dict(
                 w.split("=", 1) for w in command.args if PARSER.is_assignment(w))
             session_env.update(assignments)
-            unknown_names.difference_update(assignments)
+            judgement.unknown_names.difference_update(assignments)
             continue
+        for name in unset_names(command):
+            session_env.pop(name, None)
         for name in names_set_at_run_time(command):
             session_env.pop(name, None)
-            unknown_names.add(name)
-        inner_text = launcher_command_string(command)
-        if inner_text:
-            queue = split_segments_with_input(inner_text) + queue
-        kube_context = switched_kube_context(command) or kube_context
-        result = judge_command(command, text, environments)
+            judgement.unknown_names.add(name)
+        judgement.kube_context = switched_kube_context(command) or judgement.kube_context
+        result = judge_command(command, judgement.text, judgement.environments)
         if result:
             decision, rule, what = result
-            reason = deny_reason(rule, what, text) if decision == "deny" else ask_reason(rule, what)
-            verdict.add(decision, reason)
+            reason = deny_reason(rule, what, judgement.text) if decision == "deny" else ask_reason(rule, what)
+            judgement.verdict.add(decision, reason)
+        for inner_text in (shell_text, launcher_command_string(command)):
+            if inner_text:
+                judge_command_string(inner_text, command.environment, judgement)
+
+
+def decide(text, cwd):
+    """Returns a Verdict for the whole command text."""
+    judgement = Judgement(text, cwd)
+    judge_command_string(text, {}, judgement)
+    verdict = judgement.verdict
     for word in substitution_program_segments(text):
         verdict.add("ask", ask_reason("B-18", "the command word %s is a command substitution, so the "
                                               "program that runs is unknown until it runs" % word))
