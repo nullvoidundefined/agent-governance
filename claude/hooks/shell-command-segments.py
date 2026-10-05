@@ -19,9 +19,10 @@ dropped along with their own options, and the program name is reduced to its
 basename, with any capitalization of git printed as `git` (macOS resolves
 commands case-insensitively). The words piped into xargs become arguments of
 the program it runs. The command string given to `sh -c` (any shell) or to
-`eval` is parsed as more segments. A function definition `name() {` is
-printed as the segment `function name`, the form `function name {` already
-has. Text bash would reject partway (an unclosed quote on a later line) is
+`eval` is parsed as more segments, and so is the string `flock FILE -c` runs
+and the strings fish runs from -C, --command and --init-command. A function
+definition `name() {` is printed as the segment `function name`, the form
+`function name {` already has. Text bash would reject partway (an unclosed quote on a later line) is
 parsed up to that point, because bash runs the complete lines before it. Any
 other failure exits non-zero, which the guard treats as a deny."""
 import os
@@ -50,6 +51,8 @@ WRAPPER_VALUE_OPTIONS = {
     "doas": {"-u", "-C"},
     "flock": {"-w", "-E", "--timeout", "--conflict-exit-code"},
 }
+FLOCK_COMMAND_OPTIONS = {"-c", "--command"}
+FISH_STRING_OPTIONS = {"-C", "--command", "--init-command"}
 WRAPPER_POSITIONALS = {"timeout": 1, "chrt": 1, "flock": 1}
 SHELL_VALUE_OPTIONS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 STDIN_PRINTERS = {"echo", "printf"}
@@ -369,6 +372,9 @@ def normalize_segment(words, piped_words):
         elif program_name(word) in WRAPPER_VALUE_OPTIONS:
             runs_xargs = runs_xargs or program_name(word) == "xargs"
             index = skip_wrapper_options(words, index + 1, program_name(word))
+            if program_name(word) == "flock" and index < len(words) and words[index] in FLOCK_COMMAND_OPTIONS:
+                # flock FILE -c STRING runs STRING with sh -c.
+                words = words[:index] + ["sh", "-c"] + words[index + 1:]
         else:
             break
     command = words[index:]
@@ -379,16 +385,31 @@ def normalize_segment(words, piped_words):
     return assignments + command + redirects
 
 
-def classify_shell_input(arguments):
+def fish_strings(arguments):
+    """Returns the command strings fish runs from -C, --command and
+    --init-command, whether given as the next word or after =."""
+    strings = []
+    for index, word in enumerate(arguments):
+        name, equals, value = word.partition("=")
+        if equals and name in FISH_STRING_OPTIONS and name.startswith("--"):
+            strings.append(value)
+        elif word in FISH_STRING_OPTIONS and index + 1 < len(arguments):
+            strings.append(arguments[index + 1])
+    return strings
+
+
+def classify_shell_input(arguments, shell=""):
     """Returns ("string", text) when a shell runs a -c string, ("script",
     None) when it runs a file, or ("stdin", None) when it reads commands from
-    standard input. Options that take a value (-o pipefail, --rcfile) skip it."""
+    standard input. Options that take a value (-o pipefail, --rcfile, and
+    fish's -C) skip it."""
     reads_string, skips_next = False, False
+    value_options = SHELL_VALUE_OPTIONS | (FISH_STRING_OPTIONS if shell == "fish" else set())
     for word in arguments:
         if skips_next or word.startswith(OPERATOR_MARK):
             skips_next = word.startswith(OPERATOR_MARK)
             continue
-        if word in SHELL_VALUE_OPTIONS:
+        if word in value_options:
             skips_next = True
         elif word.startswith("--"):
             continue
@@ -416,13 +437,16 @@ def find_command_string(words, piped_text):
         return " ".join(arguments)
     if words[program_index] not in SHELLS:
         return None
-    mode, text = classify_shell_input(arguments)
-    if mode != "stdin":
-        return text
-    herestring = OPERATOR_MARK + "<<<"
-    if herestring in arguments and arguments.index(herestring) + 1 < len(arguments):
-        return arguments[arguments.index(herestring) + 1]
-    return piped_text
+    extra = fish_strings(arguments) if words[program_index] == "fish" else []
+    mode, text = classify_shell_input(arguments, words[program_index])
+    if mode == "stdin":
+        herestring = OPERATOR_MARK + "<<<"
+        if herestring in arguments and arguments.index(herestring) + 1 < len(arguments):
+            text = arguments[arguments.index(herestring) + 1]
+        else:
+            text = piped_text
+    strings = extra + ([text] if text else [])
+    return "\n".join(strings) if strings else None
 
 
 def printed_text(words):
@@ -431,13 +455,45 @@ def printed_text(words):
     program_index = find_program_index(words)
     if program_index >= len(words) or words[program_index] not in STDIN_PRINTERS:
         return None
-    text = " ".join(plain_words(words[program_index + 1:]))
-    return text.replace("\\n", "\n") if words[program_index] == "printf" else text
+    arguments = plain_words(words[program_index + 1:])
+    if words[program_index] == "printf":
+        return format_printf(arguments).replace("\\n", "\n")
+    return " ".join(arguments)
 
 
-def expand_segment(segment, piped_text):
+PRINTF_CONVERSION = re.compile(r"%[-+ #0]*[0-9*]*(?:\.[0-9*]*)?([a-zA-Z%])")
+
+
+def format_printf(arguments):
+    """Returns what printf prints: each conversion in the format takes the next
+    argument, and the format repeats while arguments remain, as in bash. A
+    format with no conversion prints the format and ignores the rest; -v is
+    skipped with its name."""
+    if arguments[:1] == ["-v"]:
+        arguments = arguments[2:]
+    if arguments[:1] == ["--"]:
+        arguments = arguments[1:]
+    if not arguments:
+        return ""
+    form, values = arguments[0], list(arguments[1:])
+    conversions = [m for m in PRINTF_CONVERSION.finditer(form) if m.group(1) != "%"]
+    if not conversions:
+        return form.replace("%%", "%")
+    output = []
+    while True:
+        def substitute(match):
+            if match.group(1) == "%":
+                return "%"
+            return values.pop(0) if values else ""
+        output.append(PRINTF_CONVERSION.sub(substitute, form))
+        if not values:
+            return "".join(output)
+
+
+def expand_segment(segment, piped_text, is_piped=False):
     """Returns the segment, followed by the segments of any command text it
-    hands to a shell or to eval."""
+    hands to a shell or to eval. is_piped tells a caller that records the
+    segments whether a pipe feeds this one; the expansion does not use it."""
     command_string = find_command_string(segment, piped_text)
     return [segment] + (split_segments(command_string) if command_string else [])
 
@@ -469,7 +525,7 @@ def split_segments(text):
                 is_piped = separator_before in ("|", "|&")
                 piped = plain_words(previous[1:]) if is_piped else []
                 piped_text = printed_text(normalize_segment(previous, [])) if is_piped else None
-                segments.extend(expand_segment(normalize_segment(current, piped), piped_text))
+                segments.extend(expand_segment(normalize_segment(current, piped), piped_text, is_piped))
                 previous = current
             current, separator_before = [], value
         elif kind == "substitution":

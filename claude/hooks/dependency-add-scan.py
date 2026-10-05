@@ -3,7 +3,10 @@
 on stdin and the manifest path as argv[1], and prints the dependency names the
 write would add, space-separated, or nothing. Parsing rules per manifest are in
 the hook's header. Any parse failure exits 0 with no output (fail open)."""
-import json, os, re, sys
+import json
+import os
+import re
+import sys
 
 path = sys.argv[1]
 payload = json.load(sys.stdin)

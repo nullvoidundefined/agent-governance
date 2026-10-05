@@ -44,7 +44,17 @@ if [ -z "$cmd" ]; then
     esac
 fi
 
-upper="$(printf '%s' "$cmd" | tr '[:lower:]' '[:upper:]')"
+# The statement text, read three ways on one line: as written, with /* */
+# comments removed, and with -- comments removed as well, each with all
+# whitespace (newlines included) collapsed to one space. A comment cannot then
+# split a keyword (DROP/**/TABLE), and a quoted '--' or an option such as
+# --host cannot hide the rest, because the first readings keep it.
+upper="$(printf '%s' "$cmd" | awk 'BEGIN { RS = "\001" } {
+    blocks = $0; gsub(/\/\*([^*]|\*+[^*\/])*\*+\//, " ", blocks)
+    lines = blocks; gsub(/--[^\n]*/, " ", lines)
+    out = $0 " ; " blocks " ; " lines; gsub(/[[:space:]]+/, " ", out)
+    print out
+}' | tr '[:lower:]' '[:upper:]')"
 
 emit() {
     # $1 = permissionDecision (deny|ask), $2 = reason
@@ -68,7 +78,22 @@ destructive=0
 # (pg_restore, migrate:down, dropdb, mysqladmin drop).
 DESTRUCTIVE_SQL_VERBS='DROP[[:space:]]+(DATABASE|SCHEMA|TABLE|OWNED|COLUMN)|TRUNCATE([[:space:]]|$)'
 DESTRUCTIVE_TOOLS='pg_restore|migrate:down|(^|[^A-Za-z0-9_-])dropdb([^A-Za-z0-9_-]|$)|mysqladmin[[:space:]].*[[:space:]]drop([[:space:]]|$)'
-if grep -Eq "$DESTRUCTIVE_SQL_VERBS|DELETE[[:space:]]+FROM" <<< "$upper" \
+
+# True when an ALTER TABLE drops a column without the COLUMN keyword
+# (ALTER TABLE t DROP email). Dropping a constraint, index, key, default or
+# NOT NULL loses no data.
+alter_drops_column() {
+    grep -Eo 'ALTER[[:space:]]+TABLE[^;]*' <<< "$upper" \
+        | grep -Eo '(^|[^A-Z0-9_])DROP[[:space:]]+[^[:space:];,(]+' \
+        | grep -Eqv 'DROP[[:space:]]+(CONSTRAINT|INDEX|KEY|PRIMARY|FOREIGN|CHECK|DEFAULT|NOT|IDENTITY|EXPRESSION|PARTITIONING)$'
+}
+
+# True when the command carries a destructive verb other than DELETE FROM.
+has_destructive_verb() {
+    grep -Eq "$DESTRUCTIVE_SQL_VERBS" <<< "$upper" || alter_drops_column
+}
+
+if has_destructive_verb || grep -Eq "DELETE[[:space:]]+FROM" <<< "$upper" \
     || grep -Eqi "$DESTRUCTIVE_TOOLS" <<< "$cmd"; then
     destructive=1
 fi
@@ -153,7 +178,7 @@ names_only_local_target() {
 # against a local target is routine work on the developer's own data. It
 # applies only when DELETE FROM is the sole destructive verb in the command.
 if [ "$destructive" -eq 1 ] && [ "$is_mcp" -eq 0 ] && [ "$remote" -eq 0 ] && [ "$prod" -eq 0 ] \
-    && ! grep -Eq "$DESTRUCTIVE_SQL_VERBS" <<< "$upper" \
+    && ! has_destructive_verb \
     && ! grep -Eqi "$DESTRUCTIVE_TOOLS" <<< "$cmd" \
     && deletes_are_bounded && names_only_local_target; then
     destructive=0
