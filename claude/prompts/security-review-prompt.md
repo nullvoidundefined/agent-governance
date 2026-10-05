@@ -30,6 +30,7 @@ For each control:
 Rules:
 
 - Every finding cites evidence: a file and line, and the input that breaks it.
+- Each finding says whether it is in scope: a control in the frozen list failing under the threat model. A gap outside that list is at most LOW and goes to the PR's known limits.
 - Severity:
   - CRITICAL or HIGH: exploitable.
   - MEDIUM: exploitable under a stated, realistic precondition, or a missing insecure-input test.

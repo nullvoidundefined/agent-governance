@@ -54,7 +54,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 ## Review
 
 - **Who:** every PR gets one review by the `pr-reviewer` agent in a fresh context. It gets the diff, the acceptance criteria, and the risk line, never the implementer's transcript.
-- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is fixed if it takes under five minutes, otherwise noted. LOW never triggers another review.
+- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is noted in the PR, not fixed, unless the fix is a one-line change to a line the PR already changes. LOW never triggers a test, a review, or another round.
 - **Second round:** only when round one found a HIGH, the fixes add new production code larger than both 100 lines and 25% of the diff, or the fixes change the design. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
 - **Record:** in the PR body under `## Review`.
 
@@ -72,6 +72,9 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 
 ## Stopping and anti-recursion
 
+- **Stay on the task:** a finding is fixed in a PR only when it breaks one of that PR's acceptance criteria or is a realistic failure under its threat model. Everything else (adjacent gaps, other files, hardening, bypasses that need deliberate obfuscation) goes in the PR's known limits: no code, no new test, no ticket unless the owner asks.
+- **No spiral:** each review round gets at most one fix cycle (failing test, fix, re-check). A finding still open after its cycle, or a PR whose review-and-fix time passes its build time, goes to the owner with a recommendation; no further cycle starts without them.
+- **Subagents stay in scope:** a dispatched agent does the task it was given. Anything it notices outside that task goes in its report as a note; it never fixes it.
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
 - **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, or for deferred work the owner should see.
 - **Bounded review:** general review stops after two rounds at most, security review after three. Each round looks only at what changed.
