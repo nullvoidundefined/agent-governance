@@ -24,7 +24,7 @@
   },
   "files": {
     ".gitignore": "sha256:b3877ddeac385e186b0fc5c91c104481a346500a8b9f6c0a7cc95a2f7e9fdf5d",
-    "AGENTS.md": "sha256:f71642cdcecdc61ca6f2d03941749ab097e623d5e22d103bd4a265b71b6ac316",
+    "AGENTS.md": "sha256:857e4175d3a16a22bd83cbe5961e558bc1a87a49aeae36a2cfeec0977f25089f",
     "PORT-STATUS.md": "sha256:4599eb6fd4284662590e837be7556e5af99327721c98ab385ad70337456d06e7",
     "agents/audit-criticism.toml": "sha256:0ba1d8b00d905d1da4cc2c7ccb7b560321d8d5c47a58d0952570f8cc5d0ad7ce",
     "agents/audit-customer.toml": "sha256:d764043a42fb7bf6dad1cd09b21560e07093c72e9e3929141187408678711991",
@@ -49,7 +49,7 @@
     "skills/spec-grounding/SKILL.md": "sha256:9a3655d2d43c5b29c422f6ffa8f55c1407f007c2a272a8d20be05f06107e202c",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:c3381309ad7e66092d877181a47420816fcced09b48cfd9b360082cf8292a91d",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:3fe68ac4cb43f260ca8a9fc30168565ab375552cc0dcf27f82f98a7f375a0d3c"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:b77ff189dca3a5f5ebd4cda2c11199a00718c3722a246b0c391223787fd63857"
   },
   "classes": {
     ".gitignore": "generated",

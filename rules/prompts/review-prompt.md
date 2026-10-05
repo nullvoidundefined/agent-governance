@@ -42,7 +42,7 @@ Rules:
 
 - Every finding cites evidence: a file and line in the diff, a criterion, or a convention section.
 - At most 10 findings.
-- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW and goes to the PR's known limits.
+- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW (disposition `noted`), except a HIGH, which stays HIGH and is flagged for the owner.
 - No style or wording comments, no scope additions, no speculative hardening, nothing outside the diff.
 - Do not re-grade a disposition the PR already answered.
 - Do not harden inputs only the owner controls (their own config, environment, or CLI).
