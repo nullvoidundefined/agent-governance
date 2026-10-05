@@ -50,6 +50,9 @@
     "beforeReadFile"
   ],
   "unported_reasons": {
+    "credential-read-guard": {
+      "PreToolUse": "Cursor has no read-tool event that carries this hook; its beforeReadFile hook mirrors the Read(...) deny rules of settings.json instead, which list the same credential paths. Shell reads are ported through beforeShellExecution."
+    },
     "turn-summary-guard": "Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor."
   },
   "rule_descriptions": {

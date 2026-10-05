@@ -2,7 +2,7 @@
 
 # Codex port status
 
-20 of 21 hook registrations port, across 3 Codex events.
+23 of 24 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -16,7 +16,9 @@
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `destructive-ops-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `infra-mutation-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
+| `credential-read-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `protected-path-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
+| `credential-read-guard` | PreToolUse (Read|Grep) | ported: `PreToolUse` (matcher `Read|Grep`) |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `no-em-dash` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `protected-path-guard` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
@@ -26,6 +28,7 @@
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | ported: `PostToolUse` (matcher `Agent|Task`) |
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `harness-sync` | SessionStart | ported: `SessionStart` |
+| `credential-env-warning` | SessionStart | ported: `SessionStart` |
 | `turn-summary-guard` | Stop | not ported: Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex. |
 
 ## Permission rules

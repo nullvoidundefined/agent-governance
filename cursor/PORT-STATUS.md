@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-18 of 21 hook registrations port, across 7 Cursor events.
+20 of 24 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -16,7 +16,9 @@
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `destructive-ops-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `infra-mutation-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
+| `credential-read-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `protected-path-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
+| `credential-read-guard` | PreToolUse (Read|Grep) | not ported: Cursor has no read-tool event that carries this hook; its beforeReadFile hook mirrors the Read(...) deny rules of settings.json instead, which list the same credential paths. Shell reads are ported through beforeShellExecution. |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `no-em-dash` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `protected-path-guard` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
@@ -26,6 +28,7 @@
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |
 | `harness-sync` | SessionStart | ported: `sessionStart` |
+| `credential-env-warning` | SessionStart | ported: `sessionStart` |
 | `turn-summary-guard` | Stop | not ported: Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor. |
 
 ## Permission rules

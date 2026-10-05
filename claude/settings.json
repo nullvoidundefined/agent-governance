@@ -137,7 +137,32 @@
       "Read(~/.ssh/**)",
       "Read(~/.gnupg/**)",
       "Read(~/.config/gh/hosts.yml)",
-      "Read(~/.netrc)"
+      "Read(~/.netrc)",
+      "Read(//**/.envrc)",
+      "Read(//**/.npmrc)",
+      "Read(~/.kube/**)",
+      "Read(~/.azure/**)",
+      "Read(~/.config/gcloud/**)",
+      "Read(~/.config/doctl/**)",
+      "Read(~/.wrangler/**)",
+      "Read(~/.config/.wrangler/**)",
+      "Read(~/.cloudflared/**)",
+      "Read(~/.fly/**)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.pgpass)",
+      "Read(~/.my.cnf)",
+      "Read(~/.pypirc)",
+      "Read(~/.terraform.d/credentials.tfrc.json)",
+      "Read(//**/*.tfvars)",
+      "Read(//**/*.tfstate)",
+      "Read(//**/*.tfstate.backup)",
+      "Read(//**/*.pem)",
+      "Read(//**/*.key)",
+      "Read(//**/*.p12)",
+      "Read(//**/*.pfx)",
+      "Read(//**/id_rsa)",
+      "Read(//**/id_ed25519)",
+      "Read(//proc/*/environ)"
     ],
     "ask": [
       "Bash(git push --force*)",
@@ -266,7 +291,22 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/credential-read-guard.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/protected-path-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/credential-read-guard.sh",
+            "timeout": 30
           }
         ]
       },
@@ -334,6 +374,10 @@
             "type": "command",
             "command": "~/.claude/hooks/harness-sync.sh",
             "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/credential-env-warning.sh"
           }
         ]
       }
