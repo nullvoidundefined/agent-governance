@@ -24,7 +24,7 @@
   },
   "files": {
     ".gitignore": "sha256:52f264056c9ce47b5cbe35d8fbf73aafe688ae48777a45807f9a47d2de9b7380",
-    "PORT-STATUS.md": "sha256:900c358fdf15183fb9fe6e6a6f318f46627b31f9f05bc14980ec5f3a22e901b4",
+    "PORT-STATUS.md": "sha256:fbdc283cb70ebd7df245943a05fdea9f70fe271d95617cc8c8b54ea4059e25e1",
     "agents/audit-criticism.md": "sha256:8e7981f21a085fdc3a70bffcc9daa8a4ece511d2356b32c41e1a10bf1e3db1ed",
     "agents/audit-customer.md": "sha256:11f0c2733c106012204924d458d11d3296524f8b43c8d2023747f457a987ab97",
     "agents/audit-design.md": "sha256:8abd4a842bec231a08dfa278f166a0b5907d3799fe28c432ce27a0919dabcee8",
@@ -46,7 +46,7 @@
     "commands/audit-ux.md": "sha256:8a131255913384b5184c22b447da75792555bf84eafcac7961162e545012fbaa",
     "commands/pr-reviewer.md": "sha256:30ef2c81207817c77b5e7cd91cddb6f6bd734af5b8220dab6df5c3a309b192bb",
     "hooks.json": "sha256:c5530f543c9ad0f66ebd32e2875dba72c95b9efd650203a30e4dd1f33b870d0d",
-    "rules/000-global-rules.mdc": "sha256:cbd1dcb49c5c6087ab1f9b01ca2feaa0edbafc60ceab968a37ff44f2cb3a8087",
+    "rules/000-global-rules.mdc": "sha256:5cda8d8b6fb7aaf0357fcbf613899cd29afa064015db98c3f0dbe303df1c30bc",
     "rules/002-global-memory-index.mdc": "sha256:d72c4833e8d5cce21e8473fe440f1db837ea8071fab4f7f5b0e27ff1f460c394",
     "rules/backend.mdc": "sha256:16f262b6a7d9d030e2fd48b7c3aff1e3cce335e9b4292c5767511a7971fda015",
     "rules/cloud-deployment.mdc": "sha256:97eca1b8ad282cf32b62445b94f4222f0f38d2f8f6d3c4af6daf2a62a338fd4b",

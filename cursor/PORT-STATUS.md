@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-17 of 19 hook registrations port, across 7 Cursor events.
+17 of 20 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -25,6 +25,7 @@
 | `agent-watchdog-instruction` | PostToolUse (Agent|Task) | not ported: the PostToolUse event has no Cursor equivalent. |
 | `redact-output` | PostToolUse (Bash) | ported: `afterShellExecution` |
 | `harness-sync` | SessionStart | ported: `sessionStart` |
+| `turn-summary-guard` | Stop | not ported: Cursor's stop hook receives only a status, not the final message text, so it cannot check the turn-summary lines; the format is a written rule under Cursor. |
 
 ## Permission rules
 

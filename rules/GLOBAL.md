@@ -117,6 +117,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 
 - Plain, direct prose. No filler, no empty praise, no hedging that carries no uncertainty. No em dashes.
 - Lead with the result or the next action. Report failures plainly, with the cause and the fix.
+- End every turn with three one-line summaries, last: `**Done:**` what was done, with a pointer (PR, commit, file, or URL); `**Decide:**` decisions the owner must make, with a pointer, or `none`; `**Next:**` the next available steps. A Stop hook (`turn-summary-guard.sh`) checks this in Claude Code.
 
 ## Reference
 
