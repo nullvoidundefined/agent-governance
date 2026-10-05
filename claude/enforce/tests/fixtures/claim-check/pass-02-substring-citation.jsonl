@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"run the tests"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash claude/enforce/tests/foo.test.sh"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"3 cases, 0 failures"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Tests pass: `foo.test.sh` reported 3 cases, 0 failures."}]}}

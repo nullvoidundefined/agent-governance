@@ -2,7 +2,7 @@
 
 # Codex port status
 
-20 of 21 hook registrations port, across 3 Codex events.
+20 of 23 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -27,6 +27,8 @@
 | `redact-output` | PostToolUse (Bash) | ported: `PostToolUse` (matcher `Bash`) |
 | `harness-sync` | SessionStart | ported: `SessionStart` |
 | `turn-summary-guard` | Stop | not ported: Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex. |
+| `claim-check-guard` | Stop | not ported: Codex's adapter has no Stop or SubagentStop event, so the completion-claim check on the final message cannot run; citing a command run or saying 'assumed, not run' is a written rule under Codex. |
+| `claim-check-guard` | SubagentStop | not ported: Codex's adapter has no Stop or SubagentStop event, so the completion-claim check on the final message cannot run; citing a command run or saying 'assumed, not run' is a written rule under Codex. |
 
 ## Permission rules
 

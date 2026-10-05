@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"what does the wrapper do"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"This passes the value through."}]}}
