@@ -27,7 +27,7 @@ A feature ships as a short sequence of small PRs. Green CI and a review with no 
   - `**Risk:**`
   - `## Verification`, with the RED commit, the GREEN commands, and anything checked by hand
   - `## Review`, with the reviewer, the range, and the findings with their dispositions
-  - `## Security review`, for high risk
+  - `## Security review`, for a high-risk PR that touches a security control
 
 ## 3. Merge on green
 

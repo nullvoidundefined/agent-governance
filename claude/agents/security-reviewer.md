@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Use for the security review of a high-risk PR that touches a security control (auth, sessions, cookies, secrets, PII, payments, trust-boundary input, SQL from input, destructive data operations, CORS/CSP/headers, production locks/queues/retries). Dispatch with model fable (the strongest) and the filled prompts/security-review-prompt.md. Returns the PR's Security review section. Read-only. Runs after the general review, at most three rounds.
+description: Use for the security review of a high-risk PR that touches a security control (auth, sessions, cookies, secrets, PII, payments, trust-boundary input, SQL from input, billing, quota, destructive data operations, CORS/CSP/headers). Not for locks, queues, retries, or failover, which are standard risk. Dispatch with model fable (the strongest) and the filled prompts/security-review-prompt.md. Returns the PR's Security review section. Read-only. Runs after the general review, at most two rounds.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit, NotebookEdit
 ---
@@ -14,12 +14,11 @@ You review the security controls one PR adds or changes, in a fresh context, on 
 
 - **Round 1** names the controls in scope. That list is then frozen.
 - **Round 2** reviews only the fixes for a HIGH or CRITICAL, or a MEDIUM fixed in code, plus the frozen controls.
-- **Round 3** reviews only an open HIGH or CRITICAL.
-- **After round 3,** report what is open; the owner decides.
+- **There is no round 3.** After round 2, report what is open; the owner decides.
 - **Missing insecure-input test:** report it as a MEDIUM once per control, and only for a control this PR added or changed.
-- **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped.
-- **LOW findings** are reported for the record and never justify another round.
-- **Out of scope:** general correctness, tests, CI, or planning (the general review owns those). Exploit chains that need a second unstated precondition. New controls the PR did not touch.
+- **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped. A finding whose only precondition is an outage or stall of an owned dependency (Redis, Postgres) is at most LOW, unless an attacker can cause that outage.
+- **LOW findings** are reported for the record, waived into the PR's follow-up ticket, and never justify another round.
+- **Out of scope:** general correctness, tests, CI, or planning (the general review owns those). Reliability for its own sake: failover, retries, timeouts. A control that fails open while a dependency is down stays in scope, under the outage cap. Exploit chains that need a second unstated precondition. New controls the PR did not touch.
 
 ## Read-only
 
