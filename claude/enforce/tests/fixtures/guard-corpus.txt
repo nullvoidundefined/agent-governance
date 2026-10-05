@@ -777,3 +777,25 @@ deny curl -X DELETE https://api.dns.acme.net/zones/1
 deny curl -X POST https://ns1.registrar.example/records -d x
 allow curl https://api.dns.acme.net/zones
 allow curl https://ns1.registrar.example/records
+
+# PR 2c review r1
+deny  serverless --aws-profile prod deploy
+deny  sls --aws-profile prod remove
+deny  terragrunt --terragrunt-download-dir /tmp/tg apply
+deny  terragrunt --terragrunt-auth-provider-cmd ./auth.sh destroy
+deny  cdk -p someplugin deploy
+deny  cdk --proxy http://proxy.local:3128 destroy
+deny  sam --unknown-flag x delete
+deny  cli53 --unknown-flag x rrdelete example.com www A
+deny  azd --unknown-flag x up
+deny  azd infra create
+deny  azd infra delete
+deny  bq query --use_legacy_sql=false 'EXPORT DATA OPTIONS(uri="gs://b/x*") AS SELECT 1'
+deny  bq query --use_legacy_sql=false 'LOAD DATA INTO ds.t FROM FILES(uris=["gs://b/x"])'
+deny  bq query --use_legacy_sql=false 'GRANT `roles/bigquery.dataViewer` ON TABLE ds.t TO "user:a@b.c"'
+deny  bq query --use_legacy_sql=false 'REVOKE `roles/bigquery.dataViewer` ON TABLE ds.t FROM "user:a@b.c"'
+deny  bq query --schedule='every 24 hours' --display_name=x 'SELECT 1'
+deny  dnscontrol create-domains
+allow serverless --aws-profile dev print
+allow cdk --proxy http://proxy.local:3128 synth
+allow terragrunt --terragrunt-download-dir /tmp/tg plan
