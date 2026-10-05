@@ -12,10 +12,15 @@
 # The input summary is the Bash command, the Read/Write/Edit/NotebookEdit
 # path, the Grep/Glob pattern and path, the Agent/Task description, and for
 # any other tool (MCP included) the argument names only, never their values.
-# It is redacted (enforce/secret-patterns.txt, the value after password=,
-# passwd=, token= or secret=, a Bearer token, URL userinfo) before it is capped
-# at 2000 characters, so a cap can never leave half a secret behind. Every
-# other string field is redacted too.
+# It is redacted before it is capped at 2000 characters, so a cap can never
+# leave half a secret behind: enforce/secret-patterns.txt; the value, quoted or
+# not, after password, passwd, secret, token or api_key/api-key (any case, so
+# access_token and auth_token too, the key optionally quoted) and `=` or `:`;
+# mysql's glued -p<value>; the value of a header whose name contains key,
+# token, secret, auth or cookie; a Bearer token; URL userinfo. Every other
+# string field is redacted too. When secret-patterns.txt is missing or a
+# pattern in it does not compile, the remaining rules still apply and the line
+# gains "redaction":"degraded"; a healthy line has no redaction key.
 #
 # A line is one write of at most 4000 bytes, under PIPE_BUF (4096), to a file
 # opened for append, so concurrent sessions never interleave a line. The first
@@ -34,10 +39,20 @@ AUDIT_LOG_HELPER_DIR="${BASH_SOURCE[0]%/*}"
 # UTC day on the first output line and the finished log line on the second.
 # shellcheck disable=SC2016  # jq variables, not shell ones
 AUDIT_LOG_JQ_PROGRAM='
-def shrink($n): if length > $n then .[0:([$n - 3, 0] | max)] + "..." else . end;
+def compiles: . as $p | try ("" | test($p) | true) catch false;
+($pattern_lines | split("\n") | map(select(. != ""))) as $all
+| ($all | map(select(compiles)) | join("|")) as $joined
+| (if $joined | compiles then $joined else "" end) as $patterns
+| ($patterns_missing == "1" or ($all | map(select(compiles)) | length) < ($all | length) or $patterns != $joined) as $degraded
+| def shrink($n): if length > $n then .[0:([$n - 3, 0] | max)] + "..." else . end;
+def qvalue: "(?:\"[^\"]*\"|\\x27[^\\x27]*\\x27|[^\\s&;|\\x27\"]+)";
+def secret_header: "[A-Za-z0-9-]*(?i:key|token|secret|auth|cookie)[A-Za-z0-9-]*";
 def redact:
   (if $patterns == "" then . else (try gsub($patterns; "***") catch "***") end)
-  | gsub("(?<k>(?i:password|passwd|token|secret)=)[^\\s&;\\x27\"]+"; "\(.k)***")
+  | gsub("(?<k>(?i:password|passwd|secret|token|api[_-]key)[\"\\x27]?\\s*[:=]\\s*)" + qvalue; "\(.k)***")
+  | gsub("(?<k>\\b(?:mysql|mariadb)[A-Za-z_-]*\\s(?:[^;&|\\n]*?\\s)?-p)" + qvalue; "\(.k)***")
+  | gsub("(?<k>[\"\\x27]" + secret_header + ":\\s*)[^\"\\x27\\n]+"; "\(.k)***")
+  | gsub("(?<k>(?:-H|--header)[=\\s]+" + secret_header + ":\\s*)[^\\s\\x27\"]+"; "\(.k)***")
   | gsub("(?<k>(?i:bearer)\\s+)[^\\s\\x27\"]+"; "\(.k)***")
   | gsub("(?<k>[A-Za-z][A-Za-z0-9+.-]*://)[^/@\\s]+@"; "\(.k)***@");
 def text: if . == null then "" elif type == "string" then . else tojson end;
@@ -67,6 +82,7 @@ if type != "object" then error("payload is not an object") else . end
       rule: ([$reason | match("[RB]-[0-9]+").string] | first // "-"),
       decision: $decision
     } else {} end)
+  + (if $degraded then {redaction: "degraded"} else {} end)
   | . as $line
   | def fit($i; $f): $line | .input |= shrink($i) | with_entries(if .key == "input" then . else .value |= shrink($f) end) | tojson;
     ($now | strftime("%Y-%m-%d")),
@@ -75,14 +91,16 @@ if type != "object" then error("payload is not an object") else . end
 '
 
 # audit_log_patterns: sets AUDIT_LOG_PATTERNS to the secret-patterns.txt
-# alternatives joined with `|`, read without starting a process.
+# patterns, one per line, read without starting a process, and
+# AUDIT_LOG_PATTERNS_MISSING to 1 when the file is absent.
 audit_log_patterns() {
   local file="$AUDIT_LOG_HELPER_DIR/../enforce/secret-patterns.txt" line
   AUDIT_LOG_PATTERNS=""
-  [ -f "$file" ] || return 0
+  AUDIT_LOG_PATTERNS_MISSING=0
+  [ -f "$file" ] || { AUDIT_LOG_PATTERNS_MISSING=1; return 0; }
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in '' | '#'*) continue ;; esac
-    AUDIT_LOG_PATTERNS="${AUDIT_LOG_PATTERNS:+$AUDIT_LOG_PATTERNS|}$line"
+    AUDIT_LOG_PATTERNS="${AUDIT_LOG_PATTERNS:+$AUDIT_LOG_PATTERNS$'\n'}$line"
   done < "$file"
 }
 
@@ -121,7 +139,8 @@ audit_log_write() {
   audit_log_patterns
   out=$(printf '%s' "$payload" | jq -r \
     --arg event "$event" --arg hook "$hook" --arg decision "$decision" --arg reason "$reason" \
-    --arg repo "$repo" --arg cwd "$cwd" --arg patterns "$AUDIT_LOG_PATTERNS" \
+    --arg repo "$repo" --arg cwd "$cwd" \
+    --arg pattern_lines "$AUDIT_LOG_PATTERNS" --arg patterns_missing "$AUDIT_LOG_PATTERNS_MISSING" \
     "$AUDIT_LOG_JQ_PROGRAM") || return 0
   day="${out%%$'\n'*}"
   line="${out#*$'\n'}"

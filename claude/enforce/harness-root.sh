@@ -117,3 +117,18 @@ bind_harness_data_path CLAUDE_ROLE_POLICY_FILE "enforce/role-policy.json"
 bind_harness_data_path CLAUDE_SETTINGS_FILE "settings.json"
 bind_harness_data_path CLAUDE_PROTOCOL_FILE "PROTOCOL.md"
 bind_harness_tree_root CLAUDE_TDD_HOME
+
+# Points the tool-call audit log (hooks/audit-log-append.sh) at a scratch
+# directory, so a test that drives a guard never appends decision lines to the
+# owner's real log (audit-log spec A-13). A caller's value wins. The directory
+# is removed at exit only when no EXIT trap is set yet, since installing one
+# would clobber the caller's; a test that sets its own EXIT trap afterwards
+# leaves this one directory, usually empty, under ${TMPDIR:-/tmp}.
+bind_scratch_audit_dir() {
+  [ -z "${AGENT_AUDIT_DIR:-}" ] || return 0
+  AGENT_AUDIT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/agent-audit-test.XXXXXX") || return 0
+  export AGENT_AUDIT_DIR
+  # shellcheck disable=SC2064  # expand the directory now, not at exit
+  [ -n "$(trap -p EXIT)" ] || trap "rm -rf -- '$AGENT_AUDIT_DIR'" EXIT
+}
+bind_scratch_audit_dir
