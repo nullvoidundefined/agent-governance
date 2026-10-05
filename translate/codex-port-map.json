@@ -5,7 +5,8 @@
         "SessionStart": "SessionStart"
     },
     "unported_reasons": {
-        "turn-summary-guard": "Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex."
+        "turn-summary-guard": "Codex's Stop payload carries no transcript the hook can read for the final message; the turn-summary format is a written rule in AGENTS.md (Writing) under Codex.",
+        "claim-check-guard": "Codex's adapter has no Stop or SubagentStop event, so the completion-claim check on the final message cannot run; citing a command run or saying 'assumed, not run' is a written rule under Codex."
     },
     "hook_overrides": {},
     "hand_authored": [

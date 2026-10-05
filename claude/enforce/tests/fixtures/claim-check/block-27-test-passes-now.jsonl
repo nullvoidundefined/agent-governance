@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"fix the flaky test"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The test passes now."}]}}

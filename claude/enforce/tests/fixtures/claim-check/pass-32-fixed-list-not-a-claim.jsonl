@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"how does the allowlist work"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"It uses a fixed list of hosts."}]}}

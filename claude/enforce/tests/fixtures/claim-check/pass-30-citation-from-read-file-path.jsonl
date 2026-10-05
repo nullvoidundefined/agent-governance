@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"check the loader"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/repo/src/config/load.ts"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"code"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Confirmed by reading `src/config/load.ts`."}]}}
