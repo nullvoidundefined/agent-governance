@@ -99,6 +99,30 @@ Ports and non-regression:
   ported where the target has the event, and the port maps mark them otherwise.
 - C-10: every row already in `fixtures/guard-corpus.txt` keeps its decision.
 
+## Review r1 amendments (2026-10-05, owner decision on use-only forms)
+
+- C-11: a redirect-only read is a read: `$(< .env)`, `x=$(<.env)`,
+  `echo "$(< ~/.aws/credentials)"` and a bare `< .env` deny under C-1.
+- C-12 (owner, 2026-10-05): forms that use a credential file without
+  bringing its content into the transcript pass: `ssh`, `scp`, `sftp` with
+  `-i KEY`; `chmod`, `chown`, `touch`, `rm`, `mv` on a credential path; `cp`
+  whose only credential operand is the destination (`cp .env.example .env`);
+  `docker`, `docker compose`, `podman` with `--env-file FILE`. R-103 in
+  `secret-scan.sh` still decides mutations. `git add`, `git diff`, `git show`
+  and every reading program stay denied.
+- C-13: a printer (`echo`, `printf`, here-string) whose output goes into a
+  pipe to a program that is not itself a printer or reader of stdin to the
+  terminal (`gh auth login --with-token`, `docker login --password-stdin`,
+  `kubectl create secret ... --from-file=/dev/stdin`), or into an output
+  redirect to a file, passes C-5. Piping into `cat`, `tee`, `less`, `head`,
+  `tail`, `xxd`, `base64`, `od`, `sed`, `awk` still denies.
+- C-14: the credential variable names also include bare `TOKEN`, `SECRET`
+  and `*SECRET` (no underscore).
+- C-15: when the judge cannot run (no python3, missing judge, timeout), a
+  Read or Grep call is denied only when its path matches a credential path
+  by a plain shell check; other Read and Grep calls pass. Bash keeps failing
+  closed.
+
 ## Invariants
 
 - The guard is stateless and fails closed on a parse failure.
