@@ -25,6 +25,7 @@ way destructive-ops-guard.sh sees them, and a word that is only an argument
 
 Stateless: reads the event and the repo's .enforce.json, writes nothing. Any
 exception exits non-zero, which the wrapper turns into a deny."""
+import copy
 import importlib.util
 import json
 import os
@@ -100,9 +101,13 @@ def read_environments(repo_root):
     try:
         with open(path, encoding="utf-8") as handle:
             environments = json.load(handle).get("environments") or {}
+        if not isinstance(environments, dict):
+            raise TypeError("environments must be an object")
         lists = {}
         for name in ("production", "preview", "testing"):
             entries = environments.get(name) or []
+            if not isinstance(entries, list):
+                raise TypeError("environments.%s must be a list" % name)
             lists[name] = [wildcard_pattern(entry) for entry in entries]
         return lists
     except (OSError, ValueError, AttributeError, TypeError) as error:
@@ -144,8 +149,13 @@ def url_hosts(word):
     for authority in URL_HOST.findall(word):
         host = authority.rsplit("@", 1)[-1]
         host = host[1:host.find("]")] if host.startswith("[") else host.split(":", 1)[0]
-        hosts.append(host)
+        hosts.append(host.rstrip("."))
     return hosts
+
+
+def glued_host_values(args):
+    """Returns the host of each -hHOST option written as one word."""
+    return [word[2:] for word in args if word.startswith("-h") and len(word) > 2 and word != "-help"]
 
 
 def option_values(args, names):
@@ -164,18 +174,22 @@ def option_values(args, names):
 
 def production_signal(command, environments):
     """Returns a short description of what marks the command production-targeted
-    (B-11), or None."""
-    env = command.environment
+    (B-11), or None. Options are read from every argument of the command as
+    typed, including those of a launcher (railway run -e production ...);
+    rails and rake also take NAME=value arguments as environment."""
+    env = dict(command.environment)
+    if command.program in ("rails", "rake"):
+        env.update(word.split("=", 1) for word in command.args if PARSER.is_assignment(word))
     for name in PRODUCTION_ENV_VARS:
         if name in env and is_production(env[name], environments, "substring"):
             return "%s=%s" % (name, env[name])
     for name in NAMED_TARGET_ENV_VARS:
         if name in env and is_production(env[name], environments, "word"):
             return "%s=%s" % (name, env[name])
-    for value in option_values(command.args, ENVIRONMENT_OPTIONS):
+    for value in option_values(command.typed_args, ENVIRONMENT_OPTIONS):
         if is_production(value, environments, "exact"):
             return "environment %s" % value
-    for value in option_values(command.args, NAMED_TARGET_OPTIONS):
+    for value in option_values(command.typed_args, NAMED_TARGET_OPTIONS) + glued_host_values(command.typed_args):
         if is_production(value, environments, "word"):
             return "target %s" % value
     for word in command.words:
@@ -198,10 +212,23 @@ class SimpleCommand:
         self.environment = dict(session_env, **own)
         self.assignments = own
         rest = segment[program_index:]
-        self.program = rest[0] if rest else ""
+        # Lower case, because macOS resolves `AWS` to the aws binary.
+        self.program = rest[0].lower() if rest else ""
         self.args = PARSER.plain_words(rest[1:])
+        self.typed_args = self.args
         self.words = [word for word in segment if not word.startswith(OPERATOR_MARK)]
         self.has_heredoc = any(word in (OPERATOR_MARK + "<<", OPERATOR_MARK + "<<-") for word in rest)
+
+    def launched(self):
+        """Returns the command a launcher (npx, pnpm dlx, bunx, bundle exec,
+        railway run, python manage.py) runs, keeping this command's
+        environment and typed arguments; None when there is no launcher."""
+        program, args = launched_command(self.program, self.args)
+        if (program, args) == (self.program, self.args):
+            return None
+        inner = copy.copy(self)
+        inner.program, inner.args = program.lower(), args
+        return inner
 
     def positionals(self, value_options=()):
         """Returns the arguments that are not options, skipping the value of
@@ -244,25 +271,35 @@ SECRET_ASSIGNMENT = re.compile(r"\b([A-Za-z_]*(?:PASS|PASSWORD|TOKEN|SECRET|KEY)
 
 
 def redact(text):
-    """Replaces URL passwords, Authorization header values and secret-named
-    assignments with ***."""
+    """Replaces with *** every secret a command line commonly carries: URL
+    passwords, -u/--user credentials, Authorization, X-Auth-Key and other
+    *-Key or *-Token header values, and secret-named assignments."""
     text = re.sub(r"(://[^/\s:@]*:)[^@/\s]*@", r"\1***@", text)
     text = re.sub(r"(?i)(authorization:\s*(?:bearer|basic|token)?\s*)[^\s'\"]+", r"\1***", text)
+    text = re.sub(r"(?i)([\w-]*-(?:key|token):\s*)[^\s'\"]+", r"\1***", text)
+    text = re.sub(r"((?:^|\s)(?:-u|--user)(?:=|\s+)['\"]?)[^\s'\"]+", r"\1***", text)
     return SECRET_ASSIGNMENT.sub(r"\1=***", text)
 
 
 # --- Cloud CLIs (B-1, B-2, B-3) ---------------------------------------------
 
-READ_VERB_PREFIXES = ("list", "describe", "get")
-READ_VERBS = {"show", "ls", "help", "version"}
+READ_VERB_HEADS = {"list", "describe", "get", "show", "ls", "help", "version"}
 MUTATION_VERBS = {
     "create", "delete", "update", "remove", "rm", "set", "unset", "add", "patch", "put", "deploy",
     "destroy", "import", "start", "stop", "restart", "reset", "resize", "move", "mv", "copy", "cp",
     "enable", "disable", "attach", "detach", "apply", "run", "exec", "execute", "submit", "cancel",
     "rollback", "upgrade", "purge", "terminate", "transaction", "edit", "replace", "sync", "restore",
     "promote", "failover", "reboot", "suspend", "resume", "scale", "tag", "untag", "assign",
-    "unassign", "invoke", "login", "logout", "revoke", "rotate", "abandon", "clear",
+    "unassign", "invoke", "login", "logout", "revoke", "rotate", "abandon", "clear", "power",
+    "deallocate", "shutdown", "rebuild", "snapshot", "binding", "drop", "wipe", "release",
 }
+# Global options of gcloud and doctl that take a separate value.
+GROUP_CLI_VALUE_OPTIONS = {"--project", "--account", "--configuration", "--verbosity", "--format",
+                           "--impersonate-service-account", "--billing-project", "--flags-file",
+                           "--filter", "--zone", "--region", "--context", "-t", "--access-token",
+                           "-o", "--output", "--config", "-u", "--api-url"}
+# Top-level groups whose names are also verbs: `gcloud run services list`.
+GCLOUD_VERB_NAMED_GROUPS = {"run", "deploy"}
 AWS_VALUE_OPTIONS = {"--region", "--profile", "--output", "--endpoint-url", "--query", "--color",
                      "--ca-bundle", "--cli-read-timeout", "--cli-connect-timeout",
                      "--cli-binary-format"}
@@ -271,7 +308,15 @@ DNS_WORDS = {"dns", "domain", "domains", "records", "record-set", "record-sets"}
 
 
 def is_read_verb(word):
-    return word.startswith(READ_VERB_PREFIXES) or word in READ_VERBS
+    """True when a hyphenated verb starts with a read word (list, describe,
+    get, show, ls, help, version) and none of its parts is a mutation verb:
+    list-keys reads, listener and get-and-delete do not."""
+    parts = word.lower().split("-")
+    return parts[0] in READ_VERB_HEADS and not set(parts[1:]) & MUTATION_VERBS
+
+
+def is_mutation_verb(word):
+    return bool(set(word.lower().split("-")) & MUTATION_VERBS)
 
 
 def judge_aws(command):
@@ -289,14 +334,40 @@ def judge_aws(command):
 
 
 def judge_cloud_cli(command):
-    """gcloud, az, doctl: allowed when a read verb names the command and no
-    mutation verb appears anywhere in it; every other command is denied."""
-    positionals = command.positionals()
+    """gcloud, az, doctl: allowed only when the command's verb is a read verb;
+    every other command, unknown verbs included, is denied (B-1, B-2)."""
+    positionals = command.positionals(() if command.program == "az" else GROUP_CLI_VALUE_OPTIONS)
     if not positionals:
         return None
-    if not set(positionals) & MUTATION_VERBS and any(is_read_verb(word) for word in positionals):
+    verb = az_verb(command) if command.program == "az" else group_cli_verb(command.program, positionals)
+    after = positionals[positionals.index(verb) + 1:] if verb in positionals else []
+    if verb and is_read_verb(verb) and not any(word in MUTATION_VERBS for word in after):
         return None
     return cloud_mutation(command, positionals)
+
+
+def az_verb(command):
+    """az names its command entirely before the first option: the verb is the
+    last word before it (az vm deallocate -g rg -n x)."""
+    words = []
+    for word in command.args:
+        if word.startswith("-"):
+            break
+        words.append(word)
+    return words[-1] if words else None
+
+
+def group_cli_verb(program, positionals):
+    """gcloud, doctl: the verb is the first positional that reads or mutates;
+    the groups before it are nouns. Returns None when no positional is a verb."""
+    for index, word in enumerate(positionals):
+        if index == 0 and program == "gcloud" and word in GCLOUD_VERB_NAMED_GROUPS:
+            continue
+        if word == "transaction":
+            continue
+        if is_read_verb(word) or is_mutation_verb(word):
+            return word
+    return None
 
 
 def cloud_mutation(command, positionals):
@@ -333,7 +404,7 @@ def word_host(word):
     """Returns the lower-case host a URL-ish word names, with or without a scheme."""
     rest = word.split("://", 1)[1] if "://" in word else word
     authority = re.split(r"[/?#]", rest, maxsplit=1)[0].rsplit("@", 1)[-1]
-    return authority.split(":", 1)[0].lower()
+    return authority.split(":", 1)[0].lower().rstrip(".")
 
 
 def is_provider_host(host):
@@ -438,7 +509,12 @@ TERRAFORM_DENIED = {"apply", "destroy", "import", "taint", "untaint", "force-unl
 TERRAFORM_STATE_DENIED = {"rm", "mv", "push", "replace-provider"}
 
 
+HELP_FLAGS = {"-help", "--help", "-h"}
+
+
 def judge_terraform(command):
+    if HELP_FLAGS & set(command.args):
+        return None
     positionals = command.positionals()
     verb, sub = (positionals + ["", ""])[:2]
     if (verb in TERRAFORM_DENIED or (verb == "state" and sub in TERRAFORM_STATE_DENIED)
@@ -452,6 +528,8 @@ PULUMI_DENIED = {"up", "update", "destroy", "down", "refresh", "cancel"}
 
 
 def judge_pulumi(command):
+    if HELP_FLAGS & set(command.args):
+        return None
     positionals = command.positionals(PULUMI_VALUE_OPTIONS)
     verb, sub = (positionals + ["", ""])[:2]
     if (verb in PULUMI_DENIED or (verb == "stack" and sub in ("rm", "remove"))
@@ -545,6 +623,10 @@ def judge_railway(command, environments):
 
 def judge_vercel(command, environments):
     positionals = command.positionals(("--scope", "--token", "-t", "--target", "--cwd"))
+    group, verb = (positionals + ["", ""])[:2]
+    if ((group == "dns" and verb in ("add", "rm", "remove", "import"))
+            or (group in ("domains", "domain") and verb in ("rm", "remove", "move"))):
+        return ("deny", "B-3", "vercel %s %s changes DNS records or domains" % (group, verb))
     if positionals[:1] and positionals[0] in ("remove", "rm"):
         return ("deny", "B-9", "vercel %s removes a Vercel deployment or project" % positionals[0])
     targets = option_values(command.args, ("--target",))
@@ -648,7 +730,7 @@ def classify_database_command(program, args):
 
 
 def judge_database_command(command, environments):
-    program, args = launched_command(command.program, command.args)
+    program, args = command.program, command.args
     kind = classify_database_command(program, args)
     if kind is None:
         return None
@@ -667,16 +749,28 @@ TEXT_PROGRAMS = {"echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "git", 
                  "awk", "jq", "man", "less", "head", "tail"}
 DESTRUCTIVE_SQL = re.compile(r"DROP\s+(DATABASE|TABLE)|TRUNCATE(\s|$)|DELETE\s+FROM")
 DESTRUCTIVE_TOOL = re.compile(r"pg_restore|migrate:down", re.I)
-UNBOUNDED_UPDATE = re.compile(r"\bUPDATE\s+\S+\s+SET\b")
+UNBOUNDED_UPDATE = re.compile(r"\bUPDATE\s+(ONLY\s+)?\S+(\s+(AS\s+)?\w+)?\s+SET\b")
 UNBOUNDED_DELETE = re.compile(r"\bDELETE\s+FROM\b")
 WHERE = re.compile(r"\bWHERE\b")
 
 
+def has_top_level_where(text):
+    """True when text has a WHERE outside every parenthesis: a WHERE inside a
+    subquery (SET a = (SELECT ... WHERE ...)) does not bound the statement."""
+    depth, top_level = 0, []
+    for char in text:
+        depth += {"(": 1, ")": -1}.get(char, 0)
+        top_level.append(char if depth == 0 and char != ")" else " ")
+    return bool(WHERE.search("".join(top_level)))
+
+
 def unbounded_statement(texts, statement):
-    """True when any ;-separated statement in texts matches statement and has no WHERE."""
+    """True when any ;-separated statement in texts matches statement and has
+    no top-level WHERE after it."""
     for text in texts:
         for part in text.upper().split(";"):
-            if statement.search(part) and not WHERE.search(part):
+            match = statement.search(part)
+            if match and not has_top_level_where(part[match.end():]):
                 return True
     return False
 
@@ -705,9 +799,21 @@ def judge_sql(command, raw_text, environments):
 
 # --- Dispatch ---------------------------------------------------------------
 
+def strongest(verdicts):
+    verdicts = [v for v in verdicts if v]
+    return max(verdicts, key=lambda v: Verdict.RANK[v[0]]) if verdicts else None
+
+
 def judge_command(command, raw_text, environments):
     """Returns (decision, rule, what) for the strongest rule one simple
-    command meets, or None."""
+    command, or the command a launcher in it runs, meets, or None."""
+    inner = command.launched()
+    return strongest([judge_program(command, raw_text, environments),
+                      judge_program(inner, raw_text, environments) if inner else None])
+
+
+def judge_program(command, raw_text, environments):
+    """Returns the strongest rule the command's own program meets, or None."""
     program = command.program
     if program == "aws":
         return judge_aws(command)
@@ -729,8 +835,7 @@ def judge_command(command, raw_text, environments):
             "vercel": judge_vercel, "netlify": judge_netlify, "wrangler": judge_wrangler}
     verdicts = [paas[program](command, environments)] if program in paas else []
     verdicts += [judge_database_command(command, environments), judge_sql(command, raw_text, environments)]
-    verdicts = [v for v in verdicts if v]
-    return max(verdicts, key=lambda v: Verdict.RANK[v[0]]) if verdicts else None
+    return strongest(verdicts)
 
 
 def substituted_program(word):
