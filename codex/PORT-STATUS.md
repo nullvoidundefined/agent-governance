@@ -2,7 +2,7 @@
 
 # Codex port status
 
-19 of 19 hook registrations port, across 3 Codex events.
+20 of 20 hook registrations port, across 3 Codex events.
 
 | Hook | Claude Code event | Under Codex |
 |---|---|---|
@@ -15,6 +15,7 @@
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `destructive-ops-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
+| `infra-mutation-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `protected-path-guard` | PreToolUse (Bash) | ported: `PreToolUse` (matcher `Bash`) |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |
 | `no-em-dash` | PreToolUse (Write|Edit) | ported: `PreToolUse` (matcher `Write|Edit`) |

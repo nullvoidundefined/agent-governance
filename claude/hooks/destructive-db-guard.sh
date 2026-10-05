@@ -111,6 +111,43 @@ if [ "$is_mcp" -eq 1 ]; then
     esac
 fi
 
+# True when every DELETE FROM statement in the command carries a WHERE.
+deletes_are_bounded() {
+    local statement
+    while IFS= read -r statement; do
+        grep -Eq 'WHERE' <<< "$statement" || return 1
+    done < <(grep -Eo "DELETE[[:space:]]+FROM[^;\"']*" <<< "$upper")
+    return 0
+}
+
+# True when the command names no database host other than a local one: every
+# -h/--host value and URL host is localhost, 127.0.0.1, ::1, or a unix socket
+# path, and no connection-URL variable ($DATABASE_URL) hides the target.
+names_only_local_target() {
+    local host
+    grep -Eq '\$\{?[A-Za-z_]*(URL|URI|DSN|HOST)' <<< "$cmd" && return 1
+    while IFS= read -r host; do
+        host="${host##*@}"
+        case "$host" in
+            '' | localhost | localhost:* | 127.0.0.1 | 127.0.0.1:* | '[::1]'* | /*) ;;
+            *) return 1 ;;
+        esac
+    done < <(grep -Eo "[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]\"'?]*" <<< "$cmd" | sed -E 's#^[^:]*://##'
+             grep -Eo "(^|[[:space:]])(-h|--host)(=|[[:space:]]+)[^[:space:]]+" <<< "$cmd" \
+                 | sed -E "s/^[[:space:]]*(-h|--host)(=|[[:space:]]+)//; s/[\"']//g")
+    return 0
+}
+
+# B-16 (docs/specs/2026-10-04-harness-hardening.md): a DELETE bounded by WHERE
+# against a local target is routine work on the developer's own data. It
+# applies only when DELETE FROM is the sole destructive verb in the command.
+if [ "$destructive" -eq 1 ] && [ "$is_mcp" -eq 0 ] && [ "$remote" -eq 0 ] && [ "$prod" -eq 0 ] \
+    && ! grep -Eq 'DROP[[:space:]]+(DATABASE|TABLE)|TRUNCATE([[:space:]]|$)' <<< "$upper" \
+    && ! grep -Eqi 'pg_restore|migrate:down' <<< "$cmd" \
+    && deletes_are_bounded && names_only_local_target; then
+    destructive=0
+fi
+
 # --- Decide ---------------------------------------------------------------
 
 # A local database is the developer's own; never prompt.

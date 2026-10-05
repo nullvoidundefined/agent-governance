@@ -261,6 +261,11 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/infra-mutation-guard.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/protected-path-guard.sh"
           }
         ]
