@@ -687,3 +687,28 @@ allow set -euo pipefail
 allow psql "$DATABASE_URL" -c 'select 1'
 allow psql -h localhost "$DATABASE_URL" -c 'select 1'
 allow curl -H "Authorization: Bearer $GH_TOKEN" https://example.org/api/status
+
+# PR 3 review r1
+# C-11: a redirect-only read is a read
+deny echo "$(< .env)"
+deny x=$(<.env)
+deny echo "$(< ~/.aws/credentials)"
+# C-12: using a credential file without printing it passes
+allow ssh -i ~/.ssh/id_ed25519 deploy@example.org uptime
+allow scp -i ~/.ssh/id_rsa a.txt host:/tmp/
+allow chmod 600 ~/.ssh/id_rsa
+allow docker run --env-file .env app:latest
+allow docker compose --env-file .env.local up -d
+allow touch .env
+deny git add .env
+deny git diff .env
+# C-13: a printer piped into a stdin-consuming login program passes
+allow echo "$GH_TOKEN" | gh auth login --with-token
+allow printf '%s' "$REGISTRY_PASSWORD" | docker login ghcr.io -u me --password-stdin
+deny echo "$GH_TOKEN" | cat
+deny echo "$GH_TOKEN" | base64
+deny echo "$GH_TOKEN" | tee /dev/stderr
+# C-14: bare TOKEN and SECRET names
+deny echo "$TOKEN"
+deny echo "$SECRET"
+deny printenv CLIENT_SECRET

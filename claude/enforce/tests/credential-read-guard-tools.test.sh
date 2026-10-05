@@ -48,7 +48,43 @@ check_grep() { # <want> <path>
   [ "$got" = "$1" ] || bad "Grep path $2: expected $1, got $got"
 }
 
+decide_with_path() { # <path> <payload>: run the hook with PATH replaced
+  local out rc d
+  out=$(cd "$REPO" && printf '%s' "$2" | env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    PATH="$1" HOME="$FAKE_HOME" CLAUDE_FIRE_LOG=/dev/null CLAUDE_HARNESS_ROOT="$CLAUDE_HARNESS_ROOT" "$BASH_BIN" "$HOOK" 2>/dev/null); rc=$?
+  if [ "$rc" -eq 2 ]; then printf 'deny'; return; fi
+  if [ "$rc" -ne 0 ]; then printf 'error(exit %s)' "$rc"; return; fi
+  [ -n "$out" ] || { printf 'allow'; return; }
+  d=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  case "$d" in allow|ask|deny) printf '%s' "$d" ;; *) printf 'error(no decision)' ;; esac
+}
+
+# C-15: with python3 hidden, the judge cannot run. A Read of a credential path
+# still denies by a plain path check; any other Read passes. Bash fails closed.
+BASH_BIN=$(command -v bash)
+NOPY_BIN="$WORK/nopy-bin"; mkdir -p "$NOPY_BIN"
+for t in jq cat dirname mktemp rm sleep grep; do
+  tp=$(command -v "$t" 2>/dev/null) && ln -s "$tp" "$NOPY_BIN/$t"
+done
+if PATH="$NOPY_BIN" command -v python3 >/dev/null 2>&1; then
+  bad "test setup: python3 still visible in the restricted PATH"
+fi
+check_read_nopy() { # <want> <path>
+  local got
+  got=$(decide_with_path "$NOPY_BIN" "$(jq -n --arg p "$2" --arg c "$REPO" '{tool_name:"Read",tool_input:{file_path:$p},cwd:$c}')")
+  [ "$got" = "$1" ] || bad "C-15 (no python3) Read $2: expected $1, got $got"
+}
+check_read_nopy allow "$REPO/src/app.ts"
+check_read_nopy deny  "$REPO/.env"
+got=$(decide_with_path "$NOPY_BIN" "$(jq -n --arg c "$REPO" '{tool_name:"Bash",tool_input:{command:"ls"},cwd:$c}')")
+[ "$got" = "deny" ] || bad "C-15 (no python3) Bash ls: expected deny (fail closed), got $got"
+
 check_read deny  "$REPO/.env"
+check_read deny  "/proc/self/environ"
+check_read deny  ".env"
+mkdir -p "$REPO/links"
+ln -s "$FAKE_HOME/.aws/credentials" "$REPO/links/notes.txt"
+check_read deny  "$REPO/links/notes.txt"
 check_read deny  "$FAKE_HOME/.aws/credentials"
 check_read deny  "$REPO/infra/prod.tfvars"
 check_read deny  "$FAKE_HOME/.kube/config"
@@ -76,8 +112,8 @@ registered() { # <tool name>: does a PreToolUse matcher covering it run the hook
 for t in Read Grep Bash; do
   registered "$t" || bad "settings.json: credential-read-guard.sh is not registered for $t"
 done
-for p in 'Read(~/.kube/**)' 'Read(**/*.tfvars)'; do
-  jq -e --arg p "$p" '[.permissions.deny[] | select(contains($p) or (. == $p) or (sub("^Read\\(//?"; "Read(") == $p))] | length > 0' "$SETTINGS" >/dev/null 2>&1 \
+for p in 'Read(~/.kube/**)' 'Read(//**/*.tfvars)'; do
+  jq -e --arg p "$p" '[.permissions.deny[] | select(. == $p)] | length > 0' "$SETTINGS" >/dev/null 2>&1 \
     || bad "settings.json: permissions.deny has no entry for $p"
 done
 
