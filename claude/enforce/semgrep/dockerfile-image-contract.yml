@@ -1,0 +1,67 @@
+# Reports the two security halves of the image contract in
+# CLOUD-DEPLOYMENT.md "Per-Service Dockerfiles": a base image that is not
+# pinned (`:latest` or no tag and no digest), and a container that starts as
+# root (no USER before CMD/ENTRYPOINT, or the last USER is root or 0). Ported
+# from claude-global-rules hooks/dockerfile-reminder.sh check 3, which only
+# printed an advisory on each edit.
+#
+# Known limits: an image named through an ARG (`FROM ${BASE}`) is not judged;
+# a USER set in an earlier build stage counts for a later stage; a lowercase
+# `from` is not matched; a stage alias reused in different case (`AS Build`,
+# then `FROM build`) is reported as an unpinned image.
+rules:
+  - id: dockerfile.unpinned-base-image
+    languages: [dockerfile]
+    severity: ERROR
+    message: >-
+      Base image $IMAGE is not pinned: `:latest` or no tag means each build
+      can pull a different image, including a compromised or breaking one.
+      Pin a version tag (node:22.11-alpine) or a digest (@sha256:...).
+    patterns:
+      - pattern-either:
+          - pattern: FROM $IMAGE
+          - pattern: FROM $IMAGE AS $ALIAS
+      # `FROM build` naming an earlier stage is not a registry pull.
+      - pattern-not-inside: |
+          FROM $X AS $IMAGE
+          ...
+          FROM $IMAGE
+      - pattern-not-inside: |
+          FROM $X AS $IMAGE
+          ...
+          FROM $IMAGE AS $ALIAS2
+      # $IMAGE binds the name without its tag, so the tag is judged on the
+      # line text: no tag, no digest, or exactly :latest. `$` skips ARG images.
+      - pattern-regex: (?mi)^[ \t]*FROM[ \t]+(--platform=\S+[ \t]+)?[^\s:@$]+(:latest)?([ \t]+AS[ \t]+\S+)?[ \t]*$
+      - metavariable-regex:
+          metavariable: $IMAGE
+          regex: (?i)^(?!scratch$)
+  - id: dockerfile.no-user.runs-as-root
+    languages: [dockerfile]
+    severity: ERROR
+    message: >-
+      The container starts as root: no USER instruction comes before this
+      CMD/ENTRYPOINT. A process escape then lands as root. Add `USER node`
+      (or another non-root user) after the runtime stage's COPY lines.
+    patterns:
+      - pattern-either:
+          - pattern: CMD ...
+          - pattern: ENTRYPOINT ...
+      - pattern-not-inside: HEALTHCHECK CMD ...
+      - pattern-not-inside: |
+          USER $U
+          ...
+  - id: dockerfile.root-user.runs-as-root
+    languages: [dockerfile]
+    severity: ERROR
+    message: >-
+      The container starts as root: the last USER before this CMD/ENTRYPOINT
+      is root or 0. Switch back to a non-root user after the steps that need
+      root.
+    # Judged on the text, since a metavariable cannot say "no later USER": a
+    # root USER line, then no other USER line, then a line that starts with
+    # CMD or ENTRYPOINT (so `HEALTHCHECK CMD` is not one). The finding sits on
+    # the CMD/ENTRYPOINT line.
+    patterns:
+      - pattern-regex: (?msi)^[ \t]*USER[ \t]+(root|0)(:\S*)?[ \t]*$(?:(?!^[ \t]*USER\b).)*?^[ \t]*(?P<RUN>(CMD|ENTRYPOINT)\b[^\n]*)
+      - focus-metavariable: $RUN

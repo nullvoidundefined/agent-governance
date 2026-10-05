@@ -39,6 +39,8 @@ jobs:
           pipx install pytest==9.1.1
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           npm install --prefix claude/enforce --no-save --no-package-lock --legacy-peer-deps vitest@5.0.0 vite@8.2.2
+      - name: Install Semgrep (the rule-pack test runs it; same version as security-ci-semgrep-requirements.txt)
+        run: pipx install semgrep==1.178.0
       - name: Hook tests
         run: bash claude/enforce/tests/run-tests.sh
       - name: Sync test

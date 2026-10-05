@@ -37,7 +37,11 @@ done < <(jq -r '.hooks.PreToolUse[] | select(.matcher as $m | "Bash" | test("^("
 [ "${#HOOKS[@]}" -gt 0 ] || { echo "FAIL: no PreToolUse Bash hooks found in settings.json"; exit 1; }
 for h in "${HOOKS[@]}"; do [ -f "$h" ] || { echo "FAIL: registered hook missing: $h"; exit 1; }; done
 
-WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
+WORK=$(mktemp -d) || { echo "FAIL: mktemp failed"; exit 1; }
+trap 'rm -rf "$WORK"' EXIT
+# Physical path: macOS mktemp returns /var/..., a symlink to /private/var/...,
+# and the delete guard resolves targets physically.
+WORK=$(cd "$WORK" && pwd -P)
 REPO="$WORK/repo"; mkdir -p "$REPO"
 env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$REPO" init -q
 cat >"$REPO/.enforce.json" <<'EOF'
