@@ -64,6 +64,27 @@ milliseconds, and fires only on claim words.
 - V-9: Codex and Cursor ports are marked unported with the reason (no Stop
   event in their adapters), as `turn-summary-guard.sh` is.
 
+## Review r1 amendments (2026-10-05)
+
+- V-10: the trailing `Done:` / `Decide:` / `Next:` summary lines (bold or
+  plain, as `turn-summary-guard.sh` reads them) are removed before the claim
+  search; a claim word there never blocks.
+- V-11: a `user` entry is not a turn boundary when it has `isMeta` or
+  `isCompactSummary` true, or its text starts (after whitespace) with
+  `<task-notification`, `<system-reminder`, `<command-`, `Stop hook feedback`,
+  `[SYSTEM NOTIFICATION`, or `Another Claude session sent a message`.
+- V-12: citable inputs are Bash `command`, and Read/Grep/Glob `file_path`,
+  `path` and `pattern` values, all from the current turn.
+- V-13: the claim words `fixed` and `passes` count only in claim forms:
+  `is|are|was|were|now|been fixed`, `fixed it|this|that|the|in`, and
+  `now passes`, `passes now`, `test passes`, `suite passes`, `check passes`.
+  Plain `fixed list`, `fixed-width`, `passes the value` do not count.
+- V-14: the runtime limit is 300 ms on a 5 MB transcript measured as the best
+  of three runs, and the hook reads only the transcript tail back to the last
+  turn boundary (bounded read), not the whole file.
+- Accepted (no change): when `turn-summary-guard.sh` blocks first, the retry
+  carries `stop_hook_active` and the claim check fails open for that turn.
+
 ## Bypass (accepted)
 
 The model can run a trivial command and cite it. The check catches
