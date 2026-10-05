@@ -10,7 +10,9 @@ This checkout is the source of the governance harness, not a consumer of it. The
 rules live in the tool-neutral `rules/` tree; `node translate/all.mjs --write` generates
 `claude/`, `codex/` and `cursor/` from it (hooks, `enforce/` and `settings.json` stay
 hand-authored in `claude/`), and `./sync.sh` installs `codex/` into `~/.codex`. No tool
-is primary: edit `rules/` from any of them. Text meant for one tool only goes in an
+is primary: edit `rules/` from any of them. `./sync.sh` regenerates all three from `rules/` before it
+installs, and `protected-path-guard.sh` refuses a direct edit to any file carrying a
+GENERATED header, naming the source to edit instead. Text meant for one tool only goes in an
 `<!-- only: codex -->` ... `<!-- /only -->` block (targets: claude, codex, cursor).
 
 ## Do this first

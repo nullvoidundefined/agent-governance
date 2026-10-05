@@ -7,6 +7,6 @@ const PREAMBLE =
 
 // renderRulesDoc(claudeMdText) -> { path, content }
 export function renderRulesDoc(claudeMdText) {
-  const content = `${renderGeneratedHeader("CLAUDE.md")}\n\n${PREAMBLE}\n\n${claudeMdText}`;
+  const content = `${renderGeneratedHeader("rules/GLOBAL.md")}\n\n${PREAMBLE}\n\n${claudeMdText}`;
   return { path: "AGENTS.md", content };
 }

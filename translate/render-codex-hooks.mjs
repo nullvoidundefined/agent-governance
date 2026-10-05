@@ -139,6 +139,6 @@ export function renderPortStatus(settingsHooks, portMap) {
   const summaryLine = `${portedRows.length} of ${rows.length} hook registrations port, across ${codexEventCount} Codex events.`;
   const appendix = portMap.port_status_appendix ? `\n\n${portMap.port_status_appendix}` : "";
   const content =
-    `${renderGeneratedHeader("settings.json")}\n\n# Codex port status\n\n${summaryLine}\n\n${renderPortStatusTable(rows, portMap)}${appendix}\n`;
+    `${renderGeneratedHeader("claude/settings.json")}\n\n# Codex port status\n\n${summaryLine}\n\n${renderPortStatusTable(rows, portMap)}${appendix}\n`;
   return { path: "PORT-STATUS.md", content };
 }

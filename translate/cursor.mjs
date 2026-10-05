@@ -55,7 +55,7 @@ function loadSources(rootDir) {
   const rules = loadRuleSources(rootDir, "cursor");
   const claudeMdText = rules.global.text;
   const globalMemoryIndexText = loadTextFile(path.join(claudeDir, "global-memory/INDEX.md"));
-  const stackFiles = rules.stacks.map((stack) => ({ file: stack.legacyName, text: stack.text }));
+  const stackFiles = rules.stacks.map((stack) => ({ file: stack.legacyName, text: stack.text, source: stack.source }));
   const cloudDeploymentText = rules.cloudDeployment.text;
   const agents = rules.agents;
   const skills = rules.skills;
@@ -120,7 +120,7 @@ function buildManifestClassifications(planned, handAuthored) {
 // while a generated rule quietly dropped out of the tree.
 function renderPlannedTree(sources) {
   const planned = sources.stackFiles.map((stackFile) => renderStackRule(stackFile, sources.portMap));
-  planned.push(renderStackRule({ file: "CLOUD-DEPLOYMENT.md", text: sources.cloudDeploymentText }, sources.portMap));
+  planned.push(renderStackRule({ file: "CLOUD-DEPLOYMENT.md", text: sources.cloudDeploymentText, source: "rules/CLOUD-DEPLOYMENT.md" }, sources.portMap));
   const structureConventionsSkill = sources.skills.find((skill) => skill.frontmatter.name === "structure-conventions");
   if (!structureConventionsSkill) {
     throw new SourceError("claude/skills/structure-conventions/SKILL.md", "missing or renamed (structure-conventions rule has no source)");
