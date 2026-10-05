@@ -14,8 +14,56 @@ input="$(cat)"
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 [ -z "$cmd" ] && exit 0
 
-# Only commands that actually invoke the codex CLI matter here.
-grep -Eq '(^|[;&|(]|[[:space:]])codex([[:space:]]|$)' <<< "$cmd" || exit 0
+# Only commands that actually invoke the codex CLI matter here. A command that
+# merely names codex (git diff -- codex, grep codex, echo codex) does not. The
+# decision is per simple command, from the parse shell-command-segments.py
+# produces (it unwraps bash -c, eval, env, sudo, xargs, and reduces a program
+# path to its basename), so bash -c 'codex ...' and /usr/local/bin/codex count.
+# A package runner launching codex (npx, bunx, pnpm dlx, yarn dlx, npm exec)
+# counts too. When the parser is unusable, fall back to asking whenever the
+# text mentions codex at all: a missed billing switch costs more than an extra
+# confirmation.
+case "$cmd" in *codex*) ;; *) exit 0 ;; esac
+
+# launched_package <words...>: prints the package a runner launches, skipping
+# the runner's own options; empty when the words are not a package runner.
+launched_package() {
+  local program="$1" index=1 word
+  shift
+  case "$program" in
+    npx | bunx | pnpx) ;;
+    pnpm | yarn) [ "${1:-}" = dlx ] || return 0; shift ;;
+    npm) [ "${1:-}" = exec ] || [ "${1:-}" = x ] || return 0; shift ;;
+    *) return 0 ;;
+  esac
+  for word in "$@"; do
+    case "$word" in
+      --) continue ;;
+      -p | --package | -c | --call) return 0 ;;
+      -*) continue ;;
+      *) printf '%s' "${word%@*}"; return 0 ;;
+    esac
+  done
+}
+
+# invokes_codex: true when any simple command runs the codex CLI.
+invokes_codex() {
+  local segments words index program helper
+  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shell-command-segments.py"
+  segments="$(python3 "$helper" <<< "$cmd" 2>/dev/null)" && [ -n "$segments" ] || return 0
+  while IFS=$'\037' read -r -a words; do
+    index=0
+    while [ "$index" -lt "${#words[@]}" ] && [[ "${words[index]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
+      index=$((index + 1))
+    done
+    program="${words[index]:-}"
+    program="${program##*/}"
+    [ "$program" = codex ] && return 0
+    [ "$(launched_package "$program" "${words[@]:index+1}")" = codex ] && return 0
+  done <<< "$segments"
+  return 1
+}
+invokes_codex || exit 0
 
 emit() {
   jq -n --arg r "$1" '{
