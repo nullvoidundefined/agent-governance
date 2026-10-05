@@ -1,0 +1,47 @@
+# Guard corpus: one command per row, preceded by the decision the combined
+# PreToolUse Bash hooks must reach (allow, ask, or deny). Run by
+# ../guard-corpus.test.sh in a scratch git repo, so "inside the repo" means
+# that repo. Add a row for every guard change: the stop it adds and the safe
+# look-alike it must not catch.
+
+# File deletes
+deny rm -rf /srv/data
+deny rm -rf ../other
+deny rm -rf ~/backups
+deny FOO=1 rm -rf /srv/data
+deny bash -c 'rm -rf /srv/data'
+deny eval "rm -rf /srv/data"
+deny find / -name x -delete
+ask rm -rf ./build
+allow rm build/out.txt
+allow ls -la
+
+# SQL text
+ask psql "$DATABASE_URL" -c "DROP TABLE users"
+ask python3 -c "import db; db.execute('DROP TABLE users')"
+deny railway run -e production psql -c "DROP TABLE users"
+deny NODE_ENV=production psql "$DATABASE_URL" -c "TRUNCATE users"
+allow psql -h localhost -c "SELECT 1"
+
+# Git
+ask git push --force origin main
+ask git push origin +main
+allow git status
+allow git push -u origin feature/x
+
+# gh api
+deny gh api -X DELETE repos/o/r/git/refs/heads/x
+deny gh api --method=DELETE repos/o/r
+allow gh api repos/o/r/pulls
+
+# Containers
+ask docker volume rm pgdata
+ask docker compose down -v
+allow docker build -t app .
+
+# Read-only infrastructure and DNS lookups
+allow terraform plan
+allow kubectl get pods
+allow dig TXT example.com
+allow aws route53 list-resource-record-sets --hosted-zone-id Z1
+allow npm test
