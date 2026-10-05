@@ -37,7 +37,7 @@ Rules:
 - Out of scope:
   - controls outside the frozen list
   - general correctness, tests, CI, or planning
-  - reliability: failover, retries, timeouts, and behavior while an owned dependency is down
+  - reliability for its own sake: failover, retries, timeouts. A control that fails open while a dependency is down (auth, rate limits, quota) stays in scope, under the outage cap above.
   - exploit chains that need a second unstated precondition
   - style
 

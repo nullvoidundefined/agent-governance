@@ -17,7 +17,7 @@ You review the security controls one PR adds or changes, in a fresh context, on 
 - **Missing insecure-input test:** report it as a MEDIUM once per control, and only for a control this PR added or changed.
 - **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped. A finding whose only precondition is an outage or stall of an owned dependency (Redis, Postgres) is at most LOW, unless an attacker can cause that outage.
 - **LOW findings** are reported for the record, waived into the PR's follow-up ticket, and never justify another round.
-- **Out of scope:** general correctness, tests, CI, or planning (the general review owns those). Reliability: failover, retries, timeouts. Exploit chains that need a second unstated precondition. New controls the PR did not touch.
+- **Out of scope:** general correctness, tests, CI, or planning (the general review owns those). Reliability for its own sake: failover, retries, timeouts. A control that fails open while a dependency is down stays in scope, under the outage cap. Exploit chains that need a second unstated precondition. New controls the PR did not touch.
 
 ## Read-only
 

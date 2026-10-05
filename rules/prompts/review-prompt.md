@@ -4,7 +4,7 @@ Fill the placeholders and paste the result as the `pr-reviewer` dispatch prompt 
 
 Round 2 runs only when round 1 found a HIGH, or a MEDIUM fixed in code. In round 2, paste only the fix diff. There is no round 3.
 
-Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, or `waived: <ticket>` for LOW). LOW findings are never fixed in the PR; they go into one follow-up ticket per PR.
+Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, or `waived: <ticket>` for LOW). LOW findings are never fixed in the PR; when there are any, they go into one follow-up ticket for the PR.
 
 ---
 

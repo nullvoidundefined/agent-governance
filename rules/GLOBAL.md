@@ -50,7 +50,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 - **Who:** every PR gets one review by the `pr-reviewer` agent in a fresh context. It gets the diff, the acceptance criteria, and the risk line, never the implementer's transcript.
 - **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is waived (below).
 - **Second round:** only when round one found a HIGH, or a MEDIUM fixed in code. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
-- **LOW waiver:** a standing owner waiver covers every LOW finding, general and security. LOW findings are never fixed in the PR. They go into one follow-up ticket per PR, linked from the PR body.
+- **LOW waiver:** a standing owner waiver covers every LOW finding, general and security. LOW findings are never fixed in the PR. When a PR has any, they go into one follow-up ticket for that PR, linked from the PR body; a PR with no LOW findings gets no ticket.
 - **Record:** in the PR body under `## Review`.
 
 ## Security review
@@ -70,7 +70,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 ## Stopping and anti-recursion
 
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
-- **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, or for deferred work the owner should see.
+- **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, for deferred work the owner should see, or as a PR's one LOW-waiver ticket.
 - **Bounded review:** general review and security review each stop after two rounds at most, and the second happens only for a HIGH or a MEDIUM fixed in code. Each round looks only at what changed.
 - **Time box and fixed scope:** a high-risk task stops at about 90 minutes from RED and hands over what is left; no PR gains scope after it starts.
 - **Proportional verification:** depth follows product risk and changed behavior.
