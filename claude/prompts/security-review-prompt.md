@@ -3,8 +3,8 @@
 
 Fill the placeholders and paste the result as the `security-reviewer` dispatch prompt (Agent tool, `subagent_type: "security-reviewer"`, `model: "fable"`, in the background). Run it after the general review, on high-risk PRs that touch a security control.
 
-- **Rounds:** round 1 lists the controls in scope, and that list is frozen. Round 2 runs only for a HIGH or CRITICAL, or a MEDIUM fixed in code, and gets the fix diff. Round 3 runs only for an open HIGH or CRITICAL. Stop after round 3; the owner decides what remains.
-- **Record:** in the PR body under `## Security review`, written once at the end: the reviewer, the model, the range, the rounds, the controls, and each finding with severity and disposition (`fixed <sha>`, `noted` for LOW, or `waived by owner <date>`).
+- **Rounds:** round 1 lists the controls in scope, and that list is frozen. Round 2 runs only for a HIGH or CRITICAL, or a MEDIUM fixed in code, and gets the fix diff. Stop after round 2; an open HIGH or CRITICAL goes to the owner, who decides what remains.
+- **Record:** in the PR body under `## Security review`, written once at the end: the reviewer, the model, the range, the rounds, the controls, and each finding with severity and disposition (`fixed <sha>`, `waived` for LOW (listed in the PR's follow-up ticket), or `waived by owner <date>`).
 
 ---
 

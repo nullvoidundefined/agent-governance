@@ -3,7 +3,7 @@
 
 Fill the placeholders and paste the result as the `pr-reviewer` dispatch prompt (Agent tool, `subagent_type: "pr-reviewer"`, in the background). Paste the diff and the criteria as text. Build the diff with `git diff <base>...<head> -- . ':(exclude)<generated paths>'`, and name what you excluded. When the diff runs past about 1,500 lines, paste the executable and rule hunks and list the rest by path.
 
-Round 2 runs only when round 1 found a HIGH, or the fixes add new production code larger than both 100 lines and 25% of the diff, or the fixes change the design. In round 2, paste only the fix diff. There is no round 3.
+Round 2 runs only when round 1 found a HIGH, or a MEDIUM was fixed in code. In round 2, paste only the fix diff. There is no round 3.
 
 Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, or `noted`).
 

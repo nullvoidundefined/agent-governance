@@ -46,8 +46,8 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 ## Review
 
 - **Who:** every PR gets one review by the `pr-reviewer` agent in a fresh context. It gets the diff, the acceptance criteria, and the risk line, never the implementer's transcript.
-- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is noted in the PR, not fixed, unless the fix is a one-line change to a line the PR already changes. LOW never triggers a new test, a review, or another round.
-- **Second round:** only when round one found a HIGH, the fixes add new production code larger than both 100 lines and 25% of the diff, or the fixes change the design. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
+- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is waived under the owner's standing waiver (2026-10-05): never fixed in the PR, listed in one follow-up ticket per PR that the PR body links. LOW never triggers a new test, a review, or another round.
+- **Second round:** only when round one found a HIGH, or a MEDIUM was fixed in code. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
 - **Record:** in the PR body under `## Review`.
 
 ## Security review
@@ -56,21 +56,22 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 - **Rounds:**
   - Round one fixes the list of controls in scope.
   - Round two happens only for a HIGH, or a MEDIUM fixed in code, and covers the fix diff and those controls.
-  - Round three happens only for an open HIGH.
-  - Stop after three. The owner decides what remains.
-- **Severity:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. LOW findings are fixed or noted and never start a round.
+  - Stop after two. An open HIGH goes to the owner, who decides what remains.
+- **Severity:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. LOW findings are waived (follow-up ticket) and never start a round.
 - **Scope:** a security round never reopens tests, CI, planning, or the general review.
 - **Record:** in the PR body under `## Security review`, written once at the end.
 
 ## Stopping and anti-recursion
 
-- **Stay on the task:** a finding is fixed in a PR only when it breaks one of that PR's acceptance criteria or is a realistic failure: reachable by the change's real callers or inputs without deliberate evasion (for a high-risk PR, under its threat model). Everything else (adjacent gaps, other files, hardening) is recorded as `noted` under the PR's `## Review` or `## Security review`: no code, no new test, no ticket unless the owner asks. A HIGH is never dropped for scope alone; an out-of-scope HIGH goes to the owner.
+- **Stay on the task:** a finding is fixed in a PR only when it breaks one of that PR's acceptance criteria or is a realistic failure: reachable by the change's real callers or inputs without deliberate evasion (for a high-risk PR, under its threat model). Everything else (adjacent gaps, other files, hardening) is recorded as `noted` under the PR's `## Review` or `## Security review`: no code and no new test; LOWs go in the PR's follow-up ticket, anything else only when the owner asks. A HIGH is never dropped for scope alone; an out-of-scope HIGH goes to the owner.
 - **No spiral:** each review round gets at most one fix cycle (failing test, fix, re-check); the next allowed round is that re-check. A finding still open after its cycle goes to the owner with a recommendation, and no further cycle starts without them. An open HIGH keeps blocking the merge until the owner decides; escalating does not clear it. When the Process budget is spent, stop and ask the owner the same way.
 - **Subagents stay in scope:** a dispatched agent does the task it was given. Anything it notices outside that task goes in its report as a note; it never fixes it.
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
 - **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, or for deferred work the owner should see.
-- **Bounded review:** general review stops after two rounds at most, security review after three. Each round looks only at what changed.
+- **Bounded review:** general review and security review each stop after two rounds at most. Each round looks only at what changed.
 - **Proportional verification:** depth follows product risk and changed behavior.
+- **No mid-PR scope:** once a PR's acceptance criteria are written, nothing is added except fixes to its in-scope findings. A new idea, however good, goes in a follow-up PR.
+- **Task budget:** about 90 minutes per high-risk task, from acceptance criteria to merge. At 90 minutes, stop and report to the owner what is left, with a recommendation (finish, cut, or hand off); do not keep going on your own.
 - **Process budget:** process time does not exceed implementation time.
   - It includes harness maintenance: hooks, hook tests, adapters, translation, review machinery, governance CI, and debugging them.
   - If a useful practice costs too much, simplify how it is enforced before dropping the practice.

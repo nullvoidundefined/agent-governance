@@ -62,7 +62,7 @@ One test-writing pass per behavior. Do not ask for more tests than the criteria 
 ### 3. Review, fix, verify, stop
 
 1. Route the review: `bash ~/.claude/enforce/route.sh review --risk <risk> --author <implementer>` always prints the other provider. Add `--security` when the PR touches a security control. When it prints `codex` and Codex is available, run Codex read-only with the filled prompt (`codex exec -s read-only -C <repo root> --skip-git-repo-check -o <scratch>/codex-review-final.md "$(cat <scratch>/review-prompt.md)" </dev/null > <scratch>/codex-review.log 2>&1`); otherwise dispatch one `pr-reviewer` in a fresh context with the same prompt and name the fallback in the PR. Give the reviewer the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
-2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Note a LOW in the PR; fix it only when the fix is a one-line change to a line the PR already changes. Fix only in-scope findings (they break an acceptance criterion or are a realistic failure under the threat model); record the rest as `noted`. Each review round gets one fix cycle; a finding still open after it goes to the owner, and an open HIGH keeps blocking the merge until the owner decides.
+2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Never fix a LOW: it is waived and listed in the PR's follow-up ticket. Fix only in-scope findings (they break an acceptance criterion or are a realistic failure under the threat model); record the rest as `noted`. Each review round gets one fix cycle; a finding still open after it goes to the owner, and an open HIGH keeps blocking the merge until the owner decides.
 3. Rerun only the checks the fixes affect.
 4. A second review happens only under the CLAUDE.md conditions, and covers only the fix diff.
 5. Write `## Verification` and `## Review` in the PR body. Stop.
@@ -79,7 +79,7 @@ Same as standard, plus:
    - A test author's own mistake before green is fixed with `tdd.sh amend <file>`, run once to open the window and once to close it.
    - A lock left by a dead session closes with `tdd.sh abandon`, never by deleting the file.
 3. **Integration:** verify against the real dependency where the behavior depends on it, for example real PostgreSQL for transactions and constraints.
-4. **Security review:** after the general review, dispatch `security-reviewer` with `model: "fable"` (the strongest model) and `prompts/security-review-prompt.md`. The round rules in CLAUDE.md apply: controls are frozen in round one, rounds 2 and 3 are scoped to fixes, and the review stops after three.
+4. **Security review:** after the general review, dispatch `security-reviewer` with `model: "fable"` (the strongest model) and `prompts/security-review-prompt.md`. The round rules in CLAUDE.md apply: controls are frozen in round one, round 2 is scoped to fixes, and the review stops after two.
 5. Stop.
 
 ## Common mistakes
