@@ -484,7 +484,7 @@ report_name() { printf '%s/%s' "$ROOT_PHYSICAL" "$1"; }
 
 file_record() { jq -c --arg n "$(report_name "$1")" '.testResults[] | select(.name == $n)' "$REPORT"; }
 
-MISSING_MODULE='Cannot find module|Failed to resolve import|does not provide an export|is not a function|is not defined|Cannot read propert'
+MISSING_MODULE='Cannot find module|Cannot find package|Failed to resolve import|does not provide an export|is not a function|is not defined|Cannot read propert'
 PARSE_FAILURE='Transform failed|PARSE_ERROR|SyntaxError|Unexpected token|Parse error|syntax error'
 # Vitest and Jest: the markers their own assertion failures carry, never a bare
 # word a plain Error could say. Vitest writes AssertionError for every chai
