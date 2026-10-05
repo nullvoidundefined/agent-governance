@@ -2,7 +2,7 @@
 
 # Cursor port status
 
-17 of 20 hook registrations port, across 7 Cursor events.
+18 of 21 hook registrations port, across 7 Cursor events.
 
 | Hook | Claude Code event | Under Cursor |
 |---|---|---|
@@ -15,6 +15,7 @@
 | `global-repo-push-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `git-workflow-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `destructive-ops-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
+| `infra-mutation-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `protected-path-guard` | PreToolUse (Bash) | ported: `beforeShellExecution` |
 | `secret-scan` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |
 | `no-em-dash` | PreToolUse (Write|Edit) | ported: `afterFileEdit`, `preToolUse` |

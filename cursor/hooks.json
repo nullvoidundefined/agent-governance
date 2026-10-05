@@ -9,7 +9,7 @@
     ],
     "beforeShellExecution": [
       {
-        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan conflict-markers destructive-db-guard destructive-command-guard codex-billing-guard global-repo-push-guard git-workflow-guard destructive-ops-guard protected-path-guard",
+        "command": "~/.cursor/hooks/claude-hook-adapter.sh beforeShellExecution secret-scan conflict-markers destructive-db-guard destructive-command-guard codex-billing-guard global-repo-push-guard git-workflow-guard destructive-ops-guard infra-mutation-guard protected-path-guard",
         "timeout": 180
       }
     ],

@@ -44,7 +44,17 @@ if [ -z "$cmd" ]; then
     esac
 fi
 
-upper="$(printf '%s' "$cmd" | tr '[:lower:]' '[:upper:]')"
+# The statement text, read three ways on one line: as written, with /* */
+# comments removed, and with -- comments removed as well, each with all
+# whitespace (newlines included) collapsed to one space. A comment cannot then
+# split a keyword (DROP/**/TABLE), and a quoted '--' or an option such as
+# --host cannot hide the rest, because the first readings keep it.
+upper="$(printf '%s' "$cmd" | awk 'BEGIN { RS = "\001" } {
+    blocks = $0; gsub(/\/\*([^*]|\*+[^*\/])*\*+\//, " ", blocks)
+    lines = blocks; gsub(/--[^\n]*/, " ", lines)
+    out = $0 " ; " blocks " ; " lines; gsub(/[[:space:]]+/, " ", out)
+    print out
+}' | tr '[:lower:]' '[:upper:]')"
 
 emit() {
     # $1 = permissionDecision (deny|ask), $2 = reason
@@ -63,8 +73,35 @@ emit() {
 # Destructive = irreversible data loss. Benign writes (UPDATE/INSERT) are NOT
 # destructive, so admin updates against prod are not hard-denied (they still ask).
 destructive=0
-if grep -Eq 'DROP[[:space:]]+(DATABASE|TABLE)|TRUNCATE([[:space:]]|$)|DELETE[[:space:]]+FROM' <<< "$upper" \
-    || grep -Eqi 'pg_restore|migrate:down' <<< "$cmd"; then
+# Destructive verbs other than DELETE FROM: dropping a database, schema,
+# table, owned objects or column, truncating, and the tools that do the same
+# (pg_restore, migrate:down, dropdb, mysqladmin drop).
+DESTRUCTIVE_SQL_VERBS='DROP[[:space:]]+(DATABASE|SCHEMA|TABLE|OWNED|COLUMN)|TRUNCATE([[:space:]]|$)'
+DESTRUCTIVE_TOOLS='pg_restore|migrate:down|(^|[^A-Za-z0-9_-])dropdb([^A-Za-z0-9_-]|$)|mysqladmin[[:space:]].*[[:space:]]drop([[:space:]]|$)'
+
+# True when an ALTER TABLE drops a column without the COLUMN keyword
+# (ALTER TABLE t DROP email). Dropping a constraint, index, key, default or
+# NOT NULL loses no data.
+alter_drops_column() {
+    grep -Eo 'ALTER[[:space:]]+TABLE[^;]*' <<< "$upper" \
+        | grep -Eo '(^|[^A-Z0-9_])DROP[[:space:]]+[^[:space:];,(]+' \
+        | grep -Eqv 'DROP[[:space:]]+(CONSTRAINT|INDEX|KEY|PRIMARY|FOREIGN|CHECK|DEFAULT|NOT|IDENTITY|EXPRESSION|PARTITIONING)$'
+}
+
+# A SQL client whose text carries DROP or TRUNCATE as a bare word counts as
+# destructive whatever separates the keyword from its object: comment syntax
+# (--, #, nested /* */) varies by dialect, so matching it is a losing race.
+SQL_CLIENT='(^|[^A-Za-z0-9_-])(psql|mysql|mariadb|sqlcmd|pgcli|mycli)([^A-Za-z0-9_-]|$)'
+DESTRUCTIVE_KEYWORD='(^|[^A-Z0-9_])(DROP|TRUNCATE)([^A-Z0-9_]|$)'
+
+# True when the command carries a destructive verb other than DELETE FROM.
+has_destructive_verb() {
+    grep -Eq "$DESTRUCTIVE_SQL_VERBS" <<< "$upper" || alter_drops_column \
+        || { grep -Eq "$SQL_CLIENT" <<< "$cmd" && grep -Eq "$DESTRUCTIVE_KEYWORD" <<< "$upper"; }
+}
+
+if has_destructive_verb || grep -Eq "DELETE[[:space:]]+FROM" <<< "$upper" \
+    || grep -Eqi "$DESTRUCTIVE_TOOLS" <<< "$cmd"; then
     destructive=1
 fi
 
@@ -111,6 +148,49 @@ if [ "$is_mcp" -eq 1 ]; then
     esac
 fi
 
+# True when every DELETE FROM statement in the command carries a WHERE.
+deletes_are_bounded() {
+    local statement
+    while IFS= read -r statement; do
+        grep -Eq 'WHERE' <<< "$statement" || return 1
+    done < <(grep -Eo "DELETE[[:space:]]+FROM[^;\"']*" <<< "$upper")
+    return 0
+}
+
+# True when the command names no database host other than a local one: every
+# -h/--host value and URL host is localhost, 127.0.0.1, ::1, or a unix socket
+# path. Anything that can carry a target this cannot read fails it: a shell
+# variable ($PROD_DB), a *HOST= or *SERVICE= assignment (PGSERVICE=), a host=
+# or service= conninfo, a glued -hHOST, or a launcher that runs the command on
+# a remote machine or platform (ssh, heroku, railway, wrangler, fly, kubectl).
+names_only_local_target() {
+    local host
+    grep -Eq '\$\{?[A-Za-z_]' <<< "$cmd" && return 1
+    grep -Eqi '(^|[^-A-Za-z0-9_])[A-Za-z_]*(host|service)=' <<< "$cmd" && return 1
+    grep -Eq '(^|[[:space:]])-h[^[:space:]]' <<< "$cmd" && return 1
+    grep -Eq '(^|[^A-Za-z0-9_-])(heroku|railway|wrangler|fly|flyctl|kubectl|ssh)([^A-Za-z0-9_-]|$)' <<< "$cmd" && return 1
+    while IFS= read -r host; do
+        host="${host##*@}"
+        case "$host" in
+            '' | localhost | localhost:* | 127.0.0.1 | 127.0.0.1:* | '[::1]'* | /*) ;;
+            *) return 1 ;;
+        esac
+    done < <(grep -Eo "[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]\"'?]*" <<< "$cmd" | sed -E 's#^[^:]*://##'
+             grep -Eo "(^|[[:space:]])(-h|--host)(=|[[:space:]]+)[^[:space:]]+" <<< "$cmd" \
+                 | sed -E "s/^[[:space:]]*(-h|--host)(=|[[:space:]]+)//; s/[\"']//g")
+    return 0
+}
+
+# B-16 (docs/specs/2026-10-04-harness-hardening.md): a DELETE bounded by WHERE
+# against a local target is routine work on the developer's own data. It
+# applies only when DELETE FROM is the sole destructive verb in the command.
+if [ "$destructive" -eq 1 ] && [ "$is_mcp" -eq 0 ] && [ "$remote" -eq 0 ] && [ "$prod" -eq 0 ] \
+    && ! has_destructive_verb \
+    && ! grep -Eqi "$DESTRUCTIVE_TOOLS" <<< "$cmd" \
+    && deletes_are_bounded && names_only_local_target; then
+    destructive=0
+fi
+
 # --- Decide ---------------------------------------------------------------
 
 # A local database is the developer's own; never prompt.
@@ -143,7 +223,7 @@ fi
 
 # ASK: destructive verbs against any other target (staging / remote / unknown).
 if [ "$destructive" -eq 1 ]; then
-    emit ask "Destructive SQL (DROP / TRUNCATE / DELETE FROM / pg_restore / migrate:down) detected. Confirm the target database before running."
+    emit ask "Destructive SQL (DROP / TRUNCATE / DELETE FROM / pg_restore / migrate:down / dropdb) detected. Confirm the target database before running."
 fi
 
 # ASK: non-destructive writes against a managed/remote database.

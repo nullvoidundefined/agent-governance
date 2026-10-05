@@ -24,7 +24,7 @@
   },
   "files": {
     ".gitignore": "sha256:52f264056c9ce47b5cbe35d8fbf73aafe688ae48777a45807f9a47d2de9b7380",
-    "PORT-STATUS.md": "sha256:208d2e294fc1edadd3d150bcde0a1d254b714cf1181d106dfee8c4f4886b231e",
+    "PORT-STATUS.md": "sha256:df11112ef4cfc2d235c3c8e889e70a2cdd2f4a86c5cab37df8e9e2e9d159f0a1",
     "agents/audit-criticism.md": "sha256:9fdc9c7d989ba07dad1cfbdfc7b2983a70ec28a3f3365350ab9271a506506a56",
     "agents/audit-customer.md": "sha256:4fee069df633522f1e4045bf765ca34eb3fd57bdec32961d696b26ec5de77be0",
     "agents/audit-design.md": "sha256:582353b24c9beb77c48bd944b38da3804d60c4e4068b4a153a7714421570900b",
@@ -45,7 +45,7 @@
     "commands/audit-security.md": "sha256:c6ee97d05e7495b879d09c2a66af041633f411aabacb44cb202cc611edcbb969",
     "commands/audit-ux.md": "sha256:b5e834edeeb155a3315228833b5e0bc120c0b5ef318d4cb9373d94a9f4cecb35",
     "commands/pr-reviewer.md": "sha256:65d6372532c74ec16b020359a5274845a4cdd3780b6e088bf1afbd850792dc85",
-    "hooks.json": "sha256:c5530f543c9ad0f66ebd32e2875dba72c95b9efd650203a30e4dd1f33b870d0d",
+    "hooks.json": "sha256:7ecac2c027cecc4163d6ab3eba15d4974643b53c7935d1fa1b510586f6e54b3a",
     "rules/000-global-rules.mdc": "sha256:0e830b826d8dfe7d198c07a1b7be7ea767e3492f67739a0d0c6c90acb6df8794",
     "rules/002-global-memory-index.mdc": "sha256:1914949625b10e276c0bf2b7e91c083b788720680fef2f52fcdf529f871b8159",
     "rules/backend.mdc": "sha256:ccaefdeca2e36e1b641954dd07cf23630b83b4f1ed4c725b56d40795b445391b",
