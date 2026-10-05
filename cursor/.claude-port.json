@@ -46,7 +46,7 @@
     "commands/audit-ux.md": "sha256:b5e834edeeb155a3315228833b5e0bc120c0b5ef318d4cb9373d94a9f4cecb35",
     "commands/pr-reviewer.md": "sha256:65d6372532c74ec16b020359a5274845a4cdd3780b6e088bf1afbd850792dc85",
     "hooks.json": "sha256:7ecac2c027cecc4163d6ab3eba15d4974643b53c7935d1fa1b510586f6e54b3a",
-    "rules/000-global-rules.mdc": "sha256:2a581e59aec78c2026250718df7760584cf3aadb81fce15a1016e91934366cdd",
+    "rules/000-global-rules.mdc": "sha256:439f6cbc4f02b30d696747b322c0c78bc4dbbf7f23d1e051dbf446ed45a01e5d",
     "rules/002-global-memory-index.mdc": "sha256:1914949625b10e276c0bf2b7e91c083b788720680fef2f52fcdf529f871b8159",
     "rules/backend.mdc": "sha256:ccaefdeca2e36e1b641954dd07cf23630b83b4f1ed4c725b56d40795b445391b",
     "rules/cloud-deployment.mdc": "sha256:f4eff345ff38817f31a852dcf2181f45f670240966c4fcfa8dc2bbc3bafab696",
@@ -65,14 +65,14 @@
     "rules/styling.mdc": "sha256:6d2bf9295a9d3f12ac689ea2dc4cfbf6957b6b5be3a0b957a65250a1b0dff1a3",
     "skills/bug-hunt/SKILL.md": "sha256:e7bee8c97980950dbcd72740ca471ccf5f0ab8d2659c4a8964f12d205ae121d8",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:9f568b7b6719aa4566d8fdd3c76ab5ae98de80412d3d1bf310b9254535816afa",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:76fa6b9f323d0911a8ee92969668e3d1acb402961c400211d5c600245c5a4330",
     "skills/documentation-create/SKILL.md": "sha256:2d96daf8552969f986b6a7a92dc067cf848e30416da01d460a034dbc67c13341",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:c9ffe8943c1f5a136817d89b4c03f2c79ebed355e111690c0dffde958387d81c",
     "skills/spec-grounding/SKILL.md": "sha256:329ac8581fb8ab2d65eb302e74cb08d1af9984836104807c097f65b0a4e08152",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:a029f47aadcc7789e34992276628480ae4734a8880aee1cc45a720f36a38deb0",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:921d4d3fb23fdfa77f8ca79e27a991224a40e6f659a6d60f0cfdb1ba9fe34145"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:0d6ba7d5fd4f82d2b14630d2b812a9ec9d2fc58efc50107a947522bea630029f"
   },
   "classes": {
     ".gitignore": "generated",

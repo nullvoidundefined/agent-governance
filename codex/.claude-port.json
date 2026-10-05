@@ -24,7 +24,7 @@
   },
   "files": {
     ".gitignore": "sha256:b3877ddeac385e186b0fc5c91c104481a346500a8b9f6c0a7cc95a2f7e9fdf5d",
-    "AGENTS.md": "sha256:8795b74748e4dade31e14b4e0be5390d227d513394d23b133f2717eb8e299b78",
+    "AGENTS.md": "sha256:deb1d41f8e179eaf90c894a74340a7855467f4acd2557f2ef61ad3013a6d91cc",
     "PORT-STATUS.md": "sha256:4599eb6fd4284662590e837be7556e5af99327721c98ab385ad70337456d06e7",
     "agents/audit-criticism.toml": "sha256:0ba1d8b00d905d1da4cc2c7ccb7b560321d8d5c47a58d0952570f8cc5d0ad7ce",
     "agents/audit-customer.toml": "sha256:d764043a42fb7bf6dad1cd09b21560e07093c72e9e3929141187408678711991",
@@ -37,19 +37,19 @@
     "agents/audit-ux.toml": "sha256:4f872e9d8ff88852c8879aab0f23072dc02eb5fd2bbe59819cb14f6e7c1c61a0",
     "agents/implementer.toml": "sha256:8f40720408ec3497f57d1bf12fd9184e20ed2fb93d20cf792a83eeb8594f4cd0",
     "agents/pr-reviewer.toml": "sha256:c35368c5d2c04b081fe9dab0d73ec2be1d71421c5e3136a7394dedc4d667e1b4",
-    "agents/security-reviewer.toml": "sha256:0d2f7dee877557f5ddf770030ab1f2bc423ac2ba26a3b9a4e76ae1c270e419d5",
+    "agents/security-reviewer.toml": "sha256:2981e1f232aa2dc993bacd77730a308accf286b713d6a055b015282dea399b04",
     "agents/test-author.toml": "sha256:f148717ddc7827de50e7811ae70d2599e4fd4eafacecfd87db1e059e7c3450d3",
     "hooks.json": "sha256:f7ef056d03d5ebde2a432fa196ad8fc20fd3e80a9f1b37113c9f487896ba4261",
     "skills/bug-hunt/SKILL.md": "sha256:fdffd1465f5b94757e7e6f3c840f3a13af9502102ebce47ff5738a2c41edc596",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
-    "skills/build-by-slice-require-review/SKILL.md": "sha256:95d6494756f65a917541b82a76b106f3b4d629e27f2e40411cf9528ee5d7bc66",
+    "skills/build-by-slice-require-review/SKILL.md": "sha256:03e0f912a9869e79a09e625120db20e80839dc894b234b1157371250e3bf2469",
     "skills/documentation-create/SKILL.md": "sha256:d6866b31ff69a5f082284c838d854c8bce9ed0da6be35e005ed4e9ad569680fe",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:af62383ed0fcd6f16cadf9b99c9b2098e9d4c26218bfa627bf9978019a299166",
     "skills/spec-grounding/SKILL.md": "sha256:9a3655d2d43c5b29c422f6ffa8f55c1407f007c2a272a8d20be05f06107e202c",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:c3381309ad7e66092d877181a47420816fcced09b48cfd9b360082cf8292a91d",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:d69d471234eab49e1f56ea962d3610440c09ce902d0e95898ba79b4e350f980d"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:615aefbd6d01ac242c7433cbb0e89f59d40bb38f444a19d89f9e9614bb275aca"
   },
   "classes": {
     ".gitignore": "generated",

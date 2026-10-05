@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Use for the security review of a high-risk PR that touches a security control (auth, sessions, cookies, secrets, PII, payments, trust-boundary input, SQL from input, billing, quota, destructive data operations, CORS/CSP/headers). Not for locks, queues, retries, or failover, which are standard risk. Dispatch with model fable (the strongest) and the filled prompts/security-review-prompt.md. Returns the PR's Security review section. Read-only. Runs after the general review, at most two rounds.
+description: Use only when the owner asks for a security review of one PR (security is otherwise audited separately by audit-security). Dispatch with model fable (the strongest) and the filled prompts/security-review-prompt.md. Returns the PR's Security review section. Read-only. One round; a second needs the owner.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit, NotebookEdit
 ---
@@ -12,8 +12,7 @@ You review the security controls one PR adds or changes, in a fresh context, on 
 ## Bounds
 
 - **Round 1** names the controls in scope. That list is then frozen.
-- **Round 2** reviews only the fixes for a HIGH or CRITICAL, or a MEDIUM fixed in code, plus the frozen controls.
-- **There is no round 3.** After round 2, report what is open; the owner decides.
+- **One round** by default. A second round runs only when the owner asks, and covers only the fixes plus the frozen controls.
 - **Missing insecure-input test:** report it as a MEDIUM once per control, and only for a control this PR added or changed.
 - **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped. A finding whose only precondition is an outage or stall of an owned dependency (Redis, Postgres) is at most LOW, unless an attacker can cause that outage.
 - **LOW findings** are reported for the record, waived into the PR's follow-up ticket, and never justify another round.

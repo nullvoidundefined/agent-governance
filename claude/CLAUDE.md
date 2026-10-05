@@ -35,7 +35,7 @@ Bug fixes are always test-first: reproduce the bug, encode the reproduction as a
 
 Tests must fail when the code is wrong. Assert behavior, not mock call counts.
 
-High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and failure boundaries, integration verification against real dependencies, and the security review.
+High-risk work adds integration verification against real dependencies. Security review is not part of the PR loop; see Security audits.
 
 - **Time box:** a high-risk task gets about 90 minutes from its RED commit. At the limit, finish the current step, write in the PR what is left, stop, and hand it to the owner.
 - **Fixed scope:** nothing is added to a PR after it starts. A new idea goes to a follow-up PR.
@@ -54,19 +54,14 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 - **LOW waiver:** a standing owner waiver covers every LOW finding, general and security. LOW findings are never fixed in the PR. When a PR has any, they go into one follow-up ticket for that PR, linked from the PR body; a PR with no LOW findings gets no ticket.
 - **Record:** in the PR body under `## Review`.
 
-## Security review
+## Security audits
 
-- **When:** high-risk PRs that touch a security control get a `security-reviewer` pass on the strongest model, after the general review.
-- **Rounds:**
-  - Round one fixes the list of controls in scope.
-  - Round two happens only for a HIGH, or a MEDIUM fixed in code, and covers the fix diff and those controls.
-  - There is no third round. The owner decides what remains.
-- **Severity caps:**
-  - A finding whose only input source is the owner's own config, environment, or CLI is at most LOW.
-  - A finding whose only precondition is an outage or stall of a dependency the project owns (Redis, Postgres) is at most LOW, unless an attacker can cause that outage.
-  - LOW findings fall under the LOW waiver and never start a round.
-- **Scope:** a security round never reopens tests, CI, planning, or the general review.
-- **Record:** in the PR body under `## Security review`, written once at the end.
+Security work runs outside the PR loop (owner decision, 2026-10-05, after per-PR security review turned a day of feature work into a chain of security PRs).
+
+- **Per PR:** only the mechanical checks: the `secret-scan` and guard hooks, GitGuardian, semgrep, and CodeQL in CI. No `security-reviewer` pass, threat model, or TDD lock by default.
+- **Audits:** the `audit-security` agent audits a whole repository when the owner asks, on a schedule the owner sets, or before a launch. It writes one report, `docs/audits/<date>-security.md`, with findings ranked by severity.
+- **Findings:** each audit finding becomes a ticket the owner triages. A finding never starts a PR, a fix, or another investigation on its own; the owner picks what gets fixed, and each fix is an ordinary PR.
+- **Opt-in:** the owner can ask for a security review of one PR: one `security-reviewer` round on the strongest model, recorded under `## Security review`. Its findings follow the Review rules (LOW waiver, severity caps in `prompts/security-review-prompt.md`); a second round needs the owner.
 
 ## Stopping and anti-recursion
 
@@ -75,7 +70,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 - **Subagents stay in scope:** a dispatched agent does the task it was given. Anything it notices outside that task goes in its report as a note; it never fixes it.
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
 - **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, for deferred work the owner should see, or as a PR's one LOW-waiver ticket.
-- **Bounded review:** general review and security review each stop after two rounds at most, and the second happens only for a HIGH or a MEDIUM fixed in code. Each round looks only at what changed.
+- **Bounded review:** general review stops after two rounds at most, and the second happens only for a HIGH or a MEDIUM fixed in code. Each round looks only at what changed.
 - **Time box and fixed scope:** a high-risk task stops at about 90 minutes from RED and hands over what is left; no PR gains scope after it starts.
 - **Proportional verification:** depth follows product risk and changed behavior.
 - **Process budget:** process time does not exceed implementation time.
@@ -119,7 +114,7 @@ High-risk work adds the TDD lock (`tdd.sh`), a threat model with acceptance and 
 
 ## Models and cost
 
-- Use the cheapest model that can do the job: Haiku for simple lookups, Sonnet for routine implementation and review, Opus for hard design and debugging. The security review uses the strongest model.
+- Use the cheapest model that can do the job: Haiku for simple lookups, Sonnet for routine implementation and review, Opus for hard design and debugging. An owner-requested security review or audit uses the strongest model.
 - Which provider, Claude or Codex, takes a step comes from `~/.claude/enforce/route.sh`, which reads the weekly quota pace. It changes who does a step, never whether it happens; the security review, a high-risk implementer, and merges are pinned.
 - Prefer a subagent for wide searches across many files. Dispatch long-running subagents in the background.
 - Avoid giant tool outputs; narrow searches before running them.
