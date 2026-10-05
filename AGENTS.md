@@ -11,8 +11,8 @@ rules live in the tool-neutral `rules/` tree; `node translate/all.mjs --write` g
 `claude/`, `codex/` and `cursor/` from it (hooks, `enforce/` and `settings.json` stay
 hand-authored in `claude/`), and `./sync.sh` installs `codex/` into `~/.codex`. No tool
 is primary: edit `rules/` from any of them. `./sync.sh` regenerates all three from `rules/` before it
-installs, and `protected-path-guard.sh` refuses a direct edit to any file carrying a
-GENERATED header, naming the source to edit instead. Text meant for one tool only goes in an
+installs, and CI's `node translate/all.mjs --check` fails when a file carrying a
+GENERATED header was edited directly; edit the source it names instead. Text meant for one tool only goes in an
 `<!-- only: codex -->` ... `<!-- /only -->` block (targets: claude, codex, cursor).
 
 ## Do this first

@@ -2,9 +2,9 @@
 
 Fill the placeholders and paste the result as the `pr-reviewer` dispatch prompt (Agent tool, `subagent_type: "pr-reviewer"`, in the background). Paste the diff and the criteria as text. Build the diff with `git diff <base>...<head> -- . ':(exclude)<generated paths>'`, and name what you excluded. When the diff runs past about 1,500 lines, paste the executable and rule hunks and list the rest by path.
 
-Round 2 runs only when round 1 found a HIGH, or a MEDIUM was fixed in code. In round 2, paste only the fix diff. There is no round 3.
+Round 2 runs only when round 1 found a HIGH, or a MEDIUM fixed in code. In round 2, paste only the fix diff. There is no round 3.
 
-Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, `noted` for an out-of-scope MEDIUM, or `waived` for a LOW, which goes in the PR's follow-up ticket).
+Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, or `waived: <ticket>` for LOW). LOW findings are never fixed in the PR; when there are any, they go into one follow-up ticket for the PR.
 
 ---
 
@@ -42,7 +42,7 @@ Rules:
 
 - Every finding cites evidence: a file and line in the diff, a criterion, or a convention section.
 - At most 10 findings.
-- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW (disposition `waived`, listed in the PR's follow-up ticket), except a HIGH, which stays HIGH and is flagged for the owner.
+- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW (disposition `noted`), except a HIGH, which stays HIGH and is flagged for the owner.
 - No style or wording comments, no scope additions, no speculative hardening, nothing outside the diff.
 - Do not re-grade a disposition the PR already answered.
 - Do not harden inputs only the owner controls (their own config, environment, or CLI).

@@ -12,12 +12,11 @@ You review the security controls one PR adds or changes, in a fresh context, on 
 ## Bounds
 
 - **Round 1** names the controls in scope. That list is then frozen.
-- **Round 2** reviews only the fixes for a HIGH or CRITICAL, or a MEDIUM fixed in code, plus the frozen controls.
-- **After round 2,** report what is open; the owner decides.
+- **One round** by default. A second round runs only when the owner asks, and covers only the fixes plus the frozen controls.
 - **Missing insecure-input test:** report it as a MEDIUM once per control, and only for a control this PR added or changed.
-- **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped.
-- **LOW findings** are reported for the record and never justify another round.
-- **Out of scope:** general correctness, tests, CI, or planning (the general review owns those). Exploit chains that need a second unstated precondition. New controls the PR did not touch.
+- **Severity ceiling:** a finding whose only input source is the owner's own config, environment, or CLI is at most LOW. Network-facing CORS, cookie, and header settings are not capped. A finding whose only precondition is an outage or stall of an owned dependency (Redis, Postgres) is at most LOW, unless an attacker can cause that outage.
+- **LOW findings** are reported for the record, waived into the PR's follow-up ticket, and never justify another round.
+- **Out of scope:** general correctness, tests, CI, or planning (the general review owns those). Reliability for its own sake: failover, retries, timeouts. A control that fails open while a dependency is down stays in scope, under the outage cap. Exploit chains that need a second unstated precondition. New controls the PR did not touch.
 
 ## Read-only
 
