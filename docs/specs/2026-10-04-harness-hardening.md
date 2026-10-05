@@ -138,6 +138,30 @@ Non-regression:
   and `cursor/hooks/claude-hook-adapter.sh`, and reaches the same decision
   for every row.
 
+## Acceptance criteria (PR 2d: target environment propagation)
+
+Owner-approved follow-up, 2026-10-05: a production target set in the
+environment must reach every command that inherits it, not only the command
+the assignment prefixes.
+
+- B-33: a target assignment (`DATABASE_URL`, `*_DATABASE_URL`, `PGHOST`,
+  `PGHOSTADDR`, `PGSERVICE`, `MYSQL_HOST`, `*_ENV`, `KUBECONFIG`,
+  `AWS_PROFILE`, `CLOUDSDK_ACTIVE_CONFIG_NAME`) that prefixes a shell
+  (`bash -c`, `sh -c`, `zsh -c`, `env VAR=... sh -c`, `eval`) applies to every
+  command inside that shell's string: `DATABASE_URL=<prod> bash -c 'npx
+  prisma migrate deploy'` denies under B-17.
+- B-34: `export NAME=value`, `declare -x NAME=value`, `typeset -x`,
+  `set -a` followed by `NAME=value`, and a plain `NAME=value;` statement each
+  apply to every later command in the same command string:
+  `export DATABASE_URL=<prod>; rails db:migrate` and
+  `export PGHOST=<prod> && psql -c "DROP TABLE t"` deny (B-17, B-13).
+  `unset NAME` ends it.
+- B-35: the same propagation feeds the preview/testing rules and the
+  unknown-remote asks, so a propagated non-production remote target asks as
+  a prefixed one does, and a propagated local target changes nothing.
+- B-36: a target assignment inside a subshell `( ... )` or a function body
+  applies only inside it.
+
 ## Invariants
 
 - The guard is stateless: one event in, one decision out, no files written.
