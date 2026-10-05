@@ -17,7 +17,7 @@ ADAPTER="$REPO_TOP/codex/hooks/codex-hook-adapter.sh"
 for v in $(env | grep -o '^GIT_[A-Z_]*' || true); do unset "$v"; done
 
 WORK=$(cd "$(mktemp -d)" && pwd -P)
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK" "$WORK-failed"' EXIT
 git -C "$WORK" init -q
 mkdir -p "$WORK/claude/agents" "$WORK/claude/hooks" "$WORK/claude/enforce" "$WORK/codex/agents"
 
@@ -43,17 +43,20 @@ edit() { jq -nc --arg f "$1" --arg o "$2" --arg n "$3" --arg d "$WORK" \
 decision() { local out; out=$("$HOOK" 2>/dev/null); if [ -z "$out" ]; then echo allow; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi; }
 
 fail=0
+# expect runs inside a pipeline subshell, so record failures in a file.
+FAILFILE="$WORK-failed"
+mark_fail() { echo x >> "$FAILFILE"; }
 expect() {
   local want="$1" label="$2" got
   got=$(decision)
-  if [ "$got" = "$want" ]; then echo "PASS: $label"; else echo "FAIL: $label: expected $want, got $got"; fail=1; fi
+  if [ "$got" = "$want" ]; then echo "PASS: $label"; else echo "FAIL: $label: expected $want, got $got"; mark_fail; fi
 }
 expect_reason() {
   local pattern="$1" label="$2" out
   out=$("$HOOK" 2>/dev/null)
   if printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' | grep -qF -- "$pattern"; then
     echo "PASS: $label"
-  else echo "FAIL: $label: reason did not contain '$pattern'"; fail=1; fi
+  else echo "FAIL: $label: reason did not contain '$pattern'"; mark_fail; fi
 }
 
 # --- generated files are denied ----------------------------------------------
@@ -101,5 +104,25 @@ OUT=$(run_adapter "$(patch_payload "$(update_patch "claude/hooks/x.sh")")" 2>/de
 if [ -z "$OUT" ]; then echo "PASS: adapter allows an apply_patch on a headerless hook"
 else echo "FAIL: adapter blocked a headerless hook: $OUT"; fail=1; fi
 
+# --- git restore of a generated file is allowed; other writes stay denied ----
+printf '{}\n' > "$WORK/.enforce.json"
+bash_cmd() { jq -nc --arg c "$1" --arg d "$WORK" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}'; }
+for c in \
+  'git checkout -- codex/AGENTS.md' \
+  'git checkout origin/main -- claude/CLAUDE.md' \
+  'git checkout --theirs claude/CLAUDE.md' \
+  'git restore codex/AGENTS.md' \
+  'git restore --source=HEAD --staged --worktree claude/CLAUDE.md'; do
+  bash_cmd "$c" | expect allow "git restore of a generated file is not denied: $c"
+done
+bash_cmd 'git checkout -- claude/CLAUDE.md && echo x > claude/CLAUDE.md' | expect deny "restore combined with a direct write is denied"
+bash_cmd 'git checkout -- claude/CLAUDE.md && echo x > claude/CLAUDE.md' | expect_reason 'rules/GLOBAL.md' "combined-command denial names the source"
+for c in 'git rm claude/CLAUDE.md' 'rm claude/CLAUDE.md' 'cp /tmp/x claude/CLAUDE.md'; do
+  bash_cmd "$c" | expect deny "write verb on a generated file stays denied: $c"
+done
+bash_cmd 'git checkout -- .enforce.json' | expect deny "git checkout of a gate input (.enforce.json) stays denied"
+bash_cmd 'git restore .enforce.json' | expect deny "git restore of a gate input (.enforce.json) stays denied"
+
+[ -s "$FAILFILE" ] && fail=1
 [ "$fail" -eq 0 ] && echo "generated-file-guard.test.sh PASS"
 exit "$fail"
