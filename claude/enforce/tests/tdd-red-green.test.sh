@@ -286,6 +286,17 @@ for body in 'expect(1).toBe(2);' \
 done
 cd / && rm -rf "$A"
 
+# --- a path-alias import of an unwritten unit is the missing-module RED ------
+# Under Node ESM a bare or aliased specifier that does not resolve reaches Node,
+# which reports `Cannot find package 'app/workers/handleJob.js' imported from`
+# rather than Vite's `Failed to resolve import` (doppelscript S5, 2026-10-05).
+M=$(new_project); cd "$M"
+bash "$TDD" open "M-1 aliased unit" >/dev/null
+printf 'import { it, expect } from "vitest";\nimport { handleJob } from "app/workers/handleJob.js";\nit("handles a job", () => { expect(handleJob()).toBe(2); });\n' > src/__tests__/handleJob.test.ts
+out=$(bash "$TDD" red src/__tests__/handleJob.test.ts 2>&1) || { echo "FAIL: a Cannot find package import must be accepted as RED; output: $out"; exit 1; }
+[ "$(lock_field . '.tests[0].failureClass')" = "missing-module" ] || { echo "FAIL: Cannot find package must be the missing-module RED, got $(lock_field . '.tests[0].failureClass')"; exit 1; }
+cd / && rm -rf "$M"
+
 # --- a file-level failure with every assertion passed -------------------------
 # Vitest and Jest mark a file failed for a suite-level error (a throwing
 # afterAll, for instance) while each assertion in it passed. Green must refuse
