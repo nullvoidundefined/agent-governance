@@ -13,6 +13,12 @@
 # so the hook answers only an async-launch response and only a plain absolute
 # path of letters, digits, dot, underscore, slash and hyphen, which it still
 # single-quotes (R-517 r1 on PR #184). Anything else gets nothing.
+#
+# A background launch is run_in_background exactly true, or the flag ABSENT on
+# a long-running agent type: the current Agent tool has no such parameter and
+# always runs subagents in the background, so no call can set it (slice 05,
+# 2026-11-18; same definition of absent and same type list as
+# agent-dispatch-guard.sh). A present non-true flag stays silent.
 set -uo pipefail
 INPUT=$(cat 2>/dev/null || true)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || true)
@@ -31,7 +37,16 @@ OUTPUT_FILE=$(printf '%s\n' "$RESPONSE_TEXT" \
 # The call itself must have been a background launch: the response text is
 # untrusted and can quote a launch message, so the phrase alone proves nothing
 # (R-109 r1 #1 on PR #184).
-printf '%s' "$INPUT" | jq -e '.tool_input.run_in_background == true' >/dev/null 2>&1 || exit 0
+if ! printf '%s' "$INPUT" | jq -e '.tool_input.run_in_background == true' >/dev/null 2>&1; then
+  printf '%s' "$INPUT" | jq -e '(.tool_input | type == "object") and (.tool_input | has("run_in_background") | not)' >/dev/null 2>&1 || exit 0
+  RAW_TYPE=$(printf '%s' "$INPUT" | jq -r 'if (.tool_input.subagent_type | type) == "string" then .tool_input.subagent_type else "" end' 2>/dev/null || echo "")
+  AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  [ -n "$AGENT_TYPE" ] || AGENT_TYPE=general-purpose
+  case "$AGENT_TYPE" in
+    test-author|implementer|pr-reviewer|security-reviewer|general-purpose|audit-*) ;;
+    *) exit 0 ;;
+  esac
+fi
 printf '%s\n' "$RESPONSE_TEXT" | grep -q 'Async agent launched' || exit 0
 # Only the harness's own launch shape, a `.../tasks/<name>.output` file, with
 # no empty or `..` segment: never a device, a key file or a traversal (r1 #3).

@@ -14,10 +14,14 @@
 # (also the type an omitted or empty subagent_type means), and every audit-*
 # role. The type is read case-insensitively, without whitespace, and after
 # any `plugin:` namespace.
-# An omitted flag is denied too: the tool's default has differed between
-# versions, and only an explicit true is certainly a background run (R-517 r1
-# on PR #184). Quick lookups (Explore, claude-code-guide, Plan,
-# statusline-setup) and any other type may still run in the foreground.
+# An ABSENT flag is allowed: the current Agent tool has no run_in_background
+# parameter and always runs subagents in the background, so no call can set it
+# and requiring it denied every long-running dispatch (slice 05, 2026-11-18).
+# "Absent" means tool_input is a JSON object without the key; a present flag
+# must still be exactly true, so false, "true", null and the rest are denied,
+# and so is a payload with no tool_input object or none that parses. Quick
+# lookups (Explore, claude-code-guide, Plan, statusline-setup) and any other
+# type may still run in the foreground.
 # set -uo, no -e: a guard must emit its decision, and an unexpected error under
 # -e would exit before it, which a PreToolUse hook reads as allow
 # (convention in enforce/README.md).
@@ -33,7 +37,7 @@ INPUT=$(cat 2>/dev/null || true)
 
 # A jq failure reads as "not background" and "general-purpose", so a payload
 # the hook cannot parse is judged as the riskiest dispatch, never waved through.
-IS_BACKGROUND=$(printf '%s' "$INPUT" | jq -r '.tool_input.run_in_background == true' 2>/dev/null || echo false)
+IS_BACKGROUND=$(printf '%s' "$INPUT" | jq -r '(.tool_input | type == "object") and ((.tool_input | has("run_in_background") | not) or .tool_input.run_in_background == true)' 2>/dev/null || echo false)
 [ "$IS_BACKGROUND" = "true" ] && exit 0
 # A non-string type reads as empty, so it falls closed to general-purpose
 # (R-109 r7 #1 on PR #184).
