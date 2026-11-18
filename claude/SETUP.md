@@ -28,6 +28,7 @@ How to install this `~/.claude` configuration on a new machine or hand it to som
 |---|---|---|
 | `.env`, `.env.*` | Secrets (API keys, notify config) | Recreate by hand; never commit (R-102) |
 | `settings.local.json` | Machine-specific permissions/overrides | Recreate as needed |
+| `agent-tier-assignments.json` | Which agent fills each tier (primary, secondary) on this machine | Copy from `agent-tier-assignments.template.json`; without it every step uses claude |
 | `KNOWN-ISSUES.md` | Production incident log | Copy from `KNOWN-ISSUES.template.md`, then populate |
 | `projects/` | Per-project session memory | Auto-created per project; starts empty |
 | `global-memory/rule_fires.md`, `global-memory/rule_misses.md` | Rule fire and miss logs, appended at every session end | Created with a header by `hooks/session-end.sh` on the first session end |

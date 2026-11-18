@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy to ~/.claude/agent-tier-assignments.json. Assigns an agent to each tier that enforce/route-steps.json names. Known agents: claude, qwen. An unset or unknown tier resolves to primary; primary defaults to claude.",
+  "primary": { "agent": "claude" },
+  "secondary": { "agent": "qwen", "model": "qwen-coder-local", "endpoint": "http://127.0.0.1:11434" }
+}

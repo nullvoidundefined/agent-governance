@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# route.sh: decides which provider takes a step, and logs why (IAN-603, slice
-# 04 PR 3, docs/slices/slice-04-quota-aware-routing.md). Routing changes who
-# does a step, never whether it happens: the output is always a provider.
+# route.sh: names the agent that takes a step, and logs why (slice 05 PR 1,
+# docs/slices/slice-05-tiered-agents-and-local-qwen-implementer.md). Routing
+# changes who does a step, never whether it happens: the output is always an
+# agent.
 #
-# Usage: route.sh <step> --risk <high|standard> [--author <claude|codex>] [--security]
-# Prints the provider (claude, codex, or owner) on line 1 and a one-line
-# reason on line 2, and appends one JSON line (ts, step, risk, author,
-# security, ratios, provider, reason) to $ROUTING_LOG (default
-# ~/.claude/routing-log.jsonl).
+# Usage: route.sh <step> --risk <high|standard> [--author <name>] [--security]
+# Prints the agent (claude, qwen or owner) on line 1 and a one-line reason on
+# line 2, and appends one JSON line (ts, step, risk, tier, provider, reason)
+# to $ROUTING_LOG (default ~/.claude/routing-log.jsonl).
 #
-# Rules, in order:
-#   - review is always the other provider from --author (cross-model).
-#   - A pinned step (route-steps.json: security-review, high-risk implement,
-#     merge) stays on its default whatever the quota says.
-#   - A routable step moves off its default provider when that provider is
-#     near exhaustion and the other is not, or when the default's pace ratio
-#     is above 1.2 and the other's ratio is lower.
-#   - With no usable quota report, every step keeps its role default and the
-#     reason says "quota unavailable".
-# Pace data comes from quota-pace.sh report --json (CLAUDE_QUOTA_FILE,
-# QUOTA_NOW). Exit codes: 0 routed; 2 a usage error, which logs nothing.
+# A lookup in two tables:
+#   - route-steps.json gives each step (and risk) a tier: primary, secondary
+#     or owner.
+#   - The machine file, $AGENT_TIER_ASSIGNMENTS_FILE (default
+#     ~/.claude/agent-tier-assignments.json), gives primary and secondary an
+#     agent. Known agents: claude, qwen. Primary defaults to claude. A
+#     secondary that is unset or names an unknown agent resolves to primary.
+#   - A missing machine file, or one that is not valid JSON (one warning on
+#     stderr), leaves every tier on claude. The owner tier is always owner.
+# --author and --security are accepted and ignored until the Codex port and
+# the quota-based routing are removed in the follow-up slice.
+# Exit codes: 0 routed; 2 a usage error, which logs nothing.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STEPS_FILE="$HERE/route-steps.json"
-PACE="$HERE/quota-pace.sh"
-SHIFT_ABOVE="1.2"
+KNOWN_AGENTS="claude qwen"
 
 usage_error() {
   echo "route: $1" >&2
-  echo "usage: route.sh <step> --risk <high|standard> [--author <claude|codex>] [--security]" >&2
+  echo "usage: route.sh <step> --risk <high|standard> [--author <name>] [--security]" >&2
   exit 2
 }
 
@@ -39,84 +39,77 @@ step="$1"; shift
 jq -e --arg s "$step" '.steps | has($s)' "$STEPS_FILE" >/dev/null 2>&1 ||
   usage_error "unknown step '$step'; known: $(jq -r '.steps | keys | join(", ")' "$STEPS_FILE" 2>/dev/null)"
 
-risk=""; author=""; security=false
+risk=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --risk)
       [ $# -ge 2 ] || usage_error "--risk needs high or standard"
       risk="$2"; shift 2 ;;
     --author)
-      [ $# -ge 2 ] || usage_error "--author needs claude or codex"
-      author="$2"; shift 2 ;;
-    --security) security=true; shift ;;
+      [ $# -ge 2 ] || usage_error "--author needs a name"
+      [ "${#2}" -le 64 ] && [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || usage_error "--author must be a plain name"
+      shift 2 ;;
+    --security) shift ;;
     *) usage_error "unknown argument" ;;
   esac
 done
 case "$risk" in high | standard) ;; *) usage_error "--risk must be high or standard" ;; esac
-case "$author" in "" | claude | codex) ;; *) usage_error "--author must be claude or codex" ;; esac
 
 rule=$(jq -c --arg s "$step" --arg r "$risk" \
   '.steps[$s] as $d | if $r == "high" and ($d.high // null) != null then $d + $d.high else $d end' "$STEPS_FILE")
-crossModel=$(jq -r '.crossModel // false' <<<"$rule")
-[ "$crossModel" != true ] || [ -n "$author" ] || usage_error "step '$step' needs --author, since its provider is the other one"
+tier=$(jq -r '.tier' <<<"$rule")
+model=$(jq -r '.model // empty' <<<"$rule")
 
-# Quota: provider ratios and exhaustion, or unavailable.
-report=""
-available=false
-if report=$(bash "$PACE" report --json 2>/dev/null) &&
-  jq -e '[.providers[]? | select(.provider == "claude" or .provider == "codex")] | length > 0' <<<"$report" >/dev/null 2>&1; then
-  available=true
-fi
-providerField() { # <provider> <field>: prints the value, or null
-  if [ "$available" = true ]; then
-    jq -c --arg p "$1" --arg f "$2" '([.providers[]? | select(.provider == $p)][0] // {}) | if has($f) then .[$f] else null end' <<<"$report"
-  else
-    echo null
-  fi
-}
-rClaude=$(providerField claude paceRatio); rCodex=$(providerField codex paceRatio)
-xClaude=$(providerField claude exhausted); xCodex=$(providerField codex exhausted)
-
-other() { if [ "$1" = claude ]; then echo codex; else echo claude; fi; }
-ratioOf() { if [ "$1" = claude ]; then echo "$rClaude"; else echo "$rCodex"; fi; }
-exhaustedOf() { if [ "$1" = claude ]; then echo "$xClaude"; else echo "$xCodex"; fi; }
-
-if [ "$crossModel" = true ]; then
-  provider=$(other "$author")
-  reason="review is cross-model: the author is $author, so $provider reviews"
+# Machine file: found and valid, absent, or invalid.
+machine="${AGENT_TIER_ASSIGNMENTS_FILE:-${HOME:-}/.claude/agent-tier-assignments.json}"
+config="{}"
+fileNote=""
+if [ ! -f "$machine" ]; then
+  fileNote="no machine file found at $machine"
+elif config=$(jq -c 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
+  :
 else
-  default=$(jq -r '.default' <<<"$rule")
-  provider="$default"
-  if [ "$(jq -r '.pinned // false' <<<"$rule")" = true ]; then
-    model=$(jq -r '.model // empty' <<<"$rule")
-    reason="pinned: $step stays with $default${model:+ (model $model)} whatever the quota"
-  elif [ "$available" != true ]; then
-    reason="quota unavailable: $step keeps its role default, $default"
-  else
-    alt=$(other "$default")
-    rd=$(ratioOf "$default"); ro=$(ratioOf "$alt")
-    if [ "$(exhaustedOf "$default")" = true ] && [ "$(exhaustedOf "$alt")" = false ]; then
-      provider="$alt"
-      reason="$default is near exhaustion, so $step moves to $alt"
-    elif jq -en --argjson d "$rd" --argjson o "$ro" --argjson t "$SHIFT_ABOVE" \
-      '$d != null and $o != null and $d > $t and $o < $d' >/dev/null 2>&1; then
-      provider="$alt"
-      reason="$default pace $rd is above $SHIFT_ABOVE and $alt is lower at $ro, so $step moves to $alt"
-    else
-      reason="role default: $step stays with $default (pace claude $rClaude, codex $rCodex)"
-    fi
-  fi
+  config="{}"
+  fileNote="machine file $machine is not valid JSON"
+  echo "route: warning: $fileNote; every tier uses claude" >&2
 fi
 
-[ "$available" = true ] || case "$reason" in *"quota unavailable"*) ;; *) reason="$reason (quota unavailable)" ;; esac
+# agentOf <tier>: prints the tier's configured agent, or nothing when unset.
+agentOf() { jq -r --arg t "$1" '(.[$t] // {}) | if type == "object" then (.agent // "") else "" end | if type == "string" then . else "" end' <<<"$config"; }
+# isKnownAgent <name>: true for an agent this harness can run.
+isKnownAgent() { case " $KNOWN_AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+primary=$(agentOf primary)
+isKnownAgent "$primary" || primary=claude
+
+case "$tier" in
+  owner)
+    provider=owner
+    reason="$step is the owner's, whatever the machine file says" ;;
+  secondary)
+    configured=$(agentOf secondary)
+    if [ -z "$configured" ]; then
+      provider="$primary"
+      reason="no secondary agent configured, so $step uses the primary agent, $primary"
+    elif isKnownAgent "$configured"; then
+      provider="$configured"
+      reason="$step is secondary work and this machine assigns it to $configured"
+    else
+      provider="$primary"
+      reason="secondary agent '$configured' is unknown, so $step uses the primary agent, $primary"
+    fi ;;
+  *)
+    provider="$primary"
+    reason="$step is primary work and this machine assigns it to $primary" ;;
+esac
+[ -z "$model" ] || reason="$reason (model $model)"
+[ -z "$fileNote" ] || reason="$reason; $fileNote"
 
 log="${ROUTING_LOG:-${HOME:-}/.claude/routing-log.jsonl}"
 mkdir -p "$(dirname "$log")" 2>/dev/null
 jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg step "$step" --arg risk "$risk" \
-  --arg author "$author" --argjson security "$security" \
-  --argjson rc "$rClaude" --argjson rx "$rCodex" --arg provider "$provider" --arg reason "$reason" \
-  '{ts: $ts, step: $step, risk: $risk, author: (if $author == "" then null else $author end),
-    security: $security, ratios: {claude: $rc, codex: $rx}, provider: $provider, reason: $reason}' \
+  --arg tier "$tier" --arg provider "$provider" --arg reason "$reason" \
+  '{ts: $ts, step: $step, risk: $risk, tier: $tier, provider: $provider, reason: $reason}' \
   >>"$log" 2>/dev/null || echo "route: could not append to $log" >&2
 
 printf '%s\n%s\n' "$provider" "$reason"

@@ -1,65 +1,50 @@
 #!/usr/bin/env bash
 # Covers: enforce/route.sh
-# route.test.sh: verifies the step router behind quota-aware routing (IAN-603).
-# route.sh <step> --risk <high|standard> [--author <claude|codex>] [--security]
-# prints the provider on line 1 (claude, codex or owner) and a one-line reason
-# on line 2, and appends one JSON line to $ROUTING_LOG. Every case writes its
-# own quota file in a temp directory through CLAUDE_QUOTA_FILE and pins the
-# clock with QUOTA_NOW, so no case reads the live ~/.claude/quota.json.
+# route.test.sh: verifies the tier resolver (slice 05 PR 1,
+# docs/slices/slice-05-tiered-agents-and-local-qwen-implementer.md).
+# route.sh <step> --risk <high|standard> [--author X] [--security] prints the
+# agent on line 1 (claude, qwen or owner) and a one-line reason on line 2, and
+# appends one JSON line (ts, step, risk, tier, provider, reason) to
+# $ROUTING_LOG. The step and risk give a tier (route-steps.json); the machine
+# file ($AGENT_TIER_ASSIGNMENTS_FILE, default ~/.claude/agent-tier-assignments.json)
+# gives the agent for that tier. Known agents: claude, qwen. An unset or
+# unknown tier resolves to primary; primary defaults to claude.
 #
-# Pace ratios are built from one snapshot taken at NOW, so with a window of W
-# days and L days left (E = W - L days elapsed):
-#   burn = used / E, budget = (100 - used) / L, ratio = used * L / ((100 - used) * E)
-# Presets, written as used:windowDays:secondsLeft (ratio worked by hand, and
-# re-checked against quota-pace.sh report --json in the setup section):
-#   R01   20:7:172800     E=5 L=2   20*2/(80*5)  = 0.10
-#   R05   55:7:172800     E=5 L=2   55*2/(45*5)  = 0.49
-#   R12   75:7:172800     E=5 L=2   75*2/(25*5)  = 1.20 exactly
-#   R13   76.5:7:172800   E=5 L=2   76.5*2/(23.5*5) = 1.30
-#   R15   79:7:172800     E=5 L=2   79*2/(21*5)  = 1.50
-#   NULLR 1:7:603000      30 minutes into the window: burn insufficient, ratio null, not exhausted
-#   EXH   90:366:86400    E=365 L=1  ratio 0.02 but 90% used, so exhausted by the bucket rule alone
+# Every case writes its own machine file in a temp directory and points
+# AGENT_TIER_ASSIGNMENTS_FILE at it, so no case reads the live machine file.
+# CLAUDE_QUOTA_FILE points at a path that never exists: routing must not
+# depend on quota.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../../enforce/harness-root.sh"
 SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/route.sh"
-PACE="$CLAUDE_HARNESS_ROOT/enforce/quota-pace.sh"
+STEPS="$CLAUDE_HARNESS_ROOT/enforce/route-steps.json"
+TEMPLATE="$CLAUDE_HARNESS_ROOT/agent-tier-assignments.template.json"
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-export CLAUDE_QUOTA_FILE="$WORK/quota.json"
+export CLAUDE_QUOTA_FILE="$WORK/no-such-quota.json"
 export ROUTING_LOG="$WORK/routing-log.jsonl"
-NOW=1790960400
-export QUOTA_NOW=$NOW
+unset AGENT_TIER_ASSIGNMENTS_FILE
 
-R01="20:7:172800"
-R05="55:7:172800"
-R12="75:7:172800"
-R13="76.5:7:172800"
-R15="79:7:172800"
-NULLR="1:7:603000"
-EXH="90:366:86400"
+# Every step the new table names, in the order the grids walk them.
+STEPS_ROUTED="spec test-author review implement security-review"
 
 failCase() {
   echo "FAIL: $1"
   exit 1
 }
 
-# writeQuota <claude preset> <codex preset>: writes the quota file with one
-# bucket per provider, each holding one snapshot taken at NOW.
-writeQuota() {
-  jq -n --argjson now "$NOW" --arg c "$1" --arg x "$2" '
-    def b($s; $p): ($s | split(":")) as $f
-      | {provider: $p,
-         resetsAt: (($now + ($f[2] | tonumber)) | todate),
-         windowDays: ($f[1] | tonumber),
-         snapshots: [{at: ($now | todate), usedPct: ($f[0] | tonumber), source: "owner"}]};
-    {buckets: {claude: b($c; "claude"), codex: b($x; "codex")}}' >"$CLAUDE_QUOTA_FILE"
+# useMachineFile <path>: points the router at that machine file.
+useMachineFile() {
+  export AGENT_TIER_ASSIGNMENTS_FILE="$1"
 }
 
-# setPair <default provider> <default preset> <other preset>: writes the quota
-# file so the step's default provider and the other one carry those presets.
-setPair() {
-  if [ "$1" = claude ]; then writeQuota "$2" "$3"; else writeQuota "$3" "$2"; fi
+# writeMachineFile <json>: writes a machine file in the temp dir, points the
+# router at it, and checks the JSON is what the case meant to write.
+writeMachineFile() {
+  printf '%s\n' "$1" >"$WORK/machine.json"
+  jq -e . "$WORK/machine.json" >/dev/null || failCase "setup: machine file JSON is malformed: $1"
+  useMachineFile "$WORK/machine.json"
 }
 
 # route <args...>: runs the router; sets RC, OUT (stdout), ERR (stderr), P
@@ -72,13 +57,14 @@ route() {
   REASON=$(printf '%s\n' "$OUT" | sed -n 2p)
 }
 
-# routeOk <args...>: runs the router and fails unless it exited 0 with a
-# provider on line 1 and a reason on line 2.
+# routeOk <args...>: runs the router and fails unless it exited 0 with an
+# agent on line 1 and a reason on line 2, and nothing after.
 routeOk() {
   route "$@"
-  [ "$RC" -eq 0 ] || failCase "route $* exited $RC (stderr: $ERR)"
-  case "$P" in claude | codex | owner) ;; *) failCase "route $*: line 1 must be claude, codex or owner (got '$P')" ;; esac
+  [ "$RC" -eq 0 ] || failCase "route $* exited $RC (stdout: '$OUT', stderr: $ERR)"
+  case "$P" in claude | qwen | owner) ;; *) failCase "route $*: line 1 must be claude, qwen or owner (got '$P')" ;; esac
   [ -n "$REASON" ] || failCase "route $*: line 2 must carry a reason"
+  [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "2" ] || failCase "route $*: stdout must be exactly two lines (got '$OUT')"
 }
 
 # expectRoute <want> <args...>: routeOk, then line 1 must equal want.
@@ -89,240 +75,196 @@ expectRoute() {
   [ "$P" = "$want" ] || failCase "route $*: want $want, got $P ($REASON)"
 }
 
+# expectStep <want> <step> <risk>: expectRoute, adding --author claude for review.
+expectStep() {
+  if [ "$2" = review ]; then
+    expectRoute "$1" "$2" --risk "$3" --author claude
+  else
+    expectRoute "$1" "$2" --risk "$3"
+  fi
+}
+
+# reasonHas <text> <what>: line 2 of the last call must contain text, any case.
+reasonHas() {
+  printf '%s\n' "$REASON" | grep -qi -- "$1" || failCase "$2: reason must mention '$1' (got: $REASON)"
+}
+
 logCount() {
   if [ -f "$ROUTING_LOG" ]; then wc -l <"$ROUTING_LOG" | tr -d ' '; else echo 0; fi
 }
 
-# ratioOf <provider>: the provider's pace ratio per quota-pace.sh.
-ratioOf() {
-  bash "$PACE" report --json | jq -r --arg p "$1" '.providers[] | select(.provider == $p) | .paceRatio'
-}
-exhaustedOf() {
-  bash "$PACE" report --json | jq -r --arg p "$1" '.providers[] | select(.provider == $p) | .exhausted'
+# allPrimary <want> <what>: every step but merge, at both risks, prints want;
+# merge prints owner.
+allPrimary() {
+  local step risk
+  for step in $STEPS_ROUTED; do
+    for risk in standard high; do
+      expectStep "$1" "$step" "$risk"
+    done
+  done
+  expectRoute owner merge --risk standard
+  expectRoute owner merge --risk high
 }
 
-# --- 0. Setup: the presets give the ratios the cases below rely on. ---
-for pair in "$R01=0.1" "$R05=0.49" "$R12=1.2" "$R13=1.3" "$R15=1.5" "$NULLR=null" "$EXH=0.02"; do
-  writeQuota "${pair%%=*}" "${pair%%=*}"
-  [ "$(ratioOf claude)" = "${pair#*=}" ] || failCase "setup: preset ${pair%%=*} must give ratio ${pair#*=}, got $(ratioOf claude)"
-done
-writeQuota "$EXH" "$EXH"
-[ "$(exhaustedOf claude)" = "true" ] || failCase "setup: EXH must read exhausted"
-writeQuota "$NULLR" "$NULLR"
-[ "$(exhaustedOf claude)" = "false" ] || failCase "setup: NULLR must not read exhausted"
-writeQuota "$R13" "$R13"
-[ "$(exhaustedOf claude)" = "false" ] || failCase "setup: R13 must not read exhausted"
+# --- 0. The checked-in template exists and has the documented shape. ---
+[ -f "$TEMPLATE" ] || failCase "the template machine file must exist at $TEMPLATE"
+jq -e '.primary.agent == "claude" and .secondary.agent == "qwen"
+  and .secondary.model == "qwen-coder-local" and .secondary.endpoint == "http://127.0.0.1:11434"' \
+  "$TEMPLATE" >/dev/null || failCase "the template must assign primary claude and secondary qwen (qwen-coder-local at http://127.0.0.1:11434)"
 
-# --- 1. Role defaults, both ratios about 0.5. ---
-writeQuota "$R05" "$R05"
-expectRoute claude spec --risk standard
-expectRoute claude architecture --risk standard
-expectRoute codex test-author --risk standard
-expectRoute codex test-author --risk high
-expectRoute codex implement --risk standard
+# --- 1-4. The template as machine file. ---
+useMachineFile "$TEMPLATE"
+# 1. Standard-risk implement goes to the secondary agent.
+expectRoute qwen implement --risk standard
+# 2. High-risk implement overrides to primary.
 expectRoute claude implement --risk high
-expectRoute claude security-review --risk high
-expectRoute claude security-review --risk standard
-case "$REASON" in *fable*) ;; *) failCase "security-review reason must name the model fable (got: $REASON)" ;; esac
+# 3. spec, test-author, review are primary at either risk.
+for risk in standard high; do
+  expectRoute claude spec --risk "$risk"
+  expectRoute claude test-author --risk "$risk"
+  expectRoute claude review --risk "$risk" --author claude
+  expectRoute claude security-review --risk "$risk"
+  reasonHas fable "security-review --risk $risk"
+done
+# 4. merge is owner.
 expectRoute owner merge --risk standard
 expectRoute owner merge --risk high
-# The provider alone is on line 1: no extra words.
-routeOk spec --risk standard
-[ "$P" = "claude" ] || failCase "line 1 must be the bare provider (got '$P')"
+# The agent alone is on line 1: no extra words.
+routeOk implement --risk standard
+[ "$P" = "qwen" ] || failCase "line 1 must be only the agent name (got '$P')"
 
-# --- 2. Review is always cross-model. ---
-for c in "$R05" "$R13" "$EXH" "$NULLR"; do
-  for x in "$R05" "$R13" "$EXH" "$NULLR"; do
-    writeQuota "$c" "$x"
-    for risk in standard high; do
-      expectRoute codex review --risk "$risk" --author claude
-      expectRoute claude review --risk "$risk" --author codex
-    done
-  done
+# --- 5. No machine file: every step is claude, merge is owner, the reason says so. ---
+useMachineFile "$WORK/no-such-machine-file.json"
+allPrimary claude "no machine file"
+for step in $STEPS_ROUTED; do
+  expectStep claude "$step" standard
+  reasonHas "no machine file" "$step with no machine file"
 done
-rm -f "$ROUTING_LOG"
-writeQuota "$R05" "$R05"
-route review --risk standard
-[ "$RC" -eq 2 ] || failCase "review without --author must exit 2 (got $RC)"
-[ -n "$ERR" ] || failCase "review without --author must explain on stderr"
-[ -z "$OUT" ] || failCase "review without --author must print no provider (got '$OUT')"
-[ "$(logCount)" = "0" ] || failCase "review without --author must write no log line"
-
-# --- 3. Pace shift: above 1.2 and the other provider lower. ---
-# step:default provider:other provider
-for spec in spec:claude:codex architecture:claude:codex test-author:codex:claude implement:codex:claude; do
-  step="${spec%%:*}"
-  rest="${spec#*:}"
-  def="${rest%%:*}"
-  oth="${rest#*:}"
-  setPair "$def" "$R13" "$R05"
-  expectRoute "$oth" "$step" --risk standard
-  setPair "$def" "$R12" "$R05"
-  expectRoute "$def" "$step" --risk standard
-  setPair "$def" "$R05" "$R05"
-  expectRoute "$def" "$step" --risk standard
-  # The other provider's ratio is null (burn unjudgeable): no move.
-  setPair "$def" "$R13" "$NULLR"
-  expectRoute "$def" "$step" --risk standard
-  # The other provider is not lower: equal, and higher.
-  setPair "$def" "$R13" "$R13"
-  expectRoute "$def" "$step" --risk standard
-  setPair "$def" "$R13" "$R15"
-  expectRoute "$def" "$step" --risk standard
-  # The default provider is the one under the pace: no move.
-  setPair "$def" "$R05" "$R13"
-  expectRoute "$def" "$step" --risk standard
-  setPair "$def" "$R01" "$R15"
-  expectRoute "$def" "$step" --risk standard
-  # A step that moved says why.
-  setPair "$def" "$R13" "$R05"
-  routeOk "$step" --risk standard
-  [ -n "$REASON" ] || failCase "$step moved without a reason"
-done
-
-# --- 4. Exhaustion: 90% used moves a routable step; pinned steps never move. ---
-for spec in spec:claude:codex architecture:claude:codex test-author:codex:claude implement:codex:claude; do
-  step="${spec%%:*}"
-  rest="${spec#*:}"
-  def="${rest%%:*}"
-  oth="${rest#*:}"
-  # Ratio 0.02 on the default: only the exhaustion rule can move it.
-  setPair "$def" "$EXH" "$R05"
-  expectRoute "$oth" "$step" --risk standard
-  setPair "$def" "$EXH" "$R15"
-  expectRoute "$oth" "$step" --risk standard
-  setPair "$def" "$EXH" "$NULLR"
-  expectRoute "$oth" "$step" --risk standard
-  # Both exhausted: nowhere to go.
-  setPair "$def" "$EXH" "$EXH"
-  expectRoute "$def" "$step" --risk standard
-done
-# Exhausted just under the line is not exhausted: 75% used, ratio 1.2, stays.
-setPair claude "$R12" "$R05"
-expectRoute claude spec --risk standard
-
-# --- 5. Pinned steps never move under any input. ---
-for c in "$R01" "$R05" "$R13" "$EXH" "$NULLR"; do
-  for x in "$R01" "$R05" "$R13" "$EXH" "$NULLR"; do
-    writeQuota "$c" "$x"
-    for risk in standard high; do
-      expectRoute claude security-review --risk "$risk"
-      case "$REASON" in *fable*) ;; *) failCase "security-review reason must name fable ($c / $x)" ;; esac
-      expectRoute owner merge --risk "$risk"
-    done
-    expectRoute claude implement --risk high
-    expectRoute claude implement --risk high --security
-    expectRoute claude security-review --risk high --security
-  done
-done
-rm -f "$CLAUDE_QUOTA_FILE"
-expectRoute claude security-review --risk high
-expectRoute claude implement --risk high
-expectRoute owner merge --risk standard
-echo 'not json' >"$CLAUDE_QUOTA_FILE"
-expectRoute claude security-review --risk high
-expectRoute claude implement --risk high
-expectRoute owner merge --risk standard
-
-# --- 6. Missing or unreadable quota file: role defaults, and still logged. ---
-for state in missing garbage empty-buckets; do
-  case "$state" in
-    missing) rm -f "$CLAUDE_QUOTA_FILE" ;;
-    garbage) echo 'not json' >"$CLAUDE_QUOTA_FILE" ;;
-    empty-buckets) echo '{"buckets":{}}' >"$CLAUDE_QUOTA_FILE" ;;
-  esac
-  rm -f "$ROUTING_LOG"
-  expectRoute claude spec --risk standard
-  case "$REASON" in *"quota unavailable"*) ;; *) failCase "$state: reason must contain 'quota unavailable' (got: $REASON)" ;; esac
-  [ "$(logCount)" = "1" ] || failCase "$state: a call without quota data must still write one log line"
-  expectRoute claude architecture --risk standard
-  expectRoute codex test-author --risk standard
-  expectRoute codex implement --risk standard
-  expectRoute codex review --risk standard --author claude
-  expectRoute claude review --risk standard --author codex
-  case "$REASON" in *"quota unavailable"*) ;; *) failCase "$state: a review reason must also say 'quota unavailable' (got: $REASON)" ;; esac
-  expectRoute claude security-review --risk high
-  case "$REASON" in *"quota unavailable"*) ;; *) failCase "$state: a pinned reason must also say 'quota unavailable' (got: $REASON)" ;; esac
-  rm -f "$ROUTING_LOG"; expectRoute claude spec --risk standard; expectRoute claude architecture --risk standard
-  expectRoute codex test-author --risk standard; expectRoute codex implement --risk standard
-  expectRoute codex review --risk standard --author claude; expectRoute claude review --risk standard --author codex
-  [ "$(logCount)" = "6" ] || failCase "$state: want 6 log lines after 6 calls, got $(logCount)"
-  jq -e . "$ROUTING_LOG" >/dev/null || failCase "$state: every log line must parse"
-  [ "$(jq -s '[.[] | select((.ratios | type) == "object" and (.ratios | has("claude")) and (.ratios | has("codex")))] | length' "$ROUTING_LOG")" = "6" ] ||
-    failCase "$state: the log must carry a ratios object with claude and codex even without quota data"
-done
-
-# An exhausted default with no data at all for the other provider stays put:
-# moving work to a provider the report knows nothing about is a guess (PR 3 review).
-jq -n --argjson now "$NOW" '{buckets: {claude: {provider: "claude", resetsAt: (($now + 86400) | todate), windowDays: 366,
-  snapshots: [{at: ($now | todate), usedPct: 90, source: "owner"}]}}}' >"$CLAUDE_QUOTA_FILE"
-expectRoute claude spec --risk standard
-
-# --- 7. The log: one JSON line per successful call. ---
-rm -f "$ROUTING_LOG"
-writeQuota "$R13" "$R05"
-routeOk spec --risk standard
-[ "$(logCount)" = "1" ] || failCase "one call must append exactly one line (got $(logCount))"
-routeOk implement --risk high --security
-routeOk review --risk standard --author claude
-[ "$(logCount)" = "3" ] || failCase "three calls must append three lines (got $(logCount))"
-jq -e . "$ROUTING_LOG" >/dev/null || failCase "every log line must parse with jq"
-KEYS='has("ts") and has("step") and has("risk") and has("author") and has("security") and has("ratios") and has("provider") and has("reason")'
-[ "$(jq -s "[.[] | select($KEYS and (.ratios | type) == \"object\" and (.ratios | has(\"claude\")) and (.ratios | has(\"codex\")))] | length" "$ROUTING_LOG")" = "3" ] ||
-  failCase "every log line needs ts, step, risk, author, security, ratios{claude,codex}, provider, reason"
-# The first line (spec: claude 1.3 vs codex 0.49 moves to codex) records what happened.
-L1=$(sed -n 1p "$ROUTING_LOG")
-[ "$(jq -r .step <<<"$L1")" = "spec" ] || failCase "log step"
-[ "$(jq -r .risk <<<"$L1")" = "standard" ] || failCase "log risk"
-[ "$(jq -r .provider <<<"$L1")" = "codex" ] || failCase "log provider must equal the routed provider"
-[ "$(jq -r .security <<<"$L1")" = "false" ] || failCase "log security must be false without --security"
-[ "$(jq -r '.ratios.claude' <<<"$L1")" = "1.3" ] || failCase "log ratios.claude, want 1.3"
-[ "$(jq -r '.ratios.codex' <<<"$L1")" = "0.49" ] || failCase "log ratios.codex, want 0.49"
-[ -n "$(jq -r .reason <<<"$L1")" ] || failCase "log reason must not be empty"
-[ -n "$(jq -r .ts <<<"$L1")" ] || failCase "log ts must not be empty"
-L2=$(sed -n 2p "$ROUTING_LOG")
-[ "$(jq -r .security <<<"$L2")" = "true" ] || failCase "log security must be true with --security"
-[ "$(jq -r .provider <<<"$L2")" = "claude" ] || failCase "log provider for pinned implement --risk high"
-L3=$(sed -n 3p "$ROUTING_LOG")
-[ "$(jq -r .author <<<"$L3")" = "claude" ] || failCase "log author must record --author"
-[ "$(jq -r .provider <<<"$L3")" = "codex" ] || failCase "log provider for review of claude work"
-# Default log path: ~/.claude/routing-log.jsonl.
+# The default path is ~/.claude/agent-tier-assignments.json.
 mkdir -p "$WORK/home/.claude"
+printf '%s\n' '{"primary": {"agent": "qwen"}}' >"$WORK/home/.claude/agent-tier-assignments.json"
+DEFAULT_OUT=$(
+  unset AGENT_TIER_ASSIGNMENTS_FILE
+  HOME="$WORK/home" bash "$SCRIPT" spec --risk standard 2>/dev/null
+) || failCase "route with AGENT_TIER_ASSIGNMENTS_FILE unset must succeed"
+[ "$(printf '%s\n' "$DEFAULT_OUT" | sed -n 1p)" = "qwen" ] ||
+  failCase "with AGENT_TIER_ASSIGNMENTS_FILE unset, the machine file is \$HOME/.claude/agent-tier-assignments.json (got '$DEFAULT_OUT')"
+
+# --- 6. A machine file that is not JSON: claude, one stderr warning, exit 0. ---
+printf 'not json {\n' >"$WORK/bad.json"
+useMachineFile "$WORK/bad.json"
+for step in $STEPS_ROUTED; do
+  for risk in standard high; do
+    expectStep claude "$step" "$risk"
+    [ "$(printf '%s\n' "$ERR" | grep -c .)" = "1" ] ||
+      failCase "$step --risk $risk with an invalid machine file: want exactly one warning line on stderr (got: '$ERR')"
+  done
+done
+expectRoute owner merge --risk standard
+expectRoute owner merge --risk high
+
+# --- 4. merge is owner whatever the machine file says. ---
+writeMachineFile '{"primary": {"agent": "qwen"}, "secondary": {"agent": "qwen"}, "owner": {"agent": "claude"}}'
+expectRoute owner merge --risk standard
+expectRoute owner merge --risk high
+
+# --- 7. secondary unset: implement standard goes to the primary agent. ---
+writeMachineFile '{"primary": {"agent": "claude"}}'
+expectRoute claude implement --risk standard
+writeMachineFile '{"primary": {"agent": "qwen"}}'
+expectRoute qwen implement --risk standard
+
+# --- 8. secondary is an unknown agent: primary agent, reason names it. ---
+writeMachineFile '{"primary": {"agent": "claude"}, "secondary": {"agent": "gemini"}}'
+expectRoute claude implement --risk standard
+reasonHas gemini "implement with secondary gemini"
+writeMachineFile '{"primary": {"agent": "qwen"}, "secondary": {"agent": "gemini"}}'
+expectRoute qwen implement --risk standard
+reasonHas gemini "implement with secondary gemini and primary qwen"
+
+# --- 9. primary unset or unknown: the primary agent is claude. ---
+writeMachineFile '{"secondary": {"agent": "qwen"}}'
+for risk in standard high; do
+  expectRoute claude spec --risk "$risk"
+  expectRoute claude test-author --risk "$risk"
+  expectRoute claude review --risk "$risk" --author claude
+  expectRoute claude security-review --risk "$risk"
+done
+expectRoute claude implement --risk high
+expectRoute qwen implement --risk standard
+writeMachineFile '{"primary": {"agent": "gemini"}, "secondary": {"agent": "qwen"}}'
+for risk in standard high; do
+  expectRoute claude spec --risk "$risk"
+  expectRoute claude test-author --risk "$risk"
+  expectRoute claude review --risk "$risk" --author claude
+  expectRoute claude security-review --risk "$risk"
+done
+expectRoute claude implement --risk high
+expectRoute qwen implement --risk standard
+# Neither tier usable: implement standard falls all the way back to claude.
+writeMachineFile '{"primary": {"agent": "gemini"}, "secondary": {"agent": "gemini"}}'
+expectRoute claude implement --risk standard
+
+# --- 10. Each routed call appends exactly one JSON line with the documented keys. ---
+useMachineFile "$TEMPLATE"
+rm -f "$ROUTING_LOG"
+routeOk implement --risk standard
+[ "$(logCount)" = "1" ] || failCase "one routed call must append exactly one log line (got $(logCount))"
+routeOk implement --risk high
+[ "$(logCount)" = "2" ] || failCase "a second routed call must append exactly one more line (got $(logCount))"
+routeOk merge --risk standard
+[ "$(logCount)" = "3" ] || failCase "a third routed call must append exactly one more line (got $(logCount))"
+L1=$(sed -n 1p "$ROUTING_LOG")
+jq -e . >/dev/null 2>&1 <<<"$L1" || failCase "log line must be JSON: $L1"
+for key in ts step risk tier provider reason; do
+  jq -e --arg k "$key" 'has($k)' >/dev/null <<<"$L1" || failCase "log line must carry key $key: $L1"
+done
+[ -n "$(jq -r .ts <<<"$L1")" ] || failCase "log ts must not be empty"
+[ "$(jq -r .step <<<"$L1")" = "implement" ] || failCase "log step, want implement: $L1"
+[ "$(jq -r .risk <<<"$L1")" = "standard" ] || failCase "log risk, want standard: $L1"
+[ "$(jq -r .tier <<<"$L1")" = "secondary" ] || failCase "log tier for implement standard, want secondary: $L1"
+[ "$(jq -r .provider <<<"$L1")" = "qwen" ] || failCase "log provider must equal the routed agent, want qwen: $L1"
+[ -n "$(jq -r .reason <<<"$L1")" ] || failCase "log reason must not be empty"
+L2=$(sed -n 2p "$ROUTING_LOG")
+[ "$(jq -r .tier <<<"$L2")" = "primary" ] || failCase "log tier for implement high, want primary: $L2"
+[ "$(jq -r .provider <<<"$L2")" = "claude" ] || failCase "log provider for implement high, want claude: $L2"
+[ "$(jq -r .risk <<<"$L2")" = "high" ] || failCase "log risk, want high: $L2"
+L3=$(sed -n 3p "$ROUTING_LOG")
+[ "$(jq -r .tier <<<"$L3")" = "owner" ] || failCase "log tier for merge, want owner: $L3"
+[ "$(jq -r .provider <<<"$L3")" = "owner" ] || failCase "log provider for merge, want owner: $L3"
+# Default log path: ~/.claude/routing-log.jsonl.
+mkdir -p "$WORK/loghome/.claude"
 (
   unset ROUTING_LOG
-  HOME="$WORK/home" bash "$SCRIPT" spec --risk standard >/dev/null
+  HOME="$WORK/loghome" bash "$SCRIPT" spec --risk standard >/dev/null
 ) || failCase "route with ROUTING_LOG unset must succeed"
-[ "$(wc -l <"$WORK/home/.claude/routing-log.jsonl" | tr -d ' ')" = "1" ] || failCase "the default log path is \$HOME/.claude/routing-log.jsonl"
+[ "$(wc -l <"$WORK/loghome/.claude/routing-log.jsonl" | tr -d ' ')" = "1" ] ||
+  failCase "the default log path is \$HOME/.claude/routing-log.jsonl"
 
-# --- 8. The answer is never skip and never empty. ---
-# grid: every step at both risks (review at both authors) under the current quota file.
-grid() {
-  local step risk
-  for step in spec architecture test-author implement security-review review merge; do
-    for risk in standard high; do
-      if [ "$step" = review ]; then
-        routeOk "$step" --risk "$risk" --author claude
-        routeOk "$step" --risk "$risk" --author codex
-      else
-        routeOk "$step" --risk "$risk"
-      fi
-      [ "$P" != skip ] || failCase "route $step: never skip"
+# --- 11. --author and --security are accepted and change nothing in stdout. ---
+useMachineFile "$TEMPLATE"
+for step in spec test-author implement security-review merge; do
+  for risk in standard high; do
+    routeOk "$step" --risk "$risk"
+    BASE="$OUT"
+    for extra in "--author claude" "--author codex" "--security" "--author codex --security"; do
+      # shellcheck disable=SC2086  # extra is a fixed, space-separated flag list
+      routeOk "$step" --risk "$risk" $extra
+      [ "$OUT" = "$BASE" ] || failCase "$step --risk $risk $extra must print what $step --risk $risk prints ('$BASE'), got '$OUT'"
     done
   done
-}
-for c in "$R05" "$R13" "$EXH" "$NULLR"; do
-  for x in "$R05" "$R13" "$EXH" "$NULLR"; do
-    writeQuota "$c" "$x"
-    grid
+done
+for risk in standard high; do
+  routeOk review --risk "$risk" --author claude
+  BASE="$OUT"
+  for extra in "--author codex" "--author claude --security"; do
+    # shellcheck disable=SC2086
+    routeOk review --risk "$risk" $extra
+    [ "$OUT" = "$BASE" ] || failCase "review --risk $risk $extra must print what review --author claude prints ('$BASE'), got '$OUT'"
   done
 done
-rm -f "$CLAUDE_QUOTA_FILE"
-grid
-echo 'not json' >"$CLAUDE_QUOTA_FILE"
-grid
 
-# --- 9. Negative input: exit 2, a message on stderr, no provider, no log line. ---
-writeQuota "$R05" "$R05"
+# --- 12. Negative input: exit 2, a message on stderr, no agent, no log line. ---
 rm -f "$ROUTING_LOG"
 BIG=$(head -c 5000 /dev/zero | tr '\0' a)
 # expectReject <description> <args...>
@@ -333,7 +275,7 @@ expectReject() {
   route "$@"
   [ "$RC" -eq 2 ] || failCase "$what: must exit 2 (got $RC, stdout '$OUT')"
   [ -n "$ERR" ] || failCase "$what: must explain on stderr"
-  [ -z "$OUT" ] || failCase "$what: must print no provider (got '$OUT')"
+  [ -z "$OUT" ] || failCase "$what: must print no agent (got '$OUT')"
   [ "$(logCount)" = "$before" ] || failCase "$what: must write no log line"
 }
 expectReject "an unknown step" bogus --risk standard
@@ -344,13 +286,37 @@ expectReject "a backtick step" "\`touch $WORK/pwned2\`" --risk standard
 [ ! -e "$WORK/pwned2" ] || failCase "a backtick in the step must never run"
 expectReject "a risk of medium" spec --risk medium
 expectReject "a risk with metacharacters" spec --risk 'high; rm -rf /'
+expectReject "a command substitution risk" spec --risk "\$(touch $WORK/pwned3)"
+[ ! -e "$WORK/pwned3" ] || failCase "a command substitution in the risk must never run"
 expectReject "a missing --risk" spec
 expectReject "a --risk with no value" spec --risk
-expectReject "an unknown author" review --risk standard --author gemini
 expectReject "an author with metacharacters" spec --risk standard --author 'claude; id'
+expectReject "a command substitution author" spec --risk standard --author "\$(touch $WORK/pwned4)"
+[ ! -e "$WORK/pwned4" ] || failCase "a command substitution in the author must never run"
+expectReject "an unknown argument" spec --risk standard --bogus
 expectReject "an oversized step" "$BIG" --risk standard
 expectReject "an oversized risk" spec --risk "$BIG"
-expectReject "a review with no author" review --risk standard
+expectReject "an oversized author" spec --risk standard --author "$BIG"
 [ "$(logCount)" = "0" ] || failCase "rejected calls must leave the log empty (got $(logCount))"
+
+# --- 13. route.sh never invokes quota-pace.sh and needs no quota file. ---
+SANDBOX="$WORK/sandbox"
+mkdir -p "$SANDBOX"
+cp "$SCRIPT" "$STEPS" "$SANDBOX/"
+MARKER="$WORK/quota-pace-was-called"
+cat >"$SANDBOX/quota-pace.sh" <<EOF
+#!/usr/bin/env bash
+touch "$MARKER"
+echo '{"providers": []}'
+EOF
+chmod +x "$SANDBOX/quota-pace.sh"
+[ ! -e "$CLAUDE_QUOTA_FILE" ] || failCase "setup: the quota file must not exist"
+useMachineFile "$TEMPLATE"
+SCRIPT="$SANDBOX/route.sh"
+expectRoute qwen implement --risk standard
+expectRoute claude implement --risk high
+expectRoute claude spec --risk standard
+expectRoute owner merge --risk standard
+[ ! -e "$MARKER" ] || failCase "route.sh must never invoke quota-pace.sh"
 
 echo "PASS: route"
