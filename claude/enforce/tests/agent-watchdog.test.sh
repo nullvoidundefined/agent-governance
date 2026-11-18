@@ -32,12 +32,30 @@ GOT=$(guard_decision Agent '{"run_in_background":false,"prompt":"p"}')
 # The older tool name is guarded the same way.
 GOT=$(guard_decision Task '{"subagent_type":"implementer","run_in_background":false}')
 [ "$GOT" = "deny" ] || { echo "FAIL: the Task tool name must be guarded too, got $GOT"; exit 1; }
-# Only an explicit true is background: the tool's default has differed between
-# versions, so an omitted flag is denied for a long type (R-517 r1 on #184).
+# The current Agent tool has no run_in_background parameter and always runs
+# subagents in the background, so an ABSENT flag is a background dispatch
+# (criterion 1); a PRESENT flag must still be exactly boolean true.
 GOT=$(guard_decision Agent '{"subagent_type":"test-author","run_in_background":true}')
 [ "$GOT" = "none" ] || { echo "FAIL: a background test-author must pass, got $GOT"; exit 1; }
-GOT=$(guard_decision Agent '{"subagent_type":"test-author"}')
-[ "$GOT" = "deny" ] || { echo "FAIL: an omitted run_in_background must be denied for a long type, got $GOT"; exit 1; }
+for agent_type in test-author implementer pr-reviewer security-reviewer general-purpose audit-security audit-ux; do
+  GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"prompt\":\"p\"}")
+  [ "$GOT" = "none" ] || { echo "FAIL: an absent run_in_background must pass for $agent_type, got $GOT"; exit 1; }
+done
+GOT=$(guard_decision Agent '{}')
+[ "$GOT" = "none" ] || { echo "FAIL: an absent flag and no type (general-purpose) must pass, got $GOT"; exit 1; }
+GOT=$(guard_decision Task '{"subagent_type":"implementer"}')
+[ "$GOT" = "none" ] || { echo "FAIL: an absent flag must pass under the Task tool name too, got $GOT"; exit 1; }
+# Any present value other than boolean true is denied (criterion 4).
+for flag in '"true"' 'null' '0' '1' '""' '[]' '{}'; do
+  GOT=$(guard_decision Agent "{\"subagent_type\":\"implementer\",\"run_in_background\":$flag}")
+  [ "$GOT" = "deny" ] || { echo "FAIL: run_in_background $flag must be denied, got $GOT"; exit 1; }
+done
+# A payload whose tool_input is missing or not an object is malformed, not
+# "absent": denied.
+for payload in '{"tool_name":"Agent"}' '{"tool_name":"Agent","tool_input":null}' '{"tool_name":"Agent","tool_input":"x"}' '{"tool_name":"Agent","tool_input":[]}' '{"tool_name":"Agent","tool_input":5}'; do
+  GOT=$(printf '%s' "$payload" | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
+  [ "$GOT" = "deny" ] || { echo "FAIL: a malformed tool_input must be denied: $payload, got $GOT"; exit 1; }
+done
 GOT=$(guard_decision Agent '{"subagent_type":"Explore"}')
 [ "$GOT" = "none" ] || { echo "FAIL: an omitted flag on a quick type must pass, got $GOT"; exit 1; }
 # An empty, namespaced or differently cased type is still the long type it names.
@@ -49,10 +67,12 @@ done
 # no usable flag reads as not background, no usable type as general-purpose.
 GOT=$(guard_decision Agent '{"subagent_type":null,"run_in_background":null}')
 [ "$GOT" = "deny" ] || { echo "FAIL: null fields must be judged as a foreground general-purpose dispatch, got $GOT"; exit 1; }
-# Quick lookups may run in the foreground.
-for agent_type in Explore claude-code-guide Plan statusline-setup; do
-  GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":false}")
-  [ "$GOT" = "none" ] || { echo "FAIL: a foreground $agent_type must pass, got $GOT"; exit 1; }
+# Quick lookups, and any other type, pass whatever the flag says (criterion 6).
+for agent_type in Explore claude-code-guide Plan statusline-setup some-other-type; do
+  for flag in false '"true"' null 0 1 '""' '[]' '{}'; do
+    GOT=$(guard_decision Agent "{\"subagent_type\":\"$agent_type\",\"run_in_background\":$flag}")
+    [ "$GOT" = "none" ] || { echo "FAIL: $agent_type with run_in_background $flag must pass, got $GOT"; exit 1; }
+  done
 done
 # A string "true" is not the boolean true the tool takes: still denied.
 GOT=$(guard_decision Agent '{"subagent_type":"implementer","run_in_background":"true"}')
@@ -63,15 +83,15 @@ GOT=$(printf 'not json' | "$GUARD" | jq -r '.hookSpecificOutput.permissionDecisi
 [ "$GOT" = "deny" ] || { echo "FAIL: a non-JSON payload must be denied, got $GOT"; exit 1; }
 # A parsable payload whose tool name is null, missing or differently cased is
 # still a dispatch (R-109 r2 #2 on #184).
-for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}' '{"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"agent","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":" Agent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\t","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":5,"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":{"x":1},"tool_input":{"subagent_type":"implementer"}}' '{"tool_name":["Agent"],"tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"\u00a0Agent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\u200b","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"Agent\u3000","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"\uff21gent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"\u0410gent","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"Ta-sk","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"\nAgent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\nBash","tool_input":{"subagent_type":"implementer"}}' \
-  '{"tool_name":"Bash\nAgent","tool_input":{"subagent_type":"implementer"}}' '{"tool_name":"Agent\n ","tool_input":{"subagent_type":"implementer"}}'; do
+for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":"agent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":" Agent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":"Agent\t","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":5,"tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":{"x":1},"tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":["Agent"],"tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":"\u00a0Agent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":"Agent\u200b","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":"Agent\u3000","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":"\uff21gent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":"\u0410gent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":"Ta-sk","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":"\nAgent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":"Agent\nBash","tool_input":{"subagent_type":"implementer","run_in_background":false}}' \
+  '{"tool_name":"Bash\nAgent","tool_input":{"subagent_type":"implementer","run_in_background":false}}' '{"tool_name":"Agent\n ","tool_input":{"subagent_type":"implementer","run_in_background":false}}'; do
   # Run under the C locale too, where Unicode spaces are not [:space:] (r4 #1).
   GOT=$(printf '%s' "$payload" | LC_ALL=C "$GUARD" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || echo none)
   [ "$GOT" = "deny" ] || { echo "FAIL: $payload must be denied under LC_ALL=C, got $GOT"; exit 1; }
@@ -80,7 +100,7 @@ for payload in '{"tool_name":null,"tool_input":{"subagent_type":"implementer"}}'
 done
 # A non-string subagent_type falls closed to general-purpose (R-109 r7 #1).
 for agent_type in '["implementer"]' '{"a":1}' '5' 'true'; do
-  GOT=$(guard_decision Agent "{\"subagent_type\":$agent_type}")
+  GOT=$(guard_decision Agent "{\"subagent_type\":$agent_type,\"run_in_background\":false}")
   [ "$GOT" = "deny" ] || { echo "FAIL: a non-string subagent_type $agent_type must be denied, got $GOT"; exit 1; }
 done
 # The hook judges every payload, whatever its tool_name, because settings.json
@@ -98,10 +118,14 @@ case "$REASON" in *R-708*agent-watchdog.sh*TaskStop*) ;; *) echo "FAIL: the reas
 
 # --- agent-watchdog-instruction.sh ---------------------------------------
 
-# instruction_for <tool> <tool_response json>: prints the additionalContext, or nothing.
+# instruction_for <tool> <tool_response json> [bg json|ABSENT] [subagent_type]:
+# prints the additionalContext, or nothing. A $bg of ABSENT omits the key; an
+# empty $bg means true. A non-empty subagent_type is added to tool_input.
 instruction_for() {
-  jq -n --arg t "$1" --argjson r "$2" --argjson bg "${3:-true}" \
-    '{tool_name:$t, tool_input:{run_in_background:$bg}, tool_response:$r}' \
+  local bg="${3:-true}" agent_type="${4:-}"
+  if [ "$bg" = ABSENT ]; then bg=null; fi
+  jq -n --arg t "$1" --argjson r "$2" --argjson bg "$bg" --arg absent "${3:-}" --arg st "$agent_type" \
+    '{tool_name:$t, tool_input:({} | (if $absent == "ABSENT" then . else .run_in_background = $bg end) | (if $st == "" then . else .subagent_type = $st end)), tool_response:$r}' \
     | "$INSTRUCTION" | jq -r '.hookSpecificOutput.additionalContext // empty'
 }
 
@@ -144,6 +168,47 @@ GOT=$(instruction_for Agent '"The agent finished; here is its report."')
 # Other tools: silent.
 GOT=$(instruction_for Bash "\"$LAUNCH_TEXT\"")
 [ -z "$GOT" ] || { echo "FAIL: a Bash response must get no instruction: $GOT"; exit 1; }
+
+# An absent flag on a long-running type is a background launch (criterion 7).
+for agent_type in test-author implementer pr-reviewer security-reviewer general-purpose audit-security audit-ux; do
+  GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"" ABSENT "$agent_type")
+  case "$GOT" in *"agent-watchdog.sh '/tmp/claude-1/tasks/a1b2c3.output'"*TaskStop*) ;;
+    *) echo "FAIL: an absent flag on $agent_type must name the watchdog command: $GOT"; exit 1 ;; esac
+done
+# Namespaced or differently cased long type names are read as the guard reads them.
+GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"" ABSENT "plugin:Implementer")
+case "$GOT" in *"agent-watchdog.sh"*) ;; *) echo "FAIL: a namespaced long type must name the watchdog: $GOT"; exit 1 ;; esac
+# No type means general-purpose, which is long-running.
+GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"" ABSENT)
+case "$GOT" in *"agent-watchdog.sh"*) ;; *) echo "FAIL: an absent flag and no type must name the watchdog: $GOT"; exit 1 ;; esac
+# Explicit true still instructs, for a long type and a quick one (criterion 8).
+GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"" true implementer)
+case "$GOT" in *"agent-watchdog.sh"*) ;; *) echo "FAIL: an explicit true must still name the watchdog: $GOT"; exit 1 ;; esac
+# An explicit non-true value stays silent despite a valid launch response (criterion 9).
+for flag in false '"true"' null 0 1 '""' '[]' '{}'; do
+  GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"" "$flag" implementer)
+  [ -z "$GOT" ] || { echo "FAIL: run_in_background $flag must get no instruction: $GOT"; exit 1; }
+done
+# A quick-lookup type with the flag absent stays silent: criterion 7 names only
+# long-running types (the instruction hook is for agents that need a watchdog).
+for agent_type in Explore claude-code-guide Plan statusline-setup; do
+  GOT=$(instruction_for Agent "\"$LAUNCH_TEXT\"" ABSENT "$agent_type")
+  [ -z "$GOT" ] || { echo "FAIL: an absent flag on quick type $agent_type must get no instruction: $GOT"; exit 1; }
+done
+# The existing gates hold for an absent flag: no launch phrase, hostile path.
+GOT=$(instruction_for Agent '"Report.\noutput_file: /tmp/claude-1/tasks/x.output"' ABSENT implementer)
+[ -z "$GOT" ] || { echo "FAIL: an absent flag without an async launch must get no instruction: $GOT"; exit 1; }
+HOSTILE_TEXT=$(jq -n '"Async agent launched successfully.\noutput_file: /tmp/x/../../etc/passwd"')
+GOT=$(instruction_for Agent "$HOSTILE_TEXT" ABSENT implementer)
+[ -z "$GOT" ] || { echo "FAIL: an absent flag with a traversal path must get no instruction: $GOT"; exit 1; }
+# A payload whose tool_input is missing or not an object is malformed, not
+# "absent": silent, and so is a payload that is not JSON.
+for payload in '{"tool_name":"Agent"}' '{"tool_name":"Agent","tool_input":null}' '{"tool_name":"Agent","tool_input":"x"}' '{"tool_name":"Agent","tool_input":[]}'; do
+  GOT=$(jq -nc --argjson p "$payload" --argjson r "\"$LAUNCH_TEXT\"" '$p + {tool_response:$r}' | "$INSTRUCTION" | jq -r '.hookSpecificOutput.additionalContext // empty')
+  [ -z "$GOT" ] || { echo "FAIL: a malformed tool_input must get no instruction: $payload -> $GOT"; exit 1; }
+done
+GOT=$(printf 'not json' | "$INSTRUCTION" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null || true)
+[ -z "$GOT" ] || { echo "FAIL: a non-JSON payload must get no instruction: $GOT"; exit 1; }
 
 # --- enforce/agent-watchdog.sh -------------------------------------------
 
