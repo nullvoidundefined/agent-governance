@@ -1,12 +1,11 @@
 {
-  "_comment": "Step table for enforce/route.sh (IAN-603, slice 04 PR 3). default: the provider that owns the step on role grounds. pinned: the step never moves for pace or exhaustion. high: overrides for --risk high. crossModel: the provider is always the other one from --author. model: named in the reason.",
+  "_comment": "Step table for enforce/route.sh (slice 05 PR 1). tier: primary, secondary or owner; the machine file (agent-tier-assignments.json) maps primary and secondary to an agent. high: overrides for --risk high. model: named in the reason.",
   "steps": {
-    "spec": { "default": "claude" },
-    "architecture": { "default": "claude" },
-    "test-author": { "default": "codex" },
-    "implement": { "default": "codex", "high": { "default": "claude", "pinned": true } },
-    "review": { "crossModel": true },
-    "security-review": { "default": "claude", "pinned": true, "model": "fable" },
-    "merge": { "default": "owner", "pinned": true }
+    "spec": { "tier": "primary" },
+    "test-author": { "tier": "primary" },
+    "implement": { "tier": "secondary", "high": { "tier": "primary" } },
+    "review": { "tier": "primary" },
+    "security-review": { "tier": "primary", "model": "fable" },
+    "merge": { "tier": "owner" }
   }
 }
