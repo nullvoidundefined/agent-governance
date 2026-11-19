@@ -627,4 +627,78 @@ done
 ! processAlive "$TC_SHELL" || failCase "test-cmd timeout: the test command's shell ($TC_SHELL) must be stopped"
 ! processAlive "$TC_CHILD" || failCase "test-cmd timeout: the test command's child ($TC_CHILD) must not outlive the script"
 
+# --- 16. Qwen gets the slim implementer rules, never the user's CLAUDE.md. ---
+# The full CLAUDE.md holds orchestrator rules (turn summaries, PRs, tickets,
+# routing) that a small local model wrongly obeys. The script appends
+# enforce/qwen-implementer-rules.md, resolved next to the script, instead;
+# QWEN_IMPLEMENTER_RULES_FILE overrides that path.
+unset QWEN_IMPLEMENTER_RULES_FILE
+SLIM_RULES="$CLAUDE_HARNESS_ROOT/enforce/qwen-implementer-rules.md"
+SLIM_RULES_DIR=$(cd -P "$CLAUDE_HARNESS_ROOT/enforce" && pwd -P)
+
+# physicalPath <path>: prints <path> with its directory resolved physically,
+# or the path unchanged when its directory does not exist.
+physicalPath() {
+  local dir
+  if dir=$(cd -P "$(dirname "$1")" 2>/dev/null && pwd -P); then
+    printf '%s/%s\n' "$dir" "$(basename "$1")"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# sandboxHome: makes a HOME for the case that holds a full .claude/CLAUDE.md,
+# and prints its path.
+sandboxHome() {
+  mkdir -p "$CASE_DIR/home/.claude"
+  printf '# Global Rules\n\nEnd every turn with **Done:**, **Decide:** and **Next:**.\n' \
+    >"$CASE_DIR/home/.claude/CLAUDE.md"
+  printf '%s\n' "$CASE_DIR/home"
+}
+
+newCase slim-rules-default
+SANDBOX_HOME=$(sandboxHome)
+HOME="$SANDBOX_HOME" dispatchCase
+expectResult "the default implementer rules" 0 green ""
+ARGS_TEXT=$(tr '\n' ' ' <"$WORK/claude-args")
+! grep -Eq 'CLAUDE\.md$' "$WORK/claude-args" ||
+  failCase "slim rules: claude's arguments must never carry a path ending in CLAUDE.md, even when \$HOME/.claude/CLAUDE.md exists (args: $ARGS_TEXT)"
+APPENDED=$(argFollowing --append-system-prompt-file)
+[ -n "$APPENDED" ] || failCase "slim rules: claude must get --append-system-prompt-file <rules file> (args: $ARGS_TEXT)"
+[ "$(physicalPath "$APPENDED")" = "$SLIM_RULES_DIR/qwen-implementer-rules.md" ] ||
+  failCase "slim rules: --append-system-prompt-file must name $SLIM_RULES (got '$APPENDED')"
+
+newCase slim-rules-override
+SANDBOX_HOME=$(sandboxHome)
+printf '# Implementer rules\n\nOverride copy.\n' >"$CASE_DIR/override-rules.md"
+HOME="$SANDBOX_HOME" QWEN_IMPLEMENTER_RULES_FILE="$CASE_DIR/override-rules.md" dispatchCase
+expectResult "QWEN_IMPLEMENTER_RULES_FILE set to a temp file" 0 green ""
+[ "$(argFollowing --append-system-prompt-file)" = "$CASE_DIR/override-rules.md" ] ||
+  failCase "QWEN_IMPLEMENTER_RULES_FILE must set the --append-system-prompt-file path (got '$(argFollowing --append-system-prompt-file)'; args: $(tr '\n' ' ' <"$WORK/claude-args"))"
+! grep -Eq 'CLAUDE\.md$' "$WORK/claude-args" ||
+  failCase "QWEN_IMPLEMENTER_RULES_FILE: claude's arguments must never carry a path ending in CLAUDE.md (args: $(tr '\n' ' ' <"$WORK/claude-args"))"
+
+# A missing rules file: unavailable / rules-missing, after the machine-file
+# and server checks pass (newCase sets up both), and claude never starts.
+newCase slim-rules-missing
+SANDBOX_HOME=$(sandboxHome)
+HOME="$SANDBOX_HOME" QWEN_IMPLEMENTER_RULES_FILE="$CASE_DIR/no-such-rules.md" dispatchCase
+expectResult "a missing implementer rules file" 3 unavailable rules-missing
+[ "$REASON" = "rules-missing" ] || failCase "a missing implementer rules file: line 2 must be exactly 'rules-missing' (got '$REASON')"
+expectClaudeNeverStarted "a missing implementer rules file"
+
+# --- 17. The shipped implementer rules file is short and implementer-only. ---
+[ -f "$SLIM_RULES" ] || failCase "the implementer rules file must ship at $SLIM_RULES (not created yet)"
+[ -s "$SLIM_RULES" ] || failCase "the implementer rules file $SLIM_RULES must not be empty"
+RULES_LINES=$(wc -l <"$SLIM_RULES" | tr -d ' ')
+[ "$RULES_LINES" -le 80 ] || failCase "the implementer rules file must be at most 80 lines (got $RULES_LINES)"
+for marker in '**Done:**' '**Decide:**' '**Next:**' 'pr-reviewer' 'route.sh' 'Linear' 'ticket'; do
+  ! grep -qF -- "$marker" "$SLIM_RULES" ||
+    failCase "the implementer rules file must not carry the orchestrator marker '$marker' (line: $(grep -nF -- "$marker" "$SLIM_RULES" | head -1))"
+done
+grep -qxF '# Implementer rules' "$SLIM_RULES" || failCase "the implementer rules file must hold the heading line '# Implementer rules'"
+grep -qi 'reuse' "$SLIM_RULES" || failCase "the implementer rules file must tell the implementer to reuse existing code ('reuse')"
+grep -qi 'do not commit' "$SLIM_RULES" || failCase "the implementer rules file must say 'do not commit'"
+grep -qi 'do not edit' "$SLIM_RULES" || failCase "the implementer rules file must say 'do not edit' (the tests)"
+
 echo "PASS: qwen-implementer-dispatch"
