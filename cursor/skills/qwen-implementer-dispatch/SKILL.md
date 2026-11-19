@@ -44,3 +44,14 @@ Line 1 is the status, line 2 the reason.
 | usage error | 2 | A bad flag or a `--red` that is not a commit. Fix the call. |
 
 On `failed` with `touched-protected-path`, discard the attempt's changes (back to the RED commit) before retrying. After one more attempt that also fails, or on `unavailable`, discard Qwen's changes back to the RED commit and dispatch the primary `implementer`; name the fallback in the PR.
+
+## 4. Fixing review findings
+
+Use this when Qwen wrote the GREEN and the one review left a HIGH or MEDIUM that needs a code change. It is one attempt, not a loop.
+
+1. Commit Qwen's GREEN first, so the fix is a separate ordinary `fix:` commit.
+2. Build a new prompt file with the same contract, standards checklist, test command (linter included) and branch and head as in section 1, plus a "Findings to fix" block: for each finding its severity, `file:line`, the defect, the failure scenario or evidence, and any fix the reviewer suggested, copied verbatim. Add: "Fix only these findings. Change nothing else. List any you decline, with the reason, in your final message."
+3. Run the script as in section 2 with the same `--red` sha, so the protected-path check covers everything since RED.
+4. On `green`, read the diff: confirm each finding is fixed and nothing else changed, then commit and rerun only the checks the fix affects. On `failed` or `unavailable`, discard Qwen's changes back to the committed GREEN and have the primary `implementer` make the fix; name the fallback in the PR.
+
+A finding answered with a reason, and every LOW, is never sent to Qwen. A LOW the owner asked to fix from its ticket is a new slice, with its own prompt built this way.
