@@ -25,6 +25,9 @@ trap 'rm -rf "$WORK"' EXIT
 export CLAUDE_QUOTA_FILE="$WORK/no-such-quota.json"
 export ROUTING_LOG="$WORK/routing-log.jsonl"
 unset AGENT_TIER_ASSIGNMENTS_FILE
+# CLAUDE_HOME names the Claude config directory and outranks $HOME/.claude;
+# unset so the HOME-default cases below test HOME, not the caller's setting.
+unset CLAUDE_HOME
 
 # Every step the new table names, in the order the grids walk them.
 STEPS_ROUTED="spec test-author review implement security-review"
@@ -368,5 +371,122 @@ expectRoute claude implement --risk high
 expectRoute claude spec --risk standard
 expectRoute owner merge --risk standard
 [ ! -e "$MARKER" ] || failCase "route.sh must never invoke quota-pace.sh"
+# Back to the checkout's route.sh for the cases below.
+SCRIPT="$CLAUDE_HARNESS_ROOT/enforce/route.sh"
+
+# --- 14. A secondary agent name with control characters cannot split the reason. ---
+# The machine file's secondary.agent is "gem<LF>ini<BEL>": stdout must stay
+# exactly two lines with no control character, and the log line must be JSON
+# whose reason is that same single line.
+writeMachineFile '{"primary": {"agent": "claude"}, "secondary": {"agent": "gem\nini\u0007"}}'
+rm -f "$ROUTING_LOG"
+route implement --risk standard
+[ "$RC" -eq 0 ] || failCase "control-character secondary: route must exit 0 (got $RC, stderr: $ERR)"
+[ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "2" ] ||
+  failCase "control-character secondary: stdout must be exactly two lines (got '$OUT')"
+[ "$P" = "claude" ] || failCase "control-character secondary: line 1 must be claude (got '$P')"
+[ -n "$REASON" ] || failCase "control-character secondary: line 2 must carry a reason"
+if printf '%s' "$REASON" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+  failCase "control-character secondary: the reason must hold no control character (got '$REASON')"
+fi
+[ "$(logCount)" = "1" ] || failCase "control-character secondary: want one log line (got $(logCount))"
+CTRL_LINE=$(sed -n 1p "$ROUTING_LOG")
+jq -e . >/dev/null 2>&1 <<<"$CTRL_LINE" || failCase "control-character secondary: log line must be JSON: $CTRL_LINE"
+[ "$(jq -r .reason <<<"$CTRL_LINE")" = "$REASON" ] ||
+  failCase "control-character secondary: log reason must equal the stdout reason line '$REASON' (log: $CTRL_LINE)"
+
+# --- 15. A repeated --risk is a usage error; a single --risk still routes. ---
+useMachineFile "$TEMPLATE"
+rm -f "$ROUTING_LOG"
+expectReject "a repeated --risk (standard then high)" spec --risk standard --risk high
+expectReject "a repeated --risk on implement (high then standard)" implement --risk high --risk standard
+expectReject "a repeated --risk around --author" implement --risk standard --author claude --risk high
+[ "$(logCount)" = "0" ] || failCase "repeated --risk calls must leave the log empty (got $(logCount))"
+expectRoute claude spec --risk standard
+expectRoute qwen implement --risk standard
+expectRoute claude implement --risk high
+
+# --- 16. HOME unset: merge's reason does not talk about a primary agent. ---
+# routeHomeless <args...>: runs route.sh with HOME, CLAUDE_HOME and
+# AGENT_TIER_ASSIGNMENTS_FILE unset; sets HL_RC, HL_OUT, HL_P, HL_REASON.
+routeHomeless() {
+  HL_RC=0
+  HL_OUT=$(env -u HOME -u CLAUDE_HOME -u AGENT_TIER_ASSIGNMENTS_FILE ROUTING_LOG="$WORK/homeless16-log.jsonl" \
+    bash "$SCRIPT" "$@" 2>"$WORK/homeless16-err") || HL_RC=$?
+  HL_P=$(printf '%s\n' "$HL_OUT" | sed -n 1p)
+  HL_REASON=$(printf '%s\n' "$HL_OUT" | sed -n 2p)
+  [ "$HL_RC" -eq 0 ] || failCase "HOME unset, route $*: must exit 0 (got $HL_RC, stderr: $(cat "$WORK/homeless16-err"))"
+}
+routeHomeless merge --risk standard
+[ "$HL_P" = "owner" ] || failCase "HOME unset: merge --risk standard must print owner (got '$HL_P')"
+case "$HL_REASON" in
+  *"primary agent"*) failCase "HOME unset: merge's reason must not mention 'primary agent', merge is the owner's (got '$HL_REASON')" ;;
+esac
+for step in spec implement; do
+  routeHomeless "$step" --risk standard
+  [ "$HL_P" = "claude" ] || failCase "HOME unset: $step --risk standard must print claude (got '$HL_P')"
+  case "$HL_REASON" in
+    *"HOME is unset"*) ;;
+    *) failCase "HOME unset: $step --risk standard reason must say 'HOME is unset' (got '$HL_REASON')" ;;
+  esac
+done
+
+# --- 17. CLAUDE_HOME names the Claude config directory for the machine file. ---
+# Order: AGENT_TIER_ASSIGNMENTS_FILE, then $CLAUDE_HOME/agent-tier-assignments.json,
+# then $HOME/.claude/agent-tier-assignments.json. Each file gives spec a
+# different primary agent, so line 1 shows which file was read.
+mkdir -p "$WORK/chome" "$WORK/chome-home/.claude"
+printf '%s\n' '{"primary": {"agent": "qwen"}}' >"$WORK/chome/agent-tier-assignments.json"
+printf '%s\n' '{"primary": {"agent": "claude"}}' >"$WORK/chome-home/.claude/agent-tier-assignments.json"
+printf '%s\n' '{"primary": {"agent": "claude"}}' >"$WORK/chome-explicit.json"
+# routeClaudeHome <env assignments...> -- <args...>: runs route.sh under
+# env -u AGENT_TIER_ASSIGNMENTS_FILE -u CLAUDE_HOME -u HOME plus the given
+# assignments; sets CH_RC, CH_OUT, CH_P, CH_REASON.
+routeClaudeHome() {
+  local assigns=()
+  while [ "$1" != "--" ]; do
+    assigns+=("$1")
+    shift
+  done
+  shift
+  CH_RC=0
+  CH_OUT=$(env -u AGENT_TIER_ASSIGNMENTS_FILE -u CLAUDE_HOME -u HOME ROUTING_LOG="$WORK/chome-log.jsonl" \
+    "${assigns[@]}" bash "$SCRIPT" "$@" 2>"$WORK/chome-err") || CH_RC=$?
+  CH_P=$(printf '%s\n' "$CH_OUT" | sed -n 1p)
+  CH_REASON=$(printf '%s\n' "$CH_OUT" | sed -n 2p)
+  [ "$CH_RC" -eq 0 ] || failCase "CLAUDE_HOME, route $*: must exit 0 (got $CH_RC, stderr: $(cat "$WORK/chome-err"))"
+}
+# CLAUDE_HOME set, HOME set: the CLAUDE_HOME file wins over $HOME/.claude.
+routeClaudeHome CLAUDE_HOME="$WORK/chome" HOME="$WORK/chome-home" -- spec --risk standard
+[ "$CH_P" = "qwen" ] ||
+  failCase "CLAUDE_HOME set: the machine file must be \$CLAUDE_HOME/agent-tier-assignments.json, ahead of \$HOME/.claude (got '$CH_P': $CH_REASON)"
+# CLAUDE_HOME set, HOME unset: the CLAUDE_HOME file alone still resolves.
+routeClaudeHome CLAUDE_HOME="$WORK/chome" -- spec --risk standard
+[ "$CH_P" = "qwen" ] ||
+  failCase "CLAUDE_HOME set, HOME unset: the machine file must be \$CLAUDE_HOME/agent-tier-assignments.json (got '$CH_P': $CH_REASON)"
+# AGENT_TIER_ASSIGNMENTS_FILE still wins over CLAUDE_HOME.
+routeClaudeHome AGENT_TIER_ASSIGNMENTS_FILE="$WORK/chome-explicit.json" CLAUDE_HOME="$WORK/chome" HOME="$WORK/chome-home" \
+  -- spec --risk standard
+[ "$CH_P" = "claude" ] ||
+  failCase "AGENT_TIER_ASSIGNMENTS_FILE must win over CLAUDE_HOME (got '$CH_P': $CH_REASON)"
+# HOME unset, CLAUDE_HOME holding a qwen secondary: implement standard is qwen
+# and the reason does not claim HOME is unset as the cause.
+mkdir -p "$WORK/chome-qwen"
+printf '%s\n' '{"primary": {"agent": "claude"}, "secondary": {"agent": "qwen"}}' \
+  >"$WORK/chome-qwen/agent-tier-assignments.json"
+routeClaudeHome CLAUDE_HOME="$WORK/chome-qwen" -- implement --risk standard
+[ "$CH_P" = "qwen" ] ||
+  failCase "HOME unset, CLAUDE_HOME set: implement --risk standard must use the CLAUDE_HOME machine file's qwen secondary (got '$CH_P': $CH_REASON)"
+case "$CH_REASON" in
+  *"HOME is unset"*) failCase "HOME unset, CLAUDE_HOME set: the reason must not say 'HOME is unset' (got '$CH_REASON')" ;;
+esac
+
+# --- 18. resolve-machine-file.sh is shellcheck-clean at warning level. ---
+if command -v shellcheck >/dev/null 2>&1; then
+  SC_OUT=$(cd "$CLAUDE_HARNESS_ROOT/enforce" && shellcheck -x -S warning resolve-machine-file.sh 2>&1) ||
+    failCase "resolve-machine-file.sh must pass shellcheck -x -S warning: $SC_OUT"
+else
+  echo "SKIP: shellcheck is not installed; resolve-machine-file.sh lint case not run"
+fi
 
 echo "PASS: route"
