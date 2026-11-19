@@ -24,7 +24,7 @@
   },
   "files": {
     ".gitignore": "sha256:28c027c5c4f0fea2365086de578556561f2ff70911844dc3cc8928e7b955cb70",
-    "AGENTS.md": "sha256:deb1d41f8e179eaf90c894a74340a7855467f4acd2557f2ef61ad3013a6d91cc",
+    "AGENTS.md": "sha256:f0c24b85c73f0848d73689db2a1b2cc30792c13086147061a8172ffe63eaf5c8",
     "PORT-STATUS.md": "sha256:4599eb6fd4284662590e837be7556e5af99327721c98ab385ad70337456d06e7",
     "agents/audit-criticism.toml": "sha256:0ba1d8b00d905d1da4cc2c7ccb7b560321d8d5c47a58d0952570f8cc5d0ad7ce",
     "agents/audit-customer.toml": "sha256:d764043a42fb7bf6dad1cd09b21560e07093c72e9e3929141187408678711991",
@@ -38,7 +38,7 @@
     "agents/implementer.toml": "sha256:8f40720408ec3497f57d1bf12fd9184e20ed2fb93d20cf792a83eeb8594f4cd0",
     "agents/pr-reviewer.toml": "sha256:c35368c5d2c04b081fe9dab0d73ec2be1d71421c5e3136a7394dedc4d667e1b4",
     "agents/security-reviewer.toml": "sha256:2981e1f232aa2dc993bacd77730a308accf286b713d6a055b015282dea399b04",
-    "agents/test-author.toml": "sha256:f148717ddc7827de50e7811ae70d2599e4fd4eafacecfd87db1e059e7c3450d3",
+    "agents/test-author.toml": "sha256:d9bf5cd49a9333acd9c8e98bd40b23ef1769b63490ca8b7130adca80e7372e86",
     "hooks.json": "sha256:f7ef056d03d5ebde2a432fa196ad8fc20fd3e80a9f1b37113c9f487896ba4261",
     "skills/bug-hunt/SKILL.md": "sha256:fdffd1465f5b94757e7e6f3c840f3a13af9502102ebce47ff5738a2c41edc596",
     "skills/bug-hunt/scripts/dangling-refs.sh": "sha256:352561bc6523bdcad59493b19b8100c174612323ede5fb2fdbf5babc2fd977a5",
@@ -50,7 +50,7 @@
     "skills/spec-grounding/SKILL.md": "sha256:9a3655d2d43c5b29c422f6ffa8f55c1407f007c2a272a8d20be05f06107e202c",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:c3381309ad7e66092d877181a47420816fcced09b48cfd9b360082cf8292a91d",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:615aefbd6d01ac242c7433cbb0e89f59d40bb38f444a19d89f9e9614bb275aca"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:75d8471be7a82a4697664193a503cf326901b79c57f7d31d62348dcab89d0592"
   },
   "classes": {
     ".gitignore": "generated",
