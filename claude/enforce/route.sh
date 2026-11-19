@@ -21,6 +21,8 @@
 # --author and --security are accepted and ignored until the Codex port and
 # the quota-based routing are removed in the follow-up slice.
 # Exit codes: 0 routed; 2 a usage error, which logs nothing.
+# With HOME and ROUTING_LOG both unset, nothing is logged. CLAUDE_HOME names
+# the Claude config directory and outranks $HOME/.claude for the machine file.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +30,11 @@ STEPS_FILE="$HERE/route-steps.json"
 KNOWN_AGENTS="claude qwen"
 
 . "$HERE/resolve-machine-file.sh"
-resolve_machine_file
+machine=$(resolve_machine_file)
+
+strip_controls() {
+  printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]'
+}
 
 usage_error() {
   echo "route: $1" >&2
@@ -43,11 +49,13 @@ jq -e --arg s "$step" '.steps | has($s)' "$STEPS_FILE" >/dev/null 2>&1 ||
   usage_error "unknown step '$step'; known: $(jq -r '.steps | keys | join(", ")' "$STEPS_FILE" 2>/dev/null)"
 
 risk=""
+risk_seen=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --risk)
+      [ "$risk_seen" -eq 0 ] || usage_error "repeated --risk"
       [ $# -ge 2 ] || usage_error "--risk needs high or standard"
-      risk="$2"; shift 2 ;;
+      risk="$2"; risk_seen=1; shift 2 ;;
     --author)
       [ $# -ge 2 ] || usage_error "--author needs a name"
       [ "${#2}" -le 64 ] && [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || usage_error "--author must be a plain name"
@@ -64,18 +72,17 @@ tier=$(jq -r '.tier' <<<"$rule")
 model=$(jq -r '.model // empty' <<<"$rule")
 
 # Machine file: found and valid, absent, or invalid.
-machine="$MACHINE_FILE_PATH"
 config="{}"
 fileNote=""
 if [ -z "$machine" ]; then
   fileNote="HOME is unset, using primary agent"
 elif [ ! -f "$machine" ]; then
-  fileNote="no machine file found at $machine"
-elif config=$(jq -c 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
+  fileNote="no machine file found at $(strip_controls "$machine")"
+elif config=$(jq -c -- 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
   :
 else
   config="{}"
-  fileNote="machine file $machine is not valid JSON"
+  fileNote="machine file $(strip_controls "$machine") is not valid JSON"
   echo "route: warning: $fileNote; every tier uses claude" >&2
 fi
 
@@ -84,15 +91,16 @@ agentOf() { jq -r --arg t "$1" '(.[$t] // {}) | if type == "object" then (.agent
 # isKnownAgent <name>: true for an agent this harness can run.
 isKnownAgent() { case " $KNOWN_AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-primary=$(agentOf primary)
+primary=$(agentOf primary | LC_ALL=C tr -d '[:cntrl:]')
 isKnownAgent "$primary" || primary=claude
 
 case "$tier" in
   owner)
     provider=owner
-    reason="$step is the owner's, whatever the machine file says" ;;
+    reason="$step is the owner's, whatever the machine file says"
+    fileNote="" ;;
   secondary)
-    configured=$(agentOf secondary)
+    configured=$(agentOf secondary | LC_ALL=C tr -d '[:cntrl:]')
     if [ -z "$configured" ]; then
       provider="$primary"
       reason="no secondary agent configured, so $step uses the primary agent, $primary"
