@@ -58,7 +58,7 @@ trap cleanupWork EXIT
 STUBS="$WORK/stubs"
 mkdir -p "$STUBS"
 export PATH="$STUBS:$PATH"
-unset QWEN_DISPATCH_TIMEOUT_SECONDS QWEN_DISPATCH_MAX_TURNS AGENT_TIER_ASSIGNMENTS_FILE
+unset QWEN_DISPATCH_TIMEOUT_SECONDS QWEN_DISPATCH_MAX_TURNS QWEN_DISPATCH_IDLE_SECONDS AGENT_TIER_ASSIGNMENTS_FILE
 # The caller's own Anthropic settings: the script must not change them, and
 # the stub must not receive the caller's endpoint.
 export ANTHROPIC_BASE_URL="https://caller.example.invalid"
@@ -90,8 +90,14 @@ if IFS= read -r -t 1 stdin_got 2>/dev/null; then :; fi
   echo "PWD=$(pwd -P)"
   echo "STDIN=$stdin_got"
 } >"$W/claude-env"
-echo "STUB-CLAUDE-STDOUT-$mode"
-echo "STUB-CLAUDE-STDERR-$mode" >&2
+# The silent-* modes write nothing at all to stdout or stderr.
+case "$mode" in
+  silent-*) ;;
+  *)
+    echo "STUB-CLAUDE-STDOUT-$mode"
+    echo "STUB-CLAUDE-STDERR-$mode" >&2
+    ;;
+esac
 fixValue() { printf '#!/usr/bin/env bash\necho 2\n' >src/value.sh; }
 case "$mode" in
   fix)
@@ -137,6 +143,29 @@ case "$mode" in
     ;;
   crash)
     exit 3
+    ;;
+  silent-hang)
+    # No output at all, then a 30 s sleeping child: a hang before the first output.
+    sleep 30 &
+    echo "$!" >"$W/slow-child-pid"
+    echo "$!" >>"$W/stub-pids"
+    echo "$$" >"$W/slow-stub-pid"
+    wait
+    ;;
+  silent-then-fix)
+    # Silent for $W/claude-sleep seconds, then a passing fix.
+    sleep "$(cat "$W/claude-sleep")"
+    fixValue
+    ;;
+  trickle-fix)
+    # One line on stdout every second for about 6 s, then a passing fix.
+    i=1
+    while [ "$i" -le 6 ]; do
+      echo "STUB-CLAUDE-TRICKLE-$i"
+      sleep 1
+      i=$((i + 1))
+    done
+    fixValue
     ;;
 esac
 exit 0
@@ -700,5 +729,116 @@ grep -qxF '# Implementer rules' "$SLIM_RULES" || failCase "the implementer rules
 grep -qi 'reuse' "$SLIM_RULES" || failCase "the implementer rules file must tell the implementer to reuse existing code ('reuse')"
 grep -qi 'do not commit' "$SLIM_RULES" || failCase "the implementer rules file must say 'do not commit'"
 grep -qi 'do not edit' "$SLIM_RULES" || failCase "the implementer rules file must say 'do not edit' (the tests)"
+
+# --- 18. Idle watchdog: a Claude run whose --log stops growing is stopped. ---
+# QWEN_DISPATCH_IDLE_SECONDS (default 600, 0 disables) bounds how long the
+# --log file may go without growing while claude runs. When it fires the whole
+# process group is stopped and the result is failed / stalled, exit 1. It
+# covers only the Claude run, never the final test command, and the overall
+# QWEN_DISPATCH_TIMEOUT_SECONDS still applies.
+
+# dispatchBounded <seconds> [VAR=value ...]: runs the script in the background
+# with the case's full argument set and the given environment, under this
+# test's own watchdog, so a script without the idle watchdog fails the case
+# instead of hanging. Sets RC, OUT, ERR, STATUS, REASON and ELAPSED.
+dispatchBounded() {
+  local limit="$1" n=0 pid t0
+  shift
+  t0=$(date +%s)
+  env "$@" bash "$SCRIPT" --repo "$REPO" --red "$RED" --prompt "$PROMPT" --log "$LOG" \
+    --test-cmd "$TEST_CMD" </dev/null >"$CASE_DIR/out" 2>"$CASE_DIR/err" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null && [ "$n" -lt $((limit * 10)) ]; do
+    sleep 0.1
+    n=$((n + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    failCase "${CASE_DIR##*/}: the script was still running after this test's ${limit} s limit (env: $*; stdout so far: '$(cat "$CASE_DIR/out")')"
+  fi
+  RC=0
+  wait "$pid" || RC=$?
+  ELAPSED=$(($(date +%s) - t0))
+  OUT=$(cat "$CASE_DIR/out")
+  ERR=$(cat "$CASE_DIR/err")
+  STATUS=$(printf '%s\n' "$OUT" | sed -n 1p)
+  REASON=$(printf '%s\n' "$OUT" | sed -n 2p)
+}
+
+# expectStubGone <what>: the stub and its sleeping child (recorded by the
+# slow and silent-hang modes) are gone, allowing 3 s for reaping.
+expectStubGone() {
+  local child stub n=0
+  [ -f "$WORK/slow-child-pid" ] || failCase "setup: $1: the stub never recorded its child"
+  child=$(cat "$WORK/slow-child-pid")
+  stub=$(cat "$WORK/slow-stub-pid")
+  while { processAlive "$child" || processAlive "$stub"; } && [ "$n" -lt 30 ]; do
+    sleep 0.1
+    n=$((n + 1))
+  done
+  ! processAlive "$stub" || failCase "$1: the claude process ($stub) must be stopped"
+  ! processAlive "$child" || failCase "$1: claude's child process ($child) must not outlive the script"
+}
+
+# 18.1 Output then silence: stopped well before the stub's 30 s sleep.
+newCase idle-stalled
+echo slow >"$WORK/claude-mode"
+dispatchBounded 15 QWEN_DISPATCH_TIMEOUT_SECONDS=100 QWEN_DISPATCH_IDLE_SECONDS=2
+expectResult "a run whose log stops growing" 1 failed stalled
+[ "$REASON" = "stalled" ] || failCase "idle stalled: line 2 must be exactly 'stalled' (got '$REASON')"
+[ "$ELAPSED" -lt 15 ] || failCase "idle stalled: QWEN_DISPATCH_IDLE_SECONDS=2 must stop the run early (took ${ELAPSED}s)"
+expectStubGone "idle stalled"
+expectLogHasRun "idle stalled" slow
+
+# 18.2 A log that keeps growing is not stalled, even past the idle limit.
+newCase idle-trickle
+echo trickle-fix >"$WORK/claude-mode"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=100 QWEN_DISPATCH_IDLE_SECONDS=2
+expectResult "a run that writes every second for 6 s" 0 green ""
+grep -q "STUB-CLAUDE-TRICKLE-6" "$LOG" || failCase "idle trickle: the stub must have run to its last line (log: $(head -c 2000 "$LOG"))"
+
+# 18.3 The idle clock starts with claude: no output at all is a stall.
+newCase idle-silent
+echo silent-hang >"$WORK/claude-mode"
+dispatchBounded 15 QWEN_DISPATCH_TIMEOUT_SECONDS=100 QWEN_DISPATCH_IDLE_SECONDS=2
+expectResult "a run that never writes" 1 failed stalled
+[ "$REASON" = "stalled" ] || failCase "idle silent: line 2 must be exactly 'stalled' (got '$REASON')"
+[ "$ELAPSED" -lt 15 ] || failCase "idle silent: QWEN_DISPATCH_IDLE_SECONDS=2 must stop a silent run early (took ${ELAPSED}s)"
+expectStubGone "idle silent"
+
+# 18.4 0 disables the watchdog; the default (unset) does not fire within 3 s.
+newCase idle-disabled
+echo silent-then-fix >"$WORK/claude-mode"
+echo 4 >"$WORK/claude-sleep"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=100 QWEN_DISPATCH_IDLE_SECONDS=0
+expectResult "QWEN_DISPATCH_IDLE_SECONDS=0 and a 4 s silent run" 0 green ""
+
+newCase idle-default
+echo silent-then-fix >"$WORK/claude-mode"
+echo 3 >"$WORK/claude-sleep"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=100
+expectResult "QWEN_DISPATCH_IDLE_SECONDS unset and a 3 s silent run" 0 green ""
+
+# A value that is not a whole number is a usage error and never starts claude.
+newCase idle-usage
+QWEN_DISPATCH_IDLE_SECONDS=abc expectUsage "QWEN_DISPATCH_IDLE_SECONDS=abc" \
+  --repo "$REPO" --red "$RED" --prompt "$PROMPT" --log "$LOG" --test-cmd "$TEST_CMD"
+QWEN_DISPATCH_IDLE_SECONDS=-1 expectUsage "QWEN_DISPATCH_IDLE_SECONDS=-1" \
+  --repo "$REPO" --red "$RED" --prompt "$PROMPT" --log "$LOG" --test-cmd "$TEST_CMD"
+
+# 18.5 The overall timeout wins when it comes first.
+newCase idle-timeout-first
+echo silent-hang >"$WORK/claude-mode"
+dispatchBounded 15 QWEN_DISPATCH_TIMEOUT_SECONDS=2 QWEN_DISPATCH_IDLE_SECONDS=100
+expectResult "a silent run with timeout 2 and idle 100" 1 failed timeout
+[ "$REASON" = "timeout" ] || failCase "idle timeout-first: line 2 must be exactly 'timeout', not 'stalled' (got '$REASON')"
+expectStubGone "idle timeout-first"
+
+# 18.6 The idle watch covers only the Claude run, not the final test command.
+newCase idle-test-cmd
+TEST_CMD="sleep 4 && bash tests/value_check.sh"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=100 QWEN_DISPATCH_IDLE_SECONDS=2
+expectResult "a test command silent for 4 s with idle 2" 0 green ""
 
 echo "PASS: qwen-implementer-dispatch"
