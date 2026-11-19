@@ -299,10 +299,60 @@ expectReject "an oversized risk" spec --risk "$BIG"
 expectReject "an oversized author" spec --risk standard --author "$BIG"
 [ "$(logCount)" = "0" ] || failCase "rejected calls must leave the log empty (got $(logCount))"
 
+# --- 12b. HOME unset: no bogus root path for the machine file or the log. ---
+# With HOME unset, ${HOME:-}/.claude/... collapses to /.claude/..., a path
+# under the filesystem root. route.sh must not name or use it: it still exits
+# 0 on the primary agent, says why, and never tries to write under /.claude.
+# env -u HOME keeps every case off the real ~/.claude.
+HOMELESS_ERR="$WORK/homeless-err"
+HOMELESS_RC=0
+HOMELESS_OUT=$(env -u HOME -u AGENT_TIER_ASSIGNMENTS_FILE ROUTING_LOG="$WORK/homeless-log.jsonl" \
+  bash "$SCRIPT" implement --risk standard 2>"$HOMELESS_ERR") || HOMELESS_RC=$?
+HOMELESS_P=$(printf '%s\n' "$HOMELESS_OUT" | sed -n 1p)
+HOMELESS_REASON=$(printf '%s\n' "$HOMELESS_OUT" | sed -n 2p)
+[ "$HOMELESS_RC" -eq 0 ] || failCase "HOME unset: route must exit 0 (got $HOMELESS_RC, stderr: $(cat "$HOMELESS_ERR"))"
+[ "$HOMELESS_P" = "claude" ] || failCase "HOME unset: implement --risk standard must route to claude (got '$HOMELESS_P')"
+case "$HOMELESS_REASON" in
+  *"HOME is unset"*) ;;
+  *) failCase "HOME unset: the reason must say 'HOME is unset' (got '$HOMELESS_REASON')" ;;
+esac
+case "$HOMELESS_REASON" in
+  *"/.claude/agent-tier-assignments.json"*)
+    failCase "HOME unset: the reason must not name the root path /.claude/agent-tier-assignments.json (got '$HOMELESS_REASON')" ;;
+esac
+
+# HOME and ROUTING_LOG both unset: no log write is attempted under /.claude.
+HOMELESS_RC=0
+HOMELESS_OUT=$(env -u HOME -u AGENT_TIER_ASSIGNMENTS_FILE -u ROUTING_LOG \
+  bash "$SCRIPT" implement --risk standard 2>"$HOMELESS_ERR") || HOMELESS_RC=$?
+HOMELESS_STDERR=$(cat "$HOMELESS_ERR")
+[ "$HOMELESS_RC" -eq 0 ] || failCase "HOME and ROUTING_LOG unset: route must exit 0 (got $HOMELESS_RC, stderr: $HOMELESS_STDERR)"
+[ "$(printf '%s\n' "$HOMELESS_OUT" | sed -n 1p)" = "claude" ] ||
+  failCase "HOME and ROUTING_LOG unset: implement --risk standard must route to claude (got '$HOMELESS_OUT')"
+case "$HOMELESS_STDERR" in
+  *"/.claude"*) failCase "HOME and ROUTING_LOG unset: stderr must not mention /.claude (got '$HOMELESS_STDERR')" ;;
+esac
+case "$HOMELESS_STDERR" in
+  *"could not append"*) failCase "HOME and ROUTING_LOG unset: route must not try to append a log under the root path (got '$HOMELESS_STDERR')" ;;
+esac
+
+# HOME set, AGENT_TIER_ASSIGNMENTS_FILE unset: $HOME/.claude/agent-tier-assignments.json
+# still resolves, here assigning secondary work to qwen.
+mkdir -p "$WORK/qwenhome/.claude"
+printf '%s\n' '{"primary": {"agent": "claude"}, "secondary": {"agent": "qwen"}}' \
+  >"$WORK/qwenhome/.claude/agent-tier-assignments.json"
+QWENHOME_OUT=$(env -u AGENT_TIER_ASSIGNMENTS_FILE HOME="$WORK/qwenhome" ROUTING_LOG="$WORK/qwenhome-log.jsonl" \
+  bash "$SCRIPT" implement --risk standard 2>/dev/null) ||
+  failCase "HOME set to a temp dir: route must succeed"
+[ "$(printf '%s\n' "$QWENHOME_OUT" | sed -n 1p)" = "qwen" ] ||
+  failCase "HOME set, AGENT_TIER_ASSIGNMENTS_FILE unset: the default machine file must assign implement to qwen (got '$QWENHOME_OUT')"
+
 # --- 13. route.sh never invokes quota-pace.sh and needs no quota file. ---
 SANDBOX="$WORK/sandbox"
 mkdir -p "$SANDBOX"
-cp "$SCRIPT" "$STEPS" "$SANDBOX/"
+# Every enforce/*.sh comes along, so a file route.sh sources is in the sandbox;
+# the quota-pace.sh copy is replaced by the stub below.
+cp "$CLAUDE_HARNESS_ROOT"/enforce/*.sh "$STEPS" "$SANDBOX/"
 MARKER="$WORK/quota-pace-was-called"
 cat >"$SANDBOX/quota-pace.sh" <<EOF
 #!/usr/bin/env bash

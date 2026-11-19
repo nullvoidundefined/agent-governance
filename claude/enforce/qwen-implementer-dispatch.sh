@@ -34,7 +34,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY="${CLAUDE_ROLE_POLICY_FILE:-$HERE/role-policy.json}"
 USER_SETTINGS="${CLAUDE_SETTINGS_FILE:-${HOME:-}/.claude/settings.json}"
 USER_RULES="${HOME:-}/.claude/CLAUDE.md"
-MACHINE="${AGENT_TIER_ASSIGNMENTS_FILE:-${HOME:-}/.claude/agent-tier-assignments.json}"
+
+. "$HERE/resolve-machine-file.sh"
+resolve_machine_file
+MACHINE="$MACHINE_FILE_PATH"
 TIMEOUT_SECONDS="${QWEN_DISPATCH_TIMEOUT_SECONDS:-1800}"
 MAX_TURNS="${QWEN_DISPATCH_MAX_TURNS:-60}"
 
