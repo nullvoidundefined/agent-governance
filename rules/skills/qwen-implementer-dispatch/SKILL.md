@@ -29,7 +29,7 @@ bash ~/.claude/enforce/qwen-implementer-dispatch.sh --repo <root> --red <RED sha
   --prompt <prompt file> --log <scratch>/qwen.log --test-cmd "<test command>"
 ```
 
-Run it in the background with stdin closed; a run can take up to `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 1800). Keep the log outside the repository. The script never commits and never moves `HEAD`.
+Run it in the background with stdin closed; a run can take up to `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 1800). If the `--log` file stops growing for `QWEN_DISPATCH_IDLE_SECONDS` (default 600, 0 disables), the script kills the run and reports `stalled`; treat it like any other `failed` result. Keep the log outside the repository. The script never commits and never moves `HEAD`.
 
 ## 3. Read the verdict
 
@@ -38,7 +38,7 @@ Line 1 is the status, line 2 the reason.
 | Status | Exit | Meaning |
 |---|---|---|
 | `green` | 0 | The test command passed and no protected path changed. Review the diff, then continue the loop. |
-| `failed` | 1 | `tests-failed` (the last 60 lines of test output follow), `touched-protected-path` (line 2 names it), `timeout`, `turn-limit` or `process-error`. |
+| `failed` | 1 | `tests-failed` (the last 60 lines of test output follow), `touched-protected-path` (line 2 names it), `timeout`, `stalled` (the log stopped growing), `turn-limit` or `process-error`. |
 | `unavailable` | 3 | `no-secondary-configured`, `server-unreachable`, `model-missing` or `rules-missing` (the implementer rules file is absent). Claude was never started. |
 | usage error | 2 | A bad flag or a `--red` that is not a commit. Fix the call. |
 
