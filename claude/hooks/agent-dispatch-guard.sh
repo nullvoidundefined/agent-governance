@@ -9,14 +9,12 @@
 # session on a stall or the time limit.
 #
 # Denies an Agent call of a long-running type (owner decision 2026-10-03,
-# IAN-605) unless its `run_in_background` is exactly true: test-author,
-# implementer, pr-reviewer, security-reviewer, general-purpose
-# (also the type an omitted or empty subagent_type means), and every audit-*
-# role. The type is read case-insensitively, without whitespace, and after
-# any `plugin:` namespace.
-# An ABSENT flag is allowed: the current Agent tool has no run_in_background
-# parameter and always runs subagents in the background, so no call can set it
-# and requiring it denied every long-running dispatch (slice 05, 2026-11-18).
+# IAN-605) unless its `run_in_background` is exactly true: the long-running
+# type list (test-author, implementer, pr-reviewer, security-reviewer,
+# general-purpose, and every audit-* role) and the normalization that strips
+# namespace, lowercases, and trims whitespace live in agent-types.sh, sourced
+# here. An ABSENT flag is allowed: the current Agent tool has no
+# run_in_background parameter and always runs subagents in the background.
 # "Absent" means tool_input is a JSON object without the key; a present flag
 # must still be exactly true, so false, "true", null and the rest are denied,
 # and so is a payload with no tool_input object or none that parses. Quick
@@ -39,23 +37,22 @@ INPUT=$(cat 2>/dev/null || true)
 # the hook cannot parse is judged as the riskiest dispatch, never waved through.
 IS_BACKGROUND=$(printf '%s' "$INPUT" | jq -r '(.tool_input | type == "object") and ((.tool_input | has("run_in_background") | not) or .tool_input.run_in_background == true)' 2>/dev/null || echo false)
 [ "$IS_BACKGROUND" = "true" ] && exit 0
+
+TYPES_HELPER="$(dirname "${BASH_SOURCE[0]}")/agent-types.sh"
+# shellcheck disable=SC1090
+[ -f "$TYPES_HELPER" ] && source "$TYPES_HELPER"
+type is_long_running_type >/dev/null 2>&1 || is_long_running_type() { return 0; }
+type normalize_agent_type >/dev/null 2>&1 || normalize_agent_type() { printf '%s' "general-purpose"; }
+
 # A non-string type reads as empty, so it falls closed to general-purpose
 # (R-109 r7 #1 on PR #184).
 RAW_TYPE=$(printf '%s' "$INPUT" | jq -r 'if (.tool_input.subagent_type | type) == "string" then .tool_input.subagent_type else "" end' 2>/dev/null || echo "")
-AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-[ -n "$AGENT_TYPE" ] || AGENT_TYPE=general-purpose
+AGENT_TYPE=$(normalize_agent_type "$RAW_TYPE")
 
-# is_long_running_type <type>: true for the types R-708 keeps out of the
-# foreground; an audit role is matched by its prefix.
-is_long_running_type() {
-  case "$1" in
-    test-author|implementer|pr-reviewer|security-reviewer|general-purpose|audit-*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 is_long_running_type "$AGENT_TYPE" || exit 0
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+# shellcheck disable=SC1090
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 log_rule_fire "R-708" "agent-dispatch-guard" "deny"
@@ -63,7 +60,7 @@ jq -n --arg type "$AGENT_TYPE" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",
-    permissionDecisionReason: ("R-708: a " + $type + " subagent may not run in the foreground, because a foreground agent blocks the session and nothing can stop it if it stalls. Dispatch it again with run_in_background: true. After the launch, start the watchdog the PostToolUse hook names (bash ~/.claude/enforce/agent-watchdog.sh <output_file>, as a background Bash command), and stop the agent with TaskStop if the watchdog reports a stall or the time limit.")
+    permissionDecisionReason: ("R-708: the " + $type + " subagent must omit run_in_background (or pass true); the current Agent tool has no such parameter and always runs subagents in the background. After the launch, start the watchdog the PostToolUse hook names (bash ~/.claude/enforce/agent-watchdog.sh <output_file>, as a background Bash command), and stop the agent with TaskStop if the watchdog reports a stall or the time limit.")
   }
 }'
 exit 0
