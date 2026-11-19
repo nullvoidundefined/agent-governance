@@ -9,15 +9,19 @@
 #   green        exit 0: the test command passed and no protected path changed.
 #   failed       exit 1: tests-failed (the last 60 lines of the test output
 #                follow from line 3), touched-protected-path (line 2 names the
-#                path), timeout, or process-error.
+#                path), timeout, stalled, or process-error.
 #   unavailable  exit 3: no-secondary-configured, server-unreachable,
 #                model-missing, or rules-missing. Claude is never started.
 #   usage error  exit 2.
 # QWEN_DISPATCH_TIMEOUT_SECONDS (default 1800) and QWEN_DISPATCH_MAX_TURNS
 # (default 60) set the caps; the timeout applies to the Claude run and, separately,
-# to the final test command. A role policy with no protected-path patterns fails
-# closed (failed, policy-unreadable). The script makes no commit, does not move HEAD,
-# and leaves Qwen's edits in the working tree for the caller to keep or discard.
+# to the final test command. QWEN_DISPATCH_IDLE_SECONDS (default 600, 0 disables)
+# bounds how long the --log file may go without growing while claude runs; when it
+# fires the process group is killed and the result is stalled. The idle watchdog
+# covers only the Claude run, never the final test command. A role policy with no
+# protected-path patterns fails closed (failed, policy-unreadable). The script makes
+# no commit, does not move HEAD, and leaves Qwen's edits in the working tree for the
+# caller to keep or discard.
 #
 # Machine file: $AGENT_TIER_ASSIGNMENTS_FILE (default
 # ~/.claude/agent-tier-assignments.json), secondary.{agent,model,endpoint}.
@@ -90,6 +94,7 @@ validate_inputs() {
   [ -f "$prompt" ] || usage_error "--prompt is not a file"
   [ -n "$testCmd" ] || usage_error "--test-cmd is empty"
   case "$TIMEOUT_SECONDS$MAX_TURNS" in *[!0-9]* | "") usage_error "the caps must be whole numbers" ;; esac
+  case "${QWEN_DISPATCH_IDLE_SECONDS:-}" in "" ) ;; *[!0-9]*) usage_error "QWEN_DISPATCH_IDLE_SECONDS must be a whole number" ;; esac
 }
 
 # load_secondary: sets endpoint and model from the machine file, or reports unavailable.
@@ -113,13 +118,15 @@ check_server() {
     report unavailable model-missing 3
 }
 
-# run_capped <out file> <command...>: runs the command in the repo with stdin closed,
-# appending stdout and stderr to the out file, in its own process group, under the
-# timeout; sets capStatus to ok, timeout or process-error. On a timeout the whole
+# run_capped <out file> <idle seconds> <command...>: runs the command in the repo
+# with stdin closed, appending stdout and stderr to the out file, in its own
+# process group, under the timeout; sets capStatus to ok, timeout, stalled or
+# process-error. idle_seconds (default 0, disabled) bounds how long the out file
+# may go without growing while the process runs. On a timeout or stall the whole
 # group is killed, so no child outlives the run.
 run_capped() {
-  local out="$1" pid waited=0
-  shift
+  local out="$1" idle_seconds="${2:-0}" pid waited=0 idle_waited=0
+  shift 2
   : >>"$out"
   set -m
   (
@@ -128,9 +135,28 @@ run_capped() {
   ) &
   pid=$!
   set +m
+  idle_last_size=0
 
   # Poll rather than block, so the timeout can fire; tenth-of-a-second ticks.
   while kill -0 "$pid" 2>/dev/null; do
+    if [ "$idle_seconds" -gt 0 ] && [ -f "$out" ]; then
+      local cur_size
+      cur_size=$(wc -c < "$out" | tr -d ' ')
+      if [ "$cur_size" = "$idle_last_size" ]; then
+        idle_waited=$((idle_waited + 1))
+      else
+        idle_last_size="$cur_size"
+        idle_waited=0
+      fi
+      if [ "$idle_waited" -ge $((idle_seconds * 10)) ]; then
+        kill -TERM -- "-$pid" 2>/dev/null
+        sleep 1
+        kill -KILL -- "-$pid" 2>/dev/null
+        wait "$pid" 2>/dev/null
+        capStatus=stalled
+        return
+      fi
+    fi
     if [ "$waited" -ge $((TIMEOUT_SECONDS * 10)) ]; then
       kill -TERM -- "-$pid" 2>/dev/null
       sleep 1
@@ -159,7 +185,7 @@ run_claude() {
   args+=(--append-system-prompt-file "$IMPLEMENTER_RULES")
 
   : >"$log"
-  run_capped "$log" env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \
+  run_capped "$log" "${QWEN_DISPATCH_IDLE_SECONDS:-600}" env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \
     claude "${args[@]}"
 }
 
@@ -200,6 +226,7 @@ load_patterns
 run_claude
 case "$capStatus" in
   timeout) report failed timeout 1 ;;
+  stalled) report failed stalled 1 ;;
   process-error) report failed process-error 1 ;;
 esac
 [ -n "$patterns" ] || report failed "policy-unreadable: no protected-path patterns in $POLICY" 1
@@ -208,7 +235,7 @@ if protectedPath=$(find_protected_path); then
   report failed "touched-protected-path $protectedPath" 1
 fi
 
-run_capped "$SCRATCH/test.out" bash -c "$testCmd"
+run_capped "$SCRATCH/test.out" 0 bash -c "$testCmd"
 case "$capStatus" in
   timeout) report failed timeout 1 ;;
   ok) report green "the test command passed and no protected path changed" 0 ;;
