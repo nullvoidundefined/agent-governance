@@ -9,12 +9,12 @@
 #   machine=$(resolve_machine_file)
 resolve_machine_file() {
   if [ -n "${AGENT_TIER_ASSIGNMENTS_FILE:-}" ]; then
-    echo "$AGENT_TIER_ASSIGNMENTS_FILE"
+    printf '%s\n' "$AGENT_TIER_ASSIGNMENTS_FILE"
   elif [ -n "${CLAUDE_HOME:-}" ]; then
-    echo "$CLAUDE_HOME/agent-tier-assignments.json"
+    printf '%s\n' "$CLAUDE_HOME/agent-tier-assignments.json"
   elif [ -n "${HOME:-}" ]; then
-    echo "$HOME/.claude/agent-tier-assignments.json"
+    printf '%s\n' "$HOME/.claude/agent-tier-assignments.json"
   else
-    echo ""
+    printf '\n'
   fi
 }

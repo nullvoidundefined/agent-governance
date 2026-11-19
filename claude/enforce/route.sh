@@ -78,11 +78,11 @@ if [ -z "$machine" ]; then
   fileNote="HOME is unset, using primary agent"
 elif [ ! -f "$machine" ]; then
   fileNote="no machine file found at $(strip_controls "$machine")"
-elif config=$(jq -c 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
+elif config=$(jq -c -- 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
   :
 else
   config="{}"
-  fileNote="machine file $machine is not valid JSON"
+  fileNote="machine file $(strip_controls "$machine") is not valid JSON"
   echo "route: warning: $fileNote; every tier uses claude" >&2
 fi
 
