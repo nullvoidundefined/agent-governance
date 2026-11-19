@@ -381,4 +381,59 @@ for entry in "test-author:long" "implementer:long" "pr-reviewer:long" "security-
   fi
 done
 
+# --- a missing agent-types.sh helper -------------------------------------
+
+# Each hook is copied alone (no agent-types.sh, no log-rule-fire.sh) into a
+# fresh directory, so its sibling helper cannot be sourced. The guard must
+# then fail closed: every type reads as long-running, so a false flag is denied
+# even for a quick type. The instruction hook must stay silent.
+LONE_GUARD_DIR="$WORK/lone-guard"; mkdir -p "$LONE_GUARD_DIR"
+cp "$GUARD" "$LONE_GUARD_DIR/agent-dispatch-guard.sh"
+LONE_INSTRUCTION_DIR="$WORK/lone-instruction"; mkdir -p "$LONE_INSTRUCTION_DIR"
+cp "$INSTRUCTION" "$LONE_INSTRUCTION_DIR/agent-watchdog-instruction.sh"
+# The control: the same hooks with the helper copied in beside them.
+PAIRED_DIR="$WORK/paired"; mkdir -p "$PAIRED_DIR"
+cp "$GUARD" "$INSTRUCTION" "$CLAUDE_HARNESS_ROOT/hooks/agent-types.sh" "$PAIRED_DIR/"
+
+# guard_copy_decision <guard path> <subagent_type> <flag json|ABSENT>: prints
+# the copy's decision, or none when it prints nothing and exits 0.
+guard_copy_decision() {
+  local payload out code=0
+  if [ "$3" = ABSENT ]; then
+    payload=$(jq -nc --arg t "$2" '{tool_name:"Agent", tool_input:{subagent_type:$t, prompt:"p"}}')
+  else
+    payload=$(jq -nc --arg t "$2" --argjson f "$3" '{tool_name:"Agent", tool_input:{subagent_type:$t, run_in_background:$f, prompt:"p"}}')
+  fi
+  out=$(printf '%s' "$payload" | bash "$1") || code=$?
+  [ "$code" = "0" ] || { echo "exit-$code"; return 0; }
+  if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+
+# Missing helper, guard: a false flag is denied for a quick and a long type.
+for agent_type in Explore implementer; do
+  GOT=$(guard_copy_decision "$LONE_GUARD_DIR/agent-dispatch-guard.sh" "$agent_type" false)
+  [ "$GOT" = "deny" ] || { echo "FAIL: with no agent-types.sh the guard must fail closed and deny a foreground $agent_type, got $GOT"; exit 1; }
+done
+# Missing helper, guard: a true flag and an absent flag still pass.
+GOT=$(guard_copy_decision "$LONE_GUARD_DIR/agent-dispatch-guard.sh" Explore true)
+[ "$GOT" = "none" ] || { echo "FAIL: with no agent-types.sh a true flag must still pass the guard, got $GOT"; exit 1; }
+GOT=$(guard_copy_decision "$LONE_GUARD_DIR/agent-dispatch-guard.sh" Explore ABSENT)
+[ "$GOT" = "none" ] || { echo "FAIL: with no agent-types.sh an absent flag must still pass the guard, got $GOT"; exit 1; }
+
+# Missing helper, instruction hook: a valid async launch of a long type with
+# the flag absent gets no output at all.
+LONE_PAYLOAD=$(jq -nc --argjson r "\"$LAUNCH_TEXT\"" '{tool_name:"Agent", tool_input:{subagent_type:"implementer"}, tool_response:$r}')
+GOT=$(printf '%s' "$LONE_PAYLOAD" | bash "$LONE_INSTRUCTION_DIR/agent-watchdog-instruction.sh" 2>&1 || true)
+[ -z "$GOT" ] || { echo "FAIL: with no agent-types.sh the instruction hook must print nothing: $GOT"; exit 1; }
+
+# Control, helper present: the same probes behave as the cases above expect,
+# so the missing-helper results differ from the normal ones.
+GOT=$(guard_copy_decision "$PAIRED_DIR/agent-dispatch-guard.sh" Explore false)
+[ "$GOT" = "none" ] || { echo "FAIL: control: with agent-types.sh a foreground Explore must pass, got $GOT"; exit 1; }
+GOT=$(guard_copy_decision "$PAIRED_DIR/agent-dispatch-guard.sh" implementer false)
+[ "$GOT" = "deny" ] || { echo "FAIL: control: with agent-types.sh a foreground implementer must be denied, got $GOT"; exit 1; }
+GOT=$(printf '%s' "$LONE_PAYLOAD" | bash "$PAIRED_DIR/agent-watchdog-instruction.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')
+case "$GOT" in *"agent-watchdog.sh '/tmp/claude-1/tasks/a1b2c3.output'"*) ;;
+  *) echo "FAIL: control: with agent-types.sh the instruction hook must name the watchdog for implementer: $GOT"; exit 1 ;; esac
+
 echo "agent-watchdog.test.sh PASS"
