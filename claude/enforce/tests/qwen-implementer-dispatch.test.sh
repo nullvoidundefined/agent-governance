@@ -841,4 +841,99 @@ TEST_CMD="sleep 4 && bash tests/value_check.sh"
 dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=100 QWEN_DISPATCH_IDLE_SECONDS=2
 expectResult "a test command silent for 4 s with idle 2" 0 green ""
 
+# 19. Only the PreToolUse and PostToolUse hook events reach claude through
+# --settings. Stop, SubagentStop, SessionStart and every non-hook key of the
+# user settings stay out. The --settings file lives in the script's scratch
+# directory and is gone when the script exits, so a wrapper stub, first on PATH
+# for these cases only, copies it to $WORK/claude-settings before running the
+# stub claude.
+SETTINGS_STUBS="$WORK/settings-stubs"
+mkdir -p "$SETTINGS_STUBS"
+cat >"$SETTINGS_STUBS/claude" <<EOF
+#!/usr/bin/env bash
+W="$WORK"
+INNER="$STUBS/claude"
+EOF
+cat >>"$SETTINGS_STUBS/claude" <<'EOF'
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--settings" ] && [ -f "$a" ]; then cp "$a" "$W/claude-settings"; fi
+  prev="$a"
+done
+exec "$INNER" "$@"
+EOF
+chmod +x "$SETTINGS_STUBS/claude"
+PATH_BEFORE_SETTINGS="$PATH"
+export PATH="$SETTINGS_STUBS:$PATH"
+
+# settingsCase <name> <settings json or empty for a missing file>: a fresh case
+# whose user settings file holds the JSON; an empty argument names a path that
+# does not exist.
+settingsCase() {
+  newCase "$1"
+  rm -f "$WORK/claude-settings"
+  USER_SETTINGS_FILE="$CASE_DIR/user-settings.json"
+  if [ -n "$2" ]; then
+    printf '%s\n' "$2" >"$USER_SETTINGS_FILE"
+    jq -e . "$USER_SETTINGS_FILE" >/dev/null || failCase "setup: settings JSON is malformed: $2"
+  fi
+}
+
+# passedSettings <what>: prints the JSON claude received through --settings.
+passedSettings() {
+  grep -qx -- "--settings" "$WORK/claude-args" || failCase "$1: --settings must be passed (args: $(tr '\n' ' ' <"$WORK/claude-args"))"
+  [ -f "$WORK/claude-settings" ] || failCase "$1: the --settings file must exist while claude runs"
+  cat "$WORK/claude-settings"
+}
+
+PRE_HOOK='[{"matcher":"Bash","hooks":[{"type":"command","command":"/guards/pre.sh"}]}]'
+POST_HOOK='[{"matcher":"*","hooks":[{"type":"command","command":"/guards/redact.sh","timeout":5}]}]'
+OTHER_HOOK='[{"hooks":[{"type":"command","command":"/guards/orchestrator-only.sh"}]}]'
+
+# 19.1 All five events: only PreToolUse and PostToolUse pass, unchanged (criterion 1).
+# 19.2 Nothing but hooks: env, permissions, model and enabledPlugins stay out (criterion 2).
+settingsCase settings-five-events "{\"env\":{\"SOME_FLAG\":\"1\"},\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"model\":\"opus\",\"enabledPlugins\":{\"x@y\":true},\"hooks\":{\"PreToolUse\":$PRE_HOOK,\"PostToolUse\":$POST_HOOK,\"Stop\":$OTHER_HOOK,\"SubagentStop\":$OTHER_HOOK,\"SessionStart\":$OTHER_HOOK}}"
+CLAUDE_SETTINGS_FILE="$USER_SETTINGS_FILE" dispatchCase
+expectResult "settings with five hook events" 0 green ""
+GOT_SETTINGS=$(passedSettings "five events")
+GOT_TOP=$(printf '%s' "$GOT_SETTINGS" | jq -c 'keys')
+GOT_KEYS=$(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks | keys')
+[ "$GOT_KEYS" = '["PostToolUse","PreToolUse"]' ] ||
+  failCase "five events: .hooks must hold exactly PreToolUse and PostToolUse (got $GOT_KEYS)"
+[ "$(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks.PreToolUse')" = "$(printf '%s' "$PRE_HOOK" | jq -c .)" ] ||
+  failCase "five events: PreToolUse must pass unchanged (got $(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks.PreToolUse'))"
+[ "$(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks.PostToolUse')" = "$(printf '%s' "$POST_HOOK" | jq -c .)" ] ||
+  failCase "five events: PostToolUse must pass unchanged (got $(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks.PostToolUse'))"
+[ "$GOT_TOP" = '["hooks"]' ] ||
+  failCase "five events: the passed settings must have exactly one top-level key, hooks (got $GOT_TOP)"
+
+# 19.3 Only dropped events: --settings still passes, with .hooks {} (criterion 3).
+settingsCase settings-dropped-only "{\"model\":\"opus\",\"hooks\":{\"Stop\":$OTHER_HOOK,\"SessionStart\":$OTHER_HOOK}}"
+CLAUDE_SETTINGS_FILE="$USER_SETTINGS_FILE" dispatchCase
+expectResult "settings with only dropped events" 0 green ""
+GOT_SETTINGS=$(passedSettings "dropped only")
+GOT_HOOKS=$(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks')
+[ "$GOT_HOOKS" = '{}' ] || failCase "dropped only: .hooks must be {} (got $GOT_HOOKS)"
+[ "$(printf '%s' "$GOT_SETTINGS" | jq -c 'keys')" = '["hooks"]' ] ||
+  failCase "dropped only: the passed settings must have exactly one top-level key, hooks"
+
+# 19.4 No hooks key: --settings still passes, with .hooks {} and not null (criterion 4).
+settingsCase settings-no-hooks '{"model":"opus","env":{"SOME_FLAG":"1"}}'
+CLAUDE_SETTINGS_FILE="$USER_SETTINGS_FILE" dispatchCase
+expectResult "settings with no hooks key" 0 green ""
+GOT_SETTINGS=$(passedSettings "no hooks key")
+GOT_HOOKS=$(printf '%s' "$GOT_SETTINGS" | jq -c '.hooks')
+[ "$GOT_HOOKS" = '{}' ] || failCase "no hooks key: .hooks must be {} (got $GOT_HOOKS)"
+
+# 19.5 A missing user settings file: no --settings argument (criterion 5).
+settingsCase settings-missing ""
+[ ! -e "$USER_SETTINGS_FILE" ] || failCase "setup: the missing settings file must not exist"
+CLAUDE_SETTINGS_FILE="$USER_SETTINGS_FILE" dispatchCase
+expectResult "a missing settings file" 0 green ""
+! grep -qx -- "--settings" "$WORK/claude-args" ||
+  failCase "missing settings: --settings must not be passed (args: $(tr '\n' ' ' <"$WORK/claude-args"))"
+[ ! -f "$WORK/claude-settings" ] || failCase "missing settings: no settings file may reach claude"
+
+export PATH="$PATH_BEFORE_SETTINGS"
+
 echo "PASS: qwen-implementer-dispatch"

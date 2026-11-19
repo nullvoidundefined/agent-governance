@@ -26,9 +26,12 @@
 # Machine file: $AGENT_TIER_ASSIGNMENTS_FILE (default
 # ~/.claude/agent-tier-assignments.json), secondary.{agent,model,endpoint}.
 # The invocation is normal mode with --setting-sources project,local, so the
-# third-party plugins in the user settings do not load; the user's hooks,
-# when the user settings file is readable, are passed through --settings, and
-# the implementer-only rules file (default
+# third-party plugins in the user settings do not load; when the user settings
+# file is readable, only its PreToolUse and PostToolUse hooks (the safety
+# guards and output redaction) are passed through --settings; Stop,
+# SubagentStop and SessionStart hooks are left out because they are
+# orchestrator-only (they enforce end-of-turn summary formats and session
+# checks); and the implementer-only rules file (default
 # claude/enforce/qwen-implementer-rules.md, overridable via
 # QWEN_IMPLEMENTER_RULES_FILE) is appended as system prompt.
 # Claude Code runs with the repo as its working directory and stdin closed, and
@@ -179,7 +182,7 @@ run_claude() {
   args=(-p "$promptText" --model "$model" --permission-mode dontAsk
     --allowedTools "Read Edit Write Bash" --max-turns "$MAX_TURNS" --no-session-persistence
     --setting-sources project,local --output-format stream-json --verbose)
-  if [ -f "$USER_SETTINGS" ] && jq '{hooks: .hooks}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
+  if [ -f "$USER_SETTINGS" ] && jq '{hooks: ((.hooks // {}) | with_entries(select(.key == "PreToolUse" or .key == "PostToolUse")))}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
     args+=(--settings "$SCRATCH/hooks.json")
   fi
   args+=(--append-system-prompt-file "$IMPLEMENTER_RULES")
