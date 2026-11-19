@@ -155,7 +155,7 @@ run_claude() {
   if [ -f "$USER_SETTINGS" ] && jq '{hooks: .hooks}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
     args+=(--settings "$SCRATCH/hooks.json")
   fi
-  [ -f "$IMPLEMENTER_RULES" ] && args+=(--append-system-prompt-file "$IMPLEMENTER_RULES")
+  args+=(--append-system-prompt-file "$IMPLEMENTER_RULES")
 
   : >"$log"
   run_capped "$log" env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \

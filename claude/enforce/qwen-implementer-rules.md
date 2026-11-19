@@ -9,4 +9,3 @@
 - Name files for their responsibility. Name functions with verb + noun.
 - Keep comments true to the code beside them.
 - Dependencies flow one way. No catch-all utils, helpers, or common directories.
-- Name files, functions, booleans, and variables consistently.
