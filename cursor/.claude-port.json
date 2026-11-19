@@ -46,7 +46,7 @@
     "commands/audit-ux.md": "sha256:b5e834edeeb155a3315228833b5e0bc120c0b5ef318d4cb9373d94a9f4cecb35",
     "commands/pr-reviewer.md": "sha256:65d6372532c74ec16b020359a5274845a4cdd3780b6e088bf1afbd850792dc85",
     "hooks.json": "sha256:7ecac2c027cecc4163d6ab3eba15d4974643b53c7935d1fa1b510586f6e54b3a",
-    "rules/000-global-rules.mdc": "sha256:439f6cbc4f02b30d696747b322c0c78bc4dbbf7f23d1e051dbf446ed45a01e5d",
+    "rules/000-global-rules.mdc": "sha256:68fe0a4e7754f17ff39a691cace374203c3d7a0e3300f518854c524f28745ff1",
     "rules/002-global-memory-index.mdc": "sha256:1914949625b10e276c0bf2b7e91c083b788720680fef2f52fcdf529f871b8159",
     "rules/backend.mdc": "sha256:ccaefdeca2e36e1b641954dd07cf23630b83b4f1ed4c725b56d40795b445391b",
     "rules/cloud-deployment.mdc": "sha256:f4eff345ff38817f31a852dcf2181f45f670240966c4fcfa8dc2bbc3bafab696",
@@ -73,7 +73,7 @@
     "skills/spec-grounding/SKILL.md": "sha256:329ac8581fb8ab2d65eb302e74cb08d1af9984836104807c097f65b0a4e08152",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:a029f47aadcc7789e34992276628480ae4734a8880aee1cc45a720f36a38deb0",
-    "skills/tdd-gated-dispatch/SKILL.md": "sha256:0d6ba7d5fd4f82d2b14630d2b812a9ec9d2fc58efc50107a947522bea630029f"
+    "skills/tdd-gated-dispatch/SKILL.md": "sha256:55822cd5a325b423ed71e6e2f0225e7a29bcf40c6bdfdfec93b86b17fb4d5c40"
   },
   "classes": {
     ".gitignore": "generated",

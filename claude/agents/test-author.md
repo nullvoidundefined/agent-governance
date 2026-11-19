@@ -1,6 +1,6 @@
 ---
 name: test-author
-description: Use to write the failing tests for one behavior before any implementation exists, when Codex is not the test author (Codex unavailable, or Codex is the implementer). Receives the acceptance criteria, never the implementation plan's code. Writes only test and fixture files. Proves RED by running the tests (with enforce/tdd.sh red when a high-risk lock is open). Never implements, never commits.
+description: Use to write the failing tests for one behavior before any implementation exists, in a fresh context. Receives the acceptance criteria, never the implementation plan's code. Writes only test and fixture files. Proves RED by running the tests (with enforce/tdd.sh red when a high-risk lock is open). Never implements, never commits.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 ---
