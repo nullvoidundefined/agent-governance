@@ -27,6 +27,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STEPS_FILE="$HERE/route-steps.json"
 KNOWN_AGENTS="claude qwen"
 
+. "$HERE/resolve-machine-file.sh"
+resolve_machine_file
+
 usage_error() {
   echo "route: $1" >&2
   echo "usage: route.sh <step> --risk <high|standard> [--author <name>] [--security]" >&2
@@ -61,10 +64,12 @@ tier=$(jq -r '.tier' <<<"$rule")
 model=$(jq -r '.model // empty' <<<"$rule")
 
 # Machine file: found and valid, absent, or invalid.
-machine="${AGENT_TIER_ASSIGNMENTS_FILE:-${HOME:-}/.claude/agent-tier-assignments.json}"
+machine="$MACHINE_FILE_PATH"
 config="{}"
 fileNote=""
-if [ ! -f "$machine" ]; then
+if [ -z "$machine" ]; then
+  fileNote="HOME is unset, using primary agent"
+elif [ ! -f "$machine" ]; then
   fileNote="no machine file found at $machine"
 elif config=$(jq -c 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
   :
@@ -105,11 +110,19 @@ esac
 [ -z "$model" ] || reason="$reason (model $model)"
 [ -z "$fileNote" ] || reason="$reason; $fileNote"
 
-log="${ROUTING_LOG:-${HOME:-}/.claude/routing-log.jsonl}"
-mkdir -p "$(dirname "$log")" 2>/dev/null
-jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg step "$step" --arg risk "$risk" \
-  --arg tier "$tier" --arg provider "$provider" --arg reason "$reason" \
-  '{ts: $ts, step: $step, risk: $risk, tier: $tier, provider: $provider, reason: $reason}' \
-  >>"$log" 2>/dev/null || echo "route: could not append to $log" >&2
+if [ -n "${ROUTING_LOG:-}" ]; then
+  log="$ROUTING_LOG"
+elif [ -n "${HOME:-}" ]; then
+  log="$HOME/.claude/routing-log.jsonl"
+else
+  log=""
+fi
+if [ -n "$log" ]; then
+  mkdir -p "$(dirname "$log")" 2>/dev/null
+  jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg step "$step" --arg risk "$risk" \
+    --arg tier "$tier" --arg provider "$provider" --arg reason "$reason" \
+    '{ts: $ts, step: $step, risk: $risk, tier: $tier, provider: $provider, reason: $reason}' \
+    >>"$log" 2>/dev/null || echo "route: could not append to $log" >&2
+fi
 
 printf '%s\n%s\n' "$provider" "$reason"
