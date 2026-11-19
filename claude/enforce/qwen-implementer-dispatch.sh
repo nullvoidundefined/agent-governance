@@ -14,7 +14,9 @@
 #                model-missing. Claude is never started.
 #   usage error  exit 2.
 # QWEN_DISPATCH_TIMEOUT_SECONDS (default 1800) and QWEN_DISPATCH_MAX_TURNS
-# (default 60) set the caps. The script makes no commit, does not move HEAD,
+# (default 60) set the caps; the timeout applies to the Claude run and, separately,
+# to the final test command. A role policy with no protected-path patterns fails
+# closed (failed, policy-unreadable). The script makes no commit, does not move HEAD,
 # and leaves Qwen's edits in the working tree for the caller to keep or discard.
 #
 # Machine file: $AGENT_TIER_ASSIGNMENTS_FILE (default
@@ -106,26 +108,18 @@ check_server() {
     report unavailable model-missing 3
 }
 
-# run_claude: runs Claude Code against the endpoint under the timeout; sets runStatus
-# to ok, timeout or process-error.
-run_claude() {
-  local promptText pid waited=0
-  local -a args
-  promptText=$(cat "$prompt")
-  args=(-p "$promptText" --model "$model" --permission-mode dontAsk
-    --allowedTools "Read Edit Write Bash" --max-turns "$MAX_TURNS" --no-session-persistence
-    --setting-sources project,local --output-format stream-json --verbose)
-  if [ -f "$USER_SETTINGS" ] && jq '{hooks: .hooks}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
-    args+=(--settings "$SCRATCH/hooks.json")
-  fi
-  [ ! -f "$USER_RULES" ] || args+=(--append-system-prompt-file "$USER_RULES")
-
-  : >"$log"
+# run_capped <out file> <command...>: runs the command in the repo with stdin closed,
+# appending stdout and stderr to the out file, in its own process group, under the
+# timeout; sets capStatus to ok, timeout or process-error. On a timeout the whole
+# group is killed, so no child outlives the run.
+run_capped() {
+  local out="$1" pid waited=0
+  shift
+  : >>"$out"
   set -m
   (
     cd "$repo" || exit 1
-    exec env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \
-      claude "${args[@]}" </dev/null >>"$log" 2>&1
+    exec "$@" </dev/null >>"$out" 2>&1
   ) &
   pid=$!
   set +m
@@ -137,20 +131,44 @@ run_claude() {
       sleep 1
       kill -KILL -- "-$pid" 2>/dev/null
       wait "$pid" 2>/dev/null
-      runStatus=timeout
+      capStatus=timeout
       return
     fi
     sleep 0.1
     waited=$((waited + 1))
   done
-  if wait "$pid"; then runStatus=ok; else runStatus=process-error; fi
+  if wait "$pid"; then capStatus=ok; else capStatus=process-error; fi
+}
+
+# run_claude: runs Claude Code against the endpoint under the timeout; sets capStatus.
+run_claude() {
+  local promptText
+  local -a args
+  promptText=$(cat "$prompt")
+  args=(-p "$promptText" --model "$model" --permission-mode dontAsk
+    --allowedTools "Read Edit Write Bash" --max-turns "$MAX_TURNS" --no-session-persistence
+    --setting-sources project,local --output-format stream-json --verbose)
+  if [ -f "$USER_SETTINGS" ] && jq '{hooks: .hooks}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
+    args+=(--settings "$SCRATCH/hooks.json")
+  fi
+  [ ! -f "$USER_RULES" ] || args+=(--append-system-prompt-file "$USER_RULES")
+
+  : >"$log"
+  run_capped "$log" env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \
+    claude "${args[@]}"
+}
+
+# load_patterns: reads the protected-path patterns (tests, specs, lock) from the role
+# policy into $patterns before Qwen runs, so a run cannot rewrite them; empty when the
+# policy is missing, malformed or has none of the three.
+load_patterns() {
+  patterns=$(jq -r '[.patterns.tests, .patterns.specs, .patterns.lock] | map(select(. != null and . != "")) | .[]' "$POLICY" 2>/dev/null) || patterns=""
 }
 
 # find_protected_path: prints the first changed path, tracked or untracked, that matches
-# a tests, specs or lock pattern of role-policy.json.
+# one of $patterns.
 find_protected_path() {
-  local patterns path pat
-  patterns=$(jq -r '[.patterns.tests, .patterns.specs, .patterns.lock] | map(select(. != null)) | .[]' "$POLICY" 2>/dev/null)
+  local path pat
   while IFS= read -r -d '' path; do
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
@@ -171,19 +189,23 @@ validate_inputs
 load_secondary
 check_server
 
+load_patterns
 run_claude
-case "$runStatus" in
+case "$capStatus" in
   timeout) report failed timeout 1 ;;
   process-error) report failed process-error 1 ;;
 esac
+[ -n "$patterns" ] || report failed "policy-unreadable: no protected-path patterns in $POLICY" 1
 
 if protectedPath=$(find_protected_path); then
   report failed "touched-protected-path $protectedPath" 1
 fi
 
-if (cd "$repo" && bash -c "$testCmd" </dev/null >"$SCRATCH/test.out" 2>&1); then
-  report green "the test command passed and no protected path changed" 0
-fi
+run_capped "$SCRATCH/test.out" bash -c "$testCmd"
+case "$capStatus" in
+  timeout) report failed timeout 1 ;;
+  ok) report green "the test command passed and no protected path changed" 0 ;;
+esac
 printf 'failed\ntests-failed\n'
 tail -n 60 "$SCRATCH/test.out"
 exit 1
