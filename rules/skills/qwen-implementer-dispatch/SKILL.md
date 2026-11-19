@@ -12,8 +12,14 @@ One command runs one GREEN attempt on the local model and reports a result you d
 Write a prompt file in the scratchpad. It holds, in this order:
 
 - The `implementer` agent's contract: make the RED tests pass with the minimum change, reuse existing code before adding any, never edit tests, specs or the lock, and raise `DISPUTE: <test>: <why>` instead of changing a test.
-- The failing test names and the exact test command.
+- The failing test names and the exact test command. Make the command run the repository's linter after the tests (for shell, `shellcheck` on the changed files), joined with `&&`, so a lint failure comes back as `tests-failed` with its output.
 - The branch and head sha.
+- The standards checklist, copied verbatim:
+  - Before adding a helper, constant or environment variable, search the repository for an existing one and reuse it.
+  - After fixing a bug, search the whole repository for the same pattern and fix every occurrence the tests or the task cover; list any you leave.
+  - Match the neighboring files: naming, comment style, how they print or return values.
+  - Every comment and message must be true in every case the code can reach, for example for each tier or each missing input.
+  - Change nothing the failing tests do not ask for.
 - "Do not commit. Do not install packages. Do not touch anything outside this repository."
 
 ## 2. Run it
