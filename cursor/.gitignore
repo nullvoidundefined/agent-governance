@@ -70,6 +70,8 @@
 !/skills/documentation-create/scripts/prose-flags.sh
 !/skills/gof/
 !/skills/gof/SKILL.md
+!/skills/qwen-implementer-dispatch/
+!/skills/qwen-implementer-dispatch/SKILL.md
 !/skills/spec-grounding/
 !/skills/spec-grounding/SKILL.md
 !/skills/spec-grounding/scripts/

@@ -131,4 +131,31 @@ Remove the Codex port and the files this slice leaves idle: `codex/`, `translate
 
 ## Spike result
 
-To be filled in during PR 2, step 1.
+Run 2026-11-18 on the laptop: Claude Code 2.1.327, Ollama at `http://127.0.0.1:11434`, model `qwen-coder-local`. Throwaway git repo, one failing test.
+
+**Invocation settled on (candidate A, normal mode, user settings skipped):**
+
+```
+ANTHROPIC_BASE_URL=<endpoint> ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" \
+claude -p "<prompt>" --model <model> --permission-mode dontAsk \
+  --allowedTools "Read Edit Write Bash" --max-turns <n> --no-session-persistence \
+  --setting-sources project,local --settings <hooks.json> \
+  --append-system-prompt-file ~/.claude/CLAUDE.md \
+  --output-format stream-json --verbose </dev/null
+```
+
+`<hooks.json>` is `{"hooks": ...}` taken from `~/.claude/settings.json`. `--setting-sources project,local` skips the user settings, which is where the third-party plugins are enabled, so `~/.claude/CLAUDE.md` has to be passed explicitly.
+
+**Hooks proof.** Told to run `rm -rf` on a disposable directory outside the repo, candidate A's log shows `destructive-ops-guard hook BLOCKED this call: ... a path outside the repository`, and the directory survived. (A disposable stand-in was used instead of `rm -rf ~`, in case the guard failed.)
+
+**Plugins proof.** The init event of candidate A lists four plugins, all `cc-plugin-*` (agents-md, telemetry, privacy, plugin-authoring), and 18 skills, all built in. `superpowers`, `frontend-design`, `context7`, `typescript-lsp` and `i-have-adhd` are absent. The 4 remaining plugins and 24 tools (about 15,153 tokens in the first request) are the cost of normal mode.
+
+**Candidate B (`--bare` with `--settings`) rejected.** Its first request was 4,031 tokens with only Bash, Edit and Read, but the init event still listed all nine plugins, and the deletion test showed no guard reason: `dontAsk` mode refused the Bash call itself, so it never proved the hooks ran. In a separate trivial fix run, B let Qwen run `pip3 install --break-system-packages pytest`, which changed the laptop's system Python.
+
+**Stop hooks.** `turn-summary-guard` fires in the headless run and sends back its feedback, which costs one extra turn. The run still ended `success` (3 turns). It does not break the run.
+
+**Qwen acts on orchestrator rules (owner decision 6 trigger).** In the fix run Qwen wrote a `**Done:**` summary line because the full `CLAUDE.md` says to. The slim target is therefore worth building, but not in this PR: record it for the owner.
+
+**Caps.** A trivial fix took 51 seconds and 7 turns. `QWEN_DISPATCH_TIMEOUT_SECONDS` 1800 and `QWEN_DISPATCH_MAX_TURNS` 60 stay as the defaults. `--max-turns` is accepted but absent from `--help`; whether it is enforced is not yet proven, so the script's timeout is the real cap.
+
+**Side effect to clean up (owner):** run 1 installed `pytest` into the system Python (`pip3 install --break-system-packages`). The dispatch prompt must tell Qwen not to install packages.

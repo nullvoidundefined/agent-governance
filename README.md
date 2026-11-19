@@ -12,7 +12,7 @@ conventions.
 | `rules/PROTOCOL.md` | Why the harness has this shape; read before adding a rule or hook. |
 | `rules/stacks/<STACK>.md` (generated into `claude/CLAUDE-<STACK>.md`) | Stack conventions (backend, database, frontend and its frameworks, Go, Python, Ruby, observability, styling), loaded only when matching files are touched. |
 | `claude/hooks/` | Safety hooks: secret scanning and output redaction, destructive shell, Docker and git commands, destructive database actions, MCP writes, pushes to `main` and merges (each merge asks, squash only), Codex billing, conflict markers, the subagent watchdog, new-dependency asks, the em-dash check, and the high-risk TDD lock (`enforce/tdd.sh` with `protected-path-guard`). |
-| `rules/skills/` | `build-by-slice-require-review` (one PR per slice; each merges on green CI and a clean review before the next), `bug-hunt`, `documentation-create`, `spec-grounding`, `structure-conventions`. |
+| `rules/skills/` | `build-by-slice-require-review` (one PR per slice; each merges on green CI and a clean review before the next), `bug-hunt`, `documentation-create`, `qwen-implementer-dispatch`, `spec-grounding`, `structure-conventions`. |
 | `rules/agents/pr-reviewer.md` | An optional read-only reviewer, used when asked. |
 | `claude/status-line.sh` | The status line, which also records Claude's weekly usage for quota pacing. |
 | `codex/`, `cursor/` | Generated ports of the above (`translate/`). |

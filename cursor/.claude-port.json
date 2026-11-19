@@ -23,7 +23,7 @@
     "translate/rule-sources.mjs": "sha256:726edcb634a677a6e42c3998dd3e105e2b751c4312c342dfa5bc709c19ca1a52"
   },
   "files": {
-    ".gitignore": "sha256:52f264056c9ce47b5cbe35d8fbf73aafe688ae48777a45807f9a47d2de9b7380",
+    ".gitignore": "sha256:81640bcfed5cc564ec20e8fdd54403babad6a71d954c23063860ab18e78423c6",
     "PORT-STATUS.md": "sha256:93c5cf6c501e86c18c12ec470c5dcdfe768400c2de876dde5db4411a441d2f28",
     "agents/audit-criticism.md": "sha256:9fdc9c7d989ba07dad1cfbdfc7b2983a70ec28a3f3365350ab9271a506506a56",
     "agents/audit-customer.md": "sha256:4fee069df633522f1e4045bf765ca34eb3fd57bdec32961d696b26ec5de77be0",
@@ -69,6 +69,7 @@
     "skills/documentation-create/SKILL.md": "sha256:2d96daf8552969f986b6a7a92dc067cf848e30416da01d460a034dbc67c13341",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:c9ffe8943c1f5a136817d89b4c03f2c79ebed355e111690c0dffde958387d81c",
+    "skills/qwen-implementer-dispatch/SKILL.md": "sha256:c98fbeedff14462be7dcb87ff7ca5d665863a6832651aae01502fa89a673adfc",
     "skills/spec-grounding/SKILL.md": "sha256:329ac8581fb8ab2d65eb302e74cb08d1af9984836104807c097f65b0a4e08152",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:a029f47aadcc7789e34992276628480ae4734a8880aee1cc45a720f36a38deb0",
@@ -123,6 +124,7 @@
     "skills/documentation-create/SKILL.md": "generated",
     "skills/documentation-create/scripts/prose-flags.sh": "generated",
     "skills/gof/SKILL.md": "generated",
+    "skills/qwen-implementer-dispatch/SKILL.md": "generated",
     "skills/spec-grounding/SKILL.md": "generated",
     "skills/spec-grounding/scripts/check.sh": "generated",
     "skills/structure-conventions/SKILL.md": "generated",
