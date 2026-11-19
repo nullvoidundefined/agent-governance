@@ -16,13 +16,17 @@
 #
 # A background launch is run_in_background exactly true, or the flag ABSENT on
 # a long-running agent type: the current Agent tool has no such parameter and
-# always runs subagents in the background, so no call can set it (slice 05,
-# 2026-11-18; same definition of absent and same type list as
-# agent-dispatch-guard.sh). A present non-true flag stays silent.
+# always runs subagents in the background (same type list and normalization as
+# agent-dispatch-guard.sh; both read agent-types.sh). A present non-true flag
+# stays silent.
 set -uo pipefail
 INPUT=$(cat 2>/dev/null || true)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || true)
 case "$TOOL" in Agent|Task) ;; *) exit 0 ;; esac
+
+TYPES_HELPER="$(dirname "${BASH_SOURCE[0]}")/agent-types.sh"
+# shellcheck disable=SC1090
+[ -f "$TYPES_HELPER" ] && source "$TYPES_HELPER" || exit 0
 
 RESPONSE_TEXT=$(printf '%s' "$INPUT" | jq -r '
   .tool_response
@@ -40,12 +44,8 @@ OUTPUT_FILE=$(printf '%s\n' "$RESPONSE_TEXT" \
 if ! printf '%s' "$INPUT" | jq -e '.tool_input.run_in_background == true' >/dev/null 2>&1; then
   printf '%s' "$INPUT" | jq -e '(.tool_input | type == "object") and (.tool_input | has("run_in_background") | not)' >/dev/null 2>&1 || exit 0
   RAW_TYPE=$(printf '%s' "$INPUT" | jq -r 'if (.tool_input.subagent_type | type) == "string" then .tool_input.subagent_type else "" end' 2>/dev/null || echo "")
-  AGENT_TYPE=$(printf '%s' "${RAW_TYPE##*:}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-  [ -n "$AGENT_TYPE" ] || AGENT_TYPE=general-purpose
-  case "$AGENT_TYPE" in
-    test-author|implementer|pr-reviewer|security-reviewer|general-purpose|audit-*) ;;
-    *) exit 0 ;;
-  esac
+  AGENT_TYPE=$(normalize_agent_type "$RAW_TYPE")
+  is_long_running_type "$AGENT_TYPE" || exit 0
 fi
 printf '%s\n' "$RESPONSE_TEXT" | grep -q 'Async agent launched' || exit 0
 # Only the harness's own launch shape, a `.../tasks/<name>.output` file, with
@@ -54,6 +54,7 @@ printf '%s' "$OUTPUT_FILE" | grep -Eq '^/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/task
 case "$OUTPUT_FILE" in */../*|*/./*|*//*) exit 0 ;; esac
 
 LOG_RULE_FIRE_HELPER="$(dirname "${BASH_SOURCE[0]}")/log-rule-fire.sh"
+# shellcheck disable=SC1090
 [ -f "$LOG_RULE_FIRE_HELPER" ] && source "$LOG_RULE_FIRE_HELPER"
 type log_rule_fire >/dev/null 2>&1 || log_rule_fire() { :; }
 log_rule_fire "R-708" "agent-watchdog-instruction" "instruct"
