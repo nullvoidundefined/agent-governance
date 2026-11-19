@@ -49,6 +49,7 @@ One test-writing pass per behavior. Do not ask for more tests than the criteria 
 
 1. Dispatch one `pr-reviewer` in a fresh context with the filled review prompt. Give the reviewer the diff, the criteria, the risk line, and the RED commit's sha, so it can check the RED tests were not edited afterward. Never give it the implementer's transcript.
 2. Fix HIGH and MEDIUM findings in ordinary commits, or answer a MEDIUM with a reason. Never fix a LOW in the PR: LOW findings are waived and, when there are any, go into one follow-up ticket for the PR, linked from the PR body. Fix only in-scope findings (they break an acceptance criterion or are a realistic failure under the threat model); record the rest in the PR. Each review round gets one fix cycle; a finding still open after it goes to the owner, and an open HIGH keeps blocking the merge until the owner decides.
+   When the GREEN was written by the secondary agent (Qwen) and a finding needs a code change, send it back to Qwen once, as the `qwen-implementer-dispatch` skill describes under "Fixing review findings". If that attempt fails, the agent is unavailable, or it leaves a finding unfixed, the primary `implementer` makes that fix in the same fix cycle; name the fallback in the PR. A MEDIUM answered with a reason, and every LOW, never go to Qwen.
 3. Rerun only the checks the fixes affect.
 4. A second review happens only for a HIGH, or a MEDIUM fixed in code, and covers only the fix diff. There is no third.
 5. Write `## Verification` and `## Review` in the PR body. Stop.
