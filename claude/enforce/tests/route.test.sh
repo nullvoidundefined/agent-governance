@@ -489,4 +489,73 @@ else
   echo "SKIP: shellcheck is not installed; resolve-machine-file.sh lint case not run"
 fi
 
+# --- 19. An invalid machine file at a control-character path cannot split the reason. ---
+# The machine file sits in a directory named "bad<LF>dir<BEL>" and is not JSON.
+# stdout must stay exactly two lines with no control character in the reason,
+# the log line must be JSON whose reason is that same line, and the stderr
+# warning must hold no control character but its own trailing newline.
+CTRL_DIR="$WORK/bad"$'\n'"dir"$'\a'
+mkdir -p "$CTRL_DIR"
+printf 'not json {\n' >"$CTRL_DIR/machine.json"
+useMachineFile "$CTRL_DIR/machine.json"
+rm -f "$ROUTING_LOG"
+route spec --risk standard
+[ "$RC" -eq 0 ] || failCase "control-character invalid machine file path: route must exit 0 (got $RC, stderr: $ERR)"
+[ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "2" ] ||
+  failCase "control-character invalid machine file path: stdout must be exactly two lines (got '$OUT')"
+[ "$P" = "claude" ] || failCase "control-character invalid machine file path: line 1 must be claude (got '$P')"
+[ -n "$REASON" ] || failCase "control-character invalid machine file path: line 2 must carry a reason"
+if printf '%s' "$REASON" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+  failCase "control-character invalid machine file path: the reason must hold no control character (got '$REASON')"
+fi
+[ "$(logCount)" = "1" ] || failCase "control-character invalid machine file path: want one log line (got $(logCount))"
+CTRL_PATH_LINE=$(sed -n 1p "$ROUTING_LOG")
+jq -e . >/dev/null 2>&1 <<<"$CTRL_PATH_LINE" ||
+  failCase "control-character invalid machine file path: log line must be JSON: $CTRL_PATH_LINE"
+[ "$(jq -r .reason <<<"$CTRL_PATH_LINE")" = "$REASON" ] ||
+  failCase "control-character invalid machine file path: log reason must equal the stdout reason line '$REASON' (log: $CTRL_PATH_LINE)"
+# ERR is captured with $(...), which drops the trailing newline; any control
+# character left is inside the warning.
+[ -n "$ERR" ] || failCase "control-character invalid machine file path: want the invalid-JSON warning on stderr"
+if printf '%s' "$ERR" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+  failCase "control-character invalid machine file path: the stderr warning must hold no control character (got '$ERR')"
+fi
+
+# --- 20. A machine file path that looks like an echo flag is still the path. ---
+# routeInDir <dir> <machine file value> <args...>: runs route.sh from dir with
+# AGENT_TIER_ASSIGNMENTS_FILE set to the value and CLAUDE_HOME and HOME unset;
+# sets DIR_RC, DIR_OUT, DIR_P, DIR_REASON.
+routeInDir() {
+  local dir="$1" value="$2"
+  shift 2
+  DIR_RC=0
+  DIR_OUT=$(cd "$dir" && env -u CLAUDE_HOME -u HOME AGENT_TIER_ASSIGNMENTS_FILE="$value" \
+    ROUTING_LOG="$WORK/dashpath-log.jsonl" bash "$SCRIPT" "$@" 2>"$WORK/dashpath-err") || DIR_RC=$?
+  DIR_P=$(printf '%s\n' "$DIR_OUT" | sed -n 1p)
+  DIR_REASON=$(printf '%s\n' "$DIR_OUT" | sed -n 2p)
+  [ "$DIR_RC" -eq 0 ] || failCase "machine file '$value', route $*: must exit 0 (got $DIR_RC, stderr: $(cat "$WORK/dashpath-err"))"
+}
+mkdir -p "$WORK/dashpath"
+for flagName in -n -e; do
+  printf '%s\n' '{"primary": {"agent": "claude"}, "secondary": {"agent": "qwen"}}' >"$WORK/dashpath/$flagName"
+  routeInDir "$WORK/dashpath" "$flagName" implement --risk standard
+  [ "$DIR_P" = "qwen" ] ||
+    failCase "AGENT_TIER_ASSIGNMENTS_FILE=$flagName: implement --risk standard must use that file's qwen secondary (got '$DIR_P': $DIR_REASON)"
+  case "$DIR_REASON" in
+    *"HOME is unset"*) failCase "AGENT_TIER_ASSIGNMENTS_FILE=$flagName: the reason must not say 'HOME is unset' (got '$DIR_REASON')" ;;
+  esac
+done
+
+# --- 21. A backslash in the machine file path is kept as is. ---
+# The directory name holds backslash sequences (\n, \c) that echo -e or
+# xpg_echo would rewrite; the file must still be read.
+BS_DIR="$WORK/"'a\nb\c'
+mkdir -p "$BS_DIR"
+printf '%s\n' '{"primary": {"agent": "claude"}, "secondary": {"agent": "qwen"}}' >"$BS_DIR/machine.json"
+useMachineFile "$BS_DIR/machine.json"
+expectRoute qwen implement --risk standard
+case "$REASON" in
+  *"no machine file"*) failCase "backslash path: the machine file must be found (got '$REASON')" ;;
+esac
+
 echo "PASS: route"
