@@ -22,8 +22,8 @@
 # Machine file: $AGENT_TIER_ASSIGNMENTS_FILE (default
 # ~/.claude/agent-tier-assignments.json), secondary.{agent,model,endpoint}.
 # The invocation is normal mode with --setting-sources project,local, so the
-# third-party plugins in the user settings do not load; the user's hooks are
-# passed explicitly through --settings, and the implementer-only rules file
+# third-party plugins in the user settings do not load; the user's hooks,
+# when the user settings file is readable, are passed through --settings, and the implementer-only rules file
 # (default claude/enforce/qwen-implementer-rules.md, overridable via
 # QWEN_IMPLEMENTER_RULES_FILE) is appended as system prompt.
 # Claude Code runs with the repo as its working directory and stdin closed, and
