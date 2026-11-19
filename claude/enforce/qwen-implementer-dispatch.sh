@@ -21,12 +21,11 @@
 #
 # Machine file: $AGENT_TIER_ASSIGNMENTS_FILE (default
 # ~/.claude/agent-tier-assignments.json), secondary.{agent,model,endpoint}.
-# The invocation is the one the slice's spike settled on: normal mode with
-# --setting-sources project,local, so the third-party plugins in the user
-# settings do not load, plus the user's hooks passed explicitly through
-# --settings and the implementer-only rules file (default
-# claude/enforce/qwen-implementer-rules.md, overridable via
-# QWEN_IMPLEMENTER_RULES_FILE) passed as appended system prompt.
+# The invocation is normal mode with --setting-sources project,local, so the
+# third-party plugins in the user settings do not load; the user's hooks are
+# passed explicitly through --settings, and the implementer-only rules file
+# (default claude/enforce/qwen-implementer-rules.md, overridable via
+# QWEN_IMPLEMENTER_RULES_FILE) is appended as system prompt.
 # Claude Code runs with the repo as its working directory and stdin closed, and
 # in its own process group so a timeout kills every child it started
 # (macOS has no timeout(1) or setsid).
@@ -35,7 +34,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY="${CLAUDE_ROLE_POLICY_FILE:-$HERE/role-policy.json}"
 USER_SETTINGS="${CLAUDE_SETTINGS_FILE:-${HOME:-}/.claude/settings.json}"
-IMPLEMENTS_RULES="${QWEN_IMPLEMENTER_RULES_FILE:-$HERE/qwen-implementer-rules.md}"
+IMPLEMENTER_RULES="${QWEN_IMPLEMENTER_RULES_FILE:-$HERE/qwen-implementer-rules.md}"
 
 . "$HERE/resolve-machine-file.sh"
 resolve_machine_file
@@ -156,7 +155,7 @@ run_claude() {
   if [ -f "$USER_SETTINGS" ] && jq '{hooks: .hooks}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
     args+=(--settings "$SCRATCH/hooks.json")
   fi
-  [ ! -f "$IMPLEMENTS_RULES" ] || args+=(--append-system-prompt-file "$IMPLEMENTS_RULES")
+  [ -f "$IMPLEMENTER_RULES" ] && args+=(--append-system-prompt-file "$IMPLEMENTER_RULES")
 
   : >"$log"
   run_capped "$log" env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \
@@ -194,7 +193,7 @@ validate_inputs
 load_secondary
 check_server
 
-[ -f "$IMPLEMENTS_RULES" ] || report unavailable rules-missing 3
+[ -f "$IMPLEMENTER_RULES" ] || report unavailable rules-missing 3
 
 load_patterns
 run_claude
