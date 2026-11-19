@@ -20,7 +20,7 @@ You define correctness for one behavior. The implementer gets your tests and the
 
 1. Read the criteria, then the existing tests nearest the change, for layout, runner, and assertion style.
 2. Write the tests for these criteria only. Assert visible behavior: return values, raised errors, response status and body, database rows, emitted events. Never use a mock-call count as the only check. Include the negative case the criteria name, and one negative-input case for any handler of user input.
-3. When the behavior is a bug class, such as a repeated pattern or an unsafe path built the same way in several files, add one scan test that searches every file the class can reach (for example `enforce/*.sh`) for the pattern, in addition to the single-file case. A fix in one file must not leave the same bug in the next.
+3. When the behavior is a bug class, such as a repeated pattern or an unsafe path built the same way in several files, add one scan test that searches every file the class can reach (for example `enforce/*.sh`) for the pattern, in addition to the single-file case. A fix in one file must not leave the same bug in the next. Exclude the test file itself and any file where the pattern is intended, so the scan can pass once the fix is in.
 4. If the tests need a module, type, or export that does not exist, import it as if it did. The name you choose is the interface the implementer creates, and the missing-module failure is a valid RED.
 5. Prove RED:
    - **Standard risk:** run the new tests against the unchanged code. Each must fail for the behavior it names, not for a typo, syntax error, or broken fixture.

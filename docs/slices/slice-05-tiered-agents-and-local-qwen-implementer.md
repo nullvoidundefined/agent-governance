@@ -17,7 +17,7 @@ Claude plans, writes the tests and reviews. A local Qwen model writes standard-r
 3. **Ask first.** After a plan is approved and before implementation starts, Claude asks once whether to delegate standard-risk implementation to the secondary agent, and lists it first where choices are offered. A yes holds for the plan.
 4. **Second process.** Qwen runs as headless Claude Code pointed at the local Ollama server.
 5. **Codex out of the loop.** The Codex port stays in the harness; removing it is a follow-up slice.
-6. **Rules for Qwen.** The Qwen process loads the full generated `CLAUDE.md`. A slim target is built only if real runs show Qwen acting on orchestrator rules.
+6. **Rules for Qwen.** The Qwen process loads the full generated `CLAUDE.md`. A slim target is built only if real runs show Qwen acting on orchestrator rules. (Update 2026-11-19: real runs showed it, so the Qwen run appends `claude/enforce/qwen-implementer-rules.md` instead of `CLAUDE.md`, and passes only the PreToolUse and PostToolUse hooks. See PRs #228 and #232.)
 
 ## Builder rulings on the spec
 
@@ -65,12 +65,12 @@ Claude plans, writes the tests and reviews. A local Qwen model writes standard-r
 - **Context:** PR 1 can name `qwen` as the implementer. Nothing can run it yet.
 - **Problem:** the loop needs one command that runs a single GREEN attempt on the local model and reports a result Claude does not have to take on trust.
 - **Step 1, spike (no tests, recorded in this file under "Spike result"):** on the laptop, find the headless Claude Code invocation that loads the guard hooks and `CLAUDE.md` but no plugins, MCP servers or skills, against the Ollama endpoint. Two candidates: normal mode with plugins disabled through a per-process `--settings` override, or `--bare` with the hooks supplied explicitly. Proof for hooks: a denied `rm -rf ~` attempt shows the guard's reason in the log. Proof for plugins: the log shows no skill or plugin listing. Also record whether the Stop hooks delay or break the run, and the token count of the first request, to set the caps below. Starting point for the environment: `ANTHROPIC_BASE_URL=<endpoint>`, `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_API_KEY=""`, with `claude -p --model <model> --permission-mode dontAsk --max-turns <n> --no-session-persistence`.
-- **Approach:** add `claude/enforce/qwen-implementer-dispatch.sh` (bash and jq, bash 3.2 safe). It reads the secondary entry of the machine file for the model and endpoint, checks the server, runs the invocation the spike settled on in the repository with stdin closed, then judges the result itself. Add the skill `rules/skills/qwen-implementer-dispatch/SKILL.md`, which says when the script applies and how to build its prompt: the `implementer` agent's contract plus the failing test names, branch and head, and the instruction not to commit.
+- **Approach:** add `claude/enforce/qwen-implementer-dispatch.sh` (bash and jq, bash 3.2 safe). It reads the secondary entry of the machine file for the model and endpoint, checks the server, runs the invocation the spike settled on (the slim rules file replaced the full `CLAUDE.md` in #228; see Spike result) in the repository with stdin closed, then judges the result itself. Add the skill `rules/skills/qwen-implementer-dispatch/SKILL.md`, which says when the script applies and how to build its prompt: the `implementer` agent's contract plus the failing test names, branch and head, and the instruction not to commit.
 - **Interface:** `qwen-implementer-dispatch.sh --repo <root> --red <sha> --prompt <file> --log <file> --test-cmd <command>`.
   - Line 1 of stdout is the status; line 2 is the reason.
   - `green`, exit 0: the test command passed and no protected path changed.
   - `failed`, exit 1, with reason `tests-failed`, `touched-protected-path`, `timeout`, `turn-limit` or `process-error`. For `tests-failed` the last 60 lines of the test output follow from line 3.
-  - `unavailable`, exit 3, with reason `no-secondary-configured`, `server-unreachable` or `model-missing`.
+  - `unavailable`, exit 3, with reason `no-secondary-configured`, `server-unreachable`, `model-missing` or (added in #228) `rules-missing`. A run whose log stops growing is reported `failed` / `stalled` (added in #231).
   - Usage errors exit 2.
   - `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 1800) and `QWEN_DISPATCH_MAX_TURNS` (default 60) set the caps. The spike may change the defaults.
 - **Protected paths:** the `tests`, `specs` and `lock` patterns from `enforce/role-policy.json`, matched against every path that differs from the RED sha, tracked or untracked.
@@ -154,7 +154,7 @@ claude -p "<prompt>" --model <model> --permission-mode dontAsk \
 
 **Stop hooks.** `turn-summary-guard` fires in the headless run and sends back its feedback, which costs one extra turn. The run still ended `success` (3 turns). It does not break the run.
 
-**Qwen acts on orchestrator rules (owner decision 6 trigger).** In the fix run Qwen wrote a `**Done:**` summary line because the full `CLAUDE.md` says to. The slim target is therefore worth building, but not in this PR: record it for the owner.
+**Qwen acts on orchestrator rules (owner decision 6 trigger).** In the fix run Qwen wrote a `**Done:**` summary line because the full `CLAUDE.md` says to. (Done in #228.) The slim target is therefore worth building, but not in this PR: record it for the owner.
 
 **Caps.** A trivial fix took 51 seconds and 7 turns. `QWEN_DISPATCH_TIMEOUT_SECONDS` 1800 and `QWEN_DISPATCH_MAX_TURNS` 60 stay as the defaults. `--max-turns` is accepted but absent from `--help`; whether it is enforced is not yet proven, so the script's timeout is the real cap.
 

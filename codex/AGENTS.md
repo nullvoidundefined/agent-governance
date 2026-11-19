@@ -119,7 +119,6 @@ Security work runs outside the PR loop (owner decision, 2026-10-05, after per-PR
 
 - Use the cheapest model that can do the job: Haiku for simple lookups, Sonnet for routine implementation and review, Opus for hard design and debugging. An owner-requested security review or audit uses the strongest model.
 - `~/.claude/enforce/route.sh` resolves each step to the agent this machine assigns to its tier. It changes who does a step, never whether it happens; the review, the security review, a high-risk implementer, and merges stay with the primary agent or the owner.
-- Standard-risk implementation goes to the secondary agent when this machine configures one and the owner agreed for the plan.
 - Prefer a subagent for wide searches across many files. Dispatch long-running subagents in the background.
 - Avoid giant tool outputs; narrow searches before running them.
 
