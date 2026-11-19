@@ -13,7 +13,7 @@
 #   unavailable  exit 3: no-secondary-configured, server-unreachable,
 #                model-missing, or rules-missing. Claude is never started.
 #   usage error  exit 2.
-# QWEN_DISPATCH_TIMEOUT_SECONDS (default 1800) and QWEN_DISPATCH_MAX_TURNS
+# QWEN_DISPATCH_TIMEOUT_SECONDS (default 3600) and QWEN_DISPATCH_MAX_TURNS
 # (default 60) set the caps; the timeout applies to the Claude run and, separately,
 # to the final test command. QWEN_DISPATCH_IDLE_SECONDS (default 600, 0 disables)
 # bounds how long the --log file may go without growing while claude runs; when it
@@ -47,7 +47,7 @@ IMPLEMENTER_RULES="${QWEN_IMPLEMENTER_RULES_FILE:-$HERE/qwen-implementer-rules.m
 . "$HERE/resolve-machine-file.sh"
 resolve_machine_file
 MACHINE="$MACHINE_FILE_PATH"
-TIMEOUT_SECONDS="${QWEN_DISPATCH_TIMEOUT_SECONDS:-1800}"
+TIMEOUT_SECONDS="${QWEN_DISPATCH_TIMEOUT_SECONDS:-3600}"
 MAX_TURNS="${QWEN_DISPATCH_MAX_TURNS:-60}"
 
 SCRATCH=$(mktemp -d)

@@ -72,7 +72,7 @@ Claude plans, writes the tests and reviews. A local Qwen model writes standard-r
   - `failed`, exit 1, with reason `tests-failed`, `touched-protected-path`, `timeout`, `turn-limit` or `process-error`. For `tests-failed` the last 60 lines of the test output follow from line 3.
   - `unavailable`, exit 3, with reason `no-secondary-configured`, `server-unreachable`, `model-missing` or (added in #228) `rules-missing`. A run whose log stops growing is reported `failed` / `stalled` (added in #231).
   - Usage errors exit 2.
-  - `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 1800) and `QWEN_DISPATCH_MAX_TURNS` (default 60) set the caps. The spike may change the defaults.
+  - `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 1800; raised to 3600 on 2026-11-19 after a 122-step run needed more than 30 minutes) and `QWEN_DISPATCH_MAX_TURNS` (default 60) set the caps. The spike may change the defaults.
 - **Protected paths:** the `tests`, `specs` and `lock` patterns from `enforce/role-policy.json`, matched against every path that differs from the RED sha, tracked or untracked.
 - **Contents:** `claude/enforce/qwen-implementer-dispatch.sh`, `claude/enforce/tests/qwen-implementer-dispatch.test.sh`, `rules/skills/qwen-implementer-dispatch/SKILL.md`, the regenerated ports, one line in `claude/enforce/README.md`, one row in `README.md`.
 - **Test method:** the fixture puts stub `claude` and `curl` executables first on `PATH` and works in a temporary git repository. No case contacts a real server or model.

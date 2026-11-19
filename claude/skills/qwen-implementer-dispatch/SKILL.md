@@ -30,7 +30,7 @@ bash ~/.claude/enforce/qwen-implementer-dispatch.sh --repo <root> --red <RED sha
   --prompt <prompt file> --log <scratch>/qwen.log --test-cmd "<test command>"
 ```
 
-Run it in the background with stdin closed; a run can take up to `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 1800). If the `--log` file stops growing for `QWEN_DISPATCH_IDLE_SECONDS` (default 600, 0 disables), the script kills the run and reports `stalled`; treat it like any other `failed` result. Keep the log outside the repository. The script never commits and never moves `HEAD`.
+Run it in the background with stdin closed; a run can take up to `QWEN_DISPATCH_TIMEOUT_SECONDS` (default 3600). If the `--log` file stops growing for `QWEN_DISPATCH_IDLE_SECONDS` (default 600, 0 disables), the script kills the run and reports `stalled`; treat it like any other `failed` result. Keep the log outside the repository. The script never commits and never moves `HEAD`.
 
 ## 3. Read the verdict
 
