@@ -544,4 +544,73 @@ dispatchCase
 expectResult "a compound test command" 0 green ""
 [ "$(cat "$WORK/testcmd-pwd" 2>/dev/null)" = "$REPO" ] || failCase "the test command must run with the repository as its working directory"
 
+# --- 14. The protected-path check fails closed. ---
+# claude runs a production-only fix and the test command passes, so only an
+# unusable role policy stands between the run and green.
+# expectPolicyUnreadable <what> <policy file>
+expectPolicyUnreadable() {
+  newCase "policy-$1"
+  CLAUDE_ROLE_POLICY_FILE="$2" dispatchCase
+  expectResult "a role policy that is $1" 1 failed policy-unreadable
+}
+newCase policy-setup
+POLICY_DIR="$CASE_DIR"
+expectPolicyUnreadable missing "$POLICY_DIR/no-such-policy.json"
+printf '{"patterns": {"tests": "(^|/)tests/"' >"$POLICY_DIR/truncated.json"
+expectPolicyUnreadable not-json "$POLICY_DIR/truncated.json"
+printf 'not json at all\n' >"$POLICY_DIR/garbage.json"
+expectPolicyUnreadable garbage "$POLICY_DIR/garbage.json"
+printf '{}\n' >"$POLICY_DIR/empty-object.json"
+expectPolicyUnreadable empty-object "$POLICY_DIR/empty-object.json"
+printf '{"patterns": {"any": "."}}\n' >"$POLICY_DIR/no-protected-patterns.json"
+expectPolicyUnreadable without-protected-patterns "$POLICY_DIR/no-protected-patterns.json"
+cp "$CLAUDE_HARNESS_ROOT/enforce/role-policy.json" "$POLICY_DIR/unreadable.json"
+chmod 000 "$POLICY_DIR/unreadable.json"
+# root reads a mode-000 file anyway; the case only means something otherwise.
+if ! [ -r "$POLICY_DIR/unreadable.json" ]; then
+  expectPolicyUnreadable unreadable "$POLICY_DIR/unreadable.json"
+fi
+chmod 600 "$POLICY_DIR/unreadable.json"
+
+# --- 15. The test command has a time cap. ---
+# claude returns at once; the test command starts a 30 s sleeping child and
+# waits on it. The script runs under this test's own 15 s watchdog, so a
+# script with no cap fails here instead of hanging.
+newCase test-cmd-timeout
+TEST_CMD="echo \$\$ >\"$WORK/testcmd-shell-pid\"; echo \$\$ >>\"$WORK/stub-pids\"; sleep 30 & echo \$! >\"$WORK/testcmd-child-pid\"; echo \$! >>\"$WORK/stub-pids\"; wait"
+rm -f "$WORK/testcmd-shell-pid" "$WORK/testcmd-child-pid"
+T0=$(date +%s)
+QWEN_DISPATCH_TIMEOUT_SECONDS=2 bash "$SCRIPT" --repo "$REPO" --red "$RED" --prompt "$PROMPT" --log "$LOG" \
+  --test-cmd "$TEST_CMD" </dev/null >"$CASE_DIR/out" 2>"$CASE_DIR/err" &
+SCRIPT_PID=$!
+n=0
+while kill -0 "$SCRIPT_PID" 2>/dev/null && [ "$n" -lt 150 ]; do
+  sleep 0.1
+  n=$((n + 1))
+done
+if kill -0 "$SCRIPT_PID" 2>/dev/null; then
+  kill -9 "$SCRIPT_PID" 2>/dev/null || true
+  failCase "test-cmd timeout: QWEN_DISPATCH_TIMEOUT_SECONDS=2 must stop a test command that runs 30 s; the script was still running after 15 s"
+fi
+RC=0
+wait "$SCRIPT_PID" || RC=$?
+ELAPSED=$(($(date +%s) - T0))
+OUT=$(cat "$CASE_DIR/out")
+ERR=$(cat "$CASE_DIR/err")
+STATUS=$(printf '%s\n' "$OUT" | sed -n 1p)
+REASON=$(printf '%s\n' "$OUT" | sed -n 2p)
+expectResult "a test command past the timeout" 1 failed timeout
+[ "$ELAPSED" -lt 15 ] || failCase "test-cmd timeout: the run took ${ELAPSED}s; the cap is 2 s and the child sleeps 30 s"
+[ "$(claudeStarts)" = "1" ] || failCase "test-cmd timeout: claude must start exactly once (got $(claudeStarts))"
+[ -f "$WORK/testcmd-child-pid" ] || failCase "setup: the test command never started its sleeping child"
+TC_CHILD=$(cat "$WORK/testcmd-child-pid")
+TC_SHELL=$(cat "$WORK/testcmd-shell-pid")
+n=0
+while { processAlive "$TC_CHILD" || processAlive "$TC_SHELL"; } && [ "$n" -lt 30 ]; do
+  sleep 0.1
+  n=$((n + 1))
+done
+! processAlive "$TC_SHELL" || failCase "test-cmd timeout: the test command's shell ($TC_SHELL) must be stopped"
+! processAlive "$TC_CHILD" || failCase "test-cmd timeout: the test command's child ($TC_CHILD) must not outlive the script"
+
 echo "PASS: qwen-implementer-dispatch"
