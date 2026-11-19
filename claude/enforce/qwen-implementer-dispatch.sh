@@ -45,8 +45,7 @@ USER_SETTINGS="${CLAUDE_SETTINGS_FILE:-${HOME:-}/.claude/settings.json}"
 IMPLEMENTER_RULES="${QWEN_IMPLEMENTER_RULES_FILE:-$HERE/qwen-implementer-rules.md}"
 
 . "$HERE/resolve-machine-file.sh"
-resolve_machine_file
-MACHINE="$MACHINE_FILE_PATH"
+MACHINE=$(resolve_machine_file)
 TIMEOUT_SECONDS="${QWEN_DISPATCH_TIMEOUT_SECONDS:-3600}"
 MAX_TURNS="${QWEN_DISPATCH_MAX_TURNS:-60}"
 

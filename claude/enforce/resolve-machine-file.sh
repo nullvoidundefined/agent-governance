@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# resolve-machine-file.sh: resolves the machine file path safely.
+# resolve-machine-file.sh: prints the machine file path on stdout.
 #
-# With AGENT_TIER_ASSIGNMENTS_FILE set, yields that path.
-# With it unset and HOME set, yields $HOME/.claude/agent-tier-assignments.json.
-# With both unset, yields empty (the caller must not use a /.claude/ path).
+# Precedence: $AGENT_TIER_ASSIGNMENTS_FILE; else $CLAUDE_HOME/agent-tier-assignments.json
+# when CLAUDE_HOME is set; else $HOME/.claude/agent-tier-assignments.json when
+# HOME is set; else empty (the caller must not use a /.claude/ path).
 #
-# Usage: source this file, then call resolve_machine_file.
-# Sets the variable MACHINE_FILE_PATH.
+# Usage: source this file, then capture the output:
+#   machine=$(resolve_machine_file)
 resolve_machine_file() {
   if [ -n "${AGENT_TIER_ASSIGNMENTS_FILE:-}" ]; then
-    MACHINE_FILE_PATH="$AGENT_TIER_ASSIGNMENTS_FILE"
+    echo "$AGENT_TIER_ASSIGNMENTS_FILE"
+  elif [ -n "${CLAUDE_HOME:-}" ]; then
+    echo "$CLAUDE_HOME/agent-tier-assignments.json"
   elif [ -n "${HOME:-}" ]; then
-    MACHINE_FILE_PATH="$HOME/.claude/agent-tier-assignments.json"
+    echo "$HOME/.claude/agent-tier-assignments.json"
   else
-    MACHINE_FILE_PATH=""
+    echo ""
   fi
 }
