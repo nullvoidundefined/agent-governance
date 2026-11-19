@@ -40,7 +40,7 @@ Line 1 is the status, line 2 the reason.
 |---|---|---|
 | `green` | 0 | The test command passed and no protected path changed. Review the diff, then continue the loop. |
 | `failed` | 1 | `tests-failed` (the last 60 lines of test output follow), `touched-protected-path` (line 2 names it), `timeout`, `turn-limit` or `process-error`. |
-| `unavailable` | 3 | `no-secondary-configured`, `server-unreachable` or `model-missing`. Claude was never started. |
+| `unavailable` | 3 | `no-secondary-configured`, `server-unreachable`, `model-missing` or `rules-missing` (the implementer rules file is absent). Claude was never started. |
 | usage error | 2 | A bad flag or a `--red` that is not a commit. Fix the call. |
 
 On `failed` with `touched-protected-path`, discard the attempt's changes (back to the RED commit) before retrying. After one more attempt that also fails, or on `unavailable`, discard Qwen's changes back to the RED commit and dispatch the primary `implementer`; name the fallback in the PR.
