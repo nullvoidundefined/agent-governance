@@ -10,8 +10,8 @@
 #   failed       exit 1: tests-failed (the last 60 lines of the test output
 #                follow from line 3), touched-protected-path (line 2 names the
 #                path), timeout, or process-error.
-#   unavailable  exit 3: no-secondary-configured, server-unreachable or
-#                model-missing. Claude is never started.
+#   unavailable  exit 3: no-secondary-configured, server-unreachable,
+#                model-missing, or rules-missing. Claude is never started.
 #   usage error  exit 2.
 # QWEN_DISPATCH_TIMEOUT_SECONDS (default 1800) and QWEN_DISPATCH_MAX_TURNS
 # (default 60) set the caps; the timeout applies to the Claude run and, separately,
@@ -24,7 +24,9 @@
 # The invocation is the one the slice's spike settled on: normal mode with
 # --setting-sources project,local, so the third-party plugins in the user
 # settings do not load, plus the user's hooks passed explicitly through
-# --settings and the user's CLAUDE.md passed as appended system prompt.
+# --settings and the implementer-only rules file (default
+# claude/enforce/qwen-implementer-rules.md, overridable via
+# QWEN_IMPLEMENTER_RULES_FILE) passed as appended system prompt.
 # Claude Code runs with the repo as its working directory and stdin closed, and
 # in its own process group so a timeout kills every child it started
 # (macOS has no timeout(1) or setsid).
@@ -33,7 +35,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY="${CLAUDE_ROLE_POLICY_FILE:-$HERE/role-policy.json}"
 USER_SETTINGS="${CLAUDE_SETTINGS_FILE:-${HOME:-}/.claude/settings.json}"
-USER_RULES="${HOME:-}/.claude/CLAUDE.md"
+IMPLEMENTS_RULES="${QWEN_IMPLEMENTER_RULES_FILE:-$HERE/qwen-implementer-rules.md}"
 
 . "$HERE/resolve-machine-file.sh"
 resolve_machine_file
@@ -154,7 +156,7 @@ run_claude() {
   if [ -f "$USER_SETTINGS" ] && jq '{hooks: .hooks}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
     args+=(--settings "$SCRATCH/hooks.json")
   fi
-  [ ! -f "$USER_RULES" ] || args+=(--append-system-prompt-file "$USER_RULES")
+  [ ! -f "$IMPLEMENTS_RULES" ] || args+=(--append-system-prompt-file "$IMPLEMENTS_RULES")
 
   : >"$log"
   run_capped "$log" env ANTHROPIC_BASE_URL="$endpoint" ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY= \
@@ -191,6 +193,8 @@ parse_flags "$@"
 validate_inputs
 load_secondary
 check_server
+
+[ -f "$IMPLEMENTS_RULES" ] || report unavailable rules-missing 3
 
 load_patterns
 run_claude
