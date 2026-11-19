@@ -26,12 +26,13 @@
 # Machine file: $AGENT_TIER_ASSIGNMENTS_FILE (default
 # ~/.claude/agent-tier-assignments.json), secondary.{agent,model,endpoint}.
 # The invocation is normal mode with --setting-sources project,local, so the
-# third-party plugins in the user settings do not load; only the user's
-# PreToolUse and PostToolUse hooks (the safety guards and output redaction)
-# are passed through --settings; Stop, SubagentStop and SessionStart hooks
-# are left out because they are orchestrator-only (they enforce end-of-turn
-# summary formats and session checks); and the implementer-only rules file
-# (default claude/enforce/qwen-implementer-rules.md, overridable via
+# third-party plugins in the user settings do not load; when the user settings
+# file is readable, only its PreToolUse and PostToolUse hooks (the safety
+# guards and output redaction) are passed through --settings; Stop,
+# SubagentStop and SessionStart hooks are left out because they are
+# orchestrator-only (they enforce end-of-turn summary formats and session
+# checks); and the implementer-only rules file (default
+# claude/enforce/qwen-implementer-rules.md, overridable via
 # QWEN_IMPLEMENTER_RULES_FILE) is appended as system prompt.
 # Claude Code runs with the repo as its working directory and stdin closed, and
 # in its own process group so a timeout kills every child it started
