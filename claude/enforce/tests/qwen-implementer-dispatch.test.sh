@@ -454,6 +454,20 @@ for other in claude gemini; do
   expectClaudeNeverStarted "secondary agent $other"
 done
 
+# HOME and AGENT_TIER_ASSIGNMENTS_FILE both unset: there is no machine file to
+# read, so the result is still unavailable / no-secondary-configured, exit 3.
+# env -u HOME keeps the case off the real ~/.claude.
+newCase home-unset
+RC=0
+OUT=$(printf 'STDIN-LEAK\n' | env -u HOME -u AGENT_TIER_ASSIGNMENTS_FILE bash "$SCRIPT" \
+  --repo "$REPO" --red "$RED" --prompt "$PROMPT" --log "$LOG" --test-cmd "$TEST_CMD" 2>"$WORK/err") || RC=$?
+ERR=$(cat "$WORK/err")
+STATUS=$(printf '%s\n' "$OUT" | sed -n 1p)
+REASON=$(printf '%s\n' "$OUT" | sed -n 2p)
+expectResult "HOME unset" 3 unavailable no-secondary-configured
+[ "$REASON" = "no-secondary-configured" ] || failCase "HOME unset: line 2 must be exactly 'no-secondary-configured' (got '$REASON')"
+expectClaudeNeverStarted "HOME unset"
+
 # --- 8. Endpoint does not answer: unavailable / server-unreachable. ---
 newCase server-down
 echo down >"$WORK/curl-mode"
