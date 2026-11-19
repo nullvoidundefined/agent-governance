@@ -13,8 +13,14 @@ One command runs one GREEN attempt on the local model and reports a result you d
 Write a prompt file in the scratchpad. It holds, in this order:
 
 - The `implementer` agent's contract: make the RED tests pass with the minimum change, reuse existing code before adding any, never edit tests, specs or the lock, and raise `DISPUTE: <test>: <why>` instead of changing a test.
-- The failing test names and the exact test command.
+- The failing test names and the exact test command. Write the stack's linter into the command after the tests, joined with `&&`, with an explicit list of target files or a glob that covers files Qwen may add (for shell, `<test cmd> && shellcheck enforce/*.sh`), so a lint failure comes back as `tests-failed` with its output.
 - The branch and head sha.
+- The standards checklist, copied verbatim:
+  - Before adding a helper, constant or environment variable, search the repository for an existing one and reuse it.
+  - After fixing a bug, search the whole repository for the same pattern. Fix every occurrence the failing tests exercise. Do not edit the others; list them in your final message (it lands in the log).
+  - Match the neighboring files: naming, comment style, how they print or return values.
+  - Every comment and message must be true in every case the code can reach, for example for each tier or each missing input.
+  - Change nothing the failing tests do not ask for.
 - "Do not commit. Do not install packages. Do not touch anything outside this repository."
 
 ## 2. Run it

@@ -19,11 +19,12 @@ You define correctness for one behavior. The implementer gets your tests and the
 
 1. Read the criteria, then the existing tests nearest the change, for layout, runner, and assertion style.
 2. Write the tests for these criteria only. Assert visible behavior: return values, raised errors, response status and body, database rows, emitted events. Never use a mock-call count as the only check. Include the negative case the criteria name, and one negative-input case for any handler of user input.
-3. If the tests need a module, type, or export that does not exist, import it as if it did. The name you choose is the interface the implementer creates, and the missing-module failure is a valid RED.
-4. Prove RED:
+3. When the behavior is a bug class, such as a repeated pattern or an unsafe path built the same way in several files, add one scan test that searches every file the class can reach (for example `enforce/*.sh`) for the pattern, in addition to the single-file case. A fix in one file must not leave the same bug in the next.
+4. If the tests need a module, type, or export that does not exist, import it as if it did. The name you choose is the interface the implementer creates, and the missing-module failure is a valid RED.
+5. Prove RED:
    - **Standard risk:** run the new tests against the unchanged code. Each must fail for the behavior it names, not for a typo, syntax error, or broken fixture.
    - **High risk, lock open:** run `bash ~/.claude/enforce/tdd.sh red <test file>` (or `<file>::<test id>` for a new test in a file that already passes) until it prints `RED:`.
-5. Stop. Report:
+6. Stop. Report:
    - the failing command and its failure line (or the `RED:` line)
    - every interface the tests assume (module path, export, signature, error type)
    - any criterion you found ambiguous, with the reading you chose
