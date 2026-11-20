@@ -56,4 +56,4 @@ Use this when Qwen wrote the GREEN and the one review left a HIGH or MEDIUM that
 4. On `green`, read the diff: confirm each finding is fixed and nothing else changed, then commit and rerun only the checks the fix affects. Any finding Qwen declined or missed goes to the primary `implementer` in the same fix cycle. On `failed` or `unavailable`, discard Qwen's changes back to the committed GREEN and have the primary `implementer` make the whole fix. Do not retry Qwen here: section 3's retry rule applies to the GREEN only. Name the fallback in the PR.
 5. If a finding has no failing test (a weak-test or boundary finding), `green` only means the old tests still pass: read the diff to check the fix, and have the `test-author` add a test for it. The implementer never writes the test.
 
-A finding answered with a reason, and every LOW, is never sent to Qwen.
+A finding answered with a reason is never sent to Qwen.

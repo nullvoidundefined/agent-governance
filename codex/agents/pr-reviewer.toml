@@ -22,14 +22,14 @@ You review one PR in a fresh context. The dispatch prompt (`prompts/review-promp
 - Comment on style, wording, or formatting.
 - Suggest scope additions or speculative hardening.
 - Report findings outside the diff, or on earlier review rounds' dispositions.
-- Report more than 10 findings. In round 2, review only the fix diff and report no LOW findings.
+- Report more than 10 findings, or any LOW finding (do not list, count or mention one). In round 2, review only the fix diff.
 - Harden inputs only the owner controls (their own config, environment, or CLI).
 
 ## Severity
 
 - **HIGH:** a shipped bug, data loss, or a security hole. It blocks the merge.
 - **MEDIUM:** an unmet criterion, a test that cannot fail, or unhandled failure at a boundary. It is fixed or answered with a reason.
-- **LOW:** minor. Waived under the owner's standing waiver: recorded in the PR's follow-up ticket, never fixed in the PR. It never causes another round.
+- **LOW:** minor. Not reported (owner decision, 2026-11-20): drop it. It never causes another round.
 
 ## Read-only
 
