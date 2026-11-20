@@ -588,13 +588,15 @@ expectResult "a compound test command" 0 green ""
 [ "$(cat "$WORK/testcmd-pwd" 2>/dev/null)" = "$REPO" ] || failCase "the test command must run with the repository as its working directory"
 
 # --- 14. The protected-path check fails closed. ---
-# claude runs a production-only fix and the test command passes, so only an
-# unusable role policy stands between the run and green.
+# claude would run a production-only fix and the test command would pass, so
+# only an unusable role policy stands between the run and green. The policy is
+# checked before the run, so claude never starts (IAN-701).
 # expectPolicyUnreadable <what> <policy file>
 expectPolicyUnreadable() {
   newCase "policy-$1"
   CLAUDE_ROLE_POLICY_FILE="$2" dispatchCase
   expectResult "a role policy that is $1" 1 failed policy-unreadable
+  expectClaudeNeverStarted "a role policy that is $1"
 }
 newCase policy-setup
 POLICY_DIR="$CASE_DIR"
@@ -934,6 +936,183 @@ expectResult "a missing settings file" 0 green ""
   failCase "missing settings: --settings must not be passed (args: $(tr '\n' ' ' <"$WORK/claude-args"))"
 [ ! -f "$WORK/claude-settings" ] || failCase "missing settings: no settings file may reach claude"
 
+export PATH="$PATH_BEFORE_SETTINGS"
+
+# --- 20. LOW review findings (IAN-701). ---
+# Every case runs through dispatchBounded, so a hang fails the case instead of
+# the suite. Extra stub behaviour comes from a wrapper claude, first on PATH
+# for these cases only: it runs the stub claude (mode fix unless set), then
+# performs the action named in $WORK/claude-extra in the repository, and exits
+# with the stub's status.
+EXTRA_STUBS="$WORK/extra-stubs"
+mkdir -p "$EXTRA_STUBS"
+cat >"$EXTRA_STUBS/claude" <<EOF
+#!/usr/bin/env bash
+W="$WORK"
+INNER="$STUBS/claude"
+EOF
+cat >>"$EXTRA_STUBS/claude" <<'EOF'
+rc=0
+"$INNER" "$@" || rc=$?
+extra=$(cat "$W/claude-extra" 2>/dev/null || echo none)
+case "$extra" in
+  ctrl-name)
+    printf 'echo bad\n' >"tests/bad"$'\n'"name"$'\a'".sh"
+    ;;
+  commit-production)
+    git add -A >/dev/null 2>&1
+    git -c core.hooksPath=/dev/null -c user.email=s@s -c user.name=s commit -qm "stub commit" >/dev/null 2>&1
+    ;;
+  reset-soft)
+    git reset -q --soft HEAD~1 >/dev/null 2>&1
+    ;;
+  break-git)
+    # The repository's .git becomes a gitfile naming a directory that does not
+    # exist, so every later git command in the repository fails.
+    mv .git .git-moved-by-stub
+    printf 'gitdir: %s\n' "$W/no-such-gitdir" >.git
+    ;;
+esac
+exit "$rc"
+EOF
+chmod +x "$EXTRA_STUBS/claude"
+export PATH="$EXTRA_STUBS:$PATH"
+
+# extraCase <name> <action>: a fresh case whose wrapper claude performs <action>.
+extraCase() {
+  newCase "$1"
+  printf '%s\n' "$2" >"$WORK/claude-extra"
+}
+
+# writePolicy <file> <json>: writes a role policy for one case.
+writePolicy() {
+  printf '%s\n' "$2" >"$1"
+  jq -e . "$1" >/dev/null || failCase "setup: policy JSON is malformed: $2"
+}
+FULL_TESTS=$(jq -r .patterns.tests "$CLAUDE_HARNESS_ROOT/enforce/role-policy.json")
+FULL_SPECS=$(jq -r .patterns.specs "$CLAUDE_HARNESS_ROOT/enforce/role-policy.json")
+FULL_LOCK=$(jq -r .patterns.lock "$CLAUDE_HARNESS_ROOT/enforce/role-policy.json")
+
+# 20.1 A relative --log resolves against the caller's working directory, once.
+# Both the caller and the repository hold an out/ directory, so a script that
+# opens the log once in each place writes its run log inside the repository.
+extraCase relative-log none
+CALLER_DIR="$CASE_DIR/caller"
+mkdir -p "$CALLER_DIR/out" "$REPO/out"
+RETURN_DIR=$(pwd)
+cd "$CALLER_DIR"
+LOG="out/run.log"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
+cd "$RETURN_DIR"
+expectResult "a relative --log" 0 green ""
+[ ! -e "$REPO/out/run.log" ] ||
+  failCase "relative --log: no log may appear inside the repository, but $REPO/out/run.log exists (it holds: $(head -c 300 "$REPO/out/run.log"))"
+STRAY_LOGS=$(find "$REPO" -name run.log -not -path '*/.git/*' 2>/dev/null)
+[ -z "$STRAY_LOGS" ] || failCase "relative --log: no run.log may appear in the repository tree (found: $STRAY_LOGS)"
+LOG="$CALLER_DIR/out/run.log"
+expectLogHasRun "relative --log at <caller cwd>/out/run.log" fix
+
+# 20.2 A changed protected path whose name holds a newline and a BEL: stdout is
+# exactly two lines and line 2 carries no control character.
+extraCase ctrl-name ctrl-name
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
+expectResult "a protected file named with a newline and a BEL" 1 failed touched-protected-path
+OUT_LINES=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
+[ "$OUT_LINES" = "2" ] ||
+  failCase "control-character name: stdout must be exactly two lines (got $OUT_LINES: '$(printf '%s' "$OUT" | od -c | head -5 | tr '\n' ' ')')"
+! printf '%s' "$REASON" | LC_ALL=C grep -q '[[:cntrl:]]' ||
+  failCase "control-character name: line 2 must hold no control character (got: $(printf '%s' "$REASON" | od -c | tr '\n' ' '))"
+
+# 20.3 HEAD moved during the run: failed / head-moved, even with passing tests.
+extraCase head-commit commit-production
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
+expectResult "a run that commits a production-only fix" 1 failed head-moved
+[ "$REASON" = "head-moved" ] || failCase "head moved by a commit: line 2 must be exactly 'head-moved' (got '$REASON')"
+
+# A reset moves HEAD too. The case starts one non-protected commit past RED so
+# the stub has a commit to reset away; the fix stays in the working tree.
+extraCase head-reset reset-soft
+printf 'notes\n' >"$REPO/notes.txt"
+git -C "$REPO" add notes.txt
+git -C "$REPO" commit -qm "notes past RED"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
+expectResult "a run that resets HEAD" 1 failed head-moved
+[ "$REASON" = "head-moved" ] || failCase "head moved by a reset: line 2 must be exactly 'head-moved' (got '$REASON')"
+
+# HEAD past RED at the start but left alone by the run is not a move.
+extraCase head-past-red-unmoved none
+printf 'notes\n' >"$REPO/notes.txt"
+git -C "$REPO" add notes.txt
+git -C "$REPO" commit -qm "notes past RED"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
+expectResult "HEAD past RED before the run and unmoved by it" 0 green ""
+
+# 20.4 A missing or unreadable user settings file: the run still starts without
+# --settings, and stderr carries exactly one line naming 'no user hooks'.
+extraCase settings-missing-warning none
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_SETTINGS_FILE="$CASE_DIR/no-such-settings.json"
+expectResult "a missing user settings file" 0 green ""
+[ "$(claudeStarts)" = "1" ] || failCase "missing settings warning: claude must still start once (got $(claudeStarts))"
+! grep -qx -- "--settings" "$WORK/claude-args" ||
+  failCase "missing settings warning: --settings must not be passed (args: $(tr '\n' ' ' <"$WORK/claude-args"))"
+WARN_COUNT=$(printf '%s\n' "$ERR" | grep -c 'no user hooks' || true)
+[ "$WARN_COUNT" = "1" ] ||
+  failCase "missing settings warning: stderr must hold exactly one line containing 'no user hooks' (got $WARN_COUNT; stderr: '$ERR')"
+
+extraCase settings-unreadable-warning none
+printf '{"hooks":{}}\n' >"$CASE_DIR/locked-settings.json"
+chmod 000 "$CASE_DIR/locked-settings.json"
+# root reads a mode-000 file anyway; the case only means something otherwise.
+if ! [ -r "$CASE_DIR/locked-settings.json" ]; then
+  dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_SETTINGS_FILE="$CASE_DIR/locked-settings.json"
+  chmod 600 "$CASE_DIR/locked-settings.json"
+  expectResult "an unreadable user settings file" 0 green ""
+  [ "$(claudeStarts)" = "1" ] || failCase "unreadable settings warning: claude must still start once (got $(claudeStarts))"
+  WARN_COUNT=$(printf '%s\n' "$ERR" | grep -c 'no user hooks' || true)
+  [ "$WARN_COUNT" = "1" ] ||
+    failCase "unreadable settings warning: stderr must hold exactly one line containing 'no user hooks' (got $WARN_COUNT; stderr: '$ERR')"
+fi
+chmod 600 "$CASE_DIR/locked-settings.json"
+
+extraCase settings-readable-no-warning none
+printf '{"hooks":{"PreToolUse":%s}}\n' "$PRE_HOOK" >"$CASE_DIR/settings.json"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_SETTINGS_FILE="$CASE_DIR/settings.json"
+expectResult "a readable user settings file" 0 green ""
+! printf '%s\n' "$ERR" | grep -q 'no user hooks' ||
+  failCase "readable settings: stderr must not warn 'no user hooks' (stderr: '$ERR')"
+
+# 20.5, 20.6 A policy missing any of tests, specs and lock fails closed before
+# the run (expectPolicyUnreadable asserts claude never starts).
+newCase policy-partial-setup
+PARTIAL_DIR="$CASE_DIR"
+writePolicy "$PARTIAL_DIR/tests-only.json" "$(jq -n --arg t "$FULL_TESTS" '{patterns: {tests: $t}}')"
+expectPolicyUnreadable partial-tests-only "$PARTIAL_DIR/tests-only.json"
+writePolicy "$PARTIAL_DIR/no-lock.json" "$(jq -n --arg t "$FULL_TESTS" --arg s "$FULL_SPECS" '{patterns: {tests: $t, specs: $s}}')"
+expectPolicyUnreadable partial-without-lock "$PARTIAL_DIR/no-lock.json"
+writePolicy "$PARTIAL_DIR/no-tests.json" "$(jq -n --arg s "$FULL_SPECS" --arg l "$FULL_LOCK" '{patterns: {specs: $s, lock: $l}}')"
+expectPolicyUnreadable partial-without-tests "$PARTIAL_DIR/no-tests.json"
+writePolicy "$PARTIAL_DIR/empty-lock.json" "$(jq -n --arg t "$FULL_TESTS" --arg s "$FULL_SPECS" '{patterns: {tests: $t, specs: $s, lock: ""}}')"
+expectPolicyUnreadable partial-empty-lock "$PARTIAL_DIR/empty-lock.json"
+
+# A complete policy still runs and reports green.
+newCase policy-complete
+writePolicy "$CASE_DIR/complete.json" "$(jq -n --arg t "$FULL_TESTS" --arg s "$FULL_SPECS" --arg l "$FULL_LOCK" '{patterns: {tests: $t, specs: $s, lock: $l}}')"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_ROLE_POLICY_FILE="$CASE_DIR/complete.json"
+expectResult "a complete role policy" 0 green ""
+
+# 20.7 Errors in the protected-path check fail closed.
+# An invalid extended regex in the policy.
+extraCase check-bad-regex none
+writePolicy "$CASE_DIR/bad-regex.json" "$(jq -n --arg s "$FULL_SPECS" --arg l "$FULL_LOCK" '{patterns: {tests: "([", specs: $s, lock: $l}}')"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_ROLE_POLICY_FILE="$CASE_DIR/bad-regex.json"
+expectResult "a policy pattern that is an invalid regex" 1 failed protected-path-check-failed
+
+# The changed-path listing fails: the run leaves .git as a gitfile pointing nowhere.
+extraCase check-listing-fails break-git
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
+expectResult "a changed-path listing that fails" 1 failed protected-path-check-failed
+
+rm -f "$WORK/claude-extra"
 export PATH="$PATH_BEFORE_SETTINGS"
 
 echo "PASS: qwen-implementer-dispatch"
