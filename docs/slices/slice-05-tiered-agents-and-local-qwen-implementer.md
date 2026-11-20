@@ -154,7 +154,7 @@ claude -p "<prompt>" --model <model> --permission-mode dontAsk \
 
 **Stop hooks.** `turn-summary-guard` fires in the headless run and sends back its feedback, which costs one extra turn. The run still ended `success` (3 turns). It does not break the run.
 
-**Qwen acts on orchestrator rules (owner decision 6 trigger).** In the fix run Qwen wrote a `**Done:**` summary line because the full `CLAUDE.md` says to. (Done in #228.) The slim target is therefore worth building, but not in this PR: record it for the owner.
+**Qwen acts on orchestrator rules (owner decision 6 trigger).** In the fix run Qwen wrote a `**Done:**` summary line because the full `CLAUDE.md` says to. The slim target was therefore not built in PR 2; it was built afterwards in #228 (2026-11-19).
 
 **Caps.** A trivial fix took 51 seconds and 7 turns. `QWEN_DISPATCH_TIMEOUT_SECONDS` 1800 and `QWEN_DISPATCH_MAX_TURNS` 60 stay as the defaults. `--max-turns` is accepted but absent from `--help`; whether it is enforced is not yet proven, so the script's timeout is the real cap.
 
