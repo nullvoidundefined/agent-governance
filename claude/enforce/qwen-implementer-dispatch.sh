@@ -9,10 +9,16 @@
 #   green        exit 0: the test command passed and no protected path changed.
 #   failed       exit 1: tests-failed (the last 60 lines of the test output
 #                follow from line 3), touched-protected-path (line 2 names the
-#                path), timeout, stalled, or process-error.
+#                path), timeout, stalled, process-error, head-moved, or
+#                protected-path-check-failed.
 #   unavailable  exit 3: no-secondary-configured, server-unreachable,
 #                model-missing, or rules-missing. Claude is never started.
 #   usage error  exit 2.
+# gitignored paths are not scanned for protected changes, and
+# the final test command runs with stdin closed. HEAD movement (head-moved) and protected-path
+# check failures (protected-path-check-failed) are reported after the Claude run.
+# The role policy is checked before claude starts.
+#
 # QWEN_DISPATCH_TIMEOUT_SECONDS (default 3600) and QWEN_DISPATCH_MAX_TURNS
 # (default 60) set the caps; the timeout applies to the Claude run and, separately,
 # to the final test command. QWEN_DISPATCH_IDLE_SECONDS (default 600, 0 disables)
@@ -183,6 +189,8 @@ run_claude() {
     --setting-sources project,local --output-format stream-json --verbose)
   if [ -f "$USER_SETTINGS" ] && jq '{hooks: ((.hooks // {}) | with_entries(select(.key == "PreToolUse" or .key == "PostToolUse")))}' "$USER_SETTINGS" >"$SCRATCH/hooks.json" 2>/dev/null; then
     args+=(--settings "$SCRATCH/hooks.json")
+  elif [ ! -f "$USER_SETTINGS" ] || [ ! -r "$USER_SETTINGS" ]; then
+    echo "qwen-implementer-dispatch: warning: no user hooks passed to claude" >&2
   fi
   args+=(--append-system-prompt-file "$IMPLEMENTER_RULES")
 
@@ -193,48 +201,95 @@ run_claude() {
 
 # load_patterns: reads the protected-path patterns (tests, specs, lock) from the role
 # policy into $patterns before Qwen runs, so a run cannot rewrite them; empty when the
-# policy is missing, malformed or has none of the three.
+# policy is missing, malformed or has none of the three. Returns 1 if the policy file
+# is missing or unreadable.
 load_patterns() {
-  patterns=$(jq -r '[.patterns.tests, .patterns.specs, .patterns.lock] | map(select(. != null and . != "")) | .[]' "$POLICY" 2>/dev/null) || patterns=""
+  [ -f "$POLICY" ] && [ -r "$POLICY" ] || return 1
+  local t s l
+  t=$(jq -r '.patterns.tests // empty' "$POLICY" 2>/dev/null)
+  s=$(jq -r '.patterns.specs // empty' "$POLICY" 2>/dev/null)
+  l=$(jq -r '.patterns.lock // empty' "$POLICY" 2>/dev/null)
+  if [ -n "$t" ] && [ -n "$s" ] && [ -n "$l" ]; then
+    patterns="$t"$'\n'"$s"$'\n'"$l"
+  else
+    patterns=""
+  fi
 }
 
 # find_protected_path: prints the first changed path, tracked or untracked, that matches
-# one of $patterns.
+# one of $patterns. Returns 0 with the path when found, 1 when none changed, 2 on error.
 find_protected_path() {
-  local path pat
+  local pat rc
+  while IFS= read -r pat; do
+    [ -n "$pat" ] || continue
+    printf '' | grep -Eq -- "$pat" 2>/dev/null
+    rc=$?
+    [ "$rc" = "0" ] || [ "$rc" = "1" ] || return 2
+  done <<<"$patterns"
+
+  local listing="$SCRATCH/protected_listing"
+  : >"$listing"
+  git -C "$repo" -c core.quotepath=off diff --name-only --no-renames -z "$redSha" >>"$listing" 2>/dev/null
+  if [ $? -ne 0 ]; then return 2; fi
+  git -C "$repo" -c core.quotepath=off ls-files --others --exclude-standard -z >>"$listing" 2>/dev/null
+  if [ $? -ne 0 ]; then return 2; fi
+
+  local path
   while IFS= read -r -d '' path; do
+    [ -n "$path" ] || continue
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
       if printf '%s\n' "$path" | grep -Eq -- "$pat"; then
-        printf '%s' "$path"
+        printf '%s' "$path" | LC_ALL=C tr -d '[:cntrl:]'
         return 0
       fi
     done <<<"$patterns"
-  done < <(
-    git -C "$repo" -c core.quotepath=off diff --name-only --no-renames -z "$redSha" 2>/dev/null
-    git -C "$repo" -c core.quotepath=off ls-files --others --exclude-standard -z 2>/dev/null
-  )
+  done <"$listing"
   return 1
 }
 
 parse_flags "$@"
 validate_inputs
+
+# Resolve a relative --log against the caller's working directory, before cd.
+if [ -n "$log" ] && [ "${log:0:1}" != "/" ]; then
+  log="$PWD/$log"
+fi
+
 load_secondary
 check_server
 
 [ -f "$IMPLEMENTER_RULES" ] || report unavailable rules-missing 3
 
-load_patterns
+# Policy checked before claude starts.
+if ! load_patterns; then
+  report failed "policy-unreadable: no protected-path patterns in $POLICY" 1
+fi
+[ -n "$patterns" ] || report failed "policy-unreadable: no protected-path patterns in $POLICY" 1
+
+# Record HEAD before the run so we can detect movement.
+headBefore=$(git -C "$repo" rev-parse HEAD 2>/dev/null) || headBefore=""
+
 run_claude
 case "$capStatus" in
   timeout) report failed timeout 1 ;;
   stalled) report failed stalled 1 ;;
   process-error) report failed process-error 1 ;;
 esac
-[ -n "$patterns" ] || report failed "policy-unreadable: no protected-path patterns in $POLICY" 1
 
-if protectedPath=$(find_protected_path); then
-  report failed "touched-protected-path $protectedPath" 1
+# Protected-path check first (so commit-test gets touched-protected-path).
+protectedPath=$(find_protected_path); ppStatus=$?
+case "$ppStatus" in
+  0) report failed "touched-protected-path $protectedPath" 1 ;;
+  2) report failed protected-path-check-failed 1 ;;
+esac
+
+# HEAD movement check after protected-path, before the final test command.
+if [ -n "$headBefore" ]; then
+  headAfter=$(git -C "$repo" rev-parse HEAD 2>/dev/null) || headAfter=""
+  if [ "$headBefore" != "$headAfter" ]; then
+    report failed head-moved 1
+  fi
 fi
 
 run_capped "$SCRATCH/test.out" 0 bash -c "$testCmd"
