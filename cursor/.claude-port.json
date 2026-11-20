@@ -69,7 +69,7 @@
     "skills/documentation-create/SKILL.md": "sha256:2d96daf8552969f986b6a7a92dc067cf848e30416da01d460a034dbc67c13341",
     "skills/documentation-create/scripts/prose-flags.sh": "sha256:37b1f72a560f37feb01fa8a7310aac5a0023342d99e0eb502d4570c8d7ff6838",
     "skills/gof/SKILL.md": "sha256:c9ffe8943c1f5a136817d89b4c03f2c79ebed355e111690c0dffde958387d81c",
-    "skills/qwen-implementer-dispatch/SKILL.md": "sha256:76090617d6f1b5971a9005bd9641c2111625adfa8b6377b2185829a82456e6af",
+    "skills/qwen-implementer-dispatch/SKILL.md": "sha256:9ab342fe19cc1635bc4725ff22ba9530f234903550eceb5afb87963554593a99",
     "skills/spec-grounding/SKILL.md": "sha256:329ac8581fb8ab2d65eb302e74cb08d1af9984836104807c097f65b0a4e08152",
     "skills/spec-grounding/scripts/check.sh": "sha256:e9c998ee15c11553cf3c8c3d7a95ded7967e312c0d938c974d35653fee0289f6",
     "skills/structure-conventions/SKILL.md": "sha256:a029f47aadcc7789e34992276628480ae4734a8880aee1cc45a720f36a38deb0",
