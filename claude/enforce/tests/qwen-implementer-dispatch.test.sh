@@ -1115,4 +1115,73 @@ expectResult "a changed-path listing that fails" 1 failed protected-path-check-f
 rm -f "$WORK/claude-extra"
 export PATH="$PATH_BEFORE_SETTINGS"
 
+# --- 21. LOW review findings (IAN-712). ---
+# 21.1 The user settings path honors CLAUDE_HOME. Order: CLAUDE_SETTINGS_FILE,
+# then $CLAUDE_HOME/settings.json, then $HOME/.claude/settings.json. Each file
+# holds a PreToolUse hook with a different command, so the hook claude receives
+# shows which file was read. The settings wrapper stub (case 19) copies the
+# --settings file while claude runs.
+export PATH="$SETTINGS_STUBS:$PATH_BEFORE_SETTINGS"
+CH_PRE='[{"matcher":"Bash","hooks":[{"type":"command","command":"/guards/claude-home-pre.sh"}]}]'
+HOME_PRE='[{"matcher":"Bash","hooks":[{"type":"command","command":"/guards/home-pre.sh"}]}]'
+EXPLICIT_PRE='[{"matcher":"Bash","hooks":[{"type":"command","command":"/guards/explicit-pre.sh"}]}]'
+# settingsHomeCase <name>: a fresh case with $CASE_DIR/chome/settings.json,
+# $CASE_DIR/home/.claude/settings.json and $CASE_DIR/explicit-settings.json.
+settingsHomeCase() {
+  newCase "$1"
+  rm -f "$WORK/claude-settings"
+  mkdir -p "$CASE_DIR/chome" "$CASE_DIR/home/.claude"
+  printf '{"hooks":{"PreToolUse":%s}}\n' "$CH_PRE" >"$CASE_DIR/chome/settings.json"
+  printf '{"hooks":{"PreToolUse":%s}}\n' "$HOME_PRE" >"$CASE_DIR/home/.claude/settings.json"
+  printf '{"hooks":{"PreToolUse":%s}}\n' "$EXPLICIT_PRE" >"$CASE_DIR/explicit-settings.json"
+}
+# expectPassedPreHook <what> <hook json>: the run was green and claude received
+# --settings whose PreToolUse equals the hook json.
+expectPassedPreHook() {
+  local got
+  expectResult "$1" 0 green ""
+  grep -qx -- "--settings" "$WORK/claude-args" ||
+    failCase "$1: --settings must be passed (args: $(tr '\n' ' ' <"$WORK/claude-args"); stderr: '$ERR')"
+  [ -f "$WORK/claude-settings" ] || failCase "$1: the --settings file must exist while claude runs"
+  got=$(jq -c '.hooks.PreToolUse' "$WORK/claude-settings" 2>/dev/null || true)
+  [ "$got" = "$(printf '%s' "$2" | jq -c .)" ] ||
+    failCase "$1: the PreToolUse hook passed must be $(printf '%s' "$2" | jq -c .) (got $got)"
+}
+
+settingsHomeCase settings-claude-home
+dispatchBounded 30 -u CLAUDE_SETTINGS_FILE QWEN_DISPATCH_TIMEOUT_SECONDS=20 \
+  CLAUDE_HOME="$CASE_DIR/chome" HOME="$CASE_DIR/home"
+expectPassedPreHook "CLAUDE_SETTINGS_FILE unset, CLAUDE_HOME set: \$CLAUDE_HOME/settings.json ahead of \$HOME/.claude" "$CH_PRE"
+
+settingsHomeCase settings-explicit-over-claude-home
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_SETTINGS_FILE="$CASE_DIR/explicit-settings.json" \
+  CLAUDE_HOME="$CASE_DIR/chome" HOME="$CASE_DIR/home"
+expectPassedPreHook "CLAUDE_SETTINGS_FILE wins over CLAUDE_HOME" "$EXPLICIT_PRE"
+
+settingsHomeCase settings-home-fallback
+dispatchBounded 30 -u CLAUDE_SETTINGS_FILE -u CLAUDE_HOME QWEN_DISPATCH_TIMEOUT_SECONDS=20 HOME="$CASE_DIR/home"
+expectPassedPreHook "CLAUDE_SETTINGS_FILE and CLAUDE_HOME unset: \$HOME/.claude/settings.json" "$HOME_PRE"
+
+settingsHomeCase settings-claude-home-no-home
+dispatchBounded 30 -u CLAUDE_SETTINGS_FILE -u HOME QWEN_DISPATCH_TIMEOUT_SECONDS=20 CLAUDE_HOME="$CASE_DIR/chome"
+expectPassedPreHook "HOME unset, CLAUDE_HOME set: \$CLAUDE_HOME/settings.json" "$CH_PRE"
+! printf '%s\n' "$ERR" | grep -q 'no user hooks' ||
+  failCase "HOME unset, CLAUDE_HOME set: stderr must not warn 'no user hooks' (stderr: '$ERR')"
+! printf '%s\n' "$ERR" | grep -qF '/.claude/' ||
+  failCase "HOME unset, CLAUDE_HOME set: stderr must not name a /.claude/ path (stderr: '$ERR')"
+export PATH="$PATH_BEFORE_SETTINGS"
+
+# 21.2 A machine file path that looks like a jq option is still the path. The
+# script runs from a directory holding a valid machine file literally named -n.
+newCase dash-machine-file
+mkdir -p "$CASE_DIR/dashdir"
+printf '%s\n' '{"primary": {"agent": "claude"}, "secondary": {"agent": "qwen", "model": "qwen-coder-local", "endpoint": "http://127.0.0.1:11434"}}' \
+  >"$CASE_DIR/dashdir/-n"
+jq -e . -- "$CASE_DIR/dashdir/-n" >/dev/null || failCase "setup: the -n machine file JSON is malformed"
+RETURN_DIR=$(pwd)
+cd "$CASE_DIR/dashdir"
+dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 AGENT_TIER_ASSIGNMENTS_FILE=-n
+cd "$RETURN_DIR"
+expectResult "AGENT_TIER_ASSIGNMENTS_FILE=-n naming a valid machine file in the working directory" 0 green ""
+
 echo "PASS: qwen-implementer-dispatch"
