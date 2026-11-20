@@ -23,7 +23,7 @@ Threat model and acceptance boundaries (from the owner):
 
 For each control:
 
-1. Name its input sources and who controls them. When the only source is the owner's own config, environment, or CLI, the finding is at most LOW. Network-facing CORS, cookie, and header settings are not capped. When the only precondition is an outage or stall of a dependency the project owns (Redis, Postgres down or slow), the finding is at most LOW, unless an attacker can cause that outage.
+1. Name its input sources and who controls them. When the only source is the owner's own config, environment, or CLI, the finding is capped at LOW and is not reported. Network-facing CORS, cookie, and header settings are not capped. When the only precondition is an outage or stall of a dependency the project owns (Redis, Postgres down or slow), the finding is capped at LOW (not reported), unless an attacker can cause that outage.
 2. Try the worst value each source can supply. Does the control hold?
 3. Check that a test feeds the control its insecure value. If not, report a MEDIUM, once per control, and only for controls this PR added or changed.
 
@@ -35,7 +35,7 @@ Rules:
   - CRITICAL or HIGH: exploitable.
   - MEDIUM: exploitable under a stated, realistic precondition, or a missing insecure-input test.
   - LOW: hardening. Do not report it.
-  - Agent guards (hooks that judge commands an agent issues): a bypass is HIGH only when a non-adversarial agent could plausibly type it while doing normal work (an ordinary option, alias, env var, wrapper, or tool). A bypass that needs deliberate obfuscation (keywords split by comments, a variable or empty quotes as the program word, option spellings chosen to dodge parsing, glob or brace tricks in a host name, nested comment syntax) is at most LOW: list it under known limits; it never starts a round. A guard's threat model is a mistaken agent; a deliberately evasive one can already write and run a script (owner decision, 2026-10-05).
+  - Agent guards (hooks that judge commands an agent issues): a bypass is HIGH only when a non-adversarial agent could plausibly type it while doing normal work (an ordinary option, alias, env var, wrapper, or tool). A bypass that needs deliberate obfuscation (keywords split by comments, a variable or empty quotes as the program word, option spellings chosen to dodge parsing, glob or brace tricks in a host name, nested comment syntax) is capped at LOW: it is not reported and never starts a round. A guard's threat model is a mistaken agent; a deliberately evasive one can already write and run a script (owner decision, 2026-10-05).
 - Out of scope:
   - controls outside the frozen list
   - general correctness, tests, CI, or planning
