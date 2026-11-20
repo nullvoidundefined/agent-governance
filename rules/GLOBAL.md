@@ -48,9 +48,8 @@ High-risk work adds integration verification against real dependencies. Security
 ## Review
 
 - **Who:** every PR gets one review by the `pr-reviewer` agent in a fresh context. It gets the diff, the acceptance criteria, and the risk line, never the implementer's transcript.
-- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. LOW is waived (below).
+- **Severity:** HIGH blocks the merge. MEDIUM is fixed, or answered with a reason. Reviews report only HIGH and MEDIUM: LOW findings are not reported, counted, recorded or ticketed (owner decision, 2026-11-20).
 - **Second round:** only when round one found a HIGH, or a MEDIUM fixed in code. It reviews only the fix diff. There is no third round; an unresolved HIGH goes to the owner.
-- **LOW waiver:** a standing owner waiver covers every LOW finding, general and security. LOW findings are never fixed in the PR. When a PR has any, they go into one follow-up ticket for that PR, linked from the PR body; a PR with no LOW findings gets no ticket.
 - **Record:** in the PR body under `## Review`.
 
 ## Security audits
@@ -60,15 +59,15 @@ Security work runs outside the PR loop (owner decision, 2026-10-05, after per-PR
 - **Per PR:** only the mechanical checks: the `secret-scan` and guard hooks, GitGuardian, semgrep, and CodeQL in CI. No `security-reviewer` pass, threat model, or TDD lock by default.
 - **Audits:** the `audit-security` agent audits a whole repository when the owner asks, on a schedule the owner sets, or before a launch. It writes one report, `docs/audits/<date>-security.md`, with findings ranked by severity.
 - **Findings:** each audit finding becomes a ticket the owner triages. A finding never starts a PR, a fix, or another investigation on its own; the owner picks what gets fixed, and each fix is an ordinary PR.
-- **Opt-in:** the owner can ask for a security review of one PR: one `security-reviewer` round on the strongest model, recorded under `## Security review`. Its findings follow the Review rules (LOW waiver, severity caps in `prompts/security-review-prompt.md`); a second round needs the owner.
+- **Opt-in:** the owner can ask for a security review of one PR: one `security-reviewer` round on the strongest model, recorded under `## Security review`. Its findings follow the Review rules (HIGH and MEDIUM only, severity caps in `prompts/security-review-prompt.md`); a second round needs the owner.
 
 ## Stopping and anti-recursion
 
-- **Stay on the task:** a finding is fixed in a PR only when it breaks one of that PR's acceptance criteria or is a realistic failure: reachable by the change's real callers or inputs without deliberate evasion (for a high-risk PR, under its threat model). Everything else (adjacent gaps, other files, hardening) is recorded under the PR's `## Review` or `## Security review` (a LOW joins the PR's LOW-waiver ticket): no code, no new test, and no other ticket unless the owner asks. A HIGH is never dropped for scope alone; an out-of-scope HIGH goes to the owner.
+- **Stay on the task:** a finding is fixed in a PR only when it breaks one of that PR's acceptance criteria or is a realistic failure: reachable by the change's real callers or inputs without deliberate evasion (for a high-risk PR, under its threat model). Everything else (adjacent gaps, other files, hardening) is recorded under the PR's `## Review` or `## Security review` when it is a MEDIUM, and not reported when it would be a LOW: no code, no new test, and no other ticket unless the owner asks. A HIGH is never dropped for scope alone; an out-of-scope HIGH goes to the owner.
 - **No spiral:** each review round gets at most one fix cycle (failing test, fix, re-check); the next allowed round is that re-check. A finding still open after its cycle goes to the owner with a recommendation, and no further cycle starts without them. An open HIGH keeps blocking the merge until the owner decides; escalating does not clear it. When the Process budget is spent, stop and ask the owner the same way.
 - **Subagents stay in scope:** a dispatched agent does the task it was given. Anything it notices outside that task goes in its report as a note; it never fixes it.
 - **No restart:** a finding is fixed in an ordinary commit on the same PR. It does not restart planning, test authoring, the review, or unrelated verification. A finding that invalidates the approved design goes to the owner.
-- **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them, for deferred work the owner should see, or as a PR's one LOW-waiver ticket.
+- **No governance-generated governance:** never create a ticket, ledger, artifact, manifest, or rule only because another process artifact exists. Tickets exist when the owner asks for them or for deferred work the owner should see. LOW findings never get a ticket.
 - **Bounded review:** general review stops after two rounds at most, and the second happens only for a HIGH or a MEDIUM fixed in code. Each round looks only at what changed.
 - **Time box and fixed scope:** a high-risk task stops at about 90 minutes from RED and hands over what is left; no PR gains scope after it starts.
 - **Proportional verification:** depth follows product risk and changed behavior.

@@ -5,7 +5,7 @@ Fill the placeholders and paste the result as the `pr-reviewer` dispatch prompt 
 
 Round 2 runs only when round 1 found a HIGH, or a MEDIUM fixed in code. In round 2, paste only the fix diff. There is no round 3.
 
-Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>`, `answered: <reason>`, or `waived: <ticket>` for LOW). LOW findings are never fixed in the PR; when there are any, they go into one follow-up ticket for the PR.
+Record the result in the PR body under `## Review`: the reviewer, the range, the round, and the findings with their dispositions (`fixed <sha>` or `answered: <reason>`). Only HIGH and MEDIUM findings are reported; LOW findings are not listed, counted, recorded or ticketed.
 
 ---
 
@@ -43,15 +43,15 @@ Rules:
 
 - Every finding cites evidence: a file and line in the diff, a criterion, or a convention section.
 - At most 10 findings.
-- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is at most LOW (disposition `noted`), except a HIGH, which stays HIGH and is flagged for the owner.
+- Each finding says whether it is in scope: it breaks an acceptance criterion, or it is a realistic failure of the change. An out-of-scope finding is reported only when it is a MEDIUM (disposition `noted`) or a HIGH (which stays HIGH and is flagged for the owner); an out-of-scope finding that would be a LOW is not reported.
 - No style or wording comments, no scope additions, no speculative hardening, nothing outside the diff.
 - Do not re-grade a disposition the PR already answered.
 - Do not harden inputs only the owner controls (their own config, environment, or CLI).
 - Severity:
   - HIGH: a shipped bug, data loss, or a security hole.
   - MEDIUM: an unmet criterion, a test that cannot fail, or unhandled boundary failure.
-  - LOW: minor.
-- In round 2, report no LOW findings.
+  - LOW: minor. Do not report it.
+- In every round, report no LOW findings.
 
 Output:
 

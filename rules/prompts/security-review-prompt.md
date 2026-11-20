@@ -3,7 +3,7 @@
 Fill the placeholders and paste the result as the `security-reviewer` dispatch prompt (Agent tool, `subagent_type: "security-reviewer"`, `model: "fable"`, in the background). Run it only when the owner asks for a security review of one PR (security is otherwise audited separately by `audit-security`; see CLAUDE.md, Security audits). One round; a second needs the owner.
 
 - **Rounds:** round 1 lists the controls in scope, and that list is frozen. Round 2 runs only when the owner asks, for a HIGH or CRITICAL or a MEDIUM fixed in code, and gets the fix diff. There is no round 3; the owner decides what remains.
-- **Record:** in the PR body under `## Security review`, written once at the end: the reviewer, the model, the range, the rounds, the controls, and each finding with severity and disposition (`fixed <sha>`, `waived: <ticket>` for LOW, or `waived by owner <date>`). LOW findings are never fixed in the PR; they join the PR's one follow-up ticket.
+- **Record:** in the PR body under `## Security review`, written once at the end: the reviewer, the model, the range, the rounds, the controls, and each finding with severity and disposition (`fixed <sha>` or `waived by owner <date>`). Only HIGH and MEDIUM findings are reported; LOW findings are not listed, recorded or ticketed.
 
 ---
 
@@ -22,7 +22,7 @@ Threat model and acceptance boundaries (from the owner):
 
 For each control:
 
-1. Name its input sources and who controls them. When the only source is the owner's own config, environment, or CLI, the finding is at most LOW. Network-facing CORS, cookie, and header settings are not capped. When the only precondition is an outage or stall of a dependency the project owns (Redis, Postgres down or slow), the finding is at most LOW, unless an attacker can cause that outage.
+1. Name its input sources and who controls them. When the only source is the owner's own config, environment, or CLI, the finding is capped at LOW and is not reported. Network-facing CORS, cookie, and header settings are not capped. When the only precondition is an outage or stall of a dependency the project owns (Redis, Postgres down or slow), the finding is capped at LOW (not reported), unless an attacker can cause that outage.
 2. Try the worst value each source can supply. Does the control hold?
 3. Check that a test feeds the control its insecure value. If not, report a MEDIUM, once per control, and only for controls this PR added or changed.
 
@@ -33,8 +33,8 @@ Rules:
 - Severity:
   - CRITICAL or HIGH: exploitable.
   - MEDIUM: exploitable under a stated, realistic precondition, or a missing insecure-input test.
-  - LOW: hardening.
-  - Agent guards (hooks that judge commands an agent issues): a bypass is HIGH only when a non-adversarial agent could plausibly type it while doing normal work (an ordinary option, alias, env var, wrapper, or tool). A bypass that needs deliberate obfuscation (keywords split by comments, a variable or empty quotes as the program word, option spellings chosen to dodge parsing, glob or brace tricks in a host name, nested comment syntax) is at most LOW: list it under known limits; it never starts a round. A guard's threat model is a mistaken agent; a deliberately evasive one can already write and run a script (owner decision, 2026-10-05).
+  - LOW: hardening. Do not report it.
+  - Agent guards (hooks that judge commands an agent issues): a bypass is HIGH only when a non-adversarial agent could plausibly type it while doing normal work (an ordinary option, alias, env var, wrapper, or tool). A bypass that needs deliberate obfuscation (keywords split by comments, a variable or empty quotes as the program word, option spellings chosen to dodge parsing, glob or brace tricks in a host name, nested comment syntax) is capped at LOW: it is not reported and never starts a round. A guard's threat model is a mistaken agent; a deliberately evasive one can already write and run a script (owner decision, 2026-10-05).
 - Out of scope:
   - controls outside the frozen list
   - general correctness, tests, CI, or planning
