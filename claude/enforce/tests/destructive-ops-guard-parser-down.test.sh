@@ -56,11 +56,15 @@ run_with_watchdog() {
   return "$rc"
 }
 [ -n "$TIMEOUT_BIN" ] || TIMEOUT_BIN=run_with_watchdog
-# Every hook run is killed after this many seconds; a kill is a FAIL.
-RUN_BOUND=25
+# Every hook run is killed after this many seconds; a kill is a FAIL. It stays
+# below the 30 s the slow parser sleeps, so a hook with no parser bound is
+# killed and fails here.
+RUN_BOUND=28
 # The slow parser sleeps 30 s; the hook's bound is 10 s, so the deny must
-# arrive within this many seconds.
-SLOW_LIMIT=20
+# arrive within this many seconds. 20 s failed on a loaded macOS CI runner
+# (denies took 21 s, twice), so the limit leaves margin for load while staying
+# below the 30 s sleep.
+SLOW_LIMIT=27
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
