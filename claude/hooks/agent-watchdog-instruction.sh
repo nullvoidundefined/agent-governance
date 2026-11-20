@@ -19,14 +19,16 @@
 # always runs subagents in the background (same type list and normalization as
 # agent-dispatch-guard.sh; both read agent-types.sh). A present non-true flag
 # stays silent.
+#
+# When agent-types.sh is missing the guard fails closed: every type is treated
+# as long-running and denied when the flag is present and not true; this hook
+# stays silent when it needs the type but still names the watchdog for an
+# explicit true flag. An omitted or empty subagent_type counts as
+# general-purpose.
 set -uo pipefail
 INPUT=$(cat 2>/dev/null || true)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || true)
 case "$TOOL" in Agent|Task) ;; *) exit 0 ;; esac
-
-TYPES_HELPER="$(dirname "${BASH_SOURCE[0]}")/agent-types.sh"
-# shellcheck disable=SC1090
-[ -f "$TYPES_HELPER" ] && source "$TYPES_HELPER" || exit 0
 
 RESPONSE_TEXT=$(printf '%s' "$INPUT" | jq -r '
   .tool_response
@@ -43,6 +45,9 @@ OUTPUT_FILE=$(printf '%s\n' "$RESPONSE_TEXT" \
 # (R-109 r1 #1 on PR #184).
 if ! printf '%s' "$INPUT" | jq -e '.tool_input.run_in_background == true' >/dev/null 2>&1; then
   printf '%s' "$INPUT" | jq -e '(.tool_input | type == "object") and (.tool_input | has("run_in_background") | not)' >/dev/null 2>&1 || exit 0
+  TYPES_HELPER="$(dirname "${BASH_SOURCE[0]}")/agent-types.sh"
+  # shellcheck disable=SC1090
+  [ -f "$TYPES_HELPER" ] && source "$TYPES_HELPER" || exit 0
   RAW_TYPE=$(printf '%s' "$INPUT" | jq -r 'if (.tool_input.subagent_type | type) == "string" then .tool_input.subagent_type else "" end' 2>/dev/null || echo "")
   AGENT_TYPE=$(normalize_agent_type "$RAW_TYPE")
   is_long_running_type "$AGENT_TYPE" || exit 0

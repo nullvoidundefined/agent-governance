@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Covers: hook:agent-dispatch-guard, hook:agent-watchdog-instruction
+# Watches: hooks/agent-types.sh
 # Verifies R-708 (IAN-605): agent-dispatch-guard.sh denies a foreground
 # dispatch of a long-running agent type and allows everything else;
 # agent-watchdog-instruction.sh names the watchdog command after a background
@@ -435,5 +436,101 @@ GOT=$(guard_copy_decision "$PAIRED_DIR/agent-dispatch-guard.sh" implementer fals
 GOT=$(printf '%s' "$LONE_PAYLOAD" | bash "$PAIRED_DIR/agent-watchdog-instruction.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')
 case "$GOT" in *"agent-watchdog.sh '/tmp/claude-1/tasks/a1b2c3.output'"*) ;;
   *) echo "FAIL: control: with agent-types.sh the instruction hook must name the watchdog for implementer: $GOT"; exit 1 ;; esac
+
+# --- IAN-711: missing-helper edges and the change map --------------------
+
+# lone_instruction_context <subagent_type|NONE> <flag json>: runs the lone
+# instruction copy on a valid async launch and prints its additionalContext.
+lone_instruction_context() {
+  local payload
+  payload=$(jq -nc --arg t "$1" --argjson f "$2" --argjson r "\"$LAUNCH_TEXT\"" \
+    '{tool_name:"Agent", tool_input:({run_in_background:$f} | (if $t == "NONE" then . else .subagent_type = $t end)), tool_response:$r}')
+  printf '%s' "$payload" | bash "$LONE_INSTRUCTION_DIR/agent-watchdog-instruction.sh" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null || true
+}
+
+# Missing helper, instruction hook: an explicit true flag never needs the type
+# list, so a valid launch still names the watchdog command.
+for agent_type in implementer NONE; do
+  GOT=$(lone_instruction_context "$agent_type" true)
+  case "$GOT" in *"bash ~/.claude/enforce/agent-watchdog.sh '/tmp/claude-1/tasks/a1b2c3.output'"*) ;;
+    *) echo "FAIL: with no agent-types.sh an explicit run_in_background true ($agent_type) must still name the watchdog: $GOT"; exit 1 ;; esac
+done
+# Control: an explicit false flag with the helper missing stays silent.
+GOT=$(lone_instruction_context implementer false)
+[ -z "$GOT" ] || { echo "FAIL: with no agent-types.sh a false flag must get no instruction: $GOT"; exit 1; }
+
+# lone_guard_reason <guard path> <tool_input json>: prints the deny reason.
+lone_guard_reason() {
+  jq -nc --argjson i "$2" '{tool_name:"Agent", tool_input:$i}' | bash "$1" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null || true
+}
+
+# Missing helper, guard: the fail-closed deny names the type it was given,
+# normalized (namespace dropped, lowercased); only no type is general-purpose.
+for entry in 'Explore|{"subagent_type":"Explore","run_in_background":false}|explore' \
+  'implementer|{"subagent_type":"implementer","run_in_background":false}|implementer' \
+  'plugin:Implementer|{"subagent_type":"plugin:Implementer","run_in_background":false}|implementer' \
+  'empty|{"subagent_type":"","run_in_background":false}|general-purpose' \
+  'missing|{"run_in_background":false}|general-purpose'; do
+  label=${entry%%|*}; rest=${entry#*|}; input=${rest%|*}; want=${rest##*|}
+  REASON=$(lone_guard_reason "$LONE_GUARD_DIR/agent-dispatch-guard.sh" "$input")
+  case "$REASON" in *"the $want subagent"*) ;;
+    *) echo "FAIL: with no agent-types.sh the deny reason for subagent_type $label must name $want: $REASON"; exit 1 ;; esac
+  case "$REASON" in *R-708*"omit run_in_background"*) ;;
+    *) echo "FAIL: with no agent-types.sh the deny reason for $label must name R-708 and omit run_in_background: $REASON"; exit 1 ;; esac
+  if [ "$want" != general-purpose ]; then
+    case "$REASON" in *general-purpose*)
+      echo "FAIL: with no agent-types.sh the deny reason for $label must not say general-purpose: $REASON"; exit 1 ;; esac
+  fi
+done
+
+# guard_env_decision <guard path> <subagent_type> <flag json> <env assignment>...:
+# runs the guard copy with exported shell functions in its environment and
+# prints its decision, or none.
+guard_env_decision() {
+  local guard="$1" payload out
+  payload=$(jq -nc --arg t "$2" --argjson f "$3" '{tool_name:"Agent", tool_input:{subagent_type:$t, run_in_background:$f, prompt:"p"}}')
+  shift 3
+  out=$(printf '%s' "$payload" | env "$@" bash "$guard" 2>/dev/null) || true
+  if [ -z "$out" ]; then echo none; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+SKIP_LONG='BASH_FUNC_is_long_running_type%%=() { return 1; }'
+SKIP_NORM='BASH_FUNC_normalize_agent_type%%=() { printf "%s" spoofed-type; }'
+
+# Missing helper: an exported function must not replace the fail-closed
+# fallback, alone or together.
+for label in is_long_running_type normalize_agent_type both; do
+  case "$label" in
+    is_long_running_type) GOT=$(guard_env_decision "$LONE_GUARD_DIR/agent-dispatch-guard.sh" Explore false "$SKIP_LONG") ;;
+    normalize_agent_type) GOT=$(guard_env_decision "$LONE_GUARD_DIR/agent-dispatch-guard.sh" Explore false "$SKIP_NORM") ;;
+    both) GOT=$(guard_env_decision "$LONE_GUARD_DIR/agent-dispatch-guard.sh" Explore false "$SKIP_LONG" "$SKIP_NORM") ;;
+  esac
+  [ "$GOT" = "deny" ] || { echo "FAIL: with no agent-types.sh an exported $label function must not skip the fallback: a foreground Explore must be denied, got $GOT"; exit 1; }
+done
+# The exported normalizer is not the one that names the type in the reason.
+REASON=$(jq -nc '{tool_name:"Agent", tool_input:{subagent_type:"Explore", run_in_background:false}}' \
+  | env "$SKIP_NORM" bash "$LONE_GUARD_DIR/agent-dispatch-guard.sh" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null || true)
+case "$REASON" in *spoofed-type*) echo "FAIL: with no agent-types.sh an exported normalize_agent_type must not name the type: $REASON"; exit 1 ;; esac
+# Helper present: its own definitions win over exported ones.
+GOT=$(guard_env_decision "$PAIRED_DIR/agent-dispatch-guard.sh" Explore false "$SKIP_LONG" "$SKIP_NORM")
+[ "$GOT" = "none" ] || { echo "FAIL: with agent-types.sh and exported functions a foreground Explore must pass, got $GOT"; exit 1; }
+GOT=$(guard_env_decision "$PAIRED_DIR/agent-dispatch-guard.sh" implementer false "$SKIP_LONG" "$SKIP_NORM")
+[ "$GOT" = "deny" ] || { echo "FAIL: with agent-types.sh and exported functions a foreground implementer must be denied, got $GOT"; exit 1; }
+
+# Change map: run-test-shards.sh selects a test for a changed file through
+# names_file. A change to hooks/agent-types.sh must map here, declared in this
+# file's header (a `# Watches:` glob), not only through incidental mentions.
+SHARDS="$CLAUDE_HARNESS_ROOT/enforce/run-test-shards.sh"
+eval "$(sed -n '/^names_file() {$/,/^}$/p' "$SHARDS")"
+type names_file >/dev/null 2>&1 || { echo "FAIL: run-test-shards.sh must define names_file"; exit 1; }
+SELF="$CLAUDE_HARNESS_ROOT/enforce/tests/agent-watchdog.test.sh"
+names_file "$SELF" claude/hooks/agent-types.sh \
+  || { echo "FAIL: a change to claude/hooks/agent-types.sh must map to agent-watchdog.test.sh"; exit 1; }
+awk 'NR > 1 && !/^#/ { exit } { print }' "$SELF" > "$WORK/header-only.test.sh"
+names_file "$WORK/header-only.test.sh" claude/hooks/agent-types.sh \
+  || { echo "FAIL: the header of agent-watchdog.test.sh must declare hooks/agent-types.sh for the change map"; exit 1; }
+! names_file "$WORK/header-only.test.sh" claude/hooks/secret-scan.sh \
+  || { echo "FAIL: control: the header must not map an unrelated hook"; exit 1; }
 
 echo "agent-watchdog.test.sh PASS"

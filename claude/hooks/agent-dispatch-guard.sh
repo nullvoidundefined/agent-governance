@@ -20,6 +20,12 @@
 # and so is a payload with no tool_input object or none that parses. Quick
 # lookups (Explore, claude-code-guide, Plan, statusline-setup) and any other
 # type may still run in the foreground.
+#
+# When agent-types.sh is missing the guard fails closed: every type is treated
+# as long-running and denied when the flag is present and not true; the
+# instruction hook stays silent when it needs the type but still names the
+# watchdog for an explicit true flag. An omitted or empty subagent_type
+# counts as general-purpose.
 # set -uo, no -e: a guard must emit its decision, and an unexpected error under
 # -e would exit before it, which a PreToolUse hook reads as allow
 # (convention in enforce/README.md).
@@ -38,11 +44,19 @@ INPUT=$(cat 2>/dev/null || true)
 IS_BACKGROUND=$(printf '%s' "$INPUT" | jq -r '(.tool_input | type == "object") and ((.tool_input | has("run_in_background") | not) or .tool_input.run_in_background == true)' 2>/dev/null || echo false)
 [ "$IS_BACKGROUND" = "true" ] && exit 0
 
+# Fallbacks defined before sourcing so an exported function in the
+# environment cannot replace the fail-closed defaults (env var names
+# collide with shell function names: BASH_FUNC_foo%%).
+normalize_agent_type() {
+  local raw="${1##*:}"
+  raw=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  [ -n "$raw" ] && printf '%s' "$raw" || printf '%s' "general-purpose"
+}
+is_long_running_type() { return 0; }
+
 TYPES_HELPER="$(dirname "${BASH_SOURCE[0]}")/agent-types.sh"
 # shellcheck disable=SC1090
 [ -f "$TYPES_HELPER" ] && source "$TYPES_HELPER"
-type is_long_running_type >/dev/null 2>&1 || is_long_running_type() { return 0; }
-type normalize_agent_type >/dev/null 2>&1 || normalize_agent_type() { printf '%s' "general-purpose"; }
 
 # A non-string type reads as empty, so it falls closed to general-purpose
 # (R-109 r7 #1 on PR #184).
