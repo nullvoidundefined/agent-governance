@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # resolve-machine-file.sh: prints the machine file path on stdout.
 #
-# Precedence: $AGENT_TIER_ASSIGNMENTS_FILE; else $CLAUDE_HOME/agent-tier-assignments.json
-# when CLAUDE_HOME is set; else $HOME/.claude/agent-tier-assignments.json when
-# HOME is set; else empty (the caller must not use a /.claude/ path).
+# Precedence: $AGENT_TIER_ASSIGNMENTS_FILE; else $CLAUDE_HOME/agent-tier-
+#   assignments.json when CLAUDE_HOME is set; else
+#   $HOME/.claude/agent-tier-assignments.json when HOME is set; else empty
+#   (the caller must not use a /.claude/ path).
 #
 # Usage: source this file, then capture the output:
 #   machine=$(resolve_machine_file)

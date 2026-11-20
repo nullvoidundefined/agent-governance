@@ -40,14 +40,23 @@
 # checks); and the implementer-only rules file (default
 # claude/enforce/qwen-implementer-rules.md, overridable via
 # QWEN_IMPLEMENTER_RULES_FILE) is appended as system prompt.
-# Claude Code runs with the repo as its working directory and stdin closed, and
-# in its own process group so a timeout kills every child it started
-# (macOS has no timeout(1) or setsid).
+# The user settings file honors CLAUDE_HOME, which also names the directory of
+# the settings file. Claude Code runs with the repo as its working directory and
+# stdin closed, and in its own process group so a timeout kills every child it
+# started (macOS has no timeout(1) or setsid).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY="${CLAUDE_ROLE_POLICY_FILE:-$HERE/role-policy.json}"
-USER_SETTINGS="${CLAUDE_SETTINGS_FILE:-${HOME:-}/.claude/settings.json}"
+if [ -n "${CLAUDE_SETTINGS_FILE:-}" ]; then
+  USER_SETTINGS="$CLAUDE_SETTINGS_FILE"
+elif [ -n "${CLAUDE_HOME:-}" ]; then
+  USER_SETTINGS="$CLAUDE_HOME/settings.json"
+elif [ -n "${HOME:-}" ]; then
+  USER_SETTINGS="$HOME/.claude/settings.json"
+else
+  USER_SETTINGS=""
+fi
 IMPLEMENTER_RULES="${QWEN_IMPLEMENTER_RULES_FILE:-$HERE/qwen-implementer-rules.md}"
 
 . "$HERE/resolve-machine-file.sh"
@@ -109,10 +118,10 @@ validate_inputs() {
 load_secondary() {
   local agent
   [ -f "$MACHINE" ] || report unavailable no-secondary-configured 3
-  agent=$(jq -r '.secondary.agent // empty' "$MACHINE" 2>/dev/null) || agent=""
+  agent=$(jq -r -- '.secondary.agent // empty' "$MACHINE" 2>/dev/null) || agent=""
   [ "$agent" = qwen ] || report unavailable no-secondary-configured 3
-  model=$(jq -r '.secondary.model // empty' "$MACHINE" 2>/dev/null) || model=""
-  endpoint=$(jq -r '.secondary.endpoint // empty' "$MACHINE" 2>/dev/null) || endpoint=""
+  model=$(jq -r -- '.secondary.model // empty' "$MACHINE" 2>/dev/null) || model=""
+  endpoint=$(jq -r -- '.secondary.endpoint // empty' "$MACHINE" 2>/dev/null) || endpoint=""
   { [ -n "$model" ] && [ -n "$endpoint" ]; } || report unavailable no-secondary-configured 3
 }
 

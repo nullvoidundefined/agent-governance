@@ -21,8 +21,9 @@
 # --author and --security are accepted and ignored until the Codex port and
 # the quota-based routing are removed in the follow-up slice.
 # Exit codes: 0 routed; 2 a usage error, which logs nothing.
-# With HOME and ROUTING_LOG both unset, nothing is logged. CLAUDE_HOME names
-# the Claude config directory and outranks $HOME/.claude for the machine file.
+# With ROUTING_LOG, CLAUDE_HOME and HOME all unset, nothing is logged.
+# CLAUDE_HOME names the Claude config directory and outranks $HOME/.claude
+# for the machine file and for the default log path.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,10 +33,13 @@ KNOWN_AGENTS="claude qwen"
 . "$HERE/resolve-machine-file.sh"
 machine=$(resolve_machine_file)
 
+# strip_controls <text>: strips control characters so the result fits in one
+# stdout line and stays valid JSON.
 strip_controls() {
   printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]'
 }
 
+# usage_error <message>: prints the message and the usage line to stderr, exit 2.
 usage_error() {
   echo "route: $1" >&2
   echo "usage: route.sh <step> --risk <high|standard> [--author <name>] [--security]" >&2
@@ -75,7 +79,7 @@ model=$(jq -r '.model // empty' <<<"$rule")
 config="{}"
 fileNote=""
 if [ -z "$machine" ]; then
-  fileNote="HOME is unset, using primary agent"
+  fileNote="HOME is unset, so there is no machine file"
 elif [ ! -f "$machine" ]; then
   fileNote="no machine file found at $(strip_controls "$machine")"
 elif config=$(jq -c -- 'if type == "object" then . else error("not an object") end' "$machine" 2>/dev/null); then
@@ -91,16 +95,17 @@ agentOf() { jq -r --arg t "$1" '(.[$t] // {}) | if type == "object" then (.agent
 # isKnownAgent <name>: true for an agent this harness can run.
 isKnownAgent() { case " $KNOWN_AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-primary=$(agentOf primary | LC_ALL=C tr -d '[:cntrl:]')
+primary=$(agentOf primary)
+primary=$(strip_controls "$primary")
 isKnownAgent "$primary" || primary=claude
 
 case "$tier" in
   owner)
     provider=owner
-    reason="$step is the owner's, whatever the machine file says"
-    fileNote="" ;;
+    reason="$step is the owner's, whatever the machine file says" ;;
   secondary)
-    configured=$(agentOf secondary | LC_ALL=C tr -d '[:cntrl:]')
+    configured=$(agentOf secondary)
+    configured=$(strip_controls "$configured")
     if [ -z "$configured" ]; then
       provider="$primary"
       reason="no secondary agent configured, so $step uses the primary agent, $primary"
@@ -120,6 +125,8 @@ esac
 
 if [ -n "${ROUTING_LOG:-}" ]; then
   log="$ROUTING_LOG"
+elif [ -n "${CLAUDE_HOME:-}" ]; then
+  log="$CLAUDE_HOME/routing-log.jsonl"
 elif [ -n "${HOME:-}" ]; then
   log="$HOME/.claude/routing-log.jsonl"
 else

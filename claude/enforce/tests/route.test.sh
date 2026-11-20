@@ -558,4 +558,89 @@ case "$REASON" in
   *"no machine file"*) failCase "backslash path: the machine file must be found (got '$REASON')" ;;
 esac
 
+# --- 22. The owner tier keeps the machine file note (IAN-712). ---
+# merge is the owner's whatever the machine file says, but the reason still
+# reports a missing or invalid machine file, or an unset HOME, and never talks
+# about a primary agent.
+# expectOwnerNote <what> <note>: the last call printed owner, its reason holds
+# the note, and it does not say 'primary agent'.
+expectOwnerNote() {
+  [ "$P" = "owner" ] || failCase "$1: merge --risk standard must print owner (got '$P')"
+  case "$REASON" in
+    *"$2"*) ;;
+    *) failCase "$1: merge's reason must keep the machine file note '$2' (got '$REASON')" ;;
+  esac
+  case "$REASON" in
+    *"primary agent"*) failCase "$1: merge's reason must not mention 'primary agent' (got '$REASON')" ;;
+  esac
+}
+useMachineFile "$WORK/no-such-machine-file.json"
+expectRoute owner merge --risk standard
+expectOwnerNote "no machine file" "no machine file found"
+useMachineFile "$WORK/bad.json"
+expectRoute owner merge --risk standard
+expectOwnerNote "invalid machine file" "not valid JSON"
+# HOME, CLAUDE_HOME and AGENT_TIER_ASSIGNMENTS_FILE all unset.
+routeHomeless merge --risk standard
+P="$HL_P"
+REASON="$HL_REASON"
+expectOwnerNote "HOME unset" "HOME is unset"
+for step in spec implement; do
+  routeHomeless "$step" --risk standard
+  [ "$HL_P" = "claude" ] || failCase "HOME unset (IAN-712): $step --risk standard must print claude (got '$HL_P')"
+  case "$HL_REASON" in
+    *"HOME is unset"*) ;;
+    *) failCase "HOME unset (IAN-712): $step --risk standard reason must say 'HOME is unset' (got '$HL_REASON')" ;;
+  esac
+done
+
+# --- 23. The default log path honors CLAUDE_HOME (IAN-712). ---
+# Order: ROUTING_LOG, then $CLAUDE_HOME/routing-log.jsonl, then
+# $HOME/.claude/routing-log.jsonl. The machine file is the template, so the
+# CLAUDE_HOME machine file default plays no part.
+mkdir -p "$WORK/logch1" "$WORK/logch1-home/.claude" "$WORK/logch2" "$WORK/logch3"
+# routeLogEnv <env assignments...> -- <args...>: runs route.sh under
+# env -u ROUTING_LOG -u CLAUDE_HOME -u HOME with the template machine file plus
+# the given assignments; sets LG_RC and LG_ERR.
+routeLogEnv() {
+  local assigns=()
+  while [ "$1" != "--" ]; do
+    assigns[${#assigns[@]}]="$1"
+    shift
+  done
+  shift
+  LG_RC=0
+  env -u ROUTING_LOG -u CLAUDE_HOME -u HOME AGENT_TIER_ASSIGNMENTS_FILE="$TEMPLATE" ${assigns[@]+"${assigns[@]}"} \
+    bash "$SCRIPT" "$@" >/dev/null 2>"$WORK/logch-err" || LG_RC=$?
+  LG_ERR=$(cat "$WORK/logch-err")
+  [ "$LG_RC" -eq 0 ] || failCase "log path, route $*: must exit 0 (got $LG_RC, stderr: $LG_ERR)"
+}
+# lineCount <file>: lines in the file, 0 when it does not exist.
+lineCount() {
+  if [ -f "$1" ]; then wc -l <"$1" | tr -d ' '; else echo 0; fi
+}
+# CLAUDE_HOME and HOME set, ROUTING_LOG unset: the CLAUDE_HOME log gets one line.
+routeLogEnv CLAUDE_HOME="$WORK/logch1" HOME="$WORK/logch1-home" -- spec --risk standard
+[ "$(lineCount "$WORK/logch1/routing-log.jsonl")" = "1" ] ||
+  failCase "ROUTING_LOG unset, CLAUDE_HOME set: one JSON line must go to \$CLAUDE_HOME/routing-log.jsonl (got $(lineCount "$WORK/logch1/routing-log.jsonl") lines)"
+jq -e '.step == "spec"' "$WORK/logch1/routing-log.jsonl" >/dev/null 2>&1 ||
+  failCase "ROUTING_LOG unset, CLAUDE_HOME set: the CLAUDE_HOME log line must be JSON for step spec ($(cat "$WORK/logch1/routing-log.jsonl" 2>/dev/null))"
+[ "$(lineCount "$WORK/logch1-home/.claude/routing-log.jsonl")" = "0" ] ||
+  failCase "ROUTING_LOG unset, CLAUDE_HOME set: CLAUDE_HOME must win over \$HOME/.claude/routing-log.jsonl"
+# ROUTING_LOG wins over CLAUDE_HOME.
+routeLogEnv ROUTING_LOG="$WORK/logch2-explicit.jsonl" CLAUDE_HOME="$WORK/logch2" HOME="$WORK/logch1-home" \
+  -- spec --risk standard
+[ "$(lineCount "$WORK/logch2-explicit.jsonl")" = "1" ] || failCase "ROUTING_LOG must win over CLAUDE_HOME (ROUTING_LOG file has $(lineCount "$WORK/logch2-explicit.jsonl") lines)"
+[ "$(lineCount "$WORK/logch2/routing-log.jsonl")" = "0" ] || failCase "ROUTING_LOG set: nothing may go to \$CLAUDE_HOME/routing-log.jsonl"
+# HOME unset, CLAUDE_HOME set: the CLAUDE_HOME log, with no warning.
+routeLogEnv CLAUDE_HOME="$WORK/logch3" -- spec --risk standard
+[ "$(lineCount "$WORK/logch3/routing-log.jsonl")" = "1" ] ||
+  failCase "HOME and ROUTING_LOG unset, CLAUDE_HOME set: one line must go to \$CLAUDE_HOME/routing-log.jsonl (got $(lineCount "$WORK/logch3/routing-log.jsonl") lines)"
+[ -z "$LG_ERR" ] || failCase "HOME and ROUTING_LOG unset, CLAUDE_HOME set: stderr must be empty (got '$LG_ERR')"
+# Control: ROUTING_LOG, CLAUDE_HOME and HOME all unset logs nothing and warns of no failed append.
+routeLogEnv -- spec --risk standard
+case "$LG_ERR" in
+  *"could not append"* | *"/.claude"*) failCase "ROUTING_LOG, CLAUDE_HOME and HOME unset: no log write may be tried (stderr: '$LG_ERR')" ;;
+esac
+
 echo "PASS: route"
