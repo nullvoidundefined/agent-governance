@@ -47,7 +47,7 @@
     "commands/pr-reviewer.md": "sha256:65d6372532c74ec16b020359a5274845a4cdd3780b6e088bf1afbd850792dc85",
     "hooks.json": "sha256:7ecac2c027cecc4163d6ab3eba15d4974643b53c7935d1fa1b510586f6e54b3a",
     "rules/000-global-rules.mdc": "sha256:85e0f14396bb2296d987f8f1eb753b27ee6c84a91f9aa7b6e6b7c7cfddccc81e",
-    "rules/002-global-memory-index.mdc": "sha256:1914949625b10e276c0bf2b7e91c083b788720680fef2f52fcdf529f871b8159",
+    "rules/002-global-memory-index.mdc": "sha256:7324c6132e4fdb11491fffd565dbc7ec2520fb9fc70232f41e00c4f8361fa53f",
     "rules/backend.mdc": "sha256:ccaefdeca2e36e1b641954dd07cf23630b83b4f1ed4c725b56d40795b445391b",
     "rules/cloud-deployment.mdc": "sha256:f4eff345ff38817f31a852dcf2181f45f670240966c4fcfa8dc2bbc3bafab696",
     "rules/database.mdc": "sha256:0b865335d16c505a345a6e22d5d23b9b2833c2b50d248097b77ecacd86d0ee4b",

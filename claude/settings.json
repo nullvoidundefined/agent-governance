@@ -207,7 +207,7 @@
       ]
     }
   },
-  "model": "opusplan",
+  "model": "opus",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/status-line.sh"
