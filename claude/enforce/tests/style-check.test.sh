@@ -453,13 +453,13 @@ writeFile lib/p.sh '#!/usr/bin/env bash' 'echo base'
 startFeature
 writeFile lib/p.sh '#!/usr/bin/env bash' 'echo base' \
   "cat <<'EOF'" '++ x' '++ b/evil.sh' '+++ b/also.sh' 'EOF' \
-  "$(makeLine 101)" \
+  "$(makeLine 101)" 'echo spacer' \
   'noDocAfter() {' '  echo n' '}' 'noDocAfter'
 commitAll change
 checkRepo
 expectViolations "m. content lines that look like +++ headers"
 outHasLine "lib/p.sh:8:line is 101 columns (max 100)" "m. width after +++ content lines"
-outHasLine "lib/p.sh:9:function noDocAfter has no comment block above it" \
+outHasLine "lib/p.sh:10:function noDocAfter has no comment block above it" \
   "m. function after +++ content lines"
 outLacks "evil.sh" "m. a +++ b/ content line is not a file name"
 outLacks "also.sh" "m. a ++++ b/ content line is not a file name"
