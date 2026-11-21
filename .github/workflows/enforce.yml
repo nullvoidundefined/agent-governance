@@ -21,6 +21,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,6 +43,9 @@ jobs:
           npm install --prefix claude/enforce --no-save --no-package-lock --legacy-peer-deps vitest@5.0.0 vite@8.2.2
       - name: Install Semgrep (the rule-pack test runs it; same version as security-ci-semgrep-requirements.txt)
         run: pipx install semgrep==1.178.0
+      - name: Style check (added lines only)
+        if: github.event_name == 'pull_request'
+        run: bash claude/enforce/style-check.sh --base origin/${{ github.base_ref }}
       - name: Hook tests
         run: bash claude/enforce/tests/run-tests.sh
       - name: Sync test
