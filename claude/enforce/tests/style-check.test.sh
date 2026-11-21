@@ -546,4 +546,42 @@ done
 grep -F '`style-check.sh`' "$README" | grep -qF '*.sh' \
   || failCase "p. the style-check.sh line in claude/enforce/README.md must mention '*.sh'"
 
+# --- q. Repo git config must not change the diff the script parses. ---
+# diff.noprefix, diff.mnemonicPrefix and diff.external alter `git diff`
+# output; the script must report the same violations regardless (it must
+# never fall back to `style-check: ok` because it could not read the headers).
+Q_EXPECTED="lib/a.sh:3:line is 101 columns (max 100)
+lib/a.sh:5:function noDoc has no comment block above it
+style-check: 2 violation(s)"
+
+# qRepo <name> [<key> <value>]...: builds a repo whose change adds a
+# 101-column line (line 3) and an undocumented function (line 5) to lib/a.sh,
+# sets each repo-local git config pair, runs the script and checks the output.
+qRepo() {
+  local name=$1
+  shift
+  newRepo "$name"
+  writeFile lib/a.sh '#!/usr/bin/env bash' 'echo base'
+  startFeature
+  writeFile lib/a.sh '#!/usr/bin/env bash' 'echo base' "$(makeLine 101)" 'echo pad' \
+    'noDoc() {' '  echo n' '}' 'noDoc'
+  commitAll change
+  while [ $# -ge 2 ]; do
+    git -C "$REPO" config "$1" "$2"
+    shift 2
+  done
+  checkRepo
+  expectViolations "q. $name"
+  [ "$OUT" = "$Q_EXPECTED" ] || failCase "q. $name: stdout must be exactly:
+$Q_EXPECTED
+got:
+$OUT"
+}
+
+qRepo q-control
+qRepo q-noprefix diff.noprefix true
+qRepo q-mnemonic diff.mnemonicPrefix true
+qRepo q-external diff.external /bin/echo
+qRepo q-all diff.noprefix true diff.mnemonicPrefix true diff.external /bin/echo
+
 echo "PASS: style-check"
