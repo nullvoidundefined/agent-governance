@@ -57,7 +57,10 @@ validate_inputs() {
 # collect_diff: writes the added-lines diff to $WORK/diff.txt; a diff that
 # fails (no merge base, shallow history) exits 2 and never reports clean.
 collect_diff() {
+  # The prefixes and --no-ext-diff pin the diff format against the repo's own
+  # diff.noprefix and diff.external config, which would change the file headers.
   if ! git -C "$REPO" -c core.quotepath=false diff -M --unified=0 --no-color \
+    --src-prefix=a/ --dst-prefix=b/ --no-ext-diff \
     "$BASE...HEAD" -- '*.sh' >"$WORK/diff.txt" 2>"$WORK/diff.err"; then
     echo "style-check: cannot diff $BASE...HEAD: $(head -n 1 "$WORK/diff.err")" >&2
     exit 2
