@@ -413,4 +413,137 @@ printf '%s\n' "$CHECKOUT" | grep -qE 'fetch-depth:[[:space:]]*0([[:space:]]|$)' 
 # --- k. The README lists the script. ---
 grep -qE '^- .*`style-check\.sh`' "$README" || failCase "k. claude/enforce/README.md must list \`style-check.sh\` in its file list"
 
+# --- l. Fail closed when git cannot diff against the base. ---
+# Two unrelated root commits: main and an orphan feature branch share no
+# merge base, so `git diff main...HEAD` cannot run.
+newRepo l-orphan
+writeFile lib/a.sh '#!/usr/bin/env bash' 'echo base'
+commitAll base
+git -C "$REPO" checkout -q --orphan feature
+writeFile lib/a.sh '#!/usr/bin/env bash' 'echo other root' "$(makeLine 101)"
+commitAll change
+checkRepo
+expectUsage "l. --base with no merge base (orphan feature branch)"
+[ -z "$OUT" ] || failCase "l. no merge base: stdout must be empty (got '$OUT')"
+
+# A shallow clone that holds only the two branch tips: the base commit is a
+# commit, but no common ancestor is in the shallow history.
+newRepo l-shallow-src
+writeFile lib/a.sh '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile lib/a.sh '#!/usr/bin/env bash' 'echo base' "$(makeLine 101)"
+commitAll change
+git -C "$REPO" checkout -q main
+writeFile lib/b.sh '#!/usr/bin/env bash' 'echo main moved on'
+commitAll "main moves on"
+git -C "$REPO" checkout -q feature
+SHALLOW="$WORK/l-shallow"
+git clone -q --depth 1 --no-single-branch "file://$REPO" "$SHALLOW"
+git -C "$SHALLOW" rev-parse --verify --quiet 'origin/main^{commit}' >/dev/null \
+  || failCase "l. fixture: the shallow clone must have origin/main"
+runCheck --repo "$SHALLOW" --base origin/main
+expectUsage "l. --base with no common ancestor in a shallow clone"
+[ -z "$OUT" ] || failCase "l. shallow clone: stdout must be empty (got '$OUT')"
+
+# --- m. Diff parsing: content that looks like a header, unusual paths. ---
+# Added lines `++ x` and `++ b/evil.sh` show in the diff as `+++ x` and
+# `+++ b/evil.sh`; they are content, not file headers.
+newRepo m-plus-content
+writeFile lib/p.sh '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile lib/p.sh '#!/usr/bin/env bash' 'echo base' \
+  "cat <<'EOF'" '++ x' '++ b/evil.sh' '+++ b/also.sh' 'EOF' \
+  "$(makeLine 101)" \
+  'noDocAfter() {' '  echo n' '}' 'noDocAfter'
+commitAll change
+checkRepo
+expectViolations "m. content lines that look like +++ headers"
+outHasLine "lib/p.sh:8:line is 101 columns (max 100)" "m. width after +++ content lines"
+outHasLine "lib/p.sh:9:function noDocAfter has no comment block above it" \
+  "m. function after +++ content lines"
+outLacks "evil.sh" "m. a +++ b/ content line is not a file name"
+outLacks "also.sh" "m. a ++++ b/ content line is not a file name"
+
+# A path with a space: git ends the +++ header with a tab.
+newRepo m-space-path
+writeFile 'lib/my file.sh' '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile 'lib/my file.sh' '#!/usr/bin/env bash' 'echo base' "$(makeLine 101)" 'cd /tmp'
+commitAll change
+checkRepo
+expectViolations "m. a path with a space"
+outHasLine "lib/my file.sh:3:line is 101 columns (max 100)" "m. a path with a space"
+if [ "$HAVE_SHELLCHECK" = 1 ]; then
+  printf '%s\n' "$OUT" | grep -q '^lib/my file\.sh:4:.*SC2164' \
+    || failCase "m. a path with a space: stdout must report lib/my file.sh:4 with SC2164 (got '$OUT')"
+fi
+
+# A path git quotes: report it with the real path, or refuse with exit 2;
+# never skip it silently.
+newRepo m-quoted-path
+writeFile 'lib/q"x.sh' '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile 'lib/q"x.sh' '#!/usr/bin/env bash' 'echo base' "$(makeLine 101)"
+commitAll change
+checkRepo
+case "$RC" in
+  1) outHasLine 'lib/q"x.sh:3:line is 101 columns (max 100)' "m. a path git quotes" ;;
+  2) [ -n "$ERR" ] || failCase "m. a path git quotes: exit 2 must explain itself on stderr" ;;
+  *) failCase "m. a path git quotes: want exit 1 (reported) or 2 (refused), got $RC (stdout: '$OUT', stderr: '$ERR')" ;;
+esac
+
+# --- n. Function definitions with the brace on the next line. ---
+newRepo n-brace-next
+writeFile lib/n.sh '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile lib/n.sh '#!/usr/bin/env bash' 'echo base' \
+  'echo pad' 'nextLine()' '{' '  echo n' '}' \
+  'echo pad2' 'function kwNext' '{' '  echo k' '}' \
+  'nextLine' 'kwNext'
+commitAll change
+checkRepo
+expectViolations "n. functions with { on the next line and no comment block"
+outHasLine "lib/n.sh:4:function nextLine has no comment block above it" "n. name() then { on the next line"
+outHasLine "lib/n.sh:9:function kwNext has no comment block above it" "n. function name then { on the next line"
+
+newRepo n-brace-next-doc
+writeFile lib/n.sh '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile lib/n.sh '#!/usr/bin/env bash' 'echo base' \
+  '# Documented.' 'nextLine()' '{' '  echo n' '}' \
+  '# Documented keyword form.' 'function kwNext' '{' '  echo k' '}' \
+  'nextLine' 'kwNext'
+commitAll change
+checkRepo
+expectClean "n. documented functions with { on the next line"
+
+# --- o. Width counts leading tabs as characters. ---
+TAB=$(printf '\t')
+newRepo o-tab
+writeFile lib/t.sh '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile lib/t.sh '#!/usr/bin/env bash' 'echo base' "${TAB}$(makeLine 100)"
+commitAll change
+checkRepo
+expectViolations "o. a tab plus 100 characters"
+outHasLine "lib/t.sh:3:line is 101 columns (max 100)" "o. a tab plus 100 characters"
+
+newRepo o-tab-edge
+writeFile lib/t.sh '#!/usr/bin/env bash' 'echo base'
+startFeature
+writeFile lib/t.sh '#!/usr/bin/env bash' 'echo base' "${TAB}$(makeLine 99)"
+commitAll change
+checkRepo
+expectClean "o. a tab plus 99 characters"
+
+# --- p. The checked scope is documented. ---
+# The header: the leading block of comment lines.
+HEADER=$(awk '/^#/ { print; next } { exit }' "$SCRIPT")
+for want in '*.sh' 'tests/' 'node_modules/'; do
+  printf '%s\n' "$HEADER" | grep -qF -- "$want" \
+    || failCase "p. the header comment of style-check.sh must mention '$want' (header: $HEADER)"
+done
+grep -F '`style-check.sh`' "$README" | grep -qF '*.sh' \
+  || failCase "p. the style-check.sh line in claude/enforce/README.md must mention '*.sh'"
+
 echo "PASS: style-check"
