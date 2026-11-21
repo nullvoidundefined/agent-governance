@@ -1,174 +1,191 @@
 #!/usr/bin/env bash
-# style-check.sh: PR-scoped style check on added lines of shell files.
+# style-check.sh: PR-scoped style check on the lines a change adds to shell files.
+#
 # Usage: style-check.sh [--base <ref>] [--repo <dir>]
-# Checks: width >100, function comment blocks, shellcheck on added lines.
-set -euo pipefail
+#   --base  the commit to compare with (default origin/main); the check looks at
+#           the lines `git diff <base>...HEAD` adds.
+#   --repo  the repository to check (default: the current directory).
+#
+# Scope: only *.sh files are checked, and only the lines the change adds, so old
+# code never fails it. Paths with a tests/ directory or node_modules/ are skipped.
+# Checks on each added line:
+#   - width: more than 100 characters (a tab counts as one);
+#   - a function definition with no comment line directly above it (the brace
+#     may be on the same or the next line);
+#   - shellcheck -S warning findings (skipped with a warning when shellcheck is
+#     not installed).
+# Output: one `<file>:<line>:<message>` per violation, sorted, then
+# `style-check: <n> violation(s)`; a clean run prints only `style-check: ok`.
+# Exit codes: 0 clean, 1 violations, 2 usage error or a diff that cannot be read
+# (a diff that fails never counts as clean).
+set -uo pipefail
 
+SEP=$'\037'
 BASE="origin/main"
 REPO="."
+WORK=""
 
-# Parse arguments
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --base)
-      shift
-      if [ $# -eq 0 ]; then
-        echo "usage: style-check.sh [--base <ref>] [--repo <dir>]" >&2
-        exit 2
-      fi
-      BASE="$1"; shift ;;
-    --repo)
-      shift
-      if [ $# -eq 0 ]; then
-        echo "usage: style-check.sh [--base <ref>] [--repo <dir>]" >&2
-        exit 2
-      fi
-      REPO="$1"; shift ;;
-    *)
-      echo "usage: style-check.sh [--base <ref>] [--repo <dir>]" >&2
-      exit 2 ;;
-  esac
-done
-
-# Validate --base is a commit (in the repo)
-git -C "$REPO" rev-parse --verify --quiet "$BASE^{commit}" >/dev/null 2>&1 || {
+# usage_error <message>: prints the message and the usage line to stderr, exit 2.
+usage_error() {
+  echo "style-check: $1" >&2
   echo "usage: style-check.sh [--base <ref>] [--repo <dir>]" >&2
   exit 2
 }
 
-# Validate --repo is a git repository
-if [ ! -d "$REPO" ]; then
-  echo "usage: style-check.sh [--base <ref>] [--repo <dir>]" >&2
-  exit 2
-fi
-( cd "$REPO" && git rev-parse --git-dir >/dev/null 2>&1 ) || {
-  echo "usage: style-check.sh [--base <ref>] [--repo <dir>]" >&2
-  exit 2
+# parse_flags <args...>: sets BASE and REPO from the flags.
+parse_flags() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base | --repo)
+        [ $# -ge 2 ] || usage_error "$1 needs a value"
+        if [ "$1" = "--base" ]; then BASE="$2"; else REPO="$2"; fi
+        shift 2 ;;
+      *) usage_error "unknown argument $1" ;;
+    esac
+  done
 }
 
-# Create temp directory
-TMPDIR_WORK=$(mktemp -d)
-trap 'rm -rf "$TMPDIR_WORK"' EXIT
+# validate_inputs: checks that REPO is a git repository and BASE is a commit.
+validate_inputs() {
+  [ -d "$REPO" ] || usage_error "--repo is not a directory"
+  git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 ||
+    usage_error "--repo is not a git repository"
+  git -C "$REPO" rev-parse --verify --quiet "$BASE^{commit}" >/dev/null 2>&1 ||
+    usage_error "--base is not a commit in the repository"
+}
 
-# Get added lines from diff
-git -C "$REPO" diff -M --unified=0 --no-color "$BASE...HEAD" -- '*.sh' \
-  >"$TMPDIR_WORK/diff.txt" 2>/dev/null || true
+# collect_diff: writes the added-lines diff to $WORK/diff.txt; a diff that
+# fails (no merge base, shallow history) exits 2 and never reports clean.
+collect_diff() {
+  if ! git -C "$REPO" -c core.quotepath=false diff -M --unified=0 --no-color \
+    "$BASE...HEAD" -- '*.sh' >"$WORK/diff.txt" 2>"$WORK/diff.err"; then
+    echo "style-check: cannot diff $BASE...HEAD: $(head -n 1 "$WORK/diff.err")" >&2
+    exit 2
+  fi
+}
 
-# extract_added_lines: parse the diff to get file, line number, and text
-# for every added line, using the canonical awk program.
+# extract_added_lines: prints "<file>SEP<line>SEP<text>" for every added line.
+# File headers are only recognised before the first hunk of a file, so an added
+# content line that starts with "++ " is never taken for one. A path git quotes
+# is printed as a "?" marker line instead of being skipped.
 extract_added_lines() {
-  # Uses the canonical awk program to produce file<TAB>line<TAB>text
-  # for every added line in the diff output.
-  awk '
-/^\+\+\+ b\// { file = substr($0, 7); next }
-/^\+\+\+ /    { file = ""; next }
-/^@@/         { match($0, /\+[0-9]+/); ln = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
-/^\+/         { if (file != "") print file "\t" ln "\t" substr($0, 2); ln++ }
-' "$TMPDIR_WORK/diff.txt"
+  awk -v sep="$SEP" '
+    /^diff --git / { inhdr = 1; file = ""; next }
+    inhdr && /^\+\+\+ "/ { print "?" sep "0" sep $0; file = ""; next }
+    inhdr && /^\+\+\+ b\// { file = substr($0, 7); sub(/\t$/, "", file); next }
+    inhdr && /^\+\+\+ / { file = ""; next }
+    /^@@/ {
+      inhdr = 0
+      match($0, /\+[0-9]+/)
+      ln = substr($0, RSTART + 1, RLENGTH - 1) + 0
+      next
+    }
+    inhdr { next }
+    /^\+/ { if (file != "") print file sep ln sep substr($0, 2); ln++ }
+  ' "$WORK/diff.txt"
 }
 
-extract_added_lines >"$TMPDIR_WORK/added_lines.txt"
-
-# Filter out tests/ and node_modules/
-grep -vE '(^|/)tests/' "$TMPDIR_WORK/added_lines.txt" | \
-grep -vE '(^|/)node_modules/' >"$TMPDIR_WORK/filtered_lines.txt" 2>/dev/null || true
-
-# Build a keys file for shellcheck filtering (file:line)
-cut -f1,2 "$TMPDIR_WORK/filtered_lines.txt" | \
-  awk -F'\t' '{ print $1 ":" $2 }' >"$TMPDIR_WORK/added_keys.txt" 2>/dev/null || true
-
-# Initialize violations file
-: >"$TMPDIR_WORK/violations.txt"
-
-# Check 1: width > 100
-while IFS=$'\t' read -r file ln text; do
-  if [ -z "$file" ]; then continue; fi
-  len=${#text}
-  if [ "$len" -gt 100 ]; then
-    echo "${file}:${ln}:line is ${len} columns (max 100)" >>"$TMPDIR_WORK/violations.txt"
+# select_scope: keeps added lines of files in scope (not under tests/ or
+# node_modules/) in $WORK/added.txt; exits 2 on a path it cannot parse.
+select_scope() {
+  extract_added_lines >"$WORK/all.txt"
+  if grep -q "^?$SEP" "$WORK/all.txt"; then
+    echo "style-check: cannot parse a quoted path in the diff" >&2
+    exit 2
   fi
-done <"$TMPDIR_WORK/filtered_lines.txt"
+  awk -F"$SEP" '$1 !~ /(^|\/)tests\// && $1 !~ /(^|\/)node_modules\//' \
+    "$WORK/all.txt" >"$WORK/added.txt"
+}
 
-# is_function_def: check if a line defines a function
-# Returns 0 (true) if the line matches a function definition pattern.
-is_function_def() {
-  local line="$1" name='[a-zA-Z_][a-zA-Z0-9_]*' ws='[[:space:]]*'
-  # name() {  and  function name() {
-  if echo "$line" | grep -qE "^${ws}(function[[:space:]]+)?${name}${ws}\\(\\)${ws}\\{"; then
+# add_violation <file> <line> <message>: records one violation.
+add_violation() {
+  echo "$1:$2:$3" >>"$WORK/violations.txt"
+}
+
+# check_width: reports added lines longer than 100 characters.
+check_width() {
+  local file ln text len
+  while IFS="$SEP" read -r file ln text; do
+    len=${#text}
+    [ "$len" -le 100 ] || add_violation "$file" "$ln" "line is $len columns (max 100)"
+  done <"$WORK/added.txt"
+}
+
+# function_name <line>: prints the function name defined on the line, or
+# nothing when the line is not a function definition. Definitions are
+# `name() {`, `function name {`, `function name() {`, and the same with the
+# brace on the next line.
+function_name() {
+  local name='[a-zA-Z_][a-zA-Z0-9_]*' ws='[[:space:]]*' brace="(\\{.*)?"
+  local plain="^${ws}(function[[:space:]]+)?${name}${ws}\\(\\)${ws}${brace}$"
+  local keyword="^${ws}function[[:space:]]+${name}${ws}${brace}$"
+  if printf '%s\n' "$1" | grep -qE "${plain}|${keyword}"; then
+    printf '%s\n' "$1" |
+      sed -E 's/^[[:space:]]*(function[[:space:]]+)?([a-zA-Z_][a-zA-Z0-9_]*).*/\2/'
+  fi
+}
+
+# check_function_comments: reports added function definitions whose
+# preceding line (at HEAD) is not a comment.
+check_function_comments() {
+  local file ln text name prev
+  while IFS="$SEP" read -r file ln text; do
+    name=$(function_name "$text")
+    [ -n "$name" ] || continue
+    prev=""
+    if [ "$ln" -gt 1 ]; then
+      prev=$(git -C "$REPO" show "HEAD:$file" 2>/dev/null | sed -n "$((ln - 1))p")
+    fi
+    printf '%s\n' "$prev" | grep -qE '^[[:space:]]*#' ||
+      add_violation "$file" "$ln" "function $name has no comment block above it"
+  done <"$WORK/added.txt"
+}
+
+# check_shellcheck: runs shellcheck on the changed files from the repo root
+# and keeps only the findings on added lines.
+check_shellcheck() {
+  local file key rest
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    echo "style-check: warning: shellcheck not installed, skipped" >&2
     return 0
   fi
-  # function name {
-  if echo "$line" | grep -qE "^${ws}function[[:space:]]+${name}${ws}\\{"; then
-    return 0
-  fi
-  return 1
-}
-
-# extract_func_name: extract the function name from a definition line
-extract_func_name() {
-  local line="$1"
-  echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/^function[[:space:]]*//' \
-    -e 's/()[[:space:]]*{.*//' -e 's/[[:space:]]*{.*//'
-}
-
-# report_missing_comment <file> <line> <function>: records a function that has
-# no comment block above it.
-report_missing_comment() {
-  echo "$1:$2:function $3 has no comment block above it" \
-    >>"$TMPDIR_WORK/violations.txt"
-}
-
-# Check 2: function comment blocks
-while IFS=$'\t' read -r file ln text; do
-  if [ -z "$file" ]; then continue; fi
-  if is_function_def "$text"; then
-    func_name=$(extract_func_name "$text")
-    if [ "$ln" -le 1 ]; then
-      report_missing_comment "$file" "$ln" "$func_name"
-    else
-      prev_ln=$((ln - 1))
-      prev_line=$(git -C "$REPO" show HEAD:"$file" 2>/dev/null | sed -n "${prev_ln}p")
-      if echo "$prev_line" | grep -qE '^[[:space:]]*#'; then
-        :
-      else
-        report_missing_comment "$file" "$ln" "$func_name"
-      fi
+  awk -F"$SEP" '{ print $1 ":" $2 }' "$WORK/added.txt" >"$WORK/keys.txt"
+  cut -d"$SEP" -f1 "$WORK/added.txt" | sort -u >"$WORK/files.txt"
+  : >"$WORK/shellcheck.txt"
+  while IFS= read -r file; do
+    ( cd "$REPO" && shellcheck -S warning -x -f gcc -- "$file" 2>/dev/null ) \
+      >>"$WORK/shellcheck.txt" || true
+  done <"$WORK/files.txt"
+  while IFS= read -r rest; do
+    key=$(printf '%s\n' "$rest" | sed -E 's/^(.*:[0-9]+):[0-9]+: .*$/\1/')
+    if grep -Fxq -- "$key" "$WORK/keys.txt"; then
+      printf '%s\n' "$rest" |
+        sed -E 's/^(.*:[0-9]+):[0-9]+: (.*)$/\1:\2/' >>"$WORK/violations.txt"
     fi
-  fi
-done <"$TMPDIR_WORK/filtered_lines.txt"
-
-# run_shellcheck_on_added: run shellcheck on each changed file from the repo
-# root (so paths are repo-relative) and keep only findings on added lines.
-run_shellcheck_on_added() {
-  local file out="$TMPDIR_WORK/shellcheck.txt"
-  cut -f1 "$TMPDIR_WORK/filtered_lines.txt" | sort -u >"$TMPDIR_WORK/files.txt"
-  : >"$out"
-  while read -r file; do
-    [ -n "$file" ] || continue
-    ( cd "$REPO" && shellcheck -S warning -x -f gcc "$file" 2>/dev/null ) \
-      >>"$out" || true
-  done <"$TMPDIR_WORK/files.txt"
-  while IFS=: read -r sc_file sc_ln sc_rest; do
-    if grep -Fxq "$sc_file:$sc_ln" "$TMPDIR_WORK/added_keys.txt"; then
-      echo "$sc_file:$sc_ln:$sc_rest" >>"$TMPDIR_WORK/violations.txt"
-    fi
-  done <"$out"
+  done <"$WORK/shellcheck.txt"
 }
 
-# Check 3: shellcheck
-if command -v shellcheck >/dev/null 2>&1; then
-  run_shellcheck_on_added
-else
-  echo "style-check: warning: shellcheck not installed, skipped" >&2
-fi
+# print_report: prints the sorted violations and the summary; returns the
+# exit status (0 clean, 1 violations).
+print_report() {
+  if [ -s "$WORK/violations.txt" ]; then
+    sort -t: -k1,1 -k2,2n "$WORK/violations.txt"
+    echo "style-check: $(wc -l <"$WORK/violations.txt" | tr -d ' ') violation(s)"
+    return 1
+  fi
+  echo "style-check: ok"
+  return 0
+}
 
-# Sort violations by file then line number
-if [ -s "$TMPDIR_WORK/violations.txt" ]; then
-  sort -t: -k1,1 -k2,2n "$TMPDIR_WORK/violations.txt"
-  count=$(wc -l <"$TMPDIR_WORK/violations.txt" | tr -d ' ')
-  echo "style-check: $count violation(s)"
-  exit 1
-fi
-
-echo "style-check: ok"
-exit 0
+parse_flags "$@"
+validate_inputs
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+collect_diff
+select_scope
+: >"$WORK/violations.txt"
+check_width
+check_function_comments
+check_shellcheck
+print_report
+exit $?
