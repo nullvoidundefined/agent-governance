@@ -78,7 +78,7 @@ cut -f1,2 "$TMPDIR_WORK/filtered_lines.txt" | \
   awk -F'\t' '{ print $1 ":" $2 }' >"$TMPDIR_WORK/added_keys.txt" 2>/dev/null || true
 
 # Initialize violations file
-> "$TMPDIR_WORK/violations.txt"
+: >"$TMPDIR_WORK/violations.txt"
 
 # Check 1: width > 100
 while IFS=$'\t' read -r file ln text; do
@@ -92,12 +92,13 @@ done <"$TMPDIR_WORK/filtered_lines.txt"
 # is_function_def: check if a line defines a function
 # Returns 0 (true) if the line matches a function definition pattern.
 is_function_def() {
-  local line="$1"
-  # Match: name() {, function name {, function name() {, with optional leading whitespace
-  if echo "$line" | grep -qE '^[[:space:]]*(function[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\(\)|^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\(\))[[:space:]]*\{'; then
+  local line="$1" name='[a-zA-Z_][a-zA-Z0-9_]*' ws='[[:space:]]*'
+  # name() {  and  function name() {
+  if echo "$line" | grep -qE "^${ws}(function[[:space:]]+)?${name}${ws}\\(\\)${ws}\\{"; then
     return 0
   fi
-  if echo "$line" | grep -qE '^[[:space:]]*function[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\{'; then
+  # function name {
+  if echo "$line" | grep -qE "^${ws}function[[:space:]]+${name}${ws}\\{"; then
     return 0
   fi
   return 1
@@ -106,7 +107,15 @@ is_function_def() {
 # extract_func_name: extract the function name from a definition line
 extract_func_name() {
   local line="$1"
-  echo "$line" | sed 's/^[[:space:]]*//; s/^function[[:space:]]*//; s/()[[:space:]]*{.*//; s/[[:space:]]*{.*//'
+  echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/^function[[:space:]]*//' \
+    -e 's/()[[:space:]]*{.*//' -e 's/[[:space:]]*{.*//'
+}
+
+# report_missing_comment <file> <line> <function>: records a function that has
+# no comment block above it.
+report_missing_comment() {
+  echo "$1:$2:function $3 has no comment block above it" \
+    >>"$TMPDIR_WORK/violations.txt"
 }
 
 # Check 2: function comment blocks
@@ -115,35 +124,40 @@ while IFS=$'\t' read -r file ln text; do
   if is_function_def "$text"; then
     func_name=$(extract_func_name "$text")
     if [ "$ln" -le 1 ]; then
-      echo "$file:$ln:function $func_name has no comment block above it" >>"$TMPDIR_WORK/violations.txt"
+      report_missing_comment "$file" "$ln" "$func_name"
     else
       prev_ln=$((ln - 1))
       prev_line=$(git -C "$REPO" show HEAD:"$file" 2>/dev/null | sed -n "${prev_ln}p")
       if echo "$prev_line" | grep -qE '^[[:space:]]*#'; then
         :
       else
-        echo "$file:$ln:function $func_name has no comment block above it" >>"$TMPDIR_WORK/violations.txt"
+        report_missing_comment "$file" "$ln" "$func_name"
       fi
     fi
   fi
 done <"$TMPDIR_WORK/filtered_lines.txt"
 
+# run_shellcheck_on_added: run shellcheck on each changed file from the repo
+# root (so paths are repo-relative) and keep only findings on added lines.
+run_shellcheck_on_added() {
+  local file out="$TMPDIR_WORK/shellcheck.txt"
+  cut -f1 "$TMPDIR_WORK/filtered_lines.txt" | sort -u >"$TMPDIR_WORK/files.txt"
+  : >"$out"
+  while read -r file; do
+    [ -n "$file" ] || continue
+    ( cd "$REPO" && shellcheck -S warning -x -f gcc "$file" 2>/dev/null ) \
+      >>"$out" || true
+  done <"$TMPDIR_WORK/files.txt"
+  while IFS=: read -r sc_file sc_ln sc_rest; do
+    if grep -Fxq "$sc_file:$sc_ln" "$TMPDIR_WORK/added_keys.txt"; then
+      echo "$sc_file:$sc_ln:$sc_rest" >>"$TMPDIR_WORK/violations.txt"
+    fi
+  done <"$out"
+}
+
 # Check 3: shellcheck
 if command -v shellcheck >/dev/null 2>&1; then
-  # Get unique files with added lines
-  cut -f1 "$TMPDIR_WORK/filtered_lines.txt" | sort -u >"$TMPDIR_WORK/files.txt"
-
-  # For each file, run shellcheck and filter to added lines
-  while read -r file; do
-    if [ -z "$file" ]; then continue; fi
-    shellcheck -S warning -x -f gcc "$REPO/$file" 2>/dev/null | \
-    while IFS=: read -r sc_file sc_ln sc_rest; do
-      # Check if this file:line is an added line
-      if grep -Fx "$sc_file:$sc_ln" "$TMPDIR_WORK/added_keys.txt" >/dev/null 2>&1; then
-        echo "$sc_file:$sc_ln:$sc_rest"
-      fi
-    done >>"$TMPDIR_WORK/violations.txt"
-  done <"$TMPDIR_WORK/files.txt"
+  run_shellcheck_on_added
 else
   echo "style-check: warning: shellcheck not installed, skipped" >&2
 fi
