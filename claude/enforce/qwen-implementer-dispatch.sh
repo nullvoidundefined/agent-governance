@@ -14,6 +14,10 @@
 #   unavailable  exit 3: no-secondary-configured, server-unreachable,
 #                model-missing, or rules-missing. Claude is never started.
 #   usage error  exit 2.
+# When the Claude run ends (any outcome after it started), a readable Markdown
+# transcript of the --log goes to <log>.md and its path is the LAST stdout line,
+# "transcript: <path>", after the verdict lines and any test output. Lines 1 and 2
+# are unchanged.
 # gitignored paths are not scanned for protected changes, and
 # the final test command runs with stdin closed. HEAD movement (head-moved) and protected-path
 # check failures (protected-path-check-failed) are reported after the Claude run.
@@ -75,9 +79,51 @@ usage_error() {
 }
 
 # report <status> <reason> <exit code>: prints the two-line result and exits.
+# Once the Claude run has produced a transcript, its path is the last line.
 report() {
   printf '%s\n%s\n' "$1" "$2"
+  print_transcript_note
   exit "$3"
+}
+
+# print_transcript_note: prints "transcript: <path>" when a transcript was written.
+print_transcript_note() {
+  [ -z "${transcript:-}" ] || printf 'transcript: %s\n' "$transcript"
+}
+
+# write_transcript: converts the raw stream-json --log into <log>.md, a readable
+# Markdown transcript: Qwen's messages, its reasoning clipped to 300 characters,
+# one line per tool call, and the first 8 lines of each tool result. The per-token
+# system events (about 99% of the log) are dropped. Sets $transcript only when the
+# file was written; a failure here never changes the verdict.
+write_transcript() {
+  local out="$log.md"
+  {
+    printf '# Qwen run: %s\n\nSource: `%s`\n' "$(basename "$log")" "$log"
+    jq -Rr '
+      def clip($n): if length > $n then .[0:$n] + " [...]" else . end;
+      def firstlines($n): split("\n") | (if length > $n then .[0:$n] + ["[... \(length - $n) more lines]"] else . end) | map("    " + .) | join("\n");
+      fromjson? | select(type == "object") |
+      if .type == "assistant" then
+        (.message.content // [])[] |
+        if .type == "text" then "\n**Qwen:** " + .text + "\n"
+        elif .type == "thinking" then "\n_Thinking:_ " + (.thinking | gsub("\n"; " ") | clip(300)) + "\n"
+        elif .type == "tool_use" then
+          "- **" + .name + "**: " + (
+            if .name == "Bash" then "`" + (.input.command | gsub("\n"; " ") | clip(200)) + "`"
+            elif (.input.file_path? // null) != null then "`" + .input.file_path + "`"
+            elif (.input.pattern? // null) != null then "`" + .input.pattern + "`"
+            else (.input | tostring | clip(200)) end)
+        else empty end
+      elif .type == "user" then
+        (.message.content // []) | arrays | .[] | select(type == "object" and .type == "tool_result") |
+        ((if (.content | type) == "array" then (.content | map(.text? // "") | join("\n")) else (.content // "" | tostring) end) as $t |
+         (if .is_error then "  - result (error):\n" else "  - result:\n" end) + ($t | firstlines(8)))
+      elif .type == "result" then "\n## Finished\n\n" + (.result // "" | tostring)
+      else empty end
+    ' "$log"
+  } >"$out" 2>/dev/null && transcript="$out"
+  return 0
 }
 
 # parse_flags <args...>: sets repo, red, prompt, log and testCmd, or fails with a usage error.
@@ -280,6 +326,7 @@ fi
 headBefore=$(git -C "$repo" rev-parse HEAD 2>/dev/null) || headBefore=""
 
 run_claude
+write_transcript
 case "$capStatus" in
   timeout) report failed timeout 1 ;;
   stalled) report failed stalled 1 ;;
@@ -308,4 +355,5 @@ case "$capStatus" in
 esac
 printf 'failed\ntests-failed\n'
 tail -n 60 "$SCRATCH/test.out"
+print_transcript_note
 exit 1

@@ -104,6 +104,15 @@ case "$mode" in
     fixValue
     printf 'helper\n' >src/new_module.sh
     ;;
+  stream-fix)
+    # stream-json lines like the real run: per-token system noise, a message,
+    # a tool call, a 12-line tool result, then the final result.
+    printf '%s\n' '{"type":"system","subtype":"token","n":1}' \
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"HELLO-FROM-QWEN"},{"type":"tool_use","name":"Bash","input":{"command":"ls src"}}]}}' \
+      "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"$(seq -s '\\n' 1 12)\"}]}}" \
+      '{"type":"result","result":"FINAL-WORDS"}'
+    fixValue
+    ;;
   wrong)
     printf '#!/usr/bin/env bash\necho 3\n' >src/value.sh
     ;;
@@ -390,7 +399,7 @@ printf '%s\n' "$TAIL" | grep -qF "VALUE-CHECK-FAILED: want 2 got 3" ||
 printf '%s\n' "$TAIL" | grep -qx "check-line-70" || failCase "tests-failed: the tail must include late output lines (got: '$TAIL')"
 printf '%s\n' "$TAIL" | grep -qx "check-line-12" || failCase "tests-failed: the tail must hold the last 60 lines, from check-line-12 (got: '$TAIL')"
 ! printf '%s\n' "$TAIL" | grep -qx "check-line-11" || failCase "tests-failed: the tail must stop at 60 lines; check-line-11 is line 61 from the end"
-[ "$(printf '%s\n' "$TAIL" | grep -c .)" -le 60 ] || failCase "tests-failed: at most 60 lines may follow line 2"
+[ "$(printf '%s\n' "$TAIL" | grep -vc "^transcript: ")" -le 60 ] || failCase "tests-failed: at most 60 test-output lines may follow line 2 (the transcript line is extra)"
 expectLogHasRun "tests-failed" wrong
 
 # --- 3. Edited tracked test file: touched-protected-path, even though tests pass. ---
@@ -1017,7 +1026,7 @@ expectLogHasRun "relative --log at <caller cwd>/out/run.log" fix
 extraCase ctrl-name ctrl-name
 dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20
 expectResult "a protected file named with a newline and a BEL" 1 failed touched-protected-path
-OUT_LINES=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
+OUT_LINES=$(printf '%s\n' "$OUT" | grep -v '^transcript: ' | wc -l | tr -d ' ')
 [ "$OUT_LINES" = "2" ] ||
   failCase "control-character name: stdout must be exactly two lines (got $OUT_LINES: '$(printf '%s' "$OUT" | od -c | head -5 | tr '\n' ' ')')"
 ! printf '%s' "$REASON" | LC_ALL=C grep -q '[[:cntrl:]]' ||
@@ -1183,5 +1192,22 @@ cd "$CASE_DIR/dashdir"
 dispatchBounded 30 QWEN_DISPATCH_TIMEOUT_SECONDS=20 AGENT_TIER_ASSIGNMENTS_FILE=-n
 cd "$RETURN_DIR"
 expectResult "AGENT_TIER_ASSIGNMENTS_FILE=-n naming a valid machine file in the working directory" 0 green ""
+
+# 22. The run leaves a readable transcript next to the log; the verdict lines
+# are unchanged and the transcript path is the last stdout line.
+newCase transcript
+printf 'stream-fix\n' >"$WORK/claude-mode"
+dispatchCase
+expectResult "a run that leaves a transcript" 0 green ""
+TR="$LOG.md"
+[ -f "$TR" ] || failCase "transcript: $TR must exist"
+[ "$(printf '%s\n' "$OUT" | tail -n 1)" = "transcript: $TR" ] ||
+  failCase "transcript: the last stdout line must name $TR (stdout: '$OUT')"
+grep -q 'HELLO-FROM-QWEN' "$TR" || failCase "transcript: must hold Qwen's message"
+grep -q '\*\*Bash\*\*: `ls src`' "$TR" || failCase "transcript: must hold one line per tool call"
+grep -q 'FINAL-WORDS' "$TR" || failCase "transcript: must hold the final result"
+grep -q '^    8$' "$TR" && grep -q 'more lines\]' "$TR" && ! grep -q '^    9$' "$TR" ||
+  failCase "transcript: a tool result must be cut to 8 lines ($(cat "$TR"))"
+! grep -q '"subtype":"token"' "$TR" || failCase "transcript: system events must be dropped"
 
 echo "PASS: qwen-implementer-dispatch"

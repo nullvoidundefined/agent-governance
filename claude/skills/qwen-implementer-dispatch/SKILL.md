@@ -34,7 +34,7 @@ Start it with the Bash tool's `run_in_background` set, never with `nohup`, `&` o
 
 ## 3. Read the verdict
 
-Line 1 is the status, line 2 the reason.
+Line 1 is the status, line 2 the reason. Once Claude has run, the last line is `transcript: <path>`: a readable Markdown transcript of the run at `<log>.md` (Qwen's messages, clipped reasoning, one line per tool call, the first 8 lines of each tool result). Read that, not the raw `--log`, which holds thousands of per-token lines.
 
 | Status | Exit | Meaning |
 |---|---|---|
@@ -43,7 +43,7 @@ Line 1 is the status, line 2 the reason.
 | `unavailable` | 3 | `no-secondary-configured`, `server-unreachable`, `model-missing` or `rules-missing` (the implementer rules file is absent). Claude was never started. |
 | usage error | 2 | A bad flag or a `--red` that is not a commit. Fix the call. |
 
-Read Qwen's final message from the log for any occurrences it listed but did not edit, and for a `DISPUTE` line: `grep '^{"type":"assistant"' <log> | jq -r '.message.content[] | select(.type=="text") | .text' | tail -5`.
+Read Qwen's final message from the transcript (the `## Finished` section at the end) for any occurrences it listed but did not edit, and for a `DISPUTE` line.
 
 On `failed` with `touched-protected-path`, discard the attempt's changes (back to the RED commit) before retrying. After one more attempt that also fails, or on `unavailable`, discard Qwen's changes back to the RED commit and dispatch the primary `implementer`; name the fallback in the PR.
 
