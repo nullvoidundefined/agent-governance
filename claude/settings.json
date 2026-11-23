@@ -102,7 +102,8 @@
       "Bash(wc *)",
       "Bash(which *)",
       "Bash(whoami)",
-      "Bash(yarn *)"
+      "Bash(yarn *)",
+      "mcp__ccd_turn__update_plan"
     ],
     "deny": [
       "Bash(rm -rf /)",
