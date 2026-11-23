@@ -29,7 +29,11 @@ TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""')
 case "$TOOL" in mcp__*) ;; *) exit 0 ;; esac
 
 SERVER=$(printf '%s' "$TOOL" | awk -F'__' '{print $2}')
-case "$SERVER" in claude-in-chrome) exit 0 ;; esac
+# ccd_turn is the desktop app's own task list and next-step box (update_plan,
+# wrap_up): local UI with no external system behind it. 'update' in update_plan
+# matched the write class and prompted on every step, overriding the owner's
+# allow rule (owner decision 2026-11-22). Other ccd_* servers keep the guard.
+case "$SERVER" in claude-in-chrome | ccd_turn) exit 0 ;; esac
 
 # camelCase is as common as snake_case in MCP tool names (createIssue,
 # chat_postMessage), so split on the case boundary before lowercasing. Folding
