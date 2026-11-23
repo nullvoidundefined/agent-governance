@@ -57,6 +57,7 @@ pass mcp__claude_ai_Gmail__untrash_message        # restorative, not destructive
 pass mcp__claude-in-chrome__tabs_create_mcp       # browser server exempt
 pass mcp__ccd_turn__update_plan                  # desktop app's own task list, local UI only
 pass mcp__ccd_turn__wrap_up                      # desktop app's own next-step box, local UI only
+ask  mcp__ccd_session_mgmt__delete_session        # other ccd_* servers keep the guard
 # The tracker exemption now derives from the operator's config rather than a
 # hardcoded server name, so these cases need one. Without a config the guard
 # fails closed and asks, which is the intended posture and is asserted by the
