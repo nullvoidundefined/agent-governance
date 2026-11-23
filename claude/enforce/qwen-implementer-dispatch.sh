@@ -102,12 +102,16 @@ write_transcript() {
     printf '# Qwen run: %s\n\nSource: `%s`\n' "$(basename "$log")" "$log"
     jq -Rr '
       def clip($n): if length > $n then .[0:$n] + " [...]" else . end;
-      def firstlines($n): split("\n") | (if length > $n then .[0:$n] + ["[... \(length - $n) more lines]"] else . end) | map("    " + .) | join("\n");
+      def firstlines($n):
+        split("\n")
+        | (if length > $n then .[0:$n] + ["[... \(length - $n) more lines]"] else . end)
+        | map("    " + .) | join("\n");
       fromjson? | select(type == "object") |
       if .type == "assistant" then
         (.message.content // [])[] |
         if .type == "text" then "\n**Qwen:** " + .text + "\n"
-        elif .type == "thinking" then "\n_Thinking:_ " + (.thinking | gsub("\n"; " ") | clip(300)) + "\n"
+        elif .type == "thinking" then
+          "\n_Thinking:_ " + (.thinking | gsub("\n"; " ") | clip(300)) + "\n"
         elif .type == "tool_use" then
           "- **" + .name + "**: " + (
             if .name == "Bash" then "`" + (.input.command | gsub("\n"; " ") | clip(200)) + "`"
@@ -116,9 +120,13 @@ write_transcript() {
             else (.input | tostring | clip(200)) end)
         else empty end
       elif .type == "user" then
-        (.message.content // []) | arrays | .[] | select(type == "object" and .type == "tool_result") |
-        ((if (.content | type) == "array" then (.content | map(.text? // "") | join("\n")) else (.content // "" | tostring) end) as $t |
-         (if .is_error then "  - result (error):\n" else "  - result:\n" end) + ($t | firstlines(8)))
+        (.message.content // []) | arrays | .[]
+        | select(type == "object" and .type == "tool_result")
+        | ((if (.content | type) == "array"
+            then (.content | map(.text? // "") | join("\n"))
+            else (.content // "" | tostring) end) as $t
+           | (if .is_error then "  - result (error):\n" else "  - result:\n" end)
+             + ($t | firstlines(8)))
       elif .type == "result" then "\n## Finished\n\n" + (.result // "" | tostring)
       else empty end
     ' "$log"
