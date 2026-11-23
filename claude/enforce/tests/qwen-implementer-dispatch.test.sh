@@ -109,7 +109,8 @@ case "$mode" in
     # a tool call, a 12-line tool result, then the final result.
     printf '%s\n' '{"type":"system","subtype":"token","n":1}' \
       '{"type":"assistant","message":{"content":[{"type":"text","text":"HELLO-FROM-QWEN"},{"type":"tool_use","name":"Bash","input":{"command":"ls src"}}]}}' \
-      "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"$(seq -s '\\n' 1 12)\"}]}}" \
+      "$(jq -nc '{type: "user", message: {content: [{type: "tool_result",
+        content: ([range(1; 13) | tostring] | join("\n"))}]}}')" \
       '{"type":"result","result":"FINAL-WORDS"}'
     fixValue
     ;;
