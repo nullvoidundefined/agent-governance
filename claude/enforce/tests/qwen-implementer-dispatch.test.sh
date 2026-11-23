@@ -1210,4 +1210,16 @@ grep -q '^    8$' "$TR" && grep -q 'more lines\]' "$TR" && ! grep -q '^    9$' "
   failCase "transcript: a tool result must be cut to 8 lines ($(cat "$TR"))"
 ! grep -q '"subtype":"token"' "$TR" || failCase "transcript: system events must be dropped"
 
+# 23. A transcript that cannot be written never changes the verdict: a directory
+# sits where <log>.md would go, so the run stays green with exit 0, the verdict
+# lines are unchanged, and no transcript line is printed.
+newCase transcript-unwritable
+printf 'stream-fix\n' >"$WORK/claude-mode"
+mkdir -p "$LOG.md"
+dispatchCase
+expectResult "a run whose transcript cannot be written" 0 green ""
+[ -d "$LOG.md" ] || failCase "transcript-unwritable: $LOG.md must still be the directory"
+! printf '%s\n' "$OUT" | grep -q '^transcript:' ||
+  failCase "transcript-unwritable: no transcript line may be printed (stdout: '$OUT')"
+
 echo "PASS: qwen-implementer-dispatch"
